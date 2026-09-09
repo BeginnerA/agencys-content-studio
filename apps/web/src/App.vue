@@ -20,7 +20,7 @@ onBeforeUnmount(() => {
       <div class="logo">
         <span class="mark"><Icon name="bolt" :size="16" :stroke-width="2" /></span>
         <span class="lt">
-          Content Studio
+          百工工作室
           <small>模板化流水线工作台</small>
         </span>
       </div>
