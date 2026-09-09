@@ -1,0 +1,145 @@
+import type {
+  ApiConfig,
+  ApiErrorBody,
+  ApiProvider,
+  Asset,
+  GenTask,
+  Project,
+  ProjectDetail,
+  Run,
+  RunDetail,
+  TemplateDetail,
+  TemplateMeta,
+} from './types'
+
+/** 统一请求封装：错误解析为 {code,message}，抛 ApiError */
+export class ApiError extends Error {
+  code: string
+  status: number
+  constructor(status: number, code: string, message: string) {
+    super(message)
+    this.code = code
+    this.status = status
+  }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(path, {
+      method,
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+  }
+  if (!res.ok) {
+    let code = 'http_' + res.status
+    let message = `HTTP ${res.status}`
+    try {
+      const data = (await res.json()) as ApiErrorBody
+      if (data?.error?.message) {
+        code = data.error.code
+        message = data.error.message
+      }
+    } catch {
+      // 非 JSON 错误体，保留默认
+    }
+    throw new ApiError(res.status, code, message)
+  }
+  return (await res.json()) as T
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>('GET', path),
+  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
+  del: <T>(path: string) => request<T>('DELETE', path),
+}
+
+// ===== 端点封装 =====
+
+interface Items<T> {
+  items: T[]
+}
+
+export const projectApi = {
+  list: () => api.get<Items<Project>>('/api/v1/projects'),
+  create: (body: { name: string; genre: string; brief: string; template_key?: string }) =>
+    api.post<Project>('/api/v1/projects', body),
+  detail: (id: number) => api.get<ProjectDetail>(`/api/v1/projects/${id}`),
+  assets: (id: number, params = '') => api.get<Items<Asset>>(`/api/v1/projects/${id}/assets${params}`),
+  runs: (id: number) => api.get<Items<Run>>(`/api/v1/projects/${id}/runs`),
+}
+
+export const templateApi = {
+  list: () => api.get<Items<TemplateMeta>>('/api/v1/templates'),
+  detail: (key: string) => api.get<{ template: TemplateDetail }>(`/api/v1/templates/${encodeURIComponent(key)}`),
+}
+
+export const runApi = {
+  detail: (id: number) => api.get<RunDetail>(`/api/v1/runs/${id}`),
+  log: (id: number, tail = 200) => api.get<{ log: string }>(`/api/v1/runs/${id}/log?tail=${tail}`),
+  start: (projectId: number, body: { template_key: string; input: Record<string, unknown> }) =>
+    api.post<{ run: Run }>(`/api/v1/projects/${projectId}/runs`, body),
+  gate: (id: number, body: Record<string, unknown>) => api.post<RunDetail>(`/api/v1/runs/${id}/gate`, body),
+  cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
+  resume: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`),
+}
+
+export const taskApi = {
+  list: (params = '') => api.get<Items<GenTask>>(`/api/v1/tasks${params}`),
+  retry: (id: number) => api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/retry`),
+  cancel: (id: number) => api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/cancel`),
+}
+
+export const configApi = {
+  providers: () => api.get<Items<ApiProvider>>('/api/v1/api-providers'),
+  list: () => api.get<Items<ApiConfig>>('/api/v1/api-configs'),
+  create: (body: Record<string, unknown>) => api.post<ApiConfig>('/api/v1/api-configs', body),
+  update: (id: number, body: Record<string, unknown>) => api.put<ApiConfig>(`/api/v1/api-configs/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
+  test: (id: number) => api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
+}
+
+export const assetApi = {
+  detail: (id: number) => api.get<Asset>(`/api/v1/assets/${id}`),
+}
+
+/** 上传文件到项目（multipart：purpose + files） */
+export async function uploadFiles(
+  projectId: number,
+  purpose: string,
+  files: File[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<Asset[]> {
+  const form = new FormData()
+  form.append('purpose', purpose)
+  for (const f of files) form.append('files', f)
+  const xhr = new XMLHttpRequest()
+  const data = await new Promise<string>((resolve, reject) => {
+    xhr.open('POST', `/api/v1/projects/${projectId}/imports`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText)
+      else {
+        let message = `HTTP ${xhr.status}`
+        try {
+          const d = JSON.parse(xhr.responseText) as ApiErrorBody
+          if (d?.error?.message) message = d.error.message
+        } catch {
+          // ignore
+        }
+        reject(new ApiError(xhr.status, 'upload', message))
+      }
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'network', '上传失败（网络错误）'))
+    xhr.send(form)
+  })
+  const parsed = JSON.parse(data) as { assets?: Asset[] }
+  return parsed.assets ?? []
+}
