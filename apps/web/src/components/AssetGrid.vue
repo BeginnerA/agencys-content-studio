@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { Asset } from '../lib/types'
 import { fmtSize, fmtTime, purposeText } from '../lib/format'
 import Modal from './Modal.vue'
+import Icon from './Icon.vue'
 
 const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean }>()
 const emit = defineEmits<{ pick: [asset: Asset] }>()
@@ -25,7 +26,10 @@ function preview(a: Asset) {
           <img v-if="a.kind === 'image' && a.urls.thumb" :src="a.urls.thumb" loading="lazy" :alt="a.name" />
           <img v-else-if="a.kind === 'video'" :src="a.urls.thumb ?? undefined" class="video-ico" :alt="a.name" />
           <div v-else class="file-ico">{{ a.ext.toUpperCase().slice(0, 4) }}</div>
-          <div v-if="a.kind === 'video'" class="play">▶ {{ a.duration ? Math.round(a.duration) + 's' : '' }}</div>
+          <div v-if="a.kind === 'video'" class="play">
+            <Icon name="play" :size="10" :stroke-width="2" />
+            {{ a.duration ? Math.round(a.duration) + 's' : '' }}
+          </div>
           <div class="purp">{{ purposeText(a.purpose) }}</div>
         </div>
         <div class="meta">
@@ -62,24 +66,24 @@ function preview(a: Asset) {
 }
 
 .cell {
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
 }
 
 .cell:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgb(16 24 40 / 10%);
-  border-color: var(--accent);
+  box-shadow: 0 10px 26px -16px rgb(0 0 0 / 70%);
+  border-color: rgb(139 92 246 / 45%);
 }
 
 .thumb {
   position: relative;
   aspect-ratio: 9/12;
-  background: #f2f4f7;
+  background: var(--img-ph);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -106,10 +110,14 @@ function preview(a: Asset) {
   position: absolute;
   left: 6px;
   bottom: 22px;
-  background: rgb(10 14 24 / 60%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgb(0 0 0 / 62%);
+  backdrop-filter: blur(3px);
   color: #fff;
   font-size: 11px;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
 }
 
@@ -179,9 +187,10 @@ function preview(a: Asset) {
   overflow-y: auto;
   white-space: pre-wrap;
   font-size: 11.5px;
-  color: var(--text-2);
+  color: #b9c7dc;
   font-family: var(--mono);
-  background: #f7f8fa;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
   padding: 10px;
   border-radius: 8px;
   margin: 8px 0 0;

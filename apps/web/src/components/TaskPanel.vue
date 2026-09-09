@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
 }
 
 .row:hover {
-  background: #f7f8fa;
+  background: var(--hover);
 }
 
 .shot {

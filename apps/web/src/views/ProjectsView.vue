@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import Modal from '../components/Modal.vue'
+import Icon from '../components/Icon.vue'
 import { projectApi, templateApi } from '../lib/api'
 import { ApiError } from '../lib/api'
 import type { Project, TemplateMeta } from '../lib/types'
@@ -85,7 +86,9 @@ const genres = [
     <div class="page-h">
       <h1>项目</h1>
       <span class="sub">{{ projects.length }} 个</span>
-      <button class="btn primary" style="margin-left: auto" @click="openNew">＋ 新建项目</button>
+      <button class="btn primary" style="margin-left: auto" @click="openNew">
+        <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建项目
+      </button>
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
@@ -167,9 +170,9 @@ const genres = [
 
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgb(16 24 40 / 10%);
+  box-shadow: var(--shadow-lg);
   text-decoration: none;
-  border-color: var(--accent);
+  border-color: rgb(139 92 246 / 45%);
 }
 
 .top {
@@ -202,7 +205,7 @@ const genres = [
 
 .chip {
   font-size: 11.5px;
-  background: #f0f2f5;
+  background: var(--chip-bg);
   color: var(--text-2);
   padding: 2px 9px;
   border-radius: 999px;
@@ -210,7 +213,7 @@ const genres = [
 
 .runs {
   margin-top: 12px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--border-strong);
   padding-top: 8px;
   display: flex;
   flex-direction: column;

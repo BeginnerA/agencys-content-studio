@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
+import Icon from '../components/Icon.vue'
 import { assetApi, runApi, templateApi } from '../lib/api'
 import type { RunDetail, RunStep, TemplateDetail } from '../lib/types'
 import { fmtMs, fmtTime, runStatus, stepStatus } from '../lib/format'
@@ -217,26 +218,36 @@ function outputPretty(s: RunStep): string {
 }
 
 const ACTION_ICON: Record<string, string> = {
-  manual_ingest: '📥',
-  ai_text: '✍️',
-  ai_image: '🖼️',
-  ffmpeg_merge: '🎬',
-  ai_video: '🎞️',
+  manual_ingest: 'inbox',
+  ai_text: 'pencil',
+  ai_image: 'photo',
+  ffmpeg_merge: 'film',
+  ai_video: 'video',
+}
+
+function iconOf(key: string): string {
+  return ACTION_ICON[key] ?? 'doc'
 }
 </script>
 
 <template>
   <div>
     <div class="page-h">
-      <RouterLink :to="`/projects/${run?.projectId ?? ''}`" class="muted" style="font-size: 13px">← 项目</RouterLink>
+      <RouterLink :to="`/projects/${run?.projectId ?? ''}`" class="back">
+        <Icon name="arrow-left" :size="14" /> 项目
+      </RouterLink>
       <h1>Run #{{ runId }}</h1>
       <span v-if="run" class="badge" :class="run.status">{{ runStatus(run.status).text }}</span>
       <span v-if="run" class="sub mono">{{ run.templateKey }}</span>
       <span v-if="run?.summary?.durationMs" class="sub muted">{{ fmtMs(run.summary.durationMs) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
         <button v-if="canCancel" class="btn danger" :disabled="busy" @click="cancelRun">取消运行</button>
-        <button v-if="canResume" class="btn primary" :disabled="busy" @click="resumeRun">断点续跑</button>
-        <button class="btn" @click="toggleLog">{{ showLog ? '隐藏日志' : '运行日志' }}</button>
+        <button v-if="canResume" class="btn primary" :disabled="busy" @click="resumeRun">
+          <Icon name="refresh" :size="14" /> 断点续跑
+        </button>
+        <button class="btn" @click="toggleLog">
+          <Icon :name="showLog ? 'x' : 'doc'" :size="14" /> {{ showLog ? '隐藏日志' : '运行日志' }}
+        </button>
       </div>
     </div>
 
@@ -262,7 +273,7 @@ const ACTION_ICON: Record<string, string> = {
         <div class="timeline panel">
           <div v-for="s in steps" :key="s.id" class="st" :class="[nodeClass(s), { dim: s.status === 'pending' }]">
             <div class="rail">
-              <div class="dot">{{ ACTION_ICON[s.actionKey] ?? '•' }}</div>
+              <div class="dot"><Icon :name="iconOf(s.actionKey)" :size="14" /></div>
               <div class="line" />
             </div>
             <div class="card">
@@ -361,20 +372,21 @@ const ACTION_ICON: Record<string, string> = {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 26px;
+  width: 28px;
 }
 
 .dot {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: #eef0f4;
+  background: rgb(148 163 184 / 13%);
+  color: var(--text-3);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
   flex: none;
   z-index: 1;
+  border: 1px solid rgb(148 163 184 / 14%);
 }
 
 .line {
@@ -390,23 +402,34 @@ const ACTION_ICON: Record<string, string> = {
 
 .st.ok .dot {
   background: var(--ok-weak);
+  color: var(--ok);
+  border-color: rgb(34 197 94 / 25%);
 }
 
 .st.running .dot {
   background: var(--run-weak);
+  color: var(--run);
+  border-color: rgb(129 140 248 / 30%);
   animation: pulse 1.2s infinite;
 }
 
 .st.failed .dot {
   background: var(--bad-weak);
+  color: var(--bad);
+  border-color: rgb(248 113 113 / 26%);
 }
 
 .st.gate .dot {
   background: var(--warn-weak);
+  color: var(--warn);
+  border-color: rgb(245 158 11 / 28%);
+  box-shadow: 0 0 0 4px rgb(245 158 11 / 10%);
 }
 
 .st.cancel .dot {
-  background: #eef0f4;
+  background: rgb(148 163 184 / 9%);
+  color: var(--text-3);
+  border-color: rgb(148 163 184 / 16%);
 }
 
 @keyframes pulse {
@@ -479,10 +502,11 @@ const ACTION_ICON: Record<string, string> = {
 }
 
 .raw pre {
-  background: #0f172a;
-  color: #cbd5e1;
+  background: var(--code-bg);
+  color: #b9c7dc;
   font-size: 11px;
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
   padding: 8px 10px;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -522,12 +546,13 @@ const ACTION_ICON: Record<string, string> = {
   margin: 0;
   max-height: 420px;
   overflow-y: auto;
-  background: #0f172a;
+  background: var(--code-bg);
   color: #b9c7dc;
   font-size: 11px;
   line-height: 1.6;
   padding: 10px;
   border-radius: 8px;
+  border: 1px solid var(--border);
   white-space: pre-wrap;
   word-break: break-all;
 }

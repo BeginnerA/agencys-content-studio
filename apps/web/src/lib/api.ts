@@ -71,7 +71,7 @@ export const projectApi = {
     api.post<Project>('/api/v1/projects', body),
   detail: (id: number) => api.get<ProjectDetail>(`/api/v1/projects/${id}`),
   assets: (id: number, params = '') => api.get<Items<Asset>>(`/api/v1/projects/${id}/assets${params}`),
-  runs: (id: number) => api.get<Items<Run>>(`/api/v1/projects/${id}/runs`),
+  runs: (id: number) => api.get<Items<Run>>(`/api/v1/runs?project_id=${id}`),
 }
 
 export const templateApi = {

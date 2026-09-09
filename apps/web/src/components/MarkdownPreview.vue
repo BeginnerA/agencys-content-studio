@@ -19,15 +19,32 @@ const html = computed(() => {
 <style scoped>
 .md {
   font-size: 13.5px;
-  line-height: 1.75;
+  line-height: 1.8;
   word-break: break-word;
+  color: #cfd8e8;
 }
 
 .md :deep(h1),
 .md :deep(h2),
 .md :deep(h3) {
-  margin: 14px 0 8px;
+  margin: 16px 0 8px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.md :deep(h1) {
+  font-size: 18px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgb(148 163 184 / 12%);
+}
+
+.md :deep(h2) {
   font-size: 16px;
+}
+
+.md :deep(h3) {
+  font-size: 14.5px;
 }
 
 .md :deep(p) {
@@ -46,15 +63,17 @@ const html = computed(() => {
 
 .md :deep(code) {
   font-family: var(--mono);
-  background: #f0f2f5;
+  background: rgb(148 163 184 / 14%);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 12px;
+  color: #f1b8d8;
 }
 
 .md :deep(pre) {
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--bg);
+  color: #c7d3e6;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   overflow-x: auto;
@@ -67,10 +86,29 @@ const html = computed(() => {
 }
 
 .md :deep(blockquote) {
-  border-left: 3px solid var(--border);
+  border-left: 3px solid rgb(139 92 246 / 50%);
   margin: 8px 0;
   padding: 2px 12px;
   color: var(--text-2);
+}
+
+.md :deep(hr) {
+  border: none;
+  border-top: 1px dashed var(--border-strong);
+  margin: 14px 0;
+}
+
+.md :deep(img) {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.md :deep(strong) {
+  color: #f3f6fc;
+}
+
+.md :deep(a) {
+  color: #a78bfa;
 }
 
 .md :deep(table) {

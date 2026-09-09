@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
+import Icon from './Icon.vue'
 
 defineProps<{ title: string; width?: number }>()
 const emit = defineEmits<{ close: [] }>()
@@ -17,7 +18,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="dlg panel" :style="width ? { width: width + 'px' } : {}">
         <div class="head">
           <span class="t">{{ title }}</span>
-          <button class="x" @click="emit('close')">✕</button>
+          <button class="x" aria-label="关闭" @click="emit('close')">
+            <Icon name="x" :size="15" :stroke-width="2" />
+          </button>
         </div>
         <div class="body">
           <slot />
@@ -34,11 +37,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .mask {
   position: fixed;
   inset: 0;
-  background: rgb(10 14 24 / 45%);
+  background: rgb(3 6 14 / 62%);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: fade-in 0.15s ease-out;
 }
 
 .dlg {
@@ -47,6 +52,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: pop-in 0.18s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
 }
 
 .head {
@@ -62,14 +81,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .x {
   border: none;
   background: none;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   color: var(--text-3);
   cursor: pointer;
-  padding: 2px 6px;
+  transition: all 0.15s;
 }
 
 .x:hover {
   color: var(--bad);
+  background: var(--hover);
 }
 
 .body {
@@ -83,6 +108,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  background: #fafbfc;
+  background: var(--panel-2);
 }
 </style>

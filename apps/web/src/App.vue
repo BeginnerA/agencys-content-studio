@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { getSocket } from './lib/socket'
+import Icon from './components/Icon.vue'
 
 onMounted(() => {
   // 全局单连接：先连接便于页面级 join room（重复 connect 由 io 单例避免）
@@ -17,11 +18,20 @@ onBeforeUnmount(() => {
   <div class="layout">
     <aside class="side">
       <div class="logo">
-        Content Studio
-        <small>模板化流水线工作台</small>
+        <span class="mark"><Icon name="bolt" :size="16" :stroke-width="2" /></span>
+        <span class="lt">
+          Content Studio
+          <small>模板化流水线工作台</small>
+        </span>
       </div>
-      <RouterLink class="nav" to="/">📁 项目</RouterLink>
-      <RouterLink class="nav" to="/settings">⚙️ AI 配置</RouterLink>
+      <nav class="navs">
+        <RouterLink class="nav" to="/"><Icon name="folder" :size="16" /> 项目</RouterLink>
+        <RouterLink class="nav" to="/settings"><Icon name="sliders" :size="16" /> AI 配置</RouterLink>
+      </nav>
+      <div class="foot">
+        agencys · 本地单机<br />
+        模板 · 资产 · 闸门
+      </div>
     </aside>
     <main class="main">
       <RouterView />

@@ -2,6 +2,7 @@
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Modal from '../components/Modal.vue'
+import Icon from '../components/Icon.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import { projectApi, uploadFiles } from '../lib/api'
@@ -109,13 +110,17 @@ function errOf(r: Run): string {
 <template>
   <div>
     <div class="page-h">
-      <RouterLink to="/" class="muted" style="font-size: 13px">← 项目</RouterLink>
+      <RouterLink to="/" class="back"><Icon name="arrow-left" :size="14" /> 项目</RouterLink>
       <h1>{{ project?.name ?? `项目 #${projectId}` }}</h1>
       <span v-if="project" class="badge completed">active</span>
       <span v-if="project?.templateKey" class="sub mono">{{ project.templateKey }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
-        <button class="btn" @click="showUpload = true">↑ 上传素材</button>
-        <button class="btn primary" @click="showRunForm = true">▶ 启动流水线</button>
+        <button class="btn" @click="showUpload = true">
+          <Icon name="upload" :size="14" /> 上传素材
+        </button>
+        <button class="btn primary" @click="showRunForm = true">
+          <Icon name="bolt" :size="14" /> 启动流水线
+        </button>
       </div>
     </div>
 
@@ -143,7 +148,7 @@ function errOf(r: Run): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in [...runs].reverse()" :key="r.id" class="rrow" @click="router.push(`/runs/${r.id}`)">
+            <tr v-for="r in runs" :key="r.id" class="rrow" @click="router.push(`/runs/${r.id}`)">
               <td class="mono">{{ r.id }}</td>
               <td><span class="badge" :class="r.status">{{ runStatus(r.status).text }}</span></td>
               <td class="mono" style="font-size: 12px">{{ r.templateKey }}</td>

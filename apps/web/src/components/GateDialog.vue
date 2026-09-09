@@ -86,6 +86,7 @@ function abort() {
   border-left: 3px solid var(--warn);
   padding: 12px 16px;
   margin-bottom: 14px;
+  background: linear-gradient(90deg, rgb(245 158 11 / 6%), transparent 42%);
 }
 
 .ghead {
@@ -139,19 +140,25 @@ function abort() {
 }
 
 .tabs button {
-  border: 1px solid var(--border);
-  background: #fff;
+  border: 1px solid transparent;
+  background: none;
   font-size: 12px;
-  padding: 3px 12px;
+  padding: 4px 13px;
   border-radius: 999px;
   cursor: pointer;
   color: var(--text-2);
+  transition: all 0.15s;
+}
+
+.tabs button:hover {
+  color: #fff;
+  background: var(--hover);
 }
 
 .tabs button.on {
   background: var(--accent-weak);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: rgb(139 92 246 / 45%);
+  color: #c4b5fd;
 }
 
 .doc {
@@ -159,8 +166,8 @@ function abort() {
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 14px;
-  background: #fff;
+  padding: 12px 16px;
+  background: var(--code-bg);
 }
 
 .editor {
@@ -169,6 +176,9 @@ function abort() {
   width: 100%;
   font-size: 12.5px;
   line-height: 1.7;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
 }
 
 .note-row {

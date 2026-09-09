@@ -205,7 +205,7 @@ init()
 }
 
 .opt:hover {
-  background: #f5f7fa;
+  background: var(--hover);
   border-radius: 5px;
 }
 
