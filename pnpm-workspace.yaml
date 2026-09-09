@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+
+# pnpm 12 显式构建授权：esbuild 需要 postinstall；better-sqlite3 已弃用（改用 @libsql/client），禁止其构建
+allowBuilds:
+  esbuild: true
+  better-sqlite3: false

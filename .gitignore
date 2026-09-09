@@ -1,18 +1,21 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# deps & build
+node_modules/
+dist/
+*.tsbuildinfo
 
-# Other files and folders
-.settings/
+# runtime data（数据库与本地密钥，不入库）
+data/
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+# 运行时产物（项目资产与运行日志由平台生成）
+workspace/projects/
+workspace/logs/
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# env & secrets
+.env
+.env.local
+secrets.json
+
+# misc
+*.log
+.DS_Store
+Thumbs.db
