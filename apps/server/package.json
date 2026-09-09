@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "probe:m2a": "tsx scripts/probe-m2a.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

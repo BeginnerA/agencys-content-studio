@@ -50,12 +50,21 @@ const STEP_TEXT: Record<StepStatus, string> = {
   running: '执行中',
   waiting_input: '待审阅',
   succeeded: '成功',
+  skipped: '已跳过',
   failed: '失败',
   cancelled: '已取消',
 }
 
 export function stepStatus(s: StepStatus): StatusMeta {
   return { text: STEP_TEXT[s] ?? s, cls: s }
+}
+
+/** skipped 原因（step.output.skipped.reason）展示文案 */
+export function skipReasonText(reason: string | undefined): string {
+  if (reason === 'user_skip') return '免审放行'
+  if (reason === 'upstream_skipped') return '上游依赖已跳过'
+  if (reason === 'when_condition') return '条件不满足'
+  return '已跳过'
 }
 
 const TASK_TEXT: Record<TaskStatus, string> = {

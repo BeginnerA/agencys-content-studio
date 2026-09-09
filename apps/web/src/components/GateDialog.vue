@@ -8,11 +8,13 @@ const props = defineProps<{
   /** 产物全文（可编辑覆盖） */
   artifactText?: string
   artifactName?: string
+  /** [M2] 模板声明 skip_label 后显示「跳过」按钮（免审放行、产物保留） */
+  skipLabel?: string
   busy?: boolean
 }>()
 
 const emit = defineEmits<{
-  decided: [action: 'approve' | 'reject' | 'abort', payload: { note?: string; textOverride?: string }]
+  decided: [action: 'approve' | 'reject' | 'skip' | 'abort', payload: { note?: string; textOverride?: string }]
 }>()
 
 const tab = ref<'view' | 'edit'>('view')
@@ -35,6 +37,11 @@ function reject() {
   emit('decided', 'reject', { note: note.value.trim() })
 }
 
+/** [M2] 免审放行：产物保留直接通过（模板声明 skip_label 才出现此按钮） */
+function skip() {
+  emit('decided', 'skip', {})
+}
+
 function abort() {
   if (confirm('确认中止该运行？（当前步骤产物保留，run 置 cancelled）')) emit('decided', 'abort', {})
 }
@@ -48,6 +55,7 @@ function abort() {
       </div>
       <div class="act">
         <button class="btn sm" :disabled="busy" @click="abort">中止</button>
+        <button v-if="skipLabel" class="btn sm skip" :disabled="busy" @click="skip">{{ skipLabel }}</button>
         <button class="btn sm ok" :disabled="busy" @click="approve">批准继续</button>
         <button class="btn sm danger" :disabled="busy" @click="reject">驳回重跑</button>
       </div>
@@ -72,11 +80,15 @@ function abort() {
     </template>
 
     <div v-if="!artifactText" class="muted" style="padding: 10px 0 4px">
-      本步骤无可预览文本产物，直接批准或驳回。
+      本步骤无可预览文本产物，直接批准、跳过或驳回。
+    </div>
+
+    <div v-if="skipLabel" class="muted" style="padding: 2px 0 0; font-size: 11.5px">
+      「{{ skipLabel }}」= 免审放行：产物保留并继续下游，不产生修改。
     </div>
 
     <div class="note-row">
-      <input v-model="note" type="text" placeholder="驳回意见（可选，批准时忽略）：指出要修改的点…" />
+      <input v-model="note" type="text" placeholder="驳回意见（可选，批准/跳过时忽略）：指出要修改的点…" />
     </div>
   </div>
 </template>
@@ -122,6 +134,18 @@ function abort() {
 .act {
   display: flex;
   gap: 8px;
+}
+
+/* [M2] 免审放行：中性次主按钮（介于批准与驳回之间） */
+.btn.skip {
+  border-color: rgb(148 163 184 / 32%);
+  color: #b9c7dc;
+}
+
+.btn.skip:hover {
+  border-color: rgb(165 180 252 / 55%);
+  color: #c7d2fe;
+  background: var(--accent-weak);
 }
 
 .msg {

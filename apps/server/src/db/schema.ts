@@ -34,6 +34,7 @@ export const pipelineRuns = sqliteTable(
     status: text('status').notNull().default('queued'),
     currentStepKey: text('current_step_key'),
     input: text('input').notNull(), // JSON 启动输入快照
+    templateSnapshot: text('template_snapshot'), // JSON 模板快照（run 创建时固化；续跑/审阅读快照）
     summary: text('summary'), // JSON 完成汇总
     error: text('error'),
     startedAt: integer('started_at'),

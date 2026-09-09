@@ -3,7 +3,7 @@ import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { genTasks, pipelineRuns, pipelineSteps, projects } from '../db/schema'
 import { engine, recoverInterruptedState } from '../pipeline/engine'
-import { loadTemplate } from '../pipeline/loader'
+import { templateForRun, loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -56,6 +56,8 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
       templateKey,
       status: 'queued',
       input: JSON.stringify(norm),
+      // 模板快照：run 创建时固化（引擎/续跑/审阅一律读快照，模板改动不影响运行中 run）
+      templateSnapshot: JSON.stringify(template),
       createdAt: t,
       updatedAt: t,
     })
@@ -104,7 +106,8 @@ runsRoutes.get('/runs/:id/log', h(async (c) => {
   return c.json({ lines })
 }))
 
-// POST /runs/:id/gate —— 闸门决策 {step_key, decision: approve|reject, note?, text_override?}
+// POST /runs/:id/gate —— 闸门决策 {step_key, decision: approve|reject|skip, note?, text_override?}
+// skip 仅当模板该步骤 gate 声明了 skip_label 时允许（免审放行，产物保留）
 runsRoutes.post('/runs/:id/gate', h(async (c) => {
   const runId = idParam(c)
   const run = await findRun(runId)
@@ -119,8 +122,16 @@ runsRoutes.post('/runs/:id/gate', h(async (c) => {
     await engine.approveGate(runId, stepKey, { note, textOverride })
   } else if (decision === 'reject') {
     await engine.rejectGate(runId, stepKey, { note })
+  } else if (decision === 'skip') {
+    // skip 需模板声明 skip_label（免审语义是模板作者显式授权的）
+    const tpl = templateForRun(run)
+    const def = tpl.steps.find((s) => s.key === stepKey)
+    if (!def?.gate?.skip_label) {
+      throw new HttpError(400, 'bad_skip', `步骤 ${stepKey} 的 gate 未声明 skip_label，不允许跳过`)
+    }
+    await engine.skipGate(runId, stepKey, { note })
   } else {
-    throw new HttpError(400, 'bad_decision', 'decision 需为 approve|reject')
+    throw new HttpError(400, 'bad_decision', 'decision 需为 approve|reject|skip')
   }
   const fresh = await findRun(runId)
   return c.json({ run: toRunView(fresh!) })
@@ -153,6 +164,8 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
         templateKey: src.templateKey,
         status: 'queued',
         input: src.input,
+        // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
+        templateSnapshot: src.templateSnapshot,
         createdAt: t,
         updatedAt: t,
       })
@@ -164,6 +177,8 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     .where(eq(pipelineSteps.runId, src.id))
     .orderBy(asc(pipelineSteps.seq))
   for (const s of steps) {
+    // 断点续跑：succeeded/skipped（含免审放行痕迹）保留终态直接跳过；其余重置 pending 续跑
+    const keep = s.status === 'succeeded' || s.status === 'skipped'
     const newStep = (
       await db
         .insert(pipelineSteps)
@@ -173,18 +188,18 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
           stepKey: s.stepKey,
           actionKey: s.actionKey,
           title: s.title,
-          status: s.status === 'succeeded' ? 'succeeded' : 'pending', // 成功步骤直接跳过
-          input: s.status === 'succeeded' ? s.input : null,
-          output: s.status === 'succeeded' ? s.output : null,
-          attempts: s.status === 'succeeded' ? s.attempts : 0,
+          status: keep ? s.status : 'pending',
+          input: keep ? s.input : null,
+          output: keep ? s.output : null,
+          attempts: keep ? s.attempts : 0,
           createdAt: t,
           updatedAt: t,
         })
         .returning()
     )[0]!
-    // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——succeeded 保留产物
+    // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——终态步骤保留产物
     // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
-    if (s.status !== 'succeeded') {
+    if (!keep) {
       await db
         .update(genTasks)
         .set({ runId: newRun.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
@@ -211,7 +226,7 @@ async function findRun(id: number) {
   return rows[0] ?? null
 }
 
-/** 按模板 inputs 声明归一化：int 转 number、files 保持 id 数组、text 收 string */
+/** 按模板 inputs 声明归一化：int 转 number、bool 转 boolean、files 保持 id 数组、text 收 string */
 function normalizeInput(defs: { key: string; kind: string }[], raw: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const def of defs) {
@@ -221,6 +236,11 @@ function normalizeInput(defs: { key: string; kind: string }[], raw: Record<strin
       const n = typeof v === 'number' ? v : Number(v)
       if (!Number.isInteger(n)) throw new HttpError(400, 'bad_input', `input.${def.key} 需为整数`)
       out[def.key] = n
+    } else if (def.kind === 'bool') {
+      if (typeof v === 'boolean') out[def.key] = v
+      else if (v === 'true' || v === 1 || v === '1') out[def.key] = true
+      else if (v === 'false' || v === 0 || v === '0') out[def.key] = false
+      else throw new HttpError(400, 'bad_input', `input.${def.key} 需为布尔（true/false）`)
     } else if (def.kind === 'files') {
       const ids = Array.isArray(v) ? v.map(Number) : [Number(v)]
       if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
@@ -240,10 +260,19 @@ function safeParse(s: string | null): unknown {
 }
 
 function toRunView(r: typeof pipelineRuns.$inferSelect): Record<string, unknown> {
+  let templateVersion: number | undefined
+  if (r.templateSnapshot) {
+    try {
+      templateVersion = (JSON.parse(r.templateSnapshot) as { version?: number }).version
+    } catch {
+      templateVersion = undefined
+    }
+  }
   return {
     id: r.id,
     projectId: r.projectId,
     templateKey: r.templateKey,
+    templateVersion,
     status: r.status,
     currentStepKey: r.currentStepKey,
     input: safeParse(r.input),

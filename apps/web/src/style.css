@@ -182,6 +182,18 @@ a:hover {
   border-color: rgb(148 163 184 / 16%);
 }
 
+/* [M2] skipped / 免审放行：中性灰（ghost=弱化，用于自动跳过原因） */
+.badge.skip {
+  background: rgb(148 163 184 / 8%);
+  color: var(--text-2);
+  border-color: rgb(148 163 184 / 20%);
+  border-style: dashed;
+}
+
+.badge.skip.ghost {
+  opacity: 0.62;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.45;

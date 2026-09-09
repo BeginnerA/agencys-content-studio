@@ -30,8 +30,10 @@ watch(tplKey, async (key) => {
     tpl.value = res.template
     const defaults = (res.template.defaults ?? {}) as Record<string, unknown>
     for (const inp of res.template.inputs) {
-      const d = defaults[inp.key]
+      // 输入预填同源：优先 inputs.default（模板声明级），兼容旧 defaults[inp.key] 写法
+      const d = inp.default !== undefined ? inp.default : defaults[inp.key]
       if (inp.kind === 'int') form.value[inp.key] = d ?? ''
+      else if (inp.kind === 'bool') form.value[inp.key] = d === true
       else if (inp.kind === 'files') form.value[inp.key] = []
       else form.value[inp.key] = d ?? ''
     }
@@ -77,6 +79,7 @@ async function submit() {
       return
     }
     if (inp.kind === 'int') input[inp.key] = Number(v)
+    else if (inp.kind === 'bool') input[inp.key] = v === true
     else if (inp.kind === 'files') input[inp.key] = (v as number[]) ?? []
     else input[inp.key] = v ?? ''
   }
@@ -144,6 +147,17 @@ init()
                 type="number"
                 @input="setNum(inp.key, ($event.target as HTMLInputElement).value)"
               />
+            </label>
+          </template>
+          <template v-else-if="inp.kind === 'bool'">
+            <label class="fld row">
+              <input
+                type="checkbox"
+                :checked="form[inp.key] === true"
+                @change="form[inp.key] = ($event.target as HTMLInputElement).checked"
+              />
+              <span>{{ inp.label }}</span>
+              <em v-if="inp.default === true" class="muted" style="font-size: 11px">默认开启</em>
             </label>
           </template>
           <template v-else-if="inp.kind === 'files'">

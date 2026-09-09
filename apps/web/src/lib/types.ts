@@ -1,7 +1,7 @@
 // ===== 与后端 routes 响应对齐的领域类型（camelCase）=====
 
 export type RunStatus = 'queued' | 'running' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
-export type StepStatus = 'pending' | 'running' | 'waiting_input' | 'succeeded' | 'failed' | 'cancelled'
+export type StepStatus = 'pending' | 'running' | 'waiting_input' | 'succeeded' | 'skipped' | 'failed' | 'cancelled'
 export type TaskStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
 
 export interface RecentRun {
@@ -33,6 +33,7 @@ export interface Run {
   id: number
   projectId: number
   templateKey: string
+  templateVersion?: number
   status: RunStatus
   currentStepKey: string | null
   input: Record<string, unknown>
@@ -159,14 +160,19 @@ export interface ApiConfig {
 export interface TemplateInputDef {
   key: string
   label: string
-  kind: 'text' | 'int' | 'files'
+  kind: 'text' | 'int' | 'bool' | 'files'
   required: boolean
   accept?: string[]
+  default?: string | number | boolean
 }
 
 export interface TemplateGate {
   mode: string
   message: string
+  /** 声明后挂起态显示「跳过」按钮（免审放行、产物保留） */
+  skip_label?: string
+  /** 条件门：不满足 → 步骤自动 succeeded（免审直过不挂起） */
+  when?: string | string[]
 }
 
 export interface TemplateBatch {
@@ -184,6 +190,9 @@ export interface TemplateStepDef {
   gate?: TemplateGate
   batch?: TemplateBatch
   output?: { purpose?: string }
+  when?: string | string[]
+  when_any?: string[]
+  after?: string[]
 }
 
 export interface TemplateMeta {

@@ -36,6 +36,21 @@ export async function initDb(): Promise<void> {
   } catch (err) {
     log.warn(`migrate skipped (${(err as Error).message}) —— 请先执行 pnpm db:generate`)
   }
+  await ensureSchemaColumns()
   await seedProviders()
   log.info('db ready', { file: join(DATA_DIR, 'studio.db') })
+}
+
+/** 列级兜底：migrate 体系外手动建库/旧库缺列时补齐（幂等；失败仅告警） */
+async function ensureSchemaColumns(): Promise<void> {
+  const cols = await sqlite.execute("PRAGMA table_info('pipeline_runs')")
+  const has = new Set((cols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!has.has('template_snapshot')) {
+    try {
+      await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN template_snapshot text')
+      log.info('ensureColumn: pipeline_runs.template_snapshot 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
 }

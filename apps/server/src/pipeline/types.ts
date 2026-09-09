@@ -8,15 +8,21 @@
 export interface TemplateInputDef {
   key: string
   label?: string
-  kind: 'text' | 'files' | 'int'
+  kind: 'text' | 'files' | 'int' | 'bool'
   required: boolean
   accept?: string[]
+  /** [M2] 启动时用户未传则回填（落库前完成；UI 表单预填同源） */
+  default?: string | number | boolean
 }
 
 export interface TemplateGate {
   mode: 'required'
   /** 支持 {input.x} / {x:03d} 内插 */
   message: string
+  /** [M2] 声明后挂起态显示「跳过」按钮（免审放行、产物保留） */
+  skip_label?: string
+  /** [M2] 条件门：不满足 → 步骤自动 succeeded（免审直过、不挂起） */
+  when?: string | string[]
 }
 
 export interface TemplateBatch {
@@ -36,6 +42,12 @@ export interface TemplateStepDef {
   gate?: TemplateGate
   batch?: TemplateBatch
   output?: { purpose: string }
+  /** [M2] 条件表达式（数组=AND）；不满足 → skipped */
+  when?: string | string[]
+  /** [M2] OR 组：与 when 并存时 = when 全满足 且 when_any 任一满足 */
+  when_any?: string[]
+  /** [M2] 显式前置依赖 keys；缺省=[前一步骤 key]；[] = 无依赖 */
+  after?: string[]
 }
 
 export interface Template {

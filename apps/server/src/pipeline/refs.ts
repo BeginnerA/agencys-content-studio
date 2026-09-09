@@ -114,28 +114,141 @@ export function interpolate(tpl: string, runInput: Record<string, unknown>): str
   })
 }
 
-/** 收集 run 已成功步骤的产物（engine 每步执行前调用） */
+// ---------- when 条件表达式（spec §3.3 最小集） ----------
+
+export type WhenOp =
+  | { t: 'const'; v: boolean }
+  | { t: 'input_exists'; key: string; neg: boolean }
+  | { t: 'input_cmp'; key: string; op: '==' | '!='; lit: string | number | boolean }
+  | { t: 'step_count'; key: string; op: '==' | '!=' | '>=' | '<=' | '>' | '<'; n: number }
+
+export interface WhenContext {
+  runInput: Record<string, unknown>
+  /** 已终态步骤产物（succeeded/skipped）；未收录步骤视为空 → count 0 */
+  stepOutputs: Map<string, number[]>
+}
+
+/** 单条 when 表达式 → 操作结构（解析失败抛错含原文） */
+export function parseWhenExpr(exprRaw: string): WhenOp {
+  const expr = exprRaw.trim()
+  if (expr === 'true') return { t: 'const', v: true }
+  if (expr === 'false') return { t: 'const', v: false }
+  let m = /^input\.([\w-]+)\s+(exists|empty)$/.exec(expr)
+  if (m) return { t: 'input_exists', key: m[1]!, neg: m[2] === 'empty' }
+  m = /^input\.([\w-]+)\s*(==|!=)\s*(\S+)$/.exec(expr)
+  if (m) {
+    return { t: 'input_cmp', key: m[1]!, op: m[2] as '==' | '!=', lit: parseWhenLiteral(m[3]!) }
+  }
+  m = /^steps\.([\w-]+)\.count\s*(==|!=|>=|<=|>|<)\s*(\d+)$/.exec(expr)
+  if (m) {
+    const op = m[2] as '==' | '!=' | '>=' | '<=' | '>' | '<'
+    return { t: 'step_count', key: m[1]!, op, n: Number(m[3]!) }
+  }
+  throw new Error(`无法识别的 when 表达式「${exprRaw}」（支持 input.x exists/empty/==/!=、steps.x.count 比较、true/false）`)
+}
+
+function parseWhenLiteral(s: string): string | number | boolean {
+  if (s === 'true') return true
+  if (s === 'false') return false
+  if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s)
+  if (/^[\w-]+$/.test(s)) return s
+  throw new Error(`when 字面量「${s}」非法（支持 数字/true/false/裸词）`)
+}
+
+/** 单条操作求值（ctx 缺键的 input 视为空、缺步骤视为 0） */
+export function evalWhenOp(op: WhenOp, ctx: WhenContext): boolean {
+  switch (op.t) {
+    case 'const':
+      return op.v
+    case 'input_exists': {
+      const v = ctx.runInput[op.key]
+      const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
+      return op.neg ? empty : !empty
+    }
+    case 'input_cmp': {
+      const eq = ctx.runInput[op.key] === op.lit
+      return op.op === '==' ? eq : !eq
+    }
+    case 'step_count': {
+      const count = ctx.stepOutputs.get(op.key)?.length ?? 0
+      switch (op.op) {
+        case '==': return count === op.n
+        case '!=': return count !== op.n
+        case '>=': return count >= op.n
+        case '<=': return count <= op.n
+        case '>': return count > op.n
+        case '<': return count < op.n
+        default: return false
+      }
+    }
+    default:
+      return false
+  }
+}
+
+/**
+ * when（数组=AND）与 when_any（OR 组）联合求值：when 全满足 且 when_any 任一满足。
+ * 未提供条件 → true。
+ */
+export function evaluateWhen(
+  when: string | string[] | undefined,
+  whenAny: string[] | undefined,
+  ctx: WhenContext,
+): boolean {
+  const andExprs = when === undefined ? [] : Array.isArray(when) ? when : [when]
+  const orExprs = whenAny ?? []
+  if (andExprs.length === 0 && orExprs.length === 0) return true
+  for (const raw of andExprs) {
+    if (!evalWhenOp(parseWhenExpr(raw), ctx)) return false
+  }
+  if (orExprs.length === 0) return true
+  return orExprs.some((raw) => evalWhenOp(parseWhenExpr(raw), ctx))
+}
+
+/** loader 静态校验用：提取单条表达式引用的 input 键 / 步骤键 */
+export function whenRefs(op: WhenOp): { inputKey?: string; stepKey?: string } {
+  if (op.t === 'input_exists' || op.t === 'input_cmp') return { inputKey: op.key }
+  if (op.t === 'step_count') return { stepKey: op.key }
+  return {}
+}
+
+/** 收集 run 已终态步骤的产物（engine 每步执行前调用；succeeded/skipped 均收录，skipped 记空数组） */
 export async function loadStepOutputs(runId: number): Promise<Map<string, number[]>> {
   const map = new Map<string, number[]>()
   const rows = await db
     .select({ key: pipelineSteps.stepKey, output: pipelineSteps.output })
     .from(pipelineSteps)
-    .where(and(eq(pipelineSteps.runId, runId), eq(pipelineSteps.status, 'succeeded')))
+    .where(and(eq(pipelineSteps.runId, runId), inArray(pipelineSteps.status, ['succeeded', 'skipped'])))
     .orderBy(asc(pipelineSteps.seq))
   for (const r of rows) {
-    if (!r.output) continue
+    if (!r.output) {
+      // skipped 无 output 也入 map（引用解析为空数组而非「未成功」）
+      if (!map.has(r.key)) map.set(r.key, [])
+      continue
+    }
     try {
       const parsed = JSON.parse(r.output) as { asset_ids?: number[] }
       if (Array.isArray(parsed.asset_ids)) map.set(r.key, parsed.asset_ids)
+      else if (!map.has(r.key)) map.set(r.key, [])
     } catch {
-      // 输出损坏时忽略（引用该步骤会得到空）
+      if (!map.has(r.key)) map.set(r.key, [])
     }
   }
   return map
 }
 
+/** 启动输入归一：模板 default 在用户未传时回填（就地修改 input；落库前完成） */
+export function applyInputDefaults(tpl: Template, input: Record<string, unknown>): void {
+  for (const def of tpl.inputs) {
+    if (def.default === undefined) continue
+    const v = input[def.key]
+    if (v === undefined || v === null || v === '') input[def.key] = def.default
+  }
+}
+
 /** 校验启动输入满足模板 inputs 声明（run 启动前调用，抛错含模板约束） */
 export function validateRunInput(tpl: Template, input: Record<string, unknown>): void {
+  applyInputDefaults(tpl, input)
   for (const def of tpl.inputs) {
     const v = input[def.key]
     if (v === undefined || v === null || v === '') {
@@ -144,6 +257,9 @@ export function validateRunInput(tpl: Template, input: Record<string, unknown>):
     }
     if (def.kind === 'int' && !Number.isInteger(v)) {
       throw new Error(`输入「${def.label ?? def.key}」需为整数`)
+    }
+    if (def.kind === 'bool' && typeof v !== 'boolean') {
+      throw new Error(`输入「${def.label ?? def.key}」需为布尔（true/false）`)
     }
   }
   // 防未知键注入

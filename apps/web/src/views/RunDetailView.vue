@@ -6,7 +6,7 @@ import TaskPanel from '../components/TaskPanel.vue'
 import Icon from '../components/Icon.vue'
 import { assetApi, runApi, templateApi } from '../lib/api'
 import type { RunDetail, RunStep, TemplateDetail } from '../lib/types'
-import { fmtMs, fmtTime, runStatus, stepStatus } from '../lib/format'
+import { fmtMs, fmtTime, runStatus, skipReasonText, stepStatus } from '../lib/format'
 import { getSocket, useStudio } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
@@ -43,6 +43,20 @@ const canResume = computed(() => {
 })
 const hasTasks = computed(() => steps.value.some((s) => s.actionKey === 'ai_image'))
 const active = computed(() => run.value?.status === 'running' || run.value?.status === 'queued')
+
+// [M2] 当前闸门的免审按钮文案（模板 gate.skip_label）；模板不可达时隐藏
+const gateSkipLabel = computed(() => {
+  const step = gateStep.value
+  if (!step) return undefined
+  const def = tpl.value?.steps.find((d) => d.key === step.stepKey)
+  return def?.gate?.skip_label
+})
+
+// [M2] 并行执行提示：同一时刻 ≥2 步骤处于执行/待审状态（引擎就绪集并发 ≤2）
+const parallelHint = computed(() => {
+  const actives = steps.value.filter((s) => s.status === 'running' || s.status === 'waiting_input')
+  return actives.length >= 2 ? `并行执行中：${actives.length} 步并发推进` : ''
+})
 
 /** 模板 gate message 的 {input.x} 插值（离线回填场景） */
 function interpolate(msg: string, input: Record<string, unknown>): string {
@@ -108,7 +122,10 @@ function toggleLog() {
   if (showLog.value) void loadLog()
 }
 
-async function decide(action: 'approve' | 'reject' | 'abort', payload: { note?: string; textOverride?: string }) {
+async function decide(
+  action: 'approve' | 'reject' | 'skip' | 'abort',
+  payload: { note?: string; textOverride?: string },
+) {
   if (!gateStep.value) return
   busy.value = true
   err.value = ''
@@ -160,7 +177,9 @@ function onStep(p: StudioEventMap['run.step']) {
   if (local && p.step.status) {
     local.status = p.step.status
     local.attempts = p.step.attempts ?? local.attempts
-    if (p.step.status === 'waiting_input' || p.step.status === 'succeeded') void loadDetail()
+    if (p.step.status === 'waiting_input' || p.step.status === 'succeeded' || p.step.status === 'skipped') {
+      void loadDetail()
+    }
   }
 }
 function onTerminal(p: StudioEventMap['run.completed' | 'run.failed']) {
@@ -198,8 +217,17 @@ function nodeClass(s: RunStep): string {
   if (s.status === 'waiting_input') return 'gate'
   if (s.status === 'failed') return 'failed'
   if (s.status === 'succeeded') return 'ok'
+  if (s.status === 'skipped') return 'skip'
   if (s.status === 'cancelled') return 'cancel'
   return 'idle'
+}
+
+/** [M2] 跳过原因（output.skipped.reason）；succeeded 且带 skipped 记录 = 免审放行 */
+function skipInfo(s: RunStep): { text: string; userSkip: boolean } | null {
+  const reason = (s.output as { skipped?: { reason?: string } } | null)?.skipped?.reason
+  if (s.status === 'skipped') return { text: skipReasonText(reason ?? 'skipped'), userSkip: false }
+  if (s.status === 'succeeded' && reason === 'user_skip') return { text: '免审放行', userSkip: true }
+  return null
 }
 
 function assetIds(s: RunStep): number[] {
@@ -258,12 +286,16 @@ function iconOf(key: string): string {
       <div v-if="run.error" class="errbox">{{ run.error }}</div>
 
       <!-- 闸门审阅 -->
+      <div v-if="parallelHint && !gateStep" class="phint">
+        <Icon name="refresh" :size="13" /> {{ parallelHint }}（引擎并发上限 2）
+      </div>
       <GateDialog
         v-if="gateStep"
         :step-title="gateStep.title"
         :message="gateMessage"
         :artifact-text="gateText || undefined"
         :artifact-name="gateTextName"
+        :skip-label="gateSkipLabel"
         :busy="busy"
         @decided="decide"
       />
@@ -282,8 +314,12 @@ function iconOf(key: string): string {
                 <span class="badge" :class="s.status === 'waiting_input' ? 'waiting_input' : s.status">
                   {{ stepStatus(s.status).text }}
                 </span>
+                <span v-if="skipInfo(s)" class="badge skip" :class="{ ghost: !skipInfo(s)?.userSkip }">
+                  {{ skipInfo(s)?.text }}
+                </span>
                 <span class="muted mono" style="font-size: 11px">{{ s.actionKey }}</span>
               </div>
+              <div v-if="skipInfo(s)?.userSkip" class="skipnote muted">免审放行：产物已保留，下游正常执行</div>
               <div v-if="s.error" class="serr mono">{{ s.error }}</div>
               <div class="meta muted">
                 第 {{ s.seq + 1 }} 步 · 尝试 {{ s.attempts }}
@@ -342,6 +378,44 @@ function iconOf(key: string): string {
   font-size: 13px;
   margin-bottom: 14px;
   word-break: break-all;
+}
+
+/* [M2] 并行执行提示条 */
+.phint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--run);
+  background: var(--run-weak);
+  border: 1px solid rgb(129 140 248 / 22%);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+}
+
+.skipnote {
+  font-size: 11.5px;
+  margin-top: 6px;
+}
+
+/* [M2] 并行执行提示条 */
+.phint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--run);
+  background: var(--run-weak);
+  border: 1px solid rgb(129 140 248 / 22%);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+}
+
+.skipnote {
+  font-size: 11.5px;
+  margin-top: 6px;
 }
 
 .cols {
@@ -404,6 +478,21 @@ function iconOf(key: string): string {
   background: var(--ok-weak);
   color: var(--ok);
   border-color: rgb(34 197 94 / 25%);
+}
+
+/* [M2] skipped：中性灰，虚线标记「无产物经过」 */
+.st.skip .dot {
+  background: rgb(148 163 184 / 7%);
+  color: var(--text-3);
+  border-color: rgb(148 163 184 / 18%);
+  border-style: dashed;
+}
+
+.st.skip .line {
+  background-image: linear-gradient(90deg, transparent 30%, var(--border) 31%, var(--border) 69%, transparent 70%);
+  background-size: 6px 2px;
+  background-repeat: repeat-x;
+  background-position: 0 60%;
 }
 
 .st.running .dot {
