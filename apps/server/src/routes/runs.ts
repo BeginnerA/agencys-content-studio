@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm'
 import { db } from '../db'
-import { pipelineRuns, pipelineSteps, projects } from '../db/schema'
+import { genTasks, pipelineRuns, pipelineSteps, projects } from '../db/schema'
 import { engine, recoverInterruptedState } from '../pipeline/engine'
 import { loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
@@ -164,19 +164,36 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     .where(eq(pipelineSteps.runId, src.id))
     .orderBy(asc(pipelineSteps.seq))
   for (const s of steps) {
-    await db.insert(pipelineSteps).values({
-      runId: newRun.id,
-      seq: s.seq,
-      stepKey: s.stepKey,
-      actionKey: s.actionKey,
-      title: s.title,
-      status: s.status === 'succeeded' ? 'succeeded' : 'pending', // 成功步骤直接跳过
-      input: s.status === 'succeeded' ? s.input : null,
-      output: s.status === 'succeeded' ? s.output : null,
-      attempts: s.status === 'succeeded' ? s.attempts : 0,
-      createdAt: t,
-      updatedAt: t,
-    })
+    const newStep = (
+      await db
+        .insert(pipelineSteps)
+        .values({
+          runId: newRun.id,
+          seq: s.seq,
+          stepKey: s.stepKey,
+          actionKey: s.actionKey,
+          title: s.title,
+          status: s.status === 'succeeded' ? 'succeeded' : 'pending', // 成功步骤直接跳过
+          input: s.status === 'succeeded' ? s.input : null,
+          output: s.status === 'succeeded' ? s.output : null,
+          attempts: s.status === 'succeeded' ? s.attempts : 0,
+          createdAt: t,
+          updatedAt: t,
+        })
+        .returning()
+    )[0]!
+    // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——succeeded 保留产物
+    // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
+    if (s.status !== 'succeeded') {
+      await db
+        .update(genTasks)
+        .set({ runId: newRun.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
+        .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), ne(genTasks.status, 'succeeded')))
+    }
+    await db
+      .update(genTasks)
+      .set({ runId: newRun.id, stepId: newStep.id, updatedAt: t })
+      .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
   }
   engine.startRun(newRun.id)
   return c.json({ run: toRunView(newRun) }, 202)

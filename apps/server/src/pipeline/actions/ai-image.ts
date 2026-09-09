@@ -183,6 +183,8 @@ async function runOneTask(
         .update(genTasks)
         .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
         .where(eq(genTasks.id, task.id))
+      task.status = 'succeeded'
+      task.resultAssetId = asset.id
       emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
       ctx.log(`shot ${shotId} 出图完成 → asset#${asset.id}`)
       return null
