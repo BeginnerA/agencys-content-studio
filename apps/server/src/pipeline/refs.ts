@@ -95,7 +95,7 @@ export async function resolveInputs(
   return out
 }
 
-const INTERP = /\{((?:input\.)?[\w-]+)(?::(0\d+))?\}/g
+const INTERP = /\{((?:input\.)?[\w-]+)(?::(0\d+)d)?\}/g
 
 /**
  * 模板串内插：{input.episode_number} 或 {episode_number:03d}。

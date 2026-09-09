@@ -31,8 +31,10 @@ export class OpenAIImageAdapter implements ImageAdapter {
       }
       const data = (await res.json()) as {
         data?: { b64_json?: string; url?: string; revised_prompt?: string }[]
+        images?: { b64_json?: string; url?: string }[]
       }
-      const item = data.data?.[0]
+      // OpenAI 兼容网关返回 data[]；SiliconFlow 等镜像响应为 images[]（url 直链）
+      const item = data.data?.[0] ?? data.images?.[0]
       if (!item) throw new Error('图片生成响应为空（data[] 缺失）')
       if (item.b64_json) return { kind: 'base64', data: item.b64_json, mime: 'image/png' }
       if (item.url) return { kind: 'url', url: item.url }

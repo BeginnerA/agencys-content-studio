@@ -59,7 +59,8 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     ep,
     {
       temperature: typeof llmCfg['temperature'] === 'number' ? llmCfg['temperature'] : 0.8,
-      maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 6000,
+      // 默认 12000（deepseek 推理模型 reasoning 占预算）；分镜 JSON 输出长，固定 24000 防推理耗尽正文为空
+      maxTokens: outputFormat === 'storyboard-json' ? 24000 : (typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000),
     },
   )
   ctx.log(`LLM 返回 ${content.length} 字符`)

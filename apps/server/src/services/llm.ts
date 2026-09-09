@@ -73,7 +73,7 @@ export async function chatComplete(
         model: ep.model,
         messages,
         temperature: opts.temperature ?? 0.8,
-        max_tokens: opts.maxTokens ?? 6000,
+        max_tokens: opts.maxTokens ?? 12000,
         stream: false,
       }),
       signal: controller.signal,
@@ -82,9 +82,13 @@ export async function chatComplete(
       const text = await res.text().catch(() => '')
       throw new Error(`LLM 调用失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
     }
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+    const data = (await res.json()) as { choices?: { message?: { content?: string; reasoning_content?: string } }[] }
+    const choice = data.choices?.[0]
     const content = data.choices?.[0]?.message?.content
-    if (!content) throw new Error('LLM 响应为空（choices/message/content 缺失）')
+    if (!content) {
+      if (choice?.message?.reasoning_content) throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
+      throw new Error('LLM 响应为空（choices/message/content 缺失）')
+    }
     return content
   } finally {
     clearTimeout(timer)
