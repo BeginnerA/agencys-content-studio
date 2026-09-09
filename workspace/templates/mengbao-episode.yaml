@@ -1,0 +1,70 @@
+key: mengbao-episode
+version: 1
+name: 萌宝短剧·单集流水线
+description: 素材入库 → 单集剧本 → 分镜提示词包 → 批量出图 → 合成成片
+genre: drama_short
+inputs:
+  - key: brief
+    label: 本集题材简报
+    kind: text
+    required: true
+  - key: setting_docs
+    label: 设定底稿与参考素材（选填，支持 md/txt/图片）
+    kind: files
+    required: false
+    accept: [.md, .txt, .png, .jpg, .jpeg]
+  - key: episode_number
+    label: 集号
+    kind: int
+    required: true
+defaults:
+  llm: { temperature: 0.8, max_tokens: 6000 }
+  image: { provider: openai_image, size: "832x1248" }
+steps:
+  - key: ingest_docs
+    action: manual_ingest
+    title: 素材入库
+    inputs:
+      docs: input.setting_docs
+      brief: input.brief
+  - key: write_script
+    action: ai_text
+    title: 生成单集剧本
+    inputs:
+      setting: steps.ingest_docs.assets
+      brief: input.brief
+    params:
+      prompt_tpl: script-ep.md
+      output_purpose: script
+      name_tpl: "{episode_number:03d}-剧本.md"
+    gate:
+      mode: required
+      message: 请审阅第 {input.episode_number} 集剧本，批准后进入分镜；驳回可附修改意见重跑
+  - key: make_storyboard
+    action: ai_text
+    title: 分镜与提示词包
+    inputs:
+      script: steps.write_script.asset
+    params:
+      prompt_tpl: storyboard-ep.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "{episode_number:03d}-分镜.json"
+  - key: gen_images
+    action: ai_image
+    title: 批量镜头出图
+    inputs:
+      shots: steps.make_storyboard.asset
+      characters: assets purpose=reference_character
+    batch: { field: shots, max_concurrent: 2, retry: 1 }
+  - key: compose_video
+    action: ffmpeg_merge
+    title: 合成成片
+    inputs:
+      images: steps.gen_images.assets
+    params:
+      fps: 25
+      resolution: "1080x1920"
+      cover: true
+    output:
+      purpose: final_video
