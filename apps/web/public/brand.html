@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>百工工作室 · 品牌标识提案</title>
+<style>
+  :root {
+    --bg: #070a12;
+    --panel: rgba(148, 163, 184, 0.05);
+    --panel-2: #0e1526;
+    --line: rgba(148, 163, 184, 0.13);
+    --line-2: rgba(148, 163, 184, 0.24);
+    --text: #e8edf6;
+    --text-2: #9aa8c0;
+    --text-3: #66738e;
+    --violet: #8b5cf6;
+    --indigo: #6366f1;
+    --indigo-d: #4f46e5;
+    --green: #22c55e;
+    --grad: linear-gradient(135deg, #8b5cf6 0%, #6366f1 62%, #4f46e5 100%);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(1200px 480px at 70% -10%, rgba(124, 58, 237, 0.14), transparent 60%),
+      radial-gradient(900px 420px at 8% 110%, rgba(34, 197, 94, 0.05), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 32px 80px; }
+
+  /* 顶栏 */
+  .topline {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--line);
+  }
+  .crumb { font-size: 12px; letter-spacing: 0.14em; color: var(--text-3); text-transform: uppercase; }
+  .tag {
+    font-size: 11px; color: var(--text-2); padding: 4px 10px;
+    border: 1px solid var(--line-2); border-radius: 999px; letter-spacing: 0.06em; white-space: nowrap;
+  }
+
+  h1 { font-size: 42px; margin: 40px 0 10px; letter-spacing: 0.06em; font-weight: 700; }
+  .hero-sub { font-size: 15px; color: var(--text-2); max-width: 640px; margin: 0 0 6px; }
+  .hero-en { font-size: 12px; letter-spacing: 0.5em; color: var(--text-3); margin: 18px 0 0; }
+
+  h2 {
+    font-size: 13px; font-weight: 600; color: var(--text-3);
+    letter-spacing: 0.18em; margin: 64px 0 20px; display: flex; align-items: center; gap: 12px;
+  }
+  h2::before { content: ""; width: 18px; height: 2px; background: var(--grad); border-radius: 2px; }
+  h2 b { color: var(--text-2); font-weight: 600; }
+  h2 b em { color: var(--text-3); font-style: normal; font-weight: 400; margin-right: 8px; }
+
+  /* 展示衬板 */
+  .stage {
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(rgba(148,163,184,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.035) 1px, transparent 1px),
+      #0a0f1c;
+    background-size: 32px 32px;
+    border-radius: 16px;
+    padding: 64px 48px;
+    display: flex; align-items: center; justify-content: center; gap: 72px;
+    flex-wrap: wrap;
+  }
+  .stage .cap {
+    font-size: 12px; color: var(--text-3); text-align: center; margin-top: 18px;
+    letter-spacing: 0.1em;
+  }
+  .stage-light { background: #f4f6fb; border-color: #e3e8f2; }
+  .stage-light .cap { color: #7b879c; }
+
+  /* mark 展示列 */
+  .mark-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .mk-name { font-size: 13px; color: var(--text-2); letter-spacing: 0.3em; }
+  .stage-light .mk-name { color: #64748b; }
+
+  /* 组合 logo */
+  .combo { display: flex; flex-direction: column; gap: 44px; align-items: flex-start; }
+  .lockup { display: flex; align-items: center; gap: 20px; }
+  .lockup .zh {
+    font-size: 34px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.15; color: var(--text);
+  }
+  .stage-light .lockup .zh { color: #0b1220; }
+  .lockup .en { font-size: 11px; letter-spacing: 0.44em; color: var(--text-3); margin-top: 6px; }
+  .stage-light .lockup .en { color: #7b879c; }
+  .lockup .divider { width: 1px; align-self: stretch; background: var(--line-2); }
+  .lockup.stacked { align-items: flex-start; gap: 14px; }
+  .lockup.stacked .txt { display: flex; flex-direction: column; }
+
+  .note {
+    font-size: 13px; color: var(--text-3); line-height: 1.9;
+    max-width: 720px; margin-top: 12px;
+  }
+  .note b { color: var(--text-2); font-weight: 600; }
+
+  /* 概念卡三列 */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .grid3 { grid-template-columns: 1fr; } }
+  .card {
+    border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, rgba(148,163,184,0.05), rgba(148,163,184,0.02));
+    padding: 20px 22px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0.04em; }
+  .card p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.85; }
+  .card .num {
+    font-size: 11px; color: var(--text-3); letter-spacing: 0.2em;
+    display: block; margin-bottom: 14px;
+  }
+
+  /* 色板 */
+  .swatches { display: flex; flex-wrap: wrap; gap: 14px; }
+  .sw { width: 148px; }
+  .sw .chip { height: 64px; border-radius: 12px; border: 1px solid var(--line); }
+  .sw .chip.grad { background: var(--grad); }
+  .sw .meta { margin-top: 8px; font-size: 12px; color: var(--text-2); }
+  .sw .meta b { display: block; font-size: 13px; color: var(--text); font-weight: 600; }
+  .sw .meta small { color: var(--text-3); font-size: 11px; letter-spacing: 0.04em; }
+
+  /* 字体 */
+  .type-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch; }
+  .type-card {
+    flex: 1; min-width: 300px; border: 1px solid var(--line); border-radius: 14px; padding: 24px 26px;
+    background: rgba(148,163,184,0.04);
+  }
+  .type-card .sample { font-size: 46px; font-weight: 700; letter-spacing: 0.12em; margin: 10px 0 16px; }
+  .type-card.en .sample { font-size: 26px; letter-spacing: 0.34em; color: var(--text-2); }
+  .type-card .lbl { font-size: 11px; color: var(--text-3); letter-spacing: 0.16em; }
+  .type-card p { font-size: 12.5px; color: var(--text-3); line-height: 1.9; margin: 0; }
+
+  footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--text-3); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  .mk-anno { font-size: 12.5px; color: var(--text-3); line-height: 2; }
+  .mk-anno b { color: var(--text-2); }
+  .split { display: flex; gap: 48px; align-items: center; flex-wrap: wrap; }
+  .split > div:first-child { flex: 0 0 320px; }
+  .split .anno-wrap { flex: 1; min-width: 280px; }
+  .anno-wrap h3 { font-size: 18px; margin: 0 0 12px; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topline">
+    <div class="crumb">Brand Identity · 品牌标识规范（已定稿 2026.09）</div>
+    <div class="tag">百工工作室 · BAIGONG STUDIO</div>
+  </div>
+
+  <h1>榫卯拼块</h1>
+  <p class="hero-sub">百工协力,各执一器,拼合而成器。<br />以模块化拼块 + 榫卯咬合的语言,描摹「模板化流水线工作台」——多家 AI 之能在此装配为一件完整作品。</p>
+  <p class="hero-en">BAIGONG  STUDIO — CONTENT  PIPELINE  WORKBENCH</p>
+
+  <!-- 主视觉 -->
+  <h2><b><em>01</em>主标识</b> 横版组合 / 独立图形 / 竖排</h2>
+  <div class="stage">
+    <!-- 横版主 logo -->
+    <div class="mark-col">
+      <svg width="284" height="75" viewBox="0 0 320 84" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="百工工作室横版标识">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8b5cf6"/>
+            <stop offset=".62" stop-color="#6366f1"/>
+            <stop offset="1" stop-color="#4f46e5"/>
+          </linearGradient>
+          <linearGradient id="gg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/>
+            <stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <!-- mark: 榫卯嵌合 -->
+        <g>
+          <rect width="84" height="84" rx="19" fill="url(#g)"/>
+          <!-- 卯槽 -->
+          <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#0d1730"/>
+          <rect x="22" y="33" width="6.5" height="24" rx="3" fill="#16224a"/>
+          <!-- 公件（榫头悬于槽口，待滑入） -->
+          <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gg)"/>
+          <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gg)"/>
+        </g>
+        <g transform="translate(108 11)">
+          <text x="0" y="34" font-family="'HarmonyOS Sans SC','Microsoft YaHei',sans-serif" font-weight="700" font-size="34" letter-spacing="4.5" fill="#e8edf6">百工工作室</text>
+          <text x="0" y="60" font-family="'HarmonyOS Sans SC','Microsoft YaHei',sans-serif" font-size="11" letter-spacing="6.6" fill="#66738e">BAIGONG&nbsp;STUDIO</text>
+        </g>
+      </svg>
+      <div class="cap">横版 · 全称锁型（默认用于侧栏 / 页头）</div>
+    </div>
+  </div>
+
+  <!-- 图形分解 -->
+  <h2><b><em>02</em>结构与语义</b> 一件公榫 · 一道卯槽</h2>
+  <div class="stage" style="padding: 44px 40px;">
+    <div class="split">
+      <svg width="300" height="300" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8b5cf6"/><stop offset=".62" stop-color="#6366f1"/><stop offset="1" stop-color="#4f46e5"/>
+          </linearGradient>
+          <linearGradient id="gg2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <rect width="200" height="200" rx="45" fill="url(#g2)"/>
+        <!-- 槽内深色层次 -->
+        <rect x="52" y="78" width="31" height="57" rx="8" fill="#0d1730" opacity="0.55"/>
+        <!-- 卯槽 -->
+        <rect x="52" y="78" width="31" height="57" rx="8.5" fill="#0d1730"/>
+        <rect x="52" y="78" width="15.5" height="57" rx="7" fill="#1a2852"/>
+        <!-- 公件悬停 -->
+        <rect x="98" y="67" width="60" height="79" rx="20" fill="url(#gg2)"/>
+        <rect x="82" y="90" width="16.6" height="33" rx="5.5" fill="url(#gg2)"/>
+        <!-- 结构标注 -->
+        <g stroke="#9aa8c0" stroke-dasharray="3 5" stroke-width="1.2" opacity="0.85">
+          <line x1="0" y1="106.5" x2="24" y2="106.5"/>
+          <line x1="0" y1="188" x2="34" y2="188"/>
+        </g>
+        <g font-family="'HarmonyOS Sans SC',sans-serif" font-size="10.5" fill="#cdd6e8">
+          <text x="8" y="99">卯槽 · 模板工作台</text>
+          <text x="8" y="195">公榫悬停 · 内容模块待装配</text>
+        </g>
+      </svg>
+      <div class="anno-wrap">
+        <h3>一榫一卯,两件相合</h3>
+        <p class="note">
+          标识置于 84px 圆角方阵内:<br />
+          <b>紫 → 靛对角渐变</b> 是工作台/模板(承袭现有 UI 的品牌渐变,向下收敛不再散射);<br />
+          <b>居中偏左的深色卯槽</b> 是流水线的插口;<br />
+          <b>悬停的翠绿公件</b>(绿 = 品牌 ok 色的提亮绿)带着榫头,停在槽口之外、随时滑入——内容是「在制」的第三件,等待与其他模块咬合。<br />
+          榫卯相合不需一钉一铆:喻平台把各家模型之能,拼合为器。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 概念三卡 -->
+  <h2><b><em>03</em>设计语言</b> 三个关键词</h2>
+  <div class="grid3">
+    <div class="card">
+      <span class="num">CONCEPT 01</span>
+      <h3>模块拼合</h3>
+      <p>模板、素材、模型输出是独立拼件;作品是拼合结果。图形用「一件 + 一槽」最小结构说清全流程。</p>
+    </div>
+    <div class="card">
+      <span class="num">CONCEPT 02</span>
+      <h3>造物待续</h3>
+      <p>公件未插入而悬停——标识自带「进行中」的动势,呼应流水线工作台的常态:总有内容在制。</p>
+    </div>
+    <div class="card">
+      <span class="num">CONCEPT 03</span>
+      <h3>一色到底</h3>
+      <p>绿只出现在「新作/结果」上;紫靛收敛为台面。三个品牌色各自担任稳定角色,不互相争抢。</p>
+    </div>
+  </div>
+
+  <!-- 应用与缩略 -->
+  <h2><b><em>04</em>应用</b> 独立 mark / 深底 / 浅底</h2>
+  <div class="stage" style="gap: 64px; padding: 48px;">
+    <div class="mark-col">
+      <svg width="128" height="128" viewBox="0 0 84 84" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="百工工作室独立图形">
+        <defs>
+          <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8b5cf6"/><stop offset=".62" stop-color="#6366f1"/><stop offset="1" stop-color="#4f46e5"/>
+          </linearGradient>
+          <linearGradient id="gg3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <rect width="84" height="84" rx="19" fill="url(#g3)"/>
+        <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#0d1730"/>
+        <rect x="22" y="33" width="6.5" height="24" rx="3" fill="#16224a"/>
+        <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gg3)"/>
+        <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gg3)"/>
+      </svg>
+      <div class="cap">独立 mark（favicon / 头像位）</div>
+    </div>
+    <div class="mark-col">
+      <svg width="128" height="128" viewBox="0 0 84 84" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="百工工作室反白图形">
+        <defs>
+          <linearGradient id="gg4" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <rect width="84" height="84" rx="19" fill="#10182c"/>
+        <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#28355c"/>
+        <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gg4)"/>
+        <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gg4)"/>
+      </svg>
+      <div class="cap">深底反白（面板装饰 / 文档页）</div>
+    </div>
+    <div class="mark-col">
+      <svg width="128" height="128" viewBox="0 0 84 84" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="百工工作室浅底图形">
+        <defs>
+          <linearGradient id="g5" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8b5cf6"/><stop offset=".62" stop-color="#6366f1"/><stop offset="1" stop-color="#4f46e5"/>
+          </linearGradient>
+          <linearGradient id="gg5" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <rect width="84" height="84" rx="19" fill="url(#g5)"/>
+        <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#f4f6fb" opacity="0.32"/>
+        <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gg5)"/>
+        <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gg5)"/>
+      </svg>
+      <div class="cap">全彩（浅底印刷 / 营销位）</div>
+    </div>
+  </div>
+
+  <!-- 色彩 -->
+  <h2><b><em>05</em>色彩</b> 与界面 token 同源</h2>
+  <div class="swatches">
+    <div class="sw">
+      <div class="chip" style="background:#8b5cf6"></div>
+      <div class="meta"><b>紫 · Violet</b><small>#8B5CF6 台面起点</small></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:#4f46e5"></div>
+      <div class="meta"><b>靛 · Indigo</b><small>#4F46E5 台面收束</small></div>
+    </div>
+    <div class="sw">
+      <div class="chip grad"></div>
+      <div class="meta"><b>台面渐变 135°</b><small>#8B5CF6 → #6366F1 → #4F46E5</small></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:#22c55e"></div>
+      <div class="meta"><b>绿 · 新作</b><small>#22C55E（公件主色）</small></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:#0d1730"></div>
+      <div class="meta"><b>卯槽深</b><small>#0D1730 结构负空间</small></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:#10182c"></div>
+      <div class="meta"><b>反白底</b><small>#10182C 深底应用</small></div>
+    </div>
+  </div>
+
+  <!-- 字体 -->
+  <h2><b><em>06</em>字标</b> 定制几何字标方案</h2>
+  <div class="type-row">
+    <div class="type-card">
+      <div class="lbl">中文标准字 · CJK WORDMARK</div>
+      <div class="sample">百工工作室</div>
+      <p>几何黑体骨架:笔画横平竖直、字面方正、粗细对比如木作构件;字距 +0.10em 释放工匠感。<br />字标字体重用界面字体(HarmonyOS Sans SC Bold,免费商用),保证侧栏小尺寸与印刷大尺寸同形。</p>
+    </div>
+    <div class="type-card en">
+      <div class="lbl">英文标准字 · LATIN WORDMARK</div>
+      <div class="sample" style="margin-top:16px">BAIGONG STUDIO</div>
+      <p>全大写、宽字距 0.44em 作辅助行,仅作平衡与国际化桥接,不承担主要识别。</p>
+    </div>
+  </div>
+
+  <footer>
+    <span>百工工作室 · 品牌标识规范 — 定稿 2026.09</span>
+    <span>HarmonyOS Sans SC · 免费商用授权</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -77,7 +77,7 @@ function preview(a: Asset) {
 .cell:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 26px -16px rgb(0 0 0 / 70%);
-  border-color: rgb(139 92 246 / 45%);
+  border-color: rgb(99 102 241 / 45%);
 }
 
 .thumb {

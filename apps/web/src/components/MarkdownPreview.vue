@@ -86,7 +86,7 @@ const html = computed(() => {
 }
 
 .md :deep(blockquote) {
-  border-left: 3px solid rgb(139 92 246 / 50%);
+  border-left: 3px solid rgb(99 102 241 / 50%);
   margin: 8px 0;
   padding: 2px 12px;
   color: var(--text-2);
@@ -108,7 +108,7 @@ const html = computed(() => {
 }
 
 .md :deep(a) {
-  color: #a78bfa;
+  color: var(--accent-h);
 }
 
 .md :deep(table) {

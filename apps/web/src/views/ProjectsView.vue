@@ -172,7 +172,7 @@ const genres = [
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
   text-decoration: none;
-  border-color: rgb(139 92 246 / 45%);
+  border-color: rgb(99 102 241 / 45%);
 }
 
 .top {

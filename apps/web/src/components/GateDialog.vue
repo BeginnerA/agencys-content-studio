@@ -157,8 +157,8 @@ function abort() {
 
 .tabs button.on {
   background: var(--accent-weak);
-  border-color: rgb(139 92 246 / 45%);
-  color: #c4b5fd;
+  border-color: rgb(99 102 241 / 45%);
+  color: #a5b4fc;
 }
 
 .doc {

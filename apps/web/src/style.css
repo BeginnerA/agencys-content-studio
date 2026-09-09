@@ -1,8 +1,8 @@
 /* ============================================================
    百工工作室 — 全局设计系统（Dark Studio）
-   设计方向：ui-ux-pro-max → creative studio dark
-   底 #0a0e19 · 面板 slate-900 系 · 主紫 #7C3AED · 运行靛蓝 · 成功绿
-   变量名与旧版保持一致（组件内 var() 引用自动适配暗色语义）
+   品牌台面（与 logo mark 同源）：紫 #8b5cf6 → 靛 #6366f1 → 深靛 #4f46e5
+   公件绿 #4ade80 → #22c55e · 卯槽深 #0d1730 / 内高光 #16224a
+   主交互靛 · 高亮紫 · 承接口（输入/代码）用卯槽深色
    ============================================================ */
 :root {
   /* 背景与表面 */
@@ -19,26 +19,31 @@
   --text-2: #9aa8c0;
   --text-3: #66738e;
 
-  /* 品牌与语义 */
-  --accent: #7c3aed;
-  --accent-h: #8b5cf6;
-  --accent-weak: rgb(124 58 237 / 14%);
+  /* 品牌台面与语义（与 logo 榫卯拼块同源） */
+  --accent: #6366f1; /* 台面中段靛 · 主交互 */
+  --accent-h: #8b5cf6; /* 台面起点紫 · 高亮/链接 */
+  --accent-weak: rgb(99 102 241 / 16%);
+  --indigo-deep: #4f46e5; /* 台面终点深靛 · 阴影/深端 */
   --ok: #22c55e;
   --ok-weak: rgb(34 197 94 / 13%);
   --warn: #fbbf24;
   --warn-weak: rgb(245 158 11 / 13%);
   --bad: #f87171;
   --bad-weak: rgb(248 113 113 / 12%);
-  --run: #818cf8;
+  --run: #818cf8; /* 运行亮靛（台面靛的亮端） */
   --run-weak: rgb(129 140 248 / 14%);
 
+  /* 渐变（按钮同源 logo） */
+  --grad-brand: linear-gradient(135deg, #8b5cf6 0%, #6366f1 62%, #4f46e5 100%);
+  --grad-green: linear-gradient(180deg, #4ade80, #22c55e);
+
   /* 功能面 */
-  --code-bg: #0b1020;
-  --img-ph: #101a2f;
+  --code-bg: #0d1730; /* 卯槽深 · 代码/日志承接口 */
+  --img-ph: #16224a; /* 卯槽内高光 · 图片占位 */
   --chip-bg: rgb(148 163 184 / 12%);
 
   /* 装饰 */
-  --ring: #7c3aed;
+  --ring: #8b5cf6;
   --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 12px 32px -20px rgb(0 0 0 / 60%);
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 40%), 0 24px 60px -24px rgb(0 0 0 / 75%);
   --radius: 12px;
@@ -63,13 +68,13 @@ body {
   line-height: 1.5;
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgb(124 58 237 / 7%), transparent 60%),
+    radial-gradient(1200px 600px at 85% -10%, rgb(139 92 246 / 8%), transparent 60%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgb(124 58 237 / 35%);
+  background: rgb(99 102 241 / 38%);
 }
 
 a {
@@ -210,7 +215,7 @@ a:hover {
 }
 
 .btn:hover {
-  border-color: rgb(139 92 246 / 55%);
+  border-color: rgb(99 102 241 / 60%);
   color: #fff;
   background: var(--raised);
 }
@@ -224,10 +229,10 @@ a:hover {
 }
 
 .btn.primary {
-  background: linear-gradient(180deg, #8b5cf6, #7c3aed);
-  border-color: rgb(139 92 246 / 60%);
+  background: var(--grad-brand);
+  border-color: rgb(99 102 241 / 65%);
   color: #fff;
-  box-shadow: 0 4px 14px -6px rgb(124 58 237 / 55%);
+  box-shadow: 0 4px 14px -6px rgb(79 70 229 / 60%);
 }
 
 .btn.primary:hover {
@@ -236,7 +241,7 @@ a:hover {
 }
 
 .btn.ok {
-  background: linear-gradient(180deg, #2ed573, #22c55e);
+  background: var(--grad-green);
   border-color: rgb(34 197 94 / 55%);
   color: #06270f;
   font-weight: 600;
@@ -283,7 +288,7 @@ select {
   padding: 7px 10px;
   font-size: 13px;
   font-family: inherit;
-  background: #0c1120;
+  background: #0d1730; /* 卯槽深：输入面即承接口 */
   color: var(--text);
   outline: none;
   width: 100%;
@@ -299,7 +304,7 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(124 58 237 / 22%);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 26%);
 }
 
 select option {
@@ -364,7 +369,7 @@ label.fld .req {
   width: 208px;
   flex: none;
   background:
-    linear-gradient(180deg, rgb(124 58 237 / 6%), transparent 30%),
+    linear-gradient(180deg, rgb(139 92 246 / 7%), transparent 30%),
     #080b14;
   color: #9aa8c0;
   display: flex;
@@ -384,13 +389,16 @@ label.fld .req {
   width: 30px;
   height: 30px;
   flex: none;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1 70%, #22c55e 145%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 4px 14px -4px rgb(124 58 237 / 65%);
+  /* 品牌 mark 自带圆角底(rx = 19/84),此处圆角仅对齐阴影形状 */
+  border-radius: 7px;
+  display: block;
+  box-shadow: 0 4px 14px -4px rgb(99 102 241 / 60%);
+}
+
+.side .logo .mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .side .logo .lt {
@@ -441,7 +449,7 @@ label.fld .req {
 }
 
 .side a.nav.router-link-active {
-  background: linear-gradient(90deg, rgb(124 58 237 / 22%), rgb(124 58 237 / 6%));
+  background: linear-gradient(90deg, rgb(99 102 241 / 24%), rgb(99 102 241 / 6%));
   color: #fff;
 }
 
@@ -453,7 +461,7 @@ label.fld .req {
   bottom: 7px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, #a78bfa, #7c3aed);
+  background: linear-gradient(180deg, #8b5cf6, #4f46e5);
 }
 
 .side .foot {

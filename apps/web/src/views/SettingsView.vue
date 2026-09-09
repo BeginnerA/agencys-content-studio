@@ -252,8 +252,8 @@ function msgOf(id: number): string {
 
 .tabs button.on {
   background: var(--accent-weak);
-  color: #c4b5fd;
-  box-shadow: inset 0 0 0 1px rgb(139 92 246 / 45%);
+  color: #a5b4fc;
+  box-shadow: inset 0 0 0 1px rgb(99 102 241 / 45%);
 }
 
 .cnt {
@@ -268,8 +268,8 @@ function msgOf(id: number): string {
 }
 
 .tabs button.on .cnt {
-  background: rgb(139 92 246 / 22%);
-  color: #c4b5fd;
+  background: rgb(99 102 241 / 22%);
+  color: #a5b4fc;
 }
 
 .tab-hint {
@@ -286,7 +286,7 @@ function msgOf(id: number): string {
   height: 5px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 6px rgb(124 58 237 / 70%);
+  box-shadow: 0 0 6px rgb(99 102 241 / 70%);
 }
 
 .tabpane {
