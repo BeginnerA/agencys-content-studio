@@ -4,6 +4,7 @@ import { createLogger } from './logger'
 import { apiRoutes } from './routes/api-configs'
 import { assetsRoutes } from './routes/assets'
 import { projectsRoutes } from './routes/projects'
+import { promptsRoutes } from './routes/prompts'
 import { runsRoutes } from './routes/runs'
 import { systemRoutes } from './routes/system'
 import { tasksRoutes } from './routes/tasks'
@@ -18,6 +19,7 @@ app.use('*', honoLogger((msg, ...rest) => log.info(msg.replace(/\n$/, ''), rest)
 const api = new Hono()
 api.route('/', systemRoutes)
 api.route('/', templatesRoutes)
+api.route('/', promptsRoutes)
 api.route('/', projectsRoutes)
 api.route('/', assetsRoutes)
 api.route('/', runsRoutes)

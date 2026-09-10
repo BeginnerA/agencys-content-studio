@@ -46,6 +46,7 @@ onBeforeUnmount(() => {
       </div>
       <nav class="navs">
         <RouterLink class="nav" to="/"><Icon name="folder" :size="16" /> 项目</RouterLink>
+        <RouterLink class="nav" to="/templates"><Icon name="doc" :size="16" /> 模板</RouterLink>
         <RouterLink class="nav" to="/settings"><Icon name="sliders" :size="16" /> AI 配置</RouterLink>
       </nav>
       <div class="foot">

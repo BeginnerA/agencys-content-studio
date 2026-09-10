@@ -1,7 +1,7 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import { TEMPLATES_DIR } from '../env'
+import { PROMPTS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import type { Template, TemplateInputDef, TemplateMeta, TemplateStepDef } from './types'
 import { parseWhenExpr, whenRefs } from './refs'
@@ -21,7 +21,8 @@ export const KNOWN_ACTIONS = [
 
 const cache = new Map<string, Template>()
 
-function fileFor(key: string): string | null {
+/** 模板文件路径（null = 不存在；.yaml/.yml 按序探测） */
+export function templateFileOf(key: string): string | null {
   for (const ext of ['.yaml', '.yml']) {
     const p = join(TEMPLATES_DIR, `${key}${ext}`)
     try {
@@ -198,7 +199,7 @@ function isExprList(v: unknown): v is string | string[] {
 export function loadTemplate(key: string, force = false): Template {
   const hit = cache.get(key)
   if (hit && !force) return hit
-  const file = fileFor(key)
+  const file = templateFileOf(key)
   if (!file) throw new Error(`模板「${key}」不存在于 ${TEMPLATES_DIR}`)
   let raw: Record<string, unknown>
   try {
@@ -210,6 +211,96 @@ export function loadTemplate(key: string, force = false): Template {
   const tpl = validate(raw, key)
   cache.set(key, tpl)
   return tpl
+}
+
+/** prompt_tpl 引用体检：返回缺失的提示词文件（相对 PROMPTS_DIR 路径）列表 */
+export function missingPromptsOf(tpl: Template): string[] {
+  const missing = new Set<string>()
+  for (const s of tpl.steps) {
+    const p = s.params?.['prompt_tpl']
+    if (typeof p !== 'string' || !p) continue
+    try {
+      if (!statSync(join(PROMPTS_DIR, p)).isFile()) missing.add(p)
+    } catch {
+      missing.add(p)
+    }
+  }
+  return [...missing]
+}
+
+/** 模板文本校验结果（POST /templates/validate 与保存前检查共用） */
+export interface TemplateValidation {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  template?: Template
+}
+
+/**
+ * 纯文本校验（不落盘）：YAML 语法/结构/引用错误 → errors；
+ * prompt_tpl 文件缺失 → warnings（运行时才致命，编辑期放行）。
+ */
+export function validateTemplateText(text: string, expectKey?: string): TemplateValidation {
+  const errors: string[] = []
+  const warnings: string[] = []
+  let raw: unknown
+  try {
+    raw = parseYaml(text)
+  } catch (err) {
+    return { ok: false, errors: [`YAML 解析失败: ${(err as Error).message}`], warnings }
+  }
+  if (typeof raw !== 'object' || !raw || Array.isArray(raw)) {
+    return { ok: false, errors: ['内容为空或非对象'], warnings }
+  }
+  const rawObj = raw as Record<string, unknown>
+  const keyInYaml = typeof rawObj['key'] === 'string' && rawObj['key'] ? (rawObj['key'] as string) : undefined
+  const key = expectKey ?? keyInYaml
+  if (!key) return { ok: false, errors: ['缺少 key 字段'], warnings }
+  if (!/^[\w-]+$/.test(key)) {
+    return { ok: false, errors: [`key「${key}」非法（仅字母/数字/下划线/中划线）`], warnings }
+  }
+  if (keyInYaml && keyInYaml !== key) {
+    return { ok: false, errors: [`YAML 内 key「${keyInYaml}」与目标 key「${key}」不一致（key 不可改）`], warnings }
+  }
+  try {
+    const tpl = validate(rawObj, key)
+    for (const miss of missingPromptsOf(tpl)) warnings.push(`params.prompt_tpl 引用的提示词文件不存在: ${miss}`)
+    return { ok: true, errors, warnings, template: tpl }
+  } catch (err) {
+    return { ok: false, errors: [(err as Error).message], warnings }
+  }
+}
+
+/** 原子保存模板（临时文件 → 校验 → rename 覆盖；失败保留原文件并清理临时件） */
+export function saveTemplate(key: string, text: string): Template {
+  if (!/^[\w-]+$/.test(key)) throw new Error(`模板 key「${key}」非法`)
+  const res = validateTemplateText(text, key)
+  if (!res.ok || !res.template) throw new Error(`模板「${key}」校验未通过：${res.errors.join('；')}`)
+  const target = templateFileOf(key) ?? join(TEMPLATES_DIR, `${key}.yaml`)
+  const tmp = join(TEMPLATES_DIR, `.${key}.tmp-${Date.now()}.yaml`)
+  writeFileSync(tmp, text, 'utf8')
+  try {
+    renameSync(tmp, target)
+  } catch (err) {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // 清理失败忽略
+    }
+    throw new Error(`模板「${key}」写入失败: ${(err as Error).message}`)
+  }
+  invalidateTemplate(key)
+  log.info(`模板「${key}」已保存（${text.length} 字符）`)
+  return res.template
+}
+
+/** 删除模板文件（不存在 → 抛错） */
+export function deleteTemplate(key: string): void {
+  const file = templateFileOf(key)
+  if (!file) throw new Error(`模板「${key}」不存在`)
+  unlinkSync(file)
+  invalidateTemplate(key)
+  log.info(`模板「${key}」已删除`)
 }
 
 /** 扫描模板目录（坏文件跳过并告警） */
@@ -229,6 +320,7 @@ export function listTemplates(): TemplateMeta[] {
         version: tpl.version,
         stepCount: tpl.steps.length,
         updatedAt: statSync(join(TEMPLATES_DIR, name)).mtimeMs,
+        promptsDirty: missingPromptsOf(tpl).length > 0,
       })
     } catch (err) {
       log.warn(`模板 ${name} 被跳过: ${(err as Error).message}`)

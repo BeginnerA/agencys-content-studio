@@ -203,6 +203,23 @@ export interface TemplateMeta {
   version: number
   stepCount: number
   updatedAt: number
+  /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
+  promptsDirty?: boolean
+}
+
+/** POST /templates/validate 响应（纯校验不落盘） */
+export interface TemplateValidation {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  template?: TemplateDetail
+}
+
+/** GET /prompts 清单项 */
+export interface PromptItem {
+  name: string
+  size: number
+  updatedAt: number
 }
 
 export interface TemplateDetail {

@@ -58,6 +58,34 @@ const parallelHint = computed(() => {
   return actives.length >= 2 ? `并行执行中：${actives.length} 步并发推进` : ''
 })
 
+// [M2] 快照差异：run 启动时的模板版本 vs 当前文件（版本号 + stepKey 集比对；无差异不显示）
+const snapshot = computed(() => {
+  const r = run.value
+  if (!r || r.templateVersion === undefined) return null
+  const cur = tpl.value
+  const runKeys = steps.value.map((s) => s.stepKey)
+  let added: string[] = []
+  let removed: string[] = []
+  if (cur) {
+    const runSet = new Set(runKeys)
+    const fileKeys = cur.steps.map((s) => s.key)
+    const fileSet = new Set(fileKeys)
+    added = fileKeys.filter((k) => !runSet.has(k))
+    removed = runKeys.filter((k) => !fileSet.has(k))
+  }
+  const versionDiff = cur ? r.templateVersion !== cur.version : false
+  if (!versionDiff && added.length === 0 && removed.length === 0) return null
+  return { rv: r.templateVersion, curV: cur?.version, added, removed }
+})
+
+function snapshotTip(s: NonNullable<typeof snapshot.value>): string {
+  const parts = [`运行使用启动时快照 v${s.rv}，运行中不受模板编辑影响`]
+  if (s.curV !== undefined && s.curV !== s.rv) parts.push(`当前文件版本 v${s.curV}`)
+  if (s.added.length) parts.push(`文件新增步骤：${s.added.join('、')}`)
+  if (s.removed.length) parts.push(`快照含步骤：${s.removed.join('、')}`)
+  return parts.join('；')
+}
+
 /** 模板 gate message 的 {input.x} 插值（离线回填场景） */
 function interpolate(msg: string, input: Record<string, unknown>): string {
   return msg.replace(/\{input\.([\w-]+)\}/g, (_, k: string) => String(input[k] ?? ''))
@@ -267,6 +295,7 @@ function iconOf(key: string): string {
       <h1>Run #{{ runId }}</h1>
       <span v-if="run" class="badge" :class="run.status">{{ runStatus(run.status).text }}</span>
       <span v-if="run" class="sub mono">{{ run.templateKey }}</span>
+      <span v-if="snapshot" class="badge skip" :title="snapshotTip(snapshot)">快照 v{{ snapshot.rv }}</span>
       <span v-if="run?.summary?.durationMs" class="sub muted">{{ fmtMs(run.summary.durationMs) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
         <button v-if="canCancel" class="btn danger" :disabled="busy" @click="cancelRun">取消运行</button>

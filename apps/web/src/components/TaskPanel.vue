@@ -47,6 +47,16 @@ async function cancel(t: GenTask) {
   load()
 }
 
+/** [M2] video 任务处理中：provider 侧异步轮询（转圈 + 第 N 次尝试文案） */
+function isVideoPoll(t: GenTask): boolean {
+  return t.kind === 'video' && t.status === 'processing'
+}
+
+function statusText(t: GenTask): string {
+  if (isVideoPoll(t)) return `生成中（第 ${Math.max(1, t.attempts)} 次尝试）`
+  return taskStatus(t.status).text
+}
+
 function onTaskUpdated(p: StudioEventMap['task.updated']) {
   const t = tasks.value.find((x) => x.id === p.task_id)
   if (t) {
@@ -90,7 +100,10 @@ onBeforeUnmount(() => {
 
     <div v-else class="list">
       <div v-for="t in tasks" :key="t.id" class="row">
-        <span class="badge" :class="t.status">{{ taskStatus(t.status).text }}</span>
+        <span class="badge" :class="[t.status, { 'has-spin': isVideoPoll(t) }]">
+          <span v-if="isVideoPoll(t)" class="spin" aria-hidden="true"></span>
+          {{ statusText(t) }}
+        </span>
         <span class="shot mono">{{ (t.params as Record<string, unknown> | null)?.['shotId'] ?? ('#' + t.id) }}</span>
         <span class="pr" :title="t.prompt">{{ t.prompt }}</span>
         <span v-if="t.errorMsg" class="em mono" :title="t.errorMsg">{{ t.errorMsg }}</span>
@@ -201,5 +214,32 @@ onBeforeUnmount(() => {
   flex: none;
   min-width: 52px;
   justify-content: center;
+}
+
+/* [M2] video 轮询转圈（替换 badge 静点） */
+.badge.has-spin::before {
+  display: none;
+}
+
+.spin {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: tspin 0.9s linear infinite;
+}
+
+@keyframes tspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 }
 </style>

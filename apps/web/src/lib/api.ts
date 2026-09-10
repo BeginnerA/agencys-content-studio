@@ -6,10 +6,12 @@ import type {
   GenTask,
   Project,
   ProjectDetail,
+  PromptItem,
   Run,
   RunDetail,
   TemplateDetail,
   TemplateMeta,
+  TemplateValidation,
 } from './types'
 
 /** 统一请求封装：错误解析为 {code,message}，抛 ApiError */
@@ -76,7 +78,37 @@ export const projectApi = {
 
 export const templateApi = {
   list: () => api.get<Items<TemplateMeta>>('/api/v1/templates'),
-  detail: (key: string) => api.get<{ template: TemplateDetail }>(`/api/v1/templates/${encodeURIComponent(key)}`),
+  detail: (key: string) =>
+    api.get<{ template: TemplateDetail; yaml: string }>(`/api/v1/templates/${encodeURIComponent(key)}`),
+  /** 纯校验不落盘（编辑器防抖调用） */
+  validate: (yaml: string, key?: string) =>
+    api.post<TemplateValidation>('/api/v1/templates/validate', { yaml, key }),
+  create: (key: string, yaml: string) =>
+    api.post<{ ok: boolean; template: TemplateDetail; warnings: string[] }>('/api/v1/templates', { key, yaml }),
+  update: (key: string, yaml: string) =>
+    api.put<{ ok: boolean; template: TemplateDetail; warnings: string[] }>(
+      `/api/v1/templates/${encodeURIComponent(key)}`,
+      { yaml },
+    ),
+  remove: (key: string) => api.del<{ ok: boolean }>(`/api/v1/templates/${encodeURIComponent(key)}`),
+}
+
+/** 提示词文件（workspace/prompts 内相对路径，子目录用 / 分隔） */
+export const promptApi = {
+  list: () => api.get<Items<PromptItem>>('/api/v1/prompts'),
+  get: (name: string) =>
+    api.get<{ name: string; content: string }>(`/api/v1/prompts/${encodePromptPath(name)}`),
+  put: (name: string, content: string) =>
+    api.put<{ ok: boolean; name: string; size: number }>(`/api/v1/prompts/${encodePromptPath(name)}`, { content }),
+  remove: (name: string) => api.del<{ ok: boolean }>(`/api/v1/prompts/${encodePromptPath(name)}`),
+}
+
+/** 相对路径逐段编码（保留 / 分隔，中文名可用） */
+function encodePromptPath(name: string): string {
+  return name
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')
 }
 
 export const runApi = {

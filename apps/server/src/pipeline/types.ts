@@ -70,6 +70,8 @@ export interface TemplateMeta {
   version: number
   stepCount: number
   updatedAt: number
+  /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
+  promptsDirty?: boolean
 }
 
 // ---------- 执行产物 ----------
