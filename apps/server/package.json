@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "probe:m2a": "tsx scripts/probe-m2a.ts",
     "probe:m3": "tsx scripts/probe-m3.ts",
+    "probe:m4": "tsx scripts/probe-m4.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {
