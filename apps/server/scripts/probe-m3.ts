@@ -7,7 +7,7 @@
  *
  * section（默认 all = 全部已实现；未列出的 section 由后续任务逐段加入）：
  *   migrate  空库 migrate 自动建 memories/characters 两表 + 4 索引
- *   memory   embedding 服务冒烟（维度 / cosine / status）；upsert/recall/reindex 断言随 Task 4 加入
+ *   memory   embedding 服务冒烟（维度 / cosine / status）+ upsert/recall/reindex 断言
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -105,7 +105,31 @@ async function main(): Promise<void> {
     check(Math.abs(self - 1) < 1e-3, `cosine 自相似 ≈ 1（${self.toFixed(4)}）`)
     const st1 = await embeddingStatus()
     check(st1.dims === v.length, `status 维度与实测一致（${st1.dims} === ${v.length}）`)
-    // Task 4 续：upsertMemory 3 条 → 近义检索 top1 命中 → 同名 upsert 幂等 → reindex 计数
+
+    // —— 记忆服务：upsert / 近义召回 / reindex ——
+    const { upsertMemory, recallMemories, reindexMemories } = await import('../src/services/memory')
+
+    // 写入 3 条具名记忆（具名 = 同域同名 upsert 幂等，模板默认用它）
+    const mA = await upsertMemory({ projectId: null, type: 'note', name: 'probe-weather-a', content: '今天天气真好，适合出门散步' })
+    const mB = await upsertMemory({ projectId: null, type: 'note', name: 'probe-weather-b', content: '阳光明媚，正适合户外走走' })
+    const mC = await upsertMemory({ projectId: null, type: 'note', name: 'probe-weather-c', content: '我讨厌下雨天' })
+    check(mA.created && mB.created && mC.created, `upsertMemory 新增 3 条（created=${mA.created},${mB.created},${mC.created}）`)
+
+    // 同名 upsert 幂等：id 保持、行数不增
+    const mA2 = await upsertMemory({ projectId: null, type: 'note', name: 'probe-weather-a', content: '今天天气真好，适合出门散步' })
+    const nRows = (await sqlite.execute('SELECT COUNT(*) AS n FROM memories')).rows as unknown as Array<{ n: number }>
+    check(!mA2.created && mA2.id === mA.id && Number(nRows[0]!.n) === 3, `同名 upsert 幂等（id=${mA2.id} 保持、行数=${nRows[0]!.n}）`)
+
+    // 近义召回：正向天气条目应排在反语义条目之前
+    const hits = await recallMemories({ projectId: null, query: '出去遛弯天气不错', limit: 3 })
+    check(hits.length === 3, `recall 命中 3 条（${hits.map((x) => `${x.name}:${x.score.toFixed(3)}`).join(' / ')}）`)
+    check(hits[0]?.name !== 'probe-weather-c', `top1 为正向天气条目（${hits[0]?.name} score=${hits[0]?.score.toFixed(4)}）`)
+
+    // reindex 全量重算 → 召回稳定
+    const rx = await reindexMemories()
+    check(rx.total === 3 && rx.rebuilt === 3 && rx.skipped === 0, `reindex 计数（total=${rx.total} rebuilt=${rx.rebuilt} skipped=${rx.skipped}）`)
+    const hits2 = await recallMemories({ projectId: null, query: '出去遛弯天气不错', limit: 3 })
+    check(hits2.length === hits.length && hits2[0]!.id === hits[0]!.id, `reindex 后召回稳定（top1 id=${hits2[0]?.id}）`)
   }
 
   // ================= 分发 =================
