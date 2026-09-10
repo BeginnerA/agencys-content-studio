@@ -12,7 +12,7 @@ export function kindByExt(ext: string): Asset['kind'] {
   if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(e)) return 'image'
   if (['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(e)) return 'video'
   if (['.mp3', '.wav', '.aac', '.m4a', '.flac'].includes(e)) return 'audio'
-  if (['.md', '.txt', '.json', '.yaml', '.yml', '.csv'].includes(e)) return 'text'
+  if (['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.srt', '.vtt', '.log', '.ini', '.toml'].includes(e)) return 'text'
   return 'archive'
 }
 
@@ -251,8 +251,31 @@ export function mimeOfExt(ext: string): string {
     '.mp3': 'audio/mpeg',
     '.wav': 'audio/wav',
     '.md': 'text/markdown',
+    '.markdown': 'text/markdown',
     '.txt': 'text/plain',
+    '.log': 'text/plain',
+    '.ini': 'text/plain',
+    '.toml': 'text/plain',
+    '.srt': 'text/plain',
+    '.vtt': 'text/vtt',
+    '.csv': 'text/csv',
+    '.yaml': 'text/yaml',
+    '.yml': 'text/yaml',
+    '.xml': 'application/xml',
     '.json': 'application/json',
   }
   return map[ext.toLowerCase()] ?? 'application/octet-stream'
+}
+
+/**
+ * 文本类 MIME 补 `charset=utf-8`。
+ * 浏览器直接新标签打开文本文件时，若响应缺 charset 会回退到 Latin-1/本地编码解析，
+ * 导致 UTF-8 中文乱码（SRT/MD/JSON 等文本资产均受影响）。已带 charset 的原样返回。
+ */
+export function withUtf8Charset(mime: string): string {
+  if (/charset=/i.test(mime)) return mime
+  if (mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml') {
+    return `${mime}; charset=utf-8`
+  }
+  return mime
 }

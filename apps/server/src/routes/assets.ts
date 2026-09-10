@@ -5,7 +5,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
-import { absPathOf, importFiles, mimeOfExt } from '../services/storage'
+import { absPathOf, importFiles, mimeOfExt, withUtf8Charset } from '../services/storage'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -67,7 +67,7 @@ assetsRoutes.get('/assets/:id/file', h(async (c) => {
   let size: number
   try { size = statSync(abs).size } catch { throw new HttpError(404, 'no_file', `文件缺失: ${a.relPath}`) }
 
-  const mime = a.mime ?? mimeOfExt(`.${a.ext ?? ''}`)
+  const mime = withUtf8Charset(a.mime ?? mimeOfExt(`.${a.ext ?? ''}`))
   const download = c.req.query('download') === '1'
   const headers: Record<string, string> = {
     'Content-Type': mime,
