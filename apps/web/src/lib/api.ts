@@ -3,6 +3,7 @@ import type {
   ApiErrorBody,
   ApiProvider,
   Asset,
+  FetchModelsResult,
   GenTask,
   Project,
   ProjectDetail,
@@ -134,6 +135,9 @@ export const configApi = {
   update: (id: number, body: Record<string, unknown>) => api.put<ApiConfig>(`/api/v1/api-configs/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
   test: (id: number) => api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
+  /** 在线拉取供应商可用模型目录（OpenAI 兼容 GET /models，失败回退预置列表） */
+  fetchModels: (body: Record<string, unknown>) =>
+    api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
 }
 
 export const assetApi = {

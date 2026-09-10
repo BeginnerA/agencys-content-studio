@@ -24,8 +24,8 @@ const POLL_TIMEOUT_MS = 10 * 60_000
 /**
  * ai_video：批量镜头视频生成（spec §5.1，M2 启用）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task（kind=video）：
- * 提交第三方拿 task_id → 轮询 query（5s/次，超时 10min）→ 成功下载落盘为 video 资产
- * （purpose=shot_video，params 溯源含 {taskId, provider, prompt 快照}）。
+ * 适配器两形态——轮询型（提交拿 task_id → query 5s/次，超时 10min）与同步型（长请求直收
+ * 字节，如 Pollinations）→ 均落盘为 video 资产（purpose=shot_video，params 溯源含 {taskId, provider}）。
  *
  * v1 为纯 prompt 驱动（文生视频，镜头 prompt 由 prompt_field 指定，缺省 shot.image_prompt）；
  * 首帧图/参考素材依赖公网可访 URL，待图床通道机制后扩展（适配器 extra 已预留
@@ -203,7 +203,14 @@ async function runOneTask(
         ctx.log(`shot ${shotId} 已提交第三方（task_id=${gen.taskId}），开始轮询`)
         videoUrl = await pollVideoTask(ctx, task, adapter, request, gen.taskId)
       }
-      if (!videoUrl) throw new Error('第三方返回成功但缺少视频 URL')
+      // 产物形态：poll/url 型 → 远程 URL 下载；base64 型（同步长请求适配器）→ 字节直存
+      const source =
+        gen.kind === 'base64'
+          ? ({ kind: 'base64', data: gen.data, mime: gen.mime } as const)
+          : videoUrl
+            ? ({ kind: 'url', url: videoUrl } as const)
+            : null
+      if (!source) throw new Error('第三方返回成功但缺少视频产物（url/base64）')
       const asset = await saveGeneratedMedia({
         projectId: ctx.run.projectId,
         stepId: ctx.step.id,
@@ -219,7 +226,7 @@ async function runOneTask(
           duration: parsed.duration ?? null,
           resolution: parsed.resolution ?? null,
         },
-        source: { kind: 'url', url: videoUrl },
+        source,
         duration: parsed.duration ?? undefined,
       })
       await db

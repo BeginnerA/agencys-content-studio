@@ -12,6 +12,8 @@ export interface AudioEndpoint {
   baseUrl: string
   apiKey: string
   model: string
+  /** 实例级默认音色（config.extra.voice；如 SiliconFlow 需 "模型:音色" 格式） */
+  voice?: string
 }
 
 /** 解析 audio 端点：未配置实例时报错并附 Settings 指引 */
@@ -22,6 +24,7 @@ export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioE
     baseUrl: endpoint.baseUrl,
     apiKey: endpoint.apiKey,
     model: endpoint.model ?? 'tts-1',
+    voice: typeof endpoint.extra['voice'] === 'string' && endpoint.extra['voice'] ? endpoint.extra['voice'] : undefined,
   }
 }
 

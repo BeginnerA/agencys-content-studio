@@ -157,6 +157,13 @@ export interface ApiConfig {
   updatedAt: number
 }
 
+/** POST /api-configs/fetch-models 响应：在线目录 / 预置回退 */
+export interface FetchModelsResult {
+  models: string[]
+  source: 'live' | 'preset'
+  note?: string
+}
+
 export interface TemplateInputDef {
   key: string
   label: string

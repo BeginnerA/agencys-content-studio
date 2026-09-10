@@ -38,7 +38,10 @@ export interface VideoGenRequest {
   extra?: Record<string, unknown>
 }
 
-export type GeneratedVideo = { kind: 'url'; url: string } | { kind: 'poll'; taskId: string }
+export type GeneratedVideo =
+  | { kind: 'url'; url: string }
+  | { kind: 'poll'; taskId: string }
+  | { kind: 'base64'; data: string; mime: string }
 
 export interface VideoAdapter {
   provider: string

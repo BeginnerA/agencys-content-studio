@@ -1,19 +1,23 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { OpenAIImageAdapter } from './openai-image'
+import { PollinationsImageAdapter } from './pollinations-image'
+import { SiliconFlowImageAdapter } from './siliconflow-image'
 import type { ImageAdapter, ImageGenRequest } from './types'
 import { db } from '../db'
 import { apiConfigs, apiProviders } from '../db/schema'
 import { resolveApiKey } from '../services/secrets'
 
-/** 已注册图像适配器（M1：openai_image；其余厂商 M2 从 huobao 搬运） */
+/** 已注册图像适配器（openai_image 通用；pollinations_image / siliconflow_image 为其别名子类） */
 const imageAdapters: Record<string, ImageAdapter> = {
   openai_image: new OpenAIImageAdapter(),
+  pollinations_image: new PollinationsImageAdapter(),
+  siliconflow_image: new SiliconFlowImageAdapter(),
 }
 
 export class ProviderNotReadyError extends Error {
   constructor(providerKey: string) {
     super(
-      `供应商「${providerKey}」适配器未就绪（M1 仅支持 openai_image；M2 将搬运 volcengine/gemini 等）。`,
+      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image）。`,
     )
     this.name = 'ProviderNotReadyError'
   }

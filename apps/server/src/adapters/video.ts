@@ -1,9 +1,12 @@
 /**
  * 视频适配器注册表与请求组装（M2 启用，对齐 provider.ts 的 image 模式）。
  * 搬运源：huobao-drama/backend/src/services/adapters/{minimax,volcengine,aliyun-wan}-video.ts
+ * 扩展：siliconflow_video（submit/status 轮询协议）、pollinations_video（GET 同步长请求）。
  */
 import { AliyunWanVideoAdapter } from './aliyun-wan-video'
 import { MiniMaxVideoAdapter } from './minimax-video'
+import { PollinationsVideoAdapter } from './pollinations-video'
+import { SiliconFlowVideoAdapter } from './siliconflow-video'
 import { VolcEngineVideoAdapter } from './volcengine-video'
 import type { VideoAdapter, VideoGenRequest } from './types'
 import { resolveEndpoint } from './provider'
@@ -12,11 +15,13 @@ const videoAdapters: Record<string, VideoAdapter> = {
   volcengine_video: new VolcEngineVideoAdapter(),
   minimax_video: new MiniMaxVideoAdapter(),
   aliyun_wan_video: new AliyunWanVideoAdapter(),
+  siliconflow_video: new SiliconFlowVideoAdapter(),
+  pollinations_video: new PollinationsVideoAdapter(),
 }
 
 export class VideoProviderNotReadyError extends Error {
   constructor(providerKey: string) {
-    super(`视频供应商「${providerKey}」适配器未注册（可选：volcengine_video/minimax_video/aliyun_wan_video）`)
+    super(`视频供应商「${providerKey}」适配器未注册（可选：volcengine_video/minimax_video/aliyun_wan_video/siliconflow_video/pollinations_video）`)
     this.name = 'VideoProviderNotReadyError'
   }
 }

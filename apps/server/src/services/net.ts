@@ -2,6 +2,16 @@ import { writeFileSync } from 'node:fs'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, sha256Hex } from './storage'
 import type { Asset } from '../db/schema'
 
+/** base64 产物 mime → 落盘扩展名（未收录回退：video/* → mp4，其余 png） */
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+}
+
 /** 下载远程文件（图片/视频产物）为 Buffer；超时兜底 */
 export async function fetchBuffer(url: string, timeoutMs = 120_000): Promise<Uint8Array> {
   const controller = new AbortController()
@@ -42,7 +52,7 @@ export async function saveGeneratedMedia(opts: {
   } else {
     data = Buffer.from(opts.source.data, 'base64')
     mime = opts.source.mime
-    ext = opts.source.mime === 'image/jpeg' ? 'jpg' : opts.source.mime.includes('png') ? 'png' : opts.source.mime.includes('webp') ? 'webp' : 'png'
+    ext = MIME_TO_EXT[opts.source.mime] ?? (opts.source.mime.startsWith('video/') ? 'mp4' : 'png')
   }
   if (ext === '') ext = opts.kind === 'video' ? 'mp4' : 'png'
   const fileName = `${Date.now()}-gen-${ext}.${ext}`

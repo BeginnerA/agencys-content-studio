@@ -28,6 +28,7 @@ apiRoutes.get('/api-providers', h(async (c) => {
       name: p.name,
       serviceType: p.serviceType,
       description: p.description,
+      defaultUrl: p.defaultUrl,
       presetModels: safeJson(p.presetModels, []),
       isActive: p.isActive === 1,
       configs: (byProvider.get(p.key) ?? []).map((cfg) => ({
@@ -108,6 +109,74 @@ apiRoutes.post('/api-configs', h(async (c) => {
   return c.json({ config: row[0] }, 201)
 }))
 
+// POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（OpenAI 兼容 GET {baseUrl}/models）
+// body: { provider_key, base_url?, api_key?, config_id? }
+// 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 目录 defaultUrl；无 key 亦尝试（部分网关目录公开）。
+// 在线失败 / 为空 → 回退目录 presetModels，并在 note 中说明原因。
+apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const providerKey = body['provider_key']
+  if (typeof providerKey !== 'string' || !providerKey) throw new HttpError(400, 'bad_provider', 'provider_key 必填')
+  const providerRows = await db.select().from(apiProviders).where(eq(apiProviders.key, providerKey)).limit(1)
+  const provider = providerRows[0]
+  if (!provider) throw new HttpError(400, 'bad_provider', `供应商 ${providerKey} 不存在`)
+  const preset = (safeJson(provider.presetModels, []) as unknown[]).filter(
+    (m): m is string => typeof m === 'string' && !!m,
+  )
+
+  let baseUrl = typeof body['base_url'] === 'string' && body['base_url'].trim() ? body['base_url'].trim() : ''
+  let apiKey = typeof body['api_key'] === 'string' && body['api_key'].trim() ? body['api_key'].trim() : ''
+  const configId = typeof body['config_id'] === 'number' ? body['config_id'] : null
+  if (configId !== null) {
+    const cfgRows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, configId)).limit(1)
+    const cfg = cfgRows[0]
+    if (cfg) {
+      if (!baseUrl) baseUrl = cfg.baseUrl?.trim() ?? ''
+      if (!apiKey) apiKey = resolveApiKey(cfg.apiKeyRef) || ''
+    }
+  }
+  if (!baseUrl) baseUrl = provider.defaultUrl?.trim() ?? ''
+
+  let liveError = ''
+  let models: string[] = []
+  if (!baseUrl) {
+    liveError = '端点未配置（实例与目录均无 baseUrl）'
+  } else {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20_000)
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        liveError = `HTTP ${res.status}${text ? ` ${text.slice(0, 160)}` : ''}`
+      } else {
+        models = normalizeModelIds(await res.json().catch(() => null))
+      }
+    } catch (e) {
+      liveError = e instanceof Error ? e.message : String(e)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  if (models.length > 0) {
+    // 预置模型置顶，其余字母序（网关混合目录下常用项优先可见）
+    const set = new Set(models)
+    const head: string[] = []
+    for (const m of preset) if (set.has(m)) head.push(m)
+    const headSet = new Set(head)
+    const rest = models.filter((m) => !headSet.has(m)).sort((a, b) => a.localeCompare(b))
+    return c.json({ models: [...head, ...rest].slice(0, 800), source: 'live' })
+  }
+  return c.json({
+    models: preset,
+    source: 'preset',
+    note: liveError ? `在线目录获取失败（${liveError.slice(0, 200)}），已回退预置列表` : '在线目录为空，已回退预置列表',
+  })
+}))
+
 // PUT /api-configs/:id —— 更新（同字段；api_key 传明文则覆盖）
 apiRoutes.put('/api-configs/:id', h(async (c) => {
   const id = idParam(c)
@@ -174,14 +243,17 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     return c.json({ ok: true, ms: Date.now() - t0, kind: img.kind, note: 'image 生成成功（1 张，注意计费）' })
   }
   if (cfg.serviceType === 'audio') {
-    // 真实合成 1 句最短音频（成本极低，等价 llm ping）
+    // 真实合成 1 句最短音频（成本极低，等价 llm ping）；音色尊重实例 extra.voice（如 SiliconFlow "模型:音色" 格式）
+    const extra = safeJson(cfg.extra, {}) as Record<string, unknown>
+    const voice = typeof extra['voice'] === 'string' && extra['voice'] ? extra['voice'] : undefined
     const buf = await synthSpeech('ping', {
       providerKey: cfg.providerKey,
       baseUrl: cfg.baseUrl ?? '',
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model: cfg.model ?? 'tts-1',
-    }, { timeoutMs: 30_000 })
-    return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, note: '语音合成成功（1 句，注意计费）' })
+      voice,
+    }, { voice, timeoutMs: 30_000 })
+    return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, voice: voice ?? 'alloy', note: '语音合成成功（1 句，注意计费）' })
   }
   if (cfg.serviceType === 'video') {
     throw new HttpError(501, 'no_test', '视频生成需轮询且成本高，请用真实 run 验证（勿用连通测试触发计费）')
@@ -206,4 +278,27 @@ function maskKey(key: string): string {
 function safeJson(s: string | null, fallback: unknown): unknown {
   if (!s) return fallback
   try { return JSON.parse(s) } catch { return fallback }
+}
+
+/** 兼容三种模型目录形态：[{id}] / {data:[{id}]} / {models:[{id}|'id']} */
+function normalizeModelIds(json: unknown): string[] {
+  let arr: unknown[] = []
+  if (Array.isArray(json)) {
+    arr = json
+  } else if (json && typeof json === 'object') {
+    const obj = json as Record<string, unknown>
+    if (Array.isArray(obj['data'])) arr = obj['data'] as unknown[]
+    else if (Array.isArray(obj['models'])) arr = obj['models'] as unknown[]
+  }
+  const ids = new Set<string>()
+  for (const item of arr) {
+    const id =
+      typeof item === 'string'
+        ? item
+        : item && typeof item === 'object'
+          ? (item as Record<string, unknown>)['id'] ?? (item as Record<string, unknown>)['name']
+          : null
+    if (typeof id === 'string' && id.trim()) ids.add(id.trim())
+  }
+  return [...ids]
 }

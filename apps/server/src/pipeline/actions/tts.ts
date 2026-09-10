@@ -16,17 +16,21 @@ interface LineItem {
  *  - 多个资产：每资产全文 = 一句台词。
  * 产物：每句 1 个 audio 资产（purpose=voice，mime audio/mpeg，可复用/可替换/可溯源），
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
- * voice/speed 取 params → defaults.audio / project.settings.audio 兜底（voice 默认 alloy）。
+ * voice 优先级：params.voice → defaults.audio / project.settings.audio → 实例 extra.voice → alloy。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const audCfg = (ctx.settings.audio ?? {}) as Record<string, unknown>
   const provider = typeof audCfg['provider'] === 'string' ? audCfg['provider'] : undefined
-  const voice = (typeof params['voice'] === 'string' && params['voice'])
-    || (typeof audCfg['voice'] === 'string' && audCfg['voice'])
-    || 'alloy'
   const speedRaw = typeof params['speed'] === 'number' ? params['speed'] : audCfg['speed']
   const speed = typeof speedRaw === 'number' ? speedRaw : undefined
+
+  const ep = await resolveAudioEndpoint(provider)
+  // 音色优先级：step params → 模板/项目 settings.audio → 实例 extra.voice → alloy
+  const voice = (typeof params['voice'] === 'string' && params['voice'])
+    || (typeof audCfg['voice'] === 'string' && audCfg['voice'])
+    || ep.voice
+    || 'alloy'
 
   const lineIds = ctx.assetIdsOf('lines')
   if (lineIds.length === 0) throw new Error('inputs.lines 无台词资产')
@@ -34,7 +38,6 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   if (lines.length === 0) throw new Error('台词内容为空（lines 数组/资产全文均无文本）')
   ctx.log(`配音 ${lines.length} 句（voice=${voice}${speed ? `, speed=${speed}` : ''}，模型取 audio 实例配置）`)
 
-  const ep = await resolveAudioEndpoint(provider)
   const assetIds: number[] = []
   let failed = 0
   for (let i = 0; i < lines.length; i++) {
