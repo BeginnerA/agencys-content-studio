@@ -1,0 +1,114 @@
+key: note-clip
+version: 1
+name: 图文笔记·单篇（主稿审阅 → 封面 → 发布稿）
+description: 选题 → 主稿（可审阅）→ 封面提示词与内页配图提示词（可选）→ 出图 → 发布稿（标题+标签+配图顺序）
+genre: note
+inputs:
+  - key: topic
+    label: 选题与目标受众点
+    kind: text
+    required: true
+  - key: profile
+    label: 账号档案（人设/受众称呼/口头禅/禁用词）
+    kind: files
+    required: false
+    accept: [.md]
+  - key: material
+    label: 素材/事实线索（md/txt）
+    kind: files
+    required: false
+    accept: [.md, .txt]
+  - key: with_inline_images
+    label: 内页配图（false=仅封面）
+    kind: bool
+    required: false
+    default: false
+  - key: image_count
+    label: 内页配图张数
+    kind: int
+    required: false
+    default: 3
+defaults:
+  llm: { temperature: 0.7, max_tokens: 6000 }
+  image: { provider: pollinations_image, size: "768x1024" }
+steps:
+  - key: recall
+    action: memory_recall
+    title: 记忆召回
+    inputs:
+      query: input.topic
+    params: { limit: 3 }
+  - key: draft
+    action: ai_text
+    title: 主稿
+    after: [recall]
+    inputs:
+      topic: input.topic
+      profile: input.profile
+      material: input.material
+      recalled: steps.recall.asset
+    params:
+      prompt_tpl: draft-note.md
+      output_purpose: script
+      name_tpl: "draft.md"
+    gate:
+      mode: required
+      message: 请审阅图文主稿「{input.topic}」，批准后生成封面/配图；驳回可附修改意见重跑
+  - key: cover_prompt
+    action: ai_text
+    title: 封面图提示词
+    after: [draft]
+    inputs:
+      draft: steps.draft.asset
+    params:
+      prompt_tpl: cover-note.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "cover-prompt.json"
+  - key: cover
+    action: ai_image
+    title: 封面出图
+    after: [cover_prompt]
+    inputs:
+      shots: steps.cover_prompt.asset
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: inline_prompts
+    action: ai_text
+    title: 内页配图提示词
+    when: input.with_inline_images == true
+    after: [draft]
+    inputs:
+      draft: steps.draft.asset
+      image_count: input.image_count
+    params:
+      prompt_tpl: inline-note.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "inline-prompt.json"
+  - key: inline_images
+    action: ai_image
+    title: 内页配图出图
+    when: input.with_inline_images == true
+    after: [inline_prompts]
+    inputs:
+      shots: steps.inline_prompts.asset
+    batch: { field: shots, max_concurrent: 2, retry: 1 }
+  - key: publish
+    action: ai_text
+    title: 发布稿
+    after: [draft, cover, inline_images]
+    inputs:
+      draft: steps.draft.asset
+      cover: steps.cover.asset
+      inline_prompts: steps.inline_prompts.asset
+    params:
+      prompt_tpl: publish-note.md
+      output_purpose: export
+      name_tpl: "publish.md"
+  - key: remember
+    action: memory_write
+    title: 沉淀风格样本
+    after: [draft]
+    inputs:
+      content: steps.draft.asset
+    params: { type: style, name: style-sample-latest, scope: project }

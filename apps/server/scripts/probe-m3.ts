@@ -13,6 +13,7 @@
  *   contract  文本输出契约：validateTextOutput（characters-json / lines-json v2 / storyboard-json 回归）
  *   tts  声线六级链 + 情绪基调词/透传载荷（纯函数，无网络）
  *   subtitle  measured 字幕对齐：splitDisplayLines 分层切行 + planMeasuredSrt 比例分配/合并/leadIn（纯函数，无 LLM/ffprobe）
+ *   templates  模板可加载性：note-clip 结构断言 + talking-clip/mengbao-episode 基线实载（真实模板拷入隔离 workspace）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -42,7 +43,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract', 'tts', 'subtitle'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract', 'tts', 'subtitle', 'templates'] as const
 
 /** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
 const TPL_M3_MEMORY = `key: probe-m3-memory
@@ -599,6 +600,52 @@ async function main(): Promise<void> {
     check(p4.length === 1 && span(p4) === 3000, 'measured 短行合并（2 行→1 行、句总时长不变）')
   }
 
+  const sectionTemplates = async (): Promise<void> => {
+    await initDb()
+    const { loadTemplate } = await import('../src/pipeline/loader')
+    const { TEMPLATES_DIR } = await import('../src/env')
+
+    // 真实模板拷入隔离 templates 目录（loadTemplate 读隔离 workspace；探针不触碰真实工作区）
+    const srcDir = join(REPO_ROOT, 'workspace', 'templates')
+    mkdirSync(TEMPLATES_DIR, { recursive: true })
+    const copyTpl = (key: string): boolean => {
+      try {
+        cpSync(join(srcDir, `${key}.yaml`), join(TEMPLATES_DIR, `${key}.yaml`))
+        return true
+      } catch (err) {
+        check(false, `真实模板 ${key}.yaml 拷贝失败：${(err as Error).message}`)
+        return false
+      }
+    }
+    const tryLoad = (key: string) => {
+      try {
+        return loadTemplate(key, true)
+      } catch (err) {
+        log.error(`       loader 错误全文：${(err as Error).message}`)
+        return null
+      }
+    }
+
+    // —— T1 note-clip：8 步结构 + 记忆闭环关键步 ——
+    if (copyTpl('note-clip')) {
+      const t1 = tryLoad('note-clip')
+      check(t1 !== null, 'note-clip 加载成功')
+      if (t1) {
+        const keys = t1.steps.map((s) => s.key)
+        check(t1.steps.length === 8, `note-clip steps=8（实际 ${t1.steps.length}）`)
+        check(
+          ['recall', 'draft', 'publish', 'remember'].every((k) => keys.includes(k)),
+          'note-clip 含 recall/draft/publish/remember',
+        )
+      }
+    }
+
+    // —— T2/T3 基线可加载（版本与结构断言在 Task 13/14 扩展）——
+    for (const key of ['talking-clip', 'mengbao-episode']) {
+      if (copyTpl(key)) check(tryLoad(key) !== null, `${key} 加载成功（基线）`)
+    }
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
@@ -609,6 +656,7 @@ async function main(): Promise<void> {
     contract: sectionContract,
     tts: sectionTts,
     subtitle: sectionSubtitle,
+    templates: sectionTemplates,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'
