@@ -171,9 +171,52 @@ export const settings = sqliteTable('settings', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** M3 记忆表（通用；projectId NULL = 全局） */
+export const memories = sqliteTable(
+  'memories',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id'), // NULL = 全局（跨项目/账号级）
+    type: text('type').notNull().default('note'), // note|style|fact|feedback|...（开放，应用层不强校验）
+    name: text('name'), // 具名记忆（同 project+name upsert）；NULL = 匿名追加
+    content: text('content').notNull(),
+    embedding: text('embedding'), // JSON number[]（写入时模型不可用则为 NULL）
+    embeddingModel: text('embedding_model'), // 写入时模型标识（目录名+维度）
+    meta: text('meta').notNull().default('{}'), // JSON: {runId,stepId,assetId,source}
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_memories_project').on(t.projectId),
+    index('idx_memories_name').on(t.projectId, t.name),
+  ],
+)
+
+/** M3 角色库表（通用；projectId NULL = 全局角色库） */
+export const characters = sqliteTable(
+  'characters',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id'), // NULL = 全局角色库
+    name: text('name').notNull(),
+    aliases: text('aliases').notNull().default('[]'), // JSON string[]
+    summary: text('summary'),
+    appearance: text('appearance'), // 外观锚定文本（注入核心）
+    negative: text('negative'), // 免漂移负向词
+    voice: text('voice'), // 声线基准短语
+    refAssetIds: text('ref_asset_ids').notNull().default('[]'), // 定妆照资产 ids（JSON）
+    meta: text('meta').notNull().default('{}'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_characters_project').on(t.projectId), index('idx_characters_name').on(t.name)],
+)
+
 export type Project = typeof projects.$inferSelect
 export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
 export type GenTask = typeof genTasks.$inferSelect
 export type Asset = typeof assets.$inferSelect
 export type ApiConfig = typeof apiConfigs.$inferSelect
+export type Memory = typeof memories.$inferSelect
+export type CharacterRow = typeof characters.$inferSelect
