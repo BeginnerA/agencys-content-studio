@@ -3,8 +3,11 @@ import type {
   ApiErrorBody,
   ApiProvider,
   Asset,
+  CharacterItem,
   FetchModelsResult,
   GenTask,
+  MemoryItem,
+  MemoryStatus,
   Project,
   ProjectDetail,
   PromptItem,
@@ -142,6 +145,30 @@ export const configApi = {
 
 export const assetApi = {
   detail: (id: number) => api.get<Asset>(`/api/v1/assets/${id}`),
+}
+
+// ===== [M3] 记忆 / 角色 =====
+
+export const memoryApi = {
+  list: (params = '') => api.get<Items<MemoryItem>>(`/api/v1/memories${params}`),
+  /** 创建/具名 upsert；后端返回包裹体 { memory, created } */
+  create: (body: Record<string, unknown>) =>
+    api.post<{ memory: MemoryItem; created: boolean }>('/api/v1/memories', body),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<{ memory: MemoryItem }>(`/api/v1/memories/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/memories/${id}`),
+  reindex: () => api.post<{ total: number; rebuilt: number; skipped: number }>('/api/v1/memories/reindex'),
+  status: () => api.get<MemoryStatus>('/api/v1/memories/status'),
+}
+
+export const characterApi = {
+  list: (params = '') => api.get<Items<CharacterItem>>(`/api/v1/characters${params}`),
+  /** 新建/具名 upsert（name/别名命中同域同名时更新）；后端返回包裹体 { character, created } */
+  create: (body: Record<string, unknown>) =>
+    api.post<{ character: CharacterItem; created: boolean }>('/api/v1/characters', body),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<{ character: CharacterItem }>(`/api/v1/characters/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/characters/${id}`),
 }
 
 /** 上传文件到项目（multipart：purpose + files） */

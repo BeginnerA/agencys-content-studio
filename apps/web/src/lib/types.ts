@@ -244,3 +244,54 @@ export interface TemplateDetail {
 export interface ApiErrorBody {
   error: { code: string; message: string }
 }
+
+// ===== [M3] 记忆与角色 =====
+
+export interface MemoryItem {
+  id: number
+  scope: 'project' | 'global'
+  projectId: number | null
+  type: string
+  name: string | null
+  content: string
+  embeddingModel: string | null
+  hasEmbedding: boolean
+  /** 语义检索模式（q 给定）下的相似度 */
+  score?: number
+  meta?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CharacterRefAsset {
+  id: number
+  name: string
+  urls: AssetUrls
+}
+
+export interface CharacterItem {
+  id: number
+  projectId: number | null
+  scope: 'project' | 'global'
+  name: string
+  aliases: string[]
+  summary: string | null
+  appearance: string | null
+  negative: string | null
+  voice: string | null
+  refAssetIds: number[]
+  refAssets: CharacterRefAsset[]
+  meta?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MemoryStatus {
+  ready: boolean
+  modelDir: string
+  modelName: string
+  dims: number | null
+  count: number
+  missingEmbedding: number
+  error?: string
+}

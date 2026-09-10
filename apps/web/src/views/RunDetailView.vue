@@ -129,6 +129,7 @@ async function loadDetail() {
       }
     }
     void loadGate()
+    void loadBadges()
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   }
@@ -279,10 +280,46 @@ const ACTION_ICON: Record<string, string> = {
   ai_image: 'photo',
   ffmpeg_merge: 'film',
   ai_video: 'video',
+  memory_write: 'sparkles',
+  memory_recall: 'search',
+  character_sync: 'users',
 }
 
 function iconOf(key: string): string {
   return ACTION_ICON[key] ?? 'doc'
+}
+
+// [M3] 记忆/角色步骤徽标：读产物资产 params 组装（轻量、失败静默、按 step:asset 缓存）
+const BADGE_ACTIONS = new Set(['memory_write', 'memory_recall', 'character_sync'])
+const badges = ref<Record<number, string>>({})
+const badgeCache = new Set<string>()
+
+async function loadBadges() {
+  const next: Record<number, string> = { ...badges.value }
+  for (const s of steps.value) {
+    if (!BADGE_ACTIONS.has(s.actionKey)) continue
+    const aid = assetIds(s)[0]
+    if (!aid) continue
+    const key = `${s.id}:${aid}`
+    if (badgeCache.has(key)) continue
+    try {
+      const a = await assetApi.detail(aid)
+      const p = (a.params ?? {}) as Record<string, unknown>
+      if (s.actionKey === 'memory_recall') {
+        const top = typeof p['topScore'] === 'number' ? (p['topScore'] as number).toFixed(2) : null
+        next[s.id] = `召回 ${p['count'] ?? 0} 条${top ? ` · top ${top}` : ''}`
+      } else if (s.actionKey === 'memory_write') {
+        const nm = typeof p['name'] === 'string' && p['name'] ? (p['name'] as string) : '（匿名）'
+        next[s.id] = `记忆已写 ${nm}`
+      } else {
+        next[s.id] = `建档 ${p['created'] ?? 0} 新增 / ${p['updated'] ?? 0} 更新`
+      }
+      badgeCache.add(key)
+    } catch {
+      // 产物不可读 → 不显示徽标
+    }
+  }
+  badges.value = next
 }
 </script>
 
@@ -347,6 +384,7 @@ function iconOf(key: string): string {
                   {{ skipInfo(s)?.text }}
                 </span>
                 <span class="muted mono" style="font-size: 11px">{{ s.actionKey }}</span>
+                <span v-if="badges[s.id]" class="badge mem">{{ badges[s.id] }}</span>
               </div>
               <div v-if="skipInfo(s)?.userSkip" class="skipnote muted">免审放行：产物已保留，下游正常执行</div>
               <div v-if="s.error" class="serr mono">{{ s.error }}</div>
@@ -630,6 +668,13 @@ function iconOf(key: string): string {
   white-space: pre-wrap;
   word-break: break-all;
   margin: 4px 0 0;
+}
+
+/* [M3] 记忆/角色徽标：品牌靛蓝，与状态徽标区分 */
+.badge.mem {
+  background: var(--accent-weak);
+  color: var(--accent);
+  border-color: rgb(99 102 241 / 26%);
 }
 
 .dim {
