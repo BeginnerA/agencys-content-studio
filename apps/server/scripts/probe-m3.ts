@@ -655,8 +655,26 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode 基线可加载（v3 断言在 Task 14 扩展）——
-    if (copyTpl('mengbao-episode')) check(tryLoad('mengbao-episode') !== null, 'mengbao-episode 加载成功（基线）')
+    // —— T3 mengbao-episode v3：版本 / 10 步 / 角色链与注入前置 ——
+    if (copyTpl('mengbao-episode')) {
+      const t3 = tryLoad('mengbao-episode')
+      check(t3 !== null, 'mengbao-episode 加载成功')
+      if (t3) {
+        const keys = t3.steps.map((s) => s.key)
+        const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
+        check(t3.version === 3, `mengbao-episode version=3（实际 ${t3.version}）`)
+        check(t3.steps.length === 10, `mengbao-episode steps=10（实际 ${t3.steps.length}）`)
+        check(
+          ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),
+          'mengbao-episode 含 char_profile/ref_prompts/gen_refs/sync_characters',
+        )
+        check((stepOf('gen_images')?.after ?? []).includes('sync_characters'), 'gen_images.after 含 sync_characters')
+        check(
+          !Object.keys(stepOf('gen_images')?.inputs ?? {}).includes('characters'),
+          'gen_images.inputs 不含 characters（M1 留档输入已移除）',
+        )
+      }
+    }
   }
 
   // ================= 分发 =================

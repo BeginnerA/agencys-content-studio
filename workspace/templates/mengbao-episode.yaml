@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 2
-name: 萌宝短剧·单集流水线（v2：双闸门 / 动效可选）
-description: 素材入库 → 单集剧本 → 分镜（可审阅）→ 静态出图或 AI 动效（按 motion 开关选路）→ 合成成片
+version: 3
+name: 萌宝短剧·单集流水线（v3：角色一致性库 / 动效可选）
+description: 素材入库 → 单集剧本 → 角色档案与定妆照（可选）→ 分镜（可审阅）→ 静态出图（角色锚定注入）或 AI 动效 → 合成成片
 genre: drama_short
 inputs:
   - key: brief
@@ -24,6 +24,11 @@ inputs:
     default: false
   - key: with_storyboard_review
     label: 分镜审阅开关（true=分镜后挂闸门；false=免审直接出图）
+    kind: bool
+    required: false
+    default: false
+  - key: with_character_refs
+    label: 生成定妆照并入档（true=角色参考图；false=仅建档）
     kind: bool
     required: false
     default: false
@@ -52,9 +57,50 @@ steps:
     gate:
       mode: required
       message: 请审阅第 {input.episode_number} 集剧本，批准后进入分镜；驳回可附修改意见重跑
+  - key: char_profile
+    action: ai_text
+    title: 角色档案
+    after: [write_script]
+    inputs:
+      script: steps.write_script.asset
+      setting: steps.ingest_docs.assets
+    params:
+      prompt_tpl: char-profile.md
+      output_purpose: characters
+      output_format: characters-json
+      name_tpl: "{episode_number:03d}-角色档案.json"
+  - key: ref_prompts
+    action: ai_text
+    title: 定妆照提示词
+    after: [char_profile]
+    inputs:
+      characters: steps.char_profile.asset
+    params:
+      prompt_tpl: ref-prompts.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "{episode_number:03d}-定妆提示词.json"
+  - key: gen_refs
+    action: ai_image
+    title: 定妆照生成
+    when: input.with_character_refs == true
+    after: [ref_prompts]
+    inputs:
+      shots: steps.ref_prompts.asset
+    params:
+      output_purpose: reference_character
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: sync_characters
+    action: character_sync
+    title: 角色建档
+    after: [char_profile, gen_refs]
+    inputs:
+      characters: steps.char_profile.asset
+      ref_images: steps.gen_refs.assets
   - key: make_storyboard
     action: ai_text
     title: 分镜与提示词包
+    after: [write_script]
     inputs:
       script: steps.write_script.asset
     params:
@@ -71,10 +117,9 @@ steps:
     action: ai_image
     title: 批量镜头出图
     when: input.motion != true
-    after: [make_storyboard]
+    after: [make_storyboard, sync_characters]
     inputs:
       shots: steps.make_storyboard.asset
-      characters: assets purpose=reference_character
     batch: { field: shots, max_concurrent: 2, retry: 1 }
   - key: gen_motion
     action: ai_video
