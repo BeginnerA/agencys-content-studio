@@ -25,8 +25,8 @@ inputs:
     default: true
 defaults:
   llm: { temperature: 0.7, max_tokens: 6000 }
-  image: { provider: openai_image, size: "1536x1024" }
-  audio: { provider: openai_audio, voice: "FunAudioLLM/CosyVoice2-0.5B:alex" }
+  image: { provider: pollinations_image, size: "1536x1024" }
+  audio: { provider: pollinations_audio, voice: "Cherry" }
 steps:
   - key: draft
     action: ai_text

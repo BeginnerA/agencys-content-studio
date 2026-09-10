@@ -29,9 +29,9 @@ inputs:
     default: false
 defaults:
   llm: { temperature: 0.8, max_tokens: 6000 }
-  image: { provider: openai_image, size: "832x1248" }
-  # ai_video 兜底参数（provider 需在项目 Settings 配置视频生成实例；resolution 为第三方档位 480p/720p）
-  video: { duration: 4, resolution: "720p", aspect_ratio: "9:16" }
+  image: { provider: pollinations_image, size: "832x1248" }
+  # ai_video 兜底参数（provider 可在项目 settings 覆盖；minimax 支持 480p/768p，480p 单价更低）
+  video: { provider: pollinations_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
 steps:
   - key: ingest_docs
     action: manual_ingest
