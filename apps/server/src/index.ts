@@ -7,7 +7,8 @@ import { db, initDb } from './db'
 import { pipelineRuns } from './db/schema'
 import { env } from './env'
 import { createLogger } from './logger'
-import { engine, recoverInterruptedState } from './pipeline/engine'
+import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
+import { notifyRunSettled, reconcileBatches } from './services/batch'
 import { onStudioEvent } from './services/events'
 
 const log = createLogger('main')
@@ -57,12 +58,19 @@ async function main(): Promise<void> {
     })()
   })
 
+  // [M4] 先注册终态监听（批 pump 钩子），再 recover——避免恢复期通知落空
+  onRunSettled((runId) => {
+    void notifyRunSettled(runId).catch((err) => log.error(`settle→pump run ${runId} 失败`, err))
+  })
+
   // 崩溃恢复：running → failed(interrupted)；queued 重新入队执行
   const { requeued } = await recoverInterruptedState()
   for (const runId of requeued) {
     log.info(`recover: requeue run ${runId}`)
     try { await engine.startRun(runId) } catch (err) { log.error(`recover: run ${runId} startRun failed`, err) }
   }
+  // [M4] 批内 queued run 统一经批调度（recover 已过滤 batchId；此处按槽位约束推进）
+  await reconcileBatches()
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`received ${signal}, shutting down`)

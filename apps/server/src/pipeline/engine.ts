@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '../db'
 import {
   assets,
@@ -627,7 +627,11 @@ export async function recoverInterruptedState(): Promise<{ requeued: number[] }>
       })
       .where(eq(pipelineRuns.id, run.id))
   }
-  const queued = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.status, 'queued'))
+  // [M4] 批内 queued run 不在此 requeue——由 reconcileBatches 按槽位约束推进（防恢复瞬间绕过批内并发限制）
+  const queued = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.status, 'queued'), isNull(pipelineRuns.batchId)))
   if (stuckTasks.length || runningRuns.length || queued.length) {
     log.info(
       `崩溃恢复: tasks=${stuckTasks.length} 置 failed, runs=${runningRuns.length} 置 failed(interrupted), queued=${queued.length}`,

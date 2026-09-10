@@ -3,6 +3,7 @@ import { logger as honoLogger } from 'hono/logger'
 import { createLogger } from './logger'
 import { apiRoutes } from './routes/api-configs'
 import { assetsRoutes } from './routes/assets'
+import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
 import { memoriesRoutes } from './routes/memories'
 import { projectsRoutes } from './routes/projects'
@@ -27,6 +28,7 @@ api.route('/', assetsRoutes)
 api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
+api.route('/', batchesRoutes)
 api.route('/', tasksRoutes)
 api.route('/', apiRoutes)
 

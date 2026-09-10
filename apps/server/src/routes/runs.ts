@@ -3,8 +3,8 @@ import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { genTasks, pipelineRuns, pipelineSteps, projects } from '../db/schema'
 import { engine, recoverInterruptedState } from '../pipeline/engine'
-import { templateForRun, loadTemplate } from '../pipeline/loader'
-import { validateRunInput } from '../pipeline/refs'
+import { templateForRun } from '../pipeline/loader'
+import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
@@ -36,33 +36,17 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
   if (!project) return notFound(c, `项目 ${projectId}`)
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const templateKey = typeof body['template_key'] === 'string' ? body['template_key'] : project.templateKey
-  let template
-  try {
-    template = loadTemplate(templateKey)
-  } catch (err) {
-    throw new HttpError(400, 'bad_template', (err as Error).message)
-  }
   const input = body['input']
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new HttpError(400, 'bad_input', 'input 需为对象（brief 文本 / setting_docs 资产 id 数组 / episode_number 整数）')
   }
-  const norm = normalizeInput(template.inputs, input as Record<string, unknown>)
-  validateRunInput(template, norm)
-  const t = Date.now()
-  const row = await db
-    .insert(pipelineRuns)
-    .values({
-      projectId,
-      templateKey,
-      status: 'queued',
-      input: JSON.stringify(norm),
-      // 模板快照：run 创建时固化（引擎/续跑/审阅一律读快照，模板改动不影响运行中 run）
-      templateSnapshot: JSON.stringify(template),
-      createdAt: t,
-      updatedAt: t,
-    })
-    .returning()
-  const run = row[0]!
+  let run
+  try {
+    run = await createRunRow({ projectId, templateKey, input: input as Record<string, unknown> })
+  } catch (err) {
+    if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    throw err
+  }
   engine.startRun(run.id)
   return c.json({ run: toRunView(run) }, 202)
 }))
@@ -226,34 +210,6 @@ async function findRun(id: number) {
   return rows[0] ?? null
 }
 
-/** 按模板 inputs 声明归一化：int 转 number、bool 转 boolean、files 保持 id 数组、text 收 string */
-function normalizeInput(defs: { key: string; kind: string }[], raw: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const def of defs) {
-    const v = raw[def.key]
-    if (v === undefined || v === null || v === '') continue
-    if (def.kind === 'int') {
-      const n = typeof v === 'number' ? v : Number(v)
-      if (!Number.isInteger(n)) throw new HttpError(400, 'bad_input', `input.${def.key} 需为整数`)
-      out[def.key] = n
-    } else if (def.kind === 'bool') {
-      if (typeof v === 'boolean') out[def.key] = v
-      else if (v === 'true' || v === 1 || v === '1') out[def.key] = true
-      else if (v === 'false' || v === 0 || v === '0') out[def.key] = false
-      else throw new HttpError(400, 'bad_input', `input.${def.key} 需为布尔（true/false）`)
-    } else if (def.kind === 'files') {
-      const ids = Array.isArray(v) ? v.map(Number) : [Number(v)]
-      if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
-        throw new HttpError(400, 'bad_input', `input.${def.key} 需为资产 id 数组`)
-      }
-      out[def.key] = ids
-    } else {
-      out[def.key] = typeof v === 'string' ? v : JSON.stringify(v)
-    }
-  }
-  return out
-}
-
 function safeParse(s: string | null): unknown {
   if (!s) return null
   try { return JSON.parse(s) } catch { return s }
@@ -273,6 +229,8 @@ function toRunView(r: typeof pipelineRuns.$inferSelect): Record<string, unknown>
     projectId: r.projectId,
     templateKey: r.templateKey,
     templateVersion,
+    batchId: r.batchId,
+    batchSeq: r.batchSeq,
     status: r.status,
     currentStepKey: r.currentStepKey,
     input: safeParse(r.input),
