@@ -148,7 +148,13 @@ function toLines(list: unknown[]): LineItem[] {
   return out
 }
 
-/** 声线六级链（spec §6.2）：line.voice_hint → 角色库 → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy' */
+/**
+ * 声线六级链（spec §6.2）：line.voice_hint → 角色库 → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
+ * 各级仅接受「供应商 voice 令牌」（全 ASCII，如 Cherry / FunAudioLLM/CosyVoice2-0.5B:alex）；
+ * 自然语言声线基准短语（如「成年女声、清爽亲和」——voice_hint/角色库 voice 的方法论形态）跳过并继续降级：
+ * 语义短语不是供应商枚举值，直接下发会 400（M3 验收实测 DashScope Invalid voice）；
+ * 其原文仍逐句记录于 asset.params.voiceHint 供审计，声线链来源记实际下发级。
+ */
 export function resolveVoiceChain(p: {
   lineVoice?: string
   charVoice?: string
@@ -156,12 +162,17 @@ export function resolveVoiceChain(p: {
   settingsVoice?: string
   instanceVoice?: string
 }): { voice: string; source: 'line' | 'character' | 'params' | 'settings' | 'instance' | 'default' } {
-  if (p.lineVoice) return { voice: p.lineVoice, source: 'line' }
-  if (p.charVoice) return { voice: p.charVoice, source: 'character' }
-  if (p.paramVoice) return { voice: p.paramVoice, source: 'params' }
-  if (p.settingsVoice) return { voice: p.settingsVoice, source: 'settings' }
-  if (p.instanceVoice) return { voice: p.instanceVoice, source: 'instance' }
+  if (isProviderVoice(p.lineVoice)) return { voice: p.lineVoice!, source: 'line' }
+  if (isProviderVoice(p.charVoice)) return { voice: p.charVoice!, source: 'character' }
+  if (isProviderVoice(p.paramVoice)) return { voice: p.paramVoice!, source: 'params' }
+  if (isProviderVoice(p.settingsVoice)) return { voice: p.settingsVoice!, source: 'settings' }
+  if (isProviderVoice(p.instanceVoice)) return { voice: p.instanceVoice!, source: 'instance' }
   return { voice: 'alloy', source: 'default' }
+}
+
+/** 供应商 voice 令牌判定：全 ASCII 可打印字符（voice 枚举 /「模型:音色」格式均满足；中文语义短语不满足） */
+export function isProviderVoice(v?: string): boolean {
+  return !!v && /^[\x20-\x7e]+$/.test(v)
 }
 
 /** 情绪基调词（spec §6.2）：emotion_hint 首个「——」前段；无分隔符取前 6 字符；空 → '' */

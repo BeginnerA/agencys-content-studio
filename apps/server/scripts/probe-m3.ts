@@ -547,6 +547,16 @@ async function main(): Promise<void> {
     check(resolveVoiceChain({ paramVoice: undefined, settingsVoice: 'S', instanceVoice: 'I' }).source === 'settings', '声线链 L4 settings')
     check(resolveVoiceChain({ settingsVoice: undefined, instanceVoice: 'I' }).source === 'instance', '声线链 L5 实例')
     check(resolveVoiceChain({}).voice === 'alloy' && resolveVoiceChain({}).source === 'default', '声线链 L6 兑底 alloy/default')
+    check(
+      resolveVoiceChain({ lineVoice: '成年女声、清爽亲和', settingsVoice: 'Cherry' }).voice === 'Cherry',
+      '声线链语义短语跳过：中文 voice_hint → settings 令牌生效',
+    )
+    check(
+      resolveVoiceChain({ lineVoice: '成年女声、清爽亲和' }).voice === 'alloy' &&
+        resolveVoiceChain({ lineVoice: '成年女声、清爽亲和' }).source === 'default',
+      '声线链语义短语跳过：全中文短语 → alloy 兑底',
+    )
+    check(resolveVoiceChain({ lineVoice: 'Cherry' }).source === 'line', '声线链 ASCII 令牌：line 级原样生效')
 
     // —— 情绪透传载荷 ——
     const em = resolveEmotionPayload('干笑', { param: 'emotion', map: { 干笑: 'cheerful' } })
