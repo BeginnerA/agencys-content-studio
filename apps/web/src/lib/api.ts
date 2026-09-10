@@ -153,6 +153,8 @@ export const configApi = {
 export const assetApi = {
   /** 后端返回包裹体 { asset }（与 PATCH 同契约） */
   detail: (id: number) => api.get<{ asset: Asset }>(`/api/v1/assets/${id}`),
+  /** 软删除（导出包清理用：列表隐藏，文件保留） */
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/assets/${id}`),
 }
 
 // ===== [M3] 记忆 / 角色 =====

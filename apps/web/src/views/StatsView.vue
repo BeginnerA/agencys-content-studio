@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../components/Icon.vue'
 import { projectApi, statsApi } from '../lib/api'
 import type { Overview, Project, UsageSummary } from '../lib/types'
-import { KIND_TEXT, fmtCost } from '../lib/format'
+import { KIND_TEXT, fmtCost, fmtQty } from '../lib/format'
 
 const loading = ref(true)
 const err = ref('')
@@ -14,6 +14,8 @@ const projects = ref<Project[]>([])
 const projectId = ref<number | ''>('')
 const days = ref(30)
 const DAY_OPTIONS = [7, 30, 90] as const
+const usageGroup = ref<'provider_model' | 'kind'>('provider_model')
+const GENRE_TEXT: Record<string, string> = { drama_short: '短剧', article: '图文', talk: '口播' }
 
 const STATUS_TEXT: Record<string, string> = {
   queued: '排队中',
@@ -45,7 +47,7 @@ async function load() {
       // usage 端点无 days 参数（§B）：窗口用 from 换算
       statsApi.usage(
         qs({
-          group_by: 'provider_model',
+          group_by: usageGroup.value,
           project_id: pid,
           from: Date.now() - days.value * 86_400_000,
         }),
@@ -53,6 +55,7 @@ async function load() {
     ])
     ov.value = o
     usage.value = u
+    void loadProjects()
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -69,7 +72,35 @@ onMounted(async () => {
   }
   await load()
 })
-watch([projectId, days], () => void load())
+watch([projectId, days, usageGroup], () => void load())
+
+/** 项目对比表：逐项目调 overview（N 项目 N 请求；本地单机规模可控，非阻塞） */
+const projRows = ref<
+  Array<{ id: number; name: string; genre: string; runs: number; rate: number; cost: number; assets: number; pubs: number }>
+>([])
+async function loadProjects() {
+  const list = projects.value
+  projRows.value = []
+  if (!list.length) return
+  try {
+    const results = await Promise.all(list.map((p) => statsApi.overview(qs({ project_id: p.id, days: days.value }))))
+    projRows.value = list.map((p, i) => {
+      const r = results[i]
+      return {
+        id: p.id,
+        name: p.name,
+        genre: p.genre,
+        runs: r?.runs.total ?? 0,
+        rate: r?.runs.successRate ?? 0,
+        cost: r?.cost.total ?? 0,
+        assets: r?.assets.total ?? 0,
+        pubs: r?.publications.total ?? 0,
+      }
+    })
+  } catch {
+    // 项目对比失败不阻塞主看板
+  }
+}
 
 /** 活跃度柱状几何（viewBox 0 0 100 100；preserveAspectRatio=none 由外层容器等比拉伸） */
 const chart = computed(() => {
@@ -103,9 +134,6 @@ const statusRows = computed(() => {
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`
-}
-function fmtQty(n: number): string {
-  return n >= 10000 ? `${(n / 10000).toFixed(1)} 万` : String(Math.round(n))
 }
 </script>
 
@@ -177,7 +205,11 @@ function fmtQty(n: number): string {
         <div class="panel block">
           <div class="bh">
             <span class="bt">成本构成</span>
-            <span class="muted">provider:model · 合计 {{ fmtCost(usage?.totals.cost ?? 0) }}</span>
+            <span class="muted">合计 {{ fmtCost(usage?.totals.cost ?? 0) }} · 近 {{ days }} 天</span>
+            <div class="seg sm" style="margin-left: auto" role="group" aria-label="分组切换">
+              <button :class="{ on: usageGroup === 'provider_model' }" @click="usageGroup = 'provider_model'">按模型</button>
+              <button :class="{ on: usageGroup === 'kind' }" @click="usageGroup = 'kind'">按类型</button>
+            </div>
           </div>
           <div v-if="usage?.totals.unpriced" class="unpriced">
             <span>{{ usage.totals.unpriced }} 条用量未计价（缺定价配置）</span>
@@ -186,7 +218,7 @@ function fmtQty(n: number): string {
           <table class="tbl">
             <thead>
               <tr>
-                <th>provider:model</th>
+                <th>{{ usageGroup === 'provider_model' ? 'provider:model' : 'kind' }}</th>
                 <th>调用</th>
                 <th>用量</th>
                 <th>成本</th>
@@ -223,6 +255,42 @@ function fmtQty(n: number): string {
           </div>
           <div v-else class="empty" style="padding: 18px 0">暂无运行记录</div>
         </div>
+      </div>
+
+      <div class="panel block">
+        <div class="bh">
+          <span class="bt">项目对比</span>
+          <span class="muted">{{ projRows.length }} 个项目 · 全时间</span>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>体裁</th>
+              <th>运行</th>
+              <th>成功率</th>
+              <th>成本</th>
+              <th>资产</th>
+              <th>发布</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in projRows" :key="p.id">
+              <td>{{ p.name }}</td>
+              <td class="muted">{{ GENRE_TEXT[p.genre] ?? p.genre }}</td>
+              <td class="mono">{{ p.runs }}</td>
+              <td class="mono">{{ pct(p.rate) }}</td>
+              <td class="mono">{{ fmtCost(p.cost) }}</td>
+              <td class="mono">{{ p.assets }}</td>
+              <td class="mono">{{ p.pubs }}</td>
+              <td><RouterLink :to="`/projects/${p.id}`">查看 →</RouterLink></td>
+            </tr>
+            <tr v-if="!projRows.length">
+              <td colspan="8"><div class="empty" style="padding: 18px 0">暂无项目</div></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </template>
   </div>
@@ -430,5 +498,10 @@ function fmtQty(n: number): string {
   width: 36px;
   text-align: right;
   font-size: 12px;
+}
+
+.seg.sm button {
+  padding: 2px 9px;
+  font-size: 11.5px;
 }
 </style>

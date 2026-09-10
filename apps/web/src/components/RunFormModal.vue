@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import Modal from './Modal.vue'
+import TemplateInputFields from './TemplateInputFields.vue'
 import type { Asset, TemplateDetail, TemplateMeta } from '../lib/types'
 import { projectApi, runApi, templateApi } from '../lib/api'
 
@@ -41,32 +42,6 @@ watch(tplKey, async (key) => {
     loading.value = false
   }
 })
-
-function toggleAsset(inpKey: string, id: number) {
-  const arr = (form.value[inpKey] as number[]) ?? []
-  const i = arr.indexOf(id)
-  if (i >= 0) arr.splice(i, 1)
-  else arr.push(id)
-  form.value[inpKey] = [...arr]
-}
-
-function textOf(k: string): string {
-  const v = form.value[k]
-  return typeof v === 'string' ? v : ''
-}
-
-function numOf(k: string): string {
-  const v = form.value[k]
-  return v === undefined || v === '' ? '' : String(v)
-}
-
-function setText(k: string, s: string) {
-  form.value[k] = s
-}
-
-function setNum(k: string, s: string) {
-  form.value[k] = s
-}
 
 async function submit() {
   if (!tpl.value) return
@@ -128,57 +103,7 @@ init()
 
       <template v-if="tpl">
         <div class="desc muted" style="margin-bottom: 10px">{{ tpl.description }}</div>
-        <div v-for="inp in tpl.inputs" :key="inp.key" class="fld">
-          <template v-if="inp.kind === 'text'">
-            <label class="fld">
-              {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-              <textarea
-                :value="textOf(inp.key)"
-                rows="3"
-                @input="setText(inp.key, ($event.target as HTMLTextAreaElement).value)"
-              />
-            </label>
-          </template>
-          <template v-else-if="inp.kind === 'int'">
-            <label class="fld">
-              {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-              <input
-                :value="numOf(inp.key)"
-                type="number"
-                @input="setNum(inp.key, ($event.target as HTMLInputElement).value)"
-              />
-            </label>
-          </template>
-          <template v-else-if="inp.kind === 'bool'">
-            <label class="fld row">
-              <input
-                type="checkbox"
-                :checked="form[inp.key] === true"
-                @change="form[inp.key] = ($event.target as HTMLInputElement).checked"
-              />
-              <span>{{ inp.label }}</span>
-              <em v-if="inp.default === true" class="muted" style="font-size: 11px">默认开启</em>
-            </label>
-          </template>
-          <template v-else-if="inp.kind === 'files'">
-            <div class="fld">
-              {{ inp.label }}
-              <span class="muted">（选 {{ ((form[inp.key] as number[]) ?? []).length }} 项）</span>
-            </div>
-            <div v-if="assets.length" class="picklist">
-              <label v-for="a in assets" :key="a.id" class="opt">
-                <input
-                  type="checkbox"
-                  :checked="((form[inp.key] as number[]) ?? []).includes(a.id)"
-                  @change="toggleAsset(inp.key, a.id)"
-                />
-                <span>#{{ a.id }}</span> {{ a.name }}
-                <em>{{ a.purpose }}</em>
-              </label>
-            </div>
-            <div v-else class="muted">项目暂无资产——可先在项目页上传素材。</div>
-          </template>
-        </div>
+        <TemplateInputFields :tpl="tpl" :assets="assets" :values="form" @change="(k, v) => (form[k] = v)" />
       </template>
 
       <div v-if="err" class="err-text">{{ err }}</div>
@@ -196,37 +121,5 @@ init()
 <style scoped>
 .desc {
   margin-top: -4px;
-}
-
-.picklist {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 8px;
-}
-
-.opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  padding: 2px 4px;
-  cursor: pointer;
-}
-
-.opt:hover {
-  background: var(--hover);
-  border-radius: 5px;
-}
-
-.opt em {
-  color: var(--text-3);
-  font-style: normal;
-  margin-left: auto;
-  font-size: 11px;
 }
 </style>

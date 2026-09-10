@@ -5,9 +5,15 @@ import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
 import AssetPreviewer from '../components/AssetPreviewer.vue'
 import Icon from '../components/Icon.vue'
-import { assetApi, runApi, templateApi } from '../lib/api'
-import type { Asset, RunDetail, RunStep, TemplateDetail } from '../lib/types'
-import { fmtMs, fmtTime, runStatus, skipReasonText, stepStatus } from '../lib/format'
+import ExportWizardModal from '../components/ExportWizardModal.vue'
+import PublishModal from '../components/PublishModal.vue'
+import { assetApi, exportApi, publicationApi, runApi, statsApi, templateApi } from '../lib/api'
+import type {
+  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, TemplateDetail, UsageSummary,
+} from '../lib/types'
+import {
+  fmtCost, fmtMs, fmtQty, fmtSize, fmtTime, PLATFORM_TEXT, runStatus, skipReasonText, stepStatus,
+} from '../lib/format'
 import { useStudio } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
@@ -131,6 +137,11 @@ async function loadDetail() {
     }
     void loadGate()
     void loadBadges()
+    // [M4] 附加数据仅初载一次（后续由显式刷新点驱动，避免 step 事件高频重复拉取）
+    if (!extrasLoaded) {
+      extrasLoaded = true
+      void loadExtras(d.run.projectId)
+    }
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   }
@@ -213,7 +224,10 @@ function onStep(p: StudioEventMap['run.step']) {
   }
 }
 function onTerminal(p: StudioEventMap['run.completed' | 'run.failed']) {
-  if (p.runId === runId) void loadDetail()
+  if (p.runId === runId) {
+    void loadDetail()
+    refreshExtras()
+  }
 }
 function onGate(p: StudioEventMap['run.gate']) {
   if (p.runId === runId) void loadDetail()
@@ -344,6 +358,85 @@ async function loadBadges() {
   }
   badges.value = next
 }
+
+// ===== [M4] 导出包 / 本 run 成本 / 发布记录 =====
+const showExport = ref(false)
+const showPublish = ref(false)
+const exportsList = ref<ExportAssetLite[]>([])
+const costUsage = ref<UsageSummary | null>(null)
+const publications = ref<Publication[]>([])
+const runAssets = ref<RunAssetLite[]>([])
+let extrasLoaded = false
+
+const COST_KIND_TEXT: Record<string, string> = { llm: 'LLM', image: '图像', video: '视频', tts: '配音' }
+
+/** 本 run 附加数据（四路并行：导出包 / 用量聚合 / 项目发布全量后按 runId 过滤 / run 产物） */
+async function loadExtras(projectId: number) {
+  try {
+    const [ex, us, pub, ra] = await Promise.all([
+      exportApi.list(`?run_id=${runId}`),
+      statsApi.usage(`?run_id=${runId}&group_by=kind`),
+      publicationApi.list(`?project_id=${projectId}`),
+      exportApi.runAssets(runId),
+    ])
+    exportsList.value = ex.items
+    costUsage.value = us
+    publications.value = pub.items.filter((p) => p.runId === runId)
+    runAssets.value = ra.items
+  } catch (e) {
+    // 附加数据失败不阻断主视图（成本/导出/发布为辅助信息）
+    console.warn('loadExtras 失败', e)
+  }
+}
+
+/** 显式刷新（导出完成 / 发布登记 / run 终态） */
+function refreshExtras() {
+  const pid = detail.value?.run.projectId
+  if (pid !== undefined) void loadExtras(pid)
+}
+
+/** 发布记录资产名（run 产物内查找；软删/跨 run 资产回退 #id） */
+function assetNameOf(id: number | null): string {
+  if (id === null) return '—'
+  return runAssets.value.find((a) => a.id === id)?.name ?? `#${id}`
+}
+
+/** 「标记发布」预选：run 内最新视频（通常是成片） */
+const publishCandidate = computed<number | null>(() => {
+  const vids = runAssets.value.filter((a) => a.kind === 'video')
+  const last = vids[vids.length - 1]
+  return last ? last.id : null
+})
+
+function onExportDone() {
+  showExport.value = false
+  refreshExtras()
+}
+
+async function removeExport(ex: ExportAssetLite) {
+  if (!confirm(`删除导出包「${ex.name}」？`)) return
+  try {
+    await assetApi.remove(ex.id)
+    refreshExtras()
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function removePub(pub: Publication) {
+  if (!confirm(`删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`)) return
+  try {
+    await publicationApi.remove(pub.id)
+    refreshExtras()
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function onPubSaved() {
+  showPublish.value = false
+  refreshExtras()
+}
 </script>
 
 <template>
@@ -361,6 +454,9 @@ async function loadBadges() {
         <button v-if="canCancel" class="btn danger" :disabled="busy" @click="cancelRun">取消运行</button>
         <button v-if="canResume" class="btn primary" :disabled="busy" @click="resumeRun">
           <Icon name="refresh" :size="14" /> 断点续跑
+        </button>
+        <button class="btn" :disabled="!runAssets.length" title="选择产物打包下载" @click="showExport = true">
+          <Icon name="download" :size="14" /> 导出发布包
         </button>
         <button class="btn" @click="toggleLog">
           <Icon :name="showLog ? 'x' : 'doc'" :size="14" /> {{ showLog ? '隐藏日志' : '运行日志' }}
@@ -455,9 +551,83 @@ async function loadBadges() {
           </div>
 
           <TaskPanel v-if="hasTasks" :run-id="runId" :active="active" class="tpanel-wrap" @changed="loadDetail()" />
+
+          <!-- [M4] 本 run 成本（usage_records 聚合，按 kind） -->
+          <div class="panel mini">
+            <div class="lhead">
+              <span class="lt">本 run 成本</span>
+              <span class="muted mono">{{ costUsage ? fmtCost(costUsage.totals.cost) : '—' }}</span>
+            </div>
+            <div v-if="costUsage?.items.length" class="mrows">
+              <div v-for="it in costUsage.items" :key="it.key" class="mrow">
+                <span class="chip">{{ COST_KIND_TEXT[it.key] ?? it.key }}</span>
+                <span class="muted mono">{{ fmtQty(it.quantity) }}</span>
+                <span class="grow" />
+                <span v-if="it.unpriced" class="badge skip">未计价 {{ it.unpriced }}</span>
+                <span class="mono">{{ fmtCost(it.cost) }}</span>
+              </div>
+            </div>
+            <div v-else class="empty" style="padding: 10px 0">暂无用量记录</div>
+          </div>
+
+          <!-- [M4] 导出包（purpose=export 资产） -->
+          <div class="panel mini">
+            <div class="lhead">
+              <span class="lt">导出包</span>
+              <button class="btn sm" :disabled="!runAssets.length" @click="showExport = true">
+                <Icon name="download" :size="12" /> 新建
+              </button>
+            </div>
+            <div v-if="exportsList.length" class="mrows">
+              <div v-for="ex in exportsList" :key="ex.id" class="mrow">
+                <span class="enm" :title="ex.name">{{ ex.name }}</span>
+                <span class="muted">{{ fmtSize(ex.fileSize) }}</span>
+                <span class="grow" />
+                <a class="btn sm" :href="exportApi.fileUrl(ex.id, true)"><Icon name="download" :size="12" /> 下载</a>
+                <button class="btn sm danger" @click="removeExport(ex)">删除</button>
+              </div>
+            </div>
+            <div v-else class="empty" style="padding: 10px 0">还没有导出包——选择产物一键打包下载</div>
+          </div>
+
+          <!-- [M4] 发布记录（本 run 登记） -->
+          <div class="panel mini">
+            <div class="lhead">
+              <span class="lt">发布记录</span>
+              <button class="btn sm" @click="showPublish = true">
+                <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
+              </button>
+            </div>
+            <div v-if="publications.length" class="mrows">
+              <div v-for="pub in publications" :key="pub.id" class="mrow">
+                <span class="badge">{{ PLATFORM_TEXT[pub.platform] ?? pub.platform }}</span>
+                <span class="muted">{{ assetNameOf(pub.assetId) }}</span>
+                <span class="muted">{{ pub.publishedAt ? fmtTime(pub.publishedAt) : '—' }}</span>
+                <span class="muted mono">播放 {{ pub.metrics?.views ?? 0 }}</span>
+                <span class="grow" />
+                <a v-if="pub.url" :href="pub.url" target="_blank" rel="noopener" title="打开链接">
+                  <Icon name="external" :size="12" />
+                </a>
+                <button class="btn sm danger" @click="removePub(pub)">删除</button>
+              </div>
+            </div>
+            <div v-else class="empty" style="padding: 10px 0">未登记发布——发布后回来标记，积累复盘数据</div>
+          </div>
         </div>
       </div>
     </template>
+
+    <!-- [M4] 单 run 导出向导 / 标记发布 -->
+    <ExportWizardModal v-if="showExport" :run-id="runId" @done="onExportDone" @close="showExport = false" />
+    <PublishModal
+      v-if="showPublish"
+      :project-id="run?.projectId ?? 0"
+      :run-id="runId"
+      :asset-options="runAssets.map((a) => ({ id: a.id, name: a.name }))"
+      :default-asset-id="publishCandidate"
+      @done="onPubSaved"
+      @close="showPublish = false"
+    />
 
     <!-- 产物统一预览 -->
     <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewStart" @close="previewOpen = false" />
@@ -768,6 +938,40 @@ async function loadBadges() {
 .tpanel-wrap {
   max-height: 360px;
   overflow-y: auto;
+}
+
+/* [M4] 右栏辅助面板（成本 / 导出包 / 发布记录） */
+.mini {
+  padding: 10px 14px;
+}
+
+.mrows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.enm {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1080px) {

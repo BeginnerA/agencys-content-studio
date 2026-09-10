@@ -182,6 +182,13 @@ a:hover {
   border-color: rgb(148 163 184 / 16%);
 }
 
+/* [M4] 批次部分失败：warn 色（区别于 run failed 红） */
+.badge.partial_failed {
+  background: var(--warn-weak);
+  color: var(--warn);
+  border-color: rgb(245 158 11 / 26%);
+}
+
 /* [M2] skipped / 免审放行：中性灰（ghost=弱化，用于自动跳过原因） */
 .badge.skip {
   background: rgb(148 163 184 / 8%);

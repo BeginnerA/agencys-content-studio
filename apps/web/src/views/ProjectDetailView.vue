@@ -5,9 +5,11 @@ import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
-import { projectApi, uploadFiles } from '../lib/api'
-import type { Asset, ProjectDetail, Run } from '../lib/types'
-import { runStatus, fmtTime, fmtMs, purposeText, stepStatus } from '../lib/format'
+import BatchFormModal from '../components/BatchFormModal.vue'
+import PublishModal from '../components/PublishModal.vue'
+import { batchApi, projectApi, publicationApi, uploadFiles } from '../lib/api'
+import type { Asset, Batch, ProjectDetail, Publication, Run } from '../lib/types'
+import { runStatus, fmtTime, fmtMs, purposeText, stepStatus, batchStatus, PLATFORM_TEXT } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 
 const route = useRoute()
@@ -28,6 +30,20 @@ const uploadFilesSel = ref<File[]>([])
 const uploading = ref(false)
 const uploadErr = ref('')
 
+// [M4] 批次 + 发布记录
+const showBatch = ref(false)
+const batches = ref<Batch[]>([])
+const pubs = ref<Publication[]>([])
+const pubSummary = ref({ views: 0, interactions: 0 })
+const showPublish = ref(false)
+const editingPub = ref<Publication | null>(null)
+
+/** 发布记录的资产名（复用已加载 assets；找不到回退 #id） */
+function assetNameOf(id: number | null): string {
+  if (id === null) return '—'
+  return assets.value.find((a) => a.id === id)?.name ?? `#${id}`
+}
+
 const purposes = computed(() => {
   const set = new Set(assets.value.map((a) => a.purpose))
   return ['all', ...set]
@@ -41,14 +57,19 @@ async function loadAll() {
   loading.value = true
   err.value = ''
   try {
-    const [p, r, a] = await Promise.all([
+    const [p, r, a, b, pub] = await Promise.all([
       projectApi.detail(projectId),
       projectApi.runs(projectId),
       projectApi.assets(projectId, '?limit=200'),
+      batchApi.list(`?project_id=${projectId}`),
+      publicationApi.list(`?project_id=${projectId}`),
     ])
     project.value = p
     runs.value = r.items
     assets.value = a.items
+    batches.value = b.items
+    pubs.value = pub.items
+    pubSummary.value = pub.summary
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -75,6 +96,31 @@ function onRunCreated(runId: number) {
   showRunForm.value = false
   void loadAll()
   router.push(`/runs/${runId}`)
+}
+
+function onBatchCreated(batchId: number) {
+  showBatch.value = false
+  router.push(`/batches/${batchId}`)
+}
+
+function openPublish(pub: Publication | null) {
+  editingPub.value = pub
+  showPublish.value = true
+}
+
+async function removePub(pub: Publication) {
+  if (!confirm(`删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`)) return
+  try {
+    await publicationApi.remove(pub.id)
+    await loadAll()
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function onPubSaved() {
+  showPublish.value = false
+  void loadAll()
 }
 
 function onUploadChange(e: Event) {
@@ -117,6 +163,9 @@ function errOf(r: Run): string {
         <button class="btn" @click="showUpload = true">
           <Icon name="upload" :size="14" /> 上传素材
         </button>
+        <button class="btn" @click="showBatch = true">
+          <Icon name="bolt" :size="14" /> 批量运行
+        </button>
         <button class="btn primary" @click="showRunForm = true">
           <Icon name="bolt" :size="14" /> 启动流水线
         </button>
@@ -128,6 +177,36 @@ function errOf(r: Run): string {
 
     <template v-if="project">
       <div class="brief muted">{{ project.brief }}</div>
+
+      <!-- [M4] 批次 -->
+      <div v-if="batches.length" class="panel block">
+        <div class="bh">
+          <span class="bt">批量运行（批次）</span>
+          <span class="muted">{{ batches.length }} 个</span>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>成功 / 失败</th>
+              <th>更新时间</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="b in batches" :key="b.id" class="rrow" @click="router.push(`/batches/${b.id}`)">
+              <td>{{ b.name }}</td>
+              <td><span class="badge" :class="batchStatus(b.status).cls">{{ batchStatus(b.status).text }}</span></td>
+              <td class="mono">{{ b.finished }}/{{ b.total }}</td>
+              <td class="mono">{{ b.succeeded }} / {{ b.failed }}</td>
+              <td class="muted" style="white-space: nowrap">{{ fmtTime(b.updatedAt) }}</td>
+              <td><span class="muted">详情 →</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <!-- 运行列表 -->
       <div class="panel block">
@@ -191,6 +270,51 @@ function errOf(r: Run): string {
         </div>
         <AssetGrid :assets="filteredAssets" :loading="loading" />
       </div>
+
+      <!-- [M4] 发布记录 -->
+      <div class="panel block">
+        <div class="bh">
+          <span class="bt">发布记录</span>
+          <span class="muted">已发布 {{ pubs.length }} 条 · 播放 {{ pubSummary.views }} · 互动 {{ pubSummary.interactions }}</span>
+          <button class="btn sm" style="margin-left: auto" @click="openPublish(null)">
+            <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
+          </button>
+        </div>
+        <table v-if="pubs.length" class="tbl">
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>资产</th>
+              <th>日期</th>
+              <th>播放 / 点赞 / 评论 / 收藏 / 转发</th>
+              <th>链接</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="pub in pubs" :key="pub.id">
+              <td><span class="badge">{{ PLATFORM_TEXT[pub.platform] ?? pub.platform }}</span></td>
+              <td class="muted">{{ assetNameOf(pub.assetId) }}</td>
+              <td class="muted">{{ pub.publishedAt ? fmtTime(pub.publishedAt) : '—' }}</td>
+              <td class="mono" style="font-size: 12px">
+                {{ pub.metrics?.views ?? 0 }} / {{ pub.metrics?.likes ?? 0 }} / {{ pub.metrics?.comments ?? 0 }} /
+                {{ pub.metrics?.favorites ?? 0 }} / {{ pub.metrics?.shares ?? 0 }}
+              </td>
+              <td>
+                <a v-if="pub.url" :href="pub.url" target="_blank" rel="noopener"><Icon name="external" :size="12" /> 打开</a>
+                <span v-else class="muted">—</span>
+              </td>
+              <td>
+                <div class="ops">
+                  <button class="btn sm" @click="openPublish(pub)">编辑</button>
+                  <button class="btn sm danger" @click="removePub(pub)">删除</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty" style="padding: 16px 0">还没有发布记录——发布后回来登记，积累复盘数据</div>
+      </div>
     </template>
 
     <!-- 启动 run -->
@@ -220,6 +344,19 @@ function errOf(r: Run): string {
         </button>
       </template>
     </Modal>
+
+    <!-- [M4] 批量创建 -->
+    <BatchFormModal v-if="showBatch" :project-id="projectId" @done="onBatchCreated" @close="showBatch = false" />
+
+    <!-- [M4] 标记发布 / 编辑回填 -->
+    <PublishModal
+      v-if="showPublish"
+      :project-id="projectId"
+      :asset-options="assets.map((a) => ({ id: a.id, name: a.name }))"
+      :publication="editingPub"
+      @done="onPubSaved"
+      @close="showPublish = false"
+    />
   </div>
 </template>
 
@@ -263,6 +400,11 @@ function errOf(r: Run): string {
 
 .run-flash {
   animation: blink 1.2s infinite;
+}
+
+.ops {
+  display: flex;
+  gap: 6px;
 }
 
 @keyframes blink {

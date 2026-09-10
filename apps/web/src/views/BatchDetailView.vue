@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import { batchApi, exportApi } from '../lib/api'
 import type { BatchDetail } from '../lib/types'
-import { runStatus, fmtTime, fmtCost } from '../lib/format'
+import { runStatus, fmtTime, fmtCost, batchStatus } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
@@ -28,17 +28,6 @@ const progress = computed(() => {
   if (!b || !b.total) return 0
   return Math.round((b.finished / b.total) * 100)
 })
-
-const BATCH_STATUS: Record<string, { text: string; cls: string }> = {
-  running: { text: '进行中', cls: 'running' },
-  completed: { text: '已完成', cls: 'completed' },
-  partial_failed: { text: '部分失败', cls: 'partial_failed' },
-  failed: { text: '失败', cls: 'failed' },
-  cancelled: { text: '已取消', cls: 'cancelled' },
-}
-function batchStatus(s: string): { text: string; cls: string } {
-  return BATCH_STATUS[s] ?? { text: s, cls: '' }
-}
 
 let projectJoined = false
 let timer: number | undefined
@@ -308,12 +297,5 @@ function inputSummary(input: Record<string, unknown> | null): string {
 
 .em {
   color: var(--bad);
-}
-
-/* batch partial_failed：全局 badge 无该态，补 warn 色 */
-.badge.partial_failed {
-  background: var(--warn-weak);
-  color: var(--warn);
-  border-color: rgb(245 158 11 / 26%);
 }
 </style>

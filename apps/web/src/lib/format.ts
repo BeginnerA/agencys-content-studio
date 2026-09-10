@@ -124,3 +124,21 @@ export function fmtCost(n: number | null | undefined): string {
   if (n === 0) return '¥0'
   return `¥${n < 1 ? n.toFixed(4) : n.toFixed(2)}`
 }
+
+const BATCH_TEXT: Record<string, string> = {
+  running: '进行中',
+  completed: '已完成',
+  partial_failed: '部分失败',
+  failed: '失败',
+  cancelled: '已取消',
+}
+
+/** 批次状态展示（badge class 直接用 batch status；partial_failed 全局补 warn 色） */
+export function batchStatus(s: string): StatusMeta {
+  return { text: BATCH_TEXT[s] ?? s, cls: s }
+}
+
+/** 数量展示（≥1 万缩为「x.x 万」） */
+export function fmtQty(n: number): string {
+  return n >= 10000 ? `${(n / 10000).toFixed(1)} 万` : String(Math.round(n))
+}

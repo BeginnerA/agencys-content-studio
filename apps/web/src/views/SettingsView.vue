@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import ApiConfigForm from '../components/ApiConfigForm.vue'
 import Icon from '../components/Icon.vue'
-import { configApi } from '../lib/api'
-import type { ApiConfig, ApiProvider } from '../lib/types'
+import { configApi, settingsApi, statsApi } from '../lib/api'
+import type { ApiConfig, ApiProvider, UsageItem } from '../lib/types'
+import { fmtQty } from '../lib/format'
 
 // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）
 const TABS = [
@@ -70,7 +71,10 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  void loadPricing()
+})
 
 async function setDefault(cfgId: number, providerKey: string) {
   try {
@@ -116,6 +120,100 @@ async function test(cfg: ApiConfig & { name: string }) {
 
 function msgOf(id: number): string {
   return testMsg.value[id] ?? ''
+}
+
+// ===== [M4] 用量单价（settings.pricing 表格编辑器 + 未计价引导） =====
+interface PriceRow {
+  kind: string
+  key: string
+  unit: string
+  price: string
+}
+
+const PRICE_KINDS = ['llm', 'image', 'video', 'tts'] as const
+const PRICE_UNITS = ['tokens_in', 'tokens_out', 'image', 'second', 'char'] as const
+const PRICE_UNIT_TEXT: Record<string, string> = {
+  tokens_in: 'tokens_in（输入 · 元/百万）',
+  tokens_out: 'tokens_out（输出 · 元/百万）',
+  image: 'image（元/张）',
+  second: 'second（元/秒）',
+  char: 'char（元/千字符）',
+}
+
+const priceRows = ref<PriceRow[]>([])
+const unpricedRows = ref<UsageItem[]>([])
+const priceBusy = ref(false)
+const priceMsg = ref('')
+const priceMsgBad = ref(false)
+
+/** settings.pricing 嵌套 JSON → 行数组 */
+function rowsFromPricing(v: unknown): PriceRow[] {
+  const out: PriceRow[] = []
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [kind, kv] of Object.entries(v as Record<string, unknown>)) {
+      if (!kv || typeof kv !== 'object' || Array.isArray(kv)) continue
+      for (const [key, uv] of Object.entries(kv as Record<string, unknown>)) {
+        if (!uv || typeof uv !== 'object' || Array.isArray(uv)) continue
+        for (const [unit, price] of Object.entries(uv as Record<string, unknown>)) {
+          out.push({ kind, key, unit, price: String(price ?? '') })
+        }
+      }
+    }
+  }
+  return out
+}
+
+/** 行数组 → settings.pricing（key 为空/单价非法/负数的行跳过） */
+function pricingFromRows(): Record<string, Record<string, Record<string, number>>> {
+  const out: Record<string, Record<string, Record<string, number>>> = {}
+  for (const r of priceRows.value) {
+    const key = r.key.trim()
+    const price = Number(r.price)
+    if (!key || !Number.isFinite(price) || price < 0) continue
+    const byKey = (out[r.kind] ??= {})
+    const byUnit = (byKey[key] ??= {})
+    byUnit[r.unit] = price
+  }
+  return out
+}
+
+async function loadPricing() {
+  try {
+    const [s, u] = await Promise.all([
+      settingsApi.list(),
+      statsApi.usage(`?group_by=provider_model&from=${Date.now() - 30 * 86_400_000}`),
+    ])
+    priceRows.value = rowsFromPricing(s.items.find((it) => it.key === 'pricing')?.value)
+    unpricedRows.value = u.items.filter((it) => it.unpriced > 0)
+  } catch {
+    // 定价/用量为辅助信息，失败静默（本页主体不受影响）
+  }
+}
+
+function addPriceRow() {
+  priceRows.value.push({ kind: 'llm', key: '', unit: 'tokens_in', price: '' })
+}
+
+/** 「补价」预填两行（LLM 输入/输出；媒体类请改「类型/单位」） */
+function addFromUnpriced(key: string) {
+  priceRows.value.push({ kind: 'llm', key, unit: 'tokens_in', price: '' })
+  priceRows.value.push({ kind: 'llm', key, unit: 'tokens_out', price: '' })
+}
+
+async function savePricing() {
+  priceBusy.value = true
+  priceMsg.value = ''
+  try {
+    await settingsApi.put('pricing', pricingFromRows())
+    priceMsgBad.value = false
+    priceMsg.value = '✓ 已保存——对之后的用量生效，历史记录保留原快照价'
+    await loadPricing()
+  } catch (e) {
+    priceMsgBad.value = true
+    priceMsg.value = `✗ ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    priceBusy.value = false
+  }
 }
 </script>
 
@@ -207,6 +305,69 @@ function msgOf(id: number): string {
             </table>
           </div>
         </template>
+      </div>
+
+      <!-- [M4] 用量单价（成本核算 settings.pricing） -->
+      <div class="panel pricing">
+        <div class="ph">
+          <span class="pt">用量单价</span>
+          <span class="muted">记录时快照计价——改价只影响之后的用量，不改历史账</span>
+          <div class="pops">
+            <button class="btn sm" @click="addPriceRow">
+              <Icon name="plus" :size="12" :stroke-width="2.2" /> 添加行
+            </button>
+            <button class="btn sm primary" :disabled="priceBusy" @click="savePricing">
+              {{ priceBusy ? '保存中…' : '保存' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="priceMsg" class="pmsg" :class="{ bad: priceMsgBad }">{{ priceMsg }}</div>
+
+        <table v-if="priceRows.length" class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 90px">类型</th>
+              <th>供应商 / 模型（key）</th>
+              <th style="width: 220px">单位</th>
+              <th style="width: 120px">单价</th>
+              <th style="width: 64px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r, i) in priceRows" :key="i">
+              <td>
+                <select v-model="r.kind">
+                  <option v-for="k in PRICE_KINDS" :key="k" :value="k">{{ k }}</option>
+                </select>
+              </td>
+              <td>
+                <input v-model="r.key" type="text" class="mono" placeholder="如 deepseek-chat、volcengine_image:*" />
+              </td>
+              <td>
+                <select v-model="r.unit">
+                  <option v-for="u in PRICE_UNITS" :key="u" :value="u">{{ PRICE_UNIT_TEXT[u] }}</option>
+                </select>
+              </td>
+              <td><input v-model="r.price" type="number" min="0" step="0.0001" placeholder="0" /></td>
+              <td><button class="btn sm danger" @click="priceRows.splice(i, 1)">删除</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty" style="padding: 14px 0">
+          暂无定价——未命中定价的用量记为「未计价」（cost 空缺，不计入成本统计）
+        </div>
+
+        <div v-if="unpricedRows.length" class="unpriced">
+          <div class="uphead">
+            <span class="badge skip">近 30 天未计价 {{ unpricedRows.length }} 项</span>
+            <span class="muted">「补价」按 LLM（输入/输出）预填两行，请按实际计费核对类型与单位</span>
+          </div>
+          <div v-for="u in unpricedRows" :key="u.key" class="uprow">
+            <span class="mono uk" :title="u.key">{{ u.key }}</span>
+            <span class="muted">{{ u.unpriced }} 次 · {{ fmtQty(u.quantity) }}</span>
+            <button class="btn sm" style="margin-left: auto" @click="addFromUnpriced(u.key)">补价</button>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -353,5 +514,73 @@ function msgOf(id: number): string {
 .ops {
   display: flex;
   gap: 6px;
+}
+
+/* [M4] 用量单价 */
+.pricing {
+  padding: 14px 16px;
+  margin-top: 4px;
+}
+
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pt {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.pops {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.pmsg {
+  font-size: 12px;
+  color: var(--ok);
+  margin-bottom: 8px;
+}
+
+.pmsg.bad {
+  color: var(--bad);
+}
+
+.pricing .tbl td input,
+.pricing .tbl td select {
+  width: 100%;
+}
+
+.unpriced {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.uphead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.uprow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 3px 0;
+}
+
+.uk {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
