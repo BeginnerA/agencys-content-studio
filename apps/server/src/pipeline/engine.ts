@@ -22,6 +22,24 @@ import { RunCancelledError, StepError } from './types'
 
 const log = createLogger('engine')
 
+/** [M4] run 终态监听（batch pump 挂钩点）；listener 异常隔离，不影响引擎主流程 */
+type SettledListener = (runId: number) => void
+const settledListeners = new Set<SettledListener>()
+
+export function onRunSettled(cb: SettledListener): void {
+  settledListeners.add(cb)
+}
+
+function notifySettled(runId: number): void {
+  for (const cb of settledListeners) {
+    try {
+      cb(runId)
+    } catch (err) {
+      log.warn(`run ${runId} settled listener 异常`, { error: (err as Error).message })
+    }
+  }
+}
+
 const now = (): number => Date.now()
 
 /** gate 决策记录挂在 step.output（保留审阅痕迹供 UI 展示） */
@@ -166,6 +184,9 @@ class PipelineEngine {
       .update(genTasks)
       .set({ status: 'cancelled', errorMsg: 'run cancelled', completedAt: t, updatedAt: t })
       .where(and(eq(genTasks.runId, runId), inArray(genTasks.status, ['pending', 'processing'])))
+    // [M4] 取消即终态：直接通知（覆盖 queued 等无活跃执行链的 run；与 runChain finally 的
+    // 重复通知幂等无害——pump 每轮重算）
+    notifySettled(runId)
   }
 
   // ---------- 内部执行链 ----------
@@ -344,6 +365,12 @@ class PipelineEngine {
       emitStudioEvent({ type: 'run.failed', runId, stepKey: '', error: msg })
     } finally {
       this.active.delete(runId)
+      // [M4] 终态通知（单点）：覆盖全部收敛出口——allDone 完成、失败收敛、链级兜底 catch、
+      // executeStep 失败（置 run failed 后循环顶部 break）、调度停滞防御、RunCancelledError。
+      // 查库判定而非按分支埋点：waiting_input（gate 挂起）不是终态，不通知。
+      void this.settleIfTerminal(runId).catch((err) =>
+        log.warn(`run ${runId} settle 通知失败`, { error: (err as Error).message }),
+      )
     }
   }
 
@@ -512,6 +539,17 @@ class PipelineEngine {
       log.error(`run ${run.id} step ${def.key} failed: ${msg}`)
       return 'failed'
     }
+  }
+
+  /** [M4] run 已终态（completed/failed/cancelled）→ 通知监听者；其余状态静默 */
+  private async settleIfTerminal(runId: number): Promise<void> {
+    const rows = await db
+      .select({ status: pipelineRuns.status })
+      .from(pipelineRuns)
+      .where(eq(pipelineRuns.id, runId))
+      .limit(1)
+    const status = rows[0]?.status
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') notifySettled(runId)
   }
 
   private parseOutput(output: string | null): StepOutputDoc {

@@ -10,6 +10,8 @@ export type StudioEvent =
   | { type: 'run.completed'; runId: number }
   | { type: 'run.failed'; runId: number; stepKey: string; error: string }
   | { type: 'task.updated'; runId: number | null; taskId: number; status: string; error?: string }
+  | { type: 'batch.updated'; runId: number | null; batchId: number; projectId: number
+      status: string; finished: number; total: number }
 
 type Handler = (e: StudioEvent) => void
 
