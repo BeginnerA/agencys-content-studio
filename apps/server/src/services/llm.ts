@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { asc, desc, eq, and } from 'drizzle-orm'
 import { db } from '../db'
-import { apiConfigs } from '../db/schema'
+import { apiConfigs, apiProviders } from '../db/schema'
 import { env, PROMPTS_DIR } from '../env'
 import { createLogger } from '../logger'
 import { resolveApiKey } from './secrets'
@@ -13,6 +13,16 @@ export interface LlmEndpoint {
   baseUrl: string
   apiKey: string
   model: string
+}
+
+/** 供应商目录 defaultUrl 兜底：实例未填 base_url 时回退目录内置端点（base_url 语义为「覆盖 default_url」） */
+export async function providerDefaultUrl(providerKey: string): Promise<string> {
+  const rows = await db
+    .select({ url: apiProviders.defaultUrl })
+    .from(apiProviders)
+    .where(eq(apiProviders.key, providerKey))
+    .limit(1)
+  return rows[0]?.url?.trim() ?? ''
 }
 
 /** 解析 llm 端点：api_configs（is_default 优先）→ env 兜底 */
@@ -26,7 +36,8 @@ export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
   const cfg = rows[0]
   if (cfg) {
     const apiKey = resolveApiKey(cfg.apiKeyRef)
-    return { baseUrl: (cfg.baseUrl ?? '').replace(/\/+$/, ''), apiKey, model: cfg.model ?? env.llm.model }
+    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
+    return { baseUrl, apiKey, model: cfg.model ?? env.llm.model }
   }
   return {
     baseUrl: env.llm.baseUrl.replace(/\/+$/, ''),
@@ -44,11 +55,17 @@ export interface ChatOptions {
   temperature?: number
   maxTokens?: number
   timeoutMs?: number
+  /** 允许「仅推理无正文」视为成功（连通性测试用）：返回 reasoning 内容而不抛错 */
+  allowReasoningOnly?: boolean
 }
 
 export class LlmNotConfiguredError extends Error {
-  constructor() {
-    super('LLM 未配置：请在 .env 设置 AGENT_LLM_BASE_URL/AGENT_LLM_API_KEY，或在 Settings 中配置 llm 类型 api_configs')
+  constructor(detail?: string) {
+    super(
+      detail
+        ? `LLM 未配置：${detail}`
+        : 'LLM 未配置：请在 .env 设置 AGENT_LLM_BASE_URL/AGENT_LLM_API_KEY，或在 Settings 中配置 llm 类型 api_configs',
+    )
     this.name = 'LlmNotConfiguredError'
   }
 }
@@ -60,7 +77,9 @@ export async function chatComplete(
   opts: ChatOptions = {},
 ): Promise<string> {
   const ep = endpoint ?? (await resolveLlmEndpoint())
-  if (!ep.baseUrl || !ep.apiKey) throw new LlmNotConfiguredError()
+  if (!ep.baseUrl)
+    throw new LlmNotConfiguredError('端点缺失：实例未填 base_url 且供应商目录无默认端点（或 .env 未设置 AGENT_LLM_BASE_URL）')
+  if (!ep.apiKey) throw new LlmNotConfiguredError('API Key 缺失：请在 Settings → AI 配置检查实例密钥，或 .env 设置 AGENT_LLM_API_KEY')
 
   const timeoutMs = opts.timeoutMs ?? 120_000
   const controller = new AbortController()
@@ -86,7 +105,10 @@ export async function chatComplete(
     const choice = data.choices?.[0]
     const content = data.choices?.[0]?.message?.content
     if (!content) {
-      if (choice?.message?.reasoning_content) throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
+      if (choice?.message?.reasoning_content) {
+        if (opts.allowReasoningOnly) return choice.message.reasoning_content
+        throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
+      }
       throw new Error('LLM 响应为空（choices/message/content 缺失）')
     }
     return content

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import Modal from './Modal.vue'
+import SearchSelect from './SearchSelect.vue'
 import type { ApiConfig, ApiProvider } from '../lib/types'
 import { configApi } from '../lib/api'
 
@@ -26,8 +27,6 @@ const modelOptions = ref<string[]>([])
 const fetchNote = ref('')
 const fetchNoteWarn = ref(false)
 const fetchBusy = ref(false)
-/** 手动输入模型模式（默认从候选列表选择） */
-const manualModel = ref(false)
 
 watch(
   () => props.config,
@@ -42,7 +41,6 @@ watch(
     fetchNote.value = ''
     fetchNoteWarn.value = false
     fetchBusy.value = false
-    manualModel.value = false
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
     if (c) void fetchModels(true)
   },
@@ -125,19 +123,16 @@ async function submit() {
     </label>
 
     <div class="fld">
-      <div class="flabel">
-        <span>模型</span>
-        <button type="button" class="lnk" @click="manualModel = !manualModel">
-          {{ manualModel ? '从列表选择' : '手动输入' }}
-        </button>
-      </div>
+      <span>模型</span>
       <div class="mrow">
-        <select v-if="!manualModel" v-model="model" aria-label="模型（从候选列表选择）">
-          <option value="">（使用供应商默认模型）</option>
-          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
-          <option v-if="model && !modelOptions.includes(model)" :value="model">{{ model }}（当前）</option>
-        </select>
-        <input v-else v-model="model" type="text" placeholder="输入模型 ID，如 deepseek-chat" aria-label="模型（手动输入）" />
+        <SearchSelect
+          v-model="model"
+          class="grow"
+          :options="modelOptions"
+          blank-label="（使用供应商默认模型）"
+          placeholder="搜索或输入模型 ID"
+          aria-label="模型（搜索或输入模型 ID）"
+        />
         <button type="button" class="btn sm" :disabled="fetchBusy" @click="fetchModels()">
           {{ fetchBusy ? '获取中…' : '获取模型' }}
         </button>
@@ -174,34 +169,13 @@ async function submit() {
   color: var(--text-2);
 }
 
-.flabel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.lnk {
-  border: none;
-  background: none;
-  padding: 0;
-  font-family: inherit;
-  font-size: 11.5px;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.lnk:hover {
-  color: var(--accent-h);
-}
-
 .mrow {
   display: flex;
   gap: 8px;
   margin-top: 5px;
 }
 
-.mrow select,
-.mrow input {
+.grow {
   flex: 1;
   min-width: 0;
 }

@@ -3,7 +3,7 @@ import { and, asc, desc, eq, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, apiProviders } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
-import { chatComplete } from '../services/llm'
+import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
 import { synthSpeech } from '../services/tts'
 import { HttpError, h, idParam, notFound } from './helpers'
@@ -222,11 +222,13 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   if (!cfg) return notFound(c, `配置 ${id}`)
   const t0 = Date.now()
   if (cfg.serviceType === 'llm') {
+    // base_url 留空 → 供应商目录 defaultUrl 兜底（与 image 分支 resolveEndpoint 行为对齐）
+    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
     await chatComplete([{ role: 'user', content: 'ping' }], {
-      baseUrl: cfg.baseUrl ?? '',
+      baseUrl,
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model: cfg.model ?? 'deepseek-chat',
-    }, { maxTokens: 4, timeoutMs: 30_000 })
+    }, { maxTokens: 4, timeoutMs: 30_000, allowReasoningOnly: true })
     return c.json({ ok: true, ms: Date.now() - t0, note: 'llm 最小对话成功' })
   }
   if (cfg.serviceType === 'image') {
@@ -248,7 +250,7 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     const voice = typeof extra['voice'] === 'string' && extra['voice'] ? extra['voice'] : undefined
     const buf = await synthSpeech('ping', {
       providerKey: cfg.providerKey,
-      baseUrl: cfg.baseUrl ?? '',
+      baseUrl: (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, ''),
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model: cfg.model ?? 'tts-1',
       voice,
