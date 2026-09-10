@@ -1,7 +1,8 @@
 import { writeFileSync } from 'node:fs'
 import { probeMediaDuration } from '../../services/ffmpeg'
-import { loadPromptTemplate, chatComplete, resolveLlmEndpoint } from '../../services/llm'
+import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
+import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
@@ -77,7 +78,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
     const ep = await resolveLlmEndpoint()
     ctx.log(`调用 LLM 切句定时：${ep.model}…`)
     const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
-    const content = await chatComplete(
+    const res = await chatCompleteDetailed(
       [
         { role: 'system', content: '你是字幕时间轴标注引擎，只输出任务要求的最小 JSON 本体，不输出任何解释性文字或 markdown 围栏。' },
         { role: 'user', content: userPrompt },
@@ -88,6 +89,10 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
         maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000,
       },
     )
+    // [M4] 用量记录（estimated 分支单次 LLM 调用；measured 分支零调用不记录）
+    await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id,
+      provider: res.provider, model: res.model, usage: res.usage })
+    const content = res.content
     timed = parseTimedLines(content)
     if (timed.length !== source.lines.length) {
       ctx.log(`字幕句数与输入台词不一致（${timed.length}/${source.lines.length}），以 LLM 切句结果为准`)

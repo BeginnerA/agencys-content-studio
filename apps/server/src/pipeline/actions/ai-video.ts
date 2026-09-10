@@ -5,6 +5,7 @@ import { buildVideoRequest } from '../../adapters/video'
 import type { VideoAdapter, VideoGenRequest } from '../../adapters/types'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
+import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
@@ -265,6 +266,21 @@ async function runOneTask(
       task.status = 'succeeded'
       task.resultAssetId = asset.id
       emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
+      // [M4] 用量记录：视频按请求时长（秒）计；duration 缺省不记录
+      const secs = typeof parsed.duration === 'number' && parsed.duration > 0 ? parsed.duration : null
+      if (secs)
+        await recordUsage({
+          projectId: ctx.run.projectId,
+          runId: ctx.run.id,
+          stepId: ctx.step.id,
+          taskId: task.id,
+          assetId: asset.id,
+          kind: 'video',
+          unit: 'second',
+          quantity: secs,
+          provider: adapter.provider,
+          model: request.model ?? null,
+        })
       ctx.log(`shot ${shotId} 视频生成完成 → asset#${asset.id}`)
       return null
     } catch (err) {

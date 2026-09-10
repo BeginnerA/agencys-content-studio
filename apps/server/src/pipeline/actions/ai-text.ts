@@ -1,5 +1,6 @@
-import { loadPromptTemplate, chatComplete, resolveLlmEndpoint } from '../../services/llm'
+import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
 import { isJsonTextFormat, readTextAsset, writeTextAsset } from '../../services/storage'
+import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { interpolate } from '../refs'
 import type { StepResult } from '../types'
@@ -52,7 +53,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   const ep = await resolveLlmEndpoint()
   ctx.log(`调用 LLM：${ep.model}（${ep.baseUrl}）…`)
   const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
-  const content = await chatComplete(
+  const res = await chatCompleteDetailed(
     [
       { role: 'system', content: '你是内容创作流水线的执行引擎，严格按用户提供的提示词模板产出。只输出任务要求的内容本体，不输出任何解释性前言或后记。' },
       { role: 'user', content: userPrompt },
@@ -64,6 +65,10 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
       maxTokens: outputFormat === 'storyboard-json' ? 24000 : (typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000),
     },
   )
+  // [M4] 用量记录（LLM 单次调用 → tokens_in/out 两行；失败不影响流水线）
+  await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id,
+    provider: res.provider, model: res.model, usage: res.usage })
+  const content = res.content
   ctx.log(`LLM 返回 ${content.length} 字符`)
 
   // 输出契约校验（storyboard-json / lines-json / characters-json；返回条目数供日志）

@@ -5,6 +5,7 @@ import { buildImageRequest } from '../../adapters/provider'
 import { loadCharacterIndex } from '../../services/character'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
+import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
@@ -223,6 +224,19 @@ async function runOneTask(
       task.status = 'succeeded'
       task.resultAssetId = asset.id
       emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
+      // [M4] 用量记录：每成功图 1 行（元/张）
+      await recordUsage({
+        projectId: ctx.run.projectId,
+        runId: ctx.run.id,
+        stepId: ctx.step.id,
+        taskId: task.id,
+        assetId: asset.id,
+        kind: 'image',
+        unit: 'image',
+        quantity: 1,
+        provider: adapter.provider,
+        model: request.model ?? cfg.model ?? null,
+      })
       ctx.log(`shot ${shotId} 出图完成 → asset#${asset.id}`)
       return null
     } catch (err) {

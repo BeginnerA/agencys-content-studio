@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { loadCharacterIndex } from '../../services/character'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
+import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
@@ -88,6 +89,18 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
           chars: line.text.length,
         },
         tags: ['voice'],
+      })
+      // [M4] 用量记录：逐句按字符数计（元/千字符）
+      await recordUsage({
+        projectId: ctx.run.projectId,
+        runId: ctx.run.id,
+        stepId: ctx.step.id,
+        assetId: asset.id,
+        kind: 'tts',
+        unit: 'char',
+        quantity: line.text.length,
+        provider: ep.providerKey,
+        model: ep.model,
       })
       assetIds.push(asset.id)
       ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${data.byteLength} 字节）`)
