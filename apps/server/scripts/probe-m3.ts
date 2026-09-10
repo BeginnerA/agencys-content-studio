@@ -9,6 +9,7 @@
  *   migrate  空库 migrate 自动建 memories/characters 两表 + 4 索引
  *   memory   embedding 服务冒烟（维度 / cosine / status）+ upsert/recall/reindex 断言
  *   memory-action  记忆 action 闭环：run1 召回占位 + 沉淀 → run2 召回命中（memory_write/memory_recall 实弹）
+ *   character  角色建档闭环：预置角色 + 纯函数注入断言 + ingest→char_sync 实弹（定妆照归属/幂等）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -38,7 +39,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory', 'memory-action'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action', 'character'] as const
 
 /** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
 const TPL_M3_MEMORY = `key: probe-m3-memory
@@ -79,6 +80,34 @@ steps:
       scope: project
       type: style
       name: probe-latest
+`
+
+/** character section 的内联模板（ingest 产 brief 资产 → char_sync 多资产逐个尝试解析取第一个 characters 数组） */
+const TPL_M3_CHARACTER = `key: probe-m3-character
+version: 1
+name: M3 角色建档探针
+genre: other
+inputs:
+  - key: brief
+    label: 简报
+    kind: text
+    required: true
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 素材入库
+    inputs:
+      docs: assets purpose=characters
+      brief: input.brief
+  - key: char_sync
+    action: character_sync
+    title: 角色建档
+    after: [ingest]
+    inputs:
+      characters: steps.ingest.assets
+      ref_images: assets purpose=reference_character
+    params:
+      project: true
 `
 
 async function main(): Promise<void> {
@@ -272,12 +301,189 @@ async function main(): Promise<void> {
     check((await memCount()) === 1, `run2 后项目域记忆仍 1 行（同名 upsert，实际 ${await memCount()}）`)
   }
 
+  const sectionCharacter = async (): Promise<void> => {
+    await initDb()
+    const { db } = await import('../src/db')
+    const { assets, characters, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
+    const { loadTemplate } = await import('../src/pipeline/loader')
+    const { engine } = await import('../src/pipeline/engine')
+    const { readTextAsset, writeTextAsset } = await import('../src/services/storage')
+    const { loadCharacterIndex, upsertCharacter } = await import('../src/services/character')
+    const { injectCharacterAnchors } = await import('../src/pipeline/actions/ai-image')
+    const { and, asc, eq } = await import('drizzle-orm')
+
+    const t = Date.now()
+    const proj = (
+      await db
+        .insert(projects)
+        .values({ name: 'M3 角色探针', genre: 'other', templateKey: 'probe-m3-character', settings: '{}', tags: '[]', createdAt: t, updatedAt: t })
+        .returning()
+    )[0]!
+
+    // —— 1. 预置角色（含别名「小宝」；供纯函数命中） ——
+    const pre = await upsertCharacter({
+      projectId: proj.id,
+      name: '萌宝',
+      aliases: ['小宝'],
+      appearance: '圆脸大眼、胖乎乎的三岁半男孩（第一版）',
+      negative: '成人化五官、写实比例',
+      voice: '软糯童声',
+      summary: '三岁半男主角',
+    })
+    check(pre.created, `预置角色「萌宝」新建 #${pre.id}`)
+
+    // —— 2. 纯函数：注入 / 别名命中 / 未命中 / 不改入参 ——
+    const idx = await loadCharacterIndex(proj.id)
+    const shotsIn = [
+      { id: 's1', image_prompt: 'P1', characters: ['萌宝'] },
+      { id: 's2', image_prompt: 'P2', characters: ['小宝'] },
+      { id: 's3', image_prompt: 'P3', characters: ['查无此人'] },
+      { id: 's4', image_prompt: 'P4' },
+    ]
+    const inj = injectCharacterAnchors(shotsIn, idx)
+    check(
+      inj.shots[0]!.image_prompt.includes('角色锚定（萌宝）：') && inj.shots[0]!.image_prompt.includes('必须剔除：'),
+      's1 注入锚定（appearance + negative 段）',
+    )
+    check(inj.shots[1]!.image_prompt.includes('角色锚定（萌宝）：'), 's2 别名「小宝」命中同一角色')
+    check(inj.shots[2]!.image_prompt === 'P3' && inj.shots[3]!.image_prompt === 'P4', 's3 未命中 / s4 无 characters 原文不变')
+    check(inj.missing.length === 1 && inj.missing[0] === '查无此人', `missing=[${inj.missing.join(',')}]`)
+    check(inj.injected === 2, `injected=${inj.injected}（=2）`)
+    check(shotsIn[0]!.image_prompt === 'P1' && shotsIn[1]!.image_prompt === 'P2', '入参数组未被修改')
+
+    // —— 3. 引擎链路：角色档案资产 + 定妆照 → ingest → char_sync ——
+    await writeTextAsset(proj.id, {
+      name: 'characters.json',
+      content: JSON.stringify({
+        characters: [
+          { name: '萌宝', aliases: ['小宝'], appearance: '圆脸大眼、虎头帽红袄（第二版）', negative: '成人化五官', voice: '软糯童声' },
+          { name: '灰灰', appearance: '灰毛垂耳小狼，眼睛亮晶晶', negative: '恐怖獠牙', voice: '清亮少年音' },
+        ],
+      }),
+      purpose: 'characters',
+      format: 'characters-json',
+      tags: ['characters'],
+    })
+    // 定妆照两张：一张 shotId 精确归属（灰灰）、一张资产名兜底归属（萌宝）
+    const refA = (
+      await db
+        .insert(assets)
+        .values({
+          projectId: proj.id,
+          kind: 'image',
+          purpose: 'reference_character',
+          name: '灰灰-定妆照.png',
+          mime: 'image/png',
+          ext: 'png',
+          params: JSON.stringify({ shotId: '灰灰' }),
+          tags: '[]',
+          createdAt: t,
+          updatedAt: t,
+        })
+        .returning()
+    )[0]!
+    const refB = (
+      await db
+        .insert(assets)
+        .values({
+          projectId: proj.id,
+          kind: 'image',
+          purpose: 'reference_character',
+          name: '萌宝造型照.png',
+          mime: 'image/png',
+          ext: 'png',
+          tags: '[]',
+          createdAt: t,
+          updatedAt: t,
+        })
+        .returning()
+    )[0]!
+
+    const tplFile = join(process.env.CSTUDIO_WORKSPACE!, 'templates', 'probe-m3-character.yaml')
+    writeFileSync(tplFile, TPL_M3_CHARACTER, 'utf8')
+    check(loadTemplate('probe-m3-character').steps.length === 2, '角色探针模板加载（steps=2）')
+
+    const runOf = async (runId: number) => (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1))[0]!
+    const stepsOf = async (runId: number) => db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, runId)).orderBy(asc(pipelineSteps.seq))
+    const assetRow = async (id: number) => (await db.select().from(assets).where(eq(assets.id, id)).limit(1))[0]!
+    const parseIds = (s: { output: string | null }): number[] => {
+      try {
+        return (JSON.parse(s.output ?? '{}') as { asset_ids?: number[] }).asset_ids ?? []
+      } catch {
+        return []
+      }
+    }
+    const pollCompleted = async (runId: number): Promise<void> => {
+      const deadline = Date.now() + 30000
+      for (;;) {
+        if ((await runOf(runId)).status === 'completed') return
+        if (Date.now() > deadline) throw new Error(`超时等待 run#${runId} completed`)
+        await new Promise((r) => setTimeout(r, 150))
+      }
+    }
+    const startRun = async (): Promise<number> => {
+      const now = Date.now()
+      const run = (
+        await db
+          .insert(pipelineRuns)
+          .values({
+            projectId: proj.id,
+            templateKey: 'probe-m3-character',
+            status: 'queued',
+            input: JSON.stringify({ brief: '萌宝镖客第 1 集：角色档案同步' }),
+            templateSnapshot: JSON.stringify(loadTemplate('probe-m3-character')),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+      )[0]!
+      engine.startRun(run.id)
+      await pollCompleted(run.id)
+      return run.id
+    }
+    const charRow = async (name: string) =>
+      (await db.select().from(characters).where(and(eq(characters.projectId, proj.id), eq(characters.name, name))).limit(1))[0]
+    const objCount = async (): Promise<number> => {
+      const rows = (await sqlite.execute(`SELECT COUNT(*) AS n FROM characters WHERE project_id = ${proj.id}`)).rows as unknown as Array<{ n: number }>
+      return Number(rows[0]!.n)
+    }
+
+    // run1：萌宝 updated（预置命中）+ 灰灰 created；定妆照 2 张挂接（shotId 精确 + 名称兜底）
+    const run1Id = await startRun()
+    const r1 = new Map((await stepsOf(run1Id)).map((s) => [s.stepKey, s]))
+    check(['ingest', 'char_sync'].every((k) => r1.get(k)?.status === 'succeeded'), 'run1 两步全部 succeeded')
+    const log1Ids = parseIds(r1.get('char_sync')!)
+    check(log1Ids.length === 1 && (await assetRow(log1Ids[0]!)).purpose === 'character_log', 'run1 char_sync 产物 purpose=character_log')
+    const log1 = JSON.parse(await readTextAsset(log1Ids[0]!)) as { created: string[]; updated: string[]; refAttached: number; scope: string }
+    check(log1.created.join(',') === '灰灰' && log1.updated.join(',') === '萌宝', `run1 建档 created=[${log1.created}] updated=[${log1.updated}]`)
+    check(log1.refAttached === 2 && log1.scope === 'project', `run1 定妆照挂接 ${log1.refAttached} 张（shotId + 名称兜底）`)
+    const p1 = JSON.parse((await assetRow(log1Ids[0]!)).params ?? '{}') as { created?: number; updated?: number }
+    check(p1.created === 1 && p1.updated === 1, `run1 params 徽标计数（created=${p1.created} updated=${p1.updated}）`)
+    check((await objCount()) === 2, `run1 后项目域角色 2 行（实际 ${await objCount()}）`)
+    const gb = await charRow('萌宝')
+    const gh = await charRow('灰灰')
+    check(
+      gb?.refAssetIds === JSON.stringify([refB.id]) && gh?.refAssetIds === JSON.stringify([refA.id]),
+      '定妆照归属正确（灰灰=shotId 精确、萌宝=资产名兜底）',
+    )
+
+    // run2：同项目再跑 → 全 updated、行数不增、挂接幂等（去重后 0 新增）
+    const run2Id = await startRun()
+    const r2 = new Map((await stepsOf(run2Id)).map((s) => [s.stepKey, s]))
+    check(['ingest', 'char_sync'].every((k) => r2.get(k)?.status === 'succeeded'), 'run2 两步全部 succeeded')
+    const log2Ids = parseIds(r2.get('char_sync')!)
+    const log2 = JSON.parse(await readTextAsset(log2Ids[0]!)) as { created: string[]; updated: string[]; refAttached: number }
+    check(log2.created.length === 0 && log2.updated.length === 2 && log2.refAttached === 0, 'run2 走 updated 分支（行不增、挂接去重 0 新增）')
+    check((await objCount()) === 2, `run2 后项目域角色仍 2 行（实际 ${await objCount()}）`)
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
     migrate: sectionMigrate,
     memory: sectionMemory,
     'memory-action': sectionMemoryAction,
+    character: sectionCharacter,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'

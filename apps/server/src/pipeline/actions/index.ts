@@ -3,6 +3,7 @@ import type { StepResult } from '../types'
 import { aiImage } from './ai-image'
 import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
+import { characterSync } from './character-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { manualIngest } from './manual-ingest'
 import { memoryRecall } from './memory-recall'
@@ -26,6 +27,7 @@ const registry: Record<string, ActionFn> = {
   subtitle,
   memory_write: memoryWrite,
   memory_recall: memoryRecall,
+  character_sync: characterSync,
 }
 
 export function getAction(key: string): ActionFn {
