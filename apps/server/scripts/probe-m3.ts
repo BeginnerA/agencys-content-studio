@@ -640,10 +640,23 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2/T3 基线可加载（版本与结构断言在 Task 13/14 扩展）——
-    for (const key of ['talking-clip', 'mengbao-episode']) {
-      if (copyTpl(key)) check(tryLoad(key) !== null, `${key} 加载成功（基线）`)
+    // —— T2 talking-clip v2：版本 / 9 步 / 记忆闭环与字幕前置 ——
+    if (copyTpl('talking-clip')) {
+      const t2 = tryLoad('talking-clip')
+      check(t2 !== null, 'talking-clip 加载成功')
+      if (t2) {
+        const keys = t2.steps.map((s) => s.key)
+        const afterOf = (k: string): string[] => t2.steps.find((s) => s.key === k)?.after ?? []
+        check(t2.version === 2, `talking-clip version=2（实际 ${t2.version}）`)
+        check(t2.steps.length === 9, `talking-clip steps=9（实际 ${t2.steps.length}）`)
+        check(['recall', 'remember'].every((k) => keys.includes(k)), 'talking-clip 含 recall/remember')
+        check(afterOf('subtitle').includes('voice'), 'talking-clip subtitle.after 含 voice')
+        check(afterOf('remember').includes('draft'), 'talking-clip remember.after 含 draft')
+      }
     }
+
+    // —— T3 mengbao-episode 基线可加载（v3 断言在 Task 14 扩展）——
+    if (copyTpl('mengbao-episode')) check(tryLoad('mengbao-episode') !== null, 'mengbao-episode 加载成功（基线）')
   }
 
   // ================= 分发 =================

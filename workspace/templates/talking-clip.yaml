@@ -1,13 +1,18 @@
 key: talking-clip
-version: 1
-name: 对白口播·单条（文案审阅 → 配音 → 字幕 → 合成）
-description: 选题 → 口播文案（可审阅）→ 切句/封面并行 → 配音 + 字幕 → 单图成片
+version: 2
+name: 对白口播·单条 v2（记忆闭环 → 文案审阅 → 情绪配音/精字幕 → 合成）
+description: 记忆召回 → 选题 → 口播文案（可审阅）→ 切句/封面并行 → 逐句情绪配音 + measured 精确字幕（可审阅）→ 单图成片 + 风格沉淀
 genre: talking_head
 inputs:
   - key: topic
     label: 口播主题/选题
     kind: text
     required: true
+  - key: profile
+    label: 账号档案（人设/称呼/口头禅/禁用词）
+    kind: files
+    required: false
+    accept: [.md]
   - key: ref_docs
     label: 参考素材（选填，md/txt）
     kind: files
@@ -23,18 +28,32 @@ inputs:
     kind: bool
     required: false
     default: true
+  - key: with_subtitle_review
+    label: 字幕审阅（true=字幕生成后挂闸门）
+    kind: bool
+    required: false
+    default: false
 defaults:
   llm: { temperature: 0.7, max_tokens: 6000 }
   image: { provider: pollinations_image, size: "1536x1024" }
   audio: { provider: pollinations_audio, voice: "Cherry" }
 steps:
+  - key: recall
+    action: memory_recall
+    title: 记忆召回
+    inputs:
+      query: input.topic
+    params: { limit: 3 }
   - key: draft
     action: ai_text
     title: 口播文案
+    after: [recall]
     inputs:
       topic: input.topic
+      profile: input.profile
       ref_docs: input.ref_docs
       duration_hint: input.duration_hint
+      recalled: steps.recall.asset
     params:
       prompt_tpl: draft-talking.md
       output_purpose: script
@@ -42,6 +61,13 @@ steps:
     gate:
       mode: required
       message: 请审阅口播文案「{input.topic}」，批准后进入切句/配音；驳回可附修改意见重跑
+  - key: remember
+    action: memory_write
+    title: 沉淀风格样本
+    after: [draft]
+    inputs:
+      content: steps.draft.asset
+    params: { type: style, name: style-sample-latest, scope: project }
   - key: cover_prompt
     action: ai_text
     title: 封面图提示词
@@ -65,14 +91,6 @@ steps:
       output_purpose: lines
       output_format: lines-json
       name_tpl: "lines.json"
-  - key: subtitle
-    action: subtitle
-    title: 字幕定时
-    after: [cast_lines]
-    inputs:
-      lines: steps.cast_lines.asset
-    params:
-      prompt_tpl: lines-timing.md
   - key: voice
     action: tts
     title: 逐句配音
@@ -80,6 +98,20 @@ steps:
     after: [cast_lines]
     inputs:
       lines: steps.cast_lines.asset
+  - key: subtitle
+    action: subtitle
+    title: 字幕定时
+    after: [voice, cast_lines]
+    inputs:
+      lines: steps.cast_lines.asset
+      voices: steps.voice.assets
+    params:
+      prompt_tpl: lines-timing.md
+    gate:
+      mode: required
+      message: 请审阅字幕（measured 精确时间轴与显示行），批准后合成；驳回可附修改意见重跑
+      when: input.with_subtitle_review == true
+      skip_label: 免审直烧
   - key: cover
     action: ai_image
     title: 封面出图
