@@ -1,10 +1,11 @@
 import { writeFileSync } from 'node:fs'
+import { probeMediaDuration } from '../../services/ffmpeg'
 import { loadPromptTemplate, chatComplete, resolveLlmEndpoint } from '../../services/llm'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
-interface TimingLine {
+export interface TimingLine {
   id: string
   text: string
   start_ms: number
@@ -12,42 +13,89 @@ interface TimingLine {
 }
 
 /**
- * subtitle：对白/口播切句定时 → SRT 字幕资产（spec §5.3）。
+ * subtitle：对白/口播切句定时 → SRT 字幕资产（spec §5.3/§7.1）。
+ * 双模式：
+ *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
+ *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
+ *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时。
  * 输入（二选一，同时提供以 script 优先）：
  *  - script: 对白全文资产（口播文案 md/剧本）
- *  - lines:  台词 JSON 资产（{lines:[{id,text,est_ms?}]}，est_ms 作 LLM 参考时长）
- * 执行：LLM 按 params.prompt_tpl（外置提示词）切句并给绝对时间戳（start_ms/end_ms），
- * 返回 JSON lines → 本 action 程序化转 SRT（保证时间戳格式 + 单调校验），
- * 产 text 资产（purpose=subtitle，mime text/plain，ext srt）。
+ *  - lines:  台词 JSON 资产（{lines:[{id,text,est_ms?}]}，est_ms 作 LLM/回退参考时长）
+ * 产物：text 资产（purpose=subtitle，mime text/plain，ext srt），params.mode 记录对齐路径。
  * 模板作者可在此步挂 gate 人工核对字幕。
  */
 export async function subtitle(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = typeof params['prompt_tpl'] === 'string' && params['prompt_tpl'] ? params['prompt_tpl'] : 'lines-timing.md'
   const source = await collectSource(ctx)
-  ctx.log(`字幕切句输入：${source.lines.length} 句台词（${source.text.length} 字符），提示词 ${tplFile}`)
+  ctx.log(`字幕切句输入：${source.lines.length} 句台词（${source.text.length} 字符）`)
 
-  const templateText = loadPromptTemplate(tplFile)
-  const userPrompt = `${templateText}\n\n===== 待定时台词 =====\n${source.text}`
-  const ep = await resolveLlmEndpoint()
-  ctx.log(`调用 LLM 切句定时：${ep.model}…`)
-  const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
-  const content = await chatComplete(
-    [
-      { role: 'system', content: '你是字幕时间轴标注引擎，只输出任务要求的最小 JSON 本体，不输出任何解释性文字或 markdown 围栏。' },
-      { role: 'user', content: userPrompt },
-    ],
-    ep,
-    {
-      temperature: 0.2,
-      maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000,
-    },
-  )
-
-  const timed = parseTimedLines(content)
-  if (timed.length !== source.lines.length) {
-    ctx.log(`字幕句数与输入台词不一致（${timed.length}/${source.lines.length}），以 LLM 切句结果为准`)
+  // mode 判定（spec §7.1）：提供 voices → measured 实测对齐；params.mode 可强制 estimated
+  const voiceIds = ctx.assetIdsOf('voices')
+  const modeParam = typeof params['mode'] === 'string' ? params['mode'] : undefined
+  let mode: 'measured' | 'estimated' = voiceIds.length > 0 ? 'measured' : 'estimated'
+  if (modeParam === 'estimated') mode = 'estimated'
+  if (modeParam === 'measured' && voiceIds.length === 0) {
+    mode = 'estimated'
+    ctx.log('mode=measured 但未提供 voices 输入，已回退 estimated（LLM 估时）')
   }
+
+  let timed: TimingLine[]
+  let assetParams: Record<string, unknown>
+  let promptSnapshot: string
+  if (mode === 'measured') {
+    if (voiceIds.length !== source.lines.length) {
+      throw new Error(`measured 字幕：voices 数量(${voiceIds.length}) 与台词句数(${source.lines.length}) 不一致（防错位）`)
+    }
+    const voices = await ctx.assetsOf(voiceIds)
+    const durationsMs: number[] = []
+    let fallbackCount = 0
+    for (let i = 0; i < voices.length; i++) {
+      const a = voices[i]!
+      const line = source.lines[i]!
+      const sec = a.relPath ? probeMediaDuration(absPathOf(a.relPath)) : null
+      const dMs = sec !== null ? Math.round(sec * 1000) : (line.estMs ?? line.text.length * 180)
+      if (sec === null) {
+        fallbackCount += 1
+        ctx.log(`句 ${line.id} 音频实测失败，回退估时 ${dMs}ms`)
+      }
+      durationsMs.push(dMs)
+    }
+    timed = planMeasuredSrt(source.lines, durationsMs)
+    const sumD = durationsMs.reduce((s, x) => s + x, 0)
+    const lastEnd = timed[timed.length - 1]!.end_ms
+    if (sumD > 0 && Math.abs(lastEnd - sumD) / sumD > 0.02) {
+      ctx.log(`警告：字幕末行结束 ${lastEnd}ms 与实测累加 ${sumD}ms 偏差超 2%（防错位防线）`)
+    }
+    ctx.log(`字幕 measured：${voiceIds.length} 句实测累加 ${sumD}ms${fallbackCount ? `（${fallbackCount} 句回退估时）` : ''}`)
+    assetParams = { mode, lines: timed.length, durationMs: lastEnd, sentenceCount: source.lines.length, voiceCount: voiceIds.length }
+    promptSnapshot = `measured 实测对齐：voices=[${voiceIds.join(',')}] durations=[${durationsMs.join(',')}]ms`
+  } else {
+    ctx.log(`字幕 estimated：LLM 切句估时（提示词 ${tplFile}）`)
+    const templateText = loadPromptTemplate(tplFile)
+    const userPrompt = `${templateText}\n\n===== 待定时台词 =====\n${source.text}`
+    const ep = await resolveLlmEndpoint()
+    ctx.log(`调用 LLM 切句定时：${ep.model}…`)
+    const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
+    const content = await chatComplete(
+      [
+        { role: 'system', content: '你是字幕时间轴标注引擎，只输出任务要求的最小 JSON 本体，不输出任何解释性文字或 markdown 围栏。' },
+        { role: 'user', content: userPrompt },
+      ],
+      ep,
+      {
+        temperature: 0.2,
+        maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000,
+      },
+    )
+    timed = parseTimedLines(content)
+    if (timed.length !== source.lines.length) {
+      ctx.log(`字幕句数与输入台词不一致（${timed.length}/${source.lines.length}），以 LLM 切句结果为准`)
+    }
+    assetParams = { model: ep.model, lines: timed.length, durationMs: timed.length ? timed[timed.length - 1]!.end_ms : 0, mode: 'estimated' }
+    promptSnapshot = userPrompt
+  }
+
   const srt = toSrt(timed)
   assertSrt(srt, timed)
 
@@ -64,8 +112,8 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
     mime: 'text/plain',
     ext: 'srt',
     fileSize: Buffer.byteLength(srt, 'utf8'),
-    prompt: userPrompt.slice(0, 4000),
-    params: { model: ep.model, lines: timed.length, durationMs: timed.length ? timed[timed.length - 1]!.end_ms : 0 },
+    prompt: promptSnapshot.slice(0, 4000),
+    params: assetParams,
     tags: ['subtitle'],
   })
   ctx.log(`字幕已生成 asset#${asset.id}（${timed.length} 条，末条结束 ${msToClock(timed[timed.length - 1]!.end_ms)}）`)
@@ -179,4 +227,95 @@ function assertSrt(srt: string, timed: TimingLine[]): void {
     if (end <= start) throw new Error('SRT 段时间非法')
     prevEnd = end
   }
+}
+
+/** 显示行切分（spec §7.1-3）：先按「。！？；!?;」→ 仍超 maxChars 按「，、,」→ 仍超按 code point 硬切；trim + 去空段 */
+export function splitDisplayLines(text: string, maxChars: number): string[] {
+  const max = Math.max(1, Math.floor(maxChars))
+  const out: string[] = []
+  for (const primary of splitKeeping(text, '。！？；!?;')) {
+    const seg = primary.trim()
+    if (!seg) continue
+    if (cpLen(seg) <= max) {
+      out.push(seg)
+      continue
+    }
+    for (const secondary of splitKeeping(seg, '，、,')) {
+      const sub = secondary.trim()
+      if (!sub) continue
+      if (cpLen(sub) <= max) {
+        out.push(sub)
+        continue
+      }
+      const chars = Array.from(sub)
+      for (let i = 0; i < chars.length; i += max) {
+        const piece = chars.slice(i, i + max).join('').trim()
+        if (piece) out.push(piece)
+      }
+    }
+  }
+  return out
+}
+
+/** measured 时间轴（spec §7.1-4/5）：行时长按 code point 比例分配句时长（末行=余量）、句内短行合并、句间首尾相接 */
+export function planMeasuredSrt(
+  lines: Array<{ id: string; text: string }>,
+  durationsMs: number[],
+  opts?: { maxCharsPerLine?: number; minMs?: number; leadInMs?: number },
+): TimingLine[] {
+  if (lines.length !== durationsMs.length) {
+    throw new Error(`measured 字幕：句数 ${lines.length} 与时长数 ${durationsMs.length} 不一致（防错位）`)
+  }
+  const maxChars = opts?.maxCharsPerLine ?? 18
+  const minMs = opts?.minMs ?? 800
+  let cursor = Math.max(0, Math.round(opts?.leadInMs ?? 0))
+  const out: TimingLine[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const d = Math.max(0, Math.round(durationsMs[i]!))
+    const segs = splitDisplayLines(lines[i]!.text, maxChars)
+    if (segs.length === 0) continue
+    const counts = segs.map(cpLen)
+    const total = Math.max(1, counts.reduce((s, x) => s + x, 0))
+    let rows = segs.map((text, j) => ({
+      text,
+      dur: j === segs.length - 1 ? 0 : Math.round((d * counts[j]!) / total),
+    }))
+    rows[rows.length - 1]!.dur = Math.max(0, d - rows.reduce((s, r) => s + r.dur, 0))
+    // 短行句内合并：首行并入其后一行，否则并入前一行（文本直接拼接、时长相加）；单行句保持原样
+    while (rows.length > 1) {
+      const idx = rows.findIndex((r) => r.dur < minMs)
+      if (idx < 0) break
+      if (idx === 0) {
+        rows = [{ text: rows[0]!.text + rows[1]!.text, dur: rows[0]!.dur + rows[1]!.dur }, ...rows.slice(2)]
+      } else {
+        const merged = { text: rows[idx - 1]!.text + rows[idx]!.text, dur: rows[idx - 1]!.dur + rows[idx]!.dur }
+        rows = [...rows.slice(0, idx - 1), merged, ...rows.slice(idx + 1)]
+      }
+    }
+    for (let j = 0; j < rows.length; j++) {
+      out.push({ id: `${lines[i]!.id}.${j + 1}`, text: rows[j]!.text, start_ms: cursor, end_ms: cursor + rows[j]!.dur })
+      cursor += rows[j]!.dur
+    }
+  }
+  return out
+}
+
+/** 逐字符扫描切分：分隔符保留在段尾 */
+function splitKeeping(text: string, delimiters: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  for (const ch of text) {
+    cur += ch
+    if (delimiters.includes(ch)) {
+      out.push(cur)
+      cur = ''
+    }
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+/** code point 计数（代理对算 1） */
+function cpLen(s: string): number {
+  return Array.from(s).length
 }

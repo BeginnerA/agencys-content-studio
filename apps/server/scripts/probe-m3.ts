@@ -12,6 +12,7 @@
  *   character  角色建档闭环：预置角色 + 纯函数注入断言 + ingest→char_sync 实弹（定妆照归属/幂等）
  *   contract  文本输出契约：validateTextOutput（characters-json / lines-json v2 / storyboard-json 回归）
  *   tts  声线六级链 + 情绪基调词/透传载荷（纯函数，无网络）
+ *   subtitle  measured 字幕对齐：splitDisplayLines 分层切行 + planMeasuredSrt 比例分配/合并/leadIn（纯函数，无 LLM/ffprobe）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -41,7 +42,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract', 'tts'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract', 'tts', 'subtitle'] as const
 
 /** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
 const TPL_M3_MEMORY = `key: probe-m3-memory
@@ -553,6 +554,51 @@ async function main(): Promise<void> {
     check(resolveEmotionPayload('', { param: 'emotion' }) === null && resolveEmotionPayload('干笑', undefined) === null, 'resolveEmotionPayload 无 key/未声明 → null')
   }
 
+  const sectionSubtitle = async (): Promise<void> => {
+    await initDb()
+    const { splitDisplayLines, planMeasuredSrt } = await import('../src/pipeline/actions/subtitle')
+    const cp = (s: string): number => Array.from(s).length
+    const span = (ls: Array<{ start_ms: number; end_ms: number }>): number => ls.reduce((s, l) => s + (l.end_ms - l.start_ms), 0)
+
+    // —— splitDisplayLines：主切句末标点 → 次切逗号 → 硬切 ——
+    const s1 = splitDisplayLines('今天天气真好。', 18)
+    check(s1.length === 1 && s1[0] === '今天天气真好。', 'split 短句 1 行原样')
+    const s2 = splitDisplayLines('甲'.repeat(10) + '。' + '乙'.repeat(10) + '。' + '丙'.repeat(10) + '。' + '丁'.repeat(7) + '。', 18)
+    check(s2.length >= 3 && s2.every((t) => cp(t) <= 18), `split 多句号分段（${s2.length} 行，每行 ≤18）`)
+    const s3 = splitDisplayLines('无'.repeat(25), 18)
+    check(s3.length === 2 && cp(s3[0]!) === 18 && cp(s3[1]!) === 7, 'split 无标点硬切 18+7')
+    const s4 = splitDisplayLines('前'.repeat(10) + '，' + '中'.repeat(10) + '，' + '后'.repeat(13), 18)
+    check(s4.length === 3 && s4.every((t) => cp(t) <= 18), 'split 逗号次切（3 行，每行 ≤18）')
+
+    // —— planMeasuredSrt：比例分配 / 首尾相接 / leadIn / 抛错 / 短行合并 ——
+    const p1 = planMeasuredSrt([{ id: '1', text: '今天天气真好，出门走走。阳光明媚。' }], [6000])
+    check(
+      p1.length === 2 && span(p1) === 6000 && p1[0]!.start_ms === 0 && p1[p1.length - 1]!.end_ms === 6000,
+      'measured 单句 Σ行时长=6000、首 0 末 6000',
+    )
+    check(p1[0]!.id === '1.1' && p1[1]!.id === '1.2' && p1[1]!.start_ms === p1[0]!.end_ms, '行 id=句id.行序 且句内首尾相接')
+
+    const p2 = planMeasuredSrt([{ id: '1', text: '第一句。' }, { id: '2', text: '第二句。' }], [3000, 5000])
+    check(p2[0]!.end_ms === 3000 && p2.find((l) => l.id.startsWith('2.'))!.start_ms === 3000, 'measured 句间首尾相接')
+    check(p2[p2.length - 1]!.end_ms === 8000, 'measured 双句末行 end=8000')
+
+    const p3 = planMeasuredSrt([{ id: '1', text: '第一句。' }, { id: '2', text: '第二句。' }], [3000, 5000], { leadInMs: 500 })
+    check(p3[0]!.start_ms === 500 && p3[p3.length - 1]!.end_ms === 8500, 'measured leadIn 500 → 首行 500 / 末行 8500')
+
+    const throwsMsg = (fn: () => void, needle: string): boolean => {
+      try {
+        fn()
+        return false
+      } catch (err) {
+        return (err as Error).message.includes(needle)
+      }
+    }
+    check(throwsMsg(() => planMeasuredSrt([{ id: '1', text: 'a' }, { id: '2', text: 'b' }], [1000]), '不一致'), '句数≠时长数 → 抛错（含不一致）')
+
+    const p4 = planMeasuredSrt([{ id: '1', text: '好。今天天气真不错，出门走走吧。' }], [3000])
+    check(p4.length === 1 && span(p4) === 3000, 'measured 短行合并（2 行→1 行、句总时长不变）')
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
@@ -562,6 +608,7 @@ async function main(): Promise<void> {
     character: sectionCharacter,
     contract: sectionContract,
     tts: sectionTts,
+    subtitle: sectionSubtitle,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'
