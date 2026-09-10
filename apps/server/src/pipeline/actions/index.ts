@@ -5,6 +5,8 @@ import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { manualIngest } from './manual-ingest'
+import { memoryRecall } from './memory-recall'
+import { memoryWrite } from './memory-write'
 import { tts } from './tts'
 import { subtitle } from './subtitle'
 
@@ -22,6 +24,8 @@ const registry: Record<string, ActionFn> = {
   ai_video: aiVideo,
   tts,
   subtitle,
+  memory_write: memoryWrite,
+  memory_recall: memoryRecall,
 }
 
 export function getAction(key: string): ActionFn {

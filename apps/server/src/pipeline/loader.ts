@@ -8,7 +8,7 @@ import { parseWhenExpr, whenRefs } from './refs'
 
 const log = createLogger('loader')
 
-/** M2 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
+/** M3 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
 export const KNOWN_ACTIONS = [
   'manual_ingest',
   'ai_text',
@@ -17,6 +17,8 @@ export const KNOWN_ACTIONS = [
   'ai_video',
   'tts',
   'subtitle',
+  'memory_write',
+  'memory_recall',
 ] as const
 
 const cache = new Map<string, Template>()

@@ -8,10 +8,11 @@
  * section（默认 all = 全部已实现；未列出的 section 由后续任务逐段加入）：
  *   migrate  空库 migrate 自动建 memories/characters 两表 + 4 索引
  *   memory   embedding 服务冒烟（维度 / cosine / status）+ upsert/recall/reindex 断言
+ *   memory-action  记忆 action 闭环：run1 召回占位 + 沉淀 → run2 召回命中（memory_write/memory_recall 实弹）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +38,48 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action'] as const
+
+/** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
+const TPL_M3_MEMORY = `key: probe-m3-memory
+version: 1
+name: M3 记忆 action 探针
+genre: other
+inputs:
+  - key: topic
+    label: 主题
+    kind: text
+    required: true
+  - key: brief
+    label: 简报
+    kind: text
+    required: true
+steps:
+  - key: recall
+    action: memory_recall
+    title: 记忆召回
+    inputs:
+      query: input.topic
+    params:
+      limit: 3
+      scope: project
+  - key: ingest
+    action: manual_ingest
+    title: 入库
+    after: [recall]
+    inputs:
+      brief: input.brief
+  - key: remember
+    action: memory_write
+    title: 沉淀
+    after: [ingest]
+    inputs:
+      content: steps.ingest.asset
+    params:
+      scope: project
+      type: style
+      name: probe-latest
+`
 
 async function main(): Promise<void> {
   // src 模块全部动态加载（环境变量已隔离）
@@ -132,11 +174,110 @@ async function main(): Promise<void> {
     check(hits2.length === hits.length && hits2[0]!.id === hits[0]!.id, `reindex 后召回稳定（top1 id=${hits2[0]?.id}）`)
   }
 
+  const sectionMemoryAction = async (): Promise<void> => {
+    await initDb()
+    await bridgeModels()
+    const { embeddingStatus } = await import('../src/services/embedding')
+    const st = await embeddingStatus()
+    if (!st.ready) {
+      skipReason = `embedding 模型未就绪：${st.error}`
+      log.warn(`SKIP  memory-action section —— ${skipReason}`)
+      return
+    }
+    const { db } = await import('../src/db')
+    const { assets, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
+    const { loadTemplate } = await import('../src/pipeline/loader')
+    const { engine } = await import('../src/pipeline/engine')
+    const { readTextAsset } = await import('../src/services/storage')
+    const { asc, eq } = await import('drizzle-orm')
+
+    // 内联模板写临时 templates 目录（loadTemplate 走隔离 workspace）
+    const tplFile = join(process.env.CSTUDIO_WORKSPACE!, 'templates', 'probe-m3-memory.yaml')
+    writeFileSync(tplFile, TPL_M3_MEMORY, 'utf8')
+    check(loadTemplate('probe-m3-memory').steps.length === 3, '记忆 action 探针模板加载（steps=3）')
+
+    const t = Date.now()
+    const proj = (
+      await db
+        .insert(projects)
+        .values({ name: 'M3 记忆 action 探针', genre: 'other', templateKey: 'probe-m3-memory', settings: '{}', tags: '[]', createdAt: t, updatedAt: t })
+        .returning()
+    )[0]!
+
+    const runOf = async (runId: number) => (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1))[0]!
+    const stepsOf = async (runId: number) => db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, runId)).orderBy(asc(pipelineSteps.seq))
+    const assetRow = async (id: number) => (await db.select().from(assets).where(eq(assets.id, id)).limit(1))[0]!
+    const parseIds = (s: { output: string | null }): number[] => {
+      try {
+        return (JSON.parse(s.output ?? '{}') as { asset_ids?: number[] }).asset_ids ?? []
+      } catch {
+        return []
+      }
+    }
+    const pollCompleted = async (runId: number): Promise<void> => {
+      const deadline = Date.now() + 30000
+      for (;;) {
+        if ((await runOf(runId)).status === 'completed') return
+        if (Date.now() > deadline) throw new Error(`超时等待 run#${runId} completed`)
+        await new Promise((r) => setTimeout(r, 150))
+      }
+    }
+    const startRun = async (brief: string): Promise<number> => {
+      const now = Date.now()
+      const run = (
+        await db
+          .insert(pipelineRuns)
+          .values({
+            projectId: proj.id,
+            templateKey: 'probe-m3-memory',
+            status: 'queued',
+            input: JSON.stringify({ topic: '写作风格偏好', brief }),
+            templateSnapshot: JSON.stringify(loadTemplate('probe-m3-memory')),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+      )[0]!
+      engine.startRun(run.id)
+      await pollCompleted(run.id)
+      return run.id
+    }
+    const memCount = async (): Promise<number> => {
+      const rows = (await sqlite.execute(`SELECT COUNT(*) AS n FROM memories WHERE project_id = ${proj.id}`)).rows as unknown as Array<{ n: number }>
+      return Number(rows[0]!.n)
+    }
+
+    // —— run1：项目域空库 → 召回占位 + 沉淀记忆 ——
+    const run1Id = await startRun('第一版风格样本：强调口语化短句，避免书面长句')
+    const r1 = new Map((await stepsOf(run1Id)).map((s) => [s.stepKey, s]))
+    check(['recall', 'ingest', 'remember'].every((k) => r1.get(k)?.status === 'succeeded'), 'run1 三步全部 succeeded')
+    const recall1Ids = parseIds(r1.get('recall')!)
+    const recall1 = recall1Ids.length === 1 ? await readTextAsset(recall1Ids[0]!) : ''
+    check(recall1Ids.length === 1 && (await assetRow(recall1Ids[0]!)).purpose === 'memory', 'run1 recall 产物 purpose=memory')
+    check(recall1.includes('无相关记忆'), 'run1 首跑空召回（占位资产）')
+    const log1Ids = parseIds(r1.get('remember')!)
+    check(log1Ids.length === 1 && (await assetRow(log1Ids[0]!)).purpose === 'memory_log', 'run1 remember 产物 purpose=memory_log')
+    check((await memCount()) === 1, `项目域记忆 1 行（实际 ${await memCount()}）`)
+
+    // —— run2：同项目再跑 → 召回命中 run1 沉淀（记忆闭环） ——
+    const run2Id = await startRun('第二版风格样本：口语化短句')
+    const r2 = new Map((await stepsOf(run2Id)).map((s) => [s.stepKey, s]))
+    check(['recall', 'ingest', 'remember'].every((k) => r2.get(k)?.status === 'succeeded'), 'run2 三步全部 succeeded')
+    const recall2Ids = parseIds(r2.get('recall')!)
+    const recall2 = recall2Ids.length === 1 ? await readTextAsset(recall2Ids[0]!) : ''
+    check(recall2.includes('相似度'), 'run2 召回含相似度段落')
+    check(recall2.includes('第一版风格样本'), 'run2 召回命中 run1 沉淀（闭环）')
+    const p2 = JSON.parse((await assetRow(recall2Ids[0]!)).params ?? '{}') as { count?: number; topScore?: number }
+    check((p2.count ?? 0) >= 1, `recall params.count=${p2.count}（topScore=${p2.topScore === undefined ? '—' : p2.topScore.toFixed(3)}）`)
+    check((await memCount()) === 1, `run2 后项目域记忆仍 1 行（同名 upsert，实际 ${await memCount()}）`)
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
     migrate: sectionMigrate,
     memory: sectionMemory,
+    'memory-action': sectionMemoryAction,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'
