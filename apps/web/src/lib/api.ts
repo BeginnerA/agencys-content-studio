@@ -3,19 +3,26 @@ import type {
   ApiErrorBody,
   ApiProvider,
   Asset,
+  Batch,
+  BatchDetail,
   CharacterItem,
+  ExportAssetLite,
   FetchModelsResult,
   GenTask,
   MemoryItem,
   MemoryStatus,
+  Overview,
   Project,
   ProjectDetail,
   PromptItem,
+  Publication,
   Run,
+  RunAssetLite,
   RunDetail,
   TemplateDetail,
   TemplateMeta,
   TemplateValidation,
+  UsageSummary,
 } from './types'
 
 /** 统一请求封装：错误解析为 {code,message}，抛 ApiError */
@@ -206,4 +213,50 @@ export async function uploadFiles(
   })
   const parsed = JSON.parse(data) as { assets?: Asset[] }
   return parsed.assets ?? []
+}
+
+// ===== [M4] 批次 / 统计 / 导出 / 发布 / 设置 =====
+
+export const batchApi = {
+  create: (projectId: number, body: Record<string, unknown>) =>
+    api.post<{ batch: Batch; runIds: number[] }>(`/api/v1/projects/${projectId}/batches`, body),
+  list: (params = '') => api.get<Items<Batch>>(`/api/v1/batches${params}`),
+  detail: (id: number) => api.get<BatchDetail>(`/api/v1/batches/${id}`),
+  cancel: (id: number) => api.post<{ batch: Batch }>(`/api/v1/batches/${id}/cancel`),
+  /** 批量导出（有产物 run 逐个全量打包；无产物记 skipped） */
+  exportAll: (id: number) =>
+    api.post<{
+      items: Array<{ runId: number; assetId: number; name: string }>
+      skipped: Array<{ runId: number; reason: string }>
+    }>(`/api/v1/batches/${id}/exports`),
+}
+
+export const statsApi = {
+  overview: (params = '') => api.get<Overview>(`/api/v1/stats/overview${params}`),
+  usage: (params = '') => api.get<UsageSummary>(`/api/v1/stats/usage${params}`),
+}
+
+export const exportApi = {
+  create: (runId: number, body: Record<string, unknown>) =>
+    api.post<{ asset: ExportAssetLite }>(`/api/v1/runs/${runId}/exports`, body),
+  list: (params = '') => api.get<Items<ExportAssetLite>>(`/api/v1/exports${params}`),
+  runAssets: (runId: number) => api.get<Items<RunAssetLite>>(`/api/v1/runs/${runId}/assets`),
+  /** 下载导出包（复用资产文件端点；download=1 触发浏览器下载） */
+  fileUrl: (assetId: number, download = false) => `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
+}
+
+export const publicationApi = {
+  list: (params = '') =>
+    api.get<{ items: Publication[]; summary: { views: number; interactions: number } }>(`/api/v1/publications${params}`),
+  create: (body: Record<string, unknown>) => api.post<{ publication: Publication }>('/api/v1/publications', body),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<{ publication: Publication }>(`/api/v1/publications/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/publications/${id}`),
+}
+
+export const settingsApi = {
+  list: () => api.get<{ items: Array<{ key: string; value: unknown; updatedAt: number }> }>('/api/v1/settings'),
+  /** value 即 PUT body（JSON） */
+  put: (key: string, value: unknown) =>
+    api.put<{ ok: boolean; key: string; updatedAt: number }>(`/api/v1/settings/${encodeURIComponent(key)}`, value),
 }

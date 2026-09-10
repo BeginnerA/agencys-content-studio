@@ -106,4 +106,21 @@ export const KIND_TEXT: Record<string, string> = {
   video: '视频',
   audio: '音频',
   file: '文件',
+  archive: '归档',
+}
+
+export const PLATFORM_TEXT: Record<string, string> = {
+  douyin: '抖音',
+  wechat_channels: '视频号',
+  kuaishou: '快手',
+  xiaohongshu: '小红书',
+  bilibili: 'B站',
+  other: '其他',
+}
+
+/** 成本展示：0 → ¥0；< 1 元 4 位小数；否则 2 位（null/undefined → —） */
+export function fmtCost(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—'
+  if (n === 0) return '¥0'
+  return `¥${n < 1 ? n.toFixed(4) : n.toFixed(2)}`
 }
