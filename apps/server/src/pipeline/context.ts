@@ -13,6 +13,7 @@ export interface RunSettings {
   llm?: Record<string, unknown>
   image?: Record<string, unknown>
   video?: Record<string, unknown>
+  audio?: Record<string, unknown>
 }
 
 export interface StepContext {
@@ -52,6 +53,7 @@ export async function createStepContext(opts: {
     llm: { ...((template.defaults?.llm as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.llm as Record<string, unknown>) ?? {}) },
     image: { ...((template.defaults?.image as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.image as Record<string, unknown>) ?? {}) },
     video: { ...((template.defaults?.video as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.video as Record<string, unknown>) ?? {}) },
+    audio: { ...((template.defaults?.audio as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.audio as Record<string, unknown>) ?? {}) },
   }
 
   const log = (chunk: string): void => {

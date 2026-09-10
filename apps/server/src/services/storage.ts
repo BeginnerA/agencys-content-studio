@@ -30,11 +30,12 @@ export function projectAbsDir(projectId: number): string {
   return join(PROJECTS_DIR, String(projectId))
 }
 
-/** purpose → 子目录映射 */
+/** purpose → 子目录映射（M1/M2 产物归类；未列出的 purpose 回退 source） */
 export function purposeSubDir(purpose?: string | null): string {
   switch (purpose) {
     case 'script':
     case 'storyboard':
+    case 'subtitle':
       return 'texts'
     case 'shot_image':
     case 'reference_character':
@@ -42,7 +43,10 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'thumbnail':
       return 'images'
     case 'final_video':
+    case 'shot_video':
       return 'video'
+    case 'voice':
+      return 'audio'
     default:
       return 'source'
   }
@@ -57,7 +61,7 @@ export function relPathOf(projectId: number, purpose: string | null | undefined,
 }
 
 export function ensureProjectDirs(projectId: number): void {
-  for (const sub of ['source', 'texts', 'images', 'video', 'thumbs']) {
+  for (const sub of ['source', 'texts', 'images', 'video', 'audio', 'thumbs']) {
     mkdirSync(join(projectAbsDir(projectId), sub), { recursive: true })
   }
 }
@@ -147,8 +151,8 @@ export async function writeTextAsset(
       kind: 'text',
       purpose: opts.purpose,
       name: opts.name,
-      mime: opts.format === 'storyboard-json' ? 'application/json' : 'text/markdown',
-      ext: opts.format === 'storyboard-json' ? 'json' : 'md',
+      mime: opts.format === 'storyboard-json' || opts.format === 'lines-json' ? 'application/json' : 'text/markdown',
+      ext: opts.format === 'storyboard-json' || opts.format === 'lines-json' ? 'json' : 'md',
       fileSize: data.byteLength,
       sha256: sha256Hex(data),
       relPath,

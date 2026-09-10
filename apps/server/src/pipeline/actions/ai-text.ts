@@ -7,7 +7,8 @@ import type { StepResult } from '../types'
 /**
  * ai_text：LLM 文本生成（spec §5.3）。
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
- * output_format=storyboard-json 时强制 JSON 校验（shots 数组）。
+ * output_format=storyboard-json 时强制 JSON 校验（shots 数组）；
+ * output_format=lines-json 时强制校验台词 JSON（lines 数组，供 tts/subtitle 下游）。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -79,6 +80,23 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     }
     ctx.log(`分镜解析通过：${(obj.shots as unknown[]).length} 个镜头`)
   }
+  // lines-json：台词 JSON {lines:[{id,text,est_ms?}]}（tts 配音/subtitle 定时下游契约）
+  if (outputFormat === 'lines-json') {
+    const json = extractJson(content)
+    const obj = JSON.parse(json) as { lines?: unknown }
+    if (!Array.isArray(obj.lines) || obj.lines.length === 0) {
+      throw new Error(`台词 JSON 不合法（缺 lines 数组）。返回开头 200 字符：${content.slice(0, 200)}`)
+    }
+    for (const rec of obj.lines as Array<Record<string, unknown>>) {
+      if (typeof rec['text'] !== 'string' || !String(rec['text']).trim()) {
+        throw new Error(`台词 JSON 不合法：句 ${String(rec['id'] ?? '?')} 缺 text`)
+      }
+      if (rec['est_ms'] !== undefined && (typeof rec['est_ms'] !== 'number' || rec['est_ms'] <= 0)) {
+        throw new Error(`台词 JSON 不合法：句 ${String(rec['id'] ?? '?')} 的 est_ms 需为正数`)
+      }
+    }
+    ctx.log(`台词解析通过：${(obj.lines as unknown[]).length} 句`)
+  }
 
   const nameTpl = typeof params['name_tpl'] === 'string' ? params['name_tpl'] : undefined
   const name = nameTpl ? interpolate(nameTpl, runInput) : defaultName(outputFormat, outputPurpose)
@@ -86,11 +104,11 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     name,
     content,
     purpose: outputPurpose,
-    format: outputFormat === 'storyboard-json' ? 'storyboard-json' : undefined,
+    format: outputFormat === 'storyboard-json' || outputFormat === 'lines-json' ? outputFormat : undefined,
     stepId: ctx.step.id,
     prompt: userPrompt.slice(0, 4000),
     params: { model: ep.model, output_format: outputFormat, chars: content.length },
-    tags: [outputFormat === 'storyboard-json' ? 'storyboard' : 'script'],
+    tags: [outputFormat === 'storyboard-json' ? 'storyboard' : outputFormat === 'lines-json' ? 'lines' : 'script'],
   })
   ctx.log(`已写资产 asset#${asset.id} → ${asset.relPath}`)
   return { assetIds: [asset.id] }
@@ -112,5 +130,6 @@ function asAssetIds(v: unknown): number[] | null {
 
 function defaultName(format: string, purpose: string): string {
   if (format === 'storyboard-json') return 'storyboard.json'
+  if (format === 'lines-json') return 'lines.json'
   return `${purpose}.md`
 }

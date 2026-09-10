@@ -35,11 +35,11 @@ export interface ResolvedEndpoint {
 }
 
 /**
- * 选择图像/视频端点：service_type + providerKey（可选）；否则 is_default 优先。
+ * 选择图像/视频/语音端点：service_type + providerKey（可选）；否则 is_default 优先。
  * 端点配置缺失或 key 未填时抛错并附配置指引。
  */
 export async function resolveEndpoint(
-  serviceType: 'image' | 'video',
+  serviceType: 'image' | 'video' | 'audio',
   providerKey?: string,
 ): Promise<ResolvedEndpoint> {
   const conds = [eq(apiConfigs.serviceType, serviceType), eq(apiConfigs.isActive, 1)]

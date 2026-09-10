@@ -5,6 +5,8 @@ import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { manualIngest } from './manual-ingest'
+import { tts } from './tts'
+import { subtitle } from './subtitle'
 
 export type { StepContext }
 export type { StepResult }
@@ -18,6 +20,8 @@ const registry: Record<string, ActionFn> = {
   ai_image: aiImage,
   ffmpeg_merge: ffmpegMerge,
   ai_video: aiVideo,
+  tts,
+  subtitle,
 }
 
 export function getAction(key: string): ActionFn {

@@ -54,4 +54,5 @@ export const env = {
     model: getEnv('AGENT_LLM_MODEL', 'deepseek-chat'),
   },
   ffmpegPath: getEnv('CSTUDIO_FFMPEG_PATH', ''),
+  ffprobePath: getEnv('CSTUDIO_FFPROBE_PATH', ''),
 }

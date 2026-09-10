@@ -5,6 +5,7 @@ import { apiConfigs, apiProviders } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { chatComplete } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
+import { synthSpeech } from '../services/tts'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const apiRoutes = new Hono()
@@ -171,6 +172,19 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
       extra: endpoint.extra,
     })
     return c.json({ ok: true, ms: Date.now() - t0, kind: img.kind, note: 'image 生成成功（1 张，注意计费）' })
+  }
+  if (cfg.serviceType === 'audio') {
+    // 真实合成 1 句最短音频（成本极低，等价 llm ping）
+    const buf = await synthSpeech('ping', {
+      providerKey: cfg.providerKey,
+      baseUrl: cfg.baseUrl ?? '',
+      apiKey: resolveApiKey(cfg.apiKeyRef),
+      model: cfg.model ?? 'tts-1',
+    }, { timeoutMs: 30_000 })
+    return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, note: '语音合成成功（1 句，注意计费）' })
+  }
+  if (cfg.serviceType === 'video') {
+    throw new HttpError(501, 'no_test', '视频生成需轮询且成本高，请用真实 run 验证（勿用连通测试触发计费）')
   }
   throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
 }))

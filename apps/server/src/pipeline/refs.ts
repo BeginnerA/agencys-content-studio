@@ -8,7 +8,8 @@ import { RefResolveError } from './types'
  * 引用解析器（spec §5.2，engine 内置 ~100 行）。
  * 支持四种形态：
  *   input.<key>                        → run.input 对应键（原样透传）
- *   steps.<key>.asset(s)               → 上游 step 产物资产 id（.asset=首个 / .assets=全量）
+ *   steps.<key>.asset(s)               → 上游 step 产物资产 id（.asset=首个 / .assets=全量；
+ *                                     上游终态但零产物/被跳过时解析为 []）
  *   assets purpose=<purpose>           → 项目内该 purpose 资产 id（updated_at 升序）
  *   模板串内插 {input.x} / {x:03d}     → 替换为 run.input 值（format 可选 pad）
  */
@@ -50,9 +51,9 @@ async function resolveRefString(ref: string, ctx: RefContext): Promise<unknown> 
   const inputM = /^input\.([\w-]+)$/.exec(ref)
   if (inputM) {
     const key = inputM[1]!
-    if (!(key in ctx.runInput)) {
-      throw new RefResolveError(ref, `run.input 无键 ${key}`)
-    }
+    // 选填输入未提供（必填缺失已由 validateRunInput 拦截）：宽容 undefined，下游 action 自行跳过
+    // （与 steps 空产物宽容 [] 同哲学；interpolate 内插仍对缺失抛错，防残缺文件名/提示词）
+    if (!(key in ctx.runInput)) return undefined
     return ctx.runInput[key]
   }
   const stepsM = /^steps\.([\w-]+)\.(asset|assets)$/.exec(ref)
@@ -62,13 +63,11 @@ async function resolveRefString(ref: string, ctx: RefContext): Promise<unknown> 
     if (!ids) {
       throw new RefResolveError(ref, `上游步骤 ${stepKey} 尚未成功（无产物）`)
     }
-    if (ids.length === 0) {
-      throw new RefResolveError(ref, `上游步骤 ${stepKey} 产物为空`)
-    }
+    // 终态但零产物（when 分支跳过/空结果）：引用端宽容为 []，由下游 action 校验
+    // （互斥分支模板如 compose 双字段 images/motion_clips 依赖此语义取非空分支）
+    if (ids.length === 0) return []
     if (stepsM[2] === 'asset') {
-      const first = ids[0]
-      if (!first) throw new RefResolveError(ref, `上游步骤 ${stepKey} 产物为空`)
-      return [first] // 下游以数组统一消费；.asset 语义=取首个
+      return [ids[0]!] // 下游以数组统一消费；.asset 语义=取首个
     }
     return ids
   }

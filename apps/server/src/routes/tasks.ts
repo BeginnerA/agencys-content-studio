@@ -99,6 +99,7 @@ async function withAsset(t: typeof genTasks.$inferSelect): Promise<Record<string
     kind: t.kind,
     provider: t.provider,
     model: t.model,
+    taskId: t.taskId, // 第三方任务 id（ai_video 轮询溯源）
     status: t.status,
     attempts: t.attempts,
     errorMsg: t.errorMsg,

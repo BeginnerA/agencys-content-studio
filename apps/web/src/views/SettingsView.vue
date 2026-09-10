@@ -5,11 +5,12 @@ import Icon from '../components/Icon.vue'
 import { configApi } from '../lib/api'
 import type { ApiConfig, ApiProvider } from '../lib/types'
 
-// 配置按能力分类成 tab：文本 / 图片 / 视频（serviceType → tab 映射）
+// 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）
 const TABS = [
   { key: 'text', label: '文本生成', icon: 'pencil', types: ['llm'], hint: '剧本 / 文案 / 结构化输出（LLM）' },
   { key: 'image', label: '图片生成', icon: 'photo', types: ['image'], hint: '分镜 / 角色 / 封面出图' },
-  { key: 'video', label: '视频生成', icon: 'film', types: ['video', 'audio'], hint: '图生视频与配音（M2 启用）' },
+  { key: 'video', label: '视频生成', icon: 'video', types: ['video'], hint: '镜头动效 / AI 视频生成' },
+  { key: 'audio', label: '语音合成', icon: 'speaker-wave', types: ['audio'], hint: '配音 / TTS（OpenAI 兼容 /audio/speech）' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
