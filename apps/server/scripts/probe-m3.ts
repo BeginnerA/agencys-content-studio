@@ -11,6 +11,7 @@
  *   memory-action  记忆 action 闭环：run1 召回占位 + 沉淀 → run2 召回命中（memory_write/memory_recall 实弹）
  *   character  角色建档闭环：预置角色 + 纯函数注入断言 + ingest→char_sync 实弹（定妆照归属/幂等）
  *   contract  文本输出契约：validateTextOutput（characters-json / lines-json v2 / storyboard-json 回归）
+ *   tts  声线六级链 + 情绪基调词/透传载荷（纯函数，无网络）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -40,7 +41,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract', 'tts'] as const
 
 /** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
 const TPL_M3_MEMORY = `key: probe-m3-memory
@@ -524,6 +525,34 @@ async function main(): Promise<void> {
     check(throwsWith(() => validateTextOutput('{"shots":[{"id":"s1"}]}', 'storyboard-json'), 'image_prompt'), '缺 image_prompt → 抛错（回归）')
   }
 
+  const sectionTts = async (): Promise<void> => {
+    await initDb()
+    const { parseEmotionKey, resolveVoiceChain } = await import('../src/pipeline/actions/tts')
+    const { resolveEmotionPayload } = await import('../src/services/tts')
+
+    // —— 情绪基调词 ——
+    check(parseEmotionKey('干笑——语气虚浮带躲闪，语速偏慢') === '干笑', 'parseEmotionKey 分隔符前段 → 干笑')
+    check(parseEmotionKey('平平的') === '平平的', 'parseEmotionKey 无分隔符短词原样')
+    check(parseEmotionKey('这是一个很长的无分隔符短语') === '这是一个很长', 'parseEmotionKey 无分隔符截前 6 字')
+    check(parseEmotionKey('') === '', 'parseEmotionKey 空串 → 空')
+
+    // —— 声线六级链 ——
+    const full = { lineVoice: 'L', charVoice: 'C', paramVoice: 'P', settingsVoice: 'S', instanceVoice: 'I' }
+    const r1 = resolveVoiceChain(full)
+    check(r1.voice === 'L' && r1.source === 'line', '声线链 L1 line 优先')
+    check(resolveVoiceChain({ ...full, lineVoice: undefined }).source === 'character', '声线链 L2 角色库')
+    check(resolveVoiceChain({ charVoice: undefined, paramVoice: 'P', settingsVoice: 'S', instanceVoice: 'I' }).source === 'params', '声线链 L3 params')
+    check(resolveVoiceChain({ paramVoice: undefined, settingsVoice: 'S', instanceVoice: 'I' }).source === 'settings', '声线链 L4 settings')
+    check(resolveVoiceChain({ settingsVoice: undefined, instanceVoice: 'I' }).source === 'instance', '声线链 L5 实例')
+    check(resolveVoiceChain({}).voice === 'alloy' && resolveVoiceChain({}).source === 'default', '声线链 L6 兑底 alloy/default')
+
+    // —— 情绪透传载荷 ——
+    const em = resolveEmotionPayload('干笑', { param: 'emotion', map: { 干笑: 'cheerful' } })
+    check(em !== null && em.param === 'emotion' && em.value === 'cheerful', 'resolveEmotionPayload map 命中 → 映射值')
+    check(resolveEmotionPayload('干笑', { param: 'emotion' })?.value === '干笑', 'resolveEmotionPayload 无 map → 基调词原样')
+    check(resolveEmotionPayload('', { param: 'emotion' }) === null && resolveEmotionPayload('干笑', undefined) === null, 'resolveEmotionPayload 无 key/未声明 → null')
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
@@ -532,6 +561,7 @@ async function main(): Promise<void> {
     'memory-action': sectionMemoryAction,
     character: sectionCharacter,
     contract: sectionContract,
+    tts: sectionTts,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'

@@ -14,6 +14,8 @@ export interface AudioEndpoint {
   model: string
   /** 实例级默认音色（config.extra.voice；如 SiliconFlow 需 "模型:音色" 格式） */
   voice?: string
+  /** 实例级情绪透传声明（config.extra.emotion_param / emotion_map，E4） */
+  emotion?: { param: string; map?: Record<string, string> }
 }
 
 /** 解析 audio 端点：未配置实例时报错并附 Settings 指引 */
@@ -25,13 +27,40 @@ export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioE
     apiKey: endpoint.apiKey,
     model: endpoint.model ?? 'tts-1',
     voice: typeof endpoint.extra['voice'] === 'string' && endpoint.extra['voice'] ? endpoint.extra['voice'] : undefined,
+    emotion: parseEmotionDecl(endpoint.extra),
   }
+}
+
+/** 实例 extra 的情绪声明：emotion_param 为请求体参数名；emotion_map 为 基调词 → 网关枚举值 映射（可选） */
+function parseEmotionDecl(extra: Record<string, unknown>): { param: string; map?: Record<string, string> } | undefined {
+  const param = extra['emotion_param']
+  if (typeof param !== 'string' || !param) return undefined
+  const mapRaw = extra['emotion_map']
+  if (mapRaw && typeof mapRaw === 'object' && !Array.isArray(mapRaw)) {
+    const map: Record<string, string> = {}
+    for (const [k, v] of Object.entries(mapRaw as Record<string, unknown>)) {
+      if (typeof v === 'string') map[k] = v
+    }
+    if (Object.keys(map).length > 0) return { param, map }
+  }
+  return { param }
+}
+
+/** 情绪透传载荷（E4）：实例声明 emotion_param 才透传；map 命中 → 映射值，否则基调词原样；无 key/未声明 → null */
+export function resolveEmotionPayload(
+  key: string,
+  emotion?: { param: string; map?: Record<string, string> },
+): { param: string; value: string } | null {
+  if (!key || !emotion) return null
+  return { param: emotion.param, value: emotion.map?.[key] ?? key }
 }
 
 export interface SynthSpeechOptions {
   voice?: string
   speed?: number
   timeoutMs?: number
+  /** 情绪透传（E4）：resolveEmotionPayload 产物；实例未声明时不下发（兼容任意网关） */
+  emotion?: { param: string; value: string }
 }
 
 /** 文本 → mp3 音频 Buffer；非 2xx 抛错含 HTTP 细节 */
@@ -47,6 +76,7 @@ export async function synthSpeech(
     response_format: 'mp3',
   }
   body.voice = opts.voice ?? 'alloy'
+  if (opts.emotion) body[opts.emotion.param] = opts.emotion.value
   if (typeof opts.speed === 'number' && opts.speed > 0) body.speed = opts.speed
 
   const timeoutMs = opts.timeoutMs ?? 120_000

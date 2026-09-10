@@ -1,22 +1,28 @@
 import { writeFileSync } from 'node:fs'
+import { loadCharacterIndex } from '../../services/character'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
-import { resolveAudioEndpoint, synthSpeech } from '../../services/tts'
+import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
 interface LineItem {
   id: string
   text: string
+  speaker?: string
+  voiceHint?: string
+  emotionHint?: string
+  estMs?: number
 }
 
 /**
  * tts：对白/口播配音（spec §5.2，OpenAI 兼容 /audio/speech）。
  * 输入 lines 两种形态：
- *  - 单个 JSON 资产：{ lines: [{id?, speaker?, text}], ... } 或纯数组；
+ *  - 单个 JSON 资产：{ lines: [{id?, speaker?, voice_hint?, emotion_hint?, text}], ... } 或纯数组；
  *  - 多个资产：每资产全文 = 一句台词。
  * 产物：每句 1 个 audio 资产（purpose=voice，mime audio/mpeg，可复用/可替换/可溯源），
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
- * voice 优先级：params.voice → defaults.audio / project.settings.audio → 实例 extra.voice → alloy。
+ * 声线六级链（spec §6.2）：line.voice_hint → 角色库 voice → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
+ * 情绪：emotion_hint → 基调词（首个「——」前段）→ 实例声明 emotion_param 时透传（emotion_map 映射）。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -24,26 +30,34 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const provider = typeof audCfg['provider'] === 'string' ? audCfg['provider'] : undefined
   const speedRaw = typeof params['speed'] === 'number' ? params['speed'] : audCfg['speed']
   const speed = typeof speedRaw === 'number' ? speedRaw : undefined
+  const paramVoice = typeof params['voice'] === 'string' && params['voice'] ? params['voice'] : undefined
+  const settingsVoice = typeof audCfg['voice'] === 'string' && audCfg['voice'] ? audCfg['voice'] : undefined
 
   const ep = await resolveAudioEndpoint(provider)
-  // 音色优先级：step params → 模板/项目 settings.audio → 实例 extra.voice → alloy
-  const voice = (typeof params['voice'] === 'string' && params['voice'])
-    || (typeof audCfg['voice'] === 'string' && audCfg['voice'])
-    || ep.voice
-    || 'alloy'
 
   const lineIds = ctx.assetIdsOf('lines')
   if (lineIds.length === 0) throw new Error('inputs.lines 无台词资产')
   const lines = await collectLines(ctx, lineIds)
   if (lines.length === 0) throw new Error('台词内容为空（lines 数组/资产全文均无文本）')
-  ctx.log(`配音 ${lines.length} 句（voice=${voice}${speed ? `, speed=${speed}` : ''}，模型取 audio 实例配置）`)
+  const charIndex = await loadCharacterIndex(ctx.run.projectId)
+  ctx.log(`配音 ${lines.length} 句（逐句声线链 + 情绪解析${speed ? `, speed=${speed}` : ''}，模型取 audio 实例配置）`)
 
   const assetIds: number[] = []
   let failed = 0
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
     try {
-      const data = await synthSpeech(line.text, ep, { voice, speed })
+      const charVoice = line.speaker ? charIndex.get(line.speaker)?.voice ?? undefined : undefined
+      const { voice, source } = resolveVoiceChain({
+        lineVoice: line.voiceHint,
+        charVoice,
+        paramVoice,
+        settingsVoice,
+        instanceVoice: ep.voice,
+      })
+      const emotionKey = parseEmotionKey(line.emotionHint ?? '')
+      const emotionPayload = resolveEmotionPayload(emotionKey, ep.emotion)
+      const data = await synthSpeech(line.text, ep, { voice, speed, emotion: emotionPayload ?? undefined })
       const idx = String(i + 1).padStart(2, '0')
       const fileName = `${Date.now()}-voice-${idx}-${sanitizeName(line.id)}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', fileName)
@@ -59,7 +73,20 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         ext: 'mp3',
         fileSize: data.byteLength,
         prompt: line.text.slice(0, 4000),
-        params: { lineId: line.id, voice, speed: speed ?? null, model: ep.model, provider: ep.providerKey, chars: line.text.length },
+        params: {
+          lineId: line.id,
+          speaker: line.speaker ?? null,
+          voice,
+          voiceSource: source,
+          voiceHint: line.voiceHint ?? null,
+          emotionHint: line.emotionHint ?? null,
+          emotionKey: emotionKey || null,
+          emotionSent: emotionPayload?.value ?? null,
+          speed: speed ?? null,
+          model: ep.model,
+          provider: ep.providerKey,
+          chars: line.text.length,
+        },
         tags: ['voice'],
       })
       assetIds.push(asset.id)
@@ -110,9 +137,38 @@ function toLines(list: unknown[]): LineItem[] {
     const text = typeof rec['text'] === 'string' ? rec['text'].trim() : typeof rec['content'] === 'string' ? rec['content'].trim() : ''
     if (!text) continue
     const id = typeof rec['id'] === 'string' && rec['id'] ? rec['id'] : String(i + 1)
-    out.push({ id, text })
+    // v2 可选字段（存在且类型合法时取值；缺省 undefined → 旧 lines.json 向后兼容）
+    const str = (k: string): string | undefined => {
+      const v = rec[k]
+      return typeof v === 'string' && v.trim() ? v.trim() : undefined
+    }
+    const estMs = typeof rec['est_ms'] === 'number' && rec['est_ms'] > 0 ? rec['est_ms'] : undefined
+    out.push({ id, text, speaker: str('speaker'), voiceHint: str('voice_hint'), emotionHint: str('emotion_hint'), estMs })
   }
   return out
+}
+
+/** 声线六级链（spec §6.2）：line.voice_hint → 角色库 → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy' */
+export function resolveVoiceChain(p: {
+  lineVoice?: string
+  charVoice?: string
+  paramVoice?: string
+  settingsVoice?: string
+  instanceVoice?: string
+}): { voice: string; source: 'line' | 'character' | 'params' | 'settings' | 'instance' | 'default' } {
+  if (p.lineVoice) return { voice: p.lineVoice, source: 'line' }
+  if (p.charVoice) return { voice: p.charVoice, source: 'character' }
+  if (p.paramVoice) return { voice: p.paramVoice, source: 'params' }
+  if (p.settingsVoice) return { voice: p.settingsVoice, source: 'settings' }
+  if (p.instanceVoice) return { voice: p.instanceVoice, source: 'instance' }
+  return { voice: 'alloy', source: 'default' }
+}
+
+/** 情绪基调词（spec §6.2）：emotion_hint 首个「——」前段；无分隔符取前 6 字符；空 → '' */
+export function parseEmotionKey(hint: string): string {
+  const idx = hint.indexOf('——')
+  if (idx >= 0) return hint.slice(0, idx).trim()
+  return [...hint.trim()].slice(0, 6).join('')
 }
 
 function sanitizeName(s: string): string {
