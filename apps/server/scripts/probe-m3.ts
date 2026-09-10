@@ -10,6 +10,7 @@
  *   memory   embedding 服务冒烟（维度 / cosine / status）+ upsert/recall/reindex 断言
  *   memory-action  记忆 action 闭环：run1 召回占位 + 沉淀 → run2 召回命中（memory_write/memory_recall 实弹）
  *   character  角色建档闭环：预置角色 + 纯函数注入断言 + ingest→char_sync 实弹（定妆照归属/幂等）
+ *   contract  文本输出契约：validateTextOutput（characters-json / lines-json v2 / storyboard-json 回归）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL；2 = 前置缺失（模型未就绪，memory 相关 section 输出 SKIP）。
  */
@@ -39,7 +40,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['migrate', 'memory', 'memory-action', 'character'] as const
+const SECTIONS = ['migrate', 'memory', 'memory-action', 'character', 'contract'] as const
 
 /** memory-action section 的内联模板（写临时 templates 目录；manual_ingest 产 brief 资产，无 LLM/网络依赖） */
 const TPL_M3_MEMORY = `key: probe-m3-memory
@@ -477,6 +478,52 @@ async function main(): Promise<void> {
     check((await objCount()) === 2, `run2 后项目域角色仍 2 行（实际 ${await objCount()}）`)
   }
 
+  const sectionContract = async (): Promise<void> => {
+    await initDb()
+    const { validateTextOutput } = await import('../src/pipeline/actions/ai-text')
+    const throwsWith = (fn: () => void, needle: string): boolean => {
+      try {
+        fn()
+        return false
+      } catch (err) {
+        return (err as Error).message.includes(needle)
+      }
+    }
+
+    // —— characters-json：全字段 / 剥围栏 / 最小样本通过；缺 appearance / 空数组抛错 ——
+    const okChar = JSON.stringify({
+      characters: [
+        {
+          name: '萌宝',
+          appearance: '圆脸大眼、虎头帽红袄',
+          aliases: ['小宝'],
+          summary: '三岁半男主',
+          negative: '成人化五官',
+          voice: '软糯童声',
+          ref_prompt: '三视图，纯白底',
+        },
+      ],
+    })
+    check(validateTextOutput(okChar, 'characters-json') === 1, 'characters-json 全字段样本通过')
+    check(validateTextOutput('```json\n' + okChar + '\n```', 'characters-json') === 1, 'characters-json 剥围栏样本通过')
+    check(validateTextOutput('{"characters":[{"name":"a","appearance":"b"}]}', 'characters-json') === 1, 'characters-json 最小样本（仅 name/appearance）通过')
+    check(throwsWith(() => validateTextOutput('{"characters":[{"name":"萌宝"}]}', 'characters-json'), 'appearance'), '缺 appearance → 抛错（含 appearance）')
+    check(throwsWith(() => validateTextOutput('{"characters":[]}', 'characters-json'), 'characters'), 'characters 空数组 → 抛错')
+
+    // —— lines-json v2：四字段通过 / 旧样本兼容 / speaker 非字符串 / 缺 text ——
+    const okLines = JSON.stringify({
+      lines: [{ id: 'l1', text: '我不怕！', est_ms: 1600, speaker: '萌宝', voice_hint: '软糯童声', emotion_hint: '坚定' }],
+    })
+    check(validateTextOutput(okLines, 'lines-json') === 1, 'lines-json 四字段样本通过')
+    check(validateTextOutput(JSON.stringify({ lines: [{ id: 'l1', text: '我不怕！', est_ms: 1600 }] }), 'lines-json') === 1, 'lines-json 旧样本向后兼容')
+    check(throwsWith(() => validateTextOutput('{"lines":[{"id":"l1","text":"你好","speaker":123}]}', 'lines-json'), 'speaker'), 'speaker 非字符串 → 抛错')
+    check(throwsWith(() => validateTextOutput('{"lines":[{"id":"l1"}]}', 'lines-json'), 'text'), '缺 text → 抛错')
+
+    // —— storyboard-json 回归 ——
+    check(validateTextOutput('{"shots":[{"id":"s1","image_prompt":"P1"}]}', 'storyboard-json') === 1, 'storyboard-json 合法样本通过（回归）')
+    check(throwsWith(() => validateTextOutput('{"shots":[{"id":"s1"}]}', 'storyboard-json'), 'image_prompt'), '缺 image_prompt → 抛错（回归）')
+  }
+
   // ================= 分发 =================
 
   const runners: Record<string, () => Promise<void>> = {
@@ -484,6 +531,7 @@ async function main(): Promise<void> {
     memory: sectionMemory,
     'memory-action': sectionMemoryAction,
     character: sectionCharacter,
+    contract: sectionContract,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'

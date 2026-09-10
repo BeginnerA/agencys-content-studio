@@ -30,12 +30,25 @@ export function projectAbsDir(projectId: number): string {
   return join(PROJECTS_DIR, String(projectId))
 }
 
-/** purpose → 子目录映射（M1/M2 产物归类；未列出的 purpose 回退 source） */
+/** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json'] as const
+
+/** 文本 JSON 格式判定 */
+export function isJsonTextFormat(format?: string): boolean {
+  return !!format && (JSON_FORMATS as readonly string[]).includes(format)
+}
+
+/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志；未列出的 purpose 回退 source） */
 export function purposeSubDir(purpose?: string | null): string {
   switch (purpose) {
     case 'script':
     case 'storyboard':
     case 'subtitle':
+    case 'memory':
+    case 'memory_log':
+    case 'character_log':
+    case 'characters':
+    case 'export':
       return 'texts'
     case 'shot_image':
     case 'reference_character':
@@ -151,8 +164,8 @@ export async function writeTextAsset(
       kind: 'text',
       purpose: opts.purpose,
       name: opts.name,
-      mime: opts.format === 'storyboard-json' || opts.format === 'lines-json' ? 'application/json' : 'text/markdown',
-      ext: opts.format === 'storyboard-json' || opts.format === 'lines-json' ? 'json' : 'md',
+      mime: isJsonTextFormat(opts.format) ? 'application/json' : 'text/markdown',
+      ext: isJsonTextFormat(opts.format) ? 'json' : 'md',
       fileSize: data.byteLength,
       sha256: sha256Hex(data),
       relPath,

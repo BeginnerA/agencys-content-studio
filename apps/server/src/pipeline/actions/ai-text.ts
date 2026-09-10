@@ -1,5 +1,5 @@
 import { loadPromptTemplate, chatComplete, resolveLlmEndpoint } from '../../services/llm'
-import { readTextAsset, writeTextAsset } from '../../services/storage'
+import { isJsonTextFormat, readTextAsset, writeTextAsset } from '../../services/storage'
 import type { StepContext } from '../context'
 import { interpolate } from '../refs'
 import type { StepResult } from '../types'
@@ -7,8 +7,8 @@ import type { StepResult } from '../types'
 /**
  * ai_text：LLM 文本生成（spec §5.3）。
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
- * output_format=storyboard-json 时强制 JSON 校验（shots 数组）；
- * output_format=lines-json 时强制校验台词 JSON（lines 数组，供 tts/subtitle 下游）。
+ * output_format=storyboard-json/lines-json/characters-json 时走 validateTextOutput 契约校验
+ * （shots / lines（v2 含 speaker/voice_hint/emotion_hint）/ characters 数组）。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -66,10 +66,38 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   )
   ctx.log(`LLM 返回 ${content.length} 字符`)
 
-  // storyboard-json：必须为合法 JSON 且含 shots 数组，否则判失败（错误含摘要供排查）
-  if (outputFormat === 'storyboard-json') {
-    const json = extractJson(content)
-    const obj = JSON.parse(json) as { shots?: unknown }
+  // 输出契约校验（storyboard-json / lines-json / characters-json；返回条目数供日志）
+  const items = validateTextOutput(content, outputFormat)
+  if (outputFormat === 'storyboard-json') ctx.log(`分镜解析通过：${items} 个镜头`)
+  if (outputFormat === 'lines-json') ctx.log(`台词解析通过：${items} 句`)
+  if (outputFormat === 'characters-json') ctx.log(`角色档案解析通过：${items} 名`)
+
+  const nameTpl = typeof params['name_tpl'] === 'string' ? params['name_tpl'] : undefined
+  const name = nameTpl ? interpolate(nameTpl, runInput) : defaultName(outputFormat, outputPurpose)
+  const tag = outputFormat === 'storyboard-json' ? 'storyboard' : outputFormat === 'lines-json' ? 'lines' : outputFormat === 'characters-json' ? 'characters' : 'script'
+  const asset = await writeTextAsset(ctx.run.projectId, {
+    name,
+    content,
+    purpose: outputPurpose,
+    format: isJsonTextFormat(outputFormat) ? outputFormat : undefined,
+    stepId: ctx.step.id,
+    prompt: userPrompt.slice(0, 4000),
+    params: { model: ep.model, output_format: outputFormat, chars: content.length },
+    tags: [tag],
+  })
+  ctx.log(`已写资产 asset#${asset.id} → ${asset.relPath}`)
+  return { assetIds: [asset.id] }
+}
+
+/**
+ * 输出契约校验（导出供探针直接断言，无需 LLM）：
+ * storyboard-json（shots 数组 + image_prompt）/ lines-json（lines 数组 + text/est_ms + v2 speaker/voice_hint/emotion_hint）
+ * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/ref_prompt）；
+ * 返回条目数（非校验格式 → 0）；错误消息口径与 M1/M2 一致。
+ */
+export function validateTextOutput(content: string, format: string): number {
+  if (format === 'storyboard-json') {
+    const obj = JSON.parse(extractJson(content)) as { shots?: unknown }
     if (!Array.isArray(obj.shots) || obj.shots.length === 0) {
       throw new Error(`分镜 JSON 不合法（缺 shots 数组）。返回开头 200 字符：${content.slice(0, 200)}`)
     }
@@ -78,12 +106,10 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
         throw new Error(`分镜 JSON 不合法：shot ${String(shot['id'] ?? '?')} 缺 image_prompt`)
       }
     }
-    ctx.log(`分镜解析通过：${(obj.shots as unknown[]).length} 个镜头`)
+    return obj.shots.length
   }
-  // lines-json：台词 JSON {lines:[{id,text,est_ms?}]}（tts 配音/subtitle 定时下游契约）
-  if (outputFormat === 'lines-json') {
-    const json = extractJson(content)
-    const obj = JSON.parse(json) as { lines?: unknown }
+  if (format === 'lines-json') {
+    const obj = JSON.parse(extractJson(content)) as { lines?: unknown }
     if (!Array.isArray(obj.lines) || obj.lines.length === 0) {
       throw new Error(`台词 JSON 不合法（缺 lines 数组）。返回开头 200 字符：${content.slice(0, 200)}`)
     }
@@ -94,24 +120,48 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
       if (rec['est_ms'] !== undefined && (typeof rec['est_ms'] !== 'number' || rec['est_ms'] <= 0)) {
         throw new Error(`台词 JSON 不合法：句 ${String(rec['id'] ?? '?')} 的 est_ms 需为正数`)
       }
+      // v2 可选台词字段（tts 声线/情绪链；存在时必须为非空字符串）
+      for (const key of ['speaker', 'voice_hint', 'emotion_hint']) {
+        const v = rec[key]
+        if (v !== undefined && (typeof v !== 'string' || !v.trim())) {
+          throw new Error(`台词 JSON 不合法：句 ${String(rec['id'] ?? '?')} 的 ${key} 需为非空字符串`)
+        }
+      }
     }
-    ctx.log(`台词解析通过：${(obj.lines as unknown[]).length} 句`)
+    return obj.lines.length
   }
-
-  const nameTpl = typeof params['name_tpl'] === 'string' ? params['name_tpl'] : undefined
-  const name = nameTpl ? interpolate(nameTpl, runInput) : defaultName(outputFormat, outputPurpose)
-  const asset = await writeTextAsset(ctx.run.projectId, {
-    name,
-    content,
-    purpose: outputPurpose,
-    format: outputFormat === 'storyboard-json' || outputFormat === 'lines-json' ? outputFormat : undefined,
-    stepId: ctx.step.id,
-    prompt: userPrompt.slice(0, 4000),
-    params: { model: ep.model, output_format: outputFormat, chars: content.length },
-    tags: [outputFormat === 'storyboard-json' ? 'storyboard' : outputFormat === 'lines-json' ? 'lines' : 'script'],
-  })
-  ctx.log(`已写资产 asset#${asset.id} → ${asset.relPath}`)
-  return { assetIds: [asset.id] }
+  if (format === 'characters-json') {
+    const obj = JSON.parse(extractJson(content)) as { characters?: unknown }
+    if (!Array.isArray(obj.characters) || obj.characters.length === 0) {
+      throw new Error(`角色档案 JSON 不合法（缺 characters 数组）。返回开头 200 字符：${content.slice(0, 200)}`)
+    }
+    for (const rec of obj.characters as Array<Record<string, unknown>>) {
+      if (typeof rec['name'] !== 'string' || !rec['name'].trim()) {
+        throw new Error('角色档案 JSON 不合法：存在缺 name 的角色项')
+      }
+      const who = rec['name']
+      if (typeof rec['appearance'] !== 'string' || !rec['appearance'].trim()) {
+        throw new Error(`角色档案 JSON 不合法：角色 ${who} 缺 appearance`)
+      }
+      const aliases = rec['aliases']
+      if (aliases !== undefined && (!Array.isArray(aliases) || aliases.some((x: unknown) => typeof x !== 'string' || !x.trim()))) {
+        throw new Error(`角色档案 JSON 不合法：角色 ${who} 的 aliases 需为非空字符串数组`)
+      }
+      for (const key of ['summary', 'negative', 'voice']) {
+        if (rec[key] !== undefined && typeof rec[key] !== 'string') {
+          throw new Error(`角色档案 JSON 不合法：角色 ${who} 的 ${key} 需为字符串`)
+        }
+      }
+      if (
+        rec['ref_prompt'] !== undefined &&
+        !(typeof rec['ref_prompt'] === 'string' || (Array.isArray(rec['ref_prompt']) && rec['ref_prompt'].every((x: unknown) => typeof x === 'string')))
+      ) {
+        throw new Error(`角色档案 JSON 不合法：角色 ${who} 的 ref_prompt 需为字符串或字符串数组`)
+      }
+    }
+    return obj.characters.length
+  }
+  return 0
 }
 
 /** LLM 偶尔输出 markdown 围栏：剥除后取首个 {...} */
@@ -131,5 +181,6 @@ function asAssetIds(v: unknown): number[] | null {
 function defaultName(format: string, purpose: string): string {
   if (format === 'storyboard-json') return 'storyboard.json'
   if (format === 'lines-json') return 'lines.json'
+  if (format === 'characters-json') return 'characters.json'
   return `${purpose}.md`
 }
