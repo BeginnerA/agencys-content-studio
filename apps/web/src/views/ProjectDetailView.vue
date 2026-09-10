@@ -8,8 +8,7 @@ import RunFormModal from '../components/RunFormModal.vue'
 import { projectApi, uploadFiles } from '../lib/api'
 import type { Asset, ProjectDetail, Run } from '../lib/types'
 import { runStatus, fmtTime, fmtMs, purposeText, stepStatus } from '../lib/format'
-import { getSocket } from '../lib/socket'
-import type { StudioEventMap } from '../lib/socket'
+import { getSocket, studioOff, studioOn } from '../lib/socket'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,13 +60,13 @@ onMounted(() => {
   const s = getSocket()
   s.emit('join', `project:${projectId}`)
   const onEvent = () => void loadAll()
-  s.on('run.step', onEvent as never)
-  s.on('run.completed', onEvent as never)
-  s.on('run.failed', onEvent as never)
+  studioOn('run.step', onEvent)
+  studioOn('run.completed', onEvent)
+  studioOn('run.failed', onEvent)
   onBeforeUnmount(() => {
-    s.off('run.step', onEvent as never)
-    s.off('run.completed', onEvent as never)
-    s.off('run.failed', onEvent as never)
+    studioOff('run.step', onEvent)
+    studioOff('run.completed', onEvent)
+    studioOff('run.failed', onEvent)
     s.emit('leave', `project:${projectId}`)
   })
 })

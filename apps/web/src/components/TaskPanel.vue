@@ -4,7 +4,7 @@ import type { Asset, GenTask } from '../lib/types'
 import { assetApi, taskApi } from '../lib/api'
 import { taskStatus, fmtTime } from '../lib/format'
 import AssetPreviewer from './AssetPreviewer.vue'
-import { getSocket } from '../lib/socket'
+import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
 const props = defineProps<{ runId: number; active: boolean }>()
@@ -78,7 +78,7 @@ function statusText(t: GenTask): string {
 }
 
 function onTaskUpdated(p: StudioEventMap['task.updated']) {
-  const t = tasks.value.find((x) => x.id === p.task_id)
+  const t = tasks.value.find((x) => x.id === p.taskId)
   if (t) {
     t.status = p.status as GenTask['status']
     emit('changed')
@@ -87,7 +87,7 @@ function onTaskUpdated(p: StudioEventMap['task.updated']) {
 
 onMounted(() => {
   load()
-  getSocket().on('task.updated', onTaskUpdated as never)
+  studioOn('task.updated', onTaskUpdated)
   timer = window.setInterval(() => {
     if (props.active || tasks.value.some((t) => t.status === 'processing')) load()
   }, 3000)
@@ -99,7 +99,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  getSocket().off('task.updated', onTaskUpdated as never)
+  studioOff('task.updated', onTaskUpdated)
   if (timer) window.clearInterval(timer)
 })
 </script>

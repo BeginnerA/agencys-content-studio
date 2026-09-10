@@ -8,7 +8,7 @@ import Icon from '../components/Icon.vue'
 import { assetApi, runApi, templateApi } from '../lib/api'
 import type { Asset, RunDetail, RunStep, TemplateDetail } from '../lib/types'
 import { fmtMs, fmtTime, runStatus, skipReasonText, stepStatus } from '../lib/format'
-import { getSocket, useStudio } from '../lib/socket'
+import { useStudio } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
 const route = useRoute()
@@ -202,21 +202,21 @@ async function resumeRun() {
 // ===== socket 实时 =====
 const studio = useStudio(runId)
 function onStep(p: StudioEventMap['run.step']) {
-  if (p.run_id !== runId) return
+  if (p.runId !== runId) return
   const local = steps.value.find((s) => s.id === p.step.id)
   if (local && p.step.status) {
-    local.status = p.step.status
-    local.attempts = p.step.attempts ?? local.attempts
+    local.status = p.step.status as RunStep['status']
+    // [M4] server run.step 不含 attempts（删除旧 p.step.attempts 行）；详细状态由 loadDetail 兜底
     if (p.step.status === 'waiting_input' || p.step.status === 'succeeded' || p.step.status === 'skipped') {
       void loadDetail()
     }
   }
 }
 function onTerminal(p: StudioEventMap['run.completed' | 'run.failed']) {
-  if ((p as { run_id: number }).run_id === runId) void loadDetail()
+  if (p.runId === runId) void loadDetail()
 }
 function onGate(p: StudioEventMap['run.gate']) {
-  if (p.run_id === runId) void loadDetail()
+  if (p.runId === runId) void loadDetail()
 }
 function onLog(p: StudioEventMap['step.log']) {
   if (showLog.value) void loadLog()

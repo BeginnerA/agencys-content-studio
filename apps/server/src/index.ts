@@ -42,19 +42,24 @@ async function main(): Promise<void> {
     socket.on('join', (room: string) => {
       if (typeof room === 'string' && /^(run|project):\d+$/.test(room)) socket.join(room)
     })
+    socket.on('leave', (room: string) => {
+      if (typeof room === 'string' && /^(run|project):\d+$/.test(room)) socket.leave(room)
+    })
     socket.on('disconnect', () => log.debug('socket disconnected', { id: socket.id }))
   })
 
-  // 进程内事件 → /studio：投递 run:{id} + project:{id} 两个 room（project 用事件自带或补查）
+  // 进程内事件 → /studio：投递 run:{id}（如有）+ project:{id} 两个 room
+  // （batch.updated 等无 runId 事件经 projectId 投递；两者俱无 → 丢弃）
   onStudioEvent((e) => {
     const runId = e.runId
-    if (runId === null || runId === undefined) return
-    const rooms = [`run:${runId}`]
+    const rooms: string[] = []
+    if (runId !== null && runId !== undefined) rooms.push(`run:${runId}`)
     const pid = 'projectId' in e && e.projectId ? e.projectId : 0
+    if (!rooms.length && !pid) return
     void (async () => {
-      const projectId = pid || (await projectIdOf(runId))
+      const projectId = pid || (runId !== null && runId !== undefined ? await projectIdOf(runId) : 0)
       if (projectId) rooms.push(`project:${projectId}`)
-      studio.to(rooms).emit('studio.event', e)
+      if (rooms.length) studio.to(rooms).emit('studio.event', e)
     })()
   })
 
