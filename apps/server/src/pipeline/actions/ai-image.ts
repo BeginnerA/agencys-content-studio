@@ -209,6 +209,7 @@ async function runOneTask(
         projectId: ctx.run.projectId,
         stepId: ctx.step.id,
         taskId: task.id,
+        runId: ctx.run.id,
         kind: 'image',
         purpose: parsed.output_purpose ?? 'shot_image',
         prompt: task.prompt ?? '',

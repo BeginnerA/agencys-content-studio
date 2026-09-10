@@ -66,6 +66,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       writeFileSync(absPathOf(relPath), data)
       const asset = await registerAsset(ctx.run.projectId, {
         stepId: ctx.step.id,
+        runId: ctx.run.id,
         kind: 'audio',
         purpose: 'voice',
         relPath,

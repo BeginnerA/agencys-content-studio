@@ -223,6 +223,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   if (hasAudio) tags.push('with_audio')
   if (srtRelPath) tags.push('with_subtitle')
   const videoAsset = await registerAsset(ctx.run.projectId, {
+    runId: ctx.run.id,
     name: outName,
     kind: 'video',
     purpose: 'final_video',
@@ -255,6 +256,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     const coverAbs = absPathOf(coverRel)
     await runFfmpeg(ctx, ffmpeg, ['-y', '-ss', '0.2', '-i', outAbs, '-frames:v', '1', '-q:v', '3', coverAbs])
     const coverAsset = await registerAsset(ctx.run.projectId, {
+      runId: ctx.run.id,
       name: coverName,
       kind: 'image',
       purpose: 'thumbnail',

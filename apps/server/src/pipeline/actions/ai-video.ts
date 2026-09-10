@@ -245,6 +245,7 @@ async function runOneTask(
         projectId: ctx.run.projectId,
         stepId: ctx.step.id,
         taskId: task.id,
+        runId: ctx.run.id,
         kind: 'video',
         purpose: 'shot_video',
         prompt: task.prompt ?? '',

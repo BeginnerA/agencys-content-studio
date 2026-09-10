@@ -48,8 +48,9 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'memory_log':
     case 'character_log':
     case 'characters':
-    case 'export':
       return 'texts'
+    case 'export':
+      return 'exports'
     case 'shot_image':
     case 'reference_character':
     case 'reference_scene':
@@ -74,7 +75,7 @@ export function relPathOf(projectId: number, purpose: string | null | undefined,
 }
 
 export function ensureProjectDirs(projectId: number): void {
-  for (const sub of ['source', 'texts', 'images', 'video', 'audio', 'thumbs']) {
+  for (const sub of ['source', 'texts', 'images', 'video', 'audio', 'thumbs', 'exports']) {
     mkdirSync(join(projectAbsDir(projectId), sub), { recursive: true })
   }
 }
@@ -144,6 +145,7 @@ export async function writeTextAsset(
     format?: string
     stepId?: number
     taskId?: number
+    runId?: number | null
     prompt?: string
     params?: Record<string, unknown>
     tags?: string[]
@@ -161,6 +163,7 @@ export async function writeTextAsset(
       projectId,
       stepId: opts.stepId,
       taskId: opts.taskId,
+      runId: opts.runId ?? null,
       kind: 'text',
       purpose: opts.purpose,
       name: opts.name,
@@ -199,6 +202,7 @@ export async function registerAsset(
     tags?: string[]
     stepId?: number
     taskId?: number
+    runId?: number | null
   },
 ): Promise<Asset> {
   const now = Date.now()
@@ -208,6 +212,7 @@ export async function registerAsset(
       projectId,
       stepId: data.stepId,
       taskId: data.taskId,
+      runId: data.runId ?? null,
       kind: data.kind,
       purpose: data.purpose ?? null,
       name: data.name,

@@ -86,6 +86,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     purpose: outputPurpose,
     format: isJsonTextFormat(outputFormat) ? outputFormat : undefined,
     stepId: ctx.step.id,
+    runId: ctx.run.id,
     prompt: userPrompt.slice(0, 4000),
     params: { model: ep.model, output_format: outputFormat, chars: content.length },
     tags: [tag],

@@ -5,6 +5,7 @@ import { apiRoutes } from './routes/api-configs'
 import { assetsRoutes } from './routes/assets'
 import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
+import { exportsRoutes } from './routes/exports'
 import { memoriesRoutes } from './routes/memories'
 import { projectsRoutes } from './routes/projects'
 import { promptsRoutes } from './routes/prompts'
@@ -31,6 +32,7 @@ api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
 api.route('/', batchesRoutes)
 api.route('/', statsRoutes)
+api.route('/', exportsRoutes)
 api.route('/', tasksRoutes)
 api.route('/', apiRoutes)
 

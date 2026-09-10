@@ -110,6 +110,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   writeFileSync(absPathOf(relPath), srt, 'utf8')
   const asset = await registerAsset(ctx.run.projectId, {
     stepId: ctx.step.id,
+    runId: ctx.run.id,
     kind: 'text',
     purpose: 'subtitle',
     relPath,

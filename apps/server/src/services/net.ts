@@ -32,6 +32,7 @@ export async function saveGeneratedMedia(opts: {
   projectId: number
   stepId?: number
   taskId?: number
+  runId?: number | null
   kind: 'image' | 'video'
   purpose: string
   prompt: string
@@ -61,6 +62,7 @@ export async function saveGeneratedMedia(opts: {
   return registerAsset(opts.projectId, {
     stepId: opts.stepId,
     taskId: opts.taskId,
+    runId: opts.runId,
     kind: opts.kind,
     purpose: opts.purpose,
     relPath,
