@@ -9,6 +9,7 @@ import { memoriesRoutes } from './routes/memories'
 import { projectsRoutes } from './routes/projects'
 import { promptsRoutes } from './routes/prompts'
 import { runsRoutes } from './routes/runs'
+import { statsRoutes } from './routes/stats'
 import { systemRoutes } from './routes/system'
 import { tasksRoutes } from './routes/tasks'
 import { templatesRoutes } from './routes/templates'
@@ -29,6 +30,7 @@ api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
 api.route('/', batchesRoutes)
+api.route('/', statsRoutes)
 api.route('/', tasksRoutes)
 api.route('/', apiRoutes)
 
