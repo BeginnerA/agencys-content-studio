@@ -228,6 +228,7 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
       baseUrl,
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model: cfg.model ?? 'deepseek-chat',
+      providerKey: cfg.providerKey,
     }, { maxTokens: 4, timeoutMs: 30_000, allowReasoningOnly: true })
     return c.json({ ok: true, ms: Date.now() - t0, note: 'llm 最小对话成功' })
   }

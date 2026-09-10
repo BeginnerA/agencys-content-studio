@@ -13,6 +13,8 @@ export interface LlmEndpoint {
   baseUrl: string
   apiKey: string
   model: string
+  /** [M4] 用量来源标识：api_configs 的 providerKey；env 兜底 'env' */
+  providerKey: string
 }
 
 /** 供应商目录 defaultUrl 兜底：实例未填 base_url 时回退目录内置端点（base_url 语义为「覆盖 default_url」） */
@@ -37,12 +39,13 @@ export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
   if (cfg) {
     const apiKey = resolveApiKey(cfg.apiKeyRef)
     const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
-    return { baseUrl, apiKey, model: cfg.model ?? env.llm.model }
+    return { baseUrl, apiKey, model: cfg.model ?? env.llm.model, providerKey: cfg.providerKey }
   }
   return {
     baseUrl: env.llm.baseUrl.replace(/\/+$/, ''),
     apiKey: env.llm.apiKey,
     model: env.llm.model,
+    providerKey: 'env',
   }
 }
 
@@ -59,6 +62,21 @@ export interface ChatOptions {
   allowReasoningOnly?: boolean
 }
 
+/** [M4] 补全用量（OpenAI 兼容 usage 字段） */
+export interface LlmUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+/** [M4] 补全结果（含用量与来源；用量记录用） */
+export interface LlmResult {
+  content: string
+  usage: LlmUsage | null
+  provider: string
+  model: string
+}
+
 export class LlmNotConfiguredError extends Error {
   constructor(detail?: string) {
     super(
@@ -70,12 +88,12 @@ export class LlmNotConfiguredError extends Error {
   }
 }
 
-/** 非流式 chat 补全，返回完整文本 */
-export async function chatComplete(
+/** 非流式 chat 补全（详细版）：内容 + usage + 来源（用量记录用） */
+export async function chatCompleteDetailed(
   messages: ChatMessage[],
   endpoint?: LlmEndpoint,
   opts: ChatOptions = {},
-): Promise<string> {
+): Promise<LlmResult> {
   const ep = endpoint ?? (await resolveLlmEndpoint())
   if (!ep.baseUrl)
     throw new LlmNotConfiguredError('端点缺失：实例未填 base_url 且供应商目录无默认端点（或 .env 未设置 AGENT_LLM_BASE_URL）')
@@ -101,20 +119,40 @@ export async function chatComplete(
       const text = await res.text().catch(() => '')
       throw new Error(`LLM 调用失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
     }
-    const data = (await res.json()) as { choices?: { message?: { content?: string; reasoning_content?: string } }[] }
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string; reasoning_content?: string } }[]
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+    }
+    const usage: LlmUsage | null = data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens ?? 0,
+          completionTokens: data.usage.completion_tokens ?? 0,
+          totalTokens: data.usage.total_tokens ?? 0,
+        }
+      : null
     const choice = data.choices?.[0]
     const content = data.choices?.[0]?.message?.content
     if (!content) {
       if (choice?.message?.reasoning_content) {
-        if (opts.allowReasoningOnly) return choice.message.reasoning_content
+        if (opts.allowReasoningOnly)
+          return { content: choice.message.reasoning_content, usage, provider: ep.providerKey, model: ep.model }
         throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
       }
       throw new Error('LLM 响应为空（choices/message/content 缺失）')
     }
-    return content
+    return { content, usage, provider: ep.providerKey, model: ep.model }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** 非流式 chat 补全，返回完整文本（chatCompleteDetailed 薄封装；签名不变） */
+export async function chatComplete(
+  messages: ChatMessage[],
+  endpoint?: LlmEndpoint,
+  opts: ChatOptions = {},
+): Promise<string> {
+  return (await chatCompleteDetailed(messages, endpoint, opts)).content
 }
 
 /** 提示词模板目录读取（供 ai-text action 使用） */
