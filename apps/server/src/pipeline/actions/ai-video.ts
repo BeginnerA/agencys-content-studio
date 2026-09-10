@@ -31,7 +31,9 @@ const POLL_TIMEOUT_MS = 10 * 60_000
  * 首帧图/参考素材依赖公网可访 URL，待图床通道机制后扩展（适配器 extra 已预留
  * referenceImageUrls/firstFrameUrl 透传）。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功视频）；
- * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑。
+ * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
+ * 未成功任务的 prompt/生成参数执行时与当前分镜/项目设置同步（修正分镜或调
+ * 设置后续跑即生效），failed 且内容有变化的任务归零重排队。
  */
 export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   const batch = ctx.def.batch ?? { field: 'shots', maxConcurrent: 2, retry: 1 }
@@ -88,7 +90,16 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of shots) {
-    if (!taskByShotId.has(shot.id)) {
+    const promptText = String((shot as unknown as Record<string, unknown>)[promptField]).trim()
+    const paramsJson = JSON.stringify({
+      shotId: shot.id,
+      duration: shot.duration ?? fallbackDuration ?? null,
+      resolution: resolution ?? null,
+      aspectRatio: aspectRatio ?? null,
+      episode: episode ?? null,
+    })
+    const existingTask = taskByShotId.get(shot.id)
+    if (!existingTask) {
       const t = nowMs()
       const row = await db
         .insert(genTasks)
@@ -99,14 +110,8 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
           kind: 'video',
           provider: provider ?? null,
           model: model ?? null,
-          prompt: String((shot as unknown as Record<string, unknown>)[promptField]).trim(),
-          params: JSON.stringify({
-            shotId: shot.id,
-            duration: shot.duration ?? fallbackDuration ?? null,
-            resolution: resolution ?? null,
-            aspectRatio: aspectRatio ?? null,
-            episode: episode ?? null,
-          }),
+          prompt: promptText,
+          params: paramsJson,
           status: 'pending',
           attempts: 0,
           createdAt: t,
@@ -114,6 +119,30 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
         })
         .returning()
       taskByShotId.set(shot.id, row[0]!)
+    } else if (existingTask.status !== 'succeeded' && existingTask.status !== 'cancelled') {
+      // 未成功任务同步最新 prompt/参数：用户修正分镜（如内容审核改词）或调整
+      // 项目 video 设置后，断点续跑/重跑即生效；failed 且有变化 → 归零重排队
+      // （与 resume 迁移语义一致）；succeeded 保持产物溯源不动
+      const changed = existingTask.prompt !== promptText || existingTask.params !== paramsJson
+      if (changed) {
+        const requeue = existingTask.status === 'failed'
+        await db
+          .update(genTasks)
+          .set({
+            prompt: promptText,
+            params: paramsJson,
+            ...(requeue ? { status: 'pending', attempts: 0, errorMsg: null } : {}),
+            updatedAt: nowMs(),
+          })
+          .where(eq(genTasks.id, existingTask.id))
+        existingTask.prompt = promptText
+        existingTask.params = paramsJson
+        if (requeue) {
+          existingTask.status = 'pending'
+          existingTask.attempts = 0
+          existingTask.errorMsg = null
+        }
+      }
     }
   }
 

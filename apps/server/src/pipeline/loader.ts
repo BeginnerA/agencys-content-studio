@@ -103,6 +103,13 @@ function validate(raw: Record<string, unknown>, key: string): Template {
     if (sRaw['batch']) {
       const b = sRaw['batch'] as Record<string, unknown>
       if (typeof b.field !== 'string' || !b.field) return fail(`步骤 ${key} 的 batch 缺 field`)
+      const mc = b['max_concurrent'] ?? b['maxConcurrent']
+      if (mc !== undefined && (typeof mc !== 'number' || !Number.isInteger(mc) || mc < 1)) {
+        return fail(`步骤 ${key} 的 batch.max_concurrent 需为 ≥1 的整数`)
+      }
+      if (b['retry'] !== undefined && (typeof b['retry'] !== 'number' || !Number.isInteger(b['retry']) || b['retry'] < 0)) {
+        return fail(`步骤 ${key} 的 batch.retry 需为 ≥0 的整数`)
+      }
     }
     const title = sRaw['title']
     const when = sRaw['when']
@@ -124,7 +131,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       inputs: inputs as Record<string, unknown>,
       params: (sRaw['params'] as Record<string, unknown> | undefined) ?? {},
       gate: sRaw['gate'] as TemplateStepDef['gate'],
-      batch: sRaw['batch'] as TemplateStepDef['batch'],
+      batch: normalizeBatch(sRaw['batch']),
       output: sRaw['output'] as TemplateStepDef['output'],
       when: when as TemplateStepDef['when'],
       when_any: whenAny as TemplateStepDef['when_any'],
@@ -193,6 +200,20 @@ function validate(raw: Record<string, unknown>, key: string): Template {
 function isExprList(v: unknown): v is string | string[] {
   if (typeof v === 'string') return true
   return Array.isArray(v) && v.every((x) => typeof x === 'string')
+}
+
+/**
+ * batch 归一化：YAML 惯用 snake_case（max_concurrent）→ 类型层 camelCase（maxConcurrent）。
+ * 此前未归一化导致模板写的 max_concurrent 从未生效（恒走默认 2）——模板写法保持 spec §3.1 不变。
+ */
+function normalizeBatch(v: unknown): TemplateStepDef['batch'] {
+  if (!v || typeof v !== 'object') return undefined
+  const b = v as Record<string, unknown>
+  return {
+    field: String(b['field']),
+    maxConcurrent: (b['max_concurrent'] ?? b['maxConcurrent']) as number | undefined,
+    retry: b['retry'] as number | undefined,
+  }
 }
 
 /** 读取并校验模板（进程内缓存；改文件后重启或 force 刷新） */

@@ -22,7 +22,9 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
  * 并发上限 batch.max_concurrent（默认 2），失败按 batch.retry 重试。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功图）；
- * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑。
+ * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
+ * 未成功任务的 prompt/参数执行时与当前分镜同步（修正分镜后续跑即生效），
+ * failed 且有变化的任务归零重排队。
  */
 export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const batch = ctx.def.batch ?? { field: 'shots', maxConcurrent: 2, retry: 1 }
@@ -75,7 +77,10 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of shots) {
-    if (!taskByShotId.has(shot.id)) {
+    const promptText = shot.image_prompt.trim()
+    const paramsJson = JSON.stringify({ size, shotId: shot.id, duration: shot.duration ?? null, refAssetIds: refIds })
+    const existingTask = taskByShotId.get(shot.id)
+    if (!existingTask) {
       const t = nowMs()
       const row = await db
         .insert(genTasks)
@@ -86,8 +91,8 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
           kind: 'image',
           provider: provider ?? null,
           model: model ?? null,
-          prompt: shot.image_prompt.trim(),
-          params: JSON.stringify({ size, shotId: shot.id, duration: shot.duration ?? null, refAssetIds: refIds }),
+          prompt: promptText,
+          params: paramsJson,
           status: 'pending',
           attempts: 0,
           createdAt: t,
@@ -95,6 +100,29 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
         })
         .returning()
       taskByShotId.set(shot.id, row[0]!)
+    } else if (existingTask.status !== 'succeeded' && existingTask.status !== 'cancelled') {
+      // 未成功任务同步最新 prompt/参数（修正分镜或调设置后续跑即生效）；
+      // failed 且有变化 → 归零重排队；succeeded 保持产物溯源不动
+      const changed = existingTask.prompt !== promptText || existingTask.params !== paramsJson
+      if (changed) {
+        const requeue = existingTask.status === 'failed'
+        await db
+          .update(genTasks)
+          .set({
+            prompt: promptText,
+            params: paramsJson,
+            ...(requeue ? { status: 'pending', attempts: 0, errorMsg: null } : {}),
+            updatedAt: nowMs(),
+          })
+          .where(eq(genTasks.id, existingTask.id))
+        existingTask.prompt = promptText
+        existingTask.params = paramsJson
+        if (requeue) {
+          existingTask.status = 'pending'
+          existingTask.attempts = 0
+          existingTask.errorMsg = null
+        }
+      }
     }
   }
 
