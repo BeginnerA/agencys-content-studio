@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, real, index } from 'drizzle-orm/sqlite-core'
 
 /**
  * agencys-content-studio M1 schema —— 通用领域模型（对照设计规格 §4）
@@ -41,10 +41,13 @@ export const pipelineRuns = sqliteTable(
     completedAt: integer('completed_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
+    batchId: integer('batch_id'), // [M4] 所属批次（NULL = 独立 run）
+    batchSeq: integer('batch_seq'), // [M4] 批内序号（从 1 起）
   },
   (t) => [
     index('idx_runs_project').on(t.projectId),
     index('idx_runs_status').on(t.status),
+    index('idx_runs_batch').on(t.batchId),
   ],
 )
 
@@ -106,6 +109,7 @@ export const assets = sqliteTable(
     projectId: integer('project_id').notNull(),
     stepId: integer('step_id'),
     taskId: integer('task_id'),
+    runId: integer('run_id'), // [M4] 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
     purpose: text('purpose'), // source|reference_character|reference_scene|script|storyboard|shot_image|final_video|subtitle|thumbnail|export
     name: text('name').notNull(),
@@ -212,6 +216,62 @@ export const characters = sqliteTable(
   (t) => [index('idx_characters_project').on(t.projectId), index('idx_characters_name').on(t.name)],
 )
 
+/** M4 批次表（通用；同模板多 run 调度与进度） */
+export const batches = sqliteTable('batches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull(),
+  templateKey: text('template_key').notNull(),
+  name: text('name').notNull(),
+  // running|completed|partial_failed|failed|cancelled
+  status: text('status').notNull().default('running'),
+  schedule: text('schedule').notNull().default('{"max_concurrent":1}'), // JSON
+  total: integer('total').notNull().default(0),
+  finished: integer('finished').notNull().default(0),   // 终态 run 数（completed+failed+cancelled）
+  succeeded: integer('succeeded').notNull().default(0), // completed 数
+  failed: integer('failed').notNull().default(0),       // failed 数
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (t) => [index('idx_batches_project').on(t.projectId), index('idx_batches_status').on(t.status)])
+
+/** M4 用量记录表（成本核算；runId NULL = 非 run 来源，如连通性测试） */
+export const usageRecords = sqliteTable('usage_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull(),
+  runId: integer('run_id'),        // NULL = 非 run 来源（如连通性测试）
+  stepId: integer('step_id'),
+  taskId: integer('task_id'),      // gen_tasks.id（图片/视频任务）
+  assetId: integer('asset_id'),    // 产出资产（可溯源）
+  kind: text('kind').notNull(),    // llm|image|video|tts
+  provider: text('provider'),
+  model: text('model'),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull(),    // tokens_in|tokens_out|image|second|char
+  unitPrice: real('unit_price'),   // 记录时快照（元/单位，已含基数换算）；未配置 NULL
+  cost: real('cost'),              // quantity × unitPrice；未配置 NULL
+  currency: text('currency').notNull().default('CNY'),
+  meta: text('meta').notNull().default('{}'), // JSON：原始 usage / 辅助信息
+  createdAt: integer('created_at').notNull(),
+}, (t) => [
+  index('idx_usage_project').on(t.projectId),
+  index('idx_usage_run').on(t.runId),
+  index('idx_usage_kind').on(t.kind),
+])
+
+/** M4 发布登记表（发布渠道与数据登记；metrics 仅存不算） */
+export const publications = sqliteTable('publications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull(),
+  runId: integer('run_id'),        // 可空：允许登记非流水线内容
+  assetId: integer('asset_id'),    // 可空：首选关联成片资产
+  platform: text('platform').notNull(), // douyin|wechat_channels|kuaishou|xiaohongshu|bilibili|other
+  url: text('url'),
+  publishedAt: integer('published_at'),
+  metrics: text('metrics').notNull().default('{}'), // JSON: {views,likes,comments,favorites,shares}（仅存不算）
+  note: text('note'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (t) => [index('idx_publications_project').on(t.projectId), index('idx_publications_asset').on(t.assetId)])
+
 export type Project = typeof projects.$inferSelect
 export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
@@ -220,3 +280,6 @@ export type Asset = typeof assets.$inferSelect
 export type ApiConfig = typeof apiConfigs.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type CharacterRow = typeof characters.$inferSelect
+export type Batch = typeof batches.$inferSelect
+export type UsageRecord = typeof usageRecords.$inferSelect
+export type Publication = typeof publications.$inferSelect
