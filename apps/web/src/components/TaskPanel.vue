@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import type { GenTask } from '../lib/types'
-import { taskApi } from '../lib/api'
+import type { Asset, GenTask } from '../lib/types'
+import { assetApi, taskApi } from '../lib/api'
 import { taskStatus, fmtTime } from '../lib/format'
+import AssetPreviewer from './AssetPreviewer.vue'
 import { getSocket } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
@@ -45,6 +46,25 @@ async function cancel(t: GenTask) {
   await taskApi.cancel(t.id)
   emit('changed')
   load()
+}
+
+// ===== 结果资产预览（统一 AssetPreviewer） =====
+const previewAsset = ref<Asset | null>(null)
+const previewBusyId = ref<number | null>(null)
+
+async function openPreview(t: GenTask) {
+  const ra = t.resultAsset
+  if (!ra || previewBusyId.value !== null) return
+  previewBusyId.value = ra.id
+  err.value = ''
+  try {
+    const { asset } = await assetApi.detail(ra.id)
+    previewAsset.value = asset
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    previewBusyId.value = null
+  }
 }
 
 /** [M2] video 任务处理中：provider 侧异步轮询（转圈 + 第 N 次尝试文案） */
@@ -110,12 +130,22 @@ onBeforeUnmount(() => {
         <span v-else-if="t.resultAsset" class="ok-txt">→ {{ t.resultAsset.name }}</span>
         <span class="at muted">{{ fmtTime(t.completedAt ?? t.updatedAt) }} · 尝试 {{ t.attempts }}</span>
         <span class="ops">
-          <a v-if="t.resultAsset" class="mini" :href="t.resultAsset.fileUrl" target="_blank">查看</a>
+          <button
+            v-if="t.resultAsset"
+            class="mini"
+            :disabled="previewBusyId !== null"
+            :title="previewBusyId === t.resultAsset.id ? '正在载入资产…' : '内联预览结果资产'"
+            @click="openPreview(t)"
+          >
+            {{ previewBusyId === t.resultAsset.id ? '载入中…' : '查看' }}
+          </button>
           <button v-if="t.status === 'failed'" class="btn sm" @click="retry(t)">重试</button>
           <button v-if="t.status === 'processing'" class="btn sm" @click="cancel(t)">取消</button>
         </span>
       </div>
     </div>
+
+    <AssetPreviewer v-if="previewAsset" :assets="[previewAsset]" @close="previewAsset = null" />
   </div>
 </template>
 
@@ -208,6 +238,23 @@ onBeforeUnmount(() => {
 
 .mini {
   font-size: 12px;
+  border: none;
+  background: none;
+  color: var(--accent-h);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.mini:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.mini:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .badge {

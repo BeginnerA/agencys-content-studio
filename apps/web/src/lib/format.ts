@@ -89,6 +89,11 @@ export const PURPOSE_TEXT: Record<string, string> = {
   thumbnail: '封面',
   reference_character: '角色参考',
   archive: '归档',
+  characters: '角色设定',
+  subtitle: '字幕',
+  voice: '配音',
+  lines: '台词',
+  export: '成稿',
 }
 
 export function purposeText(p: string): string {

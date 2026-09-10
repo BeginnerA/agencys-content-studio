@@ -3,9 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
+import AssetPreviewer from '../components/AssetPreviewer.vue'
 import Icon from '../components/Icon.vue'
 import { assetApi, runApi, templateApi } from '../lib/api'
-import type { RunDetail, RunStep, TemplateDetail } from '../lib/types'
+import type { Asset, RunDetail, RunStep, TemplateDetail } from '../lib/types'
 import { fmtMs, fmtTime, runStatus, skipReasonText, stepStatus } from '../lib/format'
 import { getSocket, useStudio } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
@@ -103,7 +104,7 @@ async function loadGate() {
   if (!assetId) return
   gateStep.value = step
   try {
-    const a = await assetApi.detail(assetId)
+    const { asset: a } = await assetApi.detail(assetId)
     if (a.kind === 'text' || a.purpose === 'script' || a.purpose === 'storyboard') {
       gateTextName.value = a.name
       const res = await fetch(a.urls.file)
@@ -264,6 +265,28 @@ function assetIds(s: RunStep): number[] {
   return Array.isArray(out) ? (out as number[]) : []
 }
 
+// ===== 产物预览（统一 AssetPreviewer：批量拉详情后内联查看，不再新开标签） =====
+const previewAssets = ref<Asset[]>([])
+const previewOpen = ref(false)
+const previewStart = ref(0)
+const previewBusy = ref<number | null>(null) // 正在拉取详情的资产 id
+
+async function openAssetPreview(ids: number[], firstId: number) {
+  if (previewBusy.value !== null || !ids.length) return
+  previewBusy.value = firstId
+  err.value = ''
+  try {
+    const list = await Promise.all(ids.map((id) => assetApi.detail(id).then((r) => r.asset)))
+    previewAssets.value = list
+    previewStart.value = Math.max(0, ids.indexOf(firstId))
+    previewOpen.value = true
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    previewBusy.value = null
+  }
+}
+
 function inputPretty(s: RunStep): string {
   if (!s.input) return '—'
   return JSON.stringify(s.input, null, 1)
@@ -303,7 +326,7 @@ async function loadBadges() {
     const key = `${s.id}:${aid}`
     if (badgeCache.has(key)) continue
     try {
-      const a = await assetApi.detail(aid)
+      const { asset: a } = await assetApi.detail(aid)
       const p = (a.params ?? {}) as Record<string, unknown>
       if (s.actionKey === 'memory_recall') {
         const top = typeof p['topScore'] === 'number' ? (p['topScore'] as number).toFixed(2) : null
@@ -397,15 +420,17 @@ async function loadBadges() {
               <details v-if="s.output && assetIds(s).length" class="prods">
                 <summary>产物（{{ assetIds(s).length }} 项）</summary>
                 <div class="links">
-                  <a
+                  <button
                     v-for="aid in assetIds(s)"
                     :key="aid"
                     class="prod"
-                    :href="`/api/v1/assets/${aid}/file`"
-                    target="_blank"
+                    :disabled="previewBusy !== null"
+                    :title="previewBusy === aid ? '正在载入资产…' : '内联预览资产'"
+                    @click="openAssetPreview(assetIds(s), aid)"
                   >
-                    资产 #{{ aid }}
-                  </a>
+                    <Icon name="eye" :size="11" />
+                    {{ previewBusy === aid ? '载入中…' : `资产 #${aid}` }}
+                  </button>
                 </div>
               </details>
               <details class="raw">
@@ -433,6 +458,9 @@ async function loadBadges() {
         </div>
       </div>
     </template>
+
+    <!-- 产物统一预览 -->
+    <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewStart" @close="previewOpen = false" />
   </div>
 </template>
 
@@ -647,10 +675,27 @@ async function loadBadges() {
 }
 
 .prod {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   background: var(--accent-weak);
+  border: 1px solid transparent;
+  color: var(--accent-h);
   padding: 2px 9px;
   border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.prod:hover {
+  border-color: rgb(99 102 241 / 45%);
+  color: #fff;
+}
+
+.prod:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .raw {

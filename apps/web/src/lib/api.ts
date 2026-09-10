@@ -144,7 +144,8 @@ export const configApi = {
 }
 
 export const assetApi = {
-  detail: (id: number) => api.get<Asset>(`/api/v1/assets/${id}`),
+  /** 后端返回包裹体 { asset }（与 PATCH 同契约） */
+  detail: (id: number) => api.get<{ asset: Asset }>(`/api/v1/assets/${id}`),
 }
 
 // ===== [M3] 记忆 / 角色 =====
