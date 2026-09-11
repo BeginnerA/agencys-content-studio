@@ -2,13 +2,13 @@
 import { ref, watch } from 'vue'
 import Modal from './Modal.vue'
 import SearchSelect from './SearchSelect.vue'
-import type { ApiConfig, ApiProvider } from '../lib/types'
+import type { ApiProvider, ProviderConfigLite } from '../lib/types'
 import { configApi } from '../lib/api'
 
 const props = defineProps<{
   provider: ApiProvider
-  /** 编辑时传现有配置；新建为空 */
-  config?: ApiConfig | null
+  /** 编辑时传现有配置（列表精简态，含 baseUrl / apiKeyMasked / extra 回显字段）；新建为空 */
+  config?: ProviderConfigLite | null
 }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
 
@@ -20,6 +20,9 @@ const isDefault = ref(false)
 const isActive = ref(true)
 const err = ref('')
 const busy = ref(false)
+/** 扩展参数（JSON 文本；空 = 不设置，编辑时清空原值则显式提交 {}） */
+const extraText = ref('')
+const extraErr = ref('')
 
 /** 模型候选：目录预置 → 在线拉取覆盖 */
 const modelOptions = ref<string[]>([])
@@ -41,6 +44,8 @@ watch(
     fetchNote.value = ''
     fetchNoteWarn.value = false
     fetchBusy.value = false
+    extraText.value = c?.extra && Object.keys(c.extra).length ? JSON.stringify(c.extra, null, 2) : ''
+    extraErr.value = ''
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
     if (c) void fetchModels(true)
   },
@@ -85,6 +90,23 @@ async function submit() {
     err.value = '请填写实例名'
     return
   }
+  // 扩展参数：非空 → 必须为合法 JSON 对象（供适配器透传，如火山 TTS 的 appid）
+  extraErr.value = ''
+  let extraParsed: Record<string, unknown> | null = null
+  const extraRaw = extraText.value.trim()
+  if (extraRaw) {
+    try {
+      const parsed: unknown = JSON.parse(extraRaw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        extraErr.value = '需为 JSON 对象，如 {"appid":"..."}'
+        return
+      }
+      extraParsed = parsed as Record<string, unknown>
+    } catch {
+      extraErr.value = 'JSON 语法错误：请检查双引号与括号配对'
+      return
+    }
+  }
   const body: Record<string, unknown> = {
     provider_key: props.provider.key,
     service_type: props.provider.serviceType,
@@ -95,6 +117,9 @@ async function submit() {
   if (baseUrl.value.trim()) body.base_url = baseUrl.value.trim()
   if (model.value.trim()) body.model = model.value.trim()
   if (apiKey.value.trim()) body.api_key = apiKey.value.trim()
+  // 扩展参数：有值 → 提交解析结果；编辑时原值非空但现被清空 → 显式传 {} 清空
+  if (extraParsed) body.extra = extraParsed
+  else if (props.config?.extra && Object.keys(props.config.extra).length > 0) body.extra = {}
   // 未填 api_key 且编辑时：保留原 ref（后端 PUT 仅按显式字段覆盖）
   busy.value = true
   err.value = ''
@@ -147,6 +172,12 @@ async function submit() {
         端点 base_url
         <input v-model="baseUrl" type="text" :placeholder="provider.defaultUrl ? '留空即使用默认端点' : '如 https://api.deepseek.com/v1'" />
       </label>
+      <label class="fld">
+        扩展参数（JSON，可选）
+        <textarea v-model="extraText" class="code" rows="3" spellcheck="false" placeholder='供适配器透传，如火山 TTS：{"appid":"你的应用 ID"}' @input="extraErr = ''"></textarea>
+      </label>
+      <span v-if="extraErr" class="note warn">{{ extraErr }}</span>
+      <span v-else class="note">留空表示无扩展参数（编辑时清空即移除）</span>
     </details>
 
     <div class="opts">
@@ -217,6 +248,17 @@ async function submit() {
 
 .adv .fld {
   margin-bottom: 0;
+}
+
+/* 高级区内多字段纵向间距（base_url 与扩展参数） */
+.adv .fld + .fld {
+  margin-top: 10px;
+}
+
+/* 扩展参数：JSON 等宽字体 */
+.adv .code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
 }
 
 .opts {

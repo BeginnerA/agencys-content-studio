@@ -129,6 +129,12 @@ export interface ProviderConfigLite {
   model: string
   isDefault: boolean
   isActive: boolean
+  /** 编辑回显：自定义端点（GET /api-configs 提供；未设置为 null/undefined） */
+  baseUrl?: string | null
+  /** 编辑回显：Key 脱敏尾 4 位（未配置密钥为 null/undefined） */
+  apiKeyMasked?: string | null
+  /** 编辑回显：实例扩展参数（供适配器透传，如火山 TTS 的 appid；后端默认 {}） */
+  extra?: Record<string, unknown> | null
 }
 
 export interface ApiProvider {

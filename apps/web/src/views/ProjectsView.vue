@@ -4,6 +4,7 @@ import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import { projectApi, templateApi } from '../lib/api'
 import { ApiError } from '../lib/api'
+import { pendingOf } from '../lib/pending'
 import type { Project, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime } from '../lib/format'
 
@@ -79,6 +80,13 @@ const genres = [
   { v: 'article', t: '图文' },
   { v: 'talk', t: '口播' },
 ]
+
+/** 有待审阅时直达运行区待审阅筛选（ProjectDetailView 读取 ?tab=&filter=） */
+function cardTo(p: Project) {
+  return pendingOf(p.id) > 0
+    ? { path: `/projects/${p.id}`, query: { tab: 'runs', filter: 'waiting' } }
+    : `/projects/${p.id}`
+}
 </script>
 
 <template>
@@ -99,10 +107,17 @@ const genres = [
     </div>
 
     <div v-else class="grid">
-      <RouterLink v-for="p in projects" :key="p.id" class="card panel" :to="`/projects/${p.id}`">
+      <RouterLink v-for="p in projects" :key="p.id" class="card panel" :to="cardTo(p)">
         <div class="top">
           <span class="nm">{{ p.name }}</span>
-          <span v-if="p.status !== 'active'" class="badge cancelled">{{ p.status }}</span>
+          <span class="tops">
+            <span
+              v-if="pendingOf(p.id)"
+              class="badge waiting_input"
+              :title="`${pendingOf(p.id)} 项待审阅（点击直达）`"
+            >待审阅 {{ pendingOf(p.id) }}</span>
+            <span v-if="p.status !== 'active'" class="badge cancelled">{{ p.status }}</span>
+          </span>
         </div>
         <div class="brief">{{ p.brief || '—' }}</div>
         <div class="meta">
@@ -179,11 +194,19 @@ const genres = [
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .nm {
   font-size: 16px;
   font-weight: 600;
+}
+
+.tops {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .brief {

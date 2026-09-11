@@ -224,10 +224,21 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   if (cfg.serviceType === 'llm') {
     // base_url 留空 → 供应商目录 defaultUrl 兜底（与 image 分支 resolveEndpoint 行为对齐）
     const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
+    // model 留空 → 供应商目录预置首项兜底（deepseek-chat 为无预置目录行的历史兜底）
+    let model = cfg.model ?? ''
+    if (!model) {
+      const provRows = await db
+        .select({ preset: apiProviders.presetModels })
+        .from(apiProviders)
+        .where(eq(apiProviders.key, cfg.providerKey))
+        .limit(1)
+      const presets = safeJson(provRows[0]?.preset ?? null, []) as unknown[]
+      model = presets.find((m): m is string => typeof m === 'string' && !!m) ?? 'deepseek-chat'
+    }
     await chatComplete([{ role: 'user', content: 'ping' }], {
       baseUrl,
       apiKey: resolveApiKey(cfg.apiKeyRef),
-      model: cfg.model ?? 'deepseek-chat',
+      model,
       providerKey: cfg.providerKey,
     }, { maxTokens: 4, timeoutMs: 30_000, allowReasoningOnly: true })
     return c.json({ ok: true, ms: Date.now() - t0, note: 'llm 最小对话成功' })
@@ -255,6 +266,7 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model: cfg.model ?? 'tts-1',
       voice,
+      extra,
     }, { voice, timeoutMs: 30_000 })
     return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, voice: voice ?? 'alloy', note: '语音合成成功（1 句，注意计费）' })
   }

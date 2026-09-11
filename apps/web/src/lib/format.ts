@@ -142,3 +142,14 @@ export function batchStatus(s: string): StatusMeta {
 export function fmtQty(n: number): string {
   return n >= 10000 ? `${(n / 10000).toFixed(1)} 万` : String(Math.round(n))
 }
+
+/** 输入摘要（前 3 键，超 80 字截断；批次内运行的行内标识） */
+export function inputSummary(input: Record<string, unknown> | null | undefined): string {
+  if (!input) return '—'
+  const s = Object.entries(input)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .slice(0, 3)
+    .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join(' · ')
+  return s.length > 80 ? s.slice(0, 80) + '…' : s
+}

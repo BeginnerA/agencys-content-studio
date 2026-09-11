@@ -1,10 +1,14 @@
 import { resolveEndpoint } from '../adapters/provider'
+import { synthAliyunQwenSpeech } from './tts-aliyun'
+import { synthVolcengineSpeech } from './tts-volcengine'
 
 /**
- * TTS 语音合成服务（OpenAI 兼容 /audio/speech，spec §5.2）。
+ * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech，spec §5.2）。
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
  * 模型默认 tts-1（OpenAI 官方），用户配置 OpenAI 兼容网关实例时以 config.model 覆盖
- * （如 SiliconFlow 网关的 CosyVoice2-0.5B）。
+ * （如 SiliconFlow 网关的 CosyVoice2-0.5B）；
+ * aliyun_qwen_tts 为 DashScope 私有协议（tts-aliyun.ts）；
+ * volcengine_audio 为火山 TTS V1 私有协议（tts-volcengine.ts，需 extra.appid）。
  */
 
 export interface AudioEndpoint {
@@ -16,6 +20,8 @@ export interface AudioEndpoint {
   voice?: string
   /** 实例级情绪透传声明（config.extra.emotion_param / emotion_map，E4） */
   emotion?: { param: string; map?: Record<string, string> }
+  /** 实例原始扩展参数（api_configs.extra 解析产物；私有协议供应商自取，如火山 TTS 的 appid/cluster） */
+  extra: Record<string, unknown>
 }
 
 /** 解析 audio 端点：未配置实例时报错并附 Settings 指引 */
@@ -28,6 +34,7 @@ export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioE
     model: endpoint.model ?? 'tts-1',
     voice: typeof endpoint.extra['voice'] === 'string' && endpoint.extra['voice'] ? endpoint.extra['voice'] : undefined,
     emotion: parseEmotionDecl(endpoint.extra),
+    extra: endpoint.extra,
   }
 }
 
@@ -70,6 +77,9 @@ export async function synthSpeech(
   opts: SynthSpeechOptions = {},
 ): Promise<Uint8Array> {
   if (!text.trim()) throw new Error('TTS 输入文本为空')
+  // 阿里云千问/火山为私有协议（各自派发）；其余统一 OpenAI 兼容 /audio/speech
+  if (ep.providerKey === 'aliyun_qwen_tts') return synthAliyunQwenSpeech(text, ep, opts)
+  if (ep.providerKey === 'volcengine_audio') return synthVolcengineSpeech(text, ep, opts)
   const body: Record<string, unknown> = {
     model: ep.model,
     input: text,

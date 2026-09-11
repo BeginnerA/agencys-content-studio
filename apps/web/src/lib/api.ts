@@ -123,6 +123,8 @@ function encodePromptPath(name: string): string {
 }
 
 export const runApi = {
+  /** 运行列表（?project_id=&status=；全局待审阅聚合用 status=waiting_input） */
+  list: (params = '') => api.get<Items<Run>>(`/api/v1/runs${params}`),
   detail: (id: number) => api.get<RunDetail>(`/api/v1/runs/${id}`),
   log: (id: number, tail = 200) => api.get<{ log: string }>(`/api/v1/runs/${id}/log?tail=${tail}`),
   start: (projectId: number, body: { template_key: string; input: Record<string, unknown> }) =>

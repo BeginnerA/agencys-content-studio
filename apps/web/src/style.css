@@ -300,6 +300,7 @@ a:hover {
 input[type='text'],
 input[type='number'],
 input[type='password'],
+input[type='date'],
 textarea,
 select {
   border: 1px solid var(--border-strong);
@@ -341,6 +342,12 @@ input[type='checkbox'] {
   width: 14px;
   height: 14px;
   cursor: pointer;
+}
+
+/* 原生日期控件暗色兜底（常规场景应使用 DatePicker 组件） */
+input[type='date'] {
+  color-scheme: dark;
+  font-variant-numeric: tabular-nums;
 }
 
 input[type='file']::file-selector-button {
@@ -483,6 +490,38 @@ label.fld .req {
   background: linear-gradient(180deg, #8b5cf6, #4f46e5);
 }
 
+/* 侧栏待办角标（全局待审阅提醒，warn 色实心 pill） */
+.side a.nav .nbadge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--warn);
+  color: #201503;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  animation: nbadge-in 0.18s ease-out;
+}
+
+@keyframes nbadge-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side a.nav .nbadge {
+    animation: none;
+  }
+}
+
 .side .foot {
   margin-top: auto;
   padding: 12px 10px 4px;
@@ -570,6 +609,58 @@ label.fld .req {
   padding: 2px 9px;
   border-radius: 999px;
   white-space: nowrap;
+}
+
+/* ---------- 页内 Tab（项目页 / AI 配置页共用原语） ---------- */
+.tabs {
+  display: inline-flex;
+  gap: 3px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 13px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.tab.on {
+  background: linear-gradient(135deg, rgb(139 92 246 / 26%), rgb(79 70 229 / 22%));
+  color: #fff;
+}
+
+.tab .cnt {
+  font-size: 10.5px;
+  min-width: 17px;
+  height: 17px;
+  line-height: 17px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0 3px;
+  background: rgb(148 163 184 / 14%);
+  color: var(--text-3);
+}
+
+.tab.on .cnt {
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
 }
 
 /* ---------- 表格 ---------- */

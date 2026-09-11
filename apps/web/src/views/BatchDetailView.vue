@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import { batchApi, exportApi } from '../lib/api'
 import type { BatchDetail } from '../lib/types'
-import { runStatus, fmtTime, fmtCost, batchStatus } from '../lib/format'
+import { runStatus, fmtTime, fmtCost, batchStatus, inputSummary } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 
@@ -123,17 +123,6 @@ async function exportAll() {
 function errOf(s: string | null): string {
   if (!s) return ''
   return s.length > 64 ? s.slice(0, 64) + '…' : s
-}
-
-/** 输入摘要（前 3 键，超 80 字截断） */
-function inputSummary(input: Record<string, unknown> | null): string {
-  if (!input) return '—'
-  const s = Object.entries(input)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .slice(0, 3)
-    .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
-    .join(' · ')
-  return s.length > 80 ? s.slice(0, 80) + '…' : s
 }
 </script>
 

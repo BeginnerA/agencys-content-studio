@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Modal from './Modal.vue'
+import DatePicker from './DatePicker.vue'
 import { publicationApi } from '../lib/api'
 import { PLATFORM_TEXT } from '../lib/format'
 import type { Publication } from '../lib/types'
@@ -94,7 +95,7 @@ async function submit() {
       </label>
       <label class="fld">
         发布日期
-        <input v-model="publishedDate" type="date" />
+        <DatePicker v-model="publishedDate" placeholder="选择日期" />
       </label>
     </div>
     <label class="fld">
@@ -134,6 +135,11 @@ async function submit() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 14px;
+}
+
+/* 与 label.fld 内全局输入一致的顶部间距 */
+.grid2 :deep(.dp) {
+  margin-top: 5px;
 }
 
 .metrics {

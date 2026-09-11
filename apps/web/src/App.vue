@@ -1,16 +1,30 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { getSocket } from './lib/socket'
 import Icon from './components/Icon.vue'
+import { pending, refreshPending, startPendingWatcher } from './lib/pending'
+
+const route = useRoute()
+let stopPendingWatcher: (() => void) | null = null
 
 onMounted(() => {
   // 全局单连接：先连接便于页面级 join room（重复 connect 由 io 单例避免）
   const s = getSocket()
   if (!s.connected) s.connect()
+  // 全局待审阅角标：首拉 + 30s 轮询 + 可见性恢复
+  stopPendingWatcher = startPendingWatcher()
 })
+
+// 路由切换时刷新待审阅角标（导航后数据可能已过期；并发合并避免重复请求）
+watch(
+  () => route.fullPath,
+  () => void refreshPending(),
+)
 
 onBeforeUnmount(() => {
   // 不主动断开：单页内多个视图共享连接
+  stopPendingWatcher?.()
 })
 </script>
 
@@ -45,7 +59,15 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <nav class="navs">
-        <RouterLink class="nav" to="/"><Icon name="folder" :size="16" /> 项目</RouterLink>
+        <RouterLink class="nav" to="/">
+          <Icon name="folder" :size="16" /> 项目
+          <span
+            v-if="pending.total > 0"
+            class="nbadge"
+            :title="`${pending.total} 项待审阅`"
+            :aria-label="`${pending.total} 项待审阅`"
+          >{{ pending.total }}</span>
+        </RouterLink>
         <RouterLink class="nav" to="/templates"><Icon name="doc" :size="16" /> 模板</RouterLink>
         <RouterLink class="nav" to="/memories"><Icon name="sparkles" :size="16" /> 记忆</RouterLink>
         <RouterLink class="nav" to="/characters"><Icon name="users" :size="16" /> 角色</RouterLink>
