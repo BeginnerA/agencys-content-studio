@@ -2,14 +2,14 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 设计规格：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-design.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-design.md`
+- 设计规格：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-design.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m4-design.md`
 - 方向文档（L0）：`docs/superpowers/specs/2026-09-09-agencys-content-studio-roadmap.md`
-- 验收记录：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-review.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-review.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-review.md`
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；**M3 记忆与角色一致性完成**（E1 记忆 / E2 记忆 action / E3 角色库 / E4 音频情绪 / E5 measured 字幕 / T1 图文）
+- 验收记录：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-review.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-review.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-review.md`、`docs/superpowers/specs/2026-09-11-agencys-content-studio-m4-review.md`
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）
 
 ## 技术栈
 
-Node 20+ / TypeScript / Hono / Drizzle + libsql / Socket.IO / Vue3 + Vite（原生 CSS）/ pnpm workspace
+Node 20+ / TypeScript / Hono / Drizzle + libsql / Socket.IO / fflate（导出 zip）/ Vue3 + Vite（原生 CSS）/ pnpm workspace
 
 ## 快速开始
 
@@ -39,6 +39,14 @@ pnpm dev    # 并行起双端：
 - **音频情绪（E4）**：声线六级解析链（含角色库声线基准）+ 情绪基调提取（Plutchik 口径）+ 实例声明制透传（`emotion_param / emotion_map`），`asset.params` 六字段全链记录；字幕正文剥离「声线；情绪」括注
 - **音画精确对齐（E5）**：`subtitle` measured 模式（逐句 ffprobe 实测 → 程序化切显示行 → 累计时间轴 SRT），逐句首尾相接；voice 缺失自动回退 estimated（LLM 估时）
 - **新体裁 T1 图文**：`note-clip` 零新 action（图文体裁 action 复用率 100%），记忆召回/沉淀 + gate 审阅 + 封面 + 可选内页配图 + publish 发布稿（标题/标签/配图顺序/溯源检查）
+
+## M4 能力速览
+
+- **批量运行（E1）**：`batches` 表 + 进程内调度服务（串行默认，可配并发 1–3）；项目页「批量运行」= 一组输入一行（支持批量粘贴 JSON）；批次页 = 进度 / 取消 / 批量导出；gate 挂起自动暂停推进（计入活跃槽）；崩溃重启后 reconcile 继续按调度推进
+- **成本与用量（E2）**：`usage_records` 通用表 + LLM usage 零破坏捕获（tokens_in/out 两行）+ 图像/视频/语音 action 埋点；Settings「用量单价」表格编辑器（记录时快照，改价不改历史账）+ 未计价引导；`GET /stats/usage` 八种分组聚合
+- **导出分发（E3）**：发布包 zip（manifest.json + video/cover/text/other 分目录，fflate 流式 store）；运行页导出向导（产物勾选、默认全选、包名可改）+ 导出包区块（下载/删除）；批次页批量导出（有产物 run 逐一打包，无产物 skip）
+- **复盘数据（E4）**：`/stats` 运行看板（概览卡 / 近 30 天活跃趋势手绘 SVG / 成本构成按 kind、按 provider_model 切换 / 项目对比表）；`publications` 发布登记（六平台 / 链接 / 手工指标），运行页与项目页双入口
+- **事件链路修复**：socket 单通道 `studio.event` 前端 byType 分发（修复断链）；`batch.updated` 事件增量刷新批次页
 
 ## 内置模板
 
@@ -80,10 +88,10 @@ pnpm dev    # 并行起双端：
 | 路径 | 说明 |
 |---|---|
 | `apps/server/src/` | Hono API + Pipeline 引擎（DAG 调度 / 模板快照 / 崩溃恢复）+ Action Registry + 供应商适配层 |
-| `apps/web/src/` | Vue3 工作台（项目 / 运行 / 资产 / 任务 / gate 审阅 / 模板 / AI 配置 / 记忆 / 角色） |
+| `apps/web/src/` | Vue3 工作台（项目 / 运行 / 资产 / 任务 / gate 审阅 / 模板 / AI 配置 / 记忆 / 角色 / 统计 / 批次） |
 | `workspace/templates/*.yaml` | 流水线模板（新增体裁 = 新增模板；模板页在线编辑，保存即生效） |
 | `workspace/prompts/*.md` | LLM 提示词模板（外置可编辑；模板页同区管理） |
-| `workspace/projects/{id}/` | 项目资产（运行时生成，API 经 /api/v1/assets/{id}/file 访问） |
+| `workspace/projects/{id}/` | 项目资产 + exports/ 发布包（运行时生成，API 经 /api/v1/assets/{id}/file 访问） |
 | `data/studio.db` | SQLite（WAL） |
 | `data/secrets.json` | 本地 API key（0600，不入库） |
 | `data/models/bge-small-zh-v1.5/` | 记忆 embedding 模型（ONNX 本地推理，512 维；`model:prepare` 检查/下载） |
@@ -131,6 +139,42 @@ Remove-Item workspace/projects/* -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
 > 模板/提示词经 Web 模板页保存后即时生效；已开始的 run 保持创建时快照语义（M2），续跑不受模板改动影响。
+
+## M4 全链路回归路径
+
+### A. UI 手工路径（M4 增量，约 10 分钟）
+
+1. **配定价**：`/settings` → 底部「用量单价」→ 添加 LLM 行（参数如 `deepseek-chat` / tokens_in / tokens_out）→ 保存
+2. **批量运行**：项目页「批量运行」→ 选模板 → 3 行输入（或批量粘贴 JSON）→ 提交 → 自动跳批次页
+3. **看批次**：进度与计数随 run 推进（串行时活跃 ≤1）；gate 挂起批次暂停 → 运行页批准 → 回来继续；完成后可「批量导出」
+4. **成本核对**：运行页右栏「本 run 成本」（按 kind + 未计价徽标）；`/stats` 概览卡与成本构成核对
+5. **导出**：运行页「导出发布包」→ 勾选产物（默认全选）→ 生成 → 下载 zip 解压（manifest.json + 分目录）
+6. **发布登记**：运行页「标记发布」（平台/链接/指标）→ 项目页发布记录区块；`/stats` 发布数与播放量同步
+7. **复盘**：`/stats` 切 7/30/90 天、项目筛选、成本构成分组切换；项目对比表逆向核对
+
+### B. API 快捷冒烟
+
+```bash
+curl http://127.0.0.1:3001/api/v1/stats/overview
+curl "http://127.0.0.1:3001/api/v1/stats/usage?group_by=kind"
+curl "http://127.0.0.1:3001/api/v1/batches?project_id=1"
+curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
+```
+
+## M4 验收快照（2026-09-11）
+
+| # | 判据（spec §8） | 结果 | 证据（详见 m4-review） |
+|---|---|---|---|
+| 1 | 批量串行 + gate 停滞 | ✅ | 批次 1（Run 42–44）：挂起期活跃 ≤1、60s 不推进；终态 3/3/3 completed（01-serial 9/9） |
+| 2 | 批量 partial_failed + 断点续跑 | ✅ | 批次 2（Run 45–47）：partial_failed（s=2/f=3）；续跑 Run 48 独立批、已完成步复用（02b 6/6） |
+| 3 | 批量取消 + 崩溃恢复收敛 | ✅ | 批次 3 取消竞态命中 7/7；批次 4 gate 跨崩溃持久 7/7；批次 5 running 中断→failed(interrupted)→续跑 Run 55 completed（03b 10/10） |
+| 4 | 成本捕获（四类用量落行） | ✅ | Run 55 image=3/tokens；Run 59 char=294；Run 61 second=100；Run 58 tokens 计价（10-second 5/5） |
+| 5 | 定价快照 + 聚合口径 | ✅ | Run 56 P1 验算→改价后不变；Run 57 用新价；Run 62 删价全行 unpriced、UI 133 == API（05 13/13 + 10-unpriced 9/9） |
+| 6 | 单 run 导出包（manifest/分组） | ✅ | Run 55 勾选 5 资产 → zip 312KB 解包自校验 12/12（manifest / 分目录 / 魔数） |
+| 7 | 批量导出（集合相等） | ✅ | 批3 混合 / 批4 全产物双场景；抽包 Run 51 files.assetId = 全产物（集对集）（07 12/12） |
+| 8 | 发布登记 + 统计一致 | ✅ | 2 条登记（douyin/bilibili）→ 项目页 2300/173 = overview（08 19/19） |
+| 9 | 统计页数据核对 | ✅ | 动态对齐 29/29 + CDP 交互 16/16；守恒 sum(各项目)=全局 6/6；截图查证 |
+| 10 | README + 三模板无回归 | ✅ | 本文件；Run 58/59/60 三模板复跑 16/16，无 error 日志 |
 
 ## M3 验收快照（2026-09-10）
 
