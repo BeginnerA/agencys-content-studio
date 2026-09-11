@@ -1,8 +1,10 @@
 key: article-clip
 version: 1
-name: 深度长文·单篇（主稿审阅 → 头图/插图 → 多平台适配 → 发布稿）
-description: 记忆召回 → 深度长文主稿（可审阅）→ 头图提示词与头图 → 文中插图提示词与出图（可选）→ 多平台适配（可选）→ 发布稿（标题+封面文案+配图顺序）→ 风格沉淀
+name: 深度长文
+description: 适合：把素材与观点写成有头图、插图的深度长文。流程：主稿（可审阅）→ 头图 → 文中插图（可选）→ 多平台适配（可选）→ 发布稿。
 genre: article
+scene: produce
+next: [platform-adapt, review-restock]
 inputs:
   - key: topic
     label: 选题与目标受众点

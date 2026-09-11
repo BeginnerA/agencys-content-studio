@@ -1,8 +1,10 @@
 key: topic-radar
 version: 1
-name: 选题雷达·候选清单（v1：素材导入 + 记忆去重调分）
-description: 定位与热点素材入库 → 记忆召回（历史选题/复盘结论）→ 多维评分选题清单（可审阅）→ 沉淀选题库供回灌调分
+name: 选题雷达
+description: 适合：从定位与素材里找出可做的选题（记忆去重调分）。流程：定位/素材入库 → 记忆召回（可选）→ 选题清单（可审阅）→ 选题库沉淀。
 genre: other
+scene: plan
+next: [note-clip, article-clip, video-plan]
 inputs:
   - key: track
     label: 赛道与账号定位（内容领域/受众/人设/专栏方向）

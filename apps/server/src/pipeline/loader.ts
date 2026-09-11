@@ -187,12 +187,23 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       }
     }
   }
+  // 展示元数据（scene/next）：类型非法即报错；缺省 undefined（不参与引擎执行）
+  const sceneRaw = raw['scene']
+  if (sceneRaw !== undefined && (typeof sceneRaw !== 'string' || !sceneRaw)) {
+    return fail('scene 需为非空字符串（produce/plan/operate）')
+  }
+  const nextRaw = raw['next']
+  if (nextRaw !== undefined && (!Array.isArray(nextRaw) || nextRaw.some((x) => typeof x !== 'string' || !x))) {
+    return fail('next 需为模板 key 字符串数组')
+  }
   return {
     key,
     version: typeof raw.version === 'number' ? raw.version : 1,
     name,
     description: typeof raw.description === 'string' ? raw.description : undefined,
     genre: typeof raw.genre === 'string' ? raw.genre : 'other',
+    scene: typeof sceneRaw === 'string' ? sceneRaw : undefined,
+    next: Array.isArray(nextRaw) ? (nextRaw as string[]) : undefined,
     inputs: inputDefs,
     defaults: (raw.defaults as Record<string, unknown> | undefined) ?? {},
     steps,
@@ -289,6 +300,9 @@ export function validateTemplateText(text: string, expectKey?: string): Template
   try {
     const tpl = validate(rawObj, key)
     for (const miss of missingPromptsOf(tpl)) warnings.push(`params.prompt_tpl 引用的提示词文件不存在: ${miss}`)
+    for (const nk of tpl.next ?? []) {
+      if (!templateFileOf(nk)) warnings.push(`next 引用的模板不存在: ${nk}`)
+    }
     return { ok: true, errors, warnings, template: tpl }
   } catch (err) {
     return { ok: false, errors: [(err as Error).message], warnings }
@@ -345,6 +359,8 @@ export function listTemplates(): TemplateMeta[] {
         stepCount: tpl.steps.length,
         updatedAt: statSync(join(TEMPLATES_DIR, name)).mtimeMs,
         promptsDirty: missingPromptsOf(tpl).length > 0,
+        scene: tpl.scene,
+        next: tpl.next,
       })
     } catch (err) {
       log.warn(`模板 ${name} 被跳过: ${(err as Error).message}`)

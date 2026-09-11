@@ -1,8 +1,10 @@
 key: video-plan
 version: 1
-name: 创作策划·短剧策划案（v1：五节策划案 + Look Dev + 弧光核对）
-description: 记忆召回（往期策划/风格样本）→ 参考素材入库（选填）→ 五节策划案 + 视觉方向基准 + 弧光自检（可审阅）→ 沉淀策划记忆供整剧立项复用
+name: 创作策划
+description: 适合：为短剧做单条策划案（五节 + 视觉方向基准）。流程：记忆召回 → 参考素材（可选）→ 五节策划案（可审阅）→ 策划记忆沉淀。
 genre: drama_short
+scene: plan
+next: [mengbao-episode]
 inputs:
   - key: genre
     label: 题材与核心创意（题材/一句话创意/受众方向）

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { logger as honoLogger } from 'hono/logger'
 import { createLogger } from './logger'
 import { apiRoutes } from './routes/api-configs'
+import { vendorRoutes } from './routes/vendor-credentials'
 import { assetsRoutes } from './routes/assets'
 import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
@@ -37,6 +38,7 @@ api.route('/', exportsRoutes)
 api.route('/', publicationsRoutes)
 api.route('/', tasksRoutes)
 api.route('/', apiRoutes)
+api.route('/', vendorRoutes)
 
 app.route('/api/v1', api)
 

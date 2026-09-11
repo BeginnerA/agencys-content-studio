@@ -135,11 +135,25 @@ export const assets = sqliteTable(
   ],
 )
 
+/** 供应商凭证（厂商级，一个厂商一条记录；API Key 只配一次，实例共享） */
+export const vendorCredentials = sqliteTable('vendor_credentials', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  vendor: text('vendor').notNull().unique(), // 厂商标识：aliyun / deepseek / openai / siliconflow / google / volcengine / minimax / pollinations
+  name: text('name').notNull(), // 显示名：阿里千问 / DeepSeek / OpenAI ...
+  apiKeyRef: text('api_key_ref').notNull().default('local'), // 密钥引用（local:vendor:{vendor}）
+  baseUrl: text('base_url'), // 可选覆盖（厂商根端点）
+  extra: text('extra').notNull().default('{}'), // JSON 厂商级扩展
+  isActive: integer('is_active').notNull().default(1),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 export const apiProviders = sqliteTable('api_providers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   key: text('key').notNull().unique(), // volcengine_image/gemini_image/.../deepseek_llm
   name: text('name').notNull(),
   serviceType: text('service_type').notNull(), // llm|image|video|audio
+  vendor: text('vendor'), // 厂商分组标识（关联 vendor_credentials.vendor）
   defaultUrl: text('default_url'),
   presetModels: text('preset_models'), // JSON
   description: text('description'),
@@ -154,18 +168,20 @@ export const apiConfigs = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     providerKey: text('provider_key').notNull(),
     serviceType: text('service_type').notNull(), // llm|image|video|audio
+    credentialId: integer('credential_id'), // FK → vendor_credentials.id（凭证级 Key 共享）
     name: text('name').notNull(),
     baseUrl: text('base_url'), // 覆盖 provider.defaultUrl
-    apiKeyRef: text('api_key_ref').notNull().default('local'), // env 变量名 或 local
+    apiKeyRef: text('api_key_ref').notNull().default('local'), // fallback：credential_id 优先
     model: text('model'),
     extra: text('extra').notNull().default('{}'), // JSON
+    pricing: text('pricing').notNull().default('{}'), // JSON 实例级定价：{"tokens_in":2,"tokens_out":8} / {"image":0.04} / {"second":0.6} / {"char":0.1}
     priority: integer('priority').notNull().default(0),
     isDefault: integer('is_default').notNull().default(0),
     isActive: integer('is_active').notNull().default(1),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [index('idx_configs_type_default').on(t.serviceType, t.isDefault)],
+  (t) => [index('idx_configs_type_default').on(t.serviceType, t.isDefault), index('idx_configs_credential').on(t.credentialId)],
 )
 
 export const settings = sqliteTable('settings', {
@@ -277,6 +293,7 @@ export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
 export type GenTask = typeof genTasks.$inferSelect
 export type Asset = typeof assets.$inferSelect
+export type VendorCredential = typeof vendorCredentials.$inferSelect
 export type ApiConfig = typeof apiConfigs.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type CharacterRow = typeof characters.$inferSelect

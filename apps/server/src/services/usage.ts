@@ -5,9 +5,9 @@
  * - 快照语义：写入时定价并落列，后续改价只影响新记录。
  * - 纪律：成本记录绝不阻断流水线（recordUsage 异常仅 log.warn）。
  */
-import { and, asc, eq, gte, inArray, lte, sql, sum, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lte, sql, sum, type SQL } from 'drizzle-orm'
 import { db } from '../db'
-import { pipelineRuns, settings, usageRecords } from '../db/schema'
+import { apiConfigs, pipelineRuns, settings, usageRecords } from '../db/schema'
 import { createLogger } from '../logger'
 import type { LlmUsage } from './llm'
 
@@ -98,8 +98,35 @@ export function priceOf(
 /** 记录一条用量（写入时定价快照；异常仅 log.warn，不抛） */
 export async function recordUsage(input: UsageInput): Promise<void> {
   try {
-    const pricing = await loadPricing()
-    const unitPrice = priceOf(pricing, input.kind, input.provider, input.model, input.unit)
+    // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null
+    let unitPrice: number | null = null
+    // 1) 实例级定价：按 providerKey + model 查找匹配的活跃实例
+    if (input.provider) {
+      const cfgRows = await db
+        .select({ pricing: apiConfigs.pricing })
+        .from(apiConfigs)
+        .where(and(
+          eq(apiConfigs.providerKey, input.provider),
+          eq(apiConfigs.isActive, 1),
+          ...(input.model ? [eq(apiConfigs.model, input.model)] : []),
+        ))
+        .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
+        .limit(1)
+      if (cfgRows[0]?.pricing) {
+        try {
+          const instPricing = JSON.parse(cfgRows[0].pricing) as Record<string, unknown>
+          const val = instPricing[input.unit]
+          if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+            unitPrice = val / unitBase(input.unit)
+          }
+        } catch { /* pricing JSON 损坏，跳过 */ }
+      }
+    }
+    // 2) 全局定价兜底
+    if (unitPrice === null) {
+      const pricing = await loadPricing()
+      unitPrice = priceOf(pricing, input.kind, input.provider, input.model, input.unit)
+    }
     const cost = unitPrice === null ? null : Math.round(input.quantity * unitPrice * 1e6) / 1e6
     await db.insert(usageRecords).values({
       projectId: input.projectId,

@@ -1,8 +1,10 @@
 key: quick-video
 version: 1
-name: 快速单片视频（一句话创意 → 快脚本 → 配音/字幕 → 单图成片）
-description: 记忆召回 → 快脚本（默认免审，可开闸审阅）→ 切句 → 逐句配音 → 精确字幕 → 封面提示词与出图 → 单图成片 + 风格沉淀
+name: 快速视频
+description: 适合：一句话创意快速出片（默认免审直出）。流程：快脚本 → 逐句配音 → 精确字幕 → 单图成片 → 风格沉淀。
 genre: talking_head
+scene: produce
+next: [review-restock]
 inputs:
   - key: idea
     label: 创意/选题（一句话即可）

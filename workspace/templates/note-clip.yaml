@@ -1,8 +1,10 @@
 key: note-clip
 version: 2
-name: 图文笔记·单篇 v2（主稿审阅 → 封面 → 多平台适配 → 发布稿）
-description: 选题 → 主稿（可审阅）→ 封面提示词与内页配图提示词（可选）→ 出图 → 多平台适配（可选）→ 发布稿（标题+标签+配图顺序）
+name: 图文笔记
+description: 适合：把一段素材或想法做成可直接发布的小红书式图文笔记。流程：主稿（可审阅）→ 封面/配图 → 多平台适配（可选）→ 发布稿。
 genre: note
+scene: produce
+next: [platform-adapt, review-restock]
 inputs:
   - key: topic
     label: 选题与目标受众点

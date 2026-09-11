@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Modal from './Modal.vue'
 import SearchSelect from './SearchSelect.vue'
-import type { ApiProvider, ProviderConfigLite } from '../lib/types'
+import type { ApiProvider, ProviderConfigLite, VendorCredential } from '../lib/types'
 import { configApi } from '../lib/api'
 
 const props = defineProps<{
   provider: ApiProvider
-  /** 编辑时传现有配置（列表精简态，含 baseUrl / apiKeyMasked / extra 回显字段）；新建为空 */
+  /** 编辑时传现有配置（列表精简态，含 baseUrl / apiKeyMasked / extra / pricing 回显字段）；新建为空 */
   config?: ProviderConfigLite | null
+  /** 供应商凭证列表（用于下拉选择） */
+  credentials?: VendorCredential[]
 }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
 
@@ -16,6 +18,7 @@ const name = ref('')
 const baseUrl = ref('')
 const model = ref('')
 const apiKey = ref('')
+const credentialId = ref<number | null>(null)
 const isDefault = ref(false)
 const isActive = ref(true)
 const err = ref('')
@@ -23,6 +26,27 @@ const busy = ref(false)
 /** 扩展参数（JSON 文本；空 = 不设置，编辑时清空原值则显式提交 {}） */
 const extraText = ref('')
 const extraErr = ref('')
+
+/** 实例级定价（按能力类型显示不同单位） */
+const priceInput = ref('')
+const priceOutput = ref('')
+
+/** 当前能力类型对应的定价单位描述 */
+const pricingUnits = computed(() => {
+  const st = props.provider.serviceType
+  if (st === 'llm') return { input: '元/百万 token（输入）', output: '元/百万 token（输出）', dual: true }
+  if (st === 'image') return { input: '元/张', output: '', dual: false }
+  if (st === 'video') return { input: '元/秒', output: '', dual: false }
+  return { input: '元/千字符', output: '', dual: false } // audio/tts
+})
+
+/** 凭证下拉候选：显示 "厂商名 ****tail" */
+const credentialOptions = computed(() => {
+  return (props.credentials ?? []).map((cr) => ({
+    value: cr.id,
+    label: cr.hasKey ? `${cr.name} ${cr.apiKeyMasked}` : `${cr.name}（未配 Key）`,
+  }))
+})
 
 /** 模型候选：目录预置 → 在线拉取覆盖 */
 const modelOptions = ref<string[]>([])
@@ -39,6 +63,7 @@ watch(
     model.value = c?.model ?? ''
     isDefault.value = c?.isDefault ?? false
     isActive.value = c?.isActive ?? true
+    credentialId.value = c?.credentialId ?? null
     apiKey.value = ''
     modelOptions.value = props.provider.presetModels ?? []
     fetchNote.value = ''
@@ -46,6 +71,22 @@ watch(
     fetchBusy.value = false
     extraText.value = c?.extra && Object.keys(c.extra).length ? JSON.stringify(c.extra, null, 2) : ''
     extraErr.value = ''
+    // 定价回显
+    const p = c?.pricing ?? {}
+    const st = props.provider.serviceType
+    if (st === 'llm') {
+      priceInput.value = p['tokens_in'] != null ? String(p['tokens_in']) : ''
+      priceOutput.value = p['tokens_out'] != null ? String(p['tokens_out']) : ''
+    } else if (st === 'image') {
+      priceInput.value = p['image'] != null ? String(p['image']) : ''
+      priceOutput.value = ''
+    } else if (st === 'video') {
+      priceInput.value = p['second'] != null ? String(p['second']) : ''
+      priceOutput.value = ''
+    } else {
+      priceInput.value = p['char'] != null ? String(p['char']) : ''
+      priceOutput.value = ''
+    }
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
     if (c) void fetchModels(true)
   },
@@ -85,6 +126,25 @@ async function fetchModels(silent = false) {
   }
 }
 
+/** 组装定价 JSON */
+function buildPricing(): Record<string, number> {
+  const st = props.provider.serviceType
+  const out: Record<string, number> = {}
+  const v1 = parseFloat(priceInput.value)
+  const v2 = parseFloat(priceOutput.value)
+  if (st === 'llm') {
+    if (Number.isFinite(v1) && v1 >= 0) out['tokens_in'] = v1
+    if (Number.isFinite(v2) && v2 >= 0) out['tokens_out'] = v2
+  } else if (st === 'image') {
+    if (Number.isFinite(v1) && v1 >= 0) out['image'] = v1
+  } else if (st === 'video') {
+    if (Number.isFinite(v1) && v1 >= 0) out['second'] = v1
+  } else {
+    if (Number.isFinite(v1) && v1 >= 0) out['char'] = v1
+  }
+  return out
+}
+
 async function submit() {
   if (!name.value.trim()) {
     err.value = '请填写实例名'
@@ -114,13 +174,17 @@ async function submit() {
     is_default: isDefault.value,
     is_active: isActive.value,
   }
+  // 凭证关联（优先）或旧式 per-instance key
+  if (credentialId.value != null) body.credential_id = credentialId.value
   if (baseUrl.value.trim()) body.base_url = baseUrl.value.trim()
   if (model.value.trim()) body.model = model.value.trim()
   if (apiKey.value.trim()) body.api_key = apiKey.value.trim()
   // 扩展参数：有值 → 提交解析结果；编辑时原值非空但现被清空 → 显式传 {} 清空
   if (extraParsed) body.extra = extraParsed
   else if (props.config?.extra && Object.keys(props.config.extra).length > 0) body.extra = {}
-  // 未填 api_key 且编辑时：保留原 ref（后端 PUT 仅按显式字段覆盖）
+  // 定价
+  const pricing = buildPricing()
+  body.pricing = pricing
   busy.value = true
   err.value = ''
   try {
@@ -142,8 +206,20 @@ async function submit() {
       实例名
       <input v-model="name" type="text" placeholder="如：主用文生图 / DeepSeek 网关" />
     </label>
-    <label class="fld">
-      API Key
+
+    <!-- 供应商凭证选择（替代原来的 API Key 字段） -->
+    <div class="fld">
+      <span>供应商凭证</span>
+      <select v-model="credentialId" class="cred-sel">
+        <option :value="null">—— 选择凭证（共享 Key）——</option>
+        <option v-for="opt in credentialOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
+      <span class="note">选择后无需每次填写 API Key，凭证在「供应商凭证」面板统一管理</span>
+    </div>
+
+    <!-- 无凭证时回退显示独立 Key 输入 -->
+    <label v-if="credentialId == null" class="fld">
+      API Key（独立）
       <input v-model="apiKey" type="password" :placeholder="config ? '留空保持不变（已配置 ' + (config.apiKeyMasked ?? '') + '）' : '粘贴明文 key（仅存本地 secrets.json）'" />
     </label>
 
@@ -164,6 +240,15 @@ async function submit() {
       </div>
       <span v-if="fetchNote" class="note" :class="{ warn: fetchNoteWarn }">{{ fetchNote }}</span>
       <span v-else-if="!modelOptions.length" class="note">点「获取模型」按官方 API 在线查询可用模型</span>
+    </div>
+
+    <!-- 实例级定价 -->
+    <div class="fld">
+      <span>定价（可选，留空则用全局兜底定价）</span>
+      <div class="prow">
+        <input v-model="priceInput" type="number" min="0" step="0.0001" :placeholder="pricingUnits.input" />
+        <input v-if="pricingUnits.dual" v-model="priceOutput" type="number" min="0" step="0.0001" :placeholder="pricingUnits.output" />
+      </div>
     </div>
 
     <details class="adv">
@@ -200,6 +285,18 @@ async function submit() {
   color: var(--text-2);
 }
 
+.cred-sel {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-1);
+}
+
 .mrow {
   display: flex;
   gap: 8px;
@@ -213,6 +310,17 @@ async function submit() {
 
 .mrow .btn {
   flex: none;
+}
+
+.prow {
+  display: flex;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.prow input {
+  flex: 1;
+  min-width: 0;
 }
 
 .note {

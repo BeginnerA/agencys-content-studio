@@ -1,8 +1,10 @@
 key: platform-adapt
 version: 1
-name: 平台适配·多平台改写（v1：八平台规则 + 事实不变性 + 风险标注）
-description: 源稿入库 → 按八平台规则逐平台改写（文字平台全文版 / 视频平台发布文案，可审阅）→ 风险三级标注与删减留痕
+name: 多平台适配
+description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注）。流程：源稿入库 → 八平台规则改写（可审阅）→ 风险标注留痕。
 genre: other
+scene: operate
+next: [review-restock]
 inputs:
   - key: source
     label: 待适配源稿（必填，md/txt）

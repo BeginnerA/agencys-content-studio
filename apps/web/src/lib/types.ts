@@ -127,6 +127,7 @@ export interface ProviderConfigLite {
   name: string
   serviceType: string
   model: string
+  credentialId?: number | null
   isDefault: boolean
   isActive: boolean
   /** 编辑回显：自定义端点（GET /api-configs 提供；未设置为 null/undefined） */
@@ -135,12 +136,15 @@ export interface ProviderConfigLite {
   apiKeyMasked?: string | null
   /** 编辑回显：实例扩展参数（供适配器透传，如火山 TTS 的 appid；后端默认 {}） */
   extra?: Record<string, unknown> | null
+  /** 实例级定价 JSON */
+  pricing?: Record<string, number> | null
 }
 
 export interface ApiProvider {
   key: string
   name: string
   serviceType: 'llm' | 'image' | 'video' | 'audio'
+  vendor: string | null
   description: string
   defaultUrl: string | null
   presetModels: string[]
@@ -152,15 +156,34 @@ export interface ApiConfig {
   id: number
   providerKey: string
   serviceType: string
+  credentialId: number | null
+  credentialVendor: string | null
+  credentialName: string | null
   name: string
   baseUrl: string | null
   apiKeyRef: string | null
   apiKeyMasked: string | null
   model: string | null
   extra: Record<string, unknown>
+  pricing: Record<string, number>
   priority: number
   isDefault: boolean
   isActive: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/** 供应商凭证（厂商级，API Key 只配一次） */
+export interface VendorCredential {
+  id: number
+  vendor: string
+  name: string
+  baseUrl: string | null
+  apiKeyMasked: string
+  hasKey: boolean
+  extra: Record<string, unknown>
+  isActive: boolean
+  configCount: number
   createdAt: number
   updatedAt: number
 }
@@ -220,6 +243,10 @@ export interface TemplateMeta {
   updatedAt: number
   /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
   promptsDirty?: boolean
+  /** 展示元数据：场景分组（produce/plan/operate） */
+  scene?: string
+  /** 展示元数据：推荐下游模板 key 列表 */
+  next?: string[]
 }
 
 /** POST /templates/validate 响应（纯校验不落盘） */
@@ -243,6 +270,10 @@ export interface TemplateDetail {
   name: string
   description: string
   genre: string
+  /** 展示元数据：场景分组（produce/plan/operate） */
+  scene?: string
+  /** 展示元数据：推荐下游模板 key 列表 */
+  next?: string[]
   inputs: TemplateInputDef[]
   defaults: Record<string, unknown>
   steps: TemplateStepDef[]

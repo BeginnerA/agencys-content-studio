@@ -1,8 +1,10 @@
 key: review-restock
 version: 1
-name: 盘点复盘·数据回灌（v1：数据导入 + 复盘结论 + 回灌选题 + 记忆闭环）
-description: 平台数据导入 → 记忆召回（历史复盘）→ 数据复盘 + 置信门禁（可审阅）→ 回灌选题清单（可选）→ 沉淀复盘记忆供选题雷达调分
+name: 复盘回灌
+description: 适合：导入平台数据做复盘并把结论回灌为下一轮选题。流程：数据入库 → 记忆召回 → 数据复盘（可审阅）→ 回灌选题（可选）→ 复盘记忆沉淀。
 genre: other
+scene: operate
+next: [topic-radar]
 inputs:
   - key: data
     label: 平台数据导出（必填，md/txt/csv：标题/发布时间/曝光/点赞/评论等）

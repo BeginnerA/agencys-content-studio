@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import { projectApi, templateApi } from '../lib/api'
@@ -7,9 +7,12 @@ import { ApiError } from '../lib/api'
 import { pendingOf } from '../lib/pending'
 import type { Project, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime } from '../lib/format'
+import { groupTemplates } from '../lib/scene'
 
 const projects = ref<Project[]>([])
 const templates = ref<TemplateMeta[]>([])
+/** [入口改造] 默认模板下拉按场景分组（optgroup） */
+const tplGroups = computed(() => groupTemplates(templates.value))
 const loading = ref(true)
 const err = ref('')
 
@@ -150,7 +153,9 @@ function cardTo(p: Project) {
       <label class="fld">
         默认模板
         <select v-model="newTpl">
-          <option v-for="t in templates" :key="t.key" :value="t.key">{{ t.name }}</option>
+          <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">
+            <option v-for="t in g.items" :key="t.key" :value="t.key">{{ t.name }}</option>
+          </optgroup>
         </select>
       </label>
       <label class="fld">

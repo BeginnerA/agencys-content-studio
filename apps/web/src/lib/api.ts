@@ -23,6 +23,7 @@ import type {
   TemplateMeta,
   TemplateValidation,
   UsageSummary,
+  VendorCredential,
 } from './types'
 
 /** 统一请求封装：错误解析为 {code,message}，抛 ApiError */
@@ -150,6 +151,13 @@ export const configApi = {
   /** 在线拉取供应商可用模型目录（OpenAI 兼容 GET /models，失败回退预置列表） */
   fetchModels: (body: Record<string, unknown>) =>
     api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
+}
+
+export const vendorApi = {
+  list: () => api.get<Items<VendorCredential>>('/api/v1/vendor-credentials'),
+  create: (body: Record<string, unknown>) => api.post<{ credential: VendorCredential }>('/api/v1/vendor-credentials', body),
+  update: (id: number, body: Record<string, unknown>) => api.put<{ credential: VendorCredential }>(`/api/v1/vendor-credentials/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/vendor-credentials/${id}`),
 }
 
 export const assetApi = {

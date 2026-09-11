@@ -8,7 +8,7 @@ import { SiliconFlowImageAdapter } from './siliconflow-image'
 import { VolcengineImageAdapter } from './volcengine-image'
 import type { ImageAdapter, ImageGenRequest } from './types'
 import { db } from '../db'
-import { apiConfigs, apiProviders } from '../db/schema'
+import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey } from '../services/secrets'
 
 /**
@@ -53,6 +53,8 @@ export interface ResolvedEndpoint {
 
 /**
  * 选择图像/视频/语音端点：service_type + providerKey（可选）；否则 is_default 优先。
+ * 密钥解析优先级：credential_id → vendor_credentials.apiKeyRef → api_configs.apiKeyRef（fallback）。
+ * Base URL 优先级：实例 baseUrl → 凭证 baseUrl → 目录 defaultUrl。
  * 端点配置缺失或 key 未填时抛错并附配置指引。
  */
 export async function resolveEndpoint(
@@ -73,19 +75,40 @@ export async function resolveEndpoint(
       `未配置 ${serviceType} 类型 api_configs（Settings → AI 配置，providerKey=${providerKey ?? 'default'}）`,
     )
   }
-  const apiKey = resolveApiKey(cfg.apiKeyRef)
-  if (!apiKey) {
-    throw new Error(`api_configs「${cfg.name}」的 API Key 未解析（apiKeyRef=${cfg.apiKeyRef}）`)
+
+  // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
+  let apiKey = ''
+  let credBaseUrl = ''
+  if (cfg.credentialId != null) {
+    const credRows = await db
+      .select()
+      .from(vendorCredentials)
+      .where(eq(vendorCredentials.id, cfg.credentialId))
+      .limit(1)
+    const cred = credRows[0]
+    if (cred) {
+      apiKey = resolveApiKey(cred.apiKeyRef)
+      credBaseUrl = cred.baseUrl?.trim() ?? ''
+    }
   }
+  if (!apiKey) {
+    apiKey = resolveApiKey(cfg.apiKeyRef)
+  }
+  if (!apiKey) {
+    throw new Error(`api_configs「${cfg.name}」的 API Key 未解析（请配置供应商凭证或实例级 Key）`)
+  }
+
+  // Base URL 解析：实例 > 凭证 > 目录
   const providerRow = await db
     .select()
     .from(apiProviders)
     .where(eq(apiProviders.key, cfg.providerKey))
     .limit(1)
-  const baseUrl = cfg.baseUrl?.trim() || providerRow[0]?.defaultUrl?.trim() || ''
+  const baseUrl = cfg.baseUrl?.trim() || credBaseUrl || providerRow[0]?.defaultUrl?.trim() || ''
   if (!baseUrl) {
     throw new Error(`api_configs「${cfg.name}」缺少 baseUrl，且供应商无 defaultUrl`)
   }
+
   let extra: Record<string, unknown> = {}
   try {
     extra = cfg.extra ? (JSON.parse(cfg.extra) as Record<string, unknown>) : {}

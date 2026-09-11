@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db'
-import { apiConfigs, apiProviders } from '../db/schema'
+import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
@@ -34,6 +34,7 @@ apiRoutes.get('/api-providers', h(async (c) => {
       key: p.key,
       name: p.name,
       serviceType: p.serviceType,
+      vendor: p.vendor,
       description: p.description,
       defaultUrl: p.defaultUrl,
       presetModels: safeJson(p.presetModels, []),
@@ -43,6 +44,7 @@ apiRoutes.get('/api-providers', h(async (c) => {
         name: cfg.name,
         serviceType: cfg.serviceType,
         model: cfg.model,
+        credentialId: cfg.credentialId,
         isDefault: cfg.isDefault === 1,
         isActive: cfg.isActive === 1,
       })),
@@ -53,27 +55,40 @@ apiRoutes.get('/api-providers', h(async (c) => {
 // GET /api-configs —— 配置列表（key 脱敏：仅尾 4 位）
 apiRoutes.get('/api-configs', h(async (c) => {
   const rows = await db.select().from(apiConfigs).orderBy(asc(apiConfigs.serviceType), desc(apiConfigs.isDefault), asc(apiConfigs.priority))
+  // 批量查询关联凭证信息
+  const credIds = [...new Set(rows.map((r) => r.credentialId).filter((id): id is number => id != null))]
+  const creds = credIds.length > 0
+    ? await db.select().from(vendorCredentials).where(inArray(vendorCredentials.id, credIds))
+    : []
+  const credMap = new Map(creds.map((cr) => [cr.id, cr]))
   return c.json({
-    items: rows.map((r) => ({
-      id: r.id,
-      providerKey: r.providerKey,
-      serviceType: r.serviceType,
-      name: r.name,
-      baseUrl: r.baseUrl,
-      apiKeyRef: r.apiKeyRef,
-      apiKeyMasked: maskKey(resolveApiKey(r.apiKeyRef)),
-      model: r.model,
-      extra: safeJson(r.extra, {}),
-      priority: r.priority,
-      isDefault: r.isDefault === 1,
-      isActive: r.isActive === 1,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    })),
+    items: rows.map((r) => {
+      const cred = r.credentialId != null ? credMap.get(r.credentialId) : null
+      return {
+        id: r.id,
+        providerKey: r.providerKey,
+        serviceType: r.serviceType,
+        credentialId: r.credentialId,
+        credentialVendor: cred?.vendor ?? null,
+        credentialName: cred?.name ?? null,
+        name: r.name,
+        baseUrl: r.baseUrl,
+        apiKeyRef: r.apiKeyRef,
+        apiKeyMasked: maskKey(cred ? resolveApiKey(cred.apiKeyRef) : resolveApiKey(r.apiKeyRef)),
+        model: r.model,
+        extra: safeJson(r.extra, {}),
+        pricing: safeJson(r.pricing, {}),
+        priority: r.priority,
+        isDefault: r.isDefault === 1,
+        isActive: r.isActive === 1,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }
+    }),
   })
 }))
 
-// POST /api-configs —— 新建配置 {provider_key, service_type, name, base_url?, api_key?, api_key_ref?, model?, extra?, is_default?}
+// POST /api-configs —— 新建配置 {provider_key, service_type, name, credential_id?, base_url?, api_key?, api_key_ref?, model?, extra?, pricing?, is_default?}
 apiRoutes.post('/api-configs', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const providerKey = body['provider_key']
@@ -85,14 +100,18 @@ apiRoutes.post('/api-configs', h(async (c) => {
   const providerRows = await db.select().from(apiProviders).where(eq(apiProviders.key, providerKey)).limit(1)
   if (!providerRows[0]) throw new HttpError(400, 'bad_provider', `供应商 ${providerKey} 不存在`)
 
-  // 密钥写入：body.api_key 明文 → secrets.json（local）；或 api_key_ref 指向 env 变量
+  // credential_id 优先；否则回退到旧的 per-instance key 逻辑
+  const credentialId = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
   let apiKeyRef = 'local'
-  if (body['api_key'] !== undefined) {
-    if (typeof body['api_key'] !== 'string' || !body['api_key']) throw new HttpError(400, 'bad_key', 'api_key 非法')
-    writeSecret(`local:cfg:${serviceType}:${providerKey}`, body['api_key'])
-    apiKeyRef = `local:cfg:${serviceType}:${providerKey}`
-  } else if (typeof body['api_key_ref'] === 'string' && body['api_key_ref']) {
-    apiKeyRef = body['api_key_ref']
+  if (!credentialId) {
+    // 无凭证关联时沿用旧逻辑：body.api_key 明文 → secrets.json
+    if (body['api_key'] !== undefined) {
+      if (typeof body['api_key'] !== 'string' || !body['api_key']) throw new HttpError(400, 'bad_key', 'api_key 非法')
+      writeSecret(`local:cfg:${serviceType}:${providerKey}`, body['api_key'])
+      apiKeyRef = `local:cfg:${serviceType}:${providerKey}`
+    } else if (typeof body['api_key_ref'] === 'string' && body['api_key_ref']) {
+      apiKeyRef = body['api_key_ref']
+    }
   }
   const t = Date.now()
   const row = await db
@@ -100,11 +119,13 @@ apiRoutes.post('/api-configs', h(async (c) => {
     .values({
       providerKey,
       serviceType,
+      credentialId,
       name: name.trim(),
       baseUrl: typeof body['base_url'] === 'string' && body['base_url'] ? body['base_url'] : null,
       apiKeyRef,
       model: typeof body['model'] === 'string' ? body['model'] : null,
       extra: body['extra'] && typeof body['extra'] === 'object' ? JSON.stringify(body['extra']) : '{}',
+      pricing: body['pricing'] && typeof body['pricing'] === 'object' ? JSON.stringify(body['pricing']) : '{}',
       priority: typeof body['priority'] === 'number' ? body['priority'] : 0,
       isDefault: body['is_default'] === true ? 1 : 0,
       isActive: 1,
@@ -193,7 +214,7 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   })
 }))
 
-// PUT /api-configs/:id —— 更新（同字段；api_key 传明文则覆盖）
+// PUT /api-configs/:id —— 更新（同字段；api_key 传明文则覆盖；credential_id / pricing 可更新）
 apiRoutes.put('/api-configs/:id', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, id)).limit(1)
@@ -208,9 +229,11 @@ apiRoutes.put('/api-configs/:id', h(async (c) => {
   if (body['base_url'] !== undefined) patch['baseUrl'] = body['base_url'] ? String(body['base_url']) : null
   if (body['model'] !== undefined) patch['model'] = body['model'] ? String(body['model']) : null
   if (body['extra'] !== undefined && typeof body['extra'] === 'object') patch['extra'] = JSON.stringify(body['extra'])
+  if (body['pricing'] !== undefined && typeof body['pricing'] === 'object') patch['pricing'] = JSON.stringify(body['pricing'])
   if (body['priority'] !== undefined) patch['priority'] = Number(body['priority']) || 0
   if (body['is_default'] !== undefined) patch['isDefault'] = body['is_default'] === true ? 1 : 0
   if (body['is_active'] !== undefined) patch['isActive'] = body['is_active'] === true ? 1 : 0
+  if (body['credential_id'] !== undefined) patch['credentialId'] = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
   if (body['api_key'] !== undefined) {
     if (typeof body['api_key'] !== 'string' || !body['api_key']) throw new HttpError(400, 'bad_key', 'api_key 非法')
     writeSecret(`local:cfg:${cfg.serviceType}:${cfg.providerKey}`, body['api_key'])
@@ -237,9 +260,10 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   const cfg = rows[0]
   if (!cfg) return notFound(c, `配置 ${id}`)
   const t0 = Date.now()
+  // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
+  const testApiKey = await resolveConfigApiKey(cfg)
+  const testBaseUrl = await resolveConfigBaseUrl(cfg)
   if (cfg.serviceType === 'llm') {
-    // base_url 留空 → 供应商目录 defaultUrl 兜底（与 image 分支 resolveEndpoint 行为对齐）
-    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
     // model 留空 → 供应商目录预置首项兜底；无预置目录（自定义网关行）时报错提示填写
     let model = cfg.model ?? ''
     if (!model) {
@@ -253,8 +277,8 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     }
     if (!model) throw new HttpError(400, 'no_model', '实例未配置模型且该供应商无预置模型，请在实例中填写模型名')
     await chatComplete([{ role: 'user', content: 'ping' }], {
-      baseUrl,
-      apiKey: resolveApiKey(cfg.apiKeyRef),
+      baseUrl: testBaseUrl,
+      apiKey: testApiKey,
       model,
       providerKey: cfg.providerKey,
     }, { maxTokens: 16, timeoutMs: 30_000, allowReasoningOnly: true, allowEmptyContent: true })
@@ -288,8 +312,8 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     const voice = typeof extra['voice'] === 'string' && extra['voice'] ? extra['voice'] : undefined
     const buf = await synthSpeech('ping', {
       providerKey: cfg.providerKey,
-      baseUrl: (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, ''),
-      apiKey: resolveApiKey(cfg.apiKeyRef),
+      baseUrl: testBaseUrl,
+      apiKey: testApiKey,
       model: cfg.model ?? (await defaultTtsModel(cfg.providerKey)),
       voice,
       extra,
@@ -297,10 +321,9 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, voice: voice ?? 'alloy', note: '语音合成成功（1 句，注意计费）' })
   }
   if (cfg.serviceType === 'video') {
-    // 视频生成成本高，统一用零计费探针验证「端点+鉴权」（不创建任务）：
-    // 阿里云/火山/SiliconFlow 空体提交被参数校验拒绝（400）；Pollinations 用余额接口验证鉴权
-    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
-    const apiKey = resolveApiKey(cfg.apiKeyRef)
+    // 视频生成成本高，统一用零计费探针验证「端点+鉴权」（不创建任务）
+    const baseUrl = testBaseUrl
+    const apiKey = testApiKey
     if (cfg.providerKey === 'aliyun_wan_video') {
       const note = await probeAliyunWanVideoEndpoint({ baseUrl, apiKey })
       return c.json({ ok: true, ms: Date.now() - t0, note })
@@ -321,6 +344,30 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   }
   throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
 }))
+
+/** 密钥解析：credential 优先，fallback 到实例级 apiKeyRef */
+async function resolveConfigApiKey(cfg: typeof apiConfigs.$inferSelect): Promise<string> {
+  if (cfg.credentialId != null) {
+    const credRows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, cfg.credentialId)).limit(1)
+    const cred = credRows[0]
+    if (cred) {
+      const key = resolveApiKey(cred.apiKeyRef)
+      if (key) return key
+    }
+  }
+  return resolveApiKey(cfg.apiKeyRef)
+}
+
+/** Base URL 解析：实例 > 凭证 > 目录 defaultUrl */
+async function resolveConfigBaseUrl(cfg: typeof apiConfigs.$inferSelect): Promise<string> {
+  if (cfg.baseUrl?.trim()) return cfg.baseUrl.trim().replace(/\/+$/, '')
+  if (cfg.credentialId != null) {
+    const credRows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, cfg.credentialId)).limit(1)
+    const cred = credRows[0]
+    if (cred?.baseUrl?.trim()) return cred.baseUrl.trim().replace(/\/+$/, '')
+  }
+  return (await providerDefaultUrl(cfg.providerKey)).replace(/\/+$/, '')
+}
 
 /** is_default 唯一性：同 service_type 内其它配置清 default */
 async function clearOtherDefaults(id: number, serviceType: string): Promise<void> {

@@ -7,9 +7,11 @@ import AssetPreviewer from '../components/AssetPreviewer.vue'
 import Icon from '../components/Icon.vue'
 import ExportWizardModal from '../components/ExportWizardModal.vue'
 import PublishModal from '../components/PublishModal.vue'
+import RunFormModal from '../components/RunFormModal.vue'
 import { assetApi, exportApi, publicationApi, runApi, statsApi, templateApi } from '../lib/api'
 import type {
-  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, TemplateDetail, UsageSummary,
+  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, TemplateDetail, TemplateMeta,
+  UsageSummary,
 } from '../lib/types'
 import {
   fmtCost, fmtMs, fmtQty, fmtSize, fmtTime, PLATFORM_TEXT, runStatus, skipReasonText, stepStatus,
@@ -210,6 +212,47 @@ async function resumeRun() {
   }
 }
 
+// ===== 完成态「下一步建议」接力（模板元数据 next 声明） =====
+const tplMetas = ref<TemplateMeta[]>([])
+const showRelay = ref(false)
+const relayTplKey = ref('')
+
+/** 挂载时拉一次模板元数据（读取 next 推荐与短名；失败静默，接力条自然隐藏） */
+async function loadTplMetas() {
+  try {
+    const res = await templateApi.list()
+    tplMetas.value = res.items
+  } catch {
+    // 元数据不可达不阻断主视图
+  }
+}
+
+/** 完成态：当前模板声明的推荐下游（引用不存在/未加载的 key 静默过滤） */
+const nextOptions = computed(() => {
+  const r = run.value
+  if (!r || r.status !== 'completed') return []
+  const cur = tplMetas.value.find((t) => t.key === r.templateKey)
+  return (cur?.next ?? [])
+    .map((k) => tplMetas.value.find((t) => t.key === k))
+    .filter((t): t is TemplateMeta => !!t)
+})
+
+/** 点击接力 chip：以目标模板打开启动表单（initialTemplateKey 直达表单段） */
+function openRelay(key: string) {
+  relayTplKey.value = key
+  showRelay.value = true
+}
+
+/**
+ * 接力创建成功 → 跳到新 run。
+ * RouterView 无 key：同路由仅参数变化会复用本组件（runId 为静态快照），
+ * 故用整页跳转保证新 run 从零初始化（socket/日志/模板详情全部重载）。
+ */
+function onRelayDone(id: number) {
+  showRelay.value = false
+  window.location.href = `/runs/${id}`
+}
+
 // ===== socket 实时 =====
 const studio = useStudio(runId)
 function onStep(p: StudioEventMap['run.step']) {
@@ -239,6 +282,7 @@ function onLog(p: StudioEventMap['step.log']) {
 onMounted(() => {
   void loadDetail()
   void loadLog()
+  void loadTplMetas()
   studio.join()
   studio.on('run.step', onStep)
   studio.on('run.completed', onTerminal)
@@ -470,6 +514,14 @@ function onPubSaved() {
     <template v-if="run">
       <div v-if="run.error" class="errbox">{{ run.error }}</div>
 
+      <!-- 完成态「下一步建议」：模板 next 声明的下游模板，点击一键接力 -->
+      <div v-if="nextOptions.length" class="nextbar panel">
+        <span class="nb-t"><Icon name="sparkles" :size="13" /> 下一步建议</span>
+        <button v-for="t in nextOptions" :key="t.key" type="button" class="nb-chip" @click="openRelay(t.key)">
+          去「{{ t.name }}」<Icon name="chevron-right" :size="11" :stroke-width="2.2" />
+        </button>
+      </div>
+
       <!-- 闸门审阅 -->
       <div v-if="parallelHint && !gateStep" class="phint">
         <Icon name="refresh" :size="13" /> {{ parallelHint }}（引擎并发上限 2）
@@ -629,6 +681,15 @@ function onPubSaved() {
       @close="showPublish = false"
     />
 
+    <!-- 完成态接力：以推荐模板直达启动表单（initialTemplateKey 命中直接进表单段） -->
+    <RunFormModal
+      v-if="showRelay && run"
+      :project-id="run.projectId"
+      :initial-template-key="relayTplKey"
+      @done="onRelayDone"
+      @close="showRelay = false"
+    />
+
     <!-- 产物统一预览 -->
     <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewStart" @close="previewOpen = false" />
   </div>
@@ -681,6 +742,45 @@ function onPubSaved() {
 .skipnote {
   font-size: 11.5px;
   margin-top: 6px;
+}
+
+/* 完成态「下一步建议」接力条（模板元数据 next 声明） */
+.nextbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.nb-t {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.nb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid rgb(99 102 241 / 26%);
+  background: var(--accent-weak);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.nb-chip:hover {
+  border-color: rgb(99 102 241 / 45%);
+  background: rgb(99 102 241 / 24%);
 }
 
 .cols {

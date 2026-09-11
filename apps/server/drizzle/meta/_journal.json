@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1788932756818,
-      "tag": "0000_nifty_eternity",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1788944684382,
-      "tag": "0001_purple_sir_ram",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1789021236545,
-      "tag": "0002_overconfident_giant_girl",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1789029626897,
-      "tag": "0003_nosy_imperial_guard",
+      "when": 1789116318952,
+      "tag": "0000_typical_nova",
       "breakpoints": true
     }
   ]

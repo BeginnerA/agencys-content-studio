@@ -1,8 +1,10 @@
 key: series-setup
 version: 1
-name: 短剧系列立项·设定包（v1：整剧设计书 + 设定包四件 + 分集地图）
-description: 题材创意入库 → 记忆召回（防撞车/继承风格）→ 整剧立项（设定包四件 + 分集地图，可审阅）→ 角色档案与定妆照（可选）→ 角色建档 → 沉淀系列记忆供逐集复用
+name: 短剧立项
+description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 角色建档）。流程：创意入库 → 整剧立项（可审阅）→ 定妆照（可选）→ 角色建档 → 系列记忆沉淀。
 genre: drama_short
+scene: plan
+next: [video-plan, mengbao-episode]
 inputs:
   - key: genre
     label: 题材与核心创意（题材方向/一句话创意/受众方向）

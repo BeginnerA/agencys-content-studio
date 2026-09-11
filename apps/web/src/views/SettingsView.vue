@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ApiConfigForm from '../components/ApiConfigForm.vue'
+import VendorCredentialForm from '../components/VendorCredentialForm.vue'
 import Icon from '../components/Icon.vue'
 import SearchSelect from '../components/SearchSelect.vue'
-import { configApi, settingsApi, statsApi } from '../lib/api'
-import type { ApiConfig, ApiProvider, ProviderConfigLite, UsageItem } from '../lib/types'
+import { configApi, settingsApi, statsApi, vendorApi } from '../lib/api'
+import type { ApiConfig, ApiProvider, ProviderConfigLite, UsageItem, VendorCredential } from '../lib/types'
 import { fmtQty } from '../lib/format'
 
 // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）
@@ -19,11 +20,15 @@ type TabKey = (typeof TABS)[number]['key']
 const activeTab = ref<TabKey>('text')
 
 const providers = ref<ApiProvider[]>([])
+const credentials = ref<VendorCredential[]>([])
 const err = ref('')
 const loading = ref(true)
 
 // 编辑/新建弹窗状态：provider + 待编辑 config（列表精简态，含 baseUrl / apiKeyMasked / extra 回显字段）
 const editing = ref<{ provider: ApiProvider; config: ProviderConfigLite | null } | null>(null)
+// 供应商凭证编辑弹窗
+const editingCred = ref<VendorCredential | null>(null)
+const showCredForm = ref(false)
 // 测试结果
 const testBusy = ref<number | null>(null)
 const testMsg = ref<Record<number, string>>({})
@@ -87,8 +92,9 @@ async function load() {
   loading.value = true
   err.value = ''
   try {
-    const [p, c] = await Promise.all([configApi.providers(), configApi.list()])
+    const [p, c, v] = await Promise.all([configApi.providers(), configApi.list(), vendorApi.list()])
     providers.value = p.items
+    credentials.value = v.items
     const byKey = new Map<string, ApiConfig[]>()
     for (const cfg of c.items) {
       const arr = byKey.get(cfg.providerKey) ?? []
@@ -101,10 +107,12 @@ async function load() {
         name: cfg.name,
         serviceType: cfg.serviceType,
         model: cfg.model ?? '',
-        // 编辑回显：端点、Key 掩码与扩展参数（此前被裁掉，编辑弹窗这几处空白）
+        credentialId: cfg.credentialId,
+        // 编辑回显：端点、Key 掩码、扩展参数与定价
         baseUrl: cfg.baseUrl,
         apiKeyMasked: cfg.apiKeyMasked,
         extra: cfg.extra,
+        pricing: cfg.pricing,
         isDefault: cfg.isDefault,
         isActive: cfg.isActive,
       }))
@@ -388,6 +396,34 @@ async function savePricing() {
         <span class="r-hint">{{ tabOf(activeTab).hint }}</span>
       </div>
 
+      <!-- 供应商凭证管理（卡片式列表，API Key 只配一次） -->
+      <details class="panel creds" open>
+        <summary class="psum">
+          <Icon name="key" :size="14" />
+          <span class="pt">供应商凭证</span>
+          <span class="muted">每个厂商只需配置一次 API Key，所有模型实例共享</span>
+          <span class="chev"><Icon name="chevron-down" :size="14" /></span>
+        </summary>
+        <div class="pbody">
+          <div class="cred-grid">
+            <div v-for="cr in credentials" :key="cr.id" class="cred-card" :class="{ 'no-key': !cr.hasKey }">
+              <div class="cc-head">
+                <span class="cc-name">{{ cr.name }}</span>
+                <span v-if="cr.hasKey" class="cc-key mono">{{ cr.apiKeyMasked }}</span>
+                <span v-else class="cc-key warn">未配置 Key</span>
+              </div>
+              <div class="cc-meta">
+                <span class="muted">{{ cr.configCount }} 个实例</span>
+                <span v-if="cr.vendor" class="muted mono">{{ cr.vendor }}</span>
+              </div>
+              <button class="btn sm" @click="editingCred = cr; showCredForm = true">
+                {{ cr.hasKey ? '修改' : '配置 Key' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <!-- 主从布局：左供应商列表 / 右供应商详情 -->
       <div :key="activeTab" class="split">
         <aside class="panel rail" aria-label="供应商列表">
@@ -499,12 +535,12 @@ async function savePricing() {
         </section>
       </div>
 
-      <!-- [M4] 用量计费（折叠；快照计价，改价不篡改历史账） -->
+      <!-- [M4] 用量计费（折叠；实例级定价优先，此处为全局兜底） -->
       <details class="panel pricing">
         <summary class="psum">
           <Icon name="chart" :size="14" />
-          <span class="pt">用量计费</span>
-          <span class="muted">记录时快照计价——改价只影响之后用量，不改历史账</span>
+          <span class="pt">全局兜底定价</span>
+          <span class="muted">实例未配置定价时回退到此处；记录时快照计价——改价只影响之后用量</span>
           <span v-if="unpricedRows.length" class="badge skip">近 30 天未计价 {{ unpricedRows.length }} 项</span>
           <span class="chev"><Icon name="chevron-down" :size="14" /></span>
         </summary>
@@ -581,8 +617,16 @@ async function savePricing() {
       v-if="editing"
       :provider="editing.provider"
       :config="editing.config"
+      :credentials="credentials"
       @saved="load()"
       @close="editing = null"
+    />
+
+    <VendorCredentialForm
+      v-if="showCredForm && editingCred"
+      :credential="editingCred"
+      @saved="load(); showCredForm = false"
+      @close="showCredForm = false"
     />
   </div>
 </template>
@@ -1055,5 +1099,59 @@ async function savePricing() {
   .chev {
     transition: none;
   }
+}
+
+/* ---------- 供应商凭证卡片 ---------- */
+.cred-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.cred-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg);
+}
+
+.cred-card.no-key {
+  border-color: var(--warn);
+  border-style: dashed;
+}
+
+.cc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.cc-key {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.cc-key.warn {
+  color: var(--warn);
+}
+
+.cc-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+}
+
+.cred-card .btn {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 </style>

@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders } from './seed'
+import { seedProviders, seedVendorCredentials, migrateCredentialsFromConfigs } from './seed'
 
 const log = createLogger('db')
 
@@ -37,7 +37,9 @@ export async function initDb(): Promise<void> {
     log.warn(`migrate skipped (${(err as Error).message}) —— 请先执行 pnpm db:generate`)
   }
   await ensureSchemaColumns()
+  await seedVendorCredentials()
   await seedProviders()
+  await migrateCredentialsFromConfigs()
   log.info('db ready', { file: join(DATA_DIR, 'studio.db') })
 }
 
@@ -49,6 +51,37 @@ async function ensureSchemaColumns(): Promise<void> {
     try {
       await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN template_snapshot text')
       log.info('ensureColumn: pipeline_runs.template_snapshot 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  // vendor_credentials 双层架构新增列
+  const provCols = await sqlite.execute("PRAGMA table_info('api_providers')")
+  const provHas = new Set((provCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!provHas.has('vendor')) {
+    try {
+      await sqlite.execute('ALTER TABLE api_providers ADD COLUMN vendor text')
+      log.info('ensureColumn: api_providers.vendor 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  const cfgCols = await sqlite.execute("PRAGMA table_info('api_configs')")
+  const cfgHas = new Set((cfgCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!cfgHas.has('credential_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE api_configs ADD COLUMN credential_id integer')
+      log.info('ensureColumn: api_configs.credential_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!cfgHas.has('pricing')) {
+    try {
+      await sqlite.execute("ALTER TABLE api_configs ADD COLUMN pricing text DEFAULT '{}' NOT NULL")
+      log.info('ensureColumn: api_configs.pricing 已补齐')
     } catch (err) {
       log.warn(`ensureColumn failed: ${(err as Error).message}`)
     }

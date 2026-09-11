@@ -1,1 +1,0 @@
-ALTER TABLE `pipeline_runs` ADD `template_snapshot` text;

@@ -56,6 +56,10 @@ export interface Template {
   name: string
   description?: string
   genre: string
+  /** 展示元数据：场景分组（produce/plan/operate，仅 UI 分组用，不参与执行） */
+  scene?: string
+  /** 展示元数据：推荐下游模板 key 列表（完成态「下一步」建议） */
+  next?: string[]
   inputs: TemplateInputDef[]
   /** 模板级默认参数；project.settings 同名键覆盖 */
   defaults?: Record<string, unknown>
@@ -72,6 +76,10 @@ export interface TemplateMeta {
   updatedAt: number
   /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
   promptsDirty?: boolean
+  /** 展示元数据：场景分组（produce/plan/operate） */
+  scene?: string
+  /** 展示元数据：推荐下游模板 key 列表 */
+  next?: string[]
 }
 
 // ---------- 执行产物 ----------

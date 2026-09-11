@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { asc, desc, eq, and } from 'drizzle-orm'
 import { db } from '../db'
-import { apiConfigs, apiProviders } from '../db/schema'
+import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { env, PROMPTS_DIR } from '../env'
 import { createLogger } from '../logger'
 import { resolveApiKey } from './secrets'
@@ -27,7 +27,7 @@ export async function providerDefaultUrl(providerKey: string): Promise<string> {
   return rows[0]?.url?.trim() ?? ''
 }
 
-/** 解析 llm 端点：api_configs（is_default 优先）→ env 兜底 */
+/** 解析 llm 端点：api_configs（is_default 优先）→ env 兜底；密钥优先从 credential 解析 */
 export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
   const rows = await db
     .select()
@@ -37,8 +37,23 @@ export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
     .limit(1)
   const cfg = rows[0]
   if (cfg) {
-    const apiKey = resolveApiKey(cfg.apiKeyRef)
-    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
+    // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
+    let apiKey = ''
+    let credBaseUrl = ''
+    if (cfg.credentialId != null) {
+      const credRows = await db
+        .select()
+        .from(vendorCredentials)
+        .where(eq(vendorCredentials.id, cfg.credentialId))
+        .limit(1)
+      const cred = credRows[0]
+      if (cred) {
+        apiKey = resolveApiKey(cred.apiKeyRef)
+        credBaseUrl = cred.baseUrl?.trim() ?? ''
+      }
+    }
+    if (!apiKey) apiKey = resolveApiKey(cfg.apiKeyRef)
+    const baseUrl = (cfg.baseUrl?.trim() || credBaseUrl || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
     return { baseUrl, apiKey, model: cfg.model ?? env.llm.model, providerKey: cfg.providerKey }
   }
   return {

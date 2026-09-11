@@ -1,8 +1,10 @@
 key: talking-clip
 version: 3
-name: 对白口播·单条 v3（文案审阅 → 配音/字幕 → 合成 → 平台发布文案可选）
-description: 记忆召回 → 选题 → 口播文案（可审阅）→ 切句/封面并行 → 逐句情绪配音 + measured 精确字幕（可审阅）→ 单图成片 + 平台发布文案（可选）+ 风格沉淀
+name: 对白口播
+description: 适合：把选题做成对白口播视频（配音 + 精确字幕）。流程：口播文案（可审阅）→ 逐句配音 → 精确字幕 → 单图成片 → 平台发布文案（可选）。
 genre: talking_head
+scene: produce
+next: [review-restock]
 inputs:
   - key: topic
     label: 口播主题/选题

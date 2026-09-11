@@ -5,12 +5,15 @@ import Icon from './Icon.vue'
 import TemplateInputFields from './TemplateInputFields.vue'
 import type { Asset, TemplateDetail, TemplateMeta } from '../lib/types'
 import { batchApi, projectApi, templateApi } from '../lib/api'
+import { genreText, groupTemplates } from '../lib/scene'
 
 const props = defineProps<{ projectId: number }>()
 const emit = defineEmits<{ done: [batchId: number]; close: [] }>()
 
 const loading = ref(true)
 const templates = ref<TemplateMeta[]>([])
+/** [入口改造] 模板下拉按场景分组（optgroup） */
+const tplGroups = computed(() => groupTemplates(templates.value))
 const tplKey = ref('')
 const tpl = ref<TemplateDetail | null>(null)
 const assets = ref<Asset[]>([])
@@ -173,9 +176,11 @@ async function submit() {
         <label class="fld">
           模板
           <select v-model="tplKey">
-            <option v-for="t in templates" :key="t.key" :value="t.key">
-              {{ t.name }}（{{ t.genre }} · {{ t.stepCount }} 步）
-            </option>
+            <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">
+              <option v-for="t in g.items" :key="t.key" :value="t.key">
+                {{ t.name }}（{{ genreText(t.genre) }} · {{ t.stepCount }} 步）
+              </option>
+            </optgroup>
           </select>
         </label>
         <label class="fld">
