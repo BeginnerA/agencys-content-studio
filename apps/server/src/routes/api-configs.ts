@@ -5,12 +5,19 @@ import { apiConfigs, apiProviders } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
-import { synthSpeech } from '../services/tts'
+import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
+import { probePollinationsVideoEndpoint } from '../adapters/pollinations-video'
+import { probeSiliconflowVideoEndpoint } from '../adapters/siliconflow-video'
+import { probeVolcengineVideoEndpoint } from '../adapters/volcengine-video'
+import { defaultTtsModel, synthSpeech } from '../services/tts'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const apiRoutes = new Hono()
 
 const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
+
+/** DashScope 原生协议行（万相文生图/视频、千问图像、千问 TTS）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
+const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_wan_image', 'aliyun_qwen_image', 'aliyun_wan_video', 'aliyun_qwen_tts'])
 
 // GET /api-providers —— 供应商目录（预置 + 已建 config 关联态）
 apiRoutes.get('/api-providers', h(async (c) => {
@@ -124,6 +131,15 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
     (m): m is string => typeof m === 'string' && !!m,
   )
 
+  // DashScope 原生协议行在线拉取必 404（无 /models 端点）；直接回退预置目录并说明原因
+  if (NATIVE_DASHSCOPE_PROVIDER_KEYS.has(providerKey)) {
+    return c.json({
+      models: preset,
+      source: 'preset',
+      note: '该供应商为 DashScope 原生协议（无 /models 接口），模型目录由平台预置',
+    })
+  }
+
   let baseUrl = typeof body['base_url'] === 'string' && body['base_url'].trim() ? body['base_url'].trim() : ''
   let apiKey = typeof body['api_key'] === 'string' && body['api_key'].trim() ? body['api_key'].trim() : ''
   const configId = typeof body['config_id'] === 'number' ? body['config_id'] : null
@@ -214,7 +230,7 @@ apiRoutes.delete('/api-configs/:id', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /api-configs/:id/test —— 连通性测试：llm 发 1 次最小对话；image 生成 1 张（真实计费，谨慎调用）
+// POST /api-configs/:id/test —— 连通性测试：llm 1 次最小对话；image 生成 1 张、audio 1 句（真实计费）；video 零计费探针
 apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, id)).limit(1)
@@ -224,7 +240,7 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   if (cfg.serviceType === 'llm') {
     // base_url 留空 → 供应商目录 defaultUrl 兜底（与 image 分支 resolveEndpoint 行为对齐）
     const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
-    // model 留空 → 供应商目录预置首项兜底（deepseek-chat 为无预置目录行的历史兜底）
+    // model 留空 → 供应商目录预置首项兜底；无预置目录（自定义网关行）时报错提示填写
     let model = cfg.model ?? ''
     if (!model) {
       const provRows = await db
@@ -233,22 +249,32 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
         .where(eq(apiProviders.key, cfg.providerKey))
         .limit(1)
       const presets = safeJson(provRows[0]?.preset ?? null, []) as unknown[]
-      model = presets.find((m): m is string => typeof m === 'string' && !!m) ?? 'deepseek-chat'
+      model = presets.find((m): m is string => typeof m === 'string' && !!m) ?? ''
     }
+    if (!model) throw new HttpError(400, 'no_model', '实例未配置模型且该供应商无预置模型，请在实例中填写模型名')
     await chatComplete([{ role: 'user', content: 'ping' }], {
       baseUrl,
       apiKey: resolveApiKey(cfg.apiKeyRef),
       model,
       providerKey: cfg.providerKey,
-    }, { maxTokens: 4, timeoutMs: 30_000, allowReasoningOnly: true })
+    }, { maxTokens: 16, timeoutMs: 30_000, allowReasoningOnly: true, allowEmptyContent: true })
     return c.json({ ok: true, ms: Date.now() - t0, note: 'llm 最小对话成功' })
   }
   if (cfg.serviceType === 'image') {
     const endpoint = await resolveEndpoint('image', cfg.providerKey)
     const adapter = getImageAdapter(endpoint.providerKey)
+    // 各家测试尺寸约束：万相最短边 512（256 会被调度拒绝）→ 用合法小尺寸；
+    // 千问图像 max/plus 仅固定枚举、OpenAI 官方 gpt-image/dall-e 尺寸亦为固定枚举 → 不传用官方默认；
+    // 其余家（SiliconFlow/火山 Seedream/Pollinations/Gemini）256x256 实测可用或由适配器升级档位
+    const testSize =
+      cfg.providerKey === 'aliyun_wan_image'
+        ? '1024x1024'
+        : cfg.providerKey === 'aliyun_qwen_image' || cfg.providerKey === 'openai_image'
+          ? undefined
+          : '256x256'
     const img = await adapter.generate({
       prompt: 'a tiny red square on white background, minimal test',
-      size: '256x256',
+      size: testSize,
       model: cfg.model ?? undefined,
       baseUrl: endpoint.baseUrl,
       apiKey: endpoint.apiKey,
@@ -264,14 +290,34 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
       providerKey: cfg.providerKey,
       baseUrl: (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, ''),
       apiKey: resolveApiKey(cfg.apiKeyRef),
-      model: cfg.model ?? 'tts-1',
+      model: cfg.model ?? (await defaultTtsModel(cfg.providerKey)),
       voice,
       extra,
     }, { voice, timeoutMs: 30_000 })
     return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, voice: voice ?? 'alloy', note: '语音合成成功（1 句，注意计费）' })
   }
   if (cfg.serviceType === 'video') {
-    throw new HttpError(501, 'no_test', '视频生成需轮询且成本高，请用真实 run 验证（勿用连通测试触发计费）')
+    // 视频生成成本高，统一用零计费探针验证「端点+鉴权」（不创建任务）：
+    // 阿里云/火山/SiliconFlow 空体提交被参数校验拒绝（400）；Pollinations 用余额接口验证鉴权
+    const baseUrl = (cfg.baseUrl?.trim() || (await providerDefaultUrl(cfg.providerKey))).replace(/\/+$/, '')
+    const apiKey = resolveApiKey(cfg.apiKeyRef)
+    if (cfg.providerKey === 'aliyun_wan_video') {
+      const note = await probeAliyunWanVideoEndpoint({ baseUrl, apiKey })
+      return c.json({ ok: true, ms: Date.now() - t0, note })
+    }
+    if (cfg.providerKey === 'volcengine_video') {
+      const note = await probeVolcengineVideoEndpoint({ baseUrl, apiKey })
+      return c.json({ ok: true, ms: Date.now() - t0, note })
+    }
+    if (cfg.providerKey === 'siliconflow_video') {
+      const note = await probeSiliconflowVideoEndpoint({ baseUrl, apiKey })
+      return c.json({ ok: true, ms: Date.now() - t0, note })
+    }
+    if (cfg.providerKey === 'pollinations_video') {
+      const note = await probePollinationsVideoEndpoint({ baseUrl, apiKey })
+      return c.json({ ok: true, ms: Date.now() - t0, note })
+    }
+    throw new HttpError(501, 'no_test', '该视频供应商暂未提供连通探针（探针需实测验证后启用），请用真实 run 验证')
   }
   throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
 }))

@@ -8,6 +8,8 @@
  * - 增强路径 POST /v1beta/interactions（仅官方 host + gemini-3*image 模型）：
  *   response_format.type=image 直出 output_image，或返回交互 id → 轮询 GET /v1beta/interactions/{id}
  * - 认证：x-goog-api-key header 与 ?key= query 双写（兼容官方与只认其中一种的中转网关）
+ * - base_url：填根域名（官方 https://generativelanguage.googleapis.com）或中转站原生镜像；
+ *   误填 OpenAI 兼容层尾缀（/v1beta/openai）时自动剥离去重（本适配器走原生协议）
  * - 尺寸：本仓 '1024x1024' 形态 → aspectRatio（gcd 化简）+ imageSize（1K/2K/4K 档）
  *
  * 本仓 ImageAdapter.generate() 为同步契约：interactions 异步任务在适配器内部完成轮询
@@ -201,13 +203,13 @@ function errorMessage(result: any, fallback: string): string {
   return `${status ? `[${status}] ` : ''}${message}`
 }
 
-/** baseUrl 兼容带/不带 /v1beta 路径段的网关（与视频/万相/方舟适配器同源） */
+/** baseUrl 兼容带/不带 /v1beta 路径段的网关；OpenAI 兼容层尾缀 /openai 自动剥离（本适配器走原生协议） */
 function joinApiUrl(baseUrl: string, prefix: string, path: string): string {
   const base = (baseUrl || '').replace(/\/+$/, '')
   if (!base) return `${prefix}${path}`
   try {
     const url = new URL(base)
-    const current = url.pathname.replace(/\/+$/, '')
+    const current = url.pathname.replace(/\/+$/, '').replace(/\/openai$/, '')
     const merged = current.endsWith(prefix) ? current : `${current}${prefix}`
     url.pathname = `${merged}${path}`.replace(/\/{2,}/g, '/')
     return url.toString()

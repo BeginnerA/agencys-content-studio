@@ -285,3 +285,42 @@ async function getJson(url: string, apiKey: string): Promise<any> {
     clearTimeout(timer)
   }
 }
+
+/**
+ * 零计费连通探针（连通测试用）：空请求体提交视频任务——缺少 model 必被服务端拒绝
+ * （400 BadRequest.EmptyModel），仅验证「端点可达 + 鉴权有效」，不会创建计费任务。
+ * 返回成功说明文案；端点/鉴权异常抛错（保留官方 code/message）。
+ */
+export async function probeAliyunWanVideoEndpoint(ep: { baseUrl: string; apiKey: string }): Promise<string> {
+  const url = joinApiUrl(ep.baseUrl, '/api/v1', '/services/aigc/video-generation/video-synthesis')
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ep.apiKey}`,
+        'X-DashScope-Async': 'enable',
+      },
+      body: '{}',
+      signal: controller.signal,
+    })
+    const data: any = await res.json().catch(() => null)
+    const code = String(data?.code ?? '')
+    const message = String(data?.message ?? '')
+    if (res.status === 401 || res.status === 403 || code === 'InvalidApiKey') {
+      throw new Error(`[${code || res.status}] ${message || '鉴权失败，请检查 API Key'}`)
+    }
+    if (res.ok) {
+      // 空体不应创建任务（缺 model）；出现 2xx 说明响应异常，保守报错避免误判连通
+      throw new Error(`视频连通探针响应异常（HTTP ${res.status}，预期参数缺失 400）`)
+    }
+    if (res.status === 400 && (code.startsWith('BadRequest') || code.startsWith('InvalidParameter'))) {
+      return '端点与鉴权连通（空请求探针零计费，未创建生成任务）；真实生成请用 run 验证'
+    }
+    throw new Error(`视频连通探针异常 HTTP ${res.status}${code ? ` [${code}]` : ''}${message ? `: ${message}` : ''}`)
+  } finally {
+    clearTimeout(timer)
+  }
+}

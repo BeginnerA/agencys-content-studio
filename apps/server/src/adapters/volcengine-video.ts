@@ -3,14 +3,14 @@
  * 端点: POST /api/v3/contents/generations/tasks (注意 /api/v3 前缀)
  * 提交响应: { id: "task-xxx" } -> 轮询 GET /api/v3/contents/generations/tasks/{id}
  *
- * 仅支持 Doubao Seedance 2.0+ 系列模型，生成模式只保留多模态参考:
+ * 仅支持 Doubao Seedance 2.x 系列模型（需在方舟控制台开通），生成模式只保留多模态参考:
  * - reference   多模态参考（≤9 reference_image + ≤3 reference_video + ≤3 reference_audio + 可选文本）
  *   有参考音频时至少包含 1 个参考图片或视频
  */
 import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
 
-/** 仅支持 Seedance 2.0+ 系列（前缀匹配，兼容未来 2.0.x 变体） */
-const SEEDANCE2_MODEL_PREFIX = 'doubao-seedance-2-0'
+/** 仅支持 Seedance 2.x 系列（前缀匹配：2-0/2-5 及未来 2.x 变体；1.x 已陆续下架） */
+const SEEDANCE2_MODEL_PREFIX = 'doubao-seedance-2'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-mini-260615'
 
 /** 多模态参考素材上限：图片 9、视频 3、音频 3 */
@@ -52,7 +52,7 @@ export class VolcEngineVideoAdapter implements VideoAdapter {
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = req.model || DEFAULT_MODEL
     if (!model.startsWith(SEEDANCE2_MODEL_PREFIX)) {
-      throw new Error(`仅支持 Seedance 2.0 系列模型（${SEEDANCE2_MODEL_PREFIX}-*），当前: ${model}`)
+      throw new Error(`仅支持 Seedance 2.x 系列模型（${SEEDANCE2_MODEL_PREFIX}-*；1.x 已下架），当前: ${model}`)
     }
 
     const prompt = (req.prompt || '').trim()
@@ -173,6 +173,41 @@ async function getJson(url: string, apiKey: string): Promise<any> {
       throw new Error(`视频任务查询失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
     }
     return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 零计费连通探针（连通测试用）：空请求体提交视频任务——缺少 model 必被服务端拒绝
+ * （400 MissingParameter），仅验证「端点可达 + 鉴权有效」，不会创建计费任务。
+ * 返回成功说明文案；端点/鉴权异常抛错（保留官方 code/message）。
+ */
+export async function probeVolcengineVideoEndpoint(ep: { baseUrl: string; apiKey: string }): Promise<string> {
+  const url = joinApiUrl(ep.baseUrl, '/api/v3', '/contents/generations/tasks')
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.apiKey}` },
+      body: '{}',
+      signal: controller.signal,
+    })
+    const data: any = await res.json().catch(() => null)
+    const code = String(data?.error?.code ?? data?.code ?? '')
+    const message = String(data?.error?.message ?? data?.message ?? '')
+    if (res.status === 401 || res.status === 403 || code === 'AuthenticationError') {
+      throw new Error(`[${code || res.status}] ${message || '鉴权失败，请检查 API Key'}`)
+    }
+    if (res.ok) {
+      // 空体不应创建任务（缺 model）；出现 2xx 说明响应异常，保守报错避免误判连通
+      throw new Error(`视频连通探针响应异常（HTTP ${res.status}，预期参数缺失 400）`)
+    }
+    if (res.status === 400 && (code === 'MissingParameter' || code.startsWith('InvalidParameter') || code.startsWith('BadRequest'))) {
+      return '端点与鉴权连通（空请求探针零计费，未创建生成任务）；注意所选模型需已在方舟控制台开通'
+    }
+    throw new Error(`视频连通探针异常 HTTP ${res.status}${code ? ` [${code}]` : ''}${message ? `: ${message}` : ''}`)
   } finally {
     clearTimeout(timer)
   }

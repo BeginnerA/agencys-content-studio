@@ -1,12 +1,14 @@
+import { eq } from 'drizzle-orm'
 import { resolveEndpoint } from '../adapters/provider'
+import { db } from '../db'
+import { apiProviders } from '../db/schema'
 import { synthAliyunQwenSpeech } from './tts-aliyun'
 import { synthVolcengineSpeech } from './tts-volcengine'
 
 /**
  * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech，spec §5.2）。
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
- * 模型默认 tts-1（OpenAI 官方），用户配置 OpenAI 兼容网关实例时以 config.model 覆盖
- * （如 SiliconFlow 网关的 CosyVoice2-0.5B）；
+ * 模型默认取供应商目录预设首项（如 aliyun_qwen_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
  * aliyun_qwen_tts 为 DashScope 私有协议（tts-aliyun.ts）；
  * volcengine_audio 为火山 TTS V1 私有协议（tts-volcengine.ts，需 extra.appid）。
  */
@@ -24,6 +26,23 @@ export interface AudioEndpoint {
   extra: Record<string, unknown>
 }
 
+/** 模型兜底：实例未配置时取供应商目录预设首项（如 aliyun_qwen_tts → qwen-tts）；无目录则 OpenAI 系 'tts-1' */
+export async function defaultTtsModel(providerKey: string): Promise<string> {
+  const rows = await db
+    .select({ preset: apiProviders.presetModels })
+    .from(apiProviders)
+    .where(eq(apiProviders.key, providerKey))
+    .limit(1)
+  try {
+    const presets = rows[0]?.preset ? (JSON.parse(rows[0].preset) as unknown[]) : []
+    const first = presets.find((m): m is string => typeof m === 'string' && !!m)
+    if (first) return first
+  } catch {
+    /* 预置目录损坏时走默认 */
+  }
+  return 'tts-1'
+}
+
 /** 解析 audio 端点：未配置实例时报错并附 Settings 指引 */
 export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioEndpoint> {
   const endpoint = await resolveEndpoint('audio', providerKey)
@@ -31,7 +50,7 @@ export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioE
     providerKey: endpoint.providerKey,
     baseUrl: endpoint.baseUrl,
     apiKey: endpoint.apiKey,
-    model: endpoint.model ?? 'tts-1',
+    model: endpoint.model ?? (await defaultTtsModel(endpoint.providerKey)),
     voice: typeof endpoint.extra['voice'] === 'string' && endpoint.extra['voice'] ? endpoint.extra['voice'] : undefined,
     emotion: parseEmotionDecl(endpoint.extra),
     extra: endpoint.extra,

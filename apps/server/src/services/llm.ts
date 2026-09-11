@@ -60,6 +60,8 @@ export interface ChatOptions {
   timeoutMs?: number
   /** 允许「仅推理无正文」视为成功（连通性测试用）：返回 reasoning 内容而不抛错 */
   allowReasoningOnly?: boolean
+  /** 允许「choice 合法但无正文」视为成功（连通性测试用）：极短 max_tokens 下推理模型可能全部思考/被 length 截断 */
+  allowEmptyContent?: boolean
 }
 
 /** [M4] 补全用量（OpenAI 兼容 usage 字段） */
@@ -138,6 +140,8 @@ export async function chatCompleteDetailed(
           return { content: choice.message.reasoning_content, usage, provider: ep.providerKey, model: ep.model }
         throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
       }
+      // 连通性测试放宽：choice 结构合法即视为链路可用（如 max_tokens 极小被 length 截断、未产出正文）
+      if (opts.allowEmptyContent && choice) return { content: '', usage, provider: ep.providerKey, model: ep.model }
       throw new Error('LLM 响应为空（choices/message/content 缺失）')
     }
     return { content, usage, provider: ep.providerKey, model: ep.model }

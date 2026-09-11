@@ -49,3 +49,44 @@ export class PollinationsVideoAdapter implements VideoAdapter {
     throw new Error('pollinations_video 为同步长请求协议，不支持轮询查询')
   }
 }
+
+/** 取根域名（balance 端点在根域；baseUrl 常带 /v1 尾缀） */
+function rootUrl(baseUrl: string): string {
+  try {
+    const u = new URL(baseUrl)
+    return `${u.protocol}//${u.host}`
+  } catch {
+    return (baseUrl || '').replace(/\/+$/, '')
+  }
+}
+
+/**
+ * 零计费连通探针（连通测试用）：GET /account/balance——鉴权有效返回 200（含余额），
+ * 无效 key 返回 401；不消耗任何额度（视频同步生成成本高，不宜用真实 run 探测）。
+ * 返回成功说明文案；鉴权/端点异常抛错。
+ */
+export async function probePollinationsVideoEndpoint(ep: { baseUrl: string; apiKey: string }): Promise<string> {
+  const url = `${rootUrl(ep.baseUrl)}/account/balance`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${ep.apiKey}` },
+      signal: controller.signal,
+    })
+    const text = await res.text().catch(() => '')
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`鉴权失败（HTTP ${res.status}）：请检查 API Key`)
+    }
+    if (res.ok) {
+      const data: any = (() => {
+        try { return JSON.parse(text) } catch { return null }
+      })()
+      const balance = typeof data?.balance === 'number' ? `（账户余额 ${data.balance} pollen）` : ''
+      return `端点与鉴权连通${balance}（余额接口零计费探针，未创建生成任务）`
+    }
+    throw new Error(`视频连通探针异常 HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`)
+  } finally {
+    clearTimeout(timer)
+  }
+}

@@ -1,4 +1,5 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
+import { AliyunQwenImageAdapter } from './aliyun-qwen-image'
 import { AliyunWanImageAdapter } from './aliyun-wan-image'
 import { GeminiImageAdapter } from './gemini-image'
 import { OpenAIImageAdapter } from './openai-image'
@@ -12,7 +13,8 @@ import { resolveApiKey } from '../services/secrets'
 
 /**
  * 已注册图像适配器（openai_image 通用；pollinations_image / siliconflow_image 为其别名子类；
- * gemini_image 为 Google v1beta generateContent/interactions 协议；aliyun_wan_image 为 DashScope 异步任务协议、
+ * gemini_image 为 Google v1beta generateContent/interactions 协议；aliyun_wan_image 为 DashScope
+ * 万相多代协议（2.7 同步直返 / ≤2.6 异步任务）；aliyun_qwen_image 为千问图像同步直返协议；
  * volcengine_image 为方舟异步/同步双形态的自包含实现）。
  */
 const imageAdapters: Record<string, ImageAdapter> = {
@@ -21,13 +23,14 @@ const imageAdapters: Record<string, ImageAdapter> = {
   siliconflow_image: new SiliconFlowImageAdapter(),
   gemini_image: new GeminiImageAdapter(),
   aliyun_wan_image: new AliyunWanImageAdapter(),
+  aliyun_qwen_image: new AliyunQwenImageAdapter(),
   volcengine_image: new VolcengineImageAdapter(),
 }
 
 export class ProviderNotReadyError extends Error {
   constructor(providerKey: string) {
     super(
-      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image、gemini_image、aliyun_wan_image、volcengine_image）。`,
+      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image、gemini_image、aliyun_wan_image、aliyun_qwen_image、volcengine_image）。`,
     )
     this.name = 'ProviderNotReadyError'
   }
