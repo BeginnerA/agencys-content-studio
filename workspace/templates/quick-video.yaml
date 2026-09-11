@@ -1,0 +1,123 @@
+key: quick-video
+version: 1
+name: 快速单片视频（一句话创意 → 快脚本 → 配音/字幕 → 单图成片）
+description: 记忆召回 → 快脚本（默认免审，可开闸审阅）→ 切句 → 逐句配音 → 精确字幕 → 封面提示词与出图 → 单图成片 + 风格沉淀
+genre: talking_head
+inputs:
+  - key: idea
+    label: 创意/选题（一句话即可）
+    kind: text
+    required: true
+  - key: platform
+    label: 目标平台（抖音/快手/视频号/B站）
+    kind: text
+    required: false
+    default: 抖音
+  - key: duration_hint
+    label: 目标秒数
+    kind: int
+    required: false
+    default: 45
+  - key: confirm
+    label: 脚本审阅（false=免审直接生产）
+    kind: bool
+    required: false
+    default: false
+defaults:
+  llm: { temperature: 0.7, max_tokens: 12000 }
+  image: { provider: pollinations_image, size: "1536x1024" }
+  audio: { provider: pollinations_audio, voice: "Cherry" }
+steps:
+  - key: recall
+    action: memory_recall
+    title: 记忆召回
+    inputs:
+      query: input.idea
+    params: { limit: 3 }
+  - key: draft
+    action: ai_text
+    title: 快脚本
+    after: [recall]
+    inputs:
+      idea: input.idea
+      platform: input.platform
+      duration_hint: input.duration_hint
+      recalled: steps.recall.asset
+    params:
+      prompt_tpl: quick-script.md
+      output_purpose: script
+      name_tpl: "draft.md"
+    gate:
+      mode: required
+      message: 请审阅快脚本「{input.idea}」，批准后进入配音合成；驳回可附修改意见重跑
+      when: input.confirm == true
+      skip_label: 免审快出
+  - key: cast_lines
+    action: ai_text
+    title: 台词切句
+    after: [draft]
+    inputs:
+      script: steps.draft.asset
+      duration_hint: input.duration_hint
+    params:
+      prompt_tpl: lines-cast.md
+      output_purpose: lines
+      output_format: lines-json
+      name_tpl: "lines.json"
+  - key: voice
+    action: tts
+    title: 逐句配音
+    after: [cast_lines]
+    inputs:
+      lines: steps.cast_lines.asset
+  - key: subtitle
+    action: subtitle
+    title: 字幕定时
+    after: [voice, cast_lines]
+    inputs:
+      lines: steps.cast_lines.asset
+      voices: steps.voice.assets
+    params:
+      prompt_tpl: lines-timing.md
+  - key: cover_prompt
+    action: ai_text
+    title: 封面图提示词
+    after: [draft]
+    inputs:
+      draft: steps.draft.asset
+      platform: input.platform
+    params:
+      prompt_tpl: cover-talking.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "cover-prompt.json"
+  - key: cover
+    action: ai_image
+    title: 封面出图（兼成片背景）
+    after: [cover_prompt]
+    inputs:
+      shots: steps.cover_prompt.asset
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: compose
+    action: ffmpeg_merge
+    title: 合成成片
+    after: [subtitle, voice, cover]
+    inputs:
+      images: steps.cover.assets
+      voices: steps.voice.assets
+      subtitle: steps.subtitle.assets
+    params:
+      fps: 25
+      resolution: "1920x1080"
+      cover: true
+      duration_per_shot: 45
+      subtitle_style: "FontName=Microsoft YaHei,FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=0,MarginV=40"
+    output:
+      purpose: final_video
+  - key: remember
+    action: memory_write
+    title: 沉淀风格样本
+    after: [draft]
+    inputs:
+      content: steps.draft.asset
+    params: { type: style, name: style-sample-latest, scope: project }

@@ -1,0 +1,72 @@
+key: topic-radar
+version: 1
+name: 选题雷达·候选清单（v1：素材导入 + 记忆去重调分）
+description: 定位与热点素材入库 → 记忆召回（历史选题/复盘结论）→ 多维评分选题清单（可审阅）→ 沉淀选题库供回灌调分
+genre: other
+inputs:
+  - key: track
+    label: 赛道与账号定位（内容领域/受众/人设/专栏方向）
+    kind: text
+    required: true
+  - key: platform
+    label: 主发布平台
+    kind: text
+    required: false
+    default: 抖音
+  - key: count
+    label: 产出条数（热点不足用常青补足）
+    kind: int
+    required: false
+    default: 12
+  - key: materials
+    label: 热点素材（选填，md/txt：热榜摘录/新闻摘要/社区讨论）
+    kind: files
+    required: false
+    accept: [.md, .txt]
+  - key: with_recall
+    label: 记忆召回（true=对比历史选题/复盘结论做去重与调分；false=关闭）
+    kind: bool
+    required: false
+    default: true
+defaults:
+  llm: { temperature: 0.8, max_tokens: 24000 }
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 定位与素材入库
+    inputs:
+      docs: input.materials
+      brief: input.track
+  - key: recall
+    action: memory_recall
+    title: 记忆召回（历史选题/复盘结论）
+    after: [ingest]
+    when: input.with_recall == true
+    inputs:
+      query: input.track
+    params: { limit: 5 }
+  - key: generate
+    action: ai_text
+    title: 选题雷达生成
+    after: [ingest, recall]
+    inputs:
+      track: input.track
+      platform: input.platform
+      count: input.count
+      materials: steps.ingest.assets
+      recalled: steps.recall.asset
+    params:
+      prompt_tpl: topic-radar.md
+      output_purpose: export
+      name_tpl: "topics.md"
+    gate:
+      mode: required
+      message: 请审阅选题清单（目标 {input.count} 条），批准后沉淀入库；驳回可附修改意见重跑
+      skip_label: 直接入库
+  - key: remember
+    action: memory_write
+    title: 沉淀选题库
+    after: [generate]
+    inputs:
+      content: steps.generate.asset
+    params: { type: topics, scope: project }

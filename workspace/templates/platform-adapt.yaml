@@ -1,0 +1,52 @@
+key: platform-adapt
+version: 1
+name: 平台适配·多平台改写（v1：八平台规则 + 事实不变性 + 风险标注）
+description: 源稿入库 → 按八平台规则逐平台改写（文字平台全文版 / 视频平台发布文案，可审阅）→ 风险三级标注与删减留痕
+genre: other
+inputs:
+  - key: source
+    label: 待适配源稿（必填，md/txt）
+    kind: files
+    required: true
+    accept: [.md, .txt]
+  - key: platforms
+    label: 目标平台（逗号分隔，支持中英文名：wechat/xiaohongshu/zhihu/toutiao/douyin/kuaishou/shipinhao/bilibili）
+    kind: text
+    required: false
+    default: xiaohongshu
+  - key: content_type
+    label: 源稿形态（article/note/talking-head，影响视频平台匹配）
+    kind: text
+    required: false
+    default: note
+  - key: protect_facts
+    label: 事实保护（true=风险只标注；false=允许按建议替换 L3 风险并留痕）
+    kind: bool
+    required: false
+    default: true
+defaults:
+  llm: { temperature: 0.7, max_tokens: 24000 }
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 源稿入库
+    inputs:
+      docs: input.source
+      brief: 多平台适配源稿
+  - key: adapt
+    action: ai_text
+    title: 多平台适配
+    after: [ingest]
+    inputs:
+      platforms: input.platforms
+      content_type: input.content_type
+      protect_facts: input.protect_facts
+      source: steps.ingest.assets
+    params:
+      prompt_tpl: adapt-text.md
+      output_purpose: export
+      name_tpl: "adapt.md"
+    gate:
+      mode: required
+      message: 请审阅多平台适配稿（目标：{input.platforms}），批准后导出发布；驳回可附修改意见重跑
+      skip_label: 认可适配稿

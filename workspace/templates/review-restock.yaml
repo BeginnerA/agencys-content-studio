@@ -1,0 +1,77 @@
+key: review-restock
+version: 1
+name: 盘点复盘·数据回灌（v1：数据导入 + 复盘结论 + 回灌选题 + 记忆闭环）
+description: 平台数据导入 → 记忆召回（历史复盘）→ 数据复盘 + 置信门禁（可审阅）→ 回灌选题清单（可选）→ 沉淀复盘记忆供选题雷达调分
+genre: other
+inputs:
+  - key: data
+    label: 平台数据导出（必填，md/txt/csv：标题/发布时间/曝光/点赞/评论等）
+    kind: files
+    required: true
+    accept: [.md, .txt, .csv]
+  - key: period
+    label: 观察期说明（选填，如 2026-08 或 2026-08-01~2026-08-24）
+    kind: text
+    required: false
+  - key: with_restock
+    label: 回灌选题清单（true=按复盘结论产出下一轮选题建议并沉淀）
+    kind: bool
+    required: false
+    default: true
+defaults:
+  llm: { temperature: 0.6, max_tokens: 24000 }
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 数据入库
+    inputs:
+      docs: input.data
+      brief: 平台数据复盘
+  - key: recall
+    action: memory_recall
+    title: 记忆召回（历史复盘结论）
+    after: [ingest]
+    inputs:
+      query: 历史复盘结论 高低表现特征 选题建议
+    params: { limit: 5 }
+  - key: review
+    action: ai_text
+    title: 数据复盘
+    after: [ingest, recall]
+    inputs:
+      data: steps.ingest.assets
+      period: input.period
+      recalled: steps.recall.asset
+    params:
+      prompt_tpl: review-data.md
+      output_purpose: export
+      name_tpl: "review.md"
+    gate:
+      mode: required
+      message: 请审阅数据复盘结论（含置信门禁标注），批准后沉淀并回灌选题；驳回可附修改意见重跑
+      skip_label: 认可结论
+  - key: restock
+    action: ai_text
+    title: 回灌选题清单
+    after: [review]
+    when: input.with_restock == true
+    inputs:
+      review: steps.review.asset
+    params:
+      prompt_tpl: restock-topics.md
+      output_purpose: export
+      name_tpl: "restock-topics.md"
+  - key: remember
+    action: memory_write
+    title: 沉淀复盘记忆
+    after: [review]
+    inputs:
+      content: steps.review.asset
+    params: { type: review, scope: project }
+  - key: remember_restock
+    action: memory_write
+    title: 沉淀回灌选题
+    after: [restock]
+    inputs:
+      content: steps.restock.asset
+    params: { type: review, scope: project }

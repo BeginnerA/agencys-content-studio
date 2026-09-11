@@ -2,10 +2,10 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 设计规格：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-design.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m4-design.md`
+- 设计规格：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-design.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m4-design.md`、`docs/superpowers/specs/2026-09-11-agencys-content-studio-m5-design.md`
 - 方向文档（L0）：`docs/superpowers/specs/2026-09-09-agencys-content-studio-roadmap.md`
 - 验收记录：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-review.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-review.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-review.md`、`docs/superpowers/specs/2026-09-11-agencys-content-studio-m4-review.md`
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）
 
 ## 技术栈
 
@@ -48,13 +48,37 @@ pnpm dev    # 并行起双端：
 - **复盘数据（E4）**：`/stats` 运行看板（概览卡 / 近 30 天活跃趋势手绘 SVG / 成本构成按 kind、按 provider_model 切换 / 项目对比表）；`publications` 发布登记（六平台 / 链接 / 手工指标），运行页与项目页双入口
 - **事件链路修复**：socket 单通道 `studio.event` 前端 byType 分发（修复断链）；`batch.updated` 事件增量刷新批次页
 
+## M5 能力速览（方法论内化）
+
+- **模板家族 ×10**：外部「内容创作者套件」（8 技能：选题雷达 / 创作策划 / 文字创作 / 剧本创作 / 分镜提示词 / 平台适配 / 盘点复盘 / 内容编排）方法论平移为 studio 原生模板（见下表「方法论来源」列）；不映射项与理由见 M5 spec §1.3
+- **提示词体系**：+12 新 / 10 升——套件编号术语（R15 AI 味黑名单 / R16 钩子·反转·可剪辑性 / R17 整剧演进）作为自查清单标签内化；大方法论浓缩为检查清单（单文件 ≤ 约 12KB）
+- **闭环设计**：`review-restock` 回灌选题写入记忆 → `topic-radar` 召回调分（「选题 → 生产 → 复盘 → 回灌」闭环）；平台适配两种形态——独立模板 `platform-adapt` + 模板内 when 步骤（`note-clip.to_platforms` / `article-clip.to_platforms` / `talking-clip.with_platform_copy`）
+- **零代码证据**：全部改动为 `workspace/templates/*.yaml` + `workspace/prompts/*.md`；10 模板仅用既有 10 类 action 组合
+
 ## 内置模板
 
-| key | 场景 | 要点 |
-|---|---|---|
-| `mengbao-episode` v3 | 萌宝短剧·单集（T3） | 双闸门：剧本必审 + 分镜可选审（`with_storyboard_review`；挂起后可「免审直接出图」）；`motion` 开关互斥分支：静态出图（`gen_images`）/ AI 动效视频（`gen_motion`）；**角色一致性链** `char_profile → ref_prompts → gen_refs（可选）→ sync_characters` 建档，`gen_images` 逐镜注入「角色锚定 + 免漂移负向词」（`with_character_refs`：开=出定妆照入档 / 关=仅建档） |
-| `talking-clip` v2 | 对白口播·单条（T2） | **记忆闭环** `recall → draft → remember`（风格样本滚动 upsert）+ 账号档案注入 + `with_subtitle_review` 可选闸门 + 逐句情绪配音 + measured 精确字幕 → 合成（字幕烧录 + 人声轨，`with_voice` 可关） |
-| `note-clip` v1 | 图文笔记·单篇（T1） | 记忆召回 → 主稿（gate）→ 封面 + 可选内页配图（`with_inline_images` / `image_count`）→ 发布稿（标题定稿 + 备选 + 话题标签 + 配图顺序 + 溯源检查）→ 记忆沉淀；全程复用既有 action（零新 action 证据） |
+下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
+
+| key | 场景 | 要点 | 方法论来源 |
+|---|---|---|---|
+| `topic-radar` v1 | 选题雷达（other） | 多维评分（需求势能 / 竞争密度 / 账号适配 / 长尾价值）+ 历史选题去重 + 常青生成 + 回灌调分；热点素材以导入替代联网采集 | 选题雷达 |
+| `video-plan` v1 | 创作策划（drama_short） | 五节策划案（题材定位 / 人物小传 / 爽点结构 / 视觉基调 + Look Dev / 单集节奏）+ 弧光机械核对 + 导演三视角（观众 / 平台 / 成本）自检 | 创作策划 |
+| `series-setup` v1 | 整剧立项·设定包（drama_short） | 整剧设计书 + 设定包四件（总设定 / 角色卡 / 世界观 / 场景视觉卡）+ 分集地图；单集正文回 `mengbao-episode` 逐集展开（token 取舍）；复用角色一致性链 | 剧本创作 |
+| `mengbao-episode` v4 | 萌宝短剧·单集（T3） | 双闸门（剧本必审 + 分镜可选审）+ `motion` 互斥分支 + **角色一致性链**（原有）；v4 新增三条默认关闭开关：`with_deep_review` 剧本深度审查 / `with_narrative_doc` 叙事流分镜 / `with_edit_review` 可剪辑性把关（各带同条件闸门） | 剧本创作 + 分镜提示词 |
+| `talking-clip` v3 | 对白口播·单条（T2） | 记忆闭环 + 账号档案 + 逐句情绪配音 + measured 精确字幕（原有）；v3 新增 `platform` 感知与 `with_platform_copy` 视频发布文案步骤（标题 / 话题 / 简介） | 内容编排 + 平台适配 |
+| `quick-video` v1 | 快速单片视频（talking_head） | 一句话创意极简输入 + 闸门默认关闭（`confirm` 开才审）+ 封面图兼成片背景单图成片；定位热点跟拍快出片 | 内容编排 + 文字创作 |
+| `note-clip` v2 | 图文笔记·单篇（T1） | 记忆召回 → 主稿（gate）→ 封面 + 可选内页配图 → 发布稿（原有）；v2 新增 `to_platforms` 多平台适配步骤（when） | 文字创作 + 平台适配 |
+| `article-clip` v1 | 深度长文（article） | 长文主稿（结构完整 / 逻辑论证 / 事实溯源）+ 可选内页配图 + 多平台适配 + 发布稿（标题定稿 + 封面文案 + 溯源检查；对齐 note-clip 模式） | 文字创作 + 平台适配 |
+| `platform-adapt` v1 | 平台适配（other） | 八平台（公众号 / 小红书 / 知乎 / 头条 / 抖音 / 快手 / 视频号 / B站）标题 / 正文 / 话题 / 封面文案规则 + 事实不变性铁律 + 风险处标注不静默删改 | 平台适配 |
+| `review-restock` v1 | 盘点复盘（other） | 数据解读（完播 / 互动 / 涨粉结构）+ 置信门禁（样本不足降级结论并标注）+ 回灌选题入记忆（供 `topic-radar` 调分闭环） | 盘点复盘 |
+
+**典型工作流链**（`review-restock` 回灌记忆 → `topic-radar` 召回调分，构成「选题 → 生产 → 复盘 → 回灌」闭环；模板均可独立运行）：
+
+| 内容形态 | 链路 |
+|---|---|
+| 短剧 | `topic-radar` → `video-plan` → `series-setup` → `mengbao-episode`（逐集）→ `platform-adapt` → `review-restock` |
+| 口播 / 快片 | `topic-radar` → `talking-clip` / `quick-video` → `platform-adapt`（或模板内 `with_platform_copy`）→ `review-restock` |
+| 图文 / 长文 | `topic-radar` → `note-clip` / `article-clip` → `platform-adapt`（或模板内 `to_platforms`）→ `review-restock` |
 
 新增体裁 / 新流程 = `workspace/templates/` 新增或改 YAML（模板页保存即生效，无需改代码、无需重启）。
 

@@ -1,13 +1,18 @@
-key: note-clip
-version: 2
-name: 图文笔记·单篇 v2（主稿审阅 → 封面 → 多平台适配 → 发布稿）
-description: 选题 → 主稿（可审阅）→ 封面提示词与内页配图提示词（可选）→ 出图 → 多平台适配（可选）→ 发布稿（标题+标签+配图顺序）
-genre: note
+key: article-clip
+version: 1
+name: 深度长文·单篇（主稿审阅 → 头图/插图 → 多平台适配 → 发布稿）
+description: 记忆召回 → 深度长文主稿（可审阅）→ 头图提示词与头图 → 文中插图提示词与出图（可选）→ 多平台适配（可选）→ 发布稿（标题+封面文案+配图顺序）→ 风格沉淀
+genre: article
 inputs:
   - key: topic
     label: 选题与目标受众点
     kind: text
     required: true
+  - key: platform
+    label: 首发平台（公众号/知乎）
+    kind: text
+    required: false
+    default: 微信公众号
   - key: profile
     label: 账号档案（人设/受众称呼/口头禅/禁用词）
     kind: files
@@ -19,22 +24,22 @@ inputs:
     required: false
     accept: [.md, .txt]
   - key: with_inline_images
-    label: 内页配图（false=仅封面）
+    label: 文中插图（false=仅头图）
     kind: bool
     required: false
     default: false
   - key: image_count
-    label: 内页配图张数
+    label: 插图张数
     kind: int
     required: false
     default: 3
   - key: to_platforms
-    label: 多平台适配（选填，逗号分隔：wechat/xiaohongshu/zhihu/toutiao；留空=仅原稿）
+    label: 多平台适配（选填，逗号分隔：xiaohongshu/zhihu/toutiao；留空=仅原稿）
     kind: text
     required: false
 defaults:
   llm: { temperature: 0.7, max_tokens: 24000 }
-  image: { provider: pollinations_image, size: "768x1024" }
+  image: { provider: pollinations_image, size: "1536x1024" }
 steps:
   - key: recall
     action: memory_recall
@@ -44,26 +49,28 @@ steps:
     params: { limit: 3 }
   - key: draft
     action: ai_text
-    title: 主稿
+    title: 深度长文主稿
     after: [recall]
     inputs:
       topic: input.topic
       profile: input.profile
       material: input.material
+      platform: input.platform
       recalled: steps.recall.asset
     params:
-      prompt_tpl: draft-note.md
+      prompt_tpl: article-draft.md
       output_purpose: script
       name_tpl: "draft.md"
     gate:
       mode: required
-      message: 请审阅图文主稿「{input.topic}」，批准后生成封面/配图；驳回可附修改意见重跑
+      message: 请审阅深度长文主稿「{input.topic}」，批准后生成头图/插图；驳回可附修改意见重跑
   - key: cover_prompt
     action: ai_text
-    title: 封面图提示词
+    title: 头图提示词
     after: [draft]
     inputs:
       draft: steps.draft.asset
+      platform: input.platform
     params:
       prompt_tpl: cover-note.md
       output_purpose: storyboard
@@ -71,14 +78,14 @@ steps:
       name_tpl: "cover-prompt.json"
   - key: cover
     action: ai_image
-    title: 封面出图
+    title: 头图出图
     after: [cover_prompt]
     inputs:
       shots: steps.cover_prompt.asset
     batch: { field: shots, max_concurrent: 1, retry: 1 }
   - key: inline_prompts
     action: ai_text
-    title: 内页配图提示词
+    title: 文中插图提示词
     when: input.with_inline_images == true
     after: [draft]
     inputs:
@@ -91,7 +98,7 @@ steps:
       name_tpl: "inline-prompt.json"
   - key: inline_images
     action: ai_image
-    title: 内页配图出图
+    title: 文中插图出图
     when: input.with_inline_images == true
     after: [inline_prompts]
     inputs:
@@ -105,7 +112,7 @@ steps:
     inputs:
       source: steps.draft.asset
       platforms: input.to_platforms
-      content_type: note
+      content_type: article
       protect_facts: true
     params:
       prompt_tpl: adapt-text.md

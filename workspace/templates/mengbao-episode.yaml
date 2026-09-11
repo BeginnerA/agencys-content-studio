@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 3
-name: 萌宝短剧·单集流水线（v3：角色一致性库 / 动效可选）
-description: 素材入库 → 单集剧本 → 角色档案与定妆照（可选）→ 分镜（可审阅）→ 静态出图（角色锚定注入）或 AI 动效 → 合成成片
+version: 4
+name: 萌宝短剧·单集流水线（v4：深度审查 / 叙事流 / 剪辑把关）
+description: 素材入库 → 单集剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 分镜（可审阅）→ 叙事流分镜 / 可剪辑性把关（可选）→ 静态出图（角色锚定注入）或 AI 动效 → 合成成片
 genre: drama_short
 inputs:
   - key: brief
@@ -32,8 +32,23 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: with_deep_review
+    label: 剧本深度审查（true=剧本后附深度审查报告；false=关闭）
+    kind: bool
+    required: false
+    default: false
+  - key: with_narrative_doc
+    label: 叙事流分镜（true=分镜后附人读叙事流；false=关闭）
+    kind: bool
+    required: false
+    default: false
+  - key: with_edit_review
+    label: 可剪辑性把关（true=分镜后附剪辑验收报告；false=关闭）
+    kind: bool
+    required: false
+    default: false
 defaults:
-  llm: { temperature: 0.8, max_tokens: 6000 }
+  llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
   # ai_video 兜底参数（provider 可在项目 settings 覆盖；minimax 支持 480p/768p，480p 单价更低）
   video: { provider: pollinations_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
@@ -57,6 +72,23 @@ steps:
     gate:
       mode: required
       message: 请审阅第 {input.episode_number} 集剧本，批准后进入分镜；驳回可附修改意见重跑
+  - key: script_review
+    action: ai_text
+    title: 剧本深度审查
+    after: [write_script]
+    when: input.with_deep_review == true
+    inputs:
+      script: steps.write_script.asset
+      setting: steps.ingest_docs.assets
+    params:
+      prompt_tpl: script-audit.md
+      output_purpose: script
+      name_tpl: "{episode_number:03d}-深度审查报告.md"
+    gate:
+      mode: required
+      message: 请审阅第 {input.episode_number} 集深度审查报告（分级执行单 + R16/R17 验收）；认可通过后继续建档，如需重审可驳回附修改意见重跑
+      when: input.with_deep_review == true
+      skip_label: 认可通过
   - key: char_profile
     action: ai_text
     title: 角色档案
@@ -75,6 +107,7 @@ steps:
     after: [char_profile]
     inputs:
       characters: steps.char_profile.asset
+      setting: steps.ingest_docs.assets
     params:
       prompt_tpl: ref-prompts.md
       output_purpose: storyboard
@@ -113,6 +146,30 @@ steps:
       message: 请审阅第 {input.episode_number} 集分镜提示词包，批准后出图；驳回可附修改意见重跑
       when: input.with_storyboard_review == true
       skip_label: 免审直接出图
+  - key: storyboard_narrative
+    action: ai_text
+    title: 叙事流分镜
+    after: [make_storyboard]
+    when: input.with_narrative_doc == true
+    inputs:
+      storyboard: steps.make_storyboard.asset
+      script: steps.write_script.asset
+    params:
+      prompt_tpl: storyboard-narrative.md
+      output_purpose: storyboard
+      name_tpl: "{episode_number:03d}-叙事流分镜.md"
+  - key: edit_audit
+    action: ai_text
+    title: 可剪辑性把关
+    after: [make_storyboard]
+    when: input.with_edit_review == true
+    inputs:
+      storyboard: steps.make_storyboard.asset
+      script: steps.write_script.asset
+    params:
+      prompt_tpl: edit-audit.md
+      output_purpose: script
+      name_tpl: "{episode_number:03d}-可剪辑性验收.md"
   - key: gen_images
     action: ai_image
     title: 批量镜头出图

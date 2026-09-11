@@ -1,0 +1,107 @@
+key: series-setup
+version: 1
+name: 短剧系列立项·设定包（v1：整剧设计书 + 设定包四件 + 分集地图）
+description: 题材创意入库 → 记忆召回（防撞车/继承风格）→ 整剧立项（设定包四件 + 分集地图，可审阅）→ 角色档案与定妆照（可选）→ 角色建档 → 沉淀系列记忆供逐集复用
+genre: drama_short
+inputs:
+  - key: genre
+    label: 题材与核心创意（题材方向/一句话创意/受众方向）
+    kind: text
+    required: true
+  - key: episodes
+    label: 计划集数（整季规划总集数）
+    kind: int
+    required: false
+    default: 12
+  - key: plan_doc
+    label: 策划案素材（选填，md/txt：创作策划输出/人设参考）
+    kind: files
+    required: false
+    accept: [.md, .txt]
+  - key: with_character_refs
+    label: 生成定妆照并入档（true=角色参考图；false=仅建档）
+    kind: bool
+    required: false
+    default: false
+defaults:
+  llm: { temperature: 0.8, max_tokens: 24000 }
+  image: { provider: pollinations_image, size: "832x1248" }
+steps:
+  - key: recall
+    action: memory_recall
+    title: 记忆召回（既往系列设定/风格资产）
+    inputs:
+      query: input.genre
+    params: { limit: 3 }
+  - key: ingest
+    action: manual_ingest
+    title: 策划案素材入库
+    after: [recall]
+    when: input.plan_doc exists
+    inputs:
+      docs: input.plan_doc
+      brief: input.genre
+  - key: write_series
+    action: ai_text
+    title: 整剧立项（设定包）
+    after: [recall, ingest]
+    inputs:
+      genre: input.genre
+      episodes: input.episodes
+      plan_doc: steps.ingest.assets
+      recalled: steps.recall.asset
+    params:
+      prompt_tpl: series-setup.md
+      output_purpose: script
+      name_tpl: "系列设定包.md"
+    gate:
+      mode: required
+      message: 请通读整剧设计书与设定包（{input.episodes} 集分集地图），确认后进入角色建档；圈改可驳回附修改意见重跑
+  - key: char_profile
+    action: ai_text
+    title: 角色档案
+    after: [write_series]
+    inputs:
+      script: steps.write_series.asset
+      setting: steps.ingest.assets
+    params:
+      prompt_tpl: char-profile.md
+      output_purpose: characters
+      output_format: characters-json
+      name_tpl: "角色档案.json"
+  - key: ref_prompts
+    action: ai_text
+    title: 定妆照提示词
+    after: [char_profile]
+    inputs:
+      characters: steps.char_profile.asset
+      setting: steps.write_series.asset
+    params:
+      prompt_tpl: ref-prompts.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "定妆提示词.json"
+  - key: gen_refs
+    action: ai_image
+    title: 定妆照生成
+    when: input.with_character_refs == true
+    after: [ref_prompts]
+    inputs:
+      shots: steps.ref_prompts.asset
+    params:
+      output_purpose: reference_character
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: sync_characters
+    action: character_sync
+    title: 角色建档
+    after: [char_profile, gen_refs]
+    inputs:
+      characters: steps.char_profile.asset
+      ref_images: steps.gen_refs.assets
+  - key: remember
+    action: memory_write
+    title: 沉淀系列记忆
+    after: [write_series]
+    inputs:
+      content: steps.write_series.asset
+    params: { type: series, scope: project }
