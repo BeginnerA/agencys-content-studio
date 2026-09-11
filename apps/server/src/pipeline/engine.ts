@@ -487,6 +487,11 @@ class PipelineEngine {
       const ctx = await createStepContext({ run, step, template, def, input, projectSettings })
       const action = getAction(def.action)
       const result: StepResult = await action(ctx)
+
+      // [M4] 动作执行期间可能收到取消（cancelRun 已置 run/steps 为 cancelled）：动作不可中断，
+      // 但完成后不得盲写 succeeded/waiting_input 覆盖终态——否则 run 卡死非终态、批次不收敛
+      if ((await this.requireRun(run.id)).status === 'cancelled') throw new RunCancelledError()
+
       ctx.log(`步骤完成，产物资产 ${result.assetIds.length} 个`)
 
       const output: StepOutputDoc = { asset_ids: result.assetIds }

@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       const projectId = pid || (runId !== null && runId !== undefined ? await projectIdOf(runId) : 0)
       if (projectId) rooms.push(`project:${projectId}`)
       if (rooms.length) studio.to(rooms).emit('studio.event', e)
-    })()
+    })().catch((err) => log.error(`studio event bridge failed (${e.type})`, err))
   })
 
   // [M4] 先注册终态监听（批 pump 钩子），再 recover——避免恢复期通知落空
