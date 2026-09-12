@@ -43,7 +43,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const ffmpeg = resolveFfmpeg()
   if (!ffmpeg) {
     throw new Error(
-      '未找到 ffmpeg：请 winget install ffmpeg（装后重启服务），或在 .env 设 CSTUDIO_FFMPEG_PATH 指向 ffmpeg.exe',
+      '未找到可用 ffmpeg：内置二进制与系统 PATH 均不可用；请先在仓库根 pnpm install（重新下载内置二进制），'
+      + '或 winget install ffmpeg，或在 .env 设 CSTUDIO_FFMPEG_PATH 指向 ffmpeg.exe',
     )
   }
   const params = (ctx.def.params ?? {}) as Record<string, unknown>

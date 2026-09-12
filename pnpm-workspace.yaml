@@ -1,10 +1,13 @@
 packages:
   - apps/*
 
-# pnpm 12 显式构建授权：esbuild 需要 postinstall；better-sqlite3 已弃用（改用 @libsql/client），禁止其构建
+# pnpm 12 显式构建授权：esbuild 需要 postinstall；better-sqlite3 已弃用（改用 @libsql/client），禁止其构建；
+# ffmpeg-static / ffprobe-static 需要 postinstall 下载平台二进制（内置 ffmpeg 兜底链，见 apps/server/src/services/ffmpeg.ts）
 allowBuilds:
   esbuild: true
   better-sqlite3: false
+  ffmpeg-static: true
+  ffprobe-static: true
   onnxruntime-node: true
   protobufjs: false
   sharp: false

@@ -1,15 +1,23 @@
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import ffmpegStatic from 'ffmpeg-static'
 import { env } from '../env'
+
+// 内置二进制（pnpm install 时由 postinstall 下载，授权见 pnpm-workspace.yaml allowBuilds）；
+// ffmpeg-static 类型为 string | null（平台不支持时为 null），ffprobe-static 无类型声明：createRequire 引入（导出形态 { path: string }）
+const ffmpegStaticPath = ffmpegStatic ?? ''
+const ffprobeStaticPath = (createRequire(import.meta.url)('ffprobe-static') as { path?: string }).path ?? ''
 
 let cached: string | null | undefined
 
 /**
- * 定位可用 ffmpeg：env.CSTUDIO_FFMPEG_PATH 优先，其次 PATH 探测。
+ * 定位可用 ffmpeg（三级兜底）：env.CSTUDIO_FFMPEG_PATH 显式指定 → 内置二进制（ffmpeg-static）
+ * → 系统 PATH。逐级 spawn -version 实测，损坏/缺失（如下载失败）自动跳到下一级；
  * 结果进程内缓存；health 接口据此报告。
  */
 export function resolveFfmpeg(): string | null {
   if (cached !== undefined) return cached
-  const candidates = [env.ffmpegPath, 'ffmpeg'].filter((c) => c.length > 0)
+  const candidates = [env.ffmpegPath, ffmpegStaticPath, 'ffmpeg'].filter((c) => c.length > 0)
   for (const candidate of candidates) {
     try {
       const r = spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 5000 })
@@ -27,10 +35,10 @@ export function resolveFfmpeg(): string | null {
 
 let probeCached: string | null | undefined
 
-/** 定位 ffprobe（与 ffmpeg 同目录优先，其次 PATH）——时长探测用 */
+/** 定位 ffprobe（三级兜底：env → 内置 ffprobe-static → PATH）——时长探测用 */
 export function resolveFfprobe(): string | null {
   if (probeCached !== undefined) return probeCached
-  const candidates = [env.ffprobePath, 'ffprobe'].filter((c) => c.length > 0)
+  const candidates = [env.ffprobePath, ffprobeStaticPath, 'ffprobe'].filter((c) => c.length > 0)
   for (const candidate of candidates) {
     try {
       const r = spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 5000 })

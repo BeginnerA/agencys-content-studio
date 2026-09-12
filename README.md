@@ -9,12 +9,12 @@
 
 ## 技术栈
 
-Node 20+ / TypeScript / Hono / Drizzle + libsql / Socket.IO / fflate（导出 zip）/ Vue3 + Vite（原生 CSS）/ pnpm workspace
+Node 20+ / TypeScript / Hono / Drizzle + libsql / Socket.IO / fflate（导出 zip）/ ffmpeg-static（内置 ffmpeg/ffprobe 二进制，系统安装可选）/ Vue3 + Vite（原生 CSS）/ pnpm workspace
 
 ## 快速开始
 
 ```bash
-pnpm install
+pnpm install    # 自动下载内置 ffmpeg/ffprobe 二进制（ffmpeg-static / ffprobe-static，约 150MB）
 # 复制 .env.example 为 .env 并填入 AGENT_LLM_API_KEY（其余供应商密钥在 Web「AI 配置」页录入）
 pnpm dev    # 并行起双端：
             #   server  http://127.0.0.1:3001（API + Socket.IO + health）
