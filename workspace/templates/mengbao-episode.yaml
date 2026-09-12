@@ -135,9 +135,11 @@ steps:
   - key: make_storyboard
     action: ai_text
     title: 分镜与提示词包
-    after: [write_script]
+    after: [write_script, char_profile]
     inputs:
       script: steps.write_script.asset
+      setting: steps.ingest_docs.assets
+      characters: steps.char_profile.asset
     params:
       prompt_tpl: storyboard-ep.md
       output_purpose: storyboard
