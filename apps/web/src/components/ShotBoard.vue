@@ -17,6 +17,7 @@ import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 import AssetPreviewer from './AssetPreviewer.vue'
 import Icon from './Icon.vue'
+import StoryboardEditor from './StoryboardEditor.vue'
 
 const props = defineProps<{ runId: number; step: RunStep; active: boolean }>()
 const emit = defineEmits<{ changed: []; compose: [info: ShotBoardData['compose']] }>()
@@ -48,6 +49,14 @@ const previewOpen = ref(false)
 const previewAssets = ref<Asset[]>([])
 const previewIndex = ref(0)
 const previewBusy = ref(false)
+
+// [M10] 大编辑器 / 拖拽重排 / 上传替换
+const editorOpen = ref(false)
+const dragShotId = ref<string | null>(null)
+const dropTarget = ref<{ shotId: string; side: 'left' | 'right' } | null>(null)
+const uploadShotId = ref<string | null>(null)
+const uploadBusy = ref(false)
+const uploadInput = ref<HTMLInputElement | null>(null)
 
 const shots = computed(() => board.value?.shots ?? [])
 const compose = computed(() => board.value?.compose ?? null)
@@ -349,7 +358,7 @@ async function doRegenerate(shot: ShotBoardShot, withPrompt = false) {
   const dirty = withPrompt && text !== '' && text !== primaryPromptOf(shot)
   const ok = await confirmDialog({
     title: '重生成镜头',
-    message: `将重新调用供应商生成「${shot.shotId}」${dirty ? '（使用新提示词）' : ''}，重新计费；其余镜头自动跳过。完成后镜头列表与选片状态会重建。`,
+    message: `将重新调用供应商生成「${shot.shotId}」${dirty ? '（使用新提示词）' : ''}，重新计费；其余镜头自动跳过。完成后镜头列表与选片状态会重建（上传替换需重新应用）。`,
     confirmText: '开始重生成',
   })
   if (!ok) return
@@ -360,6 +369,106 @@ async function doRegenerate(shot: ShotBoardShot, withPrompt = false) {
     notice.value = '已入队：仅目标镜重跑；完成后镜头列表重建，请重新选择 / 合成'
     emit('changed')
   }
+}
+
+// ---------- [M10] 拖拽重排 ----------
+
+function onGripDragStart(shot: ShotBoardShot, e: DragEvent) {
+  if (!canOperate.value) return
+  dragShotId.value = shot.shotId
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', shot.shotId)
+  }
+}
+
+function onCardDragOver(shot: ShotBoardShot, e: DragEvent) {
+  if (!canOperate.value || !dragShotId.value || dragShotId.value === shot.shotId) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const side = e.clientX - rect.left < rect.width / 2 ? 'left' : 'right'
+  dropTarget.value = { shotId: shot.shotId, side }
+}
+
+function onCardDragLeave(shot: ShotBoardShot, e: DragEvent) {
+  const card = e.currentTarget as HTMLElement
+  if (e.relatedTarget instanceof Node && card.contains(e.relatedTarget)) return
+  if (dropTarget.value?.shotId === shot.shotId) dropTarget.value = null
+}
+
+function clearDrag() {
+  dragShotId.value = null
+  dropTarget.value = null
+}
+
+async function onCardDrop(shot: ShotBoardShot, e: DragEvent) {
+  const src = dragShotId.value
+  let side: 'left' | 'right' = 'left'
+  if (dropTarget.value?.shotId === shot.shotId) {
+    side = dropTarget.value.side
+  } else {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    side = e.clientX - rect.left < rect.width / 2 ? 'left' : 'right'
+  }
+  clearDrag()
+  if (!canOperate.value || !src || src === shot.shotId) return
+  const ids = shots.value.map((s) => s.shotId)
+  const without = ids.filter((id) => id !== src)
+  const targetIdx = without.indexOf(shot.shotId)
+  if (targetIdx < 0) return
+  without.splice(side === 'left' ? targetIdx : targetIdx + 1, 0, src)
+  if (without.join(',') === ids.join(',')) return
+  const res = await run(() => shotApi.mutate(props.runId, props.step.stepKey, [{ op: 'reorder', order: without }]))
+  if (res) notice.value = '镜头顺序已更新（重新合成后生效）'
+}
+
+// ---------- [M10] 上传替换 ----------
+
+function pickUpload(shot: ShotBoardShot) {
+  if (!canOperate.value || uploadBusy.value) return
+  uploadShotId.value = shot.shotId
+  uploadInput.value?.click()
+}
+
+async function onUploadPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const shotId = uploadShotId.value
+  uploadShotId.value = null
+  if (!file || !shotId || !canOperate.value) return
+  const ok = await confirmDialog({
+    title: '上传替换镜头',
+    message: `将上传「${file.name}」作为镜头 ${shotId} 的产物并设为当前选中（重新合成后生效；整步重跑会重建产物，需重新应用）。`,
+    confirmText: '上传替换',
+  })
+  if (!ok) return
+  uploadBusy.value = true
+  err.value = ''
+  notice.value = ''
+  try {
+    await shotApi.uploadShot(props.runId, props.step.stepKey, shotId, file)
+    await load()
+    notice.value = `镜头 ${shotId} 已替换为上传文件（重新合成后生效）`
+  } catch (ex) {
+    err.value = ex instanceof Error ? ex.message : String(ex)
+  } finally {
+    uploadBusy.value = false
+  }
+}
+
+// ---------- [M10] 大编辑器 ----------
+
+function openEditor() {
+  if (!canOperate.value) return
+  editorOpen.value = true
+}
+
+function onEditorSaved() {
+  editorOpen.value = false
+  notice.value = '分镜已保存（重新合成后生效）'
+  void load()
 }
 
 // ---------- 重新合成 ----------
@@ -454,6 +563,9 @@ watch(
       </span>
       <span v-else-if="compose?.stale === false" class="wb-tag ok" title="成片与当前选择一致">合成已最新</span>
       <span class="grow" />
+      <button class="btn sm" :disabled="!canOperate" @click="openEditor">
+        <Icon name="pencil" :size="12" /> 编辑分镜
+      </button>
       <button v-if="compose" class="btn sm" :disabled="!canOperate" @click="doRecompose">
         <Icon name="film" :size="12" /> 重新合成
       </button>
@@ -500,7 +612,16 @@ watch(
         v-for="shot in shots"
         :key="shot.shotId"
         class="wb-card"
-        :class="{ off: !isEnabled(shot), fail: shot.task?.status === 'failed' }"
+        :class="{
+          off: !isEnabled(shot),
+          fail: shot.task?.status === 'failed',
+          dragging: dragShotId === shot.shotId,
+          'drop-left': dropTarget?.shotId === shot.shotId && dropTarget.side === 'left',
+          'drop-right': dropTarget?.shotId === shot.shotId && dropTarget.side === 'right',
+        }"
+        @dragover="onCardDragOver(shot, $event)"
+        @dragleave="onCardDragLeave(shot, $event)"
+        @drop.prevent="onCardDrop(shot, $event)"
       >
         <div class="wb-thumb" :title="`预览镜头 ${shot.shotId}`" @click="openPreview(shot)">
           <img
@@ -516,6 +637,14 @@ watch(
         </div>
 
         <div class="wb-meta">
+          <span
+            class="wb-grip"
+            :class="{ disabled: !canOperate }"
+            :draggable="canOperate"
+            title="拖拽调整镜头顺序（重新合成后生效）"
+            @dragstart="onGripDragStart(shot, $event)"
+            @dragend="clearDrag"
+          />
           <label class="wb-ck" title="勾选参与批量时长">
             <input type="checkbox" :checked="bulkPicked.includes(shot.shotId)" @change="togglePick(shot.shotId)" />
           </label>
@@ -564,6 +693,14 @@ watch(
           >
             重生成
           </button>
+          <button
+            class="wb-mini"
+            :disabled="!canOperate || uploadBusy"
+            :title="`上传本地${isVideoStep ? '视频' : '图片'}替换该镜产物（重新合成后生效）`"
+            @click="pickUpload(shot)"
+          >
+            上传替换
+          </button>
           <button class="wb-mini" :disabled="!shot.versions.length" @click="toggleGallery(shot)">
             版本 {{ shot.versions.length }}
           </button>
@@ -594,6 +731,7 @@ watch(
                 @error="markVerThumbFailed(v.id)"
               />
               <span v-else class="wb-ph sm"><Icon :name="isVideoStep ? 'play' : 'photo'" :size="14" /></span>
+              <span v-if="v.source === 'upload'" class="wb-vtag" title="本地上传入库">上传</span>
             </div>
             <div class="wb-vmeta">
               <span class="muted mono wb-vtime">{{ fmtTime(v.createdAt) }}</span>
@@ -611,7 +749,25 @@ watch(
       <div v-if="!shots.length && !loading" class="empty wb-empty">无镜头数据（分镜为空或解析失败）</div>
     </div>
 
+    <input
+      ref="uploadInput"
+      type="file"
+      class="wb-file"
+      :accept="isVideoStep ? 'video/*' : 'image/*'"
+      @change="onUploadPicked"
+    />
+
     <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewIndex" @close="previewOpen = false" />
+
+    <StoryboardEditor
+      v-if="editorOpen"
+      :run-id="props.runId"
+      :step="props.step"
+      :shots="shots"
+      :can-operate="canOperate"
+      @close="editorOpen = false"
+      @saved="onEditorSaved"
+    />
   </div>
 </template>
 
@@ -717,6 +873,31 @@ watch(
   cursor: pointer;
 }
 
+/* [M10] 拖拽把手（2×3 点阵） */
+.wb-grip {
+  flex: none;
+  width: 12px;
+  height: 16px;
+  cursor: grab;
+  background-image: radial-gradient(circle, var(--text-3) 1px, transparent 1.1px);
+  background-size: 5px 5px;
+  background-position: 1px 1px;
+  opacity: 0.75;
+}
+
+.wb-grip:hover {
+  opacity: 1;
+}
+
+.wb-grip:active {
+  cursor: grabbing;
+}
+
+.wb-grip.disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
 .wb-num {
   width: 64px;
   background: var(--code-bg);
@@ -764,6 +945,19 @@ watch(
 
 .wb-card.fail {
   border-color: rgb(248 113 113 / 34%);
+}
+
+/* [M10] 拖拽重排态：源半透明 / 目标左右插入线 */
+.wb-card.dragging {
+  opacity: 0.45;
+}
+
+.wb-card.drop-left {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.wb-card.drop-right {
+  box-shadow: inset -3px 0 0 var(--accent);
 }
 
 .wb-thumb {
@@ -944,10 +1138,25 @@ watch(
 }
 
 .wb-vthumb {
+  position: relative;
   aspect-ratio: 3 / 4;
   background: var(--img-ph);
   cursor: zoom-in;
   overflow: hidden;
+}
+
+/* [M10] 上传资产角标（与任务版区分） */
+.wb-vtag {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  font-size: 9.5px;
+  line-height: 14px;
+  color: #fff;
+  background: rgb(99 102 241 / 85%);
+  border-radius: 4px;
+  padding: 0 4px;
+  pointer-events: none;
 }
 
 .wb-vthumb img {
@@ -990,6 +1199,10 @@ watch(
 .wb-empty {
   grid-column: 1 / -1;
   padding: 18px 0;
+}
+
+.wb-file {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

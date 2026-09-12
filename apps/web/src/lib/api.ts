@@ -23,6 +23,7 @@ import type {
   RunDetail,
   ShotBoardData,
   ShotEditItem,
+  ShotOp,
   ShotPick,
   StylePresetItem,
   TemplateDetail,
@@ -334,6 +335,40 @@ export const shotApi = {
       `/api/v1/runs/${runId}/shots/select`,
       { step_key: stepKey, ...opts },
     ),
+  /** [M10] 结构性编辑（reorder/add/remove/patch；写新分镜版本，不触发执行） */
+  mutate: (runId: number, stepKey: string, ops: ShotOp[]) =>
+    api.post<{ ok: boolean; asset_id: number; asset_ids: number[]; shots: number; note: string }>(
+      `/api/v1/runs/${runId}/shots/mutate`,
+      { step_key: stepKey, ops },
+    ),
+  /** [M10] 上传替换镜头（multipart：file + step_key + shot_id；入库 + 绑定选中） */
+  uploadShot: async (runId: number, stepKey: string, shotId: string, file: File) => {
+    const form = new FormData()
+    form.append('step_key', stepKey)
+    form.append('shot_id', shotId)
+    form.append('file', file, file.name)
+    let res: Response
+    try {
+      res = await fetch(`/api/v1/runs/${runId}/shots/upload`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as { ok: boolean; asset: Asset; asset_ids: number[]; note: string }
+  },
   /** 重新合成（重置 ffmpeg_merge；succeeded 镜头步骤全跳过） */
   recompose: (runId: number, stepKey: string) =>
     api.post<{ ok: boolean; run_id: number; note: string }>(

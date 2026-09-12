@@ -464,6 +464,8 @@ export interface ShotVersion {
   height: number | null
   duration: number | null
   prompt: string | null
+  /** [M10] 版本来源：task=步骤任务产物 / upload=本地上传入库 */
+  source: 'task' | 'upload'
   urls: { file: string; thumb: string | null }
 }
 
@@ -487,6 +489,8 @@ export interface ShotBoardShot {
   /** 当前 output.asset_ids 中命中该镜的资产（null = 未选中/无产物） */
   selectedAssetId: number | null
   versions: ShotVersion[]
+  /** [M10] 分镜对象全量（大编辑器字段回显/动态键值行） */
+  raw: Record<string, unknown>
 }
 
 /** 合成新鲜度（run 无 ffmpeg_merge 步骤 → board.compose 为 null） */
@@ -518,6 +522,15 @@ export interface ShotPick {
   shot_id: string
   asset_id: number
 }
+
+/**
+ * [M10] 结构性编辑操作（POST /runs/:id/shots/mutate）；前端建议序列 add* → patch* → remove* → reorder。
+ */
+export type ShotOp =
+  | { op: 'reorder'; order: string[] }
+  | { op: 'add'; shot: Record<string, unknown> }
+  | { op: 'remove'; shot_id: string }
+  | { op: 'patch'; shot_id: string; fields: Record<string, unknown> }
 
 // ===== [M9] 小说改编链（GET /runs/:id/novel-board 契约） =====
 

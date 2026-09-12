@@ -312,6 +312,7 @@ async function buildComposeInfo(run: PipelineRun): Promise<ShotBoard['compose']>
  * stale 判定：成片产物 params.inputs 快照 vs 当前上游真实输出（任一不等 → true）。
  * - images / motion_clips：快照 id 数组 vs 「其产出步骤」当前 output.asset_ids（同口径全序对比）；
  * - shots_source：快照分镜资产是否仍在产出步骤当前 output 中（分镜被工作台编辑替换 → 不在 → stale）；
+ * - [M10] 兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，分镜资产晚于成片 → stale=true；
  * - 旧产物无 inputs 快照 / 全部对比项不可用 → null（无法判定，前端降级为常态提示）。
  */
 async function computeStale(finalAsset: Asset, runSteps: PipelineStep[]): Promise<boolean | null> {
@@ -355,6 +356,17 @@ async function computeStale(finalAsset: Asset, runSteps: PipelineStep[]): Promis
     if (producer) {
       compared += 1
       if (!outputIdsOf(producer).includes(src)) return true
+    }
+  }
+  // [M10] 分镜编辑兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，
+  // 以「分镜资产晚于成片」判定分镜已被编辑（保守：不参与 compared，null 语义不变）
+  const sbStep = runSteps.find((s) => s.stepKey === 'make_storyboard')
+  if (sbStep) {
+    const sbIds = outputIdsOf(sbStep)
+    if (sbIds.length > 0) {
+      const sbRows = await db.select({ createdAt: assets.createdAt }).from(assets).where(eq(assets.id, sbIds[0]!)).limit(1)
+      const sbAt = sbRows[0]?.createdAt
+      if (sbAt != null && sbAt > finalAsset.createdAt) return true
     }
   }
   return compared > 0 ? false : null

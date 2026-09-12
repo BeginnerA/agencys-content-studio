@@ -589,7 +589,8 @@ async function main(): Promise<void> {
       { label: '已删除资产', picks: [{ shot_id: 's01', asset_id: delAsset }], want: 'bad_asset', msg: '已删除' },
       { label: '类型不符', picks: [{ shot_id: 's01', asset_id: s.sbId }], want: 'bad_asset', msg: '类型不符' },
       { label: '镜头不匹配', picks: [{ shot_id: 's01', asset_id: s.a2 }], want: 'bad_asset', msg: '不匹配' },
-      { label: '非任务集资产', picks: [{ shot_id: 's01', asset_id: orphanAsset }], want: 'bad_asset', msg: '生成任务' },
+      // [M10 适配] taskId=null 资产的拒绝文案随选片放宽细化为「不属于该步骤上传资产」；拒绝语义不变
+      { label: '非任务集资产', picks: [{ shot_id: 's01', asset_id: orphanAsset }], want: 'bad_asset', msg: '不属于该步骤' },
     ]
     for (const c of cases) {
       const e = await errOf(() => applyShotSelection(s.runId, 'gen_images', { picks: c.picks } as SelOpts))
