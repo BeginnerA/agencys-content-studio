@@ -6,9 +6,11 @@ import Icon from '../components/Icon.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import BatchFormModal from '../components/BatchFormModal.vue'
+import ProjectDangerModal from '../components/ProjectDangerModal.vue'
 import ProjectFormModal from '../components/ProjectFormModal.vue'
 import PublishModal from '../components/PublishModal.vue'
 import { batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import { schedulePendingRefresh } from '../lib/pending'
 import type { Asset, Batch, ProjectDetail, Publication, Run, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime, fmtMs, fmtQty, purposeText, batchStatus, inputSummary, PLATFORM_TEXT } from '../lib/format'
@@ -364,7 +366,13 @@ function openPublish(pub: Publication | null) {
 }
 
 async function removePub(pub: Publication) {
-  if (!confirm(`删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`)) return
+  const ok = await confirmDialog({
+    title: '删除发布记录',
+    message: `删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await publicationApi.remove(pub.id)
     await loadPubs({ silent: true })
@@ -381,6 +389,9 @@ function onPubSaved() {
 // ===== [优化] 编辑项目 / 模板短名 =====
 const showEdit = ref(false)
 const tplMetas = ref<TemplateMeta[]>([])
+
+// ===== 危险操作（归档 / 彻底删除） =====
+const showDanger = ref(false)
 
 /** 模板元数据静默加载（短名展示；失败回退裸 key） */
 async function loadTplMetas() {
@@ -405,6 +416,12 @@ function onEdited() {
   void loadCore({ silent: true })
 }
 
+/** 归档 / 彻底删除完成：返回项目列表 */
+function onDeleted() {
+  showDanger.value = false
+  void router.push('/')
+}
+
 /** runs 行内错误摘要 */
 function errOf(r: Run): string {
   if (r.status !== 'failed') return ''
@@ -418,7 +435,9 @@ function errOf(r: Run): string {
     <div class="page-h">
       <RouterLink to="/" class="back"><Icon name="arrow-left" :size="14" /> 项目</RouterLink>
       <h1>{{ project?.name ?? `项目 #${projectId}` }}</h1>
-      <span v-if="project" class="badge completed">active</span>
+      <span v-if="project" class="badge" :class="project.status === 'active' ? 'completed' : 'cancelled'">
+        {{ project.status === 'active' ? '进行中' : '已归档' }}
+      </span>
       <span v-if="project?.templateKey" class="sub">默认模板：{{ tplName(project.templateKey) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
         <button class="btn" :disabled="!project" @click="showEdit = true">
@@ -432,6 +451,15 @@ function errOf(r: Run): string {
         </button>
         <button class="btn primary" @click="showRunForm = true">
           <Icon name="bolt" :size="14" /> 启动流水线
+        </button>
+        <button
+          class="btn"
+          :disabled="!project"
+          title="归档 / 彻底删除项目"
+          aria-label="归档 / 彻底删除项目"
+          @click="showDanger = true"
+        >
+          <Icon name="trash" :size="14" />
         </button>
       </div>
     </div>
@@ -736,6 +764,15 @@ function errOf(r: Run): string {
 
     <!-- [优化] 编辑项目 -->
     <ProjectFormModal v-if="showEdit && project" :project="project" @done="onEdited" @close="showEdit = false" />
+
+    <!-- 危险操作：归档 / 彻底删除 -->
+    <ProjectDangerModal
+      v-if="showDanger && project"
+      :project="project"
+      @archived="onDeleted"
+      @purged="onDeleted"
+      @close="showDanger = false"
+    />
 
     <!-- [M4] 标记发布 / 编辑回填 -->
     <PublishModal

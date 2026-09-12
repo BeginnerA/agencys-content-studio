@@ -80,14 +80,24 @@ interface Items<T> {
 }
 
 export const projectApi = {
-  list: () => api.get<Items<Project>>('/api/v1/projects'),
+  /** 项目列表（?status=active|archived，默认 active） */
+  list: (params = '') => api.get<Items<Project>>(`/api/v1/projects${params}`),
   create: (body: { name: string; genre: string; brief: string; template_key?: string }) =>
     api.post<Project>('/api/v1/projects', body),
   detail: (id: number) => api.get<{ project: ProjectDetail }>(`/api/v1/projects/${id}`),
-  update: (id: number, body: { name?: string; brief?: string; genre?: string; template_key?: string }) =>
-    api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
+  update: (
+    id: number,
+    body: { name?: string; brief?: string; genre?: string; template_key?: string; status?: 'active' | 'archived' },
+  ) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
   assets: (id: number, params = '') => api.get<Items<Asset>>(`/api/v1/projects/${id}/assets${params}`),
   runs: (id: number) => api.get<Items<Run>>(`/api/v1/runs?project_id=${id}`),
+  /** 归档（逻辑删，可从「已归档」列表恢复） */
+  archive: (id: number) => api.del<{ ok: boolean; mode: string }>(`/api/v1/projects/${id}`),
+  /** 彻底删除（事务清库 + 删磁盘文件，不可恢复；有未完成运行时服务端 409 拦截） */
+  purge: (id: number) =>
+    api.del<{ ok: boolean; mode: string; purged: Record<string, number> }>(`/api/v1/projects/${id}?purge=1`),
+  /** 恢复归档项目 */
+  restore: (id: number) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, { status: 'active' }),
 }
 
 export const templateApi = {

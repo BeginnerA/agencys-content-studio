@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import { batchApi, exportApi, templateApi } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type { BatchDetail, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime, fmtCost, batchStatus, inputSummary } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
@@ -107,7 +108,13 @@ onMounted(() => {
 })
 
 async function cancelBatch() {
-  if (!confirm(`取消批次 #${batchId}？批内未完成的 run 将全部取消（执行中的在当前步骤后停止）。`)) return
+  const ok = await confirmDialog({
+    title: '取消批次',
+    message: `取消批次 #${batchId}？批内未完成的 run 将全部取消（执行中的在当前步骤后停止）。`,
+    confirmText: '取消批次',
+    danger: true,
+  })
+  if (!ok) return
   cancelling.value = true
   err.value = ''
   try {

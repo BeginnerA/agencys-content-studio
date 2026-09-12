@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import MarkdownPreview from './MarkdownPreview.vue'
+import { confirmDialog } from '../lib/confirm'
 
 const props = defineProps<{
   stepTitle: string
@@ -42,8 +43,14 @@ function skip() {
   emit('decided', 'skip', {})
 }
 
-function abort() {
-  if (confirm('确认中止该运行？（当前步骤产物保留，run 置 cancelled）')) emit('decided', 'abort', {})
+async function abort() {
+  const ok = await confirmDialog({
+    title: '中止运行',
+    message: '确认中止该运行？当前步骤产物保留，run 置 cancelled。',
+    confirmText: '中止运行',
+    danger: true,
+  })
+  if (ok) emit('decided', 'abort', {})
 }
 </script>
 

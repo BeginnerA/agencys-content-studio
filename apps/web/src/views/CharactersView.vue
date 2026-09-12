@@ -4,6 +4,7 @@ import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import { characterApi, projectApi } from '../lib/api'
 import { ApiError } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type { Asset, CharacterItem, Project } from '../lib/types'
 
 const items = ref<CharacterItem[]>([])
@@ -150,7 +151,13 @@ async function save() {
 }
 
 async function removeItem(it: CharacterItem) {
-  if (!confirm(`确认删除角色「${it.name}」？定妆照资产会保留，仅删除档案。`)) return
+  const ok = await confirmDialog({
+    title: '删除角色',
+    message: `确认删除角色「${it.name}」？定妆照资产会保留，仅删除档案。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   busy.value = true
   try {
     await characterApi.remove(it.id)

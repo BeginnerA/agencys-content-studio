@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getSocket } from './lib/socket'
 import Icon from './components/Icon.vue'
+import ConfirmHost from './components/ConfirmHost.vue'
 import { pending, refreshPending, startPendingWatcher } from './lib/pending'
 
 const route = useRoute()
@@ -82,5 +83,7 @@ onBeforeUnmount(() => {
     <main class="main">
       <RouterView />
     </main>
+    <!-- 全局命令式确认弹窗（confirmDialog()）宿主 -->
+    <ConfirmHost />
   </div>
 </template>

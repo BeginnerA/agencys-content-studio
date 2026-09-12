@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
 import { ApiError, promptApi, templateApi } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type { PromptItem, TemplateDetail, TemplateMeta, TemplateStepDef, TemplateValidation } from '../lib/types'
 import { fmtSize, fmtTime } from '../lib/format'
 
@@ -47,7 +48,14 @@ async function refreshMetas(autoOpen = false) {
 
 let openSeq = 0
 async function openTemplate(key: string) {
-  if (dirty.value && !confirm('当前修改尚未保存，确定放弃并切换？')) return
+  if (dirty.value) {
+    const ok = await confirmDialog({
+      title: '放弃未保存修改',
+      message: '当前模板修改尚未保存，确定放弃并切换？',
+      confirmText: '放弃并切换',
+    })
+    if (!ok) return
+  }
   const seq = ++openSeq
   stopValidate()
   selected.value = key
@@ -201,7 +209,13 @@ async function doCopy() {
 }
 
 async function removeTemplate(key: string, name: string) {
-  if (!confirm(`删除模板「${name}」（${key}）？\n文件将从 workspace/templates 移除，且不可撤销。`)) return
+  const ok = await confirmDialog({
+    title: '删除模板',
+    message: `删除模板「${name}」（${key}）？\n文件将从 workspace/templates 移除，且不可撤销。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   actionErr.value = ''
   try {
     await templateApi.remove(key)
@@ -326,7 +340,14 @@ async function refreshPrompts() {
 }
 
 async function openPrompt(name: string) {
-  if (pDirty.value && !confirm('当前提示词修改尚未保存，确定放弃并切换？')) return
+  if (pDirty.value) {
+    const ok = await confirmDialog({
+      title: '放弃未保存修改',
+      message: '当前提示词修改尚未保存，确定放弃并切换？',
+      confirmText: '放弃并切换',
+    })
+    if (!ok) return
+  }
   pSelected.value = name
   pErr.value = ''
   try {
@@ -354,7 +375,13 @@ async function savePrompt() {
 }
 
 async function removePrompt(name: string) {
-  if (!confirm(`删除提示词「${name}」？引用它的模板将出现「引用缺失」提示。`)) return
+  const ok = await confirmDialog({
+    title: '删除提示词',
+    message: `删除提示词「${name}」？引用它的模板将出现「引用缺失」提示。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   pErr.value = ''
   try {
     await promptApi.remove(name)

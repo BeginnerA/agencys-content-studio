@@ -1,9 +1,27 @@
 import { Hono } from 'hono'
 import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { db } from '../db'
-import { assets, pipelineRuns, projects } from '../db/schema'
+import {
+  assets,
+  batches,
+  characters,
+  genTasks,
+  memories,
+  pipelineRuns,
+  pipelineSteps,
+  projects,
+  publications,
+  usageRecords,
+} from '../db/schema'
+import { RUN_LOGS_DIR } from '../env'
+import { createLogger } from '../logger'
 import { loadTemplate } from '../pipeline/loader'
+import { projectAbsDir } from '../services/storage'
 import { HttpError, h, idParam, notFound } from './helpers'
+
+const log = createLogger('projects')
 
 export const projectsRoutes = new Hono()
 
@@ -150,16 +168,61 @@ projectsRoutes.patch('/projects/:id', h(async (c) => {
   return c.json({ project: rows[0] })
 }))
 
-// DELETE /projects/:id —— 归档（逻辑删 status=archived）
+// DELETE /projects/:id —— 默认归档（逻辑删 status=archived，可恢复）；?purge=1 彻底删除（事务清库 + 删除磁盘文件，不可恢复）
 projectsRoutes.delete('/projects/:id', h(async (c) => {
   const id = idParam(c)
-  const rows = await db
-    .update(projects)
-    .set({ status: 'archived', updatedAt: Date.now() })
+  const exists = await db
+    .select({ id: projects.id })
+    .from(projects)
     .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
-    .returning()
-  if (!rows[0]) return notFound(c, `项目 ${id}`)
-  return c.json({ ok: true })
+    .limit(1)
+  if (!exists[0]) return notFound(c, `项目 ${id}`)
+
+  if (c.req.query('purge') !== '1') {
+    await db.update(projects).set({ status: 'archived', updatedAt: Date.now() }).where(eq(projects.id, id))
+    return c.json({ ok: true, mode: 'archived' })
+  }
+
+  // 活跃 run 拦截：运行中的引擎仍会向该项目写数据，先取消再删
+  const activeRuns = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.projectId, id), inArray(pipelineRuns.status, ['queued', 'running', 'waiting_input'])))
+  if (activeRuns.length > 0) {
+    throw new HttpError(409, 'has_active_runs', `项目还有 ${activeRuns.length} 个未完成运行，请先取消全部运行后再删除`)
+  }
+
+  const runIds = (
+    await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, id))
+  ).map((r) => r.id)
+  // 无外键约束：事务内按依赖顺序清理（steps → runs → 其余按 project_id → projects 最后）
+  const purged = await db.transaction(async (tx) => {
+    const cnt = async (rows: Promise<{ id: number }[]>) => (await rows).length
+    return {
+      steps: runIds.length
+        ? await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
+        : 0,
+      runs: await cnt(tx.delete(pipelineRuns).where(eq(pipelineRuns.projectId, id)).returning({ id: pipelineRuns.id })),
+      tasks: await cnt(tx.delete(genTasks).where(eq(genTasks.projectId, id)).returning({ id: genTasks.id })),
+      assets: await cnt(tx.delete(assets).where(eq(assets.projectId, id)).returning({ id: assets.id })),
+      batches: await cnt(tx.delete(batches).where(eq(batches.projectId, id)).returning({ id: batches.id })),
+      usage: await cnt(tx.delete(usageRecords).where(eq(usageRecords.projectId, id)).returning({ id: usageRecords.id })),
+      publications: await cnt(tx.delete(publications).where(eq(publications.projectId, id)).returning({ id: publications.id })),
+      memories: await cnt(tx.delete(memories).where(eq(memories.projectId, id)).returning({ id: memories.id })),
+      characters: await cnt(tx.delete(characters).where(eq(characters.projectId, id)).returning({ id: characters.id })),
+      projects: await cnt(tx.delete(projects).where(eq(projects.id, id)).returning({ id: projects.id })),
+    }
+  })
+
+  // 磁盘清理在事务提交后执行（素材/产物/导出目录 + run 日志）；残留为孤儿文件，失败仅告警不影响数据一致性
+  try {
+    rmSync(projectAbsDir(id), { recursive: true, force: true })
+    for (const rid of runIds) rmSync(join(RUN_LOGS_DIR, `${rid}.log`), { force: true })
+  } catch (err) {
+    log.warn(`项目 ${id} 磁盘文件清理失败：${(err as Error).message}`)
+  }
+  log.info('项目已彻底删除', { id, purged })
+  return c.json({ ok: true, mode: 'purged', purged })
 }))
 
 function safeJson(s: string | null, fallback: unknown): unknown {

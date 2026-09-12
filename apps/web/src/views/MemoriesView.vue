@@ -4,6 +4,7 @@ import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import { memoryApi, projectApi } from '../lib/api'
 import { ApiError } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type { MemoryItem, MemoryStatus, Project } from '../lib/types'
 import { fmtTime } from '../lib/format'
 
@@ -138,7 +139,13 @@ async function save() {
 }
 
 async function removeItem(it: MemoryItem) {
-  if (!confirm(`确认删除记忆 #${it.id}（${it.type}）？该操作不可撤销。`)) return
+  const ok = await confirmDialog({
+    title: '删除记忆',
+    message: `确认删除记忆 #${it.id}（${it.type}）？该操作不可撤销。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   busy.value = true
   try {
     await memoryApi.remove(it.id)

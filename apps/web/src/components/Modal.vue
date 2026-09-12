@@ -2,7 +2,7 @@
 import { onMounted, onBeforeUnmount } from 'vue'
 import Icon from './Icon.vue'
 
-defineProps<{ title: string; width?: number }>()
+defineProps<{ title: string; width?: number; zIndex?: number }>()
 const emit = defineEmits<{ close: [] }>()
 
 function onKey(e: KeyboardEvent) {
@@ -14,7 +14,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <Teleport to="body">
-    <div class="mask" @click.self="emit('close')">
+    <div class="mask" :style="zIndex !== undefined ? { zIndex } : undefined" @click.self="emit('close')">
       <div class="dlg panel" :style="width ? { width: width + 'px' } : {}">
         <div class="head">
           <span class="t">{{ title }}</span>

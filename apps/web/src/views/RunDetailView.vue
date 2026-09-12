@@ -9,6 +9,7 @@ import ExportWizardModal from '../components/ExportWizardModal.vue'
 import PublishModal from '../components/PublishModal.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import { assetApi, exportApi, publicationApi, runApi, statsApi, templateApi } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type {
   Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, TemplateDetail, TemplateMeta,
   UsageSummary,
@@ -187,7 +188,13 @@ async function decide(
 }
 
 async function cancelRun() {
-  if (!confirm(`确认取消 run #${runId}？当前步骤产物会保留。`)) return
+  const ok = await confirmDialog({
+    title: '取消运行',
+    message: `确认取消 run #${runId}？当前步骤产物会保留。`,
+    confirmText: '取消运行',
+    danger: true,
+  })
+  if (!ok) return
   busy.value = true
   try {
     await runApi.cancel(runId)
@@ -200,7 +207,12 @@ async function cancelRun() {
 }
 
 async function resumeRun() {
-  if (!confirm('从断点续跑：将新建一个 run，跳过已成功步骤继续执行。')) return
+  const ok = await confirmDialog({
+    title: '断点续跑',
+    message: '将新建一个 run，跳过已成功步骤继续执行。',
+    confirmText: '开始续跑',
+  })
+  if (!ok) return
   busy.value = true
   try {
     const res = await runApi.resume(runId)
@@ -463,7 +475,13 @@ function onExportDone() {
 }
 
 async function removeExport(ex: ExportAssetLite) {
-  if (!confirm(`删除导出包「${ex.name}」？`)) return
+  const ok = await confirmDialog({
+    title: '删除导出包',
+    message: `删除导出包「${ex.name}」？`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await assetApi.remove(ex.id)
     refreshExtras()
@@ -473,7 +491,13 @@ async function removeExport(ex: ExportAssetLite) {
 }
 
 async function removePub(pub: Publication) {
-  if (!confirm(`删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`)) return
+  const ok = await confirmDialog({
+    title: '删除发布记录',
+    message: `删除这条发布记录（${PLATFORM_TEXT[pub.platform] ?? pub.platform}）？`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await publicationApi.remove(pub.id)
     refreshExtras()

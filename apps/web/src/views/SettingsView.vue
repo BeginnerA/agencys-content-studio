@@ -5,6 +5,7 @@ import VendorCredentialForm from '../components/VendorCredentialForm.vue'
 import Icon from '../components/Icon.vue'
 import SearchSelect from '../components/SearchSelect.vue'
 import { configApi, settingsApi, statsApi, vendorApi } from '../lib/api'
+import { confirmDialog } from '../lib/confirm'
 import type { ApiConfig, ApiProvider, ProviderConfigLite, UsageItem, VendorCredential } from '../lib/types'
 import { fmtQty } from '../lib/format'
 
@@ -157,7 +158,13 @@ async function toggleActive(cfgId: number, providerKey: string, current: boolean
 }
 
 async function remove(cfg: ProviderConfigLite) {
-  if (!confirm(`删除实例「${cfg.name}」？`)) return
+  const ok = await confirmDialog({
+    title: '删除实例',
+    message: `删除实例「${cfg.name}」？`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await configApi.remove(cfg.id)
     await load()
