@@ -21,6 +21,7 @@ export const KNOWN_ACTIONS = [
   'memory_recall',
   'character_sync',
   'entity_sync',
+  'text_split',
 ] as const
 
 const cache = new Map<string, Template>()

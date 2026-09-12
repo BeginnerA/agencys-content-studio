@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
 import ShotBoard from '../components/ShotBoard.vue'
+import NovelBoard from '../components/NovelBoard.vue'
 import AssetPreviewer from '../components/AssetPreviewer.vue'
 import Icon from '../components/Icon.vue'
 import ExportWizardModal from '../components/ExportWizardModal.vue'
@@ -681,6 +682,9 @@ async function recomposeStep(s: RunStep) {
                 @changed="loadDetail()"
                 @compose="onComposeInfo"
               />
+
+              <!-- [M9] 小说改编看板（text_split 步骤卡内嵌，只读） -->
+              <NovelBoard v-if="s.actionKey === 'text_split'" :run-id="runId" :step="s" />
 
               <!-- [M7] 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
               <div v-if="s.actionKey === 'ffmpeg_merge'" class="compose-ops">

@@ -1,7 +1,8 @@
 /**
  * [M7] 镜头级轻工作台路由（spec §3.2）
  * - 服务层只改 DB，engine.startRun 在此同步调用（对齐 tasks.ts retry 手法）
- * - WorkbenchError → HttpError（状态码透传）；不触发执行的端点（edit / select）不启动引擎
+ * - WorkbenchError → HttpError（状态码透传）；不触发执行的端点（edit / select / mutate / upload）不启动引擎
+ * [M10] +mutate（结构性编辑：reorder/add/remove/patch）/ +upload（上传替换：multipart）
  */
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -10,13 +11,17 @@ import {
   WorkbenchError,
   applyShotSelection,
   applyStoryboardEdits,
+  applyStoryboardOps,
   buildShotBoard,
   resetShotForRegenerate,
   resetStepForRecompose,
+  uploadAndBindShotAsset,
   type ShotEditItem,
+  type ShotOp,
   type ShotPick,
 } from '../services/shot-workbench'
 import { HttpError, h, idParam } from './helpers'
+import { toAssetView } from './assets'
 
 export const shotsRoutes = new Hono()
 
@@ -38,6 +43,23 @@ shotsRoutes.post('/runs/:id/shots/edit', h(async (c) => {
   if (!Array.isArray(items)) throw new HttpError(400, 'bad_shots', 'shots 需为非空数组')
   const result = await wb(() => applyStoryboardEdits(runId, stepKey, items as ShotEditItem[]))
   return c.json({ ok: true, asset_id: result.assetId, asset_ids: result.assetIds, edited: result.edited })
+}))
+
+// POST /runs/:id/shots/mutate —— 结构性编辑（reorder/add/remove/patch；写新分镜版本，不触发执行）
+shotsRoutes.post('/runs/:id/shots/mutate', h(async (c) => {
+  const runId = idParam(c)
+  const body = await bodyJson(c)
+  const stepKey = requireStepKey(body['step_key'])
+  const ops = body['ops']
+  if (!Array.isArray(ops) || ops.length === 0) throw new HttpError(400, 'bad_ops', 'ops 需为非空数组')
+  const result = await wb(() => applyStoryboardOps(runId, stepKey, ops as ShotOp[]))
+  return c.json({
+    ok: true,
+    asset_id: result.assetId,
+    asset_ids: result.assetIds,
+    shots: result.shots,
+    note: '分镜已更新（写新版本资产）；重新合成后生效',
+  }, 201)
 }))
 
 // POST /runs/:id/shots/regenerate —— 单镜重生成（可选编辑字段先写分镜；重置后引擎只重跑目标镜）
@@ -79,6 +101,30 @@ shotsRoutes.post('/runs/:id/shots/select', h(async (c) => {
     applyShotSelection(runId, stepKey, { picks: picks as ShotPick[] | undefined, reset }),
   )
   return c.json({ ok: true, asset_ids: assetIds })
+}))
+
+// POST /runs/:id/shots/upload —— 上传替换镜头（multipart：file + step_key + shot_id；入库 + 绑定选中）
+shotsRoutes.post('/runs/:id/shots/upload', h(async (c) => {
+  const runId = idParam(c)
+  const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })
+  const stepKey = requireStepKey(form.get('step_key'))
+  const shotId = form.get('shot_id')
+  if (typeof shotId !== 'string' || !shotId) throw new HttpError(400, 'bad_shot', 'shot_id 非法')
+  const fileRaw = form.get('file')
+  if (!fileRaw || typeof fileRaw === 'string') throw new HttpError(400, 'no_file', '未收到文件（字段名 file）')
+  const file = fileRaw as File
+  if (file.size > 200 * 1024 * 1024) throw new HttpError(413, 'too_large', '单文件超过 200MB 上限')
+  const buf = new Uint8Array(await file.arrayBuffer())
+  if (buf.byteLength === 0) throw new HttpError(400, 'no_file', '文件内容为空')
+  const { asset, assetIds } = await wb(() =>
+    uploadAndBindShotAsset(runId, stepKey, shotId, { name: file.name || `upload-${Date.now()}`, data: buf }),
+  )
+  return c.json({
+    ok: true,
+    asset: toAssetView(asset),
+    asset_ids: assetIds,
+    note: '已上传并绑定为该镜头选中产物（重新合成后生效）',
+  }, 201)
 }))
 
 // POST /runs/:id/recompose —— 重新合成（重置 ffmpeg_merge 步骤；succeeded 镜头步骤全跳过）

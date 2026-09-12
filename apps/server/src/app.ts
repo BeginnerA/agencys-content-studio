@@ -8,6 +8,7 @@ import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
 import { exportsRoutes } from './routes/exports'
 import { memoriesRoutes } from './routes/memories'
+import { novelRoutes } from './routes/novel'
 import { projectsRoutes } from './routes/projects'
 import { promptsRoutes } from './routes/prompts'
 import { publicationsRoutes } from './routes/publications'
@@ -41,6 +42,7 @@ api.route('/', stylePresetsRoutes)
 api.route('/', exportsRoutes)
 api.route('/', publicationsRoutes)
 api.route('/', tasksRoutes)
+api.route('/', novelRoutes)
 api.route('/', apiRoutes)
 api.route('/', vendorRoutes)
 

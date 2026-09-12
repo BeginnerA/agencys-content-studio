@@ -15,6 +15,7 @@
     "probe:m6": "tsx scripts/probe-m6.ts",
     "probe:m7": "tsx scripts/probe-m7.ts",
     "probe:m8": "tsx scripts/probe-m8.ts",
+    "probe:m9": "tsx scripts/probe-m9.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {

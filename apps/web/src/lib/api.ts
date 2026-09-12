@@ -12,6 +12,7 @@ import type {
   GenTask,
   MemoryItem,
   MemoryStatus,
+  NovelBoardData,
   Overview,
   Project,
   ProjectDetail,
@@ -339,4 +340,11 @@ export const shotApi = {
       `/api/v1/runs/${runId}/recompose`,
       { step_key: stepKey },
     ),
+}
+
+// ===== [M9] 小说改编链 =====
+
+export const novelApi = {
+  /** 小说改编看板聚合读（章节切分 × 事件图谱 × 分集规划 × 改编剧本） */
+  board: (runId: number) => api.get<NovelBoardData>(`/api/v1/runs/${runId}/novel-board`),
 }

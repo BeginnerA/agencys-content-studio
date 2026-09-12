@@ -11,6 +11,7 @@ import { memoryRecall } from './memory-recall'
 import { memoryWrite } from './memory-write'
 import { tts } from './tts'
 import { subtitle } from './subtitle'
+import { textSplit } from './text-split'
 
 export type { StepContext }
 export type { StepResult }
@@ -30,6 +31,7 @@ const registry: Record<string, ActionFn> = {
   memory_recall: memoryRecall,
   character_sync: characterSync,
   entity_sync: entitySync,
+  text_split: textSplit,
 }
 
 export function getAction(key: string): ActionFn {

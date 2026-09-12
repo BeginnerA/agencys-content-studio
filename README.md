@@ -2,7 +2,7 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）
 
 ## 技术栈
 
@@ -139,6 +139,20 @@ pnpm dev    # 并行起双端：
 
 验证：`pnpm --filter @acs/server probe:m8`（六 section：migrate / entity / inject / style / api / template，零网络零计费）。
 
+## M9 能力速览（小说改编链）
+
+把长篇小说文本改编为可投入短剧生产链的分集剧本：**小说导入 → 章节切分 → 逐章事件提取 → 事件图谱 → 分集规划 → 逐集改编剧本**（对标 Toonflow 小说链，但把「导入即自动提取事件」显式化为闸门后的流水线步骤——先确认切分质量再花钱）。四段产物全部为通用文本资产（purpose = `chapters` / `events` / `graph` / `plan` / `script`），全链可在 Web 端审阅、断点续跑。设计原则：**通用资产承载业务**（零新表零新列）、**本地优先、AI 兜底**（默认正则链切分，识别失败才由 LLM 生成正则）、**快照即硬证据**（延续 M3/M6）、**模板线性链路**（分集规划内嵌章节事件物料包，逐集剧本直接消费）。
+
+- **章节切分**（新 action `text_split`）：多文件按序拼接 → 三级正则链（用户正则 > AI 生成正则 > 默认链）+ 卷识别 + `chapter_range` 范围过滤 + `min_chapters` 校验 → 章节索引 manifest + 逐章资产（`第NNN章-标题.md`）
+- **逐章事件提取**（ai_text batch 扩展）：`batch.field` 读 manifest 章节数组逐项生成（并发 3 / 重试 1）→ `第NNN章-事件.json`（`event-json` 契约）；进度复用 gen_tasks 状态机（任务面板可见）
+- **事件图谱 + 分集规划**：`event-graph.md` 归并角色弧光 + key_events（`graph-json` 契约）；`plan-episodes.md` 产出分集规划（每集章范围 + 梗概 + 开尾钩子，`plan-json` 契约）
+- **逐集改编剧本**（ai_text batch）：并发 2 逐集生成 `第NN集-改编剧本.md`（含本集梗概 / 人物表 / 场景与对白，对齐 `script-ep` 格式，可经 `next: [series-setup]` 进短剧链）
+- **闸门**：切分审阅 / 分集规划审阅默认开（`with_split_review` / `with_plan_review`），剧本审阅默认关（`with_script_review`）；AI 正则兜底开关 `with_ai_split` 默认关
+- **Web**：`NovelBoard.vue` 挂载于 text_split 步骤卡（只读四段：章节表含事件状态徽标 / 角色卡 + 关键事件表 / 分集规划卡 / 剧本列表）
+- **模板**：`novel-adapt` v1（7 步 + 8 输入，scene=plan，next=[series-setup]）
+
+验证：`pnpm --filter @acs/server probe:m9`（五 section：split / batch / contracts / api / template，零网络零计费）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -155,12 +169,14 @@ pnpm dev    # 并行起双端：
 | `article-clip` v1 | 深度长文（article） | 长文主稿（结构完整 / 逻辑论证 / 事实溯源）+ 可选内页配图 + 多平台适配 + 发布稿（标题定稿 + 封面文案 + 溯源检查；对齐 note-clip 模式） | 文字创作 + 平台适配 |
 | `platform-adapt` v1 | 平台适配（other） | 八平台（公众号 / 小红书 / 知乎 / 头条 / 抖音 / 快手 / 视频号 / B站）标题 / 正文 / 话题 / 封面文案规则 + 事实不变性铁律 + 风险处标注不静默删改 | 平台适配 |
 | `review-restock` v1 | 盘点复盘（other） | 数据解读（完播 / 互动 / 涨粉结构）+ 置信门禁（样本不足降级结论并标注）+ 回灌选题入记忆（供 `topic-radar` 调分闭环） | 盘点复盘 |
+| `novel-adapt` v1 | 小说改编·切分→图谱→剧本（plan） | 小说入库 → 章节切分（三级正则链 / 卷识别 / 范围过滤，可审阅）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量）；产物对齐 `script-ep` 格式，可接力短剧链 | 内容编排 + 剧本创作 |
 
 **典型工作流链**（`review-restock` 回灌记忆 → `topic-radar` 召回调分，构成「选题 → 生产 → 复盘 → 回灌」闭环；模板均可独立运行）：
 
 | 内容形态 | 链路 |
 |---|---|
 | 短剧 | `topic-radar` → `video-plan` → `series-setup` → `mengbao-episode`（逐集）→ `platform-adapt` → `review-restock` |
+| 小说改编 | `novel-adapt`（小说 → 分集剧本）→ `series-setup` → `mengbao-episode`（逐集）→ `platform-adapt` → `review-restock` |
 | 口播 / 快片 | `topic-radar` → `talking-clip` / `quick-video` → `platform-adapt`（或模板内 `with_platform_copy`）→ `review-restock` |
 | 图文 / 长文 | `topic-radar` → `note-clip` / `article-clip` → `platform-adapt`（或模板内 `to_platforms`）→ `review-restock` |
 
@@ -283,6 +299,21 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 8 | 发布登记 + 统计一致 | ✅ | 2 条登记（douyin/bilibili）→ 项目页 2300/173 = overview（08 19/19） |
 | 9 | 统计页数据核对 | ✅ | 动态对齐 29/29 + CDP 交互 16/16；守恒 sum(各项目)=全局 6/6；截图查证 |
 | 10 | README + 三模板无回归 | ✅ | 本文件；Run 58/59/60 三模板复跑 16/16，无 error 日志 |
+
+## M9 验收快照（2026-09-12，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：五 section 全绿 | ✅ | 双端 typecheck 0 错；`probe:m9` 120 项全过（split / batch / contracts / api / template） |
+| 2 | 兼容回归：m2a·m3·m6·m7·m8 | ✅ | 五探针全绿（存量基线零漂移） |
+| 3 | 模板契约：novel-adapt v1 零 warning | ✅ | 模板列表 11 项含 novel-adapt（steps=7 / promptsDirty=false）；probe template 节全过 |
+| 4 | 实弹全链（3 章短篇，Run #100） | ✅ | completed 28.4s：切分闸门 → 逐章事件 3/3 → 图谱 key_events=9 → 规划闸门（2 集）→ 剧本 2 份；LLM 7 次 ¥0.1541 |
+| 5 | 闸门流：切分 / 规划 waiting_input → approve 续跑 | ✅ | 两处闸门自动放行后正常续跑；`with_script_review=false` 免审直过 |
+| 6 | 产物分布（purpose 锚点） | ✅ | source=1 · brief=1 · chapters=4（manifest+3 章）· events=3 · graph=1 · plan=1 · script=2 |
+| 7 | NovelBoard 聚合读 + 四段渲染 | ✅ | GET /runs/100/novel-board 契约全过；DOM `.nb` 四段（章节 3 行 / 事件 10 行 / 规划 2 卡 / 剧本 2 按钮，1122×1052 visible，零 console 错误） |
+| 8 | 剧本格式对齐 `script-ep` | ✅ | `第01集-改编剧本.md`（资产 #1126）：本集梗概 + 人物表 + 场景与对白（场景头【场景 N｜地点·时间｜氛围】+ 动作 + 对白） |
+| 9 | 实弹暴露缺陷修复（引擎依赖级联） | ✅ | 首跑全链 `upstream_skipped` → 根因 `depsFor` 默认依赖前一步骤 + 规则①级联 → 模板 `after: [ingest, make_split_regex]` 混合依赖修复 → 复跑全通过；spec §3.6/§3.9 回写 |
+| 10 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / context / shot-workbench / ShotBoard 零改动；`schema.ts` 纯注释；11 改 + 11 新增与 spec §4 清单一致 |
 
 ## M7 验收快照（2026-09-12，实弹）
 

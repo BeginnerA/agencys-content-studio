@@ -81,7 +81,7 @@ export const genTasks = sqliteTable(
     projectId: integer('project_id').notNull(),
     runId: integer('run_id'),
     stepId: integer('step_id'),
-    kind: text('kind').notNull(), // image|video
+    kind: text('kind').notNull(), // image|video|text（text = M9 逐项文本任务）
     provider: text('provider'),
     model: text('model'),
     prompt: text('prompt'),
@@ -111,7 +111,7 @@ export const assets = sqliteTable(
     taskId: integer('task_id'),
     runId: integer('run_id'), // [M4] 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
-    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|subtitle|thumbnail|export
+    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|subtitle|thumbnail|export|chapters|events|graph|plan|regex
     name: text('name').notNull(),
     mime: text('mime'),
     ext: text('ext'),

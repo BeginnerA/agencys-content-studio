@@ -169,7 +169,7 @@ function exists(p: string): boolean {
   try { statSync(p); return true } catch { return false }
 }
 
-function toAssetView(a: typeof assets.$inferSelect): Record<string, unknown> {
+export function toAssetView(a: typeof assets.$inferSelect): Record<string, unknown> {
   let params: unknown = null
   if (a.params) { try { params = JSON.parse(a.params) } catch { params = null } }
   let tags: unknown = []

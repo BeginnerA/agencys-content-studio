@@ -98,6 +98,12 @@ export const PURPOSE_TEXT: Record<string, string> = {
   voice: '配音',
   lines: '台词',
   export: '成稿',
+  // [M9] 小说改编链
+  chapters: '章节',
+  events: '事件',
+  graph: '事件图谱',
+  plan: '分集规划',
+  regex: '切分正则',
 }
 
 export function purposeText(p: string): string {

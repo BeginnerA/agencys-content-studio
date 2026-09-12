@@ -3,7 +3,10 @@
  * - 纯 DB 层：只做「校验 + 数据库状态变更」，不调用 engine（startRun 由路由层在服务返回后同步调用）
  * - 错误类型与 HttpError 解耦：路由层转 HTTP（对齐 run-create.ts 惯例）
  * - 三个核心语义：① 分镜 JSON 是唯一事实源 ② 产物即选择（改写 output.asset_ids）③ 状态重置 + 引擎复用
+ * [M10] 结构性编辑扩展：ops 协议（reorder/add/remove/patch）+ 上传替换（外来图入镜）
  */
+import { writeFileSync } from 'node:fs'
+import { extname } from 'node:path'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import {
@@ -16,7 +19,18 @@ import {
   type PipelineRun,
   type PipelineStep,
 } from '../db/schema'
-import { readTextAsset, writeTextAsset } from './storage'
+import {
+  absPathOf,
+  ensureProjectDirs,
+  kindByExt,
+  mimeOfExt,
+  readTextAsset,
+  registerAsset,
+  relPathOf,
+  sanitizeName,
+  sha256Hex,
+  writeTextAsset,
+} from './storage'
 
 /** 工作台领域错误（路由层转 HTTP；status 默认 400，run/step 不存在用 404） */
 export class WorkbenchError extends Error {
@@ -62,6 +76,8 @@ export interface BoardVersion {
   height: number | null
   duration: number | null
   prompt: string | null
+  /** [M10] 版本来源：task=步骤任务产物 / upload=本地上传入库 */
+  source: 'task' | 'upload'
   urls: { file: string; thumb: string | null }
 }
 
@@ -82,6 +98,8 @@ export interface BoardShot {
   task: BoardTask | null
   selectedAssetId: number | null
   versions: BoardVersion[]
+  /** [M10] 分镜对象全量（大编辑器字段回显/动态键值行） */
+  raw: Record<string, unknown>
 }
 
 export interface ShotBoard {
@@ -102,6 +120,16 @@ export interface ShotPick {
   shot_id: string
   asset_id: number
 }
+
+/**
+ * [M10] 结构性编辑操作（spec §2.2）：按序应用、每条在应用时点校验；
+ * 前端建议序列 add* → patch* → remove* → reorder（reorder 含最终全部 id）。
+ */
+export type ShotOp =
+  | { op: 'reorder'; order: string[] }
+  | { op: 'add'; shot: Record<string, unknown> }
+  | { op: 'remove'; shot_id: string }
+  | { op: 'patch'; shot_id: string; fields: Record<string, unknown> }
 
 interface StoryboardSource {
   asset: Asset
@@ -213,23 +241,28 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
     versionsByTaskId.set(a.taskId, list)
   }
 
-  // 当前选中：output 保序，同镜取首个命中
-  const outIds = outputIdsOf(step)
-  const outById = new Map<number, Asset>()
-  if (outIds.length > 0) {
-    const rows = await db.select().from(assets).where(inArray(assets.id, outIds))
-    for (const a of rows) outById.set(a.id, a)
-  }
-  const selectedByShotId = new Map<string, number>()
-  for (const id of outIds) {
-    const a = outById.get(id)
-    if (!a) continue
+  // [M10] 上传资产版本组：本步骤 + taskId=null（外来图入镜；与任务版本按 createdAt 升序合并）
+  const uploadRows = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.stepId, step.id), isNull(assets.taskId), isNull(assets.deletedAt)))
+    .orderBy(asc(assets.createdAt))
+  const uploadsByShotId = new Map<string, Asset[]>()
+  for (const a of uploadRows) {
     const sid = shotIdOfAsset(a)
-    if (sid && !selectedByShotId.has(sid)) selectedByShotId.set(sid, id)
+    if (!sid) continue
+    const list = uploadsByShotId.get(sid) ?? []
+    list.push(a)
+    uploadsByShotId.set(sid, list)
   }
+
+  // 当前选中：output 保序，同镜取首个命中
+  const { selected: selectedByShotId } = await selectedMapOf(step)
 
   const boardShots: BoardShot[] = shots.map((s, order) => {
     const task = taskByShotId.get(s.id) ?? null
+    const merged = [...(task ? (versionsByTaskId.get(task.id) ?? []) : []), ...(uploadsByShotId.get(s.id) ?? [])]
+    merged.sort((x, y) => x.createdAt - y.createdAt)
     return {
       shotId: s.id,
       order,
@@ -240,7 +273,8 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
         ? { id: task.id, status: task.status, attempts: task.attempts, errorMsg: task.errorMsg, prompt: task.prompt }
         : null,
       selectedAssetId: selectedByShotId.get(s.id) ?? null,
-      versions: (task ? (versionsByTaskId.get(task.id) ?? []) : []).map(toVersionView),
+      versions: merged.map(toVersionView),
+      raw: s as Record<string, unknown>,
     }
   })
 
@@ -403,17 +437,164 @@ export async function applyStoryboardEdits(
   })
 
   // 替换产出步骤 output 中旧分镜 id 的位置（保位；gate/skipped 字段原样保留）
-  const producerOut = parseOutputJson(producer.output)
-  const ids = toIdArray(producerOut['asset_ids'])
-  const idx = ids.indexOf(src.asset.id)
-  if (idx < 0) throw new WorkbenchError('no_producer', '分镜资产未在产出步骤输出中，暂不支持编辑')
-  ids[idx] = newAsset.id
-  await db
-    .update(pipelineSteps)
-    .set({ output: JSON.stringify({ ...producerOut, asset_ids: ids }), updatedAt: editedAt })
-    .where(eq(pipelineSteps.id, producer.id))
+  const ids = await replaceProducerOutputAsset(producer, src.asset.id, newAsset.id, editedAt)
 
   return { assetId: newAsset.id, assetIds: ids, edited: changedItems.length }
+}
+
+// ---------- [M10] 结构性编辑（ops 协议） ----------
+
+/**
+ * [M10] 结构性编辑：ops 按序应用（每条在应用时点校验）→ 写分镜新版本资产 →
+ * 保位替换 producer output → 重建镜头步骤 output.asset_ids（新分镜序 × 当前选中映射）。不触发执行。
+ */
+export async function applyStoryboardOps(
+  runId: number,
+  stepKey: string,
+  ops: ShotOp[],
+): Promise<{ assetId: number; assetIds: number[]; shots: number }> {
+  if (!Array.isArray(ops) || ops.length === 0) throw new WorkbenchError('bad_ops', 'ops 需为非空数组')
+  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  const src = await resolveStoryboardSource(run, step)
+  const producer = await findProducerStep(src.asset, run)
+  if (!producer) throw new WorkbenchError('no_producer', '分镜资产无产出步骤溯源，暂不支持编辑')
+
+  // 工作副本：deep 拷贝保持裸数组 / {shots:[]} 形态；仅保留有 id 的有效镜头（结构性编辑统一规范化）
+  const deep = JSON.parse(JSON.stringify(src.parsed)) as unknown
+  const rawArr = ((Array.isArray(deep) ? deep : (deep as { shots?: unknown[] }).shots) ?? []) as unknown[]
+  let work: ShotSpec[] = rawArr.filter(
+    (s): s is ShotSpec => !!s && typeof s === 'object' && typeof (s as ShotSpec).id === 'string' && !!(s as ShotSpec).id,
+  )
+  for (const op of ops) work = applyOneOp(work, op)
+
+  // 写回原形态
+  if (Array.isArray(deep)) {
+    ;(deep as unknown[]).splice(0, (deep as unknown[]).length, ...work)
+  } else {
+    ;(deep as { shots?: ShotSpec[] }).shots = work
+  }
+
+  const baseName = src.asset.name.replace(/\.[^.]+$/, '').replace(/-工作台编辑$/, '')
+  const editedAt = Date.now()
+  const newAsset = await writeTextAsset(run.projectId, {
+    name: `${baseName}-工作台编辑.json`,
+    content: JSON.stringify(deep, null, 2),
+    purpose: src.asset.purpose ?? 'storyboard',
+    format: 'storyboard-json',
+    stepId: producer.id,
+    runId: run.id,
+    params: {
+      ops: ops.map((o) => (o as { op?: unknown })?.op),
+      shot_count: work.length,
+      source_asset_id: src.asset.id,
+      editedAt,
+    },
+    tags: ['workbench'],
+  })
+  await replaceProducerOutputAsset(producer, src.asset.id, newAsset.id, editedAt)
+  const assetIds = await rebuildShotOutput(step, work)
+  return { assetId: newAsset.id, assetIds, shots: work.length }
+}
+
+/** [M10] 拖拽重排（单条 reorder op 的便捷入口） */
+export async function reorderShots(
+  runId: number,
+  stepKey: string,
+  order: string[],
+): Promise<{ assetId: number; assetIds: number[]; shots: number }> {
+  return applyStoryboardOps(runId, stepKey, [{ op: 'reorder', order }])
+}
+
+/** 单条 op 应用（运行时不变量校验；失败抛 WorkbenchError） */
+function applyOneOp(shots: ShotSpec[], op: ShotOp): ShotSpec[] {
+  const raw = (op ?? {}) as Record<string, unknown>
+  switch (raw['op']) {
+    case 'reorder': {
+      const order = raw['order']
+      if (!Array.isArray(order)) throw new WorkbenchError('bad_order', 'reorder.order 需为 id 数组')
+      const byId = new Map(shots.map((s) => [s.id, s]))
+      const seen = new Set<string>()
+      for (const id of order) {
+        if (typeof id !== 'string' || !id) throw new WorkbenchError('bad_order', 'reorder.order 含非法 id')
+        if (seen.has(id)) throw new WorkbenchError('bad_order', `reorder.order 含重复 id：${id}`)
+        if (!byId.has(id)) throw new WorkbenchError('bad_order', `reorder.order 含未知 id：${id}`)
+        seen.add(id)
+      }
+      const missing = shots.map((s) => s.id).filter((id) => !seen.has(id))
+      if (missing.length > 0) throw new WorkbenchError('bad_order', `reorder.order 缺少镜头：${missing.join('、')}`)
+      return order.map((id) => byId.get(id as string)!)
+    }
+    case 'add': {
+      const shotRaw = raw['shot']
+      if (!shotRaw || typeof shotRaw !== 'object' || Array.isArray(shotRaw)) {
+        throw new WorkbenchError('bad_add', 'add.shot 需为对象')
+      }
+      const shot = JSON.parse(JSON.stringify(shotRaw)) as ShotSpec
+      if (typeof shot.id !== 'string' || !shot.id) throw new WorkbenchError('bad_add', 'add.shot.id 需为非空字符串')
+      if (shots.some((s) => s.id === shot.id)) throw new WorkbenchError('bad_add', `镜头 id ${shot.id} 已存在`)
+      if (typeof shot.image_prompt !== 'string' || !shot.image_prompt.trim()) {
+        throw new WorkbenchError('bad_add', `镜头 ${shot.id} image_prompt 需为非空字符串`)
+      }
+      return [...shots, shot]
+    }
+    case 'remove': {
+      const shotId = raw['shot_id']
+      if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'remove.shot_id 非法')
+      if (!shots.some((s) => s.id === shotId)) throw new WorkbenchError('unknown_shot', `镜头 ${shotId} 不在分镜中`)
+      if (shots.length <= 1) throw new WorkbenchError('keep_min', '至少保留 1 个镜头')
+      return shots.filter((s) => s.id !== shotId)
+    }
+    case 'patch': {
+      const shotId = raw['shot_id']
+      if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'patch.shot_id 非法')
+      const fields = raw['fields']
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+        throw new WorkbenchError('bad_patch', 'patch.fields 需为对象')
+      }
+      const shot = shots.find((s) => s.id === shotId)
+      if (!shot) throw new WorkbenchError('unknown_shot', `镜头 ${shotId} 不在分镜中`)
+      applyShotPatch(shot, fields as Record<string, unknown>)
+      return shots
+    }
+    default:
+      throw new WorkbenchError('bad_op', `未知操作：${String(raw['op'])}`)
+  }
+}
+
+/** patch 字段校验 + 浅合并（原地；id 拒绝修改，duration 双写 duration_sec，其余键宽松透传） */
+function applyShotPatch(shot: ShotSpec, fields: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === 'id') throw new WorkbenchError('bad_field', '镜头 id 不允许修改')
+    if (key === 'image_prompt') {
+      if (typeof value !== 'string' || !value.trim()) throw new WorkbenchError('bad_field', 'image_prompt 需为非空字符串')
+      shot.image_prompt = value.trim()
+      continue
+    }
+    if (key === 'motion_prompt') {
+      if (typeof value !== 'string') throw new WorkbenchError('bad_field', 'motion_prompt 需为字符串')
+      shot.motion_prompt = value.trim()
+      continue
+    }
+    if (key === 'duration') {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 60) {
+        throw new WorkbenchError('bad_field', 'duration 需在 (0, 60] 秒内')
+      }
+      const v = Math.round(value * 10) / 10
+      shot.duration = v
+      // 原分镜若用 duration_sec 口径（LLM 产出）则同步，防下游读取分歧（对齐 M7 applyPatches）
+      if (Object.prototype.hasOwnProperty.call(shot, 'duration_sec')) shot.duration_sec = v
+      continue
+    }
+    if (key === 'characters') {
+      if (!Array.isArray(value) || value.some((c) => typeof c !== 'string' || !(c as string).trim())) {
+        throw new WorkbenchError('bad_field', 'characters 需为非空字符串数组')
+      }
+      shot.characters = value.map((c) => (c as string).trim())
+      continue
+    }
+    // 其余键宽松透传（请求体已经过 JSON.parse，值为 JSON-safe）
+    shot[key] = value
+  }
 }
 
 // ---------- 单镜重生成 ----------
@@ -528,8 +709,11 @@ export async function applyShotSelection(
       if (a.deletedAt) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 已删除`)
       if (a.kind !== kindNeed) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 类型不符（需 ${kindNeed}）`)
       if (shotIdOfAsset(a) !== r.shotId) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 与镜头 ${r.shotId} 不匹配`)
-      if (a.taskId == null || !taskIds.has(a.taskId)) {
-        throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤生成任务`)
+      if (a.taskId != null) {
+        if (!taskIds.has(a.taskId)) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤生成任务`)
+      } else if (a.stepId !== step.id || a.runId !== run.id) {
+        // [M10] 上传资产（taskId=null）：须为本步骤本 run 的入库行
+        throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤上传资产`)
       }
     }
     // 分镜序保序（picks 提交序忽略）
@@ -543,6 +727,121 @@ export async function applyShotSelection(
     .set({ output: JSON.stringify({ ...out, asset_ids: nextIds }), updatedAt: Date.now() })
     .where(eq(pipelineSteps.id, step.id))
   return { assetIds: nextIds }
+}
+
+// ---------- [M10] 上传替换（外来图入镜） ----------
+
+/**
+ * [M10] 上传资产入库：kind 按扩展名校验（图步收 image / 视频步收 video）→ sha256 查重：
+ * - 命中 → 复制资产行（复用 relPath/mime/sha256 等文件属性，不重复落盘；用途独立不污染原资产）；
+ * - 未命中 → 落盘（shot_image → images / shot_video → video）+ 建行。
+ * 行属性：stepId=镜头步骤、taskId=null、runId、params={shotId, source:'upload', original_name}。
+ * 不走 importFiles：其 sha256 命中即复用原行，无法承载「复制行 + params/用途」语义。
+ */
+export async function importShotAsset(
+  run: { projectId: number; id: number },
+  step: PipelineStep,
+  shotId: string,
+  file: { name: string; data: Uint8Array },
+): Promise<Asset> {
+  const kindNeed = step.actionKey === 'ai_video' ? 'video' : 'image'
+  const ext = extname(file.name)
+  const kind = kindByExt(ext)
+  if (kind !== kindNeed) {
+    throw new WorkbenchError('bad_kind', `文件类型不符（当前步骤需 ${kindNeed}，得到 ${kind}${ext ? ` ${ext}` : ''}）`)
+  }
+  const purpose = kindNeed === 'video' ? 'shot_video' : 'shot_image'
+  const hash = sha256Hex(file.data)
+  const params = { shotId, source: 'upload', original_name: file.name }
+  const base = {
+    name: file.name,
+    kind,
+    purpose,
+    mime: mimeOfExt(ext),
+    ext: ext.slice(1),
+    sha256: hash,
+    params,
+    stepId: step.id,
+    runId: run.id,
+  }
+  const existed = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.projectId, run.projectId), eq(assets.sha256, hash), isNull(assets.deletedAt)))
+    .limit(1)
+  const src = existed[0]
+  if (src && src.relPath) {
+    return await registerAsset(run.projectId, {
+      ...base,
+      relPath: src.relPath,
+      fileSize: src.fileSize ?? file.data.byteLength,
+      width: src.width ?? undefined,
+      height: src.height ?? undefined,
+      duration: src.duration ?? undefined,
+    })
+  }
+  ensureProjectDirs(run.projectId)
+  const fileName = `${Date.now()}-${sanitizeName(file.name)}`
+  const relPath = relPathOf(run.projectId, purpose, fileName)
+  writeFileSync(absPathOf(relPath), file.data)
+  return await registerAsset(run.projectId, { ...base, relPath, fileSize: file.data.byteLength })
+}
+
+/** [M10] 上传 + 绑定组合（路由层单调用）：校验镜头 → 入库 → 绑定进 output */
+export async function uploadAndBindShotAsset(
+  runId: number,
+  stepKey: string,
+  shotId: string,
+  file: { name: string; data: Uint8Array },
+): Promise<{ asset: Asset; assetIds: number[] }> {
+  if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'shot_id 非法')
+  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  const src = await resolveStoryboardSource(run, step)
+  if (!src.shots.some((s) => s.id === shotId)) throw new WorkbenchError('unknown_shot', `镜头 ${shotId} 不在分镜中`)
+  const asset = await importShotAsset(run, step, shotId, file)
+  const assetIds = await rebuildShotOutput(step, src.shots, { shotId, assetId: asset.id })
+  return { asset, assetIds }
+}
+
+/**
+ * [M10] 绑定既有资产为该镜选中：归属校验（任务产物 ∈ 本步任务集 / 上传资产 stepId=本步骤）
+ * + params.shotId 匹配 → 重建 output（该镜位替换/按分镜序插入）。选片放宽后亦可经 select 端点达成，本函数供上传组合与探针。
+ */
+export async function bindUploadedShotAsset(
+  runId: number,
+  stepKey: string,
+  shotId: string,
+  assetId: number,
+): Promise<{ assetIds: number[] }> {
+  if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'shot_id 非法')
+  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  const src = await resolveStoryboardSource(run, step)
+  if (!src.shots.some((s) => s.id === shotId)) throw new WorkbenchError('unknown_shot', `镜头 ${shotId} 不在分镜中`)
+  const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
+  const a = rows[0]
+  if (!a) throw new WorkbenchError('bad_asset', `资产 #${assetId} 不存在`)
+  if (a.projectId !== run.projectId) throw new WorkbenchError('bad_asset', `资产 #${assetId} 不属于本项目`)
+  if (a.deletedAt) throw new WorkbenchError('bad_asset', `资产 #${assetId} 已删除`)
+  const kindNeed = step.actionKey === 'ai_video' ? 'video' : 'image'
+  if (a.kind !== kindNeed) throw new WorkbenchError('bad_asset', `资产 #${assetId} 类型不符（需 ${kindNeed}）`)
+  if (shotIdOfAsset(a) !== shotId) throw new WorkbenchError('bad_asset', `资产 #${assetId} 与镜头 ${shotId} 不匹配`)
+  await assertAssetBelongsToStep(run.id, step, a)
+  const assetIds = await rebuildShotOutput(step, src.shots, { shotId, assetId: a.id })
+  return { assetIds }
+}
+
+/** 资产归属校验：任务产物（∈ 本步任务集）或上传资产（stepId=本步骤） */
+async function assertAssetBelongsToStep(runId: number, step: PipelineStep, a: Asset): Promise<void> {
+  if (a.taskId != null) {
+    const rows = await db
+      .select({ id: genTasks.id })
+      .from(genTasks)
+      .where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id), eq(genTasks.id, a.taskId)))
+      .limit(1)
+    if (!rows[0]) throw new WorkbenchError('bad_asset', `资产 #${a.id} 不属于该步骤（任务或上传）`)
+  } else if (a.stepId !== step.id) {
+    throw new WorkbenchError('bad_asset', `资产 #${a.id} 不属于该步骤（任务或上传）`)
+  }
 }
 
 // ---------- 重新合成 ----------
@@ -580,6 +879,69 @@ async function getStepOrThrow(runId: number, stepKey: string): Promise<PipelineS
   const step = rows[0]
   if (!step) throw new WorkbenchError('not_found', `步骤 ${stepKey} 不存在`, 404)
   return step
+}
+
+/** [M10] output.asset_ids → 镜头选中映射（params.shotId 解析；同镜取首个命中） */
+async function selectedMapOf(step: PipelineStep): Promise<{ outIds: number[]; selected: Map<string, number> }> {
+  const outIds = outputIdsOf(step)
+  const selected = new Map<string, number>()
+  if (outIds.length > 0) {
+    const rows = await db.select().from(assets).where(inArray(assets.id, outIds))
+    const byId = new Map(rows.map((a) => [a.id, a]))
+    for (const id of outIds) {
+      const a = byId.get(id)
+      if (!a) continue
+      const sid = shotIdOfAsset(a)
+      if (sid && !selected.has(sid)) selected.set(sid, id)
+    }
+  }
+  return { outIds, selected }
+}
+
+/** [M10] producer output 保位替换（旧分镜 id → 新分镜 id；gate/skipped 字段原样保留） */
+async function replaceProducerOutputAsset(
+  producer: PipelineStep,
+  oldId: number,
+  newId: number,
+  updatedAt: number,
+): Promise<number[]> {
+  const producerOut = parseOutputJson(producer.output)
+  const ids = toIdArray(producerOut['asset_ids'])
+  const idx = ids.indexOf(oldId)
+  if (idx < 0) throw new WorkbenchError('no_producer', '分镜资产未在产出步骤输出中，暂不支持编辑')
+  ids[idx] = newId
+  await db
+    .update(pipelineSteps)
+    .set({ output: JSON.stringify({ ...producerOut, asset_ids: ids }), updatedAt })
+    .where(eq(pipelineSteps.id, producer.id))
+  return ids
+}
+
+/**
+ * [M10] 镜头步骤 output 重建：按「分镜序 × 各镜当前选中」重建 asset_ids。
+ * 选中映射 = 旧 output 按 params.shotId 解析；override 用于上传绑定的该镜位替换/插入；
+ * 未生成/无选中镜头跳过；已删除镜头的资产自然移除（重建式——历史资产仍可在版本组找回）。
+ */
+async function rebuildShotOutput(
+  step: PipelineStep,
+  shots: ShotSpec[],
+  override?: { shotId: string; assetId: number },
+): Promise<number[]> {
+  const { outIds, selected } = await selectedMapOf(step)
+  if (override) selected.set(override.shotId, override.assetId)
+  const nextIds: number[] = []
+  for (const s of shots) {
+    const id = selected.get(s.id)
+    if (id != null) nextIds.push(id)
+  }
+  if (!sameIds(nextIds, outIds)) {
+    const out = parseOutputJson(step.output)
+    await db
+      .update(pipelineSteps)
+      .set({ output: JSON.stringify({ ...out, asset_ids: nextIds }), updatedAt: Date.now() })
+      .where(eq(pipelineSteps.id, step.id))
+  }
+  return nextIds
 }
 
 /** 分镜源定位：目标步骤 input.shots[0] → 分镜资产（产出侧最新优先）→ JSON 解析（裸数组 / {shots:[]}） */
@@ -730,6 +1092,7 @@ function toVersionView(a: Asset): BoardVersion {
     height: a.height,
     duration: a.duration,
     prompt: a.prompt,
+    source: a.taskId == null ? 'upload' : 'task',
     urls: {
       file: `/api/v1/assets/${a.id}/file`,
       // v=2：早期缩略图端点直接回原图（客户端可能缓存 24h），版本参数强制失效旧缓存

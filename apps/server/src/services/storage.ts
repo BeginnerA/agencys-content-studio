@@ -31,14 +31,14 @@ export function projectAbsDir(projectId: number): string {
 }
 
 /** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
-export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json'] as const
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'chapter-manifest-json'] as const
 
 /** 文本 JSON 格式判定 */
 export function isJsonTextFormat(format?: string): boolean {
   return !!format && (JSON_FORMATS as readonly string[]).includes(format)
 }
 
-/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志；未列出的 purpose 回退 source） */
+/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志 + M9 小说链；未列出的 purpose 回退 source） */
 export function purposeSubDir(purpose?: string | null): string {
   switch (purpose) {
     case 'script':
@@ -50,6 +50,11 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'characters':
     case 'sets':
     case 'set_log':
+    case 'chapters':
+    case 'events':
+    case 'graph':
+    case 'plan':
+    case 'regex':
       return 'texts'
     case 'export':
       return 'exports'

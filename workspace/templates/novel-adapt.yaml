@@ -1,0 +1,142 @@
+key: novel-adapt
+version: 1
+name: 小说改编·切分→图谱→剧本
+description: 适合：把小说文本（txt/md，可多份）改编为可投入短剧生产链的分集剧本。流程：小说入库 → 章节切分（识别失败可开 AI 正则兜底；可审阅范围）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量，可选审阅）。
+genre: drama_short
+scene: plan
+next: [series-setup]
+inputs:
+  - key: novel
+    label: 小说原文文件（txt/md，可多份按序拼接）
+    kind: files
+    required: true
+    accept: [.txt, .md]
+  - key: adapt_brief
+    label: 改编要求（目标风格/受众/计划集数等；计划集数将决定分集数）
+    kind: text
+    required: true
+  - key: chapter_regex
+    label: 自定义章节正则（选填，两个捕获组：章号+标题；留空自动识别）
+    kind: text
+    required: false
+  - key: chapter_range
+    label: 章节范围（选填，如 1-30 或 1,3,5-9；按切分顺序编号）
+    kind: text
+    required: false
+  - key: with_ai_split
+    label: AI 生成切分正则（默认章节格式识别失败时兜底）
+    kind: bool
+    required: false
+    default: false
+  - key: with_split_review
+    label: 切分审阅（true=切分后挂闸门；false=免审继续）
+    kind: bool
+    required: false
+    default: true
+  - key: with_plan_review
+    label: 分集规划审阅（true=规划后挂闸门；false=免审继续）
+    kind: bool
+    required: false
+    default: true
+  - key: with_script_review
+    label: 剧本审阅（true=逐集剧本完成后挂闸门；false=免审继续）
+    kind: bool
+    required: false
+    default: false
+defaults:
+  llm: { temperature: 0.7, max_tokens: 24000 }
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 小说入库
+    inputs:
+      docs: input.novel
+      brief: input.adapt_brief
+  - key: make_split_regex
+    action: ai_text
+    title: AI 识别章节正则
+    when: input.with_ai_split == true
+    inputs:
+      novel: input.novel
+    params:
+      prompt_tpl: split-regex.md
+      output_purpose: regex
+      name_tpl: 章节切分正则.md
+      max_input_chars: 30000
+  - key: split_chapters
+    action: text_split
+    title: 章节切分
+    # 显式混合依赖：make_split_regex 条件跳过（with_ai_split=false）时不触发「依赖全跳过」级联；
+    # ingest 恒 succeeded 保证本步骤照常执行（对齐 mengbao after 惯例）
+    after: [ingest, make_split_regex]
+    inputs:
+      source: input.novel
+      chapter_regex: input.chapter_regex
+      chapter_range: input.chapter_range
+      ai_regex: steps.make_split_regex.asset
+    params:
+      min_chapters: 2
+      output_purpose: chapters
+    gate:
+      mode: required
+      message: 请审阅章节切分结果（章节数/标题/范围）；无误通过后进入逐章事件提取；可驳回并调整章节范围或正则后重跑
+      when: input.with_split_review == true
+      skip_label: 切分无误
+  - key: extract_events
+    action: ai_text
+    title: 逐章事件提取（批量）
+    inputs:
+      chapters: steps.split_chapters.assets
+      brief: steps.ingest.asset
+    params:
+      prompt_tpl: chapter-events.md
+      output_purpose: events
+      output_format: event-json
+      item_key: index
+      name_tpl: "第{index:03d}章-事件.json"
+    batch: { field: chapters, max_concurrent: 3, retry: 1 }
+  - key: merge_events
+    action: ai_text
+    title: 事件图谱归并
+    inputs:
+      events: steps.extract_events.assets
+      brief: steps.ingest.asset
+    params:
+      prompt_tpl: event-graph.md
+      output_purpose: graph
+      output_format: graph-json
+      name_tpl: 事件图谱.json
+  - key: plan_episodes
+    action: ai_text
+    title: 分集规划
+    inputs:
+      graph: steps.merge_events.asset
+      events: steps.extract_events.assets
+      brief: steps.ingest.asset
+    params:
+      prompt_tpl: plan-episodes.md
+      output_purpose: plan
+      output_format: plan-json
+      name_tpl: 分集规划.json
+    gate:
+      mode: required
+      message: 请审阅分集规划（集数/每集章范围/开场与收尾钩子）；认可通过后进入逐集改编；可驳回附修改意见重跑
+      when: input.with_plan_review == true
+      skip_label: 规划认可
+  - key: adapt_script
+    action: ai_text
+    title: 逐集改编剧本（批量）
+    inputs:
+      episodes: steps.plan_episodes.asset
+      brief: steps.ingest.asset
+    params:
+      prompt_tpl: adapt-script.md
+      output_purpose: script
+      item_key: ep
+      name_tpl: "第{ep:02d}集-改编剧本.md"
+    batch: { field: episodes, max_concurrent: 2, retry: 1 }
+    gate:
+      mode: required
+      message: 请审阅逐集改编剧本；认可通过后进入系列设定与单集制作链；可驳回附修改意见重跑
+      when: input.with_script_review == true
+      skip_label: 剧本认可
