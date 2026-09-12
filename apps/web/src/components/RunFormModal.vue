@@ -6,7 +6,13 @@ import TemplateInputFields from './TemplateInputFields.vue'
 import type { Asset, TemplateDetail, TemplateMeta } from '../lib/types'
 import { projectApi, runApi, templateApi } from '../lib/api'
 
-const props = defineProps<{ projectId: number; initialTemplateKey?: string; defaultTemplateKey?: string }>()
+const props = defineProps<{
+  projectId: number
+  initialTemplateKey?: string
+  defaultTemplateKey?: string
+  /** [M14] 输入预填（如剧集地图「起作」带 episode_number；仅覆盖模板声明的键） */
+  prefillInput?: Record<string, unknown>
+}>()
 const emit = defineEmits<{ done: [runId: number]; close: [] }>()
 
 const templates = ref<TemplateMeta[]>([])
@@ -14,6 +20,8 @@ const tplKey = ref('')
 const tpl = ref<TemplateDetail | null>(null)
 const assets = ref<Asset[]>([])
 const form = ref<Record<string, unknown>>({})
+/** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
+const adv = ref({ imageSize: '', resolution: '', duration: '', voice: '', temperature: '' })
 const err = ref('')
 const busy = ref(false)
 const loading = ref(false)
@@ -37,6 +45,13 @@ async function selectTemplate(key: string) {
       else if (inp.kind === 'bool') form.value[inp.key] = d === true
       else if (inp.kind === 'files') form.value[inp.key] = []
       else form.value[inp.key] = d ?? ''
+    }
+    // [M14] 起作预填（如 episode_number）：覆盖模板默认值（仅模板声明的键）
+    if (props.prefillInput) {
+      for (const inp of res.template.inputs) {
+        const pv = props.prefillInput[inp.key]
+        if (pv !== undefined) form.value[inp.key] = pv
+      }
     }
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -68,6 +83,20 @@ async function submit() {
     else if (inp.kind === 'files') input[inp.key] = (v as number[]) ?? []
     else input[inp.key] = v ?? ''
   }
+  // [M14] 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
+  const p: Record<string, Record<string, unknown>> = {}
+  if (adv.value.imageSize.trim()) p.image = { size: adv.value.imageSize.trim() }
+  const resolution = adv.value.resolution
+  const duration = adv.value.duration.trim() ? Number(adv.value.duration) : undefined
+  if (resolution || (duration !== undefined && Number.isFinite(duration))) {
+    p.video = {}
+    if (resolution) p.video.resolution = resolution
+    if (duration !== undefined && Number.isFinite(duration)) p.video.duration = duration
+  }
+  if (adv.value.voice.trim()) p.audio = { voice: adv.value.voice.trim() }
+  const temperature = adv.value.temperature.trim() ? Number(adv.value.temperature) : undefined
+  if (temperature !== undefined && Number.isFinite(temperature)) p.llm = { temperature }
+  if (Object.keys(p).length > 0) input['_params'] = p
   busy.value = true
   err.value = ''
   try {
@@ -120,6 +149,32 @@ init()
         <template v-else-if="tpl">
           <div class="desc muted" style="margin-bottom: 10px">{{ tpl.description }}</div>
           <TemplateInputFields :tpl="tpl" :assets="assets" :values="form" @change="(k, v) => (form[k] = v)" />
+          <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认） -->
+          <details class="adv">
+            <summary>本集参数覆盖（可选）——仅本 run 生效，优先于项目设置</summary>
+            <div class="adv-grid">
+              <label class="fld">出图尺寸
+                <input v-model="adv.imageSize" placeholder="宽x高，如 832x1248（默认用项目设置）" />
+              </label>
+              <label class="fld">视频清晰度
+                <select v-model="adv.resolution">
+                  <option value="">默认</option>
+                  <option value="480p">480p</option>
+                  <option value="720p">720p</option>
+                  <option value="1080p">1080p</option>
+                </select>
+              </label>
+              <label class="fld">单镜时长（秒）
+                <input v-model="adv.duration" type="number" min="1" max="30" placeholder="1–30（默认用项目设置）" />
+              </label>
+              <label class="fld">配音音色
+                <input v-model="adv.voice" placeholder="如 Cherry（默认用项目设置）" />
+              </label>
+              <label class="fld">LLM 温度
+                <input v-model="adv.temperature" type="number" min="0" max="2" step="0.1" placeholder="0–2（默认用项目设置）" />
+              </label>
+            </div>
+          </details>
         </template>
       </template>
 
@@ -168,5 +223,26 @@ init()
 
 .desc {
   margin-top: -4px;
+}
+
+.adv {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.adv summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.adv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin-top: 4px;
 }
 </style>

@@ -2,7 +2,7 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）；**M12 旧版本清理与收藏 + 图像检测**（软删/回收两段式 + 三重保留 + 宽容降级检测；探针 66 项全绿，实弹全通过）；**M13 素材链补全**（视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库；探针 121 项全绿，实弹七项 7/7 + DOM 22/22）；**M14 平台层收官**（集级参数覆盖 / 剧集地图 / 静态托管；桌面端经决策取消；探针四节全绿，实弹 DOM 14/14）
 
 ## 技术栈
 
@@ -207,6 +207,17 @@ pnpm dev    # 并行起双端：
 - **Web**：`EntitiesView.vue` 卡片多选 + 「批量润色（N）」+ 「上传新图」+ states 表单 / 卡片 chips（前 2 条 + 「+N」）；`StylePresetsView.vue` 「从参考图提取画风词（可选）」区（项目 → 缩略图勾选 ≤4 → 提取预填）；`ProjectFormModal.vue` 「视觉风格」checkbox 多选面板
 
 验证：`pnpm --filter @acs/server probe:m13`（七节：style-multi / vision / video-refs / upload / polish / states / regression，零网络零计费）。
+
+## M14 能力速览（集级参数覆盖 + 剧集地图 + 静态托管）
+
+把「一个项目 = 一部剧」的多次启动升级为可管理的两件事：**集级参数覆盖**（每个 run 启动时可选覆盖生成参数，仅本集生效，优先级 run 覆盖 > 项目设置 > 模板默认）；**剧集地图**（剧与集落库的通用两级结构：集号 / 标题 / 状态 / 起作入口，与最新 run 状态双源合并展示；起作 = 一键开该集的 RunFormModal 并预选项目默认模板 + 预填集号）；**静态托管**（生产模式一条命令出成品工作站：`CSTUDIO_WEB_DIST` 指向构建产物即可经 server 直接访问，SPA 深链回退 + 路径穿越防护）。设计三原则：**runtime 叠加**（`createStepContext` 合并链顶层注入，action 零改动、既有 run 逐字等价）、**双源合并派生**（集状态 = 最新 run 状态优先，回落行原值；不挂事件不改生命周期）、**env 驱动**（静态托管无配置 = 现行为逐字不变）。
+
+- **集级参数**（`run.input._params`，对齐 M11 `_compose` 内部键先例）：白名单四组——`image`（provider / model / size）/ `video`（provider / model / resolution 480p·720p·1080p / duration 1–30 clamp）/ `audio`（provider / voice）/ `llm`（temperature 0–2 clamp / max_tokens 256–65536 clamp）；未知键 / 类型不符 → 400 `bad_params` 附键名；Web「启动流水线」表单底部「本集参数覆盖（可选）」折叠区五控件（出图尺寸 / 视频清晰度 / 单镜时长 / 配音音色 / LLM 温度）；续跑随 input 复制（同集语义对齐）
+- **剧集地图**（`series` / `episodes` 两级通用表，一项目一剧）：`GET/POST /projects/:id/series` + `PATCH/DELETE /series/:id`（扩容追集 / 缩容仅删尾部空集，占用行 409 `episode_in_use`）+ `PATCH/DELETE /episodes/:id`（标题 / 手工状态）；run 联动 = 启动端点后置回写 `latest_run_id`（失败不阻断）；`SeriesBoard.vue` 剧集地图卡（集行：集号 / 行内编辑标题 / 状态徽标 / Run 链接 / 手工状态下拉 / 起作 / 删）
+- **静态托管**（`CSTUDIO_WEB_DIST`，app.ts）：`/api/v1` 挂载后 404 兜底前——`existsSync(index.html)` 才启用；`GET /assets/*` 静态文件 + 其余非 `/api/*` GET 回退 `index.html`（SPA 深链）；window-safe 路径归一化 + 穿越防护；`/api/*` 未命中保持 JSON 404 优先
+- **桌面端〔已取消〕**（2026-09-12 用户决策）：项目定位本地单机 Web 工具，与红线「Electron / Docker / 远程部署 → 永久不做」一致；scaffold 全量删除（git 零残留）；静态托管独立保留
+
+验证：`pnpm --filter @acs/server probe:m14`（四节：params / series / static / regression，零网络零计费）。
 
 ## 内置模板
 
@@ -429,6 +440,20 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 9 | ⑥ states 实弹 | ✅ | PUT `states:['雨夜发光版','晴天沉睡版']` → 读回 + DB 入库一致；替换语义（2→1 项再定稿 2 项）；`GET /entities` 列表视图透出 |
 | 10 | DOM 六要素（无头 Chrome CDP） | ✅ | **22/22**：甲卡片 states chips「雨夜发光版/晴天沉睡版」+「2 张定妆照」+ 缩略图 / 批量润色按钮 0→1→2（勾选甲、乙）且选中态 ×2 / 预设列表含「M13 实弹·提取预设」（snippet 透出）/ 新建预设弹窗提取区（标题 + 禁用按钮 + 选项目后 98 张缩略图 + 「参考图（已选 0/4）」）/ 素材编辑弹窗（states 预填两行 + 「上传新图」+ 已选 2 张）/ 项目编辑多选回填 2 项；截图 6 张 `apps/web/tmp-m13-dom-1..6-*.png` |
 | 11 | 越界核查（红线复核） | ✅ | `git status`：engine / refs / loader / workspace/templates 零 diff；schema.ts 仅 +`states` 列 + db 幂等迁移（设计 §5 白名单内）；adapters 仅能力位 ×3 + 类型；package.json 仅 +`probe:m13`（dependencies 零新增）；改动面 = 工作区合计 21 改（976+/69−）+ 10 未跟踪；其中代码 20 改（946+/69−）+ 4 新件（`entity-polish.ts` / `probe-m13.ts` / 提示词 `style-extract.md` · `entity-polish.md`），文档 README +30 行 + DOM 截图 6 张 |
+
+## M14 验收快照（2026-09-12，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：四节全绿 | ✅ | 双端 typecheck 0 错；`probe:m14` 四节全过（params / series / static / regression）；回归 m7·m8·m10·m11·m12·m13 全绿 |
+| 2 | 集级参数实弹（Run 101） | ✅ | `_params = {image.size:768x768, video.duration:10, llm.temperature:0.5}` 入参快照；20/20 gen_task `params.size=768x768`（覆盖命中）+ `stylePresetIds=[1,2]`（项目层叠加）；`video.duration` 消费点（ai-video 镜头时长优先链）经 probe context 断言 |
+| 3 | 零漂移对照（Run 98 重跑·无覆盖） | ✅ | 20 任务 id 集合不变 + 既有 7 键逐值零漂移；唯一演进键 `stylePresetIds`（s01 [1]→[1,2]——M13 单值回退 → 多预设叠加的预期收敛，非漂移）；`size=832x1248` 模板默认保持；产出 20/20 更新 |
+| 4 | 剧集实体实弹（项目 10） | ✅ | 建剧「M14 实弹·剧集」3 集；Run 101/102 起作联动 `latest_run_id`；派生状态 completed/failed/locked 三态；集1标题行内编辑 200 |
+| 5 | 剧集 409 矩阵 | ✅ | 缩容（含已关联 run 的集）→ 409 `episode_in_use`；删剧 → 409 `series_in_use`；两次 409 后剧视图未受损 |
+| 6 | 静态托管冒烟（3101 隔离实例） | ✅ | 隔离数据目录 + 真实 dist：`/` 200 text/html + 真实 assets js 200 text/javascript（96.5KB）+ 深链 `/projects/12/timeline` 回退 index + `/api` 未命中 JSON 404 优先 |
+| 7 | DOM 验收（无头 Chrome CDP） | ✅ | **14/14**：剧集地图卡（3 集）/ 三集行（001 已完成 Run#101 / 002 失败 Run#102 / 003 未起作裸行）/ 起作接力直达表单（`initialTemplateKey` 命中「短剧·单集」，无选卡）/ 覆盖区 summary + 5 控件 + 集号预填 3 + 滚动可见（open h=254 inView）；截图 2 张 `apps/web/tmp-m14-dom-1..2-*.png` |
+| 8 | 实弹暴露缺陷修复 | ✅ | `SeriesBoard` 头部 `.bh/.bt` 系 ProjectDetailView scoped 样式不穿透子组件 → 标题粘连 + 按钮组换行（DOM 截图目检发现 → 组件内补定义 → 复跑复验）；覆盖区滚动可见性经 W6d 实测（弹窗 body 滚动容器语义） |
+| 9 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / loader / 模板 / 提示词零 diff；schema.ts 仅 +series/episodes 两表（设计 §4 白名单内）；package.json 仅 +`probe:m14`；改动面 = 12 改 + 5 新件（probe-m14 / routes/series / services/run-params / services/series / SeriesBoard.vue） |
 
 ## M7 验收快照（2026-09-12，实弹）
 

@@ -5,6 +5,7 @@ import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
+import SeriesBoard from '../components/SeriesBoard.vue'
 import BatchFormModal from '../components/BatchFormModal.vue'
 import ProjectDangerModal from '../components/ProjectDangerModal.vue'
 import ProjectFormModal from '../components/ProjectFormModal.vue'
@@ -135,10 +136,14 @@ onMounted(() => {
     void loadCore({ silent: true })
     // 资产区仅在已加载过后才跟随刷新（未打开过则不触发无谓请求）
     if (assetsLoaded) void loadAssets({ silent: true })
+    // [M14] 集状态派生自最新 run → 终态后静默重载剧集地图
+    seriesRef.value?.reload(true)
     schedulePendingRefresh()
   }
   const onGate = () => {
     void loadCore({ silent: true })
+    // [M14] 进入闸门 → 集徽标切「待审阅」
+    seriesRef.value?.reload(true)
     schedulePendingRefresh()
   }
   studioOn('run.step', onStep)
@@ -426,8 +431,26 @@ async function doUpload() {
 const showRunForm = ref(false)
 const showBatch = ref(false)
 
+// [M14] 剧集地图「起作」：记录集号 → 弹窗预选项目模板 + 预填 episode_number
+const seriesRef = ref<InstanceType<typeof SeriesBoard> | null>(null)
+const startEpisodeNumber = ref<number | null>(null)
+const runFormTplKey = computed(() => (startEpisodeNumber.value !== null ? defaultTplKey.value : undefined))
+const runFormPrefill = computed(() => (startEpisodeNumber.value !== null ? { episode_number: startEpisodeNumber.value } : undefined))
+
+function onStartEpisode(n: number) {
+  startEpisodeNumber.value = n
+  showRunForm.value = true
+}
+
+function closeRunForm() {
+  showRunForm.value = false
+  startEpisodeNumber.value = null
+}
+
 function onRunCreated(runId: number) {
   showRunForm.value = false
+  startEpisodeNumber.value = null
+  seriesRef.value?.reload(true)
   void loadCore({ silent: true })
   router.push(`/runs/${runId}`)
 }
@@ -619,6 +642,9 @@ function errOf(r: Run): string {
             <RouterLink class="gb-go" :to="`/runs/${r.id}`">去审阅 →</RouterLink>
           </div>
         </div>
+
+        <!-- [M14] 剧集地图（一项目一剧；起作直达 run 表单并预填集号） -->
+        <SeriesBoard ref="seriesRef" :project-id="projectId" @start-episode="onStartEpisode" />
 
         <div v-if="coreErr" class="err-text">{{ coreErr }}</div>
 
@@ -831,13 +857,15 @@ function errOf(r: Run): string {
       </section>
     </template>
 
-    <!-- 启动 run -->
+    <!-- 启动 run（[M14] 起作入口预选项目模板 + 预填 episode_number） -->
     <RunFormModal
       v-if="showRunForm"
       :project-id="projectId"
+      :initial-template-key="runFormTplKey"
       :default-template-key="defaultTplKey"
+      :prefill-input="runFormPrefill"
       @done="onRunCreated"
-      @close="showRunForm = false"
+      @close="closeRunForm"
     />
 
     <!-- 上传素材 -->

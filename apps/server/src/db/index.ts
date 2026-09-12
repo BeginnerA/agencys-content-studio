@@ -126,4 +126,38 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // [M14] 剧集实体建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS series (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        name text NOT NULL,
+        total_episodes integer DEFAULT 0 NOT NULL,
+        content_asset_id integer,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_series_project ON series (project_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS episodes (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        series_id integer NOT NULL,
+        number integer NOT NULL,
+        title text,
+        status text DEFAULT 'locked' NOT NULL,
+        content_asset_id integer,
+        latest_run_id integer,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_project_number ON episodes (project_id, number)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_episodes_series ON episodes (series_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

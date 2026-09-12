@@ -8,10 +8,11 @@ import { pipelineRuns, type PipelineRun } from '../db/schema'
 import { loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
 import type { Template, TemplateInputDef } from '../pipeline/types'
+import { RunParamsError, normalizeRunParamsOrThrow, type RunParams } from './run-params'
 
 /** 输入/模板非法（路由层转 400；与 HttpError 解耦，services 不依赖路由层） */
 export class InvalidRunInputError extends Error {
-  constructor(readonly code: 'bad_input' | 'bad_template', message: string) {
+  constructor(readonly code: 'bad_input' | 'bad_template' | 'bad_params', message: string) {
     super(message)
     this.name = 'InvalidRunInputError'
   }
@@ -25,14 +26,25 @@ export function loadTemplateOrThrow(templateKey: string): Template {
   }
 }
 
-/** 归一化 + 校验（口径与 M1 runs.ts 完全一致；validateRunInput 内部含 defaults 应用） */
+/**
+ * 归一化 + 校验（口径与 M1 runs.ts 完全一致；validateRunInput 内部含 defaults 应用）。
+ * [M14] 集级参数覆盖：input._params（内部键）先校验后附回快照（normalizeInput 仅保留模板声明键）。
+ */
 export function prepareRunInput(template: Template, input: Record<string, unknown>): Record<string, unknown> {
+  let params: RunParams
+  try {
+    params = normalizeRunParamsOrThrow(input['_params'])
+  } catch (err) {
+    if (err instanceof RunParamsError) throw new InvalidRunInputError('bad_params', err.message)
+    throw err
+  }
   const norm = normalizeInput(template.inputs, input)
   try {
     validateRunInput(template, norm)
   } catch (err) {
     throw new InvalidRunInputError('bad_input', (err as Error).message)
   }
+  if (Object.keys(params).length > 0) norm['_params'] = params
   return norm
 }
 

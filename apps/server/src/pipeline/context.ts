@@ -5,6 +5,7 @@ import { assets, type Asset, type PipelineRun, type PipelineStep } from '../db/s
 import { eq, inArray } from 'drizzle-orm'
 import { RUN_LOGS_DIR } from '../env'
 import { emitStudioEvent } from '../services/events'
+import { readRunParams } from '../services/run-params'
 import { absPathOf, readTextAsset } from '../services/storage'
 import type { Template, TemplateStepDef } from './types'
 
@@ -23,7 +24,7 @@ export interface StepContext {
   def: TemplateStepDef
   /** 引用解析后的实际输入 */
   input: Record<string, unknown>
-  /** 合并后参数（template.defaults + project.settings 同名覆盖） */
+  /** 合并后参数（template.defaults + project.settings + run 级 _params 三层叠加，后者优先） */
   settings: RunSettings
   /** 追加步骤日志（事件 + RUN_LOGS_DIR/{runId}.log 双写） */
   log(chunk: string): void
@@ -49,11 +50,13 @@ export async function createStepContext(opts: {
   projectSettings?: Record<string, unknown>
 }): Promise<StepContext> {
   const { run, step, template, def, input } = opts
+  // [M14] 集级参数覆盖（run.input._params，启动时快照）：无键时合并结果与旧行为逐字等价
+  const runParams = readRunParams(run.input)
   const settings: RunSettings = {
-    llm: { ...((template.defaults?.llm as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.llm as Record<string, unknown>) ?? {}) },
-    image: { ...((template.defaults?.image as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.image as Record<string, unknown>) ?? {}) },
-    video: { ...((template.defaults?.video as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.video as Record<string, unknown>) ?? {}) },
-    audio: { ...((template.defaults?.audio as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.audio as Record<string, unknown>) ?? {}) },
+    llm: { ...((template.defaults?.llm as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.llm as Record<string, unknown>) ?? {}), ...(runParams.llm ?? {}) },
+    image: { ...((template.defaults?.image as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.image as Record<string, unknown>) ?? {}), ...(runParams.image ?? {}) },
+    video: { ...((template.defaults?.video as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.video as Record<string, unknown>) ?? {}), ...(runParams.video ?? {}) },
+    audio: { ...((template.defaults?.audio as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.audio as Record<string, unknown>) ?? {}), ...(runParams.audio ?? {}) },
   }
 
   const log = (chunk: string): void => {

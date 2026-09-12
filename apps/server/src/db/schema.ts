@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, real, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
  * agencys-content-studio M1 schema —— 通用领域模型（对照设计规格 §4）
@@ -246,6 +246,42 @@ export const stylePresets = sqliteTable('style_presets', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** [M14] 剧集主表（平台级通用：一项目一剧；集列表体见 episodes） */
+export const series = sqliteTable(
+  'series',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(), // 一项目一剧（应用层唯一）
+    name: text('name').notNull(), // 剧名
+    totalEpisodes: integer('total_episodes').notNull().default(0), // 计划集数（集行数事实源）
+    contentAssetId: integer('content_asset_id'), // 起作资产（如系列设定包资产 id）
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_series_project').on(t.projectId)],
+)
+
+/** [M14] 集表（平台级通用：集号/标题/状态/内容资产 + 最新 run 绑定） */
+export const episodes = sqliteTable(
+  'episodes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    seriesId: integer('series_id').notNull(),
+    number: integer('number').notNull(), // 集号（≥1；项目内唯一）
+    title: text('title'), // 集标题（可选）
+    status: text('status').notNull().default('locked'), // locked|planning|done（手工置位）；展示经最新 run 状态派生合并
+    contentAssetId: integer('content_asset_id'), // 本集剧本/内容资产
+    latestRunId: integer('latest_run_id'), // 最近一次以本集起作的 run（启动端点后置回写）
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_episodes_project_number').on(t.projectId, t.number), // 集号项目内唯一
+    index('idx_episodes_series').on(t.seriesId),
+  ],
+)
+
 /** M4 批次表（通用；同模板多 run 调度与进度） */
 export const batches = sqliteTable('batches', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -312,6 +348,8 @@ export type ApiConfig = typeof apiConfigs.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type CharacterRow = typeof characters.$inferSelect
 export type StylePreset = typeof stylePresets.$inferSelect
+export type Series = typeof series.$inferSelect
+export type Episode = typeof episodes.$inferSelect
 export type Batch = typeof batches.$inferSelect
 export type UsageRecord = typeof usageRecords.$inferSelect
 export type Publication = typeof publications.$inferSelect

@@ -668,3 +668,32 @@ export interface GcResult {
   freed_bytes: number
   note: string
 }
+
+// ===== [M14] 剧集实体（series → episodes 两级，一项目一剧） =====
+
+/** [M14] 剧（系列） */
+export interface SeriesInfo {
+  id: number
+  projectId: number
+  name: string
+  totalEpisodes: number
+  contentAssetId: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** [M14] 集（status 为派生展示态：最新 run 状态优先；rowStatus 为行原值，编辑回显用） */
+export interface Episode {
+  id: number
+  projectId: number
+  seriesId: number
+  number: number
+  title: string | null
+  status: string
+  rowStatus: string
+  contentAssetId: number | null
+  latestRunId: number | null
+  runStatus: string | null
+  createdAt: number
+  updatedAt: number
+}

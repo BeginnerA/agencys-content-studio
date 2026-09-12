@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
 import { resetStepForRerun } from '../services/shot-workbench'
+import { mapRunToEpisode } from '../services/series'
 
 export const runsRoutes = new Hono()
 
@@ -49,6 +50,8 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
     throw err
   }
   engine.startRun(run.id)
+  // [M14] 剧集联动（后置回写 latest_run_id；宽容降级：无剧/无集/失败均不影响 run）
+  await linkEpisode(projectId, run.input, run.id)
   return c.json({ run: toRunView(run) }, 202)
 }))
 
@@ -198,6 +201,8 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
       .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
   }
   engine.startRun(newRun.id)
+  // [M14] 续跑同款联动（latest_run_id 指向本集最新 run）
+  await linkEpisode(newRun.projectId, newRun.input, newRun.id)
   return c.json({ run: toRunView(newRun) }, 202)
 }))
 
@@ -244,6 +249,16 @@ runsRoutes.post('/system/recover', h(async (c) => {
 async function findRun(id: number) {
   const rows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, id)).limit(1)
   return rows[0] ?? null
+}
+
+/** [M14] 剧集联动（后置回写；宽容降级：任何异常不阻断 run 启动） */
+async function linkEpisode(projectId: number, inputJson: string | null, runId: number): Promise<void> {
+  try {
+    const epNum = (JSON.parse(inputJson ?? '{}') as { episode_number?: unknown }).episode_number
+    await mapRunToEpisode(projectId, epNum, runId)
+  } catch {
+    /* 宽容跳过 */
+  }
 }
 
 function safeParse(s: string | null): unknown {

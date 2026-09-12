@@ -10,6 +10,7 @@ import type {
   EntityItem,
   EntityKind,
   EntityPolishResult,
+  Episode,
   ExportAssetLite,
   FetchModelsResult,
   GcResult,
@@ -26,6 +27,7 @@ import type {
   Run,
   RunAssetLite,
   RunDetail,
+  SeriesInfo,
   ShotBoardData,
   ShotEditItem,
   ShotOp,
@@ -485,4 +487,25 @@ export const composeApi = {
   },
   /** 移除 BGM（软删本 run 有效行） */
   removeBgm: (runId: number) => api.del<{ ok: boolean; note: string }>(`/api/v1/runs/${runId}/compose/bgm`),
+}
+
+// ===== [M14] 剧集实体（series → episodes 两级，一项目一剧） =====
+
+export const seriesApi = {
+  /** 项目剧 + 集列表（无剧 → { series: null, episodes: [] }） */
+  get: (projectId: number) =>
+    api.get<{ series: SeriesInfo | null; episodes: Episode[] }>(`/api/v1/projects/${projectId}/series`),
+  /** 建剧（生成 1..N 集行；已有剧 → 409 series_exists） */
+  create: (projectId: number, body: { name: string; total_episodes: number; content_asset_id?: number | null }) =>
+    api.post<{ series: SeriesInfo; episodes: Episode[] }>(`/api/v1/projects/${projectId}/series`, body),
+  /** 集数调整（扩容追集 / 缩容删尾部空集；被删集有 run / 资产 → 409 episode_in_use） */
+  updateTotal: (seriesId: number, totalEpisodes: number) =>
+    api.patch<{ series: SeriesInfo; episodes: Episode[] }>(`/api/v1/series/${seriesId}`, { total_episodes: totalEpisodes }),
+  /** 删剧（任集关联 run / 资产 → 409 series_in_use） */
+  remove: (seriesId: number) => api.del<{ ok: boolean }>(`/api/v1/series/${seriesId}`),
+  /** 单集更新（title / status locked|planning|done / content_asset_id） */
+  updateEpisode: (episodeId: number, body: { title?: string | null; status?: string; content_asset_id?: number | null }) =>
+    api.patch<{ episode: Episode }>(`/api/v1/episodes/${episodeId}`, body),
+  /** 删集（保留 run 与资产，仅删集行） */
+  removeEpisode: (episodeId: number) => api.del<{ ok: boolean }>(`/api/v1/episodes/${episodeId}`),
 }
