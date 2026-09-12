@@ -64,9 +64,13 @@ export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
   }
 }
 
+/** [M13] 多模态内容分片（OpenAI 兼容：文本 / 图片 data URI；messages 直通请求体） */
+export type ChatContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  /** 纯文本或分片数组（视觉模型多图入参，M13） */
+  content: string | ChatContentPart[]
 }
 
 export interface ChatOptions {

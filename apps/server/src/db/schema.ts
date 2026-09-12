@@ -225,6 +225,7 @@ export const characters = sqliteTable(
     appearance: text('appearance'), // 外观锚定文本（注入核心）
     negative: text('negative'), // 免漂移负向词
     voice: text('voice'), // 声线基准短语
+    states: text('states').notNull().default('[]'), // [M13] 角色状态变体（JSON string[]：{剧情节点}：{状态短语}；仅 character 有意义）
     refAssetIds: text('ref_asset_ids').notNull().default('[]'), // 定妆照资产 ids（JSON）
     meta: text('meta').notNull().default('{}'),
     createdAt: integer('created_at').notNull(),

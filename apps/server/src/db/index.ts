@@ -99,6 +99,16 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // [M13] states 变体入库：characters.states 列（存量行 default '[]'）
+  if (!charHas.has('states')) {
+    try {
+      await sqlite.execute("ALTER TABLE characters ADD COLUMN states text DEFAULT '[]' NOT NULL")
+      log.info('ensureColumn: characters.states 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
   // [M8] 风格预设库建表兜底（migrate 体系外旧库）
   try {
     await sqlite.execute(

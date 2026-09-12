@@ -323,6 +323,8 @@ export interface EntityItem {
   negative: string | null
   /** 声线（仅 kind=character 有意义；scene/prop 恒为 null） */
   voice: string | null
+  /** [M13] 状态变体（仅 kind=character 有意义；「剧情节点：状态短语」；scene/prop 恒为 []） */
+  states: string[]
   refAssetIds: number[]
   refAssets: CharacterRefAsset[]
   meta?: Record<string, unknown>
@@ -330,7 +332,7 @@ export interface EntityItem {
   updatedAt: number
 }
 
-/** [M8] 风格预设（平台级通用画风词块；项目经 settings.style_preset_id 单值绑定） */
+/** [M8] 风格预设（平台级通用画风词块；[M13] 项目经 settings.style_preset_ids 数组多选绑定，旧单值键兼容回退） */
 export interface StylePresetItem {
   id: number
   name: string
@@ -341,6 +343,20 @@ export interface StylePresetItem {
   isActive: number
   createdAt: number
   updatedAt: number
+}
+
+/** [M13] 参考图视觉提取结果（POST /style-presets/extract；不落库，供表单预填） */
+export interface StyleExtractResult {
+  snippet: string
+  provider: string
+  model: string
+}
+
+/** [M13] 批量润色结果（POST /entities/polish；failed 项不改动，可重选重试） */
+export interface EntityPolishResult {
+  ok: boolean
+  polished: Array<{ id: number; name: string; appearance: string }>
+  failed: Array<{ id: number; error: string }>
 }
 
 export interface MemoryStatus {

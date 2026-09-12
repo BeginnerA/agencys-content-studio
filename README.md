@@ -194,6 +194,20 @@ pnpm dev    # 并行起双端：
 
 验证：`pnpm --filter @acs/server probe:m12`（六节：cleanup / imagecheck / gc / board / merge-guard / regression，零网络零计费）。
 
+## M13 能力速览（素材链补全：视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库）
+
+把素材链从「可用」升级到「好用」：**从参考图提取画风词**（选 1~4 张同基调参考图 → 视觉 LLM 提取 → 预填预设表单，不落库防幻觉词污染）；**风格预设多选叠加**（项目可叠挂多个预设，出图时按绑定顺序逐字拼接「视觉风格：A；B」并在任务 params 快照溯源；旧单值绑定兼容不变）；**视频侧场景/道具参考图**（无首帧图时自动注入场景/道具参考图；首帧优先策略跨厂商统一）；**素材参考图上传通道**（素材页就地传图，sha256 去重复用）；**批量润色**（素材页多选 ≤10 项 → LLM 规范化 appearance，失败项不阻断可重试）；**states 状态变体入库**（角色状态变体入库 / 编辑 / 卡片 chips 展示）。设计三原则：**提取不落库**（确认后才入库）、**首帧优先**（规避 Wan 帧与参考互斥）、**宽容降级全链**（提取 / 润色 / 上传 / 参考图注入失败均不炸主链）。
+
+- **视觉提取**（`POST /style-presets/extract`）：`ChatMessage.content` 放宽为多模态（OpenAI 兼容 `image_url`）；`style-extract.md` 格式令输出「（画风：中文,english）」；`assetToDataUri` 8MB/张 · 1~4 张；宽容解析（围栏剥离 / 括号归一 / 全文本回退 / cap 400）
+- **多预设叠加**（零新表）：settings 新键 `style_preset_ids`（有序去重）+ 旧 `style_preset_id` 兼容回退；`combineStyleSnippets` 「；」拼接；`injectStyleAnchor` 签名不破（单值行为与 M8 逐字等价）；`gen_tasks.params` 双写 `stylePresetIds` + `stylePresetId`
+- **视频参考图**（`collectSetRefAssetIds` / `planVideoRefs`）：场景≤1 + 道具≤1 保序去重；决策四分支——无图 `none` / 供应商无能力 `no_cap` / 有首帧 `frame_first` / 注入 `ok`；`params.setRefAssetIds` 快照；volcengine / minimax / aliyun-wan 适配器能力位 `referenceImages='base64'`（通道 M6 已备）
+- **上传通道**（`POST /entities/:id/ref-images`）：multipart → `importFiles`（sha256 命中复用原行）→ `attachRefAssets` 并集挂接；全局实体 400 / 非图 400 / >10MB 413；Web 编辑态「上传新图」
+- **批量润色**（`POST /entities/polish` + `entity-polish.md`）：只更新 appearance（summary / negative / voice 不动）；逐项串行 ≤10 项 / 次；失败收集不阻断（失败项保留选中可重试）；用量记录（全局实体跳过）
+- **states 入库**：`characters` + `states` 列（幂等迁移）；char_profile v2 契约 `states[]`（「{剧情节点}：{状态短语}」）全链打通（normalizeSpec 保留 → upsertEntity 覆盖 → PUT 替换语义 → 读侧容错）；仅入库 / 展示 / 编辑（变体出图留后续）
+- **Web**：`EntitiesView.vue` 卡片多选 + 「批量润色（N）」+ 「上传新图」+ states 表单 / 卡片 chips（前 2 条 + 「+N」）；`StylePresetsView.vue` 「从参考图提取画风词（可选）」区（项目 → 缩略图勾选 ≤4 → 提取预填）；`ProjectFormModal.vue` 「视觉风格」checkbox 多选面板
+
+验证：`pnpm --filter @acs/server probe:m13`（七节：style-multi / vision / video-refs / upload / polish / states / regression，零网络零计费）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -399,6 +413,22 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 7 | 兼容实弹 | ✅ | 存量 run board 正常（20 镜 / 22 版本 quality 全 null 不误报）；老资产无徽标；#920/#1033 保留版本文件完好 |
 | 8 | DOM 四要素（无头 Chrome CDP） | ✅ | 10/10：♥ 激活态 / 「疑似黑图」徽标唯一命中 #1148 / 「仅收藏」筛选生效 / 「清理旧版本」按钮 + 确认弹窗（标题·正文·取消关闭）；板面 33 卡零误报（qwarn=0）；截图 `apps/web/tmp-m12-dom-1..5-*.png` |
 | 9 | 越界核查（红线零 diff） | ✅ | `git status`：schema.ts / engine / refs / loader / 适配器 / 模板 / 提示词零 diff；package.json 仅 +`probe:m12` 脚本（dependencies 零新增）；改动面 = 14 改（610+/18−）+ 2 新服务 + 探针 + 5 截图证据 |
+
+## M13 验收快照（2026-09-12，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：七节全绿 | ✅ | 双端 typecheck 0 错；`probe:m13` 七节 **121 项断言全过**（style-multi / vision / video-refs / upload / polish / states / regression）；vision 节 fetch stub 断言请求体含 `image_url` data URI + 解析矩阵；video-refs 节 `planVideoRefs` 四分支 |
+| 2 | 兼容回归：m7·m8·m10·m11·m12 | ✅ | 五探针全绿（exit=0；M8 签名不破（`injectStyleAnchor` / `resolveProjectStyleSnippet` 薄封装）、M12 存量调用零漂移） |
+| 3 | ① 视觉提取实弹 | ✅ | `POST /style-presets/extract`（资产 #933/#935）→ `{snippet:'（画风：电影感写实3D渲染,cinematic photorealistic 3D render, …）', provider:'deepseek_llm', model:'deepseek-flash'}`——deepseek-flash 多模态实测支持；预设 #2「M13 实弹·提取预设」201 落库 |
+| 4 | ⑦ 单值兼容实弹 | ✅ | Run 98 s01 重跑：`params.stylePresetIds=[1]`（单值回退数组化）+ 尾缀逐字「3D 写实厚涂质感，…」不变 + 产出更新 #1059→#1150 |
+| 5 | ② 多预设叠加实弹 | ✅ | 项目 10 绑定 [1,2] → s02 重跑：`params.stylePresetIds=[1,2]` + 尾缀逐字「A；B」（两词块拼接）+ 产出 #1151；项目 settings 双键共存（`style_preset_id:1` + `style_preset_ids:[1,2]`） |
+| 6 | ③ 视频参考图实弹 | ✅ | Run 97 s16 重跑：`params.setRefAssetIds=[797,798]`（阁楼+木盒收集快照）+ `firstFrameAssetId=1005` 保留 + 日志真实决策「当前视频供应商不支持参考图注入（降级跳过）」（pollinations_video 能力 none → no_cap；frame_first / ok 分支探针覆盖）+ 产出 #1153→#1154 |
+| 7 | ④ 上传通道实弹 | ✅ | 素材甲 #54（挂 801）→ 上传红图 201 `asset#1155 {purpose:'reference_character'}` → `refAssetIds [801,1155]` 并集 + 文件落盘 `10\images\1789220857885-m13-ref-red.png` + 资产 HTTP 可读 |
+| 8 | ⑤ 批量润色实弹 | ✅ | 甲+乙批量润色 200：`polished=2 / failed=0`、两项 appearance 已变化（甲「小木偶，木质躯体，雨夜泛出微光，四肢关节处缠绕旧麻绳。」）+ usage_records +4 行（deepseek_llm/deepseek-flash ×2 项 × tokens_in/out） |
+| 9 | ⑥ states 实弹 | ✅ | PUT `states:['雨夜发光版','晴天沉睡版']` → 读回 + DB 入库一致；替换语义（2→1 项再定稿 2 项）；`GET /entities` 列表视图透出 |
+| 10 | DOM 六要素（无头 Chrome CDP） | ✅ | **22/22**：甲卡片 states chips「雨夜发光版/晴天沉睡版」+「2 张定妆照」+ 缩略图 / 批量润色按钮 0→1→2（勾选甲、乙）且选中态 ×2 / 预设列表含「M13 实弹·提取预设」（snippet 透出）/ 新建预设弹窗提取区（标题 + 禁用按钮 + 选项目后 98 张缩略图 + 「参考图（已选 0/4）」）/ 素材编辑弹窗（states 预填两行 + 「上传新图」+ 已选 2 张）/ 项目编辑多选回填 2 项；截图 6 张 `apps/web/tmp-m13-dom-1..6-*.png` |
+| 11 | 越界核查（红线复核） | ✅ | `git status`：engine / refs / loader / workspace/templates 零 diff；schema.ts 仅 +`states` 列 + db 幂等迁移（设计 §5 白名单内）；adapters 仅能力位 ×3 + 类型；package.json 仅 +`probe:m13`（dependencies 零新增）；改动面 = 工作区合计 21 改（976+/69−）+ 10 未跟踪；其中代码 20 改（946+/69−）+ 4 新件（`entity-polish.ts` / `probe-m13.ts` / 提示词 `style-extract.md` · `entity-polish.md`），文档 README +30 行 + DOM 截图 6 张 |
 
 ## M7 验收快照（2026-09-12，实弹）
 

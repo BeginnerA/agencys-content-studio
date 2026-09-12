@@ -25,9 +25,9 @@ const err = ref('')
 const busy = ref(false)
 /** 用户在本弹窗内是否手动改过模板（改过后切体裁不再覆盖） */
 const tplTouched = ref(false)
-/** [M8] 视觉风格绑定：0 = 不使用；预设列表含停用项（绑定残留友好显示） */
+/** [M13] 视觉风格多选绑定：勾选 id 数组（叠加顺序 = 数组顺序）；预设列表含停用项（绑定残留友好显示） */
 const presets = ref<StylePresetItem[]>([])
-const stylePresetId = ref(0)
+const stylePresetIds = ref<number[]>([])
 
 /** 体裁下拉选项：绑定值为字典外存量值时追加临时项（避免静默改写） */
 const genreOptions = computed(() => {
@@ -40,12 +40,20 @@ const genreOptions = computed(() => {
 /** 绑定的默认模板不在列表中（已删除）→ 追加临时项，避免静默改写 */
 const tplMissing = computed(() => !!tplKey.value && !templates.value.some((t) => t.key === tplKey.value))
 
-/** [M8] 当前绑定值不在「启用中」预设里 → 追加临时项（已停用/已删，避免静默改写） */
-const presetMissing = computed(
-  () => stylePresetId.value > 0 && !presets.value.some((s) => s.id === stylePresetId.value && s.isActive),
+/** [M13] 启用中预设（按 sortOrder 展示；勾选叠加顺序 = 数组顺序） */
+const activePresets = computed(() =>
+  presets.value.filter((s) => !!s.isActive).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
 )
-const boundPreset = computed(() => presets.value.find((s) => s.id === stylePresetId.value) ?? null)
-const activePresets = computed(() => presets.value.filter((s) => !!s.isActive))
+
+/** [M13] 绑定值不在「启用中」预设里 → 追加可取消条目（已停用/已删，避免静默改写） */
+const missingBound = computed(() =>
+  stylePresetIds.value
+    .filter((id) => !presets.value.some((s) => s.id === id && !!s.isActive))
+    .map((id) => {
+      const p = presets.value.find((s) => s.id === id)
+      return { id, label: p ? `${p.name}（已停用）` : `预设#${id}（已删除）` }
+    }),
+)
 
 /** 体裁切换 → 弱关联预选模板（仅未手动改过时；命中列表才换） */
 function onGenreChange() {
@@ -68,9 +76,14 @@ onMounted(async () => {
     genre.value = normalizeGenre(p.genre)
     brief.value = p.brief ?? ''
     tplKey.value = p.templateKey ?? ''
-    // [M8] 视觉风格：读 settings.style_preset_id（列表失败保留裸值显示）
-    const sid = Number((p.settings ?? {})['style_preset_id'])
-    stylePresetId.value = Number.isInteger(sid) && sid > 0 ? sid : 0
+    // [M13] 视觉风格：读 settings.style_preset_ids（数组优先；回退旧单值键；列表失败保留裸值显示）
+    const st = p.settings ?? {}
+    const rawIds: unknown[] = Array.isArray(st['style_preset_ids'])
+      ? st['style_preset_ids']
+      : st['style_preset_id'] !== undefined
+        ? [st['style_preset_id']]
+        : []
+    stylePresetIds.value = [...new Set(rawIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
     try {
       presets.value = (await stylePresetApi.list()).items
     } catch {
@@ -98,12 +111,13 @@ async function submit() {
       template_key: tplKey.value || undefined,
     }
     if (props.project) {
-      // [M8] 读-合并写 settings（保留既有其他键；不使用 → null）
+      // [M13] 读-合并写 settings（保留既有其他键；无勾选 → null + 显式清理旧单值键）
       await projectApi.update(props.project.id, {
         ...body,
         settings: {
           ...(props.project.settings ?? {}),
-          style_preset_id: stylePresetId.value > 0 ? stylePresetId.value : null,
+          style_preset_ids: stylePresetIds.value.length > 0 ? stylePresetIds.value : null,
+          style_preset_id: null,
         },
       })
     } else {
@@ -139,16 +153,23 @@ async function submit() {
         </optgroup>
       </select>
     </label>
-    <label v-if="isEdit" class="fld">
-      视觉风格（分镜图/首帧图/参考图统一注入画风词块）
-      <select v-model.number="stylePresetId">
-        <option v-if="presetMissing" :value="stylePresetId">
-          {{ boundPreset ? `${boundPreset.name}（已停用）` : `预设#${stylePresetId}（已删除）` }}
-        </option>
-        <option :value="0">不使用（零风格注入）</option>
-        <option v-for="s in activePresets" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
-    </label>
+    <div v-if="isEdit" class="fldbox">
+      视觉风格（可多选；分镜图/首帧图/参考图按勾选顺序拼接注入画风词块）
+      <div class="preset-box">
+        <label v-for="s in activePresets" :key="s.id" class="prow">
+          <input v-model="stylePresetIds" type="checkbox" :value="s.id" />
+          <span class="pnm">{{ s.name }}</span>
+          <span class="psnip muted">{{ s.snippet }}</span>
+        </label>
+        <label v-for="m in missingBound" :key="`m${m.id}`" class="prow">
+          <input v-model="stylePresetIds" type="checkbox" :value="m.id" />
+          <span class="pnm">{{ m.label }}</span>
+        </label>
+        <div v-if="!activePresets.length && !missingBound.length" class="muted" style="font-size: 12px">
+          预设库为空：先到「风格预设」页新建画风词块
+        </div>
+      </div>
+    </div>
     <label class="fld">
       简介 brief
       <textarea v-model="brief" rows="2" placeholder="一句话说明本项目定位（将作为创作上下文）" />
@@ -162,3 +183,49 @@ async function submit() {
     </template>
   </Modal>
 </template>
+
+<style scoped>
+/* [M13] 风格多选面板：替代旧单选 select；勾选顺序即注入顺序 */
+.fldbox {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.preset-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.prow .pnm {
+  flex: none;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.prow .psnip {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>

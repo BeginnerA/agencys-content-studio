@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
  * [M8] 风格预设库：平台级通用画风词块（CRUD + 启用开关 + 排序）。
- * 项目绑定在项目「编辑」弹窗（settings.style_preset_id）；出图时由 ai_image 运行时解析注入。
+ * [M13] 从参考图提取画风词（视觉 LLM → 预填新建表单，不落库）；项目多选绑定在项目「编辑」弹窗
+ * （settings.style_preset_ids）；出图时由 ai_image 运行时解析拼接注入。
  */
 import { onMounted, reactive, ref } from 'vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
-import { stylePresetApi } from '../lib/api'
+import { projectApi, stylePresetApi } from '../lib/api'
 import { ApiError } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
-import type { StylePresetItem } from '../lib/types'
+import type { Asset, Project, StylePresetItem } from '../lib/types'
 
 const items = ref<StylePresetItem[]>([])
 const loading = ref(true)
@@ -26,6 +27,16 @@ const form = reactive({
 })
 const formErr = ref('')
 
+// [M13] 从参考图提取（项目 → 图片多选 ≤4 → 视觉 LLM → 预填 snippet；不落库）
+const projects = ref<Project[]>([])
+const extractPid = ref(0)
+const extractAssets = ref<Asset[]>([])
+const extractIds = ref<number[]>([])
+const assetsLoading = ref(false)
+const extracting = ref(false)
+const extractErr = ref('')
+const extractNote = ref('')
+
 async function load() {
   loading.value = true
   err.value = ''
@@ -39,7 +50,13 @@ async function load() {
   }
 }
 
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  projectApi
+    .list()
+    .then((d) => (projects.value = d.items))
+    .catch(() => (projects.value = []))
+})
 
 function openNew() {
   form.id = 0
@@ -48,6 +65,8 @@ function openNew() {
   form.description = ''
   form.sortOrder = (items.value[items.value.length - 1]?.sortOrder ?? 0) + 1
   formErr.value = ''
+  extractErr.value = ''
+  extractNote.value = ''
   showForm.value = true
 }
 
@@ -58,6 +77,8 @@ function openEdit(p: StylePresetItem) {
   form.description = p.description ?? ''
   form.sortOrder = p.sortOrder
   formErr.value = ''
+  extractErr.value = ''
+  extractNote.value = ''
   showForm.value = true
 }
 
@@ -121,6 +142,63 @@ async function removeItem(p: StylePresetItem) {
     busy.value = false
   }
 }
+
+/** [M13] 提取用项目切换 → 拉取该项目图片候选（清空已选） */
+async function onExtractProject() {
+  extractIds.value = []
+  extractAssets.value = []
+  extractErr.value = ''
+  extractNote.value = ''
+  if (!extractPid.value) return
+  assetsLoading.value = true
+  try {
+    const d = await projectApi.assets(extractPid.value)
+    extractAssets.value = d.items.filter((a) => a.kind === 'image')
+  } catch {
+    extractAssets.value = []
+  } finally {
+    assetsLoading.value = false
+  }
+}
+
+/** [M13] 参考图勾选（上限 4 张：多图仅取共同风格，过多会稀释特征） */
+function toggleExtractAsset(aid: number) {
+  const i = extractIds.value.indexOf(aid)
+  if (i >= 0) {
+    extractIds.value.splice(i, 1)
+    return
+  }
+  if (extractIds.value.length >= 4) {
+    extractErr.value = '最多选择 4 张（多图仅提取共同风格特征）'
+    return
+  }
+  extractErr.value = ''
+  extractIds.value.push(aid)
+}
+
+/** [M13] 提取风格词 → 预填 snippet（确认后随表单保存落库，不自动建预设） */
+async function doExtract() {
+  if (!extractPid.value) {
+    extractErr.value = '请先选择项目'
+    return
+  }
+  if (!extractIds.value.length) {
+    extractErr.value = '请勾选 1~4 张参考图'
+    return
+  }
+  extracting.value = true
+  extractErr.value = ''
+  extractNote.value = ''
+  try {
+    const r = await stylePresetApi.extract(extractPid.value, extractIds.value)
+    form.snippet = r.snippet
+    extractNote.value = `已提取并预填下方「风格词块」（来源 ${r.provider} / ${r.model}），确认无误后点保存入库`
+  } catch (e) {
+    extractErr.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    extracting.value = false
+  }
+}
 </script>
 
 <template>
@@ -178,6 +256,49 @@ async function removeItem(p: StylePresetItem) {
           排序号
           <input v-model.number="form.sortOrder" type="number" min="0" step="1" />
         </label>
+      </div>
+      <div class="extract-box">
+        <div class="eb-head">
+          <span><Icon name="sparkles" :size="13" /> 从参考图提取画风词（可选）</span>
+          <span class="muted" style="font-size: 11.5px">1~4 张同基调参考图 → 视觉模型提取 → 预填下方词块</span>
+        </div>
+        <div class="frow">
+          <label class="fld" style="max-width: 220px">
+            项目
+            <select v-model.number="extractPid" @change="onExtractProject">
+              <option :value="0">选择项目…</option>
+              <option v-for="p in projects" :key="p.id" :value="p.id">项目#{{ p.id }} {{ p.name }}</option>
+            </select>
+          </label>
+          <div class="eb-imgs">
+            <span>参考图（已选 {{ extractIds.length }}/4）</span>
+            <span v-if="!extractPid" class="muted" style="font-size: 12px">先选项目</span>
+            <span v-else-if="assetsLoading" class="muted" style="font-size: 12px">图片加载中…</span>
+            <span v-else-if="!extractAssets.length" class="muted" style="font-size: 12px">该项目暂无图片资产（先出图或导入素材）</span>
+            <div v-else class="thumbs">
+              <button
+                v-for="a in extractAssets"
+                :key="a.id"
+                type="button"
+                class="thumb"
+                :class="{ on: extractIds.includes(a.id) }"
+                :title="a.name"
+                @click="toggleExtractAsset(a.id)"
+              >
+                <img :src="a.urls.thumb ?? a.urls.file" :alt="a.name" loading="lazy" />
+                <span v-if="extractIds.includes(a.id)" class="ck"><Icon name="check" :size="11" :stroke-width="2.6" /></span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="eb-ops">
+          <button class="btn tiny" type="button" :disabled="extracting || !extractPid || !extractIds.length" @click="doExtract">
+            <Icon name="sparkles" :size="12" /> {{ extracting ? '提取中…' : '提取风格词' }}
+          </button>
+          <span v-if="extractErr" class="eb-err">{{ extractErr }}</span>
+          <span v-else-if="extractNote" class="eb-ok">{{ extractNote }}</span>
+          <span v-else class="muted" style="font-size: 11.5px">提取依赖支持图片输入的 LLM 视觉模型（设置 → AI 配置）</span>
+        </div>
       </div>
       <label class="fld">
         风格词块 snippet（出图时逐字拼入提示词尾缀：「视觉风格：{snippet}」）
@@ -323,5 +444,103 @@ async function removeItem(p: StylePresetItem) {
 
 .frow .fld {
   flex: 1;
+}
+
+/* [M13] 从参考图提取 */
+.extract-box {
+  margin: 2px 0 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eb-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eb-imgs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.eb-ops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.eb-err {
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.eb-ok {
+  color: var(--ok);
+  font-size: 12px;
+}
+
+.thumbs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 3px 2px 7px;
+}
+
+.thumb {
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 74px;
+  padding: 0;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb:hover {
+  border-color: rgb(99 102 241 / 55%);
+}
+
+.thumb.on {
+  border-color: var(--accent);
+}
+
+.thumb .ck {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

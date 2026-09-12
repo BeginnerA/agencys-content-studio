@@ -1,9 +1,14 @@
 import { Hono } from 'hono'
+import { extname } from 'node:path'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, characters, type CharacterRow } from '../db/schema'
 import { assertProjectAssets } from '../pipeline/refs'
-import { ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
+import { attachRefAssets, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
+import { polishAppearance } from '../services/entity-polish'
+import { importFiles, kindByExt } from '../services/storage'
+import { recordLlmUsage } from '../services/usage'
+import { toAssetView } from './assets'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
@@ -11,6 +16,11 @@ import { HttpError, h, idParam, notFound } from './helpers'
  * 同一 handler 双路径挂载；?kind= 缺省 character，旧客户端零改动。
  */
 export const charactersRoutes = new Hono()
+
+/** [M13] 批量润色单次上限 */
+const MAX_POLISH_ITEMS = 10
+/** [M13] 参考图上传单文件上限（10MB） */
+const MAX_REF_UPLOAD_BYTES = 10 * 1024 * 1024
 
 // GET /entities|/characters —— 实体列表（?project_id=&kind=；项目视角 = 项目域 + 全局；含 refAssets 缩略）
 const listEntities = h(async (c) => {
@@ -72,6 +82,7 @@ const createEntity = h(async (c) => {
   const appearance = strField(body, 'appearance')
   const negative = strField(body, 'negative')
   const voice = kind === 'character' ? strField(body, 'voice') : undefined // 声线仅角色有意义：scene/prop 忽略
+  const states = kind === 'character' ? strArrField(body, 'states') : undefined // [M13] 状态变体仅角色有意义：scene/prop 忽略
   const meta = body['meta'] && typeof body['meta'] === 'object' && !Array.isArray(body['meta']) ? (body['meta'] as Record<string, unknown>) : undefined
   const { id, created } = await upsertEntity({
     projectId,
@@ -82,6 +93,7 @@ const createEntity = h(async (c) => {
     appearance,
     negative,
     voice,
+    states,
     refAssetIds: refAssetIds && refAssetIds.length > 0 ? refAssetIds : undefined,
     meta,
   })
@@ -90,6 +102,44 @@ const createEntity = h(async (c) => {
 })
 charactersRoutes.post('/entities', createEntity)
 charactersRoutes.post('/characters', createEntity)
+
+// POST /entities/polish —— [M13] 批量润色 appearance（逐项串行；失败收集不阻断；全局实体跳过用量记录）
+const polishEntities = h(async (c) => {
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const rawIds = body['ids']
+  if (!Array.isArray(rawIds)) throw new HttpError(400, 'bad_ids', 'ids 需为正整数数组')
+  const ids = [...new Set(rawIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
+  if (ids.length === 0) throw new HttpError(400, 'bad_ids', 'ids 需为正整数数组')
+  if (ids.length > MAX_POLISH_ITEMS) throw new HttpError(400, 'too_many_ids', `单次最多润色 ${MAX_POLISH_ITEMS} 项（当前 ${ids.length} 项）`)
+  const rows = await db.select().from(characters).where(inArray(characters.id, ids))
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const polished: Array<{ id: number; name: string; appearance: string }> = []
+  const failed: Array<{ id: number; error: string }> = []
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row) {
+      failed.push({ id, error: '素材不存在' })
+      continue
+    }
+    try {
+      const r = await polishAppearance(row)
+      const appearance = r.appearance.trim()
+      if (!appearance) {
+        failed.push({ id, error: '润色输出为空（未更新）' })
+        continue
+      }
+      await db.update(characters).set({ appearance, updatedAt: Date.now() }).where(eq(characters.id, id))
+      if (row.projectId !== null) {
+        await recordLlmUsage({ projectId: row.projectId, runId: null, provider: r.provider, model: r.model, usage: r.usage })
+      }
+      polished.push({ id, name: row.name, appearance })
+    } catch (err) {
+      failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return c.json({ ok: true, polished, failed })
+})
+charactersRoutes.post('/entities/polish', polishEntities)
 
 // PUT /entities/:id|/characters/:id —— 局部更新（传即替换；ref_asset_ids 须属该行项目域）
 const updateEntity = h(async (c) => {
@@ -112,6 +162,11 @@ const updateEntity = h(async (c) => {
       if (body[key] !== null && typeof body[key] !== 'string') throw new HttpError(400, `bad_${key}`, `${key} 需为字符串或 null`)
       patch[key] = body[key]
     }
+  }
+  if (body['states'] !== undefined && cur.kind === 'character') {
+    // [M13] states 替换语义：含空数组（空 = 清空）；scene/prop 忽略（同 voice 口径）
+    if (!Array.isArray(body['states'])) throw new HttpError(400, 'bad_states', 'states 需为字符串数组')
+    patch['states'] = JSON.stringify(cleanStrArr(body['states']))
   }
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
@@ -137,6 +192,28 @@ const removeEntity = h(async (c) => {
 })
 charactersRoutes.delete('/entities/:id', removeEntity)
 charactersRoutes.delete('/characters/:id', removeEntity)
+
+// POST /entities/:id/ref-images —— [M13] 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；全局实体拒绝）
+const uploadEntityRefImage = h(async (c) => {
+  const id = idParam(c)
+  const cur = await findEntityRow(id)
+  if (!cur) return notFound(c, `素材 ${id}`)
+  if (cur.projectId === null) throw new HttpError(400, 'bad_ref_assets', '全局素材库不接受项目资产引用（请在项目素材页上传）')
+  const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })
+  const fileRaw = form.get('file')
+  if (!fileRaw || typeof fileRaw === 'string') throw new HttpError(400, 'no_file', '未收到文件（字段名 file）')
+  const file = fileRaw as File
+  if (file.size > MAX_REF_UPLOAD_BYTES) throw new HttpError(413, 'too_large', '单文件超过 10MB 上限')
+  if (kindByExt(extname(file.name)) !== 'image') throw new HttpError(400, 'not_image', '仅支持图片文件（png/jpg/jpeg/webp/gif/bmp）')
+  const buf = new Uint8Array(await file.arrayBuffer())
+  if (buf.byteLength === 0) throw new HttpError(400, 'no_file', '文件内容为空')
+  const [asset] = await importFiles(cur.projectId, [{ name: file.name || `ref-${cur.kind}-${Date.now()}`, data: buf }], { purpose: `reference_${cur.kind}` })
+  await attachRefAssets(cur.projectId, cur.name, [asset!.id], cur.kind as EntityKind)
+  const fresh = await findEntityRow(id)
+  const byId = await refAssetsOf([fresh!])
+  return c.json({ entity: toEntityView(fresh!, byId), asset: toAssetView(asset!) }, 201)
+})
+charactersRoutes.post('/entities/:id/ref-images', uploadEntityRefImage)
 
 /** kind 解析（query/body 同口径）：缺省 character；非法 → 400 */
 function parseKind(raw: unknown): EntityKind {
@@ -166,13 +243,22 @@ function strField(body: Record<string, unknown>, key: string): string | undefine
   return v.trim() || undefined
 }
 
+/** [M13] body 字符串数组字段：undefined/null → undefined；非数组 → 400；元素清洗见 cleanStrArr */
+function strArrField(body: Record<string, unknown>, key: string): string[] | undefined {
+  const v = body[key]
+  if (v === undefined || v === null) return undefined
+  if (!Array.isArray(v)) throw new HttpError(400, `bad_${key}`, `${key} 需为字符串数组`)
+  return cleanStrArr(v)
+}
+
+/** [M13] 字符串数组清洗：仅留字符串 + trim 去空 + 去重保序（states 口径） */
+function cleanStrArr(v: unknown[]): string[] {
+  return [...new Set(v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean))]
+}
+
 function toEntityView(r: CharacterRow, assetsById: Map<number, typeof assets.$inferSelect>): Record<string, unknown> {
   const refAssetIds = safeNums(r.refAssetIds)
-  let aliases: string[] = []
-  try {
-    const v = JSON.parse(r.aliases) as unknown
-    if (Array.isArray(v)) aliases = v.filter((x): x is string => typeof x === 'string')
-  } catch { /* 空 */ }
+  const aliases = safeStrArr(r.aliases)
   let meta: unknown = {}
   try { meta = JSON.parse(r.meta) } catch { meta = {} }
   const refAssets = refAssetIds
@@ -194,11 +280,22 @@ function toEntityView(r: CharacterRow, assetsById: Map<number, typeof assets.$in
     appearance: r.appearance,
     negative: r.negative,
     voice: r.voice,
+    states: safeStrArr(r.states),
     refAssetIds,
     refAssets,
     meta,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+  }
+}
+
+/** [M13] JSON 字符串数组读取（坏 JSON/非数组 → []；aliases/states 同容错） */
+function safeStrArr(s: string): string[] {
+  try {
+    const v = JSON.parse(s) as unknown
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
   }
 }
 

@@ -51,6 +51,8 @@ export class VolcEngineVideoAdapter implements VideoAdapter {
   readonly provider = 'volcengine_video'
   /** 首帧注入能力：first_frame role（实弹对表若被拒则收敛 'as-reference' 并回写 spec §6-4 注记） */
   readonly firstFrame = 'base64'
+  /** [M13] 参考图注入能力：reference_image role（经 extra.referenceImageUrls，≤9 张） */
+  readonly referenceImages = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = req.model || DEFAULT_MODEL

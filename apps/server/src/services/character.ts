@@ -34,7 +34,7 @@ export async function findEntity(projectId: number, name: string, kind: EntityKi
   return index.get(name) ?? index.get(name.toLowerCase()) ?? null
 }
 
-/** 具名 upsert（kind 分派）：name（含别名命中）匹配同域同 kind 行 → 更新非空字段（保 id、保未传字段；aliases/refAssetIds 并集去重）；否则插入 */
+/** 具名 upsert（kind 分派）：name（含别名命中）匹配同域同 kind 行 → 更新非空字段（保 id、保未传字段；aliases/refAssetIds 并集去重；[M13] states 非空覆盖）；否则插入 */
 export async function upsertEntity(p: {
   projectId: number | null
   kind?: EntityKind
@@ -44,6 +44,8 @@ export async function upsertEntity(p: {
   appearance?: string | null
   negative?: string | null
   voice?: string | null
+  /** [M13] 状态变体（「{剧情节点}：{状态短语}」字符串数组；非空覆盖写） */
+  states?: string[]
   refAssetIds?: number[]
   meta?: Record<string, unknown>
 }): Promise<{ id: number; created: boolean }> {
@@ -68,6 +70,7 @@ export async function upsertEntity(p: {
     if (p.appearance) patch['appearance'] = p.appearance
     if (p.negative) patch['negative'] = p.negative
     if (p.voice) patch['voice'] = p.voice
+    if (p.states && p.states.length > 0) patch['states'] = JSON.stringify(p.states)
     if (p.refAssetIds && p.refAssetIds.length > 0) {
       patch['refAssetIds'] = JSON.stringify([...new Set([...safeArrNum(hit.refAssetIds), ...p.refAssetIds])])
     }
@@ -87,6 +90,7 @@ export async function upsertEntity(p: {
         appearance: p.appearance ?? null,
         negative: p.negative ?? null,
         voice: p.voice ?? null,
+        states: JSON.stringify(p.states ?? []),
         refAssetIds: JSON.stringify(p.refAssetIds ?? []),
         meta: JSON.stringify(p.meta ?? {}),
         createdAt: now,
@@ -131,6 +135,8 @@ export async function upsertCharacter(p: {
   appearance?: string | null
   negative?: string | null
   voice?: string | null
+  /** [M13] 状态变体（透传 upsertEntity） */
+  states?: string[]
   refAssetIds?: number[]
   meta?: Record<string, unknown>
 }): Promise<{ id: number; created: boolean }> {

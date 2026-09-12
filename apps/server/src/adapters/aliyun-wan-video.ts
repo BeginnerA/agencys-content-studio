@@ -90,6 +90,8 @@ export class AliyunWanVideoAdapter implements VideoAdapter {
   readonly provider = 'aliyun_wan_video'
   /** 首帧注入能力：实现已就绪（接受 data URI 首帧），仅补声明 */
   readonly firstFrame = 'base64'
+  /** [M13] 参考图注入能力：reference_image 类型（经 extra.referenceImageUrls，≤10 张）；与帧模式互斥由注入侧「首帧优先」决策规避 */
+  readonly referenceImages = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = cleanUrl(req.model) || DEFAULT_MODEL

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { asc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { stylePresets, type StylePreset } from '../db/schema'
+import { extractStyleSnippetFromAssets } from '../services/style-preset'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
@@ -25,6 +26,19 @@ stylePresetsRoutes.get('/style-presets/:id', h(async (c) => {
   const row = await findRow(idParam(c))
   if (!row) return notFound(c, `风格预设 ${c.req.param('id')}`)
   return c.json({ preset: toView(row) })
+}))
+
+// POST /style-presets/extract —— [M13] 参考图 → 画风词提取（视觉 LLM；不落库，前端预填新建表单）
+stylePresetsRoutes.post('/style-presets/extract', h(async (c) => {
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const pid = Number(body['project_id'])
+  if (!Number.isInteger(pid) || pid <= 0) throw new HttpError(400, 'bad_project_id', 'project_id 非法')
+  const assetIds = body['asset_ids']
+  if (!Array.isArray(assetIds) || assetIds.length === 0) {
+    throw new HttpError(400, 'bad_asset_ids', 'asset_ids 需为非空数组（1..4 张图片）')
+  }
+  const r = await extractStyleSnippetFromAssets(pid, assetIds)
+  return c.json({ snippet: r.snippet, provider: r.provider, model: r.model })
 }))
 
 // POST /style-presets —— 新建（name 唯一 / snippet 必填）

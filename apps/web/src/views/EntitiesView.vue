@@ -3,11 +3,12 @@
  * [M8] 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
  * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
  * 声线仅角色 Tab；挑图选择器 + 全局/项目域约束与旧角色页一致。
+ * [M13] 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
-import { entityApi, projectApi } from '../lib/api'
+import { entityApi, projectApi, uploadEntityRefImage } from '../lib/api'
 import { ApiError } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import type { Asset, EntityItem, EntityKind, Project } from '../lib/types'
@@ -84,6 +85,11 @@ const err = ref('')
 // 筛选：'' = 全部 | 'global' = 仅全局 | `${id}` = 项目（含全局继承）
 const projectFilter = ref('')
 
+// [M13] 批量选择（仅服务批量润色；切换 Tab / 筛选清空）
+const selected = ref(new Set<number>())
+const polishing = ref(false)
+const notice = ref('')
+
 // 新建 / 编辑表单
 const showForm = ref(false)
 const form = reactive({
@@ -94,12 +100,18 @@ const form = reactive({
   appearance: '',
   negative: '',
   voice: '',
+  /** [M13] 状态变体（每行一条；仅角色保存） */
+  states: '',
   projectId: 0,
   refIds: [] as number[],
 })
 const formErr = ref('')
 const assetOptions = ref<Asset[]>([])
 const assetsLoading = ref(false)
+// [M13] 参考图上传（仅编辑态；全局实体无入口）
+const uploadEl = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const upNote = ref('')
 
 async function load() {
   loading.value = true
@@ -118,6 +130,14 @@ async function load() {
 function switchKind(k: EntityKind) {
   if (kind.value === k) return
   kind.value = k
+  selected.value = new Set()
+  notice.value = ''
+  void load()
+}
+
+/** [M13] 筛选变更 → 清空批量选择（跨范围选择易误操作） */
+function onFilterChange() {
+  selected.value = new Set()
   void load()
 }
 
@@ -154,9 +174,11 @@ function openNew() {
   form.appearance = ''
   form.negative = ''
   form.voice = ''
+  form.states = ''
   form.projectId = projectFilter.value && projectFilter.value !== 'global' ? Number(projectFilter.value) : 0
   form.refIds = []
   formErr.value = ''
+  upNote.value = ''
   showForm.value = true
   void loadAssets(form.projectId)
 }
@@ -169,9 +191,11 @@ function openEdit(it: EntityItem) {
   form.appearance = it.appearance ?? ''
   form.negative = it.negative ?? ''
   form.voice = it.voice ?? ''
+  form.states = (it.states ?? []).join('\n')
   form.projectId = it.projectId ?? 0
   form.refIds = [...it.refAssetIds]
   formErr.value = ''
+  upNote.value = ''
   showForm.value = true
   void loadAssets(form.projectId)
 }
@@ -206,7 +230,14 @@ async function save() {
       appearance: form.appearance.trim() || null,
       negative: form.negative.trim() || null,
     }
-    if (kind.value === 'character') body.voice = form.voice.trim() || null
+    if (kind.value === 'character') {
+      body.voice = form.voice.trim() || null
+      // [M13] 状态变体：每行一条（空数组 = 清空；scene/prop 不传）
+      body.states = form.states
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    }
     if (form.id) {
       if (form.projectId) body.ref_asset_ids = form.refIds
       await entityApi.update(form.id, body)
@@ -244,6 +275,75 @@ async function removeItem(it: EntityItem) {
   }
 }
 
+/** [M13] 批量选择切换 */
+function toggleSel(id: number) {
+  if (selected.value.has(id)) selected.value.delete(id)
+  else selected.value.add(id)
+}
+
+/** [M13] 批量润色 appearance（≤10 项；逐项串行；失败项保留选中可重试） */
+async function polishSelected() {
+  const ids = [...selected.value]
+  if (ids.length === 0 || polishing.value) return
+  if (ids.length > 10) {
+    err.value = `单次最多润色 10 项（当前已选 ${ids.length} 项）`
+    return
+  }
+  const ok = await confirmDialog({
+    title: '批量润色',
+    message: `将对所选 ${ids.length} 项的「形象锚定 appearance」调用 LLM 润色规范化，并覆盖原描述（summary / negative / 声线不动）；失败项不改动。继续？`,
+    confirmText: '开始润色',
+  })
+  if (!ok) return
+  polishing.value = true
+  err.value = ''
+  notice.value = ''
+  try {
+    const r = await entityApi.polish(ids)
+    selected.value = new Set(r.failed.map((f) => f.id))
+    const detail = r.failed
+      .slice(0, 2)
+      .map((f) => `#${f.id}：${f.error}`)
+      .join('；')
+    notice.value =
+      `润色完成：成功 ${r.polished.length} 项` +
+      (r.failed.length ? `，失败 ${r.failed.length} 项（失败项已保留选中，可重试）` : '') +
+      (detail ? `\n${detail}` : '')
+    await load()
+  } catch (e) {
+    err.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    polishing.value = false
+  }
+}
+
+/** [M13] 触发上传参考图文件选择（编辑态可用） */
+function pickUpload() {
+  uploadEl.value?.click()
+}
+
+/** [M13] 上传参考图 → 入库 + 挂接（form.refIds 同步最新；失败不关闭弹窗） */
+async function onUploadPick(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !form.id) return
+  uploading.value = true
+  formErr.value = ''
+  upNote.value = ''
+  try {
+    const r = await uploadEntityRefImage(form.id, file)
+    form.refIds = [...r.entity.refAssetIds]
+    upNote.value = `已上传「${r.asset.name}」并挂接（当前共 ${form.refIds.length} 张）`
+    await loadAssets(form.projectId)
+    void load()
+  } catch (ex) {
+    formErr.value = ex instanceof ApiError ? ex.message : String(ex)
+  } finally {
+    uploading.value = false
+  }
+}
+
 function photoOf(it: EntityItem): string | null {
   const a = it.refAssets[0]
   return a ? (a.urls.thumb ?? a.urls.file) : null
@@ -271,23 +371,36 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
         </button>
       </div>
       <span class="sub">{{ items.length }} 项</span>
-      <select v-model="projectFilter" style="width: 180px" aria-label="按归属筛选" @change="load()">
+      <select v-model="projectFilter" style="width: 180px" aria-label="按归属筛选" @change="onFilterChange">
         <option value="">全部归属</option>
         <option value="global">仅全局</option>
         <option v-for="p in projects" :key="p.id" :value="String(p.id)">项目#{{ p.id }} {{ p.name }}</option>
       </select>
-      <button class="btn primary" style="margin-left: auto" @click="openNew">
+      <button
+        class="btn"
+        style="margin-left: auto"
+        :disabled="polishing || !selected.size"
+        :title="selected.size ? `对已选 ${selected.size} 项润色 appearance（≤10 项/次）` : '先勾选素材卡片'"
+        @click="polishSelected"
+      >
+        <Icon name="sparkles" :size="14" /> {{ polishing ? '润色中…' : `批量润色（${selected.size}）` }}
+      </button>
+      <button class="btn primary" @click="openNew">
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建{{ cfg.label }}
       </button>
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
+    <div v-if="notice" class="notice-box">{{ notice }}</div>
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!items.length" class="empty">{{ cfg.empty }}</div>
 
     <div v-else class="grid">
-      <div v-for="c in items" :key="c.id" class="card panel">
+      <div v-for="c in items" :key="c.id" class="card panel" :class="{ picked: selected.has(c.id) }">
         <div class="photo" :class="ratioCls">
+          <label class="pick" :title="selected.has(c.id) ? '取消选择' : '加入批量选择'">
+            <input type="checkbox" :checked="selected.has(c.id)" @change="toggleSel(c.id)" />
+          </label>
           <img v-if="photoOf(c)" :src="photoOf(c)!" :alt="`${c.name} 参考图`" loading="lazy" />
           <div v-else class="ph"><Icon :name="cfg.icon" :size="30" /></div>
         </div>
@@ -298,6 +411,10 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
           </div>
           <div v-if="c.aliases.length" class="aliases muted">别名：{{ c.aliases.join('、') }}</div>
           <div class="summary">{{ c.appearance || c.summary || '—' }}</div>
+          <div v-if="c.states.length" class="states">
+            <span v-for="s in c.states.slice(0, 2)" :key="s" class="chip state" :title="s">{{ s }}</span>
+            <span v-if="c.states.length > 2" class="chip">+{{ c.states.length - 2 }}</span>
+          </div>
           <div class="meta muted">
             <span v-if="c.voice"><Icon name="speaker-wave" :size="12" /> {{ c.voice }}</span>
             <span v-if="c.refAssetIds.length" class="chip">{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span>
@@ -340,6 +457,10 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
           <textarea v-model="form.voice" rows="2" placeholder="如：软糯童声（或网关 模型:音色 格式）" />
         </label>
       </div>
+      <label v-if="kind === 'character'" class="fld">
+        状态变体 states（每行一条；格式「剧情节点：状态短语」）
+        <textarea v-model="form.states" rows="2" placeholder="如：第5场受伤：额头绷带" />
+      </label>
       <label class="fld">
         简介 summary
         <input v-model="form.summary" type="text" :placeholder="cfg.summaryPh" />
@@ -356,7 +477,19 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
             </select>
           </span>
           <span v-else class="muted">归属：{{ form.projectId ? `项目#${form.projectId}（不可改）` : '全局（不可挂图）' }}</span>
+          <button
+            v-if="form.id && form.projectId"
+            class="btn tiny"
+            type="button"
+            style="margin-left: auto"
+            :disabled="uploading"
+            @click="pickUpload"
+          >
+            <Icon name="plus" :size="12" /> {{ uploading ? '上传中…' : '上传新图' }}
+          </button>
+          <input ref="uploadEl" type="file" accept="image/*" class="hidden-file" @change="onUploadPick" />
         </div>
+        <div v-if="upNote" class="up-note">{{ upNote }}</div>
         <template v-if="form.projectId">
           <div v-if="assetsLoading" class="muted" style="font-size: 12px">图片加载中…</div>
           <div v-else-if="!assetOptions.length" class="muted" style="font-size: 12px">该项目暂无图片资产（先出图或导入素材）</div>
@@ -400,12 +533,39 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
   flex-direction: column;
 }
 
+/* [M13] 卡片多选态 */
+.card.picked {
+  border-color: var(--accent);
+}
+
 .photo {
+  position: relative;
   background: rgb(148 163 184 / 8%);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.pick {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgb(8 11 20 / 55%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pick input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
 }
 
 .photo.pc {
@@ -455,6 +615,22 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
   font-size: 11.5px;
 }
 
+/* [M13] 状态变体 chips */
+.states {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.states .state {
+  font-size: 11px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .summary {
   color: var(--text-2);
   font-size: 12.5px;
@@ -492,6 +668,28 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
 .btn.tiny.danger:hover {
   border-color: rgb(248 113 113 / 60%);
   color: var(--bad);
+}
+
+/* [M13] 批量润色结果 notice */
+.notice-box {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgb(34 197 94 / 35%);
+  border-radius: 9px;
+  background: var(--ok-weak);
+  color: var(--ok);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.up-note {
+  color: var(--ok);
+  font-size: 12px;
+}
+
+.hidden-file {
+  display: none;
 }
 
 .frow {

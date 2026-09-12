@@ -9,6 +9,7 @@ import type {
   ComposeConfig,
   EntityItem,
   EntityKind,
+  EntityPolishResult,
   ExportAssetLite,
   FetchModelsResult,
   GcResult,
@@ -29,6 +30,7 @@ import type {
   ShotEditItem,
   ShotOp,
   ShotPick,
+  StyleExtractResult,
   StylePresetItem,
   TemplateDetail,
   TemplateMeta,
@@ -104,7 +106,7 @@ export const projectApi = {
       genre?: string
       template_key?: string
       status?: 'active' | 'archived'
-      /** [M8] 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_id） */
+      /** [M8] 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_ids） */
       settings?: Record<string, unknown>
     },
   ) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
@@ -232,11 +234,43 @@ export const entityApi = {
   update: (id: number, body: Record<string, unknown>) =>
     api.put<{ entity: EntityItem }>(`/api/v1/entities/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/entities/${id}`),
+  /** [M13] 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动） */
+  polish: (ids: number[]) => api.post<EntityPolishResult>('/api/v1/entities/polish', { ids }),
 }
 
-/** [M8] 风格预设库（?active=1 仅启用；项目绑定经 PATCH /projects settings.style_preset_id） */
+/** [M13] 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；全局实体 400） */
+export async function uploadEntityRefImage(entityId: number, file: File): Promise<{ entity: EntityItem; asset: Asset }> {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  let res: Response
+  try {
+    res = await fetch(`/api/v1/entities/${entityId}/ref-images`, { method: 'POST', body: form })
+  } catch {
+    throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+  }
+  if (!res.ok) {
+    let code = 'http_' + res.status
+    let message = `HTTP ${res.status}`
+    try {
+      const data = (await res.json()) as ApiErrorBody
+      if (data?.error?.message) {
+        code = data.error.code
+        message = data.error.message
+      }
+    } catch {
+      // 非 JSON 错误体，保留默认
+    }
+    throw new ApiError(res.status, code, message)
+  }
+  return (await res.json()) as { entity: EntityItem; asset: Asset }
+}
+
+/** [M8] 风格预设库（?active=1 仅启用；[M13] 项目绑定经 PATCH /projects settings.style_preset_ids） */
 export const stylePresetApi = {
   list: (params = '') => api.get<Items<StylePresetItem>>(`/api/v1/style-presets${params}`),
+  /** [M13] 从项目参考图提取画风词（1..4 张；不落库，前端预填表单） */
+  extract: (projectId: number, assetIds: number[]) =>
+    api.post<StyleExtractResult>('/api/v1/style-presets/extract', { project_id: projectId, asset_ids: assetIds }),
   create: (body: Record<string, unknown>) => api.post<{ preset: StylePresetItem }>('/api/v1/style-presets', body),
   update: (id: number, body: Record<string, unknown>) =>
     api.put<{ preset: StylePresetItem }>(`/api/v1/style-presets/${id}`, body),

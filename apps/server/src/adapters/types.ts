@@ -55,6 +55,11 @@ export interface VideoAdapter {
    * 'none' = 不支持。缺省（未声明）视为 'none'。
    */
   readonly firstFrame?: 'none' | 'base64' | 'as-reference'
+  /**
+   * [M13] 参考图（场景/道具）注入能力：'base64' = 接受 data URI（经 extra.referenceImageUrls 下发 reference_image）；
+   * 'none'/缺省 = 不支持。声明必须与实现一致（能力的唯一事实源）。
+   */
+  readonly referenceImages?: 'none' | 'base64'
   generate(req: VideoGenRequest): Promise<GeneratedVideo>
   query(taskId: string, req: { baseUrl: string; apiKey: string }): Promise<{ status: 'pending' | 'processing' | 'completed' | 'failed'; url?: string; error?: string }>
 }

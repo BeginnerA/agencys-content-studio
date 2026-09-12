@@ -4,7 +4,7 @@ import { genTasks, pipelineRuns, type CharacterRow, type GenTask } from '../../d
 import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../../adapters/provider'
 import { assetToDataUri } from '../../services/asset-ref'
 import { loadEntityIndex } from '../../services/character'
-import { resolveProjectStyleSnippet } from '../../services/style-preset'
+import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../services/style-preset'
 import { saveGeneratedMedia } from '../../services/net'
 import { scheduleImageCheck } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
@@ -91,12 +91,14 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const useRefs = stepParams['use_character_refs'] !== false // M8 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'
-  // 风格锚定注入（M8）：项目绑定预设 → 运行时解析 → image_prompt 尾追「视觉风格：…」；未绑定/停用 → 零注入 + 日志
+  // 风格锚定注入（M8；[M13] 多预设叠加）：项目绑定预设（可多个）→ 运行时解析 → 逐块拼接尾追「视觉风格：…」；未绑定/停用 → 零注入 + 日志
   const useStylePreset = stepParams['use_style_preset'] !== false
-  const styleResolved = useStylePreset ? await resolveProjectStyleSnippet(ctx.run.projectId) : null
-  if (useStylePreset && !styleResolved) ctx.log('项目未绑定风格预设 / 预设已停用，跳过风格注入')
-  const finalShots = injectStyleAnchor(setShots, styleResolved?.snippet ?? null)
-  if (styleResolved) ctx.log(`风格注入：${styleResolved.name}（预设 #${styleResolved.id}）`)
+  const styleResolved = useStylePreset ? await resolveProjectStyleSnippets(ctx.run.projectId) : []
+  if (useStylePreset && styleResolved.length === 0) ctx.log('项目未绑定风格预设 / 预设已停用，跳过风格注入')
+  const finalShots = injectStyleAnchor(setShots, combineStyleSnippets(styleResolved.map((s) => s.snippet)))
+  if (styleResolved.length > 0) {
+    ctx.log(`风格注入：${styleResolved.map((s) => s.name).join(' + ')}（预设 ${styleResolved.map((s) => `#${s.id}`).join(',')}）`)
+  }
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
   const refCap = await imageRefCapability(provider)
   const uriCache = new Map<number, string>()
@@ -134,7 +136,8 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
       refAssetIds,
       refUsed,
       output_purpose: purpose,
-      stylePresetId: styleResolved?.id ?? null,
+      stylePresetId: styleResolved[0]?.id ?? null,
+      stylePresetIds: styleResolved.map((s) => s.id),
     })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {

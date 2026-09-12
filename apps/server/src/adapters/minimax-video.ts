@@ -58,6 +58,8 @@ export class MiniMaxVideoAdapter implements VideoAdapter {
   readonly provider = 'minimax_video'
   /** 首帧注入能力：实现已就绪（first_frame role），仅补声明 */
   readonly firstFrame = 'base64'
+  /** [M13] 参考图注入能力：reference_image role（经 extra.referenceImageUrls，≤9 张；混合总数 ≤12） */
+  readonly referenceImages = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = req.model || DEFAULT_MODEL

@@ -6,6 +6,7 @@ import { StepError, type StepResult } from '../types'
 /**
  * character_sync：角色档案入库（E3 一致性链源头）。
  * 输入 characters：characters-json 资产（多资产逐个尝试，取第一个含非空 characters 数组的）；
+ * [M13] states 变体随档案入库（normalizeSpec 保留，upsertEntity 非空覆盖）；
  * 输入 ref_images?：定妆照资产序列（按 asset.params.shotId = 角色名归属，未命中按资产名含角色名兜底）；
  * params：{ project = true }（true → 当前项目域；false → 全局角色库 projectId=NULL，不挂项目资产）。
  * 产物：建档日志资产（purpose=character_log，JSON 快照 { created, updated, refAttached, scope }）。
@@ -31,6 +32,7 @@ export async function characterSync(ctx: StepContext): Promise<StepResult> {
       appearance: s.appearance,
       negative: s.negative,
       voice: s.voice,
+      states: s.states,
     })
     if (r.created) created.push(s.name)
     else updated.push(s.name)
@@ -62,6 +64,8 @@ interface CharacterSpec {
   summary?: string
   negative?: string
   voice?: string
+  /** [M13] 状态变体（「{剧情节点}：{状态短语}」；逐字对齐设定包） */
+  states?: string[]
 }
 
 /** characters-json 资产解析：逐个尝试，取第一个可解析出非空角色数组的资产；全部失败 → StepError（含资产名与原因） */
@@ -143,13 +147,17 @@ async function attachRefImages(ctx: StepContext, projectId: number | null, specs
   return attached
 }
 
-function normalizeSpec(v: unknown): CharacterSpec | null {
+export function normalizeSpec(v: unknown): CharacterSpec | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
   const o = v as Record<string, unknown>
   const name = typeof o['name'] === 'string' ? o['name'].trim() : ''
   if (!name) return null
   const aliases = Array.isArray(o['aliases'])
     ? o['aliases'].filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim())
+    : []
+  // [M13] states 变体保留（去重保序；空数组省略）
+  const states = Array.isArray(o['states'])
+    ? [...new Set(o['states'].filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()))]
     : []
   return {
     name,
@@ -158,6 +166,7 @@ function normalizeSpec(v: unknown): CharacterSpec | null {
     summary: strOrUndef(o['summary']),
     negative: strOrUndef(o['negative']),
     voice: strOrUndef(o['voice']),
+    states: states.length > 0 ? states : undefined,
   }
 }
 
