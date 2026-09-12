@@ -466,6 +466,10 @@ export interface ShotVersion {
   prompt: string | null
   /** [M10] 版本来源：task=步骤任务产物 / upload=本地上传入库 */
   source: 'task' | 'upload'
+  /** [M12] 收藏标记（1=已收藏；版本清理保留豁免） */
+  isFavorite: number
+  /** [M12] 图像检测摘要（无/坏数据 → null，前端不显示徽标） */
+  quality: Pick<ImageQuality, 'ok' | 'reason'> | null
   urls: { file: string; thumb: string | null }
 }
 
@@ -619,5 +623,32 @@ export interface RerunResult {
   has_tasks: boolean
   tasks_total: number
   tasks_succeeded: number
+  note: string
+}
+
+// ===== [M12] 旧版本清理与收藏 / 图像检测 =====
+
+/** [M12] 图像有效性检测结果（assets.params.quality 契约；ok=null 表示无法判定） */
+export interface ImageQuality {
+  ok: boolean | null
+  reason: string
+  stats?: { ymin: number; ymax: number; yavg: number; satavg: number }
+  checkedAt?: number
+}
+
+/** [M12] 版本清理结果（shots/cleanup 与 assets/cleanup-versions 共用；groups=命中版本组数） */
+export interface CleanupResult {
+  ok: boolean
+  groups: number
+  cleaned: number
+  kept: number
+  note: string
+}
+
+/** [M12] 回收空间结果（物理删除已清理资产文件；files=回收文件数） */
+export interface GcResult {
+  ok: boolean
+  files: number
+  freed_bytes: number
   note: string
 }

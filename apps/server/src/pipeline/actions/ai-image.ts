@@ -6,6 +6,7 @@ import { assetToDataUri } from '../../services/asset-ref'
 import { loadEntityIndex } from '../../services/character'
 import { resolveProjectStyleSnippet } from '../../services/style-preset'
 import { saveGeneratedMedia } from '../../services/net'
+import { scheduleImageCheck } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
 import { shotDurationSec } from '../../services/shot-workbench'
 import { recordUsage } from '../../services/usage'
@@ -288,6 +289,8 @@ async function runOneTask(
         width: img.width,
         height: img.height,
       })
+      // [M12] 写时图像有效性检测（黑/纯色/损坏 → params.quality；fire-and-forget 不阻断）
+      scheduleImageCheck(asset)
       await db
         .update(genTasks)
         .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })

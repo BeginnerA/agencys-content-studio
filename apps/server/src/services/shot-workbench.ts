@@ -32,6 +32,8 @@ import {
   sha256Hex,
   writeTextAsset,
 } from './storage'
+import { scheduleImageCheck } from './image-check'
+import { cleanupVersions, type CleanupResult } from './version-cleanup'
 
 /** 工作台领域错误（路由层转 HTTP；status 默认 400，run/step 不存在用 404） */
 export class WorkbenchError extends Error {
@@ -81,6 +83,10 @@ export interface BoardVersion {
   prompt: string | null
   /** [M10] 版本来源：task=步骤任务产物 / upload=本地上传入库 */
   source: 'task' | 'upload'
+  /** [M12] 收藏标记（1=已收藏；版本清理保留豁免） */
+  isFavorite: number
+  /** [M12] 图像检测摘要（无/坏数据 → null，前端不显示徽标） */
+  quality: { ok: boolean | null; reason: string } | null
   urls: { file: string; thumb: string | null }
 }
 
@@ -822,6 +828,7 @@ export async function uploadAndBindShotAsset(
   const src = await resolveStoryboardSource(run, step)
   if (!src.shots.some((s) => s.id === shotId)) throw new WorkbenchError('unknown_shot', `镜头 ${shotId} 不在分镜中`)
   const asset = await importShotAsset(run, step, shotId, file)
+  scheduleImageCheck(asset)
   const assetIds = await rebuildShotOutput(step, src.shots, { shotId, assetId: asset.id })
   return { asset, assetIds }
 }
@@ -882,6 +889,21 @@ export async function resetStepForRecompose(runId: number, stepKey: string): Pro
     .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
     .where(eq(pipelineRuns.id, run.id))
   return { runId: run.id }
+}
+
+// ---------- [M12] 版本清理 ----------
+
+/**
+ * [M12] 工作台版本清理：校验工作台步骤 → 委托 version-cleanup。
+ * 保留规则：组内最新 / isFavorite / 被引用（在用）；其余软删（可回溯）。不触发执行。
+ */
+export async function cleanupShotVersions(
+  runId: number,
+  stepKey: string,
+): Promise<CleanupResult & { runId: number; stepKey: string }> {
+  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  const result = await cleanupVersions({ projectId: run.projectId, runId: run.id, stepId: step.id })
+  return { ...result, runId: run.id, stepKey: step.stepKey }
 }
 
 // ---------- [M11] 引擎级单步重跑 ----------
@@ -1159,7 +1181,8 @@ function sameIds(a: number[], b: number[]): boolean {
   return true
 }
 
-function toVersionView(a: Asset): BoardVersion {
+/** 版本视图组装（导出供 probe-m12 直测 quality 摘要过滤与容错） */
+export function toVersionView(a: Asset): BoardVersion {
   return {
     id: a.id,
     name: a.name,
@@ -1169,10 +1192,26 @@ function toVersionView(a: Asset): BoardVersion {
     duration: a.duration,
     prompt: a.prompt,
     source: a.taskId == null ? 'upload' : 'task',
+    isFavorite: a.isFavorite,
+    quality: parseQualityBrief(a.params),
     urls: {
       file: `/api/v1/assets/${a.id}/file`,
       // v=2：早期缩略图端点直接回原图（客户端可能缓存 24h），版本参数强制失效旧缓存
       thumb: a.kind === 'image' || a.kind === 'video' ? `/api/v1/assets/${a.id}/thumb?v=2` : null,
     },
+  }
+}
+
+/** [M12] params.quality 摘要（board 下发 ok/reason；stats/checkedAt 不下发） */
+function parseQualityBrief(params: string | null): BoardVersion['quality'] {
+  if (!params) return null
+  try {
+    const q = (JSON.parse(params) as { quality?: unknown }).quality
+    if (!q || typeof q !== 'object') return null
+    const o = q as { ok?: unknown; reason?: unknown }
+    if (typeof o.reason !== 'string') return null
+    return { ok: typeof o.ok === 'boolean' ? o.ok : null, reason: o.reason }
+  } catch {
+    return null
   }
 }

@@ -9,11 +9,11 @@ import BatchFormModal from '../components/BatchFormModal.vue'
 import ProjectDangerModal from '../components/ProjectDangerModal.vue'
 import ProjectFormModal from '../components/ProjectFormModal.vue'
 import PublishModal from '../components/PublishModal.vue'
-import { batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../lib/api'
+import { assetApi, batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import { schedulePendingRefresh } from '../lib/pending'
 import type { Asset, Batch, ProjectDetail, Publication, Run, TemplateMeta } from '../lib/types'
-import { runStatus, fmtTime, fmtMs, fmtQty, purposeText, batchStatus, inputSummary, PLATFORM_TEXT } from '../lib/format'
+import { runStatus, fmtTime, fmtMs, fmtQty, fmtSize, purposeText, batchStatus, inputSummary, PLATFORM_TEXT } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 
 const route = useRoute()
@@ -315,9 +315,83 @@ const purposes = computed(() => {
   return ['all', ...set]
 })
 
-const filteredAssets = computed(() =>
-  purposeFilter.value === 'all' ? assets.value : assets.value.filter((a) => a.purpose === purposeFilter.value),
-)
+const filteredAssets = computed(() => {
+  let list = assets.value
+  if (purposeFilter.value !== 'all') list = list.filter((a) => a.purpose === purposeFilter.value)
+  if (favOnly.value) list = list.filter((a) => a.isFavorite === 1)
+  return list
+})
+
+// ===== [M12] 收藏 / 版本清理 / 回收空间 =====
+const favOnly = ref(false)
+const assetNotice = ref('')
+const assetBusy = ref(false)
+
+/** 收藏切换（AssetGrid emit → API → 原地替换，保持列表对象新鲜） */
+async function onFavorite(a: Asset) {
+  assetErr.value = ''
+  assetNotice.value = ''
+  const next = a.isFavorite !== 1
+  try {
+    const r = await assetApi.favorite(a.id, next)
+    const i = assets.value.findIndex((x) => x.id === a.id)
+    if (i >= 0) assets.value[i] = r.asset
+    assetNotice.value = next ? `「${a.name}」已收藏（版本清理保留豁免）` : `「${a.name}」已取消收藏`
+  } catch (e) {
+    assetErr.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+/** 预览器重检结果同步（替换列表对象；网格徽标即时刷新） */
+function onAssetChanged(u: Asset) {
+  const i = assets.value.findIndex((x) => x.id === u.id)
+  if (i >= 0) assets.value[i] = u
+}
+
+/** 项目级版本组批量清理（保留最新 / 收藏 / 在用；软删可回溯） */
+async function doCleanupVersions() {
+  const ok = await confirmDialog({
+    title: '清理历史版本',
+    message: '将清理本项目图片 / 视频的历史版本：每组保留最新 1 个、已收藏的、以及正在被流水线引用的；其余软删除（回收空间前可回溯）。',
+    confirmText: '开始清理',
+  })
+  if (!ok) return
+  assetBusy.value = true
+  assetErr.value = ''
+  assetNotice.value = ''
+  try {
+    const r = await assetApi.cleanupVersions(projectId)
+    assetNotice.value = r.note
+    await loadAssets({ silent: true })
+  } catch (e) {
+    assetErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    assetBusy.value = false
+  }
+}
+
+/** 回收空间（物理删除已清理资产文件；不可逆） */
+async function doGc() {
+  const ok = await confirmDialog({
+    title: '回收空间',
+    message: '将物理删除本项目「已清理」资产的磁盘文件（不可恢复；数据库记录保留）。建议先执行「清理历史版本」。',
+    confirmText: '确认回收',
+    danger: true,
+  })
+  if (!ok) return
+  assetBusy.value = true
+  assetErr.value = ''
+  assetNotice.value = ''
+  try {
+    const r = await assetApi.gc(projectId)
+    assetNotice.value = `已回收 ${r.files} 个文件，释放 ${fmtSize(r.freed_bytes)}`
+    await loadAssets({ silent: true })
+  } catch (e) {
+    assetErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    assetBusy.value = false
+  }
+}
 
 // ===== 上传素材 =====
 const showUpload = ref(false)
@@ -665,6 +739,9 @@ function errOf(r: Run): string {
             <span class="bt">资产</span>
             <span class="muted">{{ filteredAssets.length }} 个</span>
             <div style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+              <label class="fav-ck muted">
+                <input v-model="favOnly" type="checkbox" /> 仅收藏
+              </label>
               <select v-model="purposeFilter" style="width: 150px" aria-label="按用途筛选资产">
                 <option value="all">全部用途</option>
                 <template v-for="p in purposes" :key="p">
@@ -673,11 +750,33 @@ function errOf(r: Run): string {
                   </option>
                 </template>
               </select>
+              <button
+                class="btn sm"
+                :disabled="assetBusy"
+                title="每组保留最新 / 收藏 / 在用版本，其余软删（可回溯）"
+                @click="doCleanupVersions"
+              >
+                清理历史版本
+              </button>
+              <button
+                class="btn sm danger"
+                :disabled="assetBusy"
+                title="物理删除已清理资产的磁盘文件（不可逆）"
+                @click="doGc"
+              >
+                回收空间
+              </button>
               <button class="btn sm" @click="loadAssets()">刷新</button>
             </div>
           </div>
           <div v-if="assetErr" class="err-text">{{ assetErr }}</div>
-          <AssetGrid :assets="filteredAssets" :loading="assetLoading" />
+          <div v-if="assetNotice" class="asset-notice">{{ assetNotice }}</div>
+          <AssetGrid
+            :assets="filteredAssets"
+            :loading="assetLoading"
+            @favorite="onFavorite"
+            @changed="onAssetChanged"
+          />
           <div v-if="assetTotal > assets.length" class="muted trunc">仅显示前 {{ assets.length }} 个资产（共 {{ assetTotal }} 个）</div>
         </div>
       </section>
@@ -1008,6 +1107,26 @@ function errOf(r: Run): string {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
+}
+
+/* [M12] 资产维护（收藏筛选 / 清理 / 回收） */
+.fav-ck {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.asset-notice {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ok);
+  background: var(--ok-weak);
+  border: 1px solid rgb(34 197 94 / 24%);
+  border-radius: 8px;
+  padding: 7px 10px;
 }
 
 .ops {

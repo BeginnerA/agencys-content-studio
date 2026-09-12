@@ -13,6 +13,7 @@ import {
   applyStoryboardEdits,
   applyStoryboardOps,
   buildShotBoard,
+  cleanupShotVersions,
   resetShotForRegenerate,
   resetStepForRecompose,
   uploadAndBindShotAsset,
@@ -125,6 +126,23 @@ shotsRoutes.post('/runs/:id/shots/upload', h(async (c) => {
     asset_ids: assetIds,
     note: '已上传并绑定为该镜头选中产物（重新合成后生效）',
   }, 201)
+}))
+
+// POST /runs/:id/shots/cleanup —— [M12] 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行）
+shotsRoutes.post('/runs/:id/shots/cleanup', h(async (c) => {
+  const runId = idParam(c)
+  const body = await bodyJson(c)
+  const stepKey = requireStepKey(body['step_key'])
+  const result = await wb(() => cleanupShotVersions(runId, stepKey))
+  return c.json({
+    ok: true,
+    run_id: result.runId,
+    step_key: result.stepKey,
+    groups: result.groups,
+    cleaned: result.cleaned,
+    kept: result.kept,
+    note: `已清理 ${result.cleaned} 个历史版本，保留 ${result.kept} 个（最新 / 收藏 / 在用）`,
+  })
 }))
 
 // POST /runs/:id/recompose —— 重新合成（重置 ffmpeg_merge 步骤；succeeded 镜头步骤全跳过）

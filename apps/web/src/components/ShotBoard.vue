@@ -11,7 +11,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { assetApi, composeApi, shotApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
-import { fmtTime, taskStatus } from '../lib/format'
+import { fmtTime, qualityText, taskStatus } from '../lib/format'
 import type {
   Asset, ComposeConfig, ComposeTransition, RunStep, ShotBoardData, ShotBoardShot, ShotEditItem, ShotPick, ShotVersion,
 } from '../lib/types'
@@ -568,6 +568,54 @@ function lineIdsOf(shot: ShotBoardShot): string[] {
   return Array.isArray(l) ? l.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
 }
 
+// ---------- [M12] 收藏 / 质量徽标 / 版本清理 ----------
+
+/** 版本质量异常文案（ok===false 才返回；null/正常不显示徽标） */
+function verQualityWarn(v: ShotVersion): string | null {
+  if (!v.quality || v.quality.ok !== false) return null
+  return qualityText(v.quality.reason)
+}
+
+/** 当前有效选中版本的异常提示（主缩略图角标） */
+function selectedQualityWarn(shot: ShotBoardShot): string | null {
+  const v = selectedVersion(shot)
+  return v ? verQualityWarn(v) : null
+}
+
+/** 收藏切换（本地即时更新；不整板重拉） */
+async function toggleVersionFavorite(v: ShotVersion) {
+  if (opBusy.value) return
+  err.value = ''
+  const next = v.isFavorite !== 1
+  try {
+    const r = await assetApi.favorite(v.id, next)
+    v.isFavorite = r.asset.isFavorite
+    notice.value = next ? `版本 ${v.name} 已收藏（清理时保留）` : '已取消收藏'
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+/** 版本组批量清理（每组保留最新 / 收藏 / 在用；软删可回溯） */
+async function doCleanupVersions() {
+  const ok = await confirmDialog({
+    title: '清理旧版本',
+    message: '将清理本步骤的历史产物：每个镜头保留最新 1 版、已收藏的、以及正在使用的（成片引用）；其余软删除（回收空间前可回溯）。不影响当前选中与成片。',
+    confirmText: '开始清理',
+  })
+  if (!ok) return
+  const res = await run(() => shotApi.cleanup(props.runId, props.step.stepKey))
+  if (res) {
+    notice.value = res.cleaned > 0 ? `已清理 ${res.cleaned} 个历史版本（保留 ${res.kept} 个）` : '没有可清理的历史版本'
+  }
+}
+
+/** 预览器重检结果：同步预览列表对象 + 刷新 board 徽标 */
+function onPreviewAssetChanged(updated: Asset) {
+  previewAssets.value = previewAssets.value.map((a) => (a.id === updated.id ? updated : a))
+  void load()
+}
+
 // ---------- 预览 ----------
 
 async function openPreview(shot: ShotBoardShot, firstId?: number) {
@@ -727,6 +775,14 @@ watch(
       <button class="btn sm" :disabled="!canOperate || !bulkPicked.length" @click="applyBulkDuration">应用</button>
       <span v-if="bulkPicked.length" class="muted">已勾选 {{ bulkPicked.length }} 镜</span>
       <span class="grow" />
+      <button
+        class="btn sm"
+        title="每组保留最新 / 收藏 / 在用版本，其余软删（回收空间前可回溯）"
+        :disabled="!canOperate"
+        @click="doCleanupVersions"
+      >
+        <Icon name="trash" :size="12" /> 清理旧版本
+      </button>
       <button class="btn sm" :disabled="!canOperate" @click="resetSelection">恢复全量默认</button>
     </div>
 
@@ -758,6 +814,13 @@ watch(
           <span v-else class="wb-ph"><Icon :name="isVideoStep ? 'play' : 'photo'" :size="22" /></span>
           <span v-if="lineIdsOf(shot).length" class="wb-lines" :title="`台词 ${lineIdsOf(shot).length} 句：${lineIdsOf(shot).join('、')}`">
             台词 {{ lineIdsOf(shot).length }} 句
+          </span>
+          <span
+            v-if="selectedQualityWarn(shot)"
+            class="wb-qwarn"
+            :title="`当前选中版本检测异常：${selectedQualityWarn(shot)}（仍按选中合成；可换版或重生成）`"
+          >
+            <Icon name="alert" :size="10" /> 图异常
           </span>
           <span v-if="shot.versions.length > 1" class="wb-vcount">{{ shot.versions.length }} 版</span>
           <span v-if="draftSelected[shot.shotId] !== undefined" class="wb-dot" title="已切换版本（待应用）" />
@@ -859,8 +922,24 @@ watch(
               />
               <span v-else class="wb-ph sm"><Icon :name="isVideoStep ? 'play' : 'photo'" :size="14" /></span>
               <span v-if="v.source === 'upload'" class="wb-vtag" title="本地上传入库">上传</span>
+              <span
+                v-if="verQualityWarn(v)"
+                class="wb-qbadge"
+                :title="`检测异常：${verQualityWarn(v)}（仍可选用；建议换版或重生成）`"
+              >
+                <Icon name="alert" :size="10" />
+              </span>
             </div>
             <div class="wb-vmeta">
+              <button
+                class="wb-heart"
+                :class="{ on: v.isFavorite === 1 }"
+                :disabled="opBusy"
+                :title="v.isFavorite === 1 ? '取消收藏（收藏版本清理时保留）' : '收藏（清理时保留该版本）'"
+                @click="toggleVersionFavorite(v)"
+              >
+                <Icon name="heart" :size="11" />
+              </button>
               <span class="muted mono wb-vtime">{{ fmtTime(v.createdAt) }}</span>
               <button class="wb-mini" :disabled="!canOperate" @click="pickVersion(shot, v.id)">
                 {{ effSelected(shot) === v.id ? '当前' : '选用' }}
@@ -884,7 +963,13 @@ watch(
       @change="onUploadPicked"
     />
 
-    <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewIndex" @close="previewOpen = false" />
+    <AssetPreviewer
+      v-if="previewOpen"
+      :assets="previewAssets"
+      :index="previewIndex"
+      @close="previewOpen = false"
+      @changed="onPreviewAssetChanged"
+    />
 
     <BgmModal
       v-if="bgmOpen"
@@ -1379,9 +1464,68 @@ watch(
   display: none;
 }
 
+/* [M12] 质量异常角标（不阻断合成，提示换版 / 重生成） */
+.wb-qwarn {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: #fff;
+  background: rgb(248 113 113 / 82%);
+  backdrop-filter: blur(4px);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+.wb-qbadge {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  display: inline-flex;
+  align-items: center;
+  color: #fff;
+  background: rgb(248 113 113 / 82%);
+  border-radius: 4px;
+  padding: 1px 3px;
+  pointer-events: none;
+}
+
+/* [M12] 收藏按钮（版本画廊） */
+.wb-heart {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0 2px;
+  display: inline-flex;
+  flex: none;
+  transition: color 0.15s;
+}
+
+.wb-heart:hover {
+  color: var(--bad);
+}
+
+.wb-heart.on {
+  color: var(--bad);
+}
+
+.wb-heart.on .ic {
+  fill: currentColor;
+}
+
+.wb-heart:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-card,
-  .wb-mini {
+  .wb-mini,
+  .wb-heart {
     transition: none;
   }
 }

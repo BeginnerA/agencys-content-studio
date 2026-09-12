@@ -5,6 +5,7 @@ import { probeMediaDuration, resolveFfmpeg } from '../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../services/storage'
 import { TRANSITIONS, loadBgmAsset, readComposeConfig } from '../../services/compose-config'
 import { shotDurationSec } from '../../services/shot-workbench'
+import { QUALITY_TEXT, type ImageQualityReason } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
 import type { Asset } from '../../db/schema'
 import type { StepContext } from '../context'
@@ -124,7 +125,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // [M7] shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
   const perShotDur = await loadPerShotDurations(ctx, shotsIds)
-  const { segments, skipped } = computeShotSegments(rows, mode, perShotDur, durationPerShot)
+  const { segments, skipped, warnings } = computeShotSegments(rows, mode, perShotDur, durationPerShot)
+  for (const w of warnings) ctx.log(w)
   if (skipped.length > 0) {
     for (const id of skipped) {
       const a = rows.find((r) => r.id === id)
@@ -566,9 +568,10 @@ export function computeShotSegments(
   mode: 'images' | 'clips',
   perShotDur: Map<string, number>,
   durationPerShot: number,
-): { segments: Segment[]; skipped: number[] } {
+): { segments: Segment[]; skipped: number[]; warnings: string[] } {
   const segments: Segment[] = []
   const skipped: number[] = []
+  const warnings: string[] = []
   for (const a of rows) {
     if (!a.relPath) {
       skipped.push(a.id)
@@ -586,6 +589,9 @@ export function computeShotSegments(
         skipped.push(a.id)
         continue
       }
+      // [M12] 图像检测异常警示（仅警告；不阻断用户已选中的图）
+      const warn = qualityWarning(a)
+      if (warn) warnings.push(warn)
       const shotId = shotIdOfAsset(a)
       const override = shotId !== null ? perShotDur.get(shotId) : undefined
       segments.push({ id: a.id, path, kind: 'image', durSec: override ?? durationPerShot, explicit: override !== undefined })
@@ -606,7 +612,20 @@ export function computeShotSegments(
       segments.push({ id: a.id, path, kind: 'video', durSec: dur, estimated })
     }
   }
-  return { segments, skipped }
+  return { segments, skipped, warnings }
+}
+
+/** [M12] 图像检测异常警示（params.quality.ok === false；缺失/坏数据 → null） */
+function qualityWarning(a: Asset): string | null {
+  if (!a.params) return null
+  try {
+    const q = (JSON.parse(a.params) as { quality?: { ok?: unknown; reason?: unknown } }).quality
+    if (!q || q.ok !== false) return null
+    const reason = typeof q.reason === 'string' ? q.reason : 'unknown'
+    return `镜头产物 asset#${a.id} 疑似异常图（${QUALITY_TEXT[reason as ImageQualityReason] ?? reason}），已按选中继续合成`
+  } catch {
+    return null
+  }
 }
 
 /** [M7] shots（分镜 JSON 原始文本）→ per-shot 时长表（裸数组 / {shots:[]}；duration 优先回退 duration_sec；非法条目跳过） */

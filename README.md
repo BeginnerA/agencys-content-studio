@@ -181,6 +181,19 @@ pnpm dev    # 并行起双端：
 
 验证：`pnpm --filter @acs/server probe:m11`（六节：rerun / align / bgm / transition / template / regression，零网络零计费）。
 
+## M12 能力速览（旧版本清理与收藏 + 图像检测）
+
+把素材与版本从「只增不减」升级为「可运营」：**收藏**（工作台版本卡与素材卡一键 ♥，素材页「仅收藏」筛选，收藏同时是清理保留豁免）；**版本清理**（按「保留最新 / 收藏 / 在用」三规则一键清掉历史版本，软删可回溯）；**回收空间**（将已软删资产的磁盘文件显式物理回收，不可逆强确认、行保留审计）；**图像检测**（生成与上传的图片落盘后自动检测黑图 / 纯色空白 / 损坏 / 文件缺失，异常图打警告徽标 + 合成时仅日志警示不阻断）。设计三原则：**软删与回收两段式**（清理只软删、回收才删文件，两级均显式触发）、**三重保留保守防误删**（最新 / 收藏 / 被引用，引用集全项目扫描）、**检测宽容降级**（ffmpeg 不可用不标记；异常图零阻断）。
+
+- **收藏**（零库改动）：`PATCH /assets/:id { is_favorite }` 既有；工作台版本画廊卡 ♥ 与素材卡 ♥ 双入口；素材页「仅收藏」前端筛选；清理中收藏豁免
+- **版本清理**（`cleanupVersions`）：组内最新（tie→max(id)）/ 收藏 / 被任意步骤 `output.asset_ids` 引用者保留，其余软删；组键 = 任务组 `t:<taskId>` / 上传组 `u:<run>:<step>:<shot>`；`POST /runs/:id/shots/cleanup`（工作台级）+ `POST /projects/:id/assets/cleanup-versions`（项目级）
+- **回收空间**（`gcProject`）：对软删资产 unlink 原文件 + 缩略图缓存（行保留 / 失败跳过 / 幂等）；`POST /projects/:id/assets/gc` → `{ files, freed_bytes }`；UI danger 强确认
+- **图像检测**（`image-check.ts`）：ffmpeg signalstats 单帧统计（动态范围极窄 + `yavg<=16` → 黑图；动态范围极窄 → 纯色空白；解码失败 → 损坏；文件缺失 → `no_file`；ffmpeg 不可用 → 不标记）；写 `assets.params.quality`（零新列）；生成 / 上传 / 导入三路径自动检测 + `POST /assets/:id/check` 手动重检
+- **展示与守卫**：工作台版本卡 / 素材卡异常徽标（黑图 / 纯色空白 / 损坏）；合成时 `computeShotSegments` 异常图 warnings 仅警示继续出片
+- **Web**：`ShotBoard.vue` ♥ + 徽标 + 「清理旧版本」；`AssetGrid.vue` ♥ + 徽标；`AssetPreviewer.vue` 「重新检测」；`ProjectDetailView.vue` 「仅收藏」筛选 + 「清理历史版本」 + 「回收空间」
+
+验证：`pnpm --filter @acs/server probe:m12`（六节：cleanup / imagecheck / gc / board / merge-guard / regression，零网络零计费）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -372,6 +385,20 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 9 | 浏览器 DOM 五组验证（Run 98） | ✅ | A 重跑按钮 + RerunModal 计数预览 / B 转场行 + 配乐入口 / C 镜头台词角标 / D BgmModal / E StoryboardEditor lines 控件 —— 五组全 PASS、零 console 错误 |
 | 10 | 实弹暴露缺陷修复：布局 2 处 | ✅ | ① 全局 `select{width:100%}` 命中转场下拉独占整行 → `.wb-sel` 收窄（auto / max 132px）；② 任务行 nowrap 长 prompt 经 grid `1fr` auto min 撑破轨道（整页横滚 10569px）→ `.cols` 改 `minmax(0,1fr)`；复验 scrollWidth 738 / 转场行单行 / 配乐按钮可见 |
 | 11 | 续跑链工作台限制（发现 · 列后续修复） | 发现 | 续跑链 run（98）工作台写侧 `no_producer` 拒绝、读侧溯源回退旧快照（804 无 lines）→ 台词角标无数据；锚点修正（input.shots → 1138）后 board 恢复。属 M10 溯源约束（step.runId===run.id）对续跑链的固有限制 |
+
+## M12 验收快照（2026-09-12，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：六节全绿 | ✅ | 双端 typecheck 0 错；`probe:m12` 66 项断言全过（cleanup / imagecheck / gc / board / merge-guard / regression；黑·灰·正常·截断·缺失五样本判定矩阵；`yavg<=16` 边界实测） |
+| 2 | 兼容回归：m7·m10·m11 | ✅ | 三探针全绿（M12 改动面 = shot-workbench / ffmpeg-merge 的既有调用方，按 spec §6.2 回归集） |
+| 3 | 收藏实弹（项目 10） | ✅ | `PATCH {is_favorite:true}` → API 回读 `isFavorite=1`；素材页「仅收藏」筛选 → 仅剩 1 张（#1108）；工作台版本卡 ♥ 激活态 DOM |
+| 4 | 检测实弹 | ✅ | `POST /assets/1108/check` → `quality={ok:true,reason:'ok',stats:{ymin:0,ymax:244,yavg:69.3657,satavg:16.9465}}`；黑图 #1148 上传 → 自动检测 `black`（yavg=16 边界命中 `<=` 校准） |
+| 5 | 清理实弹（Run 95） | ✅ | 工作台级 `groups=19 / cleaned=1（#919）/ kept=19` → board 复查 ids=[831,920]（选中 920 不变）；项目级 `groups=106 / cleaned=2（#831·#1012，919 已软删跳过）/ kept=106`；终态逐值核对 **20/20**（run95 软删集合恰好 [831,919]，零误伤） |
+| 6 | 回收实弹 | ✅ | `POST /projects/10/assets/gc` → `files=4 / freed_bytes=2,981,444`（=80418+246735+261815+2392476）；软删行保留（审计）、现存文件 0；total=338 与 DB 一致 |
+| 7 | 兼容实弹 | ✅ | 存量 run board 正常（20 镜 / 22 版本 quality 全 null 不误报）；老资产无徽标；#920/#1033 保留版本文件完好 |
+| 8 | DOM 四要素（无头 Chrome CDP） | ✅ | 10/10：♥ 激活态 / 「疑似黑图」徽标唯一命中 #1148 / 「仅收藏」筛选生效 / 「清理旧版本」按钮 + 确认弹窗（标题·正文·取消关闭）；板面 33 卡零误报（qwarn=0）；截图 `apps/web/tmp-m12-dom-1..5-*.png` |
+| 9 | 越界核查（红线零 diff） | ✅ | `git status`：schema.ts / engine / refs / loader / 适配器 / 模板 / 提示词零 diff；package.json 仅 +`probe:m12` 脚本（dependencies 零新增）；改动面 = 14 改（610+/18−）+ 2 新服务 + 探针 + 5 截图证据 |
 
 ## M7 验收快照（2026-09-12，实弹）
 

@@ -5,11 +5,13 @@ import type {
   Asset,
   Batch,
   BatchDetail,
+  CleanupResult,
   ComposeConfig,
   EntityItem,
   EntityKind,
   ExportAssetLite,
   FetchModelsResult,
+  GcResult,
   GenTask,
   MemoryItem,
   MemoryStatus,
@@ -195,6 +197,16 @@ export const assetApi = {
   detail: (id: number) => api.get<{ asset: Asset }>(`/api/v1/assets/${id}`),
   /** 软删除（导出包清理用：列表隐藏，文件保留） */
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/assets/${id}`),
+  /** [M12] 收藏切换（PATCH 白名单 is_favorite；版本清理保留豁免） */
+  favorite: (id: number, fav: boolean) =>
+    api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, { is_favorite: fav ? 1 : 0 }),
+  /** [M12] 图像有效性检测（同步；仅图片；结果写 params.quality） */
+  check: (id: number) => api.post<{ asset: Asset }>(`/api/v1/assets/${id}/check`),
+  /** [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯） */
+  cleanupVersions: (projectId: number) =>
+    api.post<CleanupResult>(`/api/v1/projects/${projectId}/assets/cleanup-versions`),
+  /** [M12] 回收空间（物理删除已清理资产文件；不可逆；行保留） */
+  gc: (projectId: number) => api.post<GcResult>(`/api/v1/projects/${projectId}/assets/gc`),
 }
 
 // ===== [M3/M8] 记忆 / 实体素材 =====
@@ -375,6 +387,12 @@ export const shotApi = {
   recompose: (runId: number, stepKey: string) =>
     api.post<{ ok: boolean; run_id: number; note: string }>(
       `/api/v1/runs/${runId}/recompose`,
+      { step_key: stepKey },
+    ),
+  /** [M12] 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行） */
+  cleanup: (runId: number, stepKey: string) =>
+    api.post<CleanupResult & { run_id: number; step_key: string }>(
+      `/api/v1/runs/${runId}/shots/cleanup`,
       { step_key: stepKey },
     ),
 }

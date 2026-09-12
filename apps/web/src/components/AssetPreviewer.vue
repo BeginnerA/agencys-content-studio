@@ -2,13 +2,14 @@
 // 统一资产预览查看器：图片（缩放/平移）/ 视频 / 音频 / Markdown / JSON / 纯文本 / 未知兜底
 // 设计：沉浸式弹窗（与 Modal 体例同源），多资产可切换（← →），操作统一收敛顶栏（复制/下载/新标签）
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { assetApi } from '../lib/api'
 import type { Asset } from '../lib/types'
-import { KIND_TEXT, fmtDur, fmtSize, fmtTime, purposeText } from '../lib/format'
+import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetQuality, purposeText, qualityText } from '../lib/format'
 import Icon from './Icon.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 
 const props = defineProps<{ assets: Asset[]; index?: number }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; changed: [asset: Asset] }>()
 
 const MAX_TEXT = 1.5 * 1024 * 1024 // 文本预览上限：超出只提供下载
 const JSON_PARSE_MAX = 512 * 1024 // 超过不做格式化/着色，防卡顿
@@ -222,6 +223,26 @@ function onPointerUp() {
   dragging.value = false
 }
 
+// ===== [M12] 图像有效性重检（写回 params.quality；结果同步宿主） =====
+const checkBusy = ref(false)
+const checkMsg = ref('')
+
+async function doCheck() {
+  const a = cur.value
+  if (!a || a.kind !== 'image' || checkBusy.value) return
+  checkBusy.value = true
+  checkMsg.value = ''
+  try {
+    const r = await assetApi.check(a.id)
+    checkMsg.value = `检测完成：${qualityText(parseAssetQuality(r.asset)?.reason)}`
+    emit('changed', r.asset)
+  } catch (e) {
+    checkMsg.value = `检测失败：${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    checkBusy.value = false
+  }
+}
+
 // ===== 多资产切换 / 键盘 =====
 function prev() {
   if (hasPrev.value) idx.value -= 1
@@ -252,6 +273,7 @@ watch(idx, () => {
   imgErr.value = false
   naturalSize.value = null
   copied.value = false
+  checkMsg.value = ''
   void loadText()
 })
 
@@ -281,6 +303,15 @@ onBeforeUnmount(() => {
           <span class="badge">{{ kindLabel }}</span>
           <span v-if="assets.length > 1" class="count mono">{{ idx + 1 }} / {{ assets.length }}</span>
           <div class="ops">
+            <button
+              v-if="cur.kind === 'image'"
+              class="btn sm"
+              :disabled="checkBusy"
+              title="重新检测图片有效性（黑图 / 纯色空白 / 损坏；结果写入资产元数据）"
+              @click="doCheck"
+            >
+              <Icon name="refresh" :size="12" /> {{ checkBusy ? '检测中…' : '重新检测' }}
+            </button>
             <button
               v-if="isTextLike && !tooBig"
               class="btn sm"
@@ -414,6 +445,7 @@ onBeforeUnmount(() => {
         <!-- 底栏：元信息 + 提示词快照 -->
         <footer class="foot">
           <div class="metaline mono">{{ metaLine }}</div>
+          <div v-if="checkMsg" class="chk" :class="{ bad: checkMsg.startsWith('检测失败') }">{{ checkMsg }}</div>
           <details v-if="cur.prompt" class="prmt">
             <summary>提示词快照（可复制溯源）</summary>
             <pre class="prebox">{{ cur.prompt }}</pre>
@@ -756,6 +788,16 @@ onBeforeUnmount(() => {
 .metaline {
   font-size: 11.5px;
   color: var(--text-3);
+}
+
+/* [M12] 重检结果（成功绿 / 失败红） */
+.chk {
+  font-size: 11.5px;
+  color: var(--ok);
+}
+
+.chk.bad {
+  color: var(--bad);
 }
 
 .prmt summary {

@@ -1,4 +1,4 @@
-import type { RunStatus, StepStatus, TaskStatus } from './types'
+import type { Asset, ImageQuality, RunStatus, StepStatus, TaskStatus } from './types'
 
 export function fmtTime(ms: number | null | undefined): string {
   if (!ms) return '—'
@@ -162,4 +162,32 @@ export function inputSummary(input: Record<string, unknown> | null | undefined):
     .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join(' · ')
   return s.length > 80 ? s.slice(0, 80) + '…' : s
+}
+
+// ===== [M12] 图像检测展示 =====
+
+export const QUALITY_TEXT: Record<string, string> = {
+  ok: '正常',
+  black: '疑似黑图',
+  flat: '疑似纯色空白图',
+  broken: '疑似损坏图',
+  no_file: '文件缺失',
+  ffmpeg_unavailable: '无法检测（ffmpeg 不可用）',
+}
+
+/** 检测原因 → 中文文案（未知原因原样展示） */
+export function qualityText(reason: string | null | undefined): string {
+  if (!reason) return '未知'
+  return QUALITY_TEXT[reason] ?? reason
+}
+
+/** 取资产 params.quality（无/脏数据 → null；调用方仅对 ok===false 显示异常徽标） */
+export function parseAssetQuality(a: Asset): ImageQuality | null {
+  const raw = a.params?.['quality']
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const rec = raw as Record<string, unknown>
+  return {
+    ok: typeof rec['ok'] === 'boolean' ? rec['ok'] : null,
+    reason: typeof rec['reason'] === 'string' ? rec['reason'] : 'unknown',
+  }
 }

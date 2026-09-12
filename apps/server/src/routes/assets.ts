@@ -7,6 +7,8 @@ import { db } from '../db'
 import { assets } from '../db/schema'
 import { absPathOf, importFiles, mimeOfExt, withUtf8Charset } from '../services/storage'
 import { ensureThumb } from '../services/thumb'
+import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
+import { cleanupVersions, gcProject } from '../services/version-cleanup'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -61,6 +63,8 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   }
   if (files.length === 0) throw new HttpError(400, 'no_files', '未收到文件')
   const created = await importFiles(projectId, files, { purpose })
+  // [M12] 写时图像有效性检测（仅图片；fire-and-forget 不阻断）
+  for (const a of created) scheduleImageCheck(a)
   return c.json({ items: created.map(toAssetView), duplicated: created.length < files.length }, 201)
 }))
 
@@ -158,6 +162,41 @@ assetsRoutes.delete('/assets/:id', h(async (c) => {
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
   await db.update(assets).set({ deletedAt: Date.now(), updatedAt: Date.now() }).where(eq(assets.id, a.id))
   return c.json({ ok: true })
+}))
+
+// POST /assets/:id/check —— [M12] 单资产图像有效性检测（同步；仅图片；结果写 params.quality）
+assetsRoutes.post('/assets/:id/check', h(async (c) => {
+  const a = await findAsset(idParam(c))
+  if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
+  if (a.kind !== 'image') throw new HttpError(400, 'bad_kind', '仅图片资产支持检测')
+  const updated = await checkAndRecordAsset(a.id)
+  if (!updated) return notFound(c, `资产 ${c.req.param('id')}`)
+  return c.json({ asset: toAssetView(updated) })
+}))
+
+// POST /projects/:id/assets/cleanup-versions —— [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯）
+assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
+  const projectId = idParam(c)
+  const result = await cleanupVersions({ projectId })
+  return c.json({
+    ok: true,
+    groups: result.groups,
+    cleaned: result.cleaned,
+    kept: result.kept,
+    note: `已清理 ${result.cleaned} 个历史版本，保留 ${result.kept} 个（最新 / 收藏 / 在用）`,
+  })
+}))
+
+// POST /projects/:id/assets/gc —— [M12] 回收空间（删除已清理资产的物理文件；不可逆；行保留）
+assetsRoutes.post('/projects/:id/assets/gc', h(async (c) => {
+  const projectId = idParam(c)
+  const result = await gcProject(projectId)
+  return c.json({
+    ok: true,
+    files: result.files,
+    freed_bytes: result.freedBytes,
+    note: `已回收 ${result.files} 个文件，释放 ${result.freedBytes} 字节`,
+  })
 }))
 
 async function findAsset(id: number) {
