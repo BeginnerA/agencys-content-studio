@@ -86,4 +86,34 @@ async function ensureSchemaColumns(): Promise<void> {
       log.warn(`ensureColumn failed: ${(err as Error).message}`)
     }
   }
+
+  // [M8] 实体素材库：characters.kind 泛化列（存量行 default 'character'）
+  const charCols = await sqlite.execute("PRAGMA table_info('characters')")
+  const charHas = new Set((charCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!charHas.has('kind')) {
+    try {
+      await sqlite.execute("ALTER TABLE characters ADD COLUMN kind text DEFAULT 'character' NOT NULL")
+      log.info('ensureColumn: characters.kind 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  // [M8] 风格预设库建表兜底（migrate 体系外旧库）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS style_presets (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        name text NOT NULL UNIQUE,
+        snippet text NOT NULL,
+        description text,
+        sort_order integer DEFAULT 0 NOT NULL,
+        is_active integer DEFAULT 1 NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

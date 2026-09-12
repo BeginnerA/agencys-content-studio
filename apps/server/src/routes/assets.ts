@@ -1,31 +1,44 @@
 import { Hono } from 'hono'
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, count, desc, eq, isNull } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
 import { absPathOf, importFiles, mimeOfExt, withUtf8Charset } from '../services/storage'
+import { ensureThumb } from '../services/thumb'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
 
-// GET /projects/:id/assets —— 项目资产列表（?kind=&purpose=&tag=）
+// GET /projects/:id/assets —— 项目资产列表（?kind=&purpose=&tag=&limit=&offset=；返回 {items,total}）
+// limit 缺省时保持全量返回（兼容旧调用方）；显式传参时 clamp 1..500（默认 200）
 assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const projectId = idParam(c)
   const kind = c.req.query('kind')
   const purpose = c.req.query('purpose')
   const tag = c.req.query('tag')
+  const limitRaw = c.req.query('limit')
+  const offsetRaw = c.req.query('offset')
+  const hasLimit = limitRaw !== undefined
+  const limitNum = Number(limitRaw)
+  const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(Math.floor(limitNum), 500) : 200
+  const offsetNum = Number(offsetRaw)
+  const offset = Number.isFinite(offsetNum) && offsetNum > 0 ? Math.floor(offsetNum) : 0
   const conds = [eq(assets.projectId, projectId), isNull(assets.deletedAt)]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))
-  let rows = await db.select().from(assets).where(and(...conds)).orderBy(desc(assets.updatedAt))
+  const where = and(...conds)
+  const total = Number((await db.select({ n: count() }).from(assets).where(where))[0]?.n ?? 0)
+  let query = db.select().from(assets).where(where).orderBy(desc(assets.updatedAt)).$dynamic()
+  if (hasLimit) query = query.limit(limit).offset(offset)
+  let rows = await query
   if (tag) {
     rows = rows.filter((a) => {
       try { return (JSON.parse(a.tags) as string[]).includes(tag) } catch { return false }
     })
   }
-  return c.json({ items: rows.map(toAssetView) })
+  return c.json({ items: rows.map(toAssetView), total })
 }))
 
 // POST /projects/:id/imports —— 批量上传素材（multipart；sha256 去重）
@@ -94,11 +107,22 @@ assetsRoutes.get('/assets/:id/file', h(async (c) => {
   return new Response(stream, { status, headers })
 }))
 
-// GET /assets/:id/thumb —— 缩略图（M1 图片资产直接回原图，后续 sharp 生成）
+// GET /assets/:id/thumb —— 缩略图（ffmpeg 生成 480px WebP 磁盘缓存；失败回退原图）
 assetsRoutes.get('/assets/:id/thumb', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
   if (a.kind !== 'image' || !a.relPath) throw new HttpError(404, 'no_thumb', '非图片资产暂无缩略图')
+  const thumb = await ensureThumb(a)
+  if (thumb) {
+    const buf = readFileSync(thumb)
+    return new Response(buf, {
+      headers: {
+        'Content-Type': 'image/webp',
+        'Content-Length': String(buf.byteLength),
+        'Cache-Control': 'private, max-age=86400',
+      },
+    })
+  }
   const abs = absPathOf(a.relPath)
   if (!exists(abs)) throw new HttpError(404, 'no_file', `文件缺失: ${a.relPath}`)
   return new Response(Readable.toWeb(createReadStream(abs)), {

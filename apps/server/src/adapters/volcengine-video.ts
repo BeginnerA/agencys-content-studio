@@ -6,6 +6,7 @@
  * 仅支持 Doubao Seedance 2.x 系列模型（需在方舟控制台开通），生成模式只保留多模态参考:
  * - reference   多模态参考（≤9 reference_image + ≤3 reference_video + ≤3 reference_audio + 可选文本）
  *   有参考音频时至少包含 1 个参考图片或视频
+ * - 首帧/尾帧（M6）：content role first_frame / last_frame（排在参考素材之前；role 依据实弹对表）
  */
 import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
 
@@ -48,6 +49,8 @@ function joinApiUrl(baseUrl: string, prefix: string, path: string): string {
 
 export class VolcEngineVideoAdapter implements VideoAdapter {
   readonly provider = 'volcengine_video'
+  /** 首帧注入能力：first_frame role（实弹对表若被拒则收敛 'as-reference' 并回写 spec §6-4 注记） */
+  readonly firstFrame = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = req.model || DEFAULT_MODEL
@@ -73,12 +76,16 @@ export class VolcEngineVideoAdapter implements VideoAdapter {
     if (refAudios.length > 0 && refImages.length + refVideos.length === 0) {
       throw new Error('参考音频需要至少 1 个参考图片或视频')
     }
-    if (!prompt && !refImages.length && !refVideos.length && !refAudios.length) {
+    const hasFrames = !!req.firstFrameUrl || !!req.lastFrameUrl
+    if (!prompt && !refImages.length && !refVideos.length && !refAudios.length && !hasFrames) {
       throw new Error('多模态参考模式需要至少一个参考素材或 prompt')
     }
 
     const content: Record<string, unknown>[] = []
     if (prompt) content.push({ type: 'text', text: prompt })
+    // 首帧/尾帧（M6）：data URI 首帧排参考素材之前；实弹对表——若官方拒绝 first_frame 则改 reference_image 并更声明
+    if (req.firstFrameUrl) content.push({ type: 'image_url', image_url: { url: req.firstFrameUrl }, role: 'first_frame' })
+    if (req.lastFrameUrl) content.push({ type: 'image_url', image_url: { url: req.lastFrameUrl }, role: 'last_frame' })
     for (const url of refImages) {
       content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
     }

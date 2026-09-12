@@ -19,6 +19,9 @@ import type {
   Run,
   RunAssetLite,
   RunDetail,
+  ShotBoardData,
+  ShotEditItem,
+  ShotPick,
   TemplateDetail,
   TemplateMeta,
   TemplateValidation,
@@ -89,7 +92,8 @@ export const projectApi = {
     id: number,
     body: { name?: string; brief?: string; genre?: string; template_key?: string; status?: 'active' | 'archived' },
   ) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
-  assets: (id: number, params = '') => api.get<Items<Asset>>(`/api/v1/projects/${id}/assets${params}`),
+  /** 资产列表（?limit/offset/kind/purpose/tag；total 为过滤条件下总数） */
+  assets: (id: number, params = '') => api.get<{ items: Asset[]; total: number }>(`/api/v1/projects/${id}/assets${params}`),
   runs: (id: number) => api.get<Items<Run>>(`/api/v1/runs?project_id=${id}`),
   /** 归档（逻辑删，可从「已归档」列表恢复） */
   archive: (id: number) => api.del<{ ok: boolean; mode: string }>(`/api/v1/projects/${id}`),
@@ -283,4 +287,36 @@ export const settingsApi = {
   /** value 即 PUT body（JSON） */
   put: (key: string, value: unknown) =>
     api.put<{ ok: boolean; key: string; updatedAt: number }>(`/api/v1/settings/${encodeURIComponent(key)}`, value),
+}
+
+// ===== [M7] 镜头工作台 =====
+
+export const shotApi = {
+  /** 工作台聚合读（镜头 × 任务 × 版本 × 选中 × 合成新鲜度） */
+  board: (runId: number, stepKey: string) =>
+    api.get<ShotBoardData>(`/api/v1/runs/${runId}/shot-board?step_key=${encodeURIComponent(stepKey)}`),
+  /** 分镜字段级编辑（时长/提示词；写新分镜版本，重新合成后生效） */
+  edit: (runId: number, stepKey: string, shots: ShotEditItem[]) =>
+    api.post<{ ok: boolean; asset_id: number; asset_ids: number[]; edited: number }>(
+      `/api/v1/runs/${runId}/shots/edit`,
+      { step_key: stepKey, shots },
+    ),
+  /** 单镜重生成（可选携带编辑字段：先写分镜再重置入队，仅目标镜重跑） */
+  regenerate: (runId: number, stepKey: string, item: ShotEditItem) =>
+    api.post<{ ok: boolean; edited: boolean; run_id: number; task_id: number; note: string }>(
+      `/api/v1/runs/${runId}/shots/regenerate`,
+      { step_key: stepKey, ...item },
+    ),
+  /** 多版本选片 / 选镜（picks 为子集；reset=true 恢复全量最新；不触发执行） */
+  select: (runId: number, stepKey: string, opts: { picks?: ShotPick[]; reset?: boolean }) =>
+    api.post<{ ok: boolean; asset_ids: number[] }>(
+      `/api/v1/runs/${runId}/shots/select`,
+      { step_key: stepKey, ...opts },
+    ),
+  /** 重新合成（重置 ffmpeg_merge；succeeded 镜头步骤全跳过） */
+  recompose: (runId: number, stepKey: string) =>
+    api.post<{ ok: boolean; run_id: number; note: string }>(
+      `/api/v1/runs/${runId}/recompose`,
+      { step_key: stepKey },
+    ),
 }

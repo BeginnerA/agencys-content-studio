@@ -111,7 +111,7 @@ export const assets = sqliteTable(
     taskId: integer('task_id'),
     runId: integer('run_id'), // [M4] 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
-    purpose: text('purpose'), // source|reference_character|reference_scene|script|storyboard|shot_image|final_video|subtitle|thumbnail|export
+    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|subtitle|thumbnail|export
     name: text('name').notNull(),
     mime: text('mime'),
     ext: text('ext'),
@@ -212,12 +212,13 @@ export const memories = sqliteTable(
   ],
 )
 
-/** M3 角色库表（通用；projectId NULL = 全局角色库） */
+/** M3 角色库表（M8 泛化为实体素材库：kind 多态 character|scene|prop；projectId NULL = 全局库） */
 export const characters = sqliteTable(
   'characters',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    projectId: integer('project_id'), // NULL = 全局角色库
+    projectId: integer('project_id'), // NULL = 全局库
+    kind: text('kind').notNull().default('character'), // [M8] 实体类型：character|scene|prop
     name: text('name').notNull(),
     aliases: text('aliases').notNull().default('[]'), // JSON string[]
     summary: text('summary'),
@@ -231,6 +232,18 @@ export const characters = sqliteTable(
   },
   (t) => [index('idx_characters_project').on(t.projectId), index('idx_characters_name').on(t.name)],
 )
+
+/** M8 风格预设库（平台级通用：跨体裁画风词块；项目经 projects.settings.style_preset_id 单选绑定） */
+export const stylePresets = sqliteTable('style_presets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(), // 预设名（唯一）
+  snippet: text('snippet').notNull(), // 英文风格词块（运行时拼入出图提示词）
+  description: text('description'), // 展示用说明
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive: integer('is_active').notNull().default(1),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
 
 /** M4 批次表（通用；同模板多 run 调度与进度） */
 export const batches = sqliteTable('batches', {
@@ -297,6 +310,7 @@ export type VendorCredential = typeof vendorCredentials.$inferSelect
 export type ApiConfig = typeof apiConfigs.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type CharacterRow = typeof characters.$inferSelect
+export type StylePreset = typeof stylePresets.$inferSelect
 export type Batch = typeof batches.$inferSelect
 export type UsageRecord = typeof usageRecords.$inferSelect
 export type Publication = typeof publications.$inferSelect

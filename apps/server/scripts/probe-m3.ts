@@ -636,13 +636,13 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 note-clip：8 步结构 + 记忆闭环关键步 ——
+    // —— T1 note-clip：9 步结构 + 记忆闭环关键步 ——
     if (copyTpl('note-clip')) {
       const t1 = tryLoad('note-clip')
       check(t1 !== null, 'note-clip 加载成功')
       if (t1) {
         const keys = t1.steps.map((s) => s.key)
-        check(t1.steps.length === 8, `note-clip steps=8（实际 ${t1.steps.length}）`)
+        check(t1.steps.length === 9, `note-clip steps=9（实际 ${t1.steps.length}）`)
         check(
           ['recall', 'draft', 'publish', 'remember'].every((k) => keys.includes(k)),
           'note-clip 含 recall/draft/publish/remember',
@@ -650,30 +650,30 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2 talking-clip v2：版本 / 9 步 / 记忆闭环与字幕前置 ——
+    // —— T2 talking-clip v3：版本 3 / 10 步 / 记忆闭环与字幕前置 ——
     if (copyTpl('talking-clip')) {
       const t2 = tryLoad('talking-clip')
       check(t2 !== null, 'talking-clip 加载成功')
       if (t2) {
         const keys = t2.steps.map((s) => s.key)
         const afterOf = (k: string): string[] => t2.steps.find((s) => s.key === k)?.after ?? []
-        check(t2.version === 2, `talking-clip version=2（实际 ${t2.version}）`)
-        check(t2.steps.length === 9, `talking-clip steps=9（实际 ${t2.steps.length}）`)
+        check(t2.version === 3, `talking-clip version=3（实际 ${t2.version}）`)
+        check(t2.steps.length === 10, `talking-clip steps=10（实际 ${t2.steps.length}）`)
         check(['recall', 'remember'].every((k) => keys.includes(k)), 'talking-clip 含 recall/remember')
         check(afterOf('subtitle').includes('voice'), 'talking-clip subtitle.after 含 voice')
         check(afterOf('remember').includes('draft'), 'talking-clip remember.after 含 draft')
       }
     }
 
-    // —— T3 mengbao-episode v3：版本 / 10 步 / 角色链与注入前置 ——
+    // —— T3 mengbao-episode v7：版本 7 / 17 步 / 角色链与注入前置 ——
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 3, `mengbao-episode version=3（实际 ${t3.version}）`)
-        check(t3.steps.length === 10, `mengbao-episode steps=10（实际 ${t3.steps.length}）`)
+        check(t3.version === 7, `mengbao-episode version=7（实际 ${t3.version}）`)
+        check(t3.steps.length === 17, `mengbao-episode steps=17（实际 ${t3.steps.length}）`)
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),
           'mengbao-episode 含 char_profile/ref_prompts/gen_refs/sync_characters',

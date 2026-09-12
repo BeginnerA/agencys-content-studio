@@ -12,6 +12,7 @@ import { projectsRoutes } from './routes/projects'
 import { promptsRoutes } from './routes/prompts'
 import { publicationsRoutes } from './routes/publications'
 import { runsRoutes } from './routes/runs'
+import { shotsRoutes } from './routes/shots'
 import { statsRoutes } from './routes/stats'
 import { systemRoutes } from './routes/system'
 import { tasksRoutes } from './routes/tasks'
@@ -32,6 +33,7 @@ api.route('/', assetsRoutes)
 api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
+api.route('/', shotsRoutes)
 api.route('/', batchesRoutes)
 api.route('/', statsRoutes)
 api.route('/', exportsRoutes)

@@ -3,16 +3,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
+import ShotBoard from '../components/ShotBoard.vue'
 import AssetPreviewer from '../components/AssetPreviewer.vue'
 import Icon from '../components/Icon.vue'
 import ExportWizardModal from '../components/ExportWizardModal.vue'
 import PublishModal from '../components/PublishModal.vue'
 import RunFormModal from '../components/RunFormModal.vue'
-import { assetApi, exportApi, publicationApi, runApi, statsApi, templateApi } from '../lib/api'
+import { assetApi, exportApi, publicationApi, runApi, shotApi, statsApi, templateApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import type {
-  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, TemplateDetail, TemplateMeta,
-  UsageSummary,
+  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, ShotBoardCompose, TemplateDetail,
+  TemplateMeta, UsageSummary,
 } from '../lib/types'
 import {
   fmtCost, fmtMs, fmtQty, fmtSize, fmtTime, PLATFORM_TEXT, runStatus, skipReasonText, stepStatus,
@@ -150,7 +151,39 @@ async function loadDetail() {
   }
 }
 
+// 事件风暴防抖：run.step 高频触发（每任务 ≥2 事件）时合并为单次刷新
+// 350ms 尾沿触发 + in-flight 合并（刷新期间到来的事件等本轮结束后再补一次）
+let detailRefreshTimer: number | undefined
+let detailRefreshing = false
+let detailDirty = false
+
+function scheduleDetailRefresh(delay = 350) {
+  if (detailRefreshTimer) window.clearTimeout(detailRefreshTimer)
+  detailRefreshTimer = window.setTimeout(() => {
+    detailRefreshTimer = undefined
+    void runDetailRefresh()
+  }, delay)
+}
+
+async function runDetailRefresh() {
+  if (detailRefreshing) {
+    detailDirty = true
+    return
+  }
+  detailRefreshing = true
+  try {
+    await loadDetail()
+  } finally {
+    detailRefreshing = false
+    if (detailDirty) {
+      detailDirty = false
+      void runDetailRefresh()
+    }
+  }
+}
+
 let logTimer: number | undefined
+let logThrottle: number | undefined
 async function loadLog() {
   try {
     const res = await runApi.log(runId, 400)
@@ -159,6 +192,15 @@ async function loadLog() {
   } catch {
     // 日志缺失不打扰
   }
+}
+
+/** step.log 事件高频（ffmpeg 逐行输出）→ 节流合并刷新（800ms 窗口） */
+function scheduleLogRefresh() {
+  if (logThrottle) return
+  logThrottle = window.setTimeout(() => {
+    logThrottle = undefined
+    if (showLog.value) void loadLog()
+  }, 800)
 }
 
 function toggleLog() {
@@ -279,26 +321,25 @@ function onStep(p: StudioEventMap['run.step']) {
     local.status = p.step.status as RunStep['status']
     // [M4] server run.step 不含 attempts（删除旧 p.step.attempts 行）；详细状态由 loadDetail 兜底
     if (p.step.status === 'waiting_input' || p.step.status === 'succeeded' || p.step.status === 'skipped') {
-      void loadDetail()
+      scheduleDetailRefresh()
     }
   }
 }
 function onTerminal(p: StudioEventMap['run.completed' | 'run.failed']) {
   if (p.runId === runId) {
-    void loadDetail()
+    void runDetailRefresh()
     refreshExtras()
   }
 }
 function onGate(p: StudioEventMap['run.gate']) {
-  if (p.runId === runId) void loadDetail()
+  if (p.runId === runId) scheduleDetailRefresh()
 }
 function onLog(p: StudioEventMap['step.log']) {
-  if (showLog.value) void loadLog()
+  if (showLog.value) scheduleLogRefresh()
 }
 
 onMounted(() => {
-  void loadDetail()
-  void loadLog()
+  void runDetailRefresh()
   void loadTplMetas()
   studio.join()
   studio.on('run.step', onStep)
@@ -314,6 +355,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   studio.leave()
   if (logTimer) window.clearInterval(logTimer)
+  if (logThrottle) window.clearTimeout(logThrottle)
+  if (detailRefreshTimer) window.clearTimeout(detailRefreshTimer)
 })
 
 // ===== 步骤块渲染辅助 =====
@@ -393,30 +436,36 @@ const badges = ref<Record<number, string>>({})
 const badgeCache = new Set<string>()
 
 async function loadBadges() {
-  const next: Record<number, string> = { ...badges.value }
+  // 先收集待拉取项（缓存命中/无产物同步跳过），再并发拉取（替代串行 for-await）
+  const todo: Array<{ sid: number; aid: number; key: string; action: string }> = []
   for (const s of steps.value) {
     if (!BADGE_ACTIONS.has(s.actionKey)) continue
     const aid = assetIds(s)[0]
     if (!aid) continue
     const key = `${s.id}:${aid}`
     if (badgeCache.has(key)) continue
+    todo.push({ sid: s.id, aid, key, action: s.actionKey })
+  }
+  if (!todo.length) return
+  const next: Record<number, string> = { ...badges.value }
+  await Promise.all(todo.map(async ({ sid, aid, key, action }) => {
     try {
       const { asset: a } = await assetApi.detail(aid)
       const p = (a.params ?? {}) as Record<string, unknown>
-      if (s.actionKey === 'memory_recall') {
+      if (action === 'memory_recall') {
         const top = typeof p['topScore'] === 'number' ? (p['topScore'] as number).toFixed(2) : null
-        next[s.id] = `召回 ${p['count'] ?? 0} 条${top ? ` · top ${top}` : ''}`
-      } else if (s.actionKey === 'memory_write') {
+        next[sid] = `召回 ${p['count'] ?? 0} 条${top ? ` · top ${top}` : ''}`
+      } else if (action === 'memory_write') {
         const nm = typeof p['name'] === 'string' && p['name'] ? (p['name'] as string) : '（匿名）'
-        next[s.id] = `记忆已写 ${nm}`
+        next[sid] = `记忆已写 ${nm}`
       } else {
-        next[s.id] = `建档 ${p['created'] ?? 0} 新增 / ${p['updated'] ?? 0} 更新`
+        next[sid] = `建档 ${p['created'] ?? 0} 新增 / ${p['updated'] ?? 0} 更新`
       }
       badgeCache.add(key)
     } catch {
       // 产物不可读 → 不显示徽标
     }
-  }
+  }))
   badges.value = next
 }
 
@@ -431,18 +480,18 @@ let extrasLoaded = false
 
 const COST_KIND_TEXT: Record<string, string> = { llm: 'LLM', image: '图像', video: '视频', tts: '配音' }
 
-/** 本 run 附加数据（四路并行：导出包 / 用量聚合 / 项目发布全量后按 runId 过滤 / run 产物） */
+/** 本 run 附加数据（四路并行：导出包 / 用量聚合 / run 发布记录（服务端 run_id 过滤）/ run 产物） */
 async function loadExtras(projectId: number) {
   try {
     const [ex, us, pub, ra] = await Promise.all([
       exportApi.list(`?run_id=${runId}`),
       statsApi.usage(`?run_id=${runId}&group_by=kind`),
-      publicationApi.list(`?project_id=${projectId}`),
+      publicationApi.list(`?project_id=${projectId}&run_id=${runId}`),
       exportApi.runAssets(runId),
     ])
     exportsList.value = ex.items
     costUsage.value = us
-    publications.value = pub.items.filter((p) => p.runId === runId)
+    publications.value = pub.items
     runAssets.value = ra.items
   } catch (e) {
     // 附加数据失败不阻断主视图（成本/导出/发布为辅助信息）
@@ -509,6 +558,35 @@ async function removePub(pub: Publication) {
 function onPubSaved() {
   showPublish.value = false
   refreshExtras()
+}
+
+// ===== [M7] 镜头工作台集成（步骤卡内嵌 + compose 卡重新合成 / stale 徽标） =====
+const WB_ACTIONS = new Set(['ai_image', 'ai_video'])
+const composeInfo = ref<ShotBoardCompose | null>(null)
+
+/** 工作台上抛的合成新鲜度（多工作台步骤同源同值，非 null 覆盖即可） */
+function onComposeInfo(info: ShotBoardCompose | null) {
+  if (info) composeInfo.value = info
+}
+
+/** compose 卡「重新合成」（与工作台头条同源端点；succeeded 镜头步骤全跳过） */
+async function recomposeStep(s: RunStep) {
+  const ok = await confirmDialog({
+    title: '重新合成',
+    message: '将重新执行合成（镜头选择 / 分镜 / 时长的最新值生效）；已成功的镜头步骤全部跳过。',
+    confirmText: '重新合成',
+  })
+  if (!ok) return
+  busy.value = true
+  err.value = ''
+  try {
+    await shotApi.recompose(runId, s.stepKey)
+    await loadDetail()
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
 }
 </script>
 
@@ -592,6 +670,33 @@ function onPubSaved() {
                 第 {{ s.seq + 1 }} 步 · 尝试 {{ s.attempts }}
                 <template v-if="s.startedAt"> · {{ fmtTime(s.startedAt) }}</template>
                 <template v-if="s.completedAt"> → {{ fmtTime(s.completedAt) }}</template>
+              </div>
+
+              <!-- [M7] 镜头级轻工作台（ai_image / ai_video 步骤卡内嵌） -->
+              <ShotBoard
+                v-if="WB_ACTIONS.has(s.actionKey)"
+                :run-id="runId"
+                :step="s"
+                :active="active"
+                @changed="loadDetail()"
+                @compose="onComposeInfo"
+              />
+
+              <!-- [M7] 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
+              <div v-if="s.actionKey === 'ffmpeg_merge'" class="compose-ops">
+                <span
+                  v-if="composeInfo?.stale === true"
+                  class="badge warn-c"
+                  title="镜头选择 / 分镜 / 时长有更新，重新合成后生效"
+                >
+                  待重新合成
+                </span>
+                <span v-else-if="composeInfo?.stale === false" class="badge ok-c" title="成片与当前选择一致">
+                  合成已最新
+                </span>
+                <button class="btn sm" :disabled="busy || active" @click="recomposeStep(s)">
+                  <Icon name="film" :size="12" /> 重新合成
+                </button>
               </div>
 
               <details v-if="s.output && assetIds(s).length" class="prods">
@@ -1019,6 +1124,26 @@ function onPubSaved() {
   background: var(--accent-weak);
   color: var(--accent);
   border-color: rgb(99 102 241 / 26%);
+}
+
+/* [M7] 合成步骤操作行：重新合成 + stale 徽标 */
+.compose-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.badge.warn-c {
+  background: var(--warn-weak);
+  color: var(--warn);
+  border-color: rgb(245 158 11 / 24%);
+}
+
+.badge.ok-c {
+  background: var(--ok-weak);
+  color: var(--ok);
+  border-color: rgb(34 197 94 / 22%);
 }
 
 .dim {

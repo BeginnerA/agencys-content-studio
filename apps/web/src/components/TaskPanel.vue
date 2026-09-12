@@ -77,11 +77,22 @@ function statusText(t: GenTask): string {
   return taskStatus(t.status).text
 }
 
+let emitTimer: number | undefined
+
+/** task.updated 高频（每任务 ≥2 事件）→ 防抖通知父级（400ms 尾沿合并） */
+function scheduleEmitChanged() {
+  if (emitTimer) window.clearTimeout(emitTimer)
+  emitTimer = window.setTimeout(() => {
+    emitTimer = undefined
+    emit('changed')
+  }, 400)
+}
+
 function onTaskUpdated(p: StudioEventMap['task.updated']) {
   const t = tasks.value.find((x) => x.id === p.taskId)
   if (t) {
     t.status = p.status as GenTask['status']
-    emit('changed')
+    scheduleEmitChanged()
   }
 }
 
@@ -101,6 +112,7 @@ watch(
 onBeforeUnmount(() => {
   studioOff('task.updated', onTaskUpdated)
   if (timer) window.clearInterval(timer)
+  if (emitTimer) window.clearTimeout(emitTimer)
 })
 </script>
 

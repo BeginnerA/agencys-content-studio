@@ -1,10 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks, pipelineRuns, type CharacterRow, type GenTask } from '../../db/schema'
-import { buildImageRequest } from '../../adapters/provider'
+import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../../adapters/provider'
+import { assetToDataUri } from '../../services/asset-ref'
 import { loadCharacterIndex } from '../../services/character'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
+import { shotDurationSec } from '../../services/shot-workbench'
 import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
@@ -21,10 +23,14 @@ interface ShotSpec {
 const nowMs = (): number => Date.now()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** 单镜参考图上限（按角色出场顺序截断；refAssetIdsOf 已保序去重） */
+const MAX_CHARACTER_REFS_PER_SHOT = 4
+
 /**
  * ai_image：批量镜头出图（spec §5.3）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
  * 逐镜按 shot.characters 从角色库注入 appearance/negative 锚定（E3，注入全文进 prompt 快照）；
+ * 角色定妆照（refAssetIds）在供应商能力支持时转 data URI 注入参考图（M6，params.refUsed 记计划注入数）；
  * 并发上限 batch.max_concurrent（默认 2），失败按 batch.retry 重试。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功图）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
@@ -66,9 +72,17 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const model = typeof imgCfg['model'] === 'string' ? imgCfg['model'] : undefined
   const size = typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248'
   const stepParams = (ctx.def.params ?? {}) as Record<string, unknown>
+  const useCharacterRefs = stepParams['use_character_refs'] !== false
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'
+  // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
+  const refCap = await imageRefCapability(provider)
+  const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
+  // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
+  if (useCharacterRefs && refCap !== 'base64' && finalShots.some((s) => refAssetIdsOf(s, charIndex).length > 0)) {
+    ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（角色锚定注入仍生效）')
+  }
 
   // 既有任务（幂等续跑）：shotId → task 行
   const existing = await db
@@ -88,7 +102,9 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   for (const shot of finalShots) {
     const promptText = shot.image_prompt.trim()
     const refAssetIds = refAssetIdsOf(shot, charIndex)
-    const paramsJson = JSON.stringify({ size, shotId: shot.id, duration: shot.duration ?? null, refAssetIds, output_purpose: outputPurpose })
+    // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
+    const refUsed = refCap === 'base64' && useCharacterRefs ? Math.min(refAssetIds.length, MAX_CHARACTER_REFS_PER_SHOT) : 0
+    const paramsJson = JSON.stringify({ size, shotId: shot.id, duration: shotDurationSec(shot) ?? null, refAssetIds, refUsed, output_purpose: outputPurpose })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
       const t = nowMs()
@@ -150,7 +166,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 
   const failures: Array<{ shotId: string; error: string }> = []
   await runPool(queue, concurrency, async (task) => {
-    const fail = await runOneTask(ctx, task, { provider, model, maxRetry })
+    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, refCap, useCharacterRefs, uriCache })
     if (fail) failures.push(fail)
   })
 
@@ -177,9 +193,16 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 async function runOneTask(
   ctx: StepContext,
   task: GenTask,
-  cfg: { provider?: string; model?: string; maxRetry: number },
+  cfg: {
+    provider?: string
+    model?: string
+    maxRetry: number
+    refCap: 'none' | 'base64'
+    useCharacterRefs: boolean
+    uriCache: Map<number, string>
+  },
 ): Promise<{ shotId: string; error: string } | null> {
-  const parsed = JSON.parse(task.params) as { size?: string; shotId?: string; output_purpose?: string }
+  const parsed = JSON.parse(task.params) as { size?: string; shotId?: string; refAssetIds?: number[]; output_purpose?: string }
   const shotId = parsed.shotId ?? '?'
   const maxAttempts = cfg.maxRetry + 1
   let attempts = task.attempts
@@ -198,11 +221,28 @@ async function runOneTask(
       .where(eq(genTasks.id, task.id))
     emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'processing' })
     try {
+      // 参考图注入：能力支持且未关闭 → 逐 id 转 data URI（单图失败跳过该图 + 记日志，不使任务失败）
+      let refs: string[] | undefined
+      if (cfg.useCharacterRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
+        const uris: string[] = []
+        for (const id of parsed.refAssetIds.slice(0, MAX_CHARACTER_REFS_PER_SHOT)) {
+          try {
+            uris.push(await assetToDataUri(id, cfg.uriCache))
+          } catch (err) {
+            ctx.log(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
+          }
+        }
+        if (uris.length > 0) {
+          refs = uris
+          ctx.log(`shot ${shotId} 注入参考图 ${uris.length} 张`)
+        }
+      }
       const { adapter, request } = await buildImageRequest({
         prompt: task.prompt ?? '',
         provider: cfg.provider,
         model: cfg.model,
         size: parsed.size,
+        referenceImages: refs,
       })
       const img = await adapter.generate(request)
       const asset = await saveGeneratedMedia({
@@ -264,6 +304,16 @@ async function runCancelled(runId: number): Promise<boolean> {
     .where(eq(pipelineRuns.id, runId))
     .limit(1)
   return rows[0]?.status === 'cancelled'
+}
+
+/** 参考图能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none'（不阻断主线） */
+async function imageRefCapability(provider?: string): Promise<'none' | 'base64'> {
+  try {
+    const endpoint = await resolveEndpoint('image', provider)
+    return getImageAdapter(endpoint.providerKey).referenceImages ?? 'none'
+  } catch {
+    return 'none'
+  }
 }
 
 /** 简易并发池：all 结束后统一返回（任务内部已捕获失败） */

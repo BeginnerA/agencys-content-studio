@@ -21,6 +21,11 @@ export type GeneratedImage =
 export interface ImageAdapter {
   /** provider key（与 api_providers.key 对应） */
   provider: string
+  /**
+   * 参考图注入能力：'base64' = 支持 data URI 参考图；'none' = 不支持。
+   * 缺省（未声明）视为 'none'；声明必须与实现一致（能力的唯一事实源）。
+   */
+  readonly referenceImages?: 'none' | 'base64'
   generate(req: ImageGenRequest): Promise<GeneratedImage>
 }
 
@@ -45,6 +50,11 @@ export type GeneratedVideo =
 
 export interface VideoAdapter {
   provider: string
+  /**
+   * 首帧注入能力：'base64' = 支持 data URI 首帧；'as-reference' = 无首帧 role 时按参考图语义注入；
+   * 'none' = 不支持。缺省（未声明）视为 'none'。
+   */
+  readonly firstFrame?: 'none' | 'base64' | 'as-reference'
   generate(req: VideoGenRequest): Promise<GeneratedVideo>
   query(taskId: string, req: { baseUrl: string; apiKey: string }): Promise<{ status: 'pending' | 'processing' | 'completed' | 'failed'; url?: string; error?: string }>
 }

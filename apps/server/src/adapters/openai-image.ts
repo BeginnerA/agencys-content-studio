@@ -6,6 +6,8 @@ import type { GeneratedImage, ImageAdapter, ImageGenRequest } from './types'
  */
 export class OpenAIImageAdapter implements ImageAdapter {
   readonly provider: string = 'openai_image'
+  /** 参考图注入能力：不支持（siliconflow / pollinations 子类继承本声明） */
+  readonly referenceImages = 'none'
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const body: Record<string, unknown> = {

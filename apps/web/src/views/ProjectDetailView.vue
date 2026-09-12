@@ -58,7 +58,9 @@ const pubs = ref<Publication[]>([])
 const pubSummary = ref({ views: 0, interactions: 0 })
 
 const coreLoading = ref(true)
-const assetLoading = ref(true)
+// 资产列表延迟到「资产」Tab 首次激活时加载（初始不进入加载态）
+const assetLoading = ref(false)
+const assetTotal = ref(0)
 const pubLoading = ref(true)
 const coreErr = ref('')
 const assetErr = ref('')
@@ -84,12 +86,16 @@ async function loadCore(opts: { silent?: boolean } = {}) {
   }
 }
 
+let assetsLoaded = false
+
 async function loadAssets(opts: { silent?: boolean } = {}) {
   if (!opts.silent) assetLoading.value = true
   assetErr.value = ''
   try {
-    const a = await projectApi.assets(projectId, '?limit=200')
+    const a = await projectApi.assets(projectId, `?limit=${ASSET_LIMIT}`)
     assets.value = a.items
+    assetTotal.value = a.total
+    assetsLoaded = true
   } catch (e) {
     assetErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -113,7 +119,8 @@ async function loadPubs(opts: { silent?: boolean } = {}) {
 
 onMounted(() => {
   void loadCore()
-  void loadAssets()
+  // 资产列表延迟加载：默认「运行」Tab 用不到；深链接 ?tab=assets 时立即拉取
+  if (activeTab.value === 'assets') void loadAssets()
   void loadPubs()
   void loadTplMetas()
   const s = getSocket()
@@ -126,7 +133,8 @@ onMounted(() => {
   }
   const onSettled = () => {
     void loadCore({ silent: true })
-    void loadAssets({ silent: true })
+    // 资产区仅在已加载过后才跟随刷新（未打开过则不触发无谓请求）
+    if (assetsLoaded) void loadAssets({ silent: true })
     schedulePendingRefresh()
   }
   const onGate = () => {
@@ -144,6 +152,11 @@ onMounted(() => {
     studioOff('run.gate', onGate)
     s.emit('leave', `project:${projectId}`)
   })
+})
+
+// 「资产」Tab 首次激活时懒加载（此后常驻；刷新按钮与 run 终态事件兜底更新）
+watch(activeTab, (t) => {
+  if (t === 'assets' && !assetsLoaded) void loadAssets()
 })
 
 // ===== 运行筛选 / 分页（前端分页；接口上限 100 在页脚明示） =====
@@ -665,7 +678,7 @@ function errOf(r: Run): string {
           </div>
           <div v-if="assetErr" class="err-text">{{ assetErr }}</div>
           <AssetGrid :assets="filteredAssets" :loading="assetLoading" />
-          <div v-if="assets.length >= ASSET_LIMIT" class="muted trunc">仅显示前 {{ ASSET_LIMIT }} 个资产（接口上限）</div>
+          <div v-if="assetTotal > assets.length" class="muted trunc">仅显示前 {{ assets.length }} 个资产（共 {{ assetTotal }} 个）</div>
         </div>
       </section>
 

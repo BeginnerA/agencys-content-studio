@@ -48,6 +48,8 @@ function normalizeImageSize(aspectRatio?: string, resolution?: string): string {
 
 export class SiliconFlowVideoAdapter implements VideoAdapter {
   readonly provider = 'siliconflow_video'
+  /** 首帧注入能力：实现已就绪（自动 I2V），仅补声明 */
+  readonly firstFrame = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const prompt = (req.prompt || '').trim()

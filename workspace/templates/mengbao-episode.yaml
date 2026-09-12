@@ -1,5 +1,5 @@
 key: mengbao-episode
-version: 5
+version: 7
 name: 短剧·单集
 description: 适合：按单集剧本产出带配音字幕的短剧成片（角色锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
 genre: drama_short
@@ -54,6 +54,11 @@ inputs:
     kind: bool
     required: false
     default: true
+  - key: i2v
+    label: 首帧图生视频（需 motion=true；先批量出首帧图再以此图动效出片，出图+视频双重计费）
+    kind: bool
+    required: false
+    default: false
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
@@ -216,19 +221,34 @@ steps:
     inputs:
       shots: steps.make_storyboard.asset
     batch: { field: shots, max_concurrent: 2, retry: 1 }
+  - key: gen_frames
+    action: ai_image
+    title: 首帧图生成（i2v）
+    when: [input.motion == true, input.i2v == true]
+    after: [make_storyboard, sync_characters]
+    inputs:
+      shots: steps.make_storyboard.asset
+    params:
+      output_purpose: first_frame
+    batch: { field: shots, max_concurrent: 2, retry: 1 }
   - key: gen_motion
     action: ai_video
     title: 批量镜头动效
     when: input.motion == true
-    after: [make_storyboard]
+    after: [make_storyboard, gen_frames]
     inputs:
       shots: steps.make_storyboard.asset
+      first_frame: steps.gen_frames.assets
+    params:
+      prompt_field: motion_prompt,image_prompt
     batch: { field: shots, max_concurrent: 2, retry: 1 }
   - key: compose_video
     action: ffmpeg_merge
     title: 合成成片
-    after: [gen_images, gen_motion, voice, subtitle]
+    after: [make_storyboard, gen_images, gen_motion, voice, subtitle]
     inputs:
+      # [M7] 分镜 JSON：静态图 per-shot 时长覆盖；选镜/编辑后重新合成自动生效
+      shots: steps.make_storyboard.asset
       images: steps.gen_images.assets
       motion_clips: steps.gen_motion.assets
       voices: steps.voice.assets

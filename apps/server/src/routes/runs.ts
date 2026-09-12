@@ -5,7 +5,7 @@ import { genTasks, pipelineRuns, pipelineSteps, projects } from '../db/schema'
 import { engine, recoverInterruptedState } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
 import { HttpError, h, idParam, notFound } from './helpers'
@@ -79,15 +79,17 @@ runsRoutes.get('/runs/:id', h(async (c) => {
   })
 }))
 
-// GET /runs/:id/log —— 运行日志尾部（最近 300 行）
+// GET /runs/:id/log —— 运行日志尾部（?tail= 行数，默认 300，clamp 1..2000；返回 {log}）
+// 大文件仅读尾部 512KB，避免全量读盘
 runsRoutes.get('/runs/:id/log', h(async (c) => {
   const run = await findRun(idParam(c))
   if (!run) return notFound(c, `run ${c.req.param('id')}`)
+  const tailNum = Number(c.req.query('tail'))
+  const tail = Number.isFinite(tailNum) && tailNum > 0 ? Math.min(Math.floor(tailNum), 2000) : 300
   const logFile = join(RUN_LOGS_DIR, `${run.id}.log`)
-  if (!existsSync(logFile)) return c.json({ lines: [] })
-  const text = readFileSync(logFile, 'utf8')
-  const lines = text.split(/\r?\n/).filter(Boolean).slice(-300)
-  return c.json({ lines })
+  if (!existsSync(logFile)) return c.json({ log: '' })
+  const lines = readTailLines(logFile, tail)
+  return c.json({ log: lines.join('\n') })
 }))
 
 // POST /runs/:id/gate —— 闸门决策 {step_key, decision: approve|reject|skip, note?, text_override?}
@@ -213,6 +215,26 @@ async function findRun(id: number) {
 function safeParse(s: string | null): unknown {
   if (!s) return null
   try { return JSON.parse(s) } catch { return s }
+}
+
+/** 读取文件尾部行（最多 tail 行；大文件仅读尾部 512KB，截断处丢弃残行） */
+function readTailLines(file: string, tail: number): string[] {
+  const MAX_BYTES = 512 * 1024
+  const fd = openSync(file, 'r')
+  try {
+    const size = fstatSync(fd).size
+    const start = Math.max(0, size - MAX_BYTES)
+    const buf = Buffer.alloc(size - start)
+    readSync(fd, buf, 0, buf.length, start)
+    let text = buf.toString('utf8')
+    if (start > 0) {
+      const nl = text.indexOf('\n')
+      if (nl >= 0) text = text.slice(nl + 1)
+    }
+    return text.split(/\r?\n/).filter(Boolean).slice(-tail)
+  } finally {
+    closeSync(fd)
+  }
 }
 
 function toRunView(r: typeof pipelineRuns.$inferSelect): Record<string, unknown> {

@@ -23,6 +23,8 @@ const POLL_TIMEOUT_MS = 180_000
 
 export class GeminiImageAdapter implements ImageAdapter {
   readonly provider = 'gemini_image'
+  /** 参考图注入能力：实现已就绪，仅补声明 */
+  readonly referenceImages = 'base64'
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const model = String(req.model || '').trim() || DEFAULT_MODEL

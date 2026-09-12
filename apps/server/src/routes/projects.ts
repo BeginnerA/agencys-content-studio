@@ -107,7 +107,7 @@ projectsRoutes.post('/projects', h(async (c) => {
   return c.json({ project: { id: p.id, name: p.name, genre: p.genre, templateKey: p.templateKey, brief: p.brief } }, 201)
 }))
 
-// GET /projects/:id —— 详情（含 settings 解析 + 最近 5 runs）
+// GET /projects/:id —— 详情（含 settings 解析 + 资产计数 + 最近 5 runs）
 projectsRoutes.get('/projects/:id', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(projects).where(and(eq(projects.id, id), isNull(projects.deletedAt))).limit(1)
@@ -119,9 +119,14 @@ projectsRoutes.get('/projects/:id', h(async (c) => {
     .where(eq(pipelineRuns.projectId, id))
     .orderBy(desc(pipelineRuns.createdAt))
     .limit(5)
+  // 资产计数（前端资产区懒加载时 Tab 角标/KPI 仍能显示真实总数）
+  const assetCount = Number(
+    (await db.select({ n: count() }).from(assets).where(and(eq(assets.projectId, id), isNull(assets.deletedAt))))[0]?.n ?? 0,
+  )
   return c.json({
     project: {
       ...p,
+      assetCount,
       settings: safeJson(p.settings, {}),
       tags: safeJson(p.tags, []),
       recentRuns: runs.map((r) => ({

@@ -18,6 +18,8 @@ const POLL_TIMEOUT_MS = 180_000
 
 export class VolcengineImageAdapter implements ImageAdapter {
   readonly provider = 'volcengine_image'
+  /** 参考图注入能力：Seedream 图像输入（data URI 数组） */
+  readonly referenceImages = 'base64'
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const model = String(req.model || '').trim() || DEFAULT_MODEL
@@ -32,6 +34,9 @@ export class VolcengineImageAdapter implements ImageAdapter {
       body.height = size.height
     }
     if (extra.watermark !== undefined) body.watermark = extra.watermark === true
+    // 参考图注入：Seedream 4.0+ 图像输入字段（实弹对表——若官方为单图形态则收敛为首图并注释依据）
+    const refs = refsOf(req.referenceImages)
+    if (refs.length > 0) body.image = refs
 
     const submit = await postJson(joinApiUrl(req.baseUrl, '/api/v3', '/images/generations'), req.apiKey, body)
     const taskId = submit?.id || submit?.task_id
@@ -144,6 +149,12 @@ async function getJson(url: string, apiKey: string): Promise<any> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** 参考图过滤：仅保留非空且以 data:image 开头的字符串 */
+function refsOf(raw?: string[]): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((u) => typeof u === 'string' && !!u.trim() && u.startsWith('data:image'))
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))

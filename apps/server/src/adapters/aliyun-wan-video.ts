@@ -88,6 +88,8 @@ function joinApiUrl(baseUrl: string, prefix: string, path: string): string {
 
 export class AliyunWanVideoAdapter implements VideoAdapter {
   readonly provider = 'aliyun_wan_video'
+  /** 首帧注入能力：实现已就绪（接受 data URI 首帧），仅补声明 */
+  readonly firstFrame = 'base64'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const model = cleanUrl(req.model) || DEFAULT_MODEL

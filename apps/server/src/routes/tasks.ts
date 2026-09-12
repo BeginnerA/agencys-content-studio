@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
 import { engine } from '../pipeline/engine'
@@ -22,8 +22,13 @@ tasksRoutes.get('/tasks', h(async (c) => {
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(genTasks.createdAt))
     .limit(200)
-  const items = []
-  for (const t of rows) items.push(await withAsset(t))
+  // 批量拉取结果资产快照（替代逐任务查询，避免 N+1）
+  const assetIds = [...new Set(rows.map((t) => t.resultAssetId).filter((id): id is number => typeof id === 'number'))]
+  const assetRows = assetIds.length
+    ? await db.select().from(assets).where(inArray(assets.id, assetIds))
+    : []
+  const assetMap = new Map(assetRows.map((a) => [a.id, assetSnapshotOf(a)]))
+  const items = rows.map((t) => taskView(t, t.resultAssetId ? assetMap.get(t.resultAssetId) ?? null : null))
   return c.json({ items })
 }))
 
@@ -32,7 +37,12 @@ tasksRoutes.get('/tasks/:id', h(async (c) => {
   const rows = await db.select().from(genTasks).where(eq(genTasks.id, idParam(c))).limit(1)
   const t = rows[0]
   if (!t) return notFound(c, `task ${c.req.param('id')}`)
-  return c.json({ task: await withAsset(t) })
+  let resultAsset: AssetSnapshot | null = null
+  if (t.resultAssetId) {
+    const aRows = await db.select().from(assets).where(eq(assets.id, t.resultAssetId)).limit(1)
+    if (aRows[0]) resultAsset = assetSnapshotOf(aRows[0])
+  }
+  return c.json({ task: taskView(t, resultAsset) })
 }))
 
 // POST /tasks/:id/retry —— 重试：attempts 归零 → 步骤回 pending → run 复位并续跑（succeeded 步骤跳过）
@@ -80,13 +90,20 @@ tasksRoutes.post('/tasks/:id/cancel', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-async function withAsset(t: typeof genTasks.$inferSelect): Promise<Record<string, unknown>> {
-  let resultAsset: unknown = null
-  if (t.resultAssetId) {
-    const rows = await db.select().from(assets).where(eq(assets.id, t.resultAssetId)).limit(1)
-    const a = rows[0]
-    if (a) resultAsset = { id: a.id, name: a.name, kind: a.kind, purpose: a.purpose, fileUrl: `/api/v1/assets/${a.id}/file` }
-  }
+/** 任务视图所需的资产快照字段 */
+interface AssetSnapshot {
+  id: number
+  name: string
+  kind: string
+  purpose: string | null
+  fileUrl: string
+}
+
+function assetSnapshotOf(a: typeof assets.$inferSelect): AssetSnapshot {
+  return { id: a.id, name: a.name, kind: a.kind, purpose: a.purpose, fileUrl: `/api/v1/assets/${a.id}/file` }
+}
+
+function taskView(t: typeof genTasks.$inferSelect, resultAsset: AssetSnapshot | null): Record<string, unknown> {
   let params: unknown = null
   if (t.params) {
     try { params = JSON.parse(t.params) } catch { params = null }

@@ -33,6 +33,8 @@ const NEW_PROTOCOL_PATTERN = /^wan2\.6/
 
 export class AliyunWanImageAdapter implements ImageAdapter {
   readonly provider = 'aliyun_wan_image'
+  /** 参考图注入能力：仅 wan2.7 同步分支（异步分支忽略 refs，不注入不报错） */
+  readonly referenceImages = 'base64'
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const model = String(req.model || '').trim() || DEFAULT_MODEL
@@ -48,7 +50,9 @@ export class AliyunWanImageAdapter implements ImageAdapter {
     const size = normalizeSize(req.size)
     if (size) parameters.size = size
 
-    if (SYNC_PROTOCOL_PATTERN.test(model)) return generateSynchronous(req, model, prompt, parameters)
+    // 能力边界：参考图仅 wan2.7 同步分支支持；wan2.6 及以下异步协议忽略 refs，不注入不报错
+    const refs = refsOf(req.referenceImages)
+    if (SYNC_PROTOCOL_PATTERN.test(model)) return generateSynchronous(req, model, prompt, parameters, refs)
 
     const isNewProtocol = NEW_PROTOCOL_PATTERN.test(model)
     const submit = await postJson(
@@ -112,11 +116,13 @@ async function generateSynchronous(
   model: string,
   prompt: string,
   parameters: Record<string, unknown>,
+  refs: string[],
 ): Promise<GeneratedImage> {
+  const content = refs.length > 0 ? [...refs.map((u) => ({ image: u })), { text: prompt }] : [{ text: prompt }]
   const result = await postJson(
     joinApiUrl(req.baseUrl, '/api/v1', '/services/aigc/multimodal-generation/generation'),
     req.apiKey,
-    { model, input: { messages: [{ role: 'user', content: [{ text: prompt }] }] }, parameters },
+    { model, input: { messages: [{ role: 'user', content }] }, parameters },
     false,
   )
   const url = firstChoiceImage(result?.output?.choices)
@@ -155,6 +161,12 @@ function firstChoiceImage(choices: unknown): string | null {
     }
   }
   return null
+}
+
+/** 参考图过滤：仅保留非空且以 data:image 开头的字符串 */
+function refsOf(raw?: string[]): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((u) => typeof u === 'string' && !!u.trim() && u.startsWith('data:image'))
 }
 
 function booleanValue(value: unknown, fallback: boolean): boolean {

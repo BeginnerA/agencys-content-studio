@@ -21,11 +21,17 @@ const REQUEST_TIMEOUT_MS = 300_000
 
 export class AliyunQwenImageAdapter implements ImageAdapter {
   readonly provider = 'aliyun_qwen_image'
+  /** 参考图注入能力：multimodal content 图片项（data URI） */
+  readonly referenceImages = 'base64'
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const model = String(req.model || '').trim() || DEFAULT_MODEL
     const prompt = String(req.prompt || '').trim()
     if (!prompt) throw new Error('千问图像 prompt 为空')
+
+    // 参考图注入：图片项在前、文本项在后（无参考图时保持纯文本形态）
+    const refs = refsOf(req.referenceImages)
+    const content = refs.length > 0 ? [...refs.map((u) => ({ image: u })), { text: prompt }] : [{ text: prompt }]
 
     const extra = req.extra ?? {}
     const parameters: Record<string, unknown> = {
@@ -45,7 +51,7 @@ export class AliyunQwenImageAdapter implements ImageAdapter {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${req.apiKey}` },
           body: JSON.stringify({
             model,
-            input: { messages: [{ role: 'user', content: [{ text: prompt }] }] },
+            input: { messages: [{ role: 'user', content }] },
             parameters,
           }),
           signal: controller.signal,
@@ -86,6 +92,12 @@ function firstChoiceImage(choices: unknown): string | null {
     }
   }
   return null
+}
+
+/** 参考图过滤：仅保留非空且以 data:image 开头的字符串 */
+function refsOf(raw?: string[]): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((u) => typeof u === 'string' && !!u.trim() && u.startsWith('data:image'))
 }
 
 function booleanValue(value: unknown, fallback: boolean): boolean {

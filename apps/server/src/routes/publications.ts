@@ -46,11 +46,13 @@ publicationsRoutes.post('/publications', h(async (c) => {
   return c.json({ publication: toView(row) }, 201)
 }))
 
-// GET /publications?project_id=&asset_id=&platform= —— 列表 + 汇总（views/interactions 同口径）
+// GET /publications?project_id=&run_id=&asset_id=&platform= —— 列表 + 汇总（views/interactions 同口径）
 publicationsRoutes.get('/publications', h(async (c) => {
   const conds = []
   const projectId = c.req.query('project_id')
   if (projectId) conds.push(eq(publications.projectId, Number(projectId)))
+  const runId = c.req.query('run_id')
+  if (runId) conds.push(eq(publications.runId, Number(runId)))
   const assetId = c.req.query('asset_id')
   if (assetId) conds.push(eq(publications.assetId, Number(assetId)))
   const platform = c.req.query('platform')

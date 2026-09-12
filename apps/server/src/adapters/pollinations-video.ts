@@ -13,6 +13,8 @@ const REQUEST_TIMEOUT_MS = 10 * 60_000
 
 export class PollinationsVideoAdapter implements VideoAdapter {
   readonly provider = 'pollinations_video'
+  /** 首帧注入能力：不支持 */
+  readonly firstFrame = 'none'
 
   async generate(req: VideoGenRequest): Promise<GeneratedVideo> {
     const params = new URLSearchParams()

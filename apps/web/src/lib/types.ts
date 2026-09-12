@@ -434,3 +434,69 @@ export interface Publication {
   createdAt: number
   updatedAt: number
 }
+
+// ===== [M7] 镜头工作台（GET /runs/:id/shot-board 契约） =====
+
+/** 同镜历史版本（缩略图懒加载；urls 为引用） */
+export interface ShotVersion {
+  id: number
+  name: string
+  createdAt: number
+  width: number | null
+  height: number | null
+  duration: number | null
+  prompt: string | null
+  urls: { file: string; thumb: string | null }
+}
+
+/** 镜头对应生成任务摘要（无任务 → null） */
+export interface ShotTaskLite {
+  id: number
+  status: TaskStatus
+  attempts: number
+  errorMsg: string | null
+  prompt: string | null
+}
+
+export interface ShotBoardShot {
+  shotId: string
+  order: number
+  imagePrompt: string
+  motionPrompt: string
+  /** 分镜 per-shot 时长（null = 用全局 duration_per_shot） */
+  duration: number | null
+  task: ShotTaskLite | null
+  /** 当前 output.asset_ids 中命中该镜的资产（null = 未选中/无产物） */
+  selectedAssetId: number | null
+  versions: ShotVersion[]
+}
+
+/** 合成新鲜度（run 无 ffmpeg_merge 步骤 → board.compose 为 null） */
+export interface ShotBoardCompose {
+  stepKey: string
+  composedAt: number | null
+  /** true/false/null（null = 旧产物无快照，无法判定，UI 降级为常态提示） */
+  stale: boolean | null
+}
+
+export interface ShotBoardData {
+  step: { id: number; key: string; title: string | null; action: string; status: StepStatus }
+  shots: ShotBoardShot[]
+  compose: ShotBoardCompose | null
+  /** 返修可用性（不抛错判定：活跃 run / 其他 failed 步骤等） */
+  repairable: { ok: boolean; reason: string | null }
+}
+
+/** 分镜字段级编辑项（edit / regenerate 复用） */
+export interface ShotEditItem {
+  shot_id: string
+  image_prompt?: string
+  motion_prompt?: string
+  duration?: number
+}
+
+/** 选片/选镜提交项（shot_id 不重复；asset 需属该步骤任务组且 kind 匹配） */
+export interface ShotPick {
+  shot_id: string
+  asset_id: number
+}

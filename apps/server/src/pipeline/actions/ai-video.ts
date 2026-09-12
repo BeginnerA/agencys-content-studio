@@ -1,10 +1,13 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
-import { genTasks, pipelineRuns, type GenTask } from '../../db/schema'
-import { buildVideoRequest } from '../../adapters/video'
+import { assets, genTasks, pipelineRuns, type GenTask } from '../../db/schema'
+import { buildVideoRequest, getVideoAdapter } from '../../adapters/video'
+import { resolveEndpoint } from '../../adapters/provider'
 import type { VideoAdapter, VideoGenRequest } from '../../adapters/types'
+import { assetToDataUri } from '../../services/asset-ref'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
+import { shotDurationSec } from '../../services/shot-workbench'
 import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
@@ -28,9 +31,9 @@ const POLL_TIMEOUT_MS = 10 * 60_000
  * 适配器两形态——轮询型（提交拿 task_id → query 5s/次，超时 10min）与同步型（长请求直收
  * 字节，如 Pollinations）→ 均落盘为 video 资产（purpose=shot_video，params 溯源含 {taskId, provider}）。
  *
- * v1 为纯 prompt 驱动（文生视频，镜头 prompt 由 prompt_field 指定，缺省 shot.image_prompt）；
- * 首帧图/参考素材依赖公网可访 URL，待图床通道机制后扩展（适配器 extra 已预留
- * referenceImageUrls/firstFrameUrl 透传）。
+ * 提示词由 prompt_field 指定（缺省 shot.image_prompt；支持逗号回退链 'motion_prompt,image_prompt'）；
+ * 首帧图（inputs.first_frame，M6）：gen_frames 产物按 params.shotId 匹配 → 供应商能力支持时转
+ * data URI 驱动 i2v；能力不支持/缺图 → 降级纯文生（params.firstFrameAssetId 记快照）。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功视频）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
  * 未成功任务的 prompt/生成参数执行时与当前分镜/项目设置同步（修正分镜或调
@@ -56,9 +59,10 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     : ((obj as { shots?: ShotSpec[] }).shots ?? [])
   if (!Array.isArray(shots) || shots.length === 0) throw new Error('分镜内容缺 shots 数组')
   const promptField = (ctx.def.params?.prompt_field as string | undefined) ?? 'image_prompt'
+  // prompt 回退链（M6）：'motion_prompt,image_prompt' 形态——老分镜无 motion_prompt 时回退 image_prompt
+  const promptFields = promptField.split(',').map((s) => s.trim()).filter(Boolean)
   for (const s of shots) {
-    const p = s as unknown as Record<string, unknown>
-    if (typeof p[promptField] !== 'string' || !String(p[promptField]).trim()) {
+    if (!pickPromptText(s as unknown as Record<string, unknown>, promptFields)) {
       throw new Error(`shot ${String(s?.id ?? '?')} 缺 ${promptField}`)
     }
   }
@@ -74,6 +78,20 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   ctx.log(
     `批量生成视频：${shots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次，prompt 字段 ${promptField}）`,
   )
+
+  // 首帧注入（M6）：gen_frames 产物按 params.shotId 建索引；能力判定入队前 resolve 一次
+  const frameIds = ctx.assetIdsOf('first_frame')
+  const frameIndex = await buildFirstFrameIndex(frameIds)
+  const frameCap = await videoFirstFrameCapability(provider)
+  const uriCache = new Map<number, string>()
+  if (frameIds.length > 0) {
+    if (frameCap === 'none') {
+      ctx.log('当前视频供应商不支持首帧注入，已降级纯文生')
+    } else {
+      const missing = shots.filter((s) => !frameIndex.has(s.id)).length
+      if (missing > 0) ctx.log(`${missing} 镜无首帧图（降级纯文生）`)
+    }
+  }
 
   // 既有任务（幂等续跑）：shotId → task 行
   const existing = await db
@@ -91,13 +109,14 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of shots) {
-    const promptText = String((shot as unknown as Record<string, unknown>)[promptField]).trim()
+    const promptText = pickPromptText(shot as unknown as Record<string, unknown>, promptFields)
     const paramsJson = JSON.stringify({
       shotId: shot.id,
-      duration: shot.duration ?? fallbackDuration ?? null,
+      duration: shotDurationSec(shot) ?? fallbackDuration ?? null,
       resolution: resolution ?? null,
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,
+      firstFrameAssetId: frameIndex.get(shot.id) ?? null,
     })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
@@ -161,7 +180,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
 
   const failures: Array<{ shotId: string; error: string }> = []
   await runPool(queue, concurrency, async (task) => {
-    const fail = await runOneTask(ctx, task, { provider, model, maxRetry })
+    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, frameCap, uriCache })
     if (fail) failures.push(fail)
   })
 
@@ -184,17 +203,53 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   return { assetIds }
 }
 
+/**
+ * gen_frames 产物 → shotId 索引（首帧匹配，M6，供探针直接断言）：
+ * 逐行取 params.shotId 建 Map（同 shotId 重复 → 后到覆盖）；非图 / 参数损坏行跳过（不抛）。
+ */
+export async function buildFirstFrameIndex(assetIds: number[]): Promise<Map<string, number>> {
+  const index = new Map<string, number>()
+  if (assetIds.length === 0) return index
+  const rows = await db.select().from(assets).where(inArray(assets.id, assetIds))
+  for (const row of rows) {
+    if (row.kind !== 'image') continue
+    try {
+      const p = JSON.parse(row.params ?? '') as { shotId?: unknown }
+      if (typeof p.shotId === 'string' && p.shotId) index.set(p.shotId, row.id)
+    } catch {
+      // 参数损坏行：跳过（不参与匹配也不视为失败）
+    }
+  }
+  return index
+}
+
+/** prompt 字段回退链：取首个非空字符串并 trim；全空 → ''（校验与入队共用，供探针直接断言） */
+export function pickPromptText(shot: Record<string, unknown>, fields: string[]): string {
+  for (const f of fields) {
+    const v = shot[f]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
+}
+
 /** 单任务执行：提交第三方 → 轮询 → 下载落盘；attempts 续增，达上限后不再重试 */
 async function runOneTask(
   ctx: StepContext,
   task: GenTask,
-  cfg: { provider?: string; model?: string; maxRetry: number },
+  cfg: {
+    provider?: string
+    model?: string
+    maxRetry: number
+    frameCap: 'none' | 'base64' | 'as-reference'
+    uriCache: Map<number, string>
+  },
 ): Promise<{ shotId: string; error: string } | null> {
   const parsed = JSON.parse(task.params) as {
     shotId?: string
     duration?: number | null
     resolution?: string | null
     aspectRatio?: string | null
+    firstFrameAssetId?: number | null
   }
   const shotId = parsed.shotId ?? '?'
   const maxAttempts = cfg.maxRetry + 1
@@ -214,6 +269,16 @@ async function runOneTask(
       .where(eq(genTasks.id, task.id))
     emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'processing' })
     try {
+      // 首帧注入：能力支持且有图 → data URI（单图失败跳过 + 记日志，不使任务失败）
+      let ffUri: string | undefined
+      if (cfg.frameCap !== 'none' && typeof parsed.firstFrameAssetId === 'number') {
+        try {
+          ffUri = await assetToDataUri(parsed.firstFrameAssetId, cfg.uriCache)
+          ctx.log(`shot ${shotId} 首帧注入完成`)
+        } catch (err) {
+          ctx.log(`shot ${shotId} 首帧图跳过（${(err as Error).message}）`)
+        }
+      }
       const { adapter, request } = await buildVideoRequest({
         prompt: task.prompt ?? '',
         provider: cfg.provider,
@@ -221,6 +286,7 @@ async function runOneTask(
         duration: parsed.duration ?? undefined,
         resolution: parsed.resolution ?? undefined,
         aspectRatio: parsed.aspectRatio ?? undefined,
+        firstFrameUrl: ffUri,
       })
       const gen = await adapter.generate(request)
       let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
@@ -340,6 +406,16 @@ async function runCancelled(runId: number): Promise<boolean> {
     .where(eq(pipelineRuns.id, runId))
     .limit(1)
   return rows[0]?.status === 'cancelled'
+}
+
+/** 首帧能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none'（不阻断主线） */
+async function videoFirstFrameCapability(provider?: string): Promise<'none' | 'base64' | 'as-reference'> {
+  try {
+    const endpoint = await resolveEndpoint('video', provider)
+    return getVideoAdapter(endpoint.providerKey).firstFrame ?? 'none'
+  } catch {
+    return 'none'
+  }
 }
 
 /** run.input JSON 快照安全取值（episode 溯源用） */

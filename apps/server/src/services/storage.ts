@@ -52,6 +52,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'export':
       return 'exports'
     case 'shot_image':
+    case 'first_frame':
     case 'reference_character':
     case 'reference_scene':
     case 'thumbnail':

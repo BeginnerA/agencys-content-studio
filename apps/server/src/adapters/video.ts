@@ -40,6 +40,8 @@ export function listVideoAdapterKeys(): string[] {
 export async function buildVideoRequest(params: {
   prompt: string
   imageUrl?: string
+  firstFrameUrl?: string
+  lastFrameUrl?: string
   duration?: number
   aspectRatio?: string
   resolution?: string
@@ -54,6 +56,8 @@ export async function buildVideoRequest(params: {
     request: {
       prompt: params.prompt,
       imageUrl: params.imageUrl,
+      firstFrameUrl: params.firstFrameUrl,
+      lastFrameUrl: params.lastFrameUrl,
       duration: params.duration,
       aspectRatio: params.aspectRatio,
       resolution: params.resolution,
