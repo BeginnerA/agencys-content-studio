@@ -20,6 +20,7 @@ export const KNOWN_ACTIONS = [
   'memory_write',
   'memory_recall',
   'character_sync',
+  'entity_sync',
 ] as const
 
 const cache = new Map<string, Template>()

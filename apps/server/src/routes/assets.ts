@@ -107,11 +107,13 @@ assetsRoutes.get('/assets/:id/file', h(async (c) => {
   return new Response(stream, { status, headers })
 }))
 
-// GET /assets/:id/thumb —— 缩略图（ffmpeg 生成 480px WebP 磁盘缓存；失败回退原图）
+// GET /assets/:id/thumb —— 缩略图（图片/视频 ffmpeg 生成 480px WebP 磁盘缓存）
+// 图片：生成失败回退原图；视频：生成失败 404（避免把整个视频流当作缩略图下发）
 assetsRoutes.get('/assets/:id/thumb', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
-  if (a.kind !== 'image' || !a.relPath) throw new HttpError(404, 'no_thumb', '非图片资产暂无缩略图')
+  const isVideo = a.kind === 'video'
+  if ((!isVideo && a.kind !== 'image') || !a.relPath) throw new HttpError(404, 'no_thumb', '非图片/视频资产暂无缩略图')
   const thumb = await ensureThumb(a)
   if (thumb) {
     const buf = readFileSync(thumb)
@@ -123,6 +125,7 @@ assetsRoutes.get('/assets/:id/thumb', h(async (c) => {
       },
     })
   }
+  if (isVideo) throw new HttpError(404, 'no_thumb', '视频封面生成失败')
   const abs = absPathOf(a.relPath)
   if (!exists(abs)) throw new HttpError(404, 'no_file', `文件缺失: ${a.relPath}`)
   return new Response(Readable.toWeb(createReadStream(abs)), {
@@ -193,7 +196,8 @@ function toAssetView(a: typeof assets.$inferSelect): Record<string, unknown> {
     updatedAt: a.updatedAt,
     urls: {
       file: `/api/v1/assets/${a.id}/file`,
-      thumb: a.kind === 'image' ? `/api/v1/assets/${a.id}/thumb` : null,
+      // v=2：早期缩略图端点直接回原图（客户端可能缓存 24h），版本参数强制失效旧缓存
+      thumb: a.kind === 'image' || a.kind === 'video' ? `/api/v1/assets/${a.id}/thumb?v=2` : null,
     },
   }
 }

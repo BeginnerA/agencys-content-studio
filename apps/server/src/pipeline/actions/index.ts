@@ -4,6 +4,7 @@ import { aiImage } from './ai-image'
 import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
 import { characterSync } from './character-sync'
+import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { manualIngest } from './manual-ingest'
 import { memoryRecall } from './memory-recall'
@@ -28,6 +29,7 @@ const registry: Record<string, ActionFn> = {
   memory_write: memoryWrite,
   memory_recall: memoryRecall,
   character_sync: characterSync,
+  entity_sync: entitySync,
 }
 
 export function getAction(key: string): ActionFn {

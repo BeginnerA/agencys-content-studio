@@ -5,7 +5,8 @@ import type {
   Asset,
   Batch,
   BatchDetail,
-  CharacterItem,
+  EntityItem,
+  EntityKind,
   ExportAssetLite,
   FetchModelsResult,
   GenTask,
@@ -22,6 +23,7 @@ import type {
   ShotBoardData,
   ShotEditItem,
   ShotPick,
+  StylePresetItem,
   TemplateDetail,
   TemplateMeta,
   TemplateValidation,
@@ -90,7 +92,15 @@ export const projectApi = {
   detail: (id: number) => api.get<{ project: ProjectDetail }>(`/api/v1/projects/${id}`),
   update: (
     id: number,
-    body: { name?: string; brief?: string; genre?: string; template_key?: string; status?: 'active' | 'archived' },
+    body: {
+      name?: string
+      brief?: string
+      genre?: string
+      template_key?: string
+      status?: 'active' | 'archived'
+      /** [M8] 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_id） */
+      settings?: Record<string, unknown>
+    },
   ) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
   /** 资产列表（?limit/offset/kind/purpose/tag；total 为过滤条件下总数） */
   assets: (id: number, params = '') => api.get<{ items: Asset[]; total: number }>(`/api/v1/projects/${id}/assets${params}`),
@@ -183,7 +193,7 @@ export const assetApi = {
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/assets/${id}`),
 }
 
-// ===== [M3] 记忆 / 角色 =====
+// ===== [M3/M8] 记忆 / 实体素材 =====
 
 export const memoryApi = {
   list: (params = '') => api.get<Items<MemoryItem>>(`/api/v1/memories${params}`),
@@ -197,14 +207,24 @@ export const memoryApi = {
   status: () => api.get<MemoryStatus>('/api/v1/memories/status'),
 }
 
-export const characterApi = {
-  list: (params = '') => api.get<Items<CharacterItem>>(`/api/v1/characters${params}`),
-  /** 新建/具名 upsert（name/别名命中同域同名时更新）；后端返回包裹体 { character, created } */
+/** [M8] 实体素材（角色/场景/道具）：/entities 统一路径 + kind 参数 */
+export const entityApi = {
+  list: (kind: EntityKind, params = '') => api.get<Items<EntityItem>>(`/api/v1/entities?kind=${kind}${params}`),
+  /** 新建/具名 upsert（name/别名命中同域同名时更新）；后端返回包裹体 { entity, created } */
   create: (body: Record<string, unknown>) =>
-    api.post<{ character: CharacterItem; created: boolean }>('/api/v1/characters', body),
+    api.post<{ entity: EntityItem; created: boolean }>('/api/v1/entities', body),
   update: (id: number, body: Record<string, unknown>) =>
-    api.put<{ character: CharacterItem }>(`/api/v1/characters/${id}`, body),
-  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/characters/${id}`),
+    api.put<{ entity: EntityItem }>(`/api/v1/entities/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/entities/${id}`),
+}
+
+/** [M8] 风格预设库（?active=1 仅启用；项目绑定经 PATCH /projects settings.style_preset_id） */
+export const stylePresetApi = {
+  list: (params = '') => api.get<Items<StylePresetItem>>(`/api/v1/style-presets${params}`),
+  create: (body: Record<string, unknown>) => api.post<{ preset: StylePresetItem }>('/api/v1/style-presets', body),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<{ preset: StylePresetItem }>(`/api/v1/style-presets/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/style-presets/${id}`),
 }
 
 /** 上传文件到项目（multipart：purpose + files） */

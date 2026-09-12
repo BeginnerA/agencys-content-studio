@@ -14,6 +14,7 @@ import { publicationsRoutes } from './routes/publications'
 import { runsRoutes } from './routes/runs'
 import { shotsRoutes } from './routes/shots'
 import { statsRoutes } from './routes/stats'
+import { stylePresetsRoutes } from './routes/style-presets'
 import { systemRoutes } from './routes/system'
 import { tasksRoutes } from './routes/tasks'
 import { templatesRoutes } from './routes/templates'
@@ -36,6 +37,7 @@ api.route('/', runsRoutes)
 api.route('/', shotsRoutes)
 api.route('/', batchesRoutes)
 api.route('/', statsRoutes)
+api.route('/', stylePresetsRoutes)
 api.route('/', exportsRoutes)
 api.route('/', publicationsRoutes)
 api.route('/', tasksRoutes)

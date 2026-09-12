@@ -8,8 +8,8 @@ import type { StepResult } from '../types'
 /**
  * ai_text：LLM 文本生成（spec §5.3）。
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
- * output_format=storyboard-json/lines-json/characters-json 时走 validateTextOutput 契约校验
- * （shots / lines（v2 含 speaker/voice_hint/emotion_hint）/ characters 数组）。
+ * output_format=storyboard-json/lines-json/characters-json/set-json 时走 validateTextOutput 契约校验
+ * （shots / lines（v2 含 speaker/voice_hint/emotion_hint）/ characters / scenes+props 数组）。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -104,10 +104,16 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   if (outputFormat === 'storyboard-json') ctx.log(`分镜解析通过：${items} 个镜头`)
   if (outputFormat === 'lines-json') ctx.log(`台词解析通过：${items} 句`)
   if (outputFormat === 'characters-json') ctx.log(`角色档案解析通过：${items} 名`)
+  if (outputFormat === 'set-json') ctx.log(`场景道具档案解析通过：${items} 项`)
 
   const nameTpl = typeof params['name_tpl'] === 'string' ? params['name_tpl'] : undefined
   const name = nameTpl ? interpolate(nameTpl, runInput) : defaultName(outputFormat, outputPurpose)
-  const tag = outputFormat === 'storyboard-json' ? 'storyboard' : outputFormat === 'lines-json' ? 'lines' : outputFormat === 'characters-json' ? 'characters' : 'script'
+  const tag =
+    outputFormat === 'storyboard-json' ? 'storyboard'
+      : outputFormat === 'lines-json' ? 'lines'
+        : outputFormat === 'characters-json' ? 'characters'
+          : outputFormat === 'set-json' ? 'sets'
+            : 'script'
   const asset = await writeTextAsset(ctx.run.projectId, {
     name,
     content,
@@ -126,7 +132,8 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
 /**
  * 输出契约校验（导出供探针直接断言，无需 LLM）：
  * storyboard-json（shots 数组 + image_prompt）/ lines-json（lines 数组 + text/est_ms + v2 speaker/voice_hint/emotion_hint）
- * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/ref_prompt）；
+ * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/ref_prompt）
+ * / set-json（scenes+props 至少一数组非空 + name/appearance）；
  * 返回条目数（非校验格式 → 0）；错误消息口径与 M1/M2 一致。
  */
 export function validateTextOutput(content: string, format: string): number {
@@ -195,6 +202,34 @@ export function validateTextOutput(content: string, format: string): number {
     }
     return obj.characters.length
   }
+  if (format === 'set-json') {
+    const obj = JSON.parse(extractJson(content)) as { scenes?: unknown; props?: unknown }
+    const scenes = Array.isArray(obj.scenes) ? obj.scenes : []
+    const props = Array.isArray(obj.props) ? obj.props : []
+    if (scenes.length === 0 && props.length === 0) {
+      throw new Error(`场景道具档案 JSON 不合法（scenes/props 双空）。返回开头 200 字符：${content.slice(0, 200)}`)
+    }
+    for (const [label, list] of [['场景', scenes], ['道具', props]] as const) {
+      for (const rec of list as Array<Record<string, unknown>>) {
+        if (typeof rec['name'] !== 'string' || !rec['name'].trim()) {
+          throw new Error(`场景道具档案 JSON 不合法：存在缺 name 的${label}项`)
+        }
+        if (typeof rec['appearance'] !== 'string' || !rec['appearance'].trim()) {
+          throw new Error(`场景道具档案 JSON 不合法：${label} ${rec['name']} 缺 appearance`)
+        }
+        const aliases = rec['aliases']
+        if (aliases !== undefined && (!Array.isArray(aliases) || aliases.some((x: unknown) => typeof x !== 'string' || !x.trim()))) {
+          throw new Error(`场景道具档案 JSON 不合法：${label} ${rec['name']} 的 aliases 需为非空字符串数组`)
+        }
+        for (const key of ['summary', 'negative']) {
+          if (rec[key] !== undefined && typeof rec[key] !== 'string') {
+            throw new Error(`场景道具档案 JSON 不合法：${label} ${rec['name']} 的 ${key} 需为字符串`)
+          }
+        }
+      }
+    }
+    return scenes.length + props.length
+  }
   return 0
 }
 
@@ -216,5 +251,6 @@ function defaultName(format: string, purpose: string): string {
   if (format === 'storyboard-json') return 'storyboard.json'
   if (format === 'lines-json') return 'lines.json'
   if (format === 'characters-json') return 'characters.json'
+  if (format === 'set-json') return 'sets.json'
   return `${purpose}.md`
 }

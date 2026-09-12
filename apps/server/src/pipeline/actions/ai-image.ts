@@ -3,7 +3,8 @@ import { db } from '../../db'
 import { genTasks, pipelineRuns, type CharacterRow, type GenTask } from '../../db/schema'
 import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../../adapters/provider'
 import { assetToDataUri } from '../../services/asset-ref'
-import { loadCharacterIndex } from '../../services/character'
+import { loadEntityIndex } from '../../services/character'
+import { resolveProjectStyleSnippet } from '../../services/style-preset'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
 import { shotDurationSec } from '../../services/shot-workbench'
@@ -18,19 +19,28 @@ interface ShotSpec {
   duration?: number
   /** 角色名（含别名）列表：命中角色库 → 自动注入 appearance/negative 锚定（E3） */
   characters?: string[]
+  /** [M8] 场景名（与场景库对齐）：命中 → 注入场景锚定 + 参考图 */
+  location?: string
+  /** [M8] 道具名列表（与道具库对齐）：命中 → 注入道具锚定 + 参考图 */
+  props?: string[]
+  /** [M8] 素材参考图链分类（scene|prop；output_purpose_by_category 按此分派 purpose） */
+  category?: string
 }
 
 const nowMs = (): number => Date.now()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** 单镜参考图上限（按角色出场顺序截断；refAssetIdsOf 已保序去重） */
+/** 单镜角色参考图上限（M6 语义：按角色出场顺序截断） */
 const MAX_CHARACTER_REFS_PER_SHOT = 4
+
+/** [M8] 单镜参考图总量上限（角色 ≤4 + 场景 ≤1 + 道具 ≤1） */
+const MAX_REFS_PER_SHOT = 6
 
 /**
  * ai_image：批量镜头出图（spec §5.3）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
- * 逐镜按 shot.characters 从角色库注入 appearance/negative 锚定（E3，注入全文进 prompt 快照）；
- * 角色定妆照（refAssetIds）在供应商能力支持时转 data URI 注入参考图（M6，params.refUsed 记计划注入数）；
+ * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
+ * 参考图（角色定妆照 + 场景/道具参考图）在供应商能力支持时转 data URI 注入（M6/M8，params.refUsed 记计划注入数）；
  * 并发上限 batch.max_concurrent（默认 2），失败按 batch.retry 重试。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功图）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
@@ -62,26 +72,37 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // 角色锚定注入（E3）：命中角色库 → prompt 追加 appearance/negative 全文（快照即一致性硬证据）
-  const charIndex = await loadCharacterIndex(ctx.run.projectId)
-  const { shots: finalShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
+  // 锚定注入（E3/M8，快照即一致性硬证据）：角色 → 场景/道具 → 风格，逐段叠加
+  const charIndex = await loadEntityIndex(ctx.run.projectId, 'character')
+  const sceneIndex = await loadEntityIndex(ctx.run.projectId, 'scene')
+  const propIndex = await loadEntityIndex(ctx.run.projectId, 'prop')
+  const indexes = { characters: charIndex, scenes: sceneIndex, props: propIndex }
+  const { shots: charShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
   ctx.log(`角色锚定注入 ${injected} 镜${missing.length > 0 ? `（未命中角色：${missing.join('、')}）` : ''}`)
+  const { shots: setShots, sceneInjected, propInjected, missing: setMissing } = injectSetAnchors(charShots, sceneIndex, propIndex)
+  ctx.log(`场景锚定 ${sceneInjected} 镜 / 道具锚定 ${propInjected} 镜${setMissing.length > 0 ? `（未命中：${setMissing.join('、')}）` : ''}`)
 
   const imgCfg = (ctx.settings.image ?? {}) as Record<string, unknown>
   const provider = typeof imgCfg['provider'] === 'string' ? imgCfg['provider'] : undefined
   const model = typeof imgCfg['model'] === 'string' ? imgCfg['model'] : undefined
   const size = typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248'
   const stepParams = (ctx.def.params ?? {}) as Record<string, unknown>
-  const useCharacterRefs = stepParams['use_character_refs'] !== false
+  const useRefs = stepParams['use_character_refs'] !== false // M8 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'
+  // 风格锚定注入（M8）：项目绑定预设 → 运行时解析 → image_prompt 尾追「视觉风格：…」；未绑定/停用 → 零注入 + 日志
+  const useStylePreset = stepParams['use_style_preset'] !== false
+  const styleResolved = useStylePreset ? await resolveProjectStyleSnippet(ctx.run.projectId) : null
+  if (useStylePreset && !styleResolved) ctx.log('项目未绑定风格预设 / 预设已停用，跳过风格注入')
+  const finalShots = injectStyleAnchor(setShots, styleResolved?.snippet ?? null)
+  if (styleResolved) ctx.log(`风格注入：${styleResolved.name}（预设 #${styleResolved.id}）`)
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
   const refCap = await imageRefCapability(provider)
   const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
-  if (useCharacterRefs && refCap !== 'base64' && finalShots.some((s) => refAssetIdsOf(s, charIndex).length > 0)) {
-    ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（角色锚定注入仍生效）')
+  if (useRefs && refCap !== 'base64' && finalShots.some((s) => collectRefAssetIds(s, indexes).length > 0)) {
+    ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（锚定注入仍生效）')
   }
 
   // 既有任务（幂等续跑）：shotId → task 行
@@ -101,10 +122,19 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 
   for (const shot of finalShots) {
     const promptText = shot.image_prompt.trim()
-    const refAssetIds = refAssetIdsOf(shot, charIndex)
+    const refAssetIds = collectRefAssetIds(shot, indexes)
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
-    const refUsed = refCap === 'base64' && useCharacterRefs ? Math.min(refAssetIds.length, MAX_CHARACTER_REFS_PER_SHOT) : 0
-    const paramsJson = JSON.stringify({ size, shotId: shot.id, duration: shotDurationSec(shot) ?? null, refAssetIds, refUsed, output_purpose: outputPurpose })
+    const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, MAX_REFS_PER_SHOT) : 0
+    const purpose = purposeOf(shot, stepParams, outputPurpose)
+    const paramsJson = JSON.stringify({
+      size,
+      shotId: shot.id,
+      duration: shotDurationSec(shot) ?? null,
+      refAssetIds,
+      refUsed,
+      output_purpose: purpose,
+      stylePresetId: styleResolved?.id ?? null,
+    })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
       const t = nowMs()
@@ -166,7 +196,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 
   const failures: Array<{ shotId: string; error: string }> = []
   await runPool(queue, concurrency, async (task) => {
-    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, refCap, useCharacterRefs, uriCache })
+    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, refCap, useRefs, uriCache })
     if (fail) failures.push(fail)
   })
 
@@ -198,7 +228,7 @@ async function runOneTask(
     model?: string
     maxRetry: number
     refCap: 'none' | 'base64'
-    useCharacterRefs: boolean
+    useRefs: boolean
     uriCache: Map<number, string>
   },
 ): Promise<{ shotId: string; error: string } | null> {
@@ -223,9 +253,9 @@ async function runOneTask(
     try {
       // 参考图注入：能力支持且未关闭 → 逐 id 转 data URI（单图失败跳过该图 + 记日志，不使任务失败）
       let refs: string[] | undefined
-      if (cfg.useCharacterRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
+      if (cfg.useRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
         const uris: string[] = []
-        for (const id of parsed.refAssetIds.slice(0, MAX_CHARACTER_REFS_PER_SHOT)) {
+        for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
           try {
             uris.push(await assetToDataUri(id, cfg.uriCache))
           } catch (err) {
@@ -367,16 +397,123 @@ export function injectCharacterAnchors(
   return { shots: out, injected, missing }
 }
 
-/** 本镜命中角色的 refAssetIds 并集（去重 → 任务 params 快照） */
-function refAssetIdsOf(shot: ShotSpec, index: Map<string, CharacterRow>): number[] {
-  const ids = new Set<number>()
-  for (const raw of shot.characters ?? []) {
-    if (typeof raw !== 'string' || !raw.trim()) continue
-    const row = lookupCharacter(index, raw.trim())
-    if (!row) continue
-    for (const id of parseNumArr(row.refAssetIds)) ids.add(id)
+/**
+ * 场景/道具锚定注入（纯函数，供探针直接 import 断言）：
+ * shot.location 命中场景库 → 追加「场景锚定（{name}）：{appearance}」（+「必须剔除：{negative}」）；
+ * shot.props[] 逐项命中道具库 → 追加「道具锚定（{name}）：{appearance}」（+ 必须剔除）；
+ * 未命中名进 missing；返回新数组（不修改入参）。
+ */
+export function injectSetAnchors(
+  shots: ShotSpec[],
+  sceneIndex: Map<string, CharacterRow>,
+  propIndex: Map<string, CharacterRow>,
+): { shots: ShotSpec[]; sceneInjected: number; propInjected: number; missing: string[] } {
+  const missing: string[] = []
+  let sceneInjected = 0
+  let propInjected = 0
+  const out = shots.map((shot) => {
+    const bits: string[] = []
+    let sceneHit = false
+    const loc = typeof shot.location === 'string' ? shot.location.trim() : ''
+    if (loc) {
+      const row = lookupCharacter(sceneIndex, loc)
+      if (row) {
+        const before = bits.length
+        if (row.appearance) bits.push(`场景锚定（${row.name}）：${row.appearance}`)
+        if (row.negative) bits.push(`必须剔除：${row.negative}`)
+        sceneHit = bits.length > before
+      } else {
+        missing.push(loc)
+      }
+    }
+    let propHit = false
+    for (const raw of shot.props ?? []) {
+      if (typeof raw !== 'string' || !raw.trim()) continue
+      const row = lookupCharacter(propIndex, raw.trim())
+      if (!row) {
+        missing.push(raw.trim())
+        continue
+      }
+      const before = bits.length
+      if (row.appearance) bits.push(`道具锚定（${row.name}）：${row.appearance}`)
+      if (row.negative) bits.push(`必须剔除：${row.negative}`)
+      if (bits.length > before) propHit = true
+    }
+    if (bits.length === 0) return shot
+    if (sceneHit) sceneInjected += 1
+    if (propHit) propInjected += 1
+    return { ...shot, image_prompt: `${shot.image_prompt.trim()}\n${bits.join('\n')}` }
+  })
+  return { shots: out, sceneInjected, propInjected, missing }
+}
+
+/**
+ * 本镜参考图收集（纯函数，任务 params.refAssetIds 快照源）：
+ * 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
+ * 保序去重；总量 ≤MAX_REFS_PER_SHOT。
+ */
+export function collectRefAssetIds(
+  shot: ShotSpec,
+  indexes: { characters: Map<string, CharacterRow>; scenes: Map<string, CharacterRow>; props: Map<string, CharacterRow> },
+): number[] {
+  const ids: number[] = []
+  const seen = new Set<number>()
+  const push = (id: number): boolean => {
+    if (seen.has(id)) return false
+    seen.add(id)
+    ids.push(id)
+    return true
   }
-  return [...ids]
+  // 1) 角色（M6 语义：按出场顺序截断至 4）
+  let charAdded = 0
+  for (const raw of shot.characters ?? []) {
+    if (charAdded >= MAX_CHARACTER_REFS_PER_SHOT) break
+    if (typeof raw !== 'string' || !raw.trim()) continue
+    const row = lookupCharacter(indexes.characters, raw.trim())
+    if (!row) continue
+    for (const id of parseNumArr(row.refAssetIds)) {
+      if (charAdded >= MAX_CHARACTER_REFS_PER_SHOT) break
+      if (push(id)) charAdded += 1
+    }
+  }
+  // 2) 场景（location 命中行，≤1）
+  const loc = typeof shot.location === 'string' ? shot.location.trim() : ''
+  if (loc) {
+    const row = lookupCharacter(indexes.scenes, loc)
+    const id = row ? parseNumArr(row.refAssetIds)[0] : undefined
+    if (id !== undefined) push(id)
+  }
+  // 3) 道具（props 命中行并集，≤1）
+  for (const raw of shot.props ?? []) {
+    if (typeof raw !== 'string' || !raw.trim()) continue
+    const row = lookupCharacter(indexes.props, raw.trim())
+    const id = row ? parseNumArr(row.refAssetIds)[0] : undefined
+    if (id !== undefined) {
+      push(id)
+      break
+    }
+  }
+  return ids.slice(0, MAX_REFS_PER_SHOT)
+}
+
+/**
+ * 风格锚定注入（纯函数）：snippet 非空 → 逐镜 image_prompt 尾追「视觉风格：{snippet}」；
+ * 空/未绑定 → 原样返回（同一引用，零注入）。
+ */
+export function injectStyleAnchor(shots: ShotSpec[], snippet: string | null): ShotSpec[] {
+  const s = typeof snippet === 'string' ? snippet.trim() : ''
+  if (!s) return shots
+  return shots.map((shot) => ({ ...shot, image_prompt: `${shot.image_prompt.trim()}\n视觉风格：${s}` }))
+}
+
+/** 出图 purpose 分派：output_purpose_by_category[shot.category] → 步骤 output_purpose（默认 shot_image） */
+function purposeOf(shot: ShotSpec, params: Record<string, unknown>, fallback: string): string {
+  const map = params['output_purpose_by_category']
+  if (map && typeof map === 'object' && !Array.isArray(map) && typeof shot.category === 'string' && shot.category.trim()) {
+    const v = (map as Record<string, unknown>)[shot.category.trim()]
+    if (typeof v === 'string' && v) return v
+  }
+  return fallback
 }
 
 function parseNumArr(s: string): number[] {

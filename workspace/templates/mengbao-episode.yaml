@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 7
+version: 8
 name: 短剧·单集
-description: 适合：按单集剧本产出带配音字幕的短剧成片（角色锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
+description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 场景道具档案与参考图（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]
@@ -31,6 +31,11 @@ inputs:
     default: false
   - key: with_character_refs
     label: 生成定妆照并入档（true=角色参考图；false=仅建档）
+    kind: bool
+    required: false
+    default: false
+  - key: with_set_refs
+    label: 生成场景/道具参考图并入档（true=素材参考图；false=仅建档）
     kind: bool
     required: false
     default: false
@@ -156,14 +161,57 @@ steps:
     inputs:
       characters: steps.char_profile.asset
       ref_images: steps.gen_refs.assets
+  - key: set_profile
+    action: ai_text
+    title: 场景/道具档案
+    after: [write_script]
+    inputs:
+      script: steps.write_script.asset
+      setting: steps.ingest_docs.assets
+    params:
+      prompt_tpl: set-profile.md
+      output_purpose: sets
+      output_format: set-json
+      name_tpl: "{episode_number:03d}-场景道具档案.json"
+  - key: set_ref_prompts
+    action: ai_text
+    title: 场景/道具参考图提示词
+    after: [set_profile]
+    inputs:
+      sets: steps.set_profile.asset
+      setting: steps.ingest_docs.assets
+    params:
+      prompt_tpl: set-ref-prompts.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "{episode_number:03d}-素材提示词.json"
+  - key: gen_set_refs
+    action: ai_image
+    title: 场景/道具参考图生成
+    when: input.with_set_refs == true
+    after: [set_ref_prompts]
+    inputs:
+      shots: steps.set_ref_prompts.asset
+    params:
+      output_purpose: reference_scene
+      output_purpose_by_category: { prop: reference_prop }
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: sync_set
+    action: entity_sync
+    title: 场景/道具建档
+    after: [set_profile, gen_set_refs]
+    inputs:
+      sets: steps.set_profile.asset
+      ref_images: steps.gen_set_refs.assets
   - key: make_storyboard
     action: ai_text
     title: 分镜与提示词包
-    after: [write_script, char_profile]
+    after: [write_script, char_profile, set_profile]
     inputs:
       script: steps.write_script.asset
       setting: steps.ingest_docs.assets
       characters: steps.char_profile.asset
+      sets: steps.set_profile.asset
     params:
       prompt_tpl: storyboard-ep.md
       output_purpose: storyboard
@@ -217,7 +265,7 @@ steps:
     action: ai_image
     title: 批量镜头出图
     when: input.motion != true
-    after: [make_storyboard, sync_characters]
+    after: [make_storyboard, sync_characters, sync_set]
     inputs:
       shots: steps.make_storyboard.asset
     batch: { field: shots, max_concurrent: 2, retry: 1 }
@@ -225,7 +273,7 @@ steps:
     action: ai_image
     title: 首帧图生成（i2v）
     when: [input.motion == true, input.i2v == true]
-    after: [make_storyboard, sync_characters]
+    after: [make_storyboard, sync_characters, sync_set]
     inputs:
       shots: steps.make_storyboard.asset
     params:

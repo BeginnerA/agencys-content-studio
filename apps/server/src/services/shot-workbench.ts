@@ -732,7 +732,8 @@ function toVersionView(a: Asset): BoardVersion {
     prompt: a.prompt,
     urls: {
       file: `/api/v1/assets/${a.id}/file`,
-      thumb: a.kind === 'image' ? `/api/v1/assets/${a.id}/thumb` : null,
+      // v=2：早期缩略图端点直接回原图（客户端可能缓存 24h），版本参数强制失效旧缓存
+      thumb: a.kind === 'image' || a.kind === 'video' ? `/api/v1/assets/${a.id}/thumb?v=2` : null,
     },
   }
 }

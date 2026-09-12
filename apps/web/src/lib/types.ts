@@ -308,19 +308,37 @@ export interface CharacterRefAsset {
   urls: AssetUrls
 }
 
-export interface CharacterItem {
+/** [M8] 实体素材类型：角色 / 场景 / 道具（单表多态，kind 列） */
+export type EntityKind = 'character' | 'scene' | 'prop'
+
+export interface EntityItem {
   id: number
   projectId: number | null
   scope: 'project' | 'global'
+  kind: EntityKind
   name: string
   aliases: string[]
   summary: string | null
   appearance: string | null
   negative: string | null
+  /** 声线（仅 kind=character 有意义；scene/prop 恒为 null） */
   voice: string | null
   refAssetIds: number[]
   refAssets: CharacterRefAsset[]
   meta?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+/** [M8] 风格预设（平台级通用画风词块；项目经 settings.style_preset_id 单值绑定） */
+export interface StylePresetItem {
+  id: number
+  name: string
+  snippet: string
+  description: string | null
+  sortOrder: number
+  /** 1=启用 / 0=停用 */
+  isActive: number
   createdAt: number
   updatedAt: number
 }

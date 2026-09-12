@@ -333,15 +333,19 @@ async function main(): Promise<void> {
     check(sh2.versions.length === 1 && sh2.versions[0]!.id === s.a2, '单版本组（s02=v1）')
     check(sh1.selectedAssetId === s.a1v2 && sh2.selectedAssetId === s.a2, '当前选中来自 output（同镜首个命中）')
     check(
-      sh1.versions[0]!.urls.file === `/api/v1/assets/${s.a1v1}/file` && sh1.versions[0]!.urls.thumb === `/api/v1/assets/${s.a1v1}/thumb`,
-      '版本 urls（file/thumb）',
+      sh1.versions[0]!.urls.file === `/api/v1/assets/${s.a1v1}/file` &&
+        sh1.versions[0]!.urls.thumb === `/api/v1/assets/${s.a1v1}/thumb?v=2`,
+      '版本 urls（file/thumb?v=2）',
     )
     check(board.compose?.stepKey === 'compose_video' && board.compose.composedAt === T0 + 50 && board.compose.stale === false, 'compose 信息（stepKey/composedAt/stale=false）')
     check(board.repairable.ok === true && board.repairable.reason === null, 'repairable ok（completed + 无其他 failed）')
 
-    // ai_video 工作台：视频版本 thumb=null
+    // ai_video 工作台：视频版本封面缩略图（ffmpeg 抽帧，?v=2 缓存失效）
     const vb = await buildShotBoard(s.runId, 'gen_motion')
-    check(vb.shots[0]!.versions[0]!.urls.thumb === null && vb.shots[0]!.selectedAssetId === s.m1, 'ai_video 板（thumb=null / 选中 m1）')
+    check(
+      vb.shots[0]!.versions[0]!.urls.thumb === `/api/v1/assets/${s.m1}/thumb?v=2` && vb.shots[0]!.selectedAssetId === s.m1,
+      'ai_video 板（视频封面 thumb?v=2 / 选中 m1）',
+    )
 
     // ---- stale 三态 ----
     await setStepOutput(s.imgStepId, { asset_ids: [s.a1v1, s.a2] })
@@ -448,7 +452,7 @@ async function main(): Promise<void> {
     // ---- F2：LLM 口径 duration_sec 的编辑同步 + 同值比较 ----
     const r2 = await applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's02', duration: 3 }])
     const ed2 = JSON.parse(await readTextAsset(r2.assetId)) as {
-      shots: Array<{ id: string; duration?: number; duration_sec?: number }>
+      shots: Array<{ id: string; duration?: number; duration_sec?: number; image_prompt?: string }>
     }
     check(ed2.shots[1]!.duration === 3 && ed2.shots[1]!.duration_sec === 3, 's02 编辑双口径同步（duration/duration_sec=3）')
     check(ed2.shots[0]!.duration === 3.5 && ed2.shots[0]!.image_prompt === '晨光中的小镇（夜景版）', '链式编辑基于最新版本（s01 编辑保留）')

@@ -1,13 +1,81 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+/**
+ * [M8] 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
+ * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
+ * 声线仅角色 Tab；挑图选择器 + 全局/项目域约束与旧角色页一致。
+ */
+import { computed, onMounted, reactive, ref } from 'vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
-import { characterApi, projectApi } from '../lib/api'
+import { entityApi, projectApi } from '../lib/api'
 import { ApiError } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
-import type { Asset, CharacterItem, Project } from '../lib/types'
+import type { Asset, EntityItem, EntityKind, Project } from '../lib/types'
 
-const items = ref<CharacterItem[]>([])
+interface KindCfg {
+  kind: EntityKind
+  label: string
+  icon: string
+  nameLabel: string
+  namePh: string
+  aliasPh: string
+  apLabel: string
+  apPh: string
+  negPh: string
+  summaryPh: string
+  refLabel: string
+  empty: string
+}
+
+const KINDS: KindCfg[] = [
+  {
+    kind: 'character',
+    label: '角色',
+    icon: 'users',
+    nameLabel: '角色名',
+    namePh: '如：萌宝',
+    aliasPh: '如：小宝、团团',
+    apLabel: '形象锚定 appearance（出图一致性核心，注入分镜提示词）',
+    apPh: '如：三岁半男孩，圆脸大眼，虎头帽红袄，矮胖灵动',
+    negPh: '如：成人化五官、替换服装配色',
+    summaryPh: '一句话人物设定（可空）',
+    refLabel: '定妆照',
+    empty: '还没有角色。运行角色建档类模板（character_sync）自动入库，或手动新建；定妆照用于出图一致性锚定。',
+  },
+  {
+    kind: 'scene',
+    label: '场景',
+    icon: 'map',
+    nameLabel: '场景名',
+    namePh: '如：村口老槐树',
+    aliasPh: '如：村口、老树下',
+    apLabel: '视觉短语 appearance（空间布局/陈设/色调，注入分镜提示词）',
+    apPh: '如：北方村落土坯房，灰瓦屋顶，门口石磨，暖黄夕照',
+    negPh: '如：布局改变、陈设增减、色调偏移',
+    summaryPh: '一句话说明（地点类型 + 剧情作用，可空）',
+    refLabel: '场景参考图',
+    empty: '还没有场景。运行素材建档模板（entity_sync）自动入库，或手动新建；场景参考图用于空镜一致性锚定。',
+  },
+  {
+    kind: 'prop',
+    label: '道具',
+    icon: 'cube',
+    nameLabel: '道具名',
+    namePh: '如：虎头帽',
+    aliasPh: '如：小帽子',
+    apLabel: '外观描述 appearance（外形/材质/颜色，注入分镜提示词）',
+    apPh: '如：大红绸面虎头帽，金线刺绣，两只毛绒虎耳',
+    negPh: '如：形状改变、颜色偏移、材质错误',
+    summaryPh: '一句话说明（物件属性 + 剧情作用，可空）',
+    refLabel: '道具参考图',
+    empty: '还没有道具。运行素材建档模板（entity_sync）自动入库，或手动新建；道具参考图用于出图一致性锚定。',
+  },
+]
+
+const kind = ref<EntityKind>('character')
+const cfg = computed(() => KINDS.find((k) => k.kind === kind.value)!)
+
+const items = ref<EntityItem[]>([])
 const projects = ref<Project[]>([])
 const loading = ref(true)
 const busy = ref(false)
@@ -37,14 +105,20 @@ async function load() {
   loading.value = true
   err.value = ''
   try {
-    const params = projectFilter.value && projectFilter.value !== 'global' ? `?project_id=${projectFilter.value}` : ''
-    const data = await characterApi.list(params)
+    const params = projectFilter.value && projectFilter.value !== 'global' ? `&project_id=${projectFilter.value}` : ''
+    const data = await entityApi.list(kind.value, params)
     items.value = projectFilter.value === 'global' ? data.items.filter((c) => c.scope === 'global') : data.items
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
     loading.value = false
   }
+}
+
+function switchKind(k: EntityKind) {
+  if (kind.value === k) return
+  kind.value = k
+  void load()
 }
 
 onMounted(() => {
@@ -55,7 +129,7 @@ onMounted(() => {
     .catch(() => (projects.value = []))
 })
 
-/** 定妆照候选：仅项目域可行（全局角色库不接受项目资产引用） */
+/** 参考图候选：仅项目域可行（全局素材库不接受项目资产引用） */
 async function loadAssets(pid: number) {
   if (!pid) {
     assetOptions.value = []
@@ -87,7 +161,7 @@ function openNew() {
   void loadAssets(form.projectId)
 }
 
-function openEdit(it: CharacterItem) {
+function openEdit(it: EntityItem) {
   form.id = it.id
   form.name = it.name
   form.aliases = it.aliases.join('、')
@@ -116,7 +190,7 @@ function toggleRef(aid: number) {
 
 async function save() {
   if (!form.name.trim()) {
-    formErr.value = '请填写角色名'
+    formErr.value = `请填写${cfg.value.nameLabel}`
     return
   }
   busy.value = true
@@ -131,15 +205,16 @@ async function save() {
       summary: form.summary.trim() || null,
       appearance: form.appearance.trim() || null,
       negative: form.negative.trim() || null,
-      voice: form.voice.trim() || null,
     }
+    if (kind.value === 'character') body.voice = form.voice.trim() || null
     if (form.id) {
       if (form.projectId) body.ref_asset_ids = form.refIds
-      await characterApi.update(form.id, body)
+      await entityApi.update(form.id, body)
     } else {
+      body.kind = kind.value
       if (form.projectId) body.project_id = form.projectId
       if (form.refIds.length) body.ref_asset_ids = form.refIds
-      await characterApi.create(body)
+      await entityApi.create(body)
     }
     showForm.value = false
     await load()
@@ -150,17 +225,17 @@ async function save() {
   }
 }
 
-async function removeItem(it: CharacterItem) {
+async function removeItem(it: EntityItem) {
   const ok = await confirmDialog({
-    title: '删除角色',
-    message: `确认删除角色「${it.name}」？定妆照资产会保留，仅删除档案。`,
+    title: `删除${cfg.value.label}`,
+    message: `确认删除${cfg.value.label}「${it.name}」？参考图资产会保留，仅删除档案。`,
     confirmText: '删除',
     danger: true,
   })
   if (!ok) return
   busy.value = true
   try {
-    await characterApi.remove(it.id)
+    await entityApi.remove(it.id)
     await load()
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -169,38 +244,52 @@ async function removeItem(it: CharacterItem) {
   }
 }
 
-function photoOf(it: CharacterItem): string | null {
+function photoOf(it: EntityItem): string | null {
   const a = it.refAssets[0]
   return a ? (a.urls.thumb ?? a.urls.file) : null
 }
+
+/** 卡片图比例按 kind：角色竖版 / 场景横版 / 道具方版 */
+const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[kind.value])
 </script>
 
 <template>
   <div>
     <div class="page-h">
-      <h1>角色</h1>
-      <span class="sub">{{ items.length }} 名</span>
+      <h1>素材</h1>
+      <div class="tabs" role="tablist" aria-label="素材类型">
+        <button
+          v-for="k in KINDS"
+          :key="k.kind"
+          class="tab"
+          :class="{ on: kind === k.kind }"
+          role="tab"
+          :aria-selected="kind === k.kind"
+          @click="switchKind(k.kind)"
+        >
+          <Icon :name="k.icon" :size="14" /> {{ k.label }}
+        </button>
+      </div>
+      <span class="sub">{{ items.length }} 项</span>
       <select v-model="projectFilter" style="width: 180px" aria-label="按归属筛选" @change="load()">
         <option value="">全部归属</option>
         <option value="global">仅全局</option>
         <option v-for="p in projects" :key="p.id" :value="String(p.id)">项目#{{ p.id }} {{ p.name }}</option>
       </select>
       <button class="btn primary" style="margin-left: auto" @click="openNew">
-        <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建角色
+        <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建{{ cfg.label }}
       </button>
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="loading" class="empty">加载中…</div>
-    <div v-else-if="!items.length" class="empty">
-      还没有角色。运行角色建档类模板（char_sync）自动入库，或手动新建；定妆照用于出图一致性锚定。
-    </div>
+    <div v-else-if="!items.length" class="empty">{{ cfg.empty }}</div>
 
     <div v-else class="grid">
       <div v-for="c in items" :key="c.id" class="card panel">
-        <div class="photo">
-          <img v-if="photoOf(c)" :src="photoOf(c)!" :alt="`${c.name} 定妆照`" loading="lazy" />
-          <div v-else class="ph"><Icon name="users" :size="30" /></div>
+        <div class="photo" :class="ratioCls">
+          <img v-if="photoOf(c)" :src="photoOf(c)!" :alt="`${c.name} 参考图`" loading="lazy" />
+          <div v-else class="ph"><Icon :name="cfg.icon" :size="30" /></div>
         </div>
         <div class="body">
           <div class="top">
@@ -211,7 +300,7 @@ function photoOf(it: CharacterItem): string | null {
           <div class="summary">{{ c.appearance || c.summary || '—' }}</div>
           <div class="meta muted">
             <span v-if="c.voice"><Icon name="speaker-wave" :size="12" /> {{ c.voice }}</span>
-            <span v-if="c.refAssetIds.length" class="chip">{{ c.refAssetIds.length }} 张定妆照</span>
+            <span v-if="c.refAssetIds.length" class="chip">{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span>
           </div>
           <div class="ops">
             <button class="btn tiny" @click="openEdit(c)"><Icon name="pencil" :size="12" /> 编辑</button>
@@ -221,43 +310,48 @@ function photoOf(it: CharacterItem): string | null {
       </div>
     </div>
 
-    <Modal v-if="showForm" :title="form.id ? `编辑角色「${form.name}」` : '新建角色'" :width="640" @close="showForm = false">
+    <Modal
+      v-if="showForm"
+      :title="form.id ? `编辑${cfg.label}「${form.name}」` : `新建${cfg.label}`"
+      :width="640"
+      @close="showForm = false"
+    >
       <div class="frow">
         <label class="fld">
-          角色名 <span class="req">*</span>
-          <input v-model="form.name" type="text" placeholder="如：萌宝" />
+          {{ cfg.nameLabel }} <span class="req">*</span>
+          <input v-model="form.name" type="text" :placeholder="cfg.namePh" />
         </label>
         <label class="fld">
           别名（逗号 / 顿号分隔）
-          <input v-model="form.aliases" type="text" placeholder="如：小宝、团团" />
+          <input v-model="form.aliases" type="text" :placeholder="cfg.aliasPh" />
         </label>
       </div>
       <label class="fld">
-        形象锚定 appearance（出图一致性核心，注入分镜提示词）
-        <textarea v-model="form.appearance" rows="3" placeholder="如：三岁半男孩，圆脸大眼，虎头帽红袄，矮胖灵动" />
+        {{ cfg.apLabel }}
+        <textarea v-model="form.appearance" rows="3" :placeholder="cfg.apPh" />
       </label>
       <div class="frow">
         <label class="fld">
           必须剔除 negative
-          <textarea v-model="form.negative" rows="2" placeholder="如：成人化五官、替换服装配色" />
+          <textarea v-model="form.negative" rows="2" :placeholder="cfg.negPh" />
         </label>
-        <label class="fld">
+        <label v-if="kind === 'character'" class="fld">
           声线 voice（TTS 声线链 L2）
           <textarea v-model="form.voice" rows="2" placeholder="如：软糯童声（或网关 模型:音色 格式）" />
         </label>
       </div>
       <label class="fld">
         简介 summary
-        <input v-model="form.summary" type="text" placeholder="一句话人物设定（可空）" />
+        <input v-model="form.summary" type="text" :placeholder="cfg.summaryPh" />
       </label>
 
       <div class="refbox">
         <div class="rhead">
-          <span>定妆照</span>
+          <span>{{ cfg.refLabel }}</span>
           <span v-if="!form.id" class="muted">
             归属：
             <select v-model.number="form.projectId" style="width: 200px" @change="onPickProject">
-              <option :value="0">全局（不挂定妆照）</option>
+              <option :value="0">全局（不挂参考图）</option>
               <option v-for="p in projects" :key="p.id" :value="p.id">项目#{{ p.id }} {{ p.name }}</option>
             </select>
           </span>
@@ -279,9 +373,9 @@ function photoOf(it: CharacterItem): string | null {
               <span v-if="form.refIds.includes(a.id)" class="ck"><Icon name="check" :size="11" :stroke-width="2.6" /></span>
             </button>
           </div>
-          <div class="muted" style="font-size: 11.5px">已选 {{ form.refIds.length }} 张（点击切换；建议正面/侧面/表情各一张）</div>
+          <div class="muted" style="font-size: 11.5px">已选 {{ form.refIds.length }} 张（点击切换；建议覆盖主要角度/光线）</div>
         </template>
-        <div v-else class="muted" style="font-size: 12px">先选项目再挑图（全局角色库不接受项目资产引用）</div>
+        <div v-else class="muted" style="font-size: 12px">先选项目再挑图（全局素材库不接受项目资产引用）</div>
       </div>
 
       <div v-if="formErr" class="err-text">{{ formErr }}</div>
@@ -307,12 +401,23 @@ function photoOf(it: CharacterItem): string | null {
 }
 
 .photo {
-  aspect-ratio: 3 / 4;
   background: rgb(148 163 184 / 8%);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.photo.pc {
+  aspect-ratio: 3 / 4;
+}
+
+.photo.ps {
+  aspect-ratio: 16 / 9;
+}
+
+.photo.pp {
+  aspect-ratio: 4 / 3;
 }
 
 .photo img {

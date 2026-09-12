@@ -1,7 +1,7 @@
 key: series-setup
-version: 1
+version: 2
 name: 短剧立项
-description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 角色建档）。流程：创意入库 → 整剧立项（可审阅）→ 定妆照（可选）→ 角色建档 → 系列记忆沉淀。
+description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 角色/场景/道具建档）。流程：创意入库 → 整剧立项（可审阅）→ 定妆照（可选）→ 角色建档 → 场景道具档案与参考图（可选）→ 系列记忆沉淀。
 genre: drama_short
 scene: plan
 next: [video-plan, mengbao-episode]
@@ -22,6 +22,11 @@ inputs:
     accept: [.md, .txt]
   - key: with_character_refs
     label: 生成定妆照并入档（true=角色参考图；false=仅建档）
+    kind: bool
+    required: false
+    default: false
+  - key: with_set_refs
+    label: 生成场景/道具参考图并入档（true=素材参考图；false=仅建档）
     kind: bool
     required: false
     default: false
@@ -100,6 +105,48 @@ steps:
     inputs:
       characters: steps.char_profile.asset
       ref_images: steps.gen_refs.assets
+  - key: set_profile
+    action: ai_text
+    title: 场景/道具档案
+    after: [write_series]
+    inputs:
+      script: steps.write_series.asset
+      setting: steps.ingest.assets
+    params:
+      prompt_tpl: set-profile.md
+      output_purpose: sets
+      output_format: set-json
+      name_tpl: "场景道具档案.json"
+  - key: set_ref_prompts
+    action: ai_text
+    title: 场景/道具参考图提示词
+    after: [set_profile]
+    inputs:
+      sets: steps.set_profile.asset
+      setting: steps.write_series.asset
+    params:
+      prompt_tpl: set-ref-prompts.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "素材提示词.json"
+  - key: gen_set_refs
+    action: ai_image
+    title: 场景/道具参考图生成
+    when: input.with_set_refs == true
+    after: [set_ref_prompts]
+    inputs:
+      shots: steps.set_ref_prompts.asset
+    params:
+      output_purpose: reference_scene
+      output_purpose_by_category: { prop: reference_prop }
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
+  - key: sync_set
+    action: entity_sync
+    title: 场景/道具建档
+    after: [set_profile, gen_set_refs]
+    inputs:
+      sets: steps.set_profile.asset
+      ref_images: steps.gen_set_refs.assets
   - key: remember
     action: memory_write
     title: 沉淀系列记忆

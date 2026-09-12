@@ -31,7 +31,7 @@ export function projectAbsDir(projectId: number): string {
 }
 
 /** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
-export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json'] as const
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json'] as const
 
 /** 文本 JSON 格式判定 */
 export function isJsonTextFormat(format?: string): boolean {
@@ -48,6 +48,8 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'memory_log':
     case 'character_log':
     case 'characters':
+    case 'sets':
+    case 'set_log':
       return 'texts'
     case 'export':
       return 'exports'
@@ -55,6 +57,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'first_frame':
     case 'reference_character':
     case 'reference_scene':
+    case 'reference_prop':
     case 'thumbnail':
       return 'images'
     case 'final_video':

@@ -155,6 +155,12 @@ function markThumbFailed(shotId: string) {
   if (!thumbFailed.value.includes(shotId)) thumbFailed.value = [...thumbFailed.value, shotId]
 }
 
+// 版本条缩略图加载失败集合（回退占位，避免破损图）
+const verThumbFailed = ref<number[]>([])
+function markVerThumbFailed(id: number) {
+  if (!verThumbFailed.value.includes(id)) verThumbFailed.value = [...verThumbFailed.value, id]
+}
+
 /** draft 变更计数（被禁用的有产物镜 + 版本切换/恢复启用） */
 const draftCount = computed(() => {
   let n = 0
@@ -580,7 +586,13 @@ watch(
             :class="{ sel: effSelected(shot) === v.id }"
           >
             <div class="wb-vthumb" :title="`预览 ${v.name}`" @click="openPreview(shot, v.id)">
-              <img v-if="v.urls.thumb" :src="v.urls.thumb" :alt="v.name" loading="lazy" />
+              <img
+                v-if="v.urls.thumb && !verThumbFailed.includes(v.id)"
+                :src="v.urls.thumb"
+                :alt="v.name"
+                loading="lazy"
+                @error="markVerThumbFailed(v.id)"
+              />
               <span v-else class="wb-ph sm"><Icon :name="isVideoStep ? 'play' : 'photo'" :size="14" /></span>
             </div>
             <div class="wb-vmeta">

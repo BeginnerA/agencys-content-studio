@@ -71,7 +71,8 @@ onBeforeUnmount(() => {
         </RouterLink>
         <RouterLink class="nav" to="/templates"><Icon name="doc" :size="16" /> 模板</RouterLink>
         <RouterLink class="nav" to="/memories"><Icon name="sparkles" :size="16" /> 记忆</RouterLink>
-        <RouterLink class="nav" to="/characters"><Icon name="users" :size="16" /> 角色</RouterLink>
+        <RouterLink class="nav" to="/entities"><Icon name="users" :size="16" /> 素材</RouterLink>
+        <RouterLink class="nav" to="/style-presets"><Icon name="palette" :size="16" /> 风格</RouterLink>
         <RouterLink class="nav" to="/stats"><Icon name="chart" :size="16" /> 统计</RouterLink>
         <RouterLink class="nav" to="/settings"><Icon name="sliders" :size="16" /> AI 配置</RouterLink>
       </nav>

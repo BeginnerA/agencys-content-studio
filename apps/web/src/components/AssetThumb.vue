@@ -2,7 +2,7 @@
 // 资产缩略图（统一网格卡片的媒体层）
 // 设计要点（与「榫卯拼块」logo 台面同源 token）：
 // - 类型感知：图片/视频/音频/文档各有专属占位，杜绝空白与破损图
-// - 视频：服务端暂无缩略图，进入视口后惰性抽首帧（file 端点支持 Range）
+// - 视频：服务端 WebP 封面优先；缺失/失败时进入视口惰性抽首帧（file 端点支持 Range）
 // - 任何媒体加载失败都回退到占位，绝不把 alt 文本暴露成「多行文件名」
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Asset } from '../lib/types'
@@ -57,8 +57,14 @@ watch(imgSrc, () => {
   imgFailed.value = false
 })
 
-// ===== 视频：惰性抽首帧（主动 seek 解码首帧）=====
-const needFrame = computed(() => media.value === 'video' && !props.asset.urls.thumb)
+// ===== 视频：服务端封面优先；无封面或加载失败回退客户端抽首帧 =====
+const videoThumbSrc = computed(() => props.asset.urls.thumb)
+const videoThumbFailed = ref(false)
+watch(videoThumbSrc, () => {
+  videoThumbFailed.value = false
+})
+
+const needFrame = computed(() => media.value === 'video' && (!videoThumbSrc.value || videoThumbFailed.value))
 const videoSrc = computed(() => props.asset.urls.file)
 const inView = ref(false)
 const frameReady = ref(false)
@@ -95,16 +101,20 @@ function nearViewport(el: HTMLElement, margin = 240): boolean {
   return r.top < window.innerHeight + margin && r.bottom > -margin
 }
 
-onMounted(() => {
-  if (!needFrame.value) return
+/** 需要客户端抽帧时进入视口才加载（服务端封面失败会二次触发） */
+function ensureFrameInView() {
+  if (!needFrame.value || inView.value) return
   if (rootEl.value && nearViewport(rootEl.value)) {
     inView.value = true
+    io?.disconnect()
+    io = null
     return
   }
   if (typeof IntersectionObserver === 'undefined') {
     inView.value = true
     return
   }
+  if (io || !rootEl.value) return
   io = new IntersectionObserver(
     (entries) => {
       if (!entries.some((e) => e.isIntersecting)) return
@@ -114,7 +124,16 @@ onMounted(() => {
     },
     { rootMargin: '240px 0px' },
   )
-  if (rootEl.value) io.observe(rootEl.value)
+  io.observe(rootEl.value)
+}
+
+onMounted(() => {
+  ensureFrameInView()
+})
+
+// 服务端封面加载失败 → 回退抽帧路径（失败发生在 mounted 之后）
+watch(needFrame, (need) => {
+  if (need) ensureFrameInView()
 })
 
 onBeforeUnmount(() => {
@@ -150,15 +169,24 @@ const corner = computed(() => {
       </span>
     </template>
 
-    <!-- 视频：占位常驻底层，首帧就绪后淡入覆盖 -->
+    <!-- 视频：服务端封面优先，缺失/失败回退客户端抽帧；占位常驻底层 -->
     <template v-else-if="media === 'video'">
       <span class="ph ph-video">
         <span class="ph-ring">
           <Icon name="play" :size="17" :stroke-width="2.2" />
         </span>
       </span>
+      <img
+        v-if="videoThumbSrc && !videoThumbFailed"
+        class="media"
+        :src="videoThumbSrc"
+        :alt="asset.name"
+        loading="lazy"
+        decoding="async"
+        @error="videoThumbFailed = true"
+      />
       <video
-        v-if="inView && !frameFailed"
+        v-else-if="inView && !frameFailed"
         class="media frame"
         :class="{ on: frameReady }"
         :src="videoSrc"
