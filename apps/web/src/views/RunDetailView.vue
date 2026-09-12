@@ -10,11 +10,12 @@ import Icon from '../components/Icon.vue'
 import ExportWizardModal from '../components/ExportWizardModal.vue'
 import PublishModal from '../components/PublishModal.vue'
 import RunFormModal from '../components/RunFormModal.vue'
+import RerunModal from '../components/RerunModal.vue'
 import { assetApi, exportApi, publicationApi, runApi, shotApi, statsApi, templateApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import type {
-  Asset, ExportAssetLite, Publication, RunAssetLite, RunDetail, RunStep, ShotBoardCompose, TemplateDetail,
-  TemplateMeta, UsageSummary,
+  Asset, ExportAssetLite, Publication, RerunResult, RunAssetLite, RunDetail, RunStep, ShotBoardCompose,
+  TemplateDetail, TemplateMeta, UsageSummary,
 } from '../lib/types'
 import {
   fmtCost, fmtMs, fmtQty, fmtSize, fmtTime, PLATFORM_TEXT, runStatus, skipReasonText, stepStatus,
@@ -589,6 +590,30 @@ async function recomposeStep(s: RunStep) {
     busy.value = false
   }
 }
+
+// ===== [M11] 引擎级单步重跑（显示条件对齐服务端 assertRepairable） =====
+const rerunStep = ref<RunStep | null>(null)
+const notice = ref('')
+
+/** 可重跑：run 收敛（completed/failed）+ 目标步 succeeded/failed + 除目标外无 failed */
+function canRerunStep(s: RunStep): boolean {
+  const rs = run.value?.status
+  if (rs !== 'completed' && rs !== 'failed') return false
+  if (s.status !== 'succeeded' && s.status !== 'failed') return false
+  return !steps.value.some((x) => x.id !== s.id && x.status === 'failed')
+}
+
+function openRerun(s: RunStep) {
+  notice.value = ''
+  rerunStep.value = s
+}
+
+/** 弹窗提交成功：关闭 + 展示服务端 note + 刷新（run 已重新入队） */
+function onRerunDone(result: RerunResult) {
+  rerunStep.value = null
+  notice.value = result.note
+  void loadDetail()
+}
 </script>
 
 <template>
@@ -617,6 +642,7 @@ async function recomposeStep(s: RunStep) {
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
+    <div v-if="notice" class="notice-box"><Icon name="check" :size="12" /> {{ notice }}</div>
     <div v-if="!run" class="empty">{{ err || '加载中…' }}</div>
 
     <template v-if="run">
@@ -677,6 +703,7 @@ async function recomposeStep(s: RunStep) {
               <ShotBoard
                 v-if="WB_ACTIONS.has(s.actionKey)"
                 :run-id="runId"
+                :project-id="run?.projectId ?? 0"
                 :step="s"
                 :active="active"
                 @changed="loadDetail()"
@@ -700,6 +727,18 @@ async function recomposeStep(s: RunStep) {
                 </span>
                 <button class="btn sm" :disabled="busy || active" @click="recomposeStep(s)">
                   <Icon name="film" :size="12" /> 重新合成
+                </button>
+              </div>
+
+              <!-- [M11] 单步重跑（显示条件对齐服务端 assertRepairable：run 收敛 + 目标步收敛 + 无其他 failed） -->
+              <div v-if="canRerunStep(s)" class="rerun-ops">
+                <button
+                  class="btn sm"
+                  :disabled="busy"
+                  title="重跑该步骤：可复用成功子任务（0 调用）或全量重跑（计费）"
+                  @click="openRerun(s)"
+                >
+                  <Icon name="refresh" :size="12" /> 重跑
                 </button>
               </div>
 
@@ -819,6 +858,15 @@ async function recomposeStep(s: RunStep) {
       @close="showPublish = false"
     />
 
+    <!-- [M11] 单步重跑弹窗 -->
+    <RerunModal
+      v-if="rerunStep"
+      :run-id="runId"
+      :step="rerunStep"
+      @close="rerunStep = null"
+      @done="onRerunDone"
+    />
+
     <!-- 完成态接力：以推荐模板直达启动表单（initialTemplateKey 命中直接进表单段） -->
     <RunFormModal
       v-if="showRelay && run"
@@ -923,7 +971,8 @@ async function recomposeStep(s: RunStep) {
 
 .cols {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  /* minmax(0,…)：避免右栏任务长 prompt（nowrap）经 auto min 撑破轨道致整页横滚（M11 实弹修复） */
+  grid-template-columns: minmax(0, 1fr) 400px;
   gap: 16px;
   align-items: start;
 }
@@ -1138,6 +1187,27 @@ async function recomposeStep(s: RunStep) {
   margin-top: 8px;
 }
 
+/* [M11] 单步重跑按钮行 + 成功 notice */
+.rerun-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notice-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--ok-weak);
+  color: var(--ok);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
 .badge.warn-c {
   background: var(--warn-weak);
   color: var(--warn);
@@ -1234,7 +1304,7 @@ async function recomposeStep(s: RunStep) {
 
 @media (max-width: 1080px) {
   .cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .right {

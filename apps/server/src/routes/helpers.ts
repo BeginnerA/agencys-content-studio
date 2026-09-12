@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import { WorkbenchError } from '../services/shot-workbench'
 
 /** 路径 :id 参数解析（非法/缺 → 400 或 404） */
 export function idParam(c: Context, name = 'id'): number {
@@ -44,5 +45,15 @@ export function h(fn: (c: Context) => Promise<Response> | Response) {
     } catch (err) {
       return fail(c, err)
     }
+  }
+}
+
+/** 工作台领域错误 → HttpError（状态码透传）；其余原样抛出走 fail() 兜底 */
+export async function wb<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    if (err instanceof WorkbenchError) throw new HttpError(err.status, err.code, err.message)
+    throw err
   }
 }

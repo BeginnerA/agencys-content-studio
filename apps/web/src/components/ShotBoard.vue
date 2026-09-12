@@ -9,17 +9,20 @@
  * - 重新合成：确认弹窗 → recompose；active（run 运行中）时全部操作禁用
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { assetApi, shotApi } from '../lib/api'
+import { assetApi, composeApi, shotApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import { fmtTime, taskStatus } from '../lib/format'
-import type { Asset, RunStep, ShotBoardData, ShotBoardShot, ShotEditItem, ShotPick, ShotVersion } from '../lib/types'
+import type {
+  Asset, ComposeConfig, ComposeTransition, RunStep, ShotBoardData, ShotBoardShot, ShotEditItem, ShotPick, ShotVersion,
+} from '../lib/types'
 import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 import AssetPreviewer from './AssetPreviewer.vue'
+import BgmModal from './BgmModal.vue'
 import Icon from './Icon.vue'
 import StoryboardEditor from './StoryboardEditor.vue'
 
-const props = defineProps<{ runId: number; step: RunStep; active: boolean }>()
+const props = defineProps<{ runId: number; projectId: number; step: RunStep; active: boolean }>()
 const emit = defineEmits<{ changed: []; compose: [info: ShotBoardData['compose']] }>()
 
 const board = ref<ShotBoardData | null>(null)
@@ -57,6 +60,22 @@ const dropTarget = ref<{ shotId: string; side: 'left' | 'right' } | null>(null)
 const uploadShotId = ref<string | null>(null)
 const uploadBusy = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
+
+// [M11] 合成设置（转场 / 配乐；配置不触发执行，重新合成后生效）
+const TRANSITIONS: Array<{ value: ComposeTransition; label: string }> = [
+  { value: 'none', label: '无（硬切）' },
+  { value: 'fade', label: '淡入淡出' },
+  { value: 'fadeblack', label: '黑场渐变' },
+  { value: 'slideleft', label: '左滑' },
+  { value: 'slideright', label: '右滑' },
+  { value: 'dissolve', label: '溶解' },
+]
+const composeCfg = ref<ComposeConfig | null>(null)
+const cfgTransition = ref<ComposeTransition>('none')
+const cfgDur = ref(0.5)
+const cfgBusy = ref(false)
+const bgm = ref<Asset | null>(null)
+const bgmOpen = ref(false)
 
 const shots = computed(() => board.value?.shots ?? [])
 const compose = computed(() => board.value?.compose ?? null)
@@ -489,6 +508,66 @@ async function doRecompose() {
   }
 }
 
+// ---------- [M11] 合成设置 ----------
+
+/** 转场枚举防御（回显未知值降级 none） */
+function asTransition(v: unknown): ComposeTransition {
+  return typeof v === 'string' && TRANSITIONS.some((o) => o.value === v) ? (v as ComposeTransition) : 'none'
+}
+
+const cfgDirty = computed(() => {
+  const c = composeCfg.value
+  if (!c) return false
+  const curT = asTransition(c.transition)
+  const curD = typeof c.transition_duration === 'number' ? c.transition_duration : 0.5
+  return cfgTransition.value !== curT || cfgDur.value !== curD
+})
+
+/** 配置回显（活跃期服务端拒绝 → 静默降级 null；run 收敛后 watch 补拉） */
+async function loadComposeCfg() {
+  if (!compose.value) {
+    composeCfg.value = null
+    return
+  }
+  try {
+    const r = await composeApi.getConfig(props.runId)
+    composeCfg.value = r.config
+    cfgTransition.value = asTransition(r.config.transition)
+    cfgDur.value = typeof r.config.transition_duration === 'number' ? r.config.transition_duration : 0.5
+    const b = await composeApi.getBgm(props.runId)
+    bgm.value = b.bgm
+  } catch {
+    composeCfg.value = null
+  }
+}
+
+async function saveTransition() {
+  if (!canOperate.value || !composeCfg.value) return
+  cfgBusy.value = true
+  err.value = ''
+  notice.value = ''
+  try {
+    const dur = Math.min(2, Math.max(0.1, Number(cfgDur.value) || 0.5))
+    const r = await composeApi.updateConfig(props.runId, {
+      transition: cfgTransition.value,
+      transition_duration: dur,
+    })
+    composeCfg.value = r.config
+    cfgDur.value = dur
+    notice.value = '合成设置已保存（重新合成后生效）'
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    cfgBusy.value = false
+  }
+}
+
+/** 台词角标：分镜 raw.lines（字符串数组） */
+function lineIdsOf(shot: ShotBoardShot): string[] {
+  const l = shot.raw['lines']
+  return Array.isArray(l) ? l.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+}
+
 // ---------- 预览 ----------
 
 async function openPreview(shot: ShotBoardShot, firstId?: number) {
@@ -541,6 +620,20 @@ onBeforeUnmount(() => {
 })
 
 watch(
+  () => props.active,
+  (v) => {
+    if (!v) void loadComposeCfg()
+  },
+)
+
+watch(
+  () => compose.value !== null,
+  (v) => {
+    if (v && !props.active) void loadComposeCfg()
+  },
+)
+
+watch(
   () => props.step.status,
   () => {
     void load()
@@ -571,6 +664,37 @@ watch(
       </button>
       <button class="btn sm" :class="{ primary: draftCount > 0 }" :disabled="!canOperate || draftCount === 0" @click="applySelection">
         <Icon name="check" :size="12" /> 应用选择{{ draftCount ? ` (${draftCount})` : '' }}
+      </button>
+    </div>
+
+    <!-- [M11] 合成设置行：转场 + 配乐（不触发执行；重新合成后生效） -->
+    <div v-if="compose" class="wb-compose">
+      <Icon name="film" :size="12" />
+      <span class="muted">转场</span>
+      <select v-model="cfgTransition" class="wb-sel" :disabled="!canOperate || cfgBusy">
+        <option v-for="t in TRANSITIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+      </select>
+      <input
+        v-model.number="cfgDur"
+        type="number"
+        class="wb-num"
+        min="0.1"
+        max="2"
+        step="0.1"
+        :disabled="!canOperate || cfgBusy || cfgTransition === 'none'"
+        :title="cfgTransition === 'none' ? '当前为硬切，无需转场时长' : '转场时长（0.1–2 秒）'"
+      />
+      <span class="muted">s</span>
+      <button class="btn sm" :class="{ primary: cfgDirty }" :disabled="!canOperate || cfgBusy || !cfgDirty" @click="saveTransition">
+        保存设置
+      </button>
+      <button
+        class="btn sm push"
+        :disabled="!canOperate"
+        :title="bgm ? `当前配乐：${bgm.name}` : '绑定 BGM（选择项目音频或上传）'"
+        @click="bgmOpen = true"
+      >
+        <Icon name="speaker-wave" :size="12" /> 配乐{{ bgm ? `：${bgm.name.length > 8 ? bgm.name.slice(0, 8) + '…' : bgm.name}` : '' }}
       </button>
     </div>
 
@@ -632,6 +756,9 @@ watch(
             @error="markThumbFailed(shot.shotId)"
           />
           <span v-else class="wb-ph"><Icon :name="isVideoStep ? 'play' : 'photo'" :size="22" /></span>
+          <span v-if="lineIdsOf(shot).length" class="wb-lines" :title="`台词 ${lineIdsOf(shot).length} 句：${lineIdsOf(shot).join('、')}`">
+            台词 {{ lineIdsOf(shot).length }} 句
+          </span>
           <span v-if="shot.versions.length > 1" class="wb-vcount">{{ shot.versions.length }} 版</span>
           <span v-if="draftSelected[shot.shotId] !== undefined" class="wb-dot" title="已切换版本（待应用）" />
         </div>
@@ -759,6 +886,14 @@ watch(
 
     <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewIndex" @close="previewOpen = false" />
 
+    <BgmModal
+      v-if="bgmOpen"
+      :run-id="props.runId"
+      :project-id="props.projectId"
+      @close="bgmOpen = false"
+      @changed="loadComposeCfg"
+    />
+
     <StoryboardEditor
       v-if="editorOpen"
       :run-id="props.runId"
@@ -784,6 +919,32 @@ watch(
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+/* [M11] 合成设置行（转场 / 配乐） */
+.wb-compose {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wb-compose .push {
+  margin-left: auto;
+}
+
+.wb-sel {
+  /* 覆盖全局 select{width:100%}：转场下拉按内容宽收缩，避免独占整行挤出配乐按钮（M11 实弹修复） */
+  width: auto;
+  max-width: 132px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  outline: none;
 }
 
 .wb-title {
@@ -997,6 +1158,19 @@ watch(
   bottom: 5px;
   font-size: 10.5px;
   color: #fff;
+  background: rgb(10 14 24 / 62%);
+  backdrop-filter: blur(4px);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+/* [M11] 台词角标（raw.lines 非空） */
+.wb-lines {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  font-size: 10.5px;
+  color: var(--accent-h);
   background: rgb(10 14 24 / 62%);
   backdrop-filter: blur(4px);
   border-radius: 999px;

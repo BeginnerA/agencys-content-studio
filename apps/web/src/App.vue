@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getSocket } from './lib/socket'
 import Icon from './components/Icon.vue'
@@ -8,6 +8,35 @@ import { pending, refreshPending, startPendingWatcher } from './lib/pending'
 
 const route = useRoute()
 let stopPendingWatcher: (() => void) | null = null
+
+// 侧栏折叠：偏好持久化到 localStorage（不可用时静默降级为展开）
+const SIDE_KEY = 'agencys.side.collapsed'
+const collapsed = ref(false)
+try {
+  collapsed.value = localStorage.getItem(SIDE_KEY) === '1'
+} catch {
+  /* 隐私模式等场景忽略 */
+}
+
+function toggleSide() {
+  collapsed.value = !collapsed.value
+  try {
+    localStorage.setItem(SIDE_KEY, collapsed.value ? '1' : '0')
+  } catch {
+    /* 持久化失败不影响折叠 */
+  }
+}
+
+// 主导航（顺序即展示顺序；「项目」含全局待审阅角标）
+const navs = [
+  { to: '/', icon: 'folder', label: '项目' },
+  { to: '/templates', icon: 'doc', label: '模板' },
+  { to: '/memories', icon: 'sparkles', label: '记忆' },
+  { to: '/entities', icon: 'users', label: '素材' },
+  { to: '/style-presets', icon: 'palette', label: '风格' },
+  { to: '/stats', icon: 'chart', label: '统计' },
+  { to: '/settings', icon: 'sliders', label: 'AI 配置' },
+]
 
 onMounted(() => {
   // 全局单连接：先连接便于页面级 join room（重复 connect 由 io 单例避免）
@@ -31,7 +60,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="layout">
-    <aside class="side">
+    <aside class="side" :class="{ collapsed }">
       <div class="logo">
         <span class="mark" aria-label="百工工作室">
           <!-- 品牌 mark「榫卯拼块」：紫→靛台面 + 深色卯槽 + 悬停翠绿公件 -->
@@ -59,23 +88,35 @@ onBeforeUnmount(() => {
           <small>模板化流水线工作台</small>
         </span>
       </div>
-      <nav class="navs">
-        <RouterLink class="nav" to="/">
-          <Icon name="folder" :size="16" /> 项目
+      <nav id="side-nav" class="navs">
+        <RouterLink
+          v-for="n in navs"
+          :key="n.to"
+          class="nav"
+          :to="n.to"
+          :title="collapsed ? n.label : undefined"
+        >
+          <Icon :name="n.icon" :size="16" />
+          <span class="lb">{{ n.label }}</span>
           <span
-            v-if="pending.total > 0"
+            v-if="n.to === '/' && pending.total > 0"
             class="nbadge"
             :title="`${pending.total} 项待审阅`"
             :aria-label="`${pending.total} 项待审阅`"
           >{{ pending.total }}</span>
         </RouterLink>
-        <RouterLink class="nav" to="/templates"><Icon name="doc" :size="16" /> 模板</RouterLink>
-        <RouterLink class="nav" to="/memories"><Icon name="sparkles" :size="16" /> 记忆</RouterLink>
-        <RouterLink class="nav" to="/entities"><Icon name="users" :size="16" /> 素材</RouterLink>
-        <RouterLink class="nav" to="/style-presets"><Icon name="palette" :size="16" /> 风格</RouterLink>
-        <RouterLink class="nav" to="/stats"><Icon name="chart" :size="16" /> 统计</RouterLink>
-        <RouterLink class="nav" to="/settings"><Icon name="sliders" :size="16" /> AI 配置</RouterLink>
       </nav>
+      <button
+        class="collapse"
+        type="button"
+        :aria-expanded="!collapsed"
+        aria-controls="side-nav"
+        :aria-label="collapsed ? '展开侧栏菜单' : '折叠侧栏菜单'"
+        :title="collapsed ? '展开侧栏菜单' : '折叠侧栏菜单'"
+        @click="toggleSide"
+      >
+        <Icon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="16" />
+      </button>
       <div class="foot">
         agencys · 本地单机<br />
         模板 · 资产 · 闸门

@@ -665,14 +665,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode v8：版本 8 / 21 步 / 角色链 + 场景道具链与注入前置 ——
+    // —— T3 mengbao-episode v9：版本 9 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 —
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 8, `mengbao-episode version=8（实际 ${t3.version}）`)
+        check(t3.version === 9, `mengbao-episode version=9（实际 ${t3.version}）`)
         check(t3.steps.length === 21, `mengbao-episode steps=21（实际 ${t3.steps.length}）`)
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),
@@ -693,6 +693,17 @@ async function main(): Promise<void> {
           !Object.keys(stepOf('gen_images')?.inputs ?? {}).includes('characters'),
           'gen_images.inputs 不含 characters（M1 留档输入已移除）',
         )
+        // [M11] 音字对齐输入链：分镜依赖台词表 + lines 输入 + compose 增强参数兜底
+        check(
+          (stepOf('make_storyboard')?.after ?? []).includes('cast_lines'),
+          'make_storyboard.after 含 cast_lines（M11）',
+        )
+        check(
+          Object.keys(stepOf('make_storyboard')?.inputs ?? {}).includes('lines'),
+          'make_storyboard.inputs 含 lines（M11）',
+        )
+        const mergeParams = (stepOf('compose_video')?.params ?? {}) as Record<string, unknown>
+        check(mergeParams['transition'] === 'none' && mergeParams['bgm_volume'] === 0.25, 'compose_video.params 含 M11 增强兜底（transition/bgm_volume）')
       }
     }
   }

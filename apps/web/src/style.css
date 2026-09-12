@@ -402,6 +402,7 @@ label.fld .req {
   flex-direction: column;
   padding: 16px 12px;
   border-right: 1px solid var(--border);
+  transition: width 0.18s ease;
 }
 
 .side .logo {
@@ -517,18 +518,76 @@ label.fld .req {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .side {
+    transition: none;
+  }
+
   .side a.nav .nbadge {
     animation: none;
   }
 }
 
 .side .foot {
-  margin-top: auto;
+  margin-top: 10px; /* 吸底腾给折叠按钮（其 margin-top: auto 撑起底区） */
   padding: 12px 10px 4px;
   font-size: 11px;
   line-height: 1.7;
   color: var(--text-3);
   border-top: 1px dashed var(--border);
+}
+
+/* 侧栏折叠切换按钮（贴底块，居中） */
+.side .collapse {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.side .collapse:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: #e8edf6;
+}
+
+/* 折叠态：宽度收窄为图标轨，文字与页脚隐藏，导航图标居中 */
+.side.collapsed {
+  width: 64px;
+}
+
+.side.collapsed .logo {
+  justify-content: center;
+  padding: 4px 0 18px;
+}
+
+.side.collapsed .logo .lt,
+.side.collapsed a.nav .lb,
+.side.collapsed .foot {
+  display: none;
+}
+
+.side.collapsed a.nav {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* 折叠时待审阅角标改挂图标右上角，保持可见 */
+.side.collapsed a.nav .nbadge {
+  position: absolute;
+  top: -4px;
+  right: -7px;
+  margin-left: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
 }
 
 .main {

@@ -593,3 +593,31 @@ export interface NovelBoardData {
   scripts: Array<{ asset_id: number; name: string; ep: number | null }>
   events: { total: number; done: number; failed: number } | null
 }
+
+// ===== [M11] 单步重跑 / 合成设置（BGM·转场） =====
+
+/** [M11] 转场枚举（对齐 ffmpeg xfade 子集；与服务端 TRANSITIONS 同值） */
+export type ComposeTransition = 'none' | 'fade' | 'fadeblack' | 'slideleft' | 'slideright' | 'dissolve'
+
+/** [M11] run 级合成配置（run.input._compose；空对象 = 未设置，走模板 params / 代码默认） */
+export interface ComposeConfig {
+  /** 回显宽松（服务端枚举校验；UI 对未知值降级 none） */
+  transition?: string
+  /** 0.1–2 秒（服务端 clamp） */
+  transition_duration?: number
+  /** 0–1（服务端 clamp） */
+  bgm_volume?: number
+  /** 0–2 秒（服务端 clamp） */
+  bgm_fade?: number
+}
+
+/** [M11] 单步重跑结果（POST /runs/:id/steps/:stepKey/rerun；无 tasks_reset 字段，预计执行数在 note 文案） */
+export interface RerunResult {
+  ok: boolean
+  run_id: number
+  step_key: string
+  has_tasks: boolean
+  tasks_total: number
+  tasks_succeeded: number
+  note: string
+}

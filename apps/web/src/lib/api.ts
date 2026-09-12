@@ -5,6 +5,7 @@ import type {
   Asset,
   Batch,
   BatchDetail,
+  ComposeConfig,
   EntityItem,
   EntityKind,
   ExportAssetLite,
@@ -18,6 +19,7 @@ import type {
   ProjectDetail,
   PromptItem,
   Publication,
+  RerunResult,
   Run,
   RunAssetLite,
   RunDetail,
@@ -382,4 +384,53 @@ export const shotApi = {
 export const novelApi = {
   /** 小说改编看板聚合读（章节切分 × 事件图谱 × 分集规划 × 改编剧本） */
   board: (runId: number) => api.get<NovelBoardData>(`/api/v1/runs/${runId}/novel-board`),
+}
+
+// ===== [M11] 单步重跑 / 合成设置（BGM·转场） =====
+
+export const stepApi = {
+  /** 引擎级单步重跑（复用成功子任务；reset_tasks=true 全量重跑；succeeded 下游步骤照常跳过） */
+  rerun: (runId: number, stepKey: string, opts: { reset_tasks?: boolean } = {}) =>
+    api.post<RerunResult>(`/api/v1/runs/${runId}/steps/${encodeURIComponent(stepKey)}/rerun`, opts),
+}
+
+export const composeApi = {
+  /** 合成配置回显（config 空对象 = 未设置，前端用默认值展示） */
+  getConfig: (runId: number) => api.get<{ config: ComposeConfig }>(`/api/v1/runs/${runId}/compose/config`),
+  /** 更新（transition/duration/bgm_volume/bgm_fade；白名单+枚举+clamp） */
+  updateConfig: (runId: number, patch: ComposeConfig) =>
+    api.put<{ ok: boolean; config: ComposeConfig; note: string }>(`/api/v1/runs/${runId}/compose/config`, patch),
+  /** 当前 BGM（null = 未绑定） */
+  getBgm: (runId: number) => api.get<{ bgm: Asset | null }>(`/api/v1/runs/${runId}/compose/bgm`),
+  /** 绑定项目音频资产（复制行；不污染源资产） */
+  bindBgm: (runId: number, assetId: number) =>
+    api.post<{ ok: boolean; bgm: Asset; note: string }>(`/api/v1/runs/${runId}/compose/bgm`, { asset_id: assetId }),
+  /** 上传音频绑定（multipart：file） */
+  uploadBgm: async (runId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    let res: Response
+    try {
+      res = await fetch(`/api/v1/runs/${runId}/compose/bgm`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as { ok: boolean; bgm: Asset; note: string }
+  },
+  /** 移除 BGM（软删本 run 有效行） */
+  removeBgm: (runId: number) => api.del<{ ok: boolean; note: string }>(`/api/v1/runs/${runId}/compose/bgm`),
 }

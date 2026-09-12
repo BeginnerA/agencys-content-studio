@@ -9,7 +9,7 @@
  * 守卫：canOperate 为假只读；dirty 关闭需确认；「移除字段」以 null 置空（服务端浅合并无法真删键）
  */
 import { computed, onMounted, ref } from 'vue'
-import { entityApi, shotApi } from '../lib/api'
+import { assetApi, entityApi, runApi, shotApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import type { RunStep, ShotBoardShot, ShotOp } from '../lib/types'
 import Icon from './Icon.vue'
@@ -39,7 +39,7 @@ interface DraftShot {
 }
 
 /** 专用控件字段（不进入动态键值行） */
-const RESERVED = new Set(['id', 'image_prompt', 'motion_prompt', 'duration', 'duration_sec', 'characters'])
+const RESERVED = new Set(['id', 'image_prompt', 'motion_prompt', 'duration', 'duration_sec', 'characters', 'lines'])
 
 let uidSeq = 1
 const drafts = ref<DraftShot[]>([])
@@ -48,6 +48,8 @@ const activeUid = ref<number | null>(null)
 const busy = ref(false)
 const err = ref('')
 const charNames = ref<string[]>([])
+/** [M11] 台词 id 建议（本 run cast_lines 产物解析；失败降级为空 = 纯标签输入） */
+const lineSuggest = ref<Array<{ id: string; label: string }>>([])
 
 function cloneDraft(shot: ShotBoardShot): DraftShot {
   const fields = JSON.parse(JSON.stringify(shot.raw ?? {})) as Record<string, unknown>
@@ -65,6 +67,7 @@ onMounted(() => {
   originalIds.value = props.shots.map((s) => s.shotId)
   activeUid.value = drafts.value.length ? drafts.value[0]!.uid : null
   void loadCharNames()
+  void loadLineSuggest()
 })
 
 /** 角色名建议（entityApi；失败静默降级为无建议） */
@@ -72,6 +75,32 @@ async function loadCharNames() {
   try {
     const r = await entityApi.list('character')
     charNames.value = r.items.map((e) => e.name).filter((n) => n)
+  } catch {
+    // 建议降级：静默
+  }
+}
+
+/** [M11] 台词 id 建议：run 内 cast_lines 产物 JSON（{ lines: [{id, speaker, text}] }）；失败静默降级 */
+async function loadLineSuggest() {
+  try {
+    const detail = await runApi.detail(props.runId)
+    const step = detail.steps.find((s) => s.stepKey === 'cast_lines')
+    const assetId = (step?.output?.['asset_ids'] as number[] | undefined)?.[0]
+    if (!assetId) return
+    const { asset } = await assetApi.detail(assetId)
+    const res = await fetch(asset.urls.file)
+    if (!res.ok) return
+    const doc = (await res.json()) as { lines?: Array<Record<string, unknown>> }
+    const rows = Array.isArray(doc.lines) ? doc.lines : []
+    lineSuggest.value = rows
+      .map((r) => {
+        const id = typeof r.id === 'string' ? r.id : typeof r.id === 'number' ? String(r.id) : ''
+        const speaker = typeof r.speaker === 'string' ? r.speaker : ''
+        const text = typeof r.text === 'string' ? r.text : ''
+        const label = [speaker, text.length > 16 ? text.slice(0, 16) + '…' : text].filter(Boolean).join('：')
+        return { id, label }
+      })
+      .filter((x) => x.id)
   } catch {
     // 建议降级：静默
   }
@@ -237,6 +266,33 @@ function removeChar(d: DraftShot, name: string) {
   d.fields.characters = charList(d).filter((x) => x !== name)
 }
 
+// ---------- [M11] 台词标签控件（lines；空数组 = 无台词镜） ----------
+
+function lineList(d: DraftShot): string[] {
+  const l = d.fields.lines
+  return Array.isArray(l) ? l.filter((x): x is string => typeof x === 'string') : []
+}
+
+function addLine(d: DraftShot, e: Event) {
+  const input = e.target as HTMLInputElement
+  const id = input.value.trim()
+  input.value = ''
+  if (!id || !props.canOperate) return
+  const list = lineList(d)
+  if (list.includes(id)) return
+  d.fields.lines = [...list, id]
+}
+
+function removeLine(d: DraftShot, id: string) {
+  d.fields.lines = lineList(d).filter((x) => x !== id)
+}
+
+/** 标签 title：台词摘要（建议表命中时） */
+function lineLabelOf(id: string): string {
+  const s = lineSuggest.value.find((x) => x.id === id)
+  return s ? s.label : ''
+}
+
 // ---------- 动态键值行 ----------
 
 function extraKeys(d: DraftShot): string[] {
@@ -289,8 +345,8 @@ function normalizeDraft(d: DraftShot, raw: Record<string, unknown> | null): Reco
   for (const [k, v] of Object.entries(d.fields)) {
     if (v === undefined) continue
     if (v !== null && typeof v === 'object') {
-      // characters 由专用控件管理：直取实时值（jsonText 仅为动态 JSON 行的编辑缓冲）
-      if (k === 'characters') {
+      // characters / lines 由专用控件管理：直取实时值（jsonText 仅为动态 JSON 行的编辑缓冲）
+      if (k === 'characters' || k === 'lines') {
         out[k] = v
         continue
       }
@@ -332,6 +388,14 @@ function normalizeDraft(d: DraftShot, raw: Record<string, unknown> | null): Reco
     } else {
       out.characters = list
     }
+  }
+  // [M11] lines 归一（字符串数组；空数组合法 = 无台词镜）
+  if (out.lines !== undefined) {
+    const arr = out.lines
+    if (!Array.isArray(arr) || arr.some((c) => typeof c !== 'string' || !c.trim())) {
+      throw new Error(`镜头 ${d.id}：台词列表需为字符串数组`)
+    }
+    out.lines = arr.map((c) => c.trim())
   }
   return out
 }
@@ -375,7 +439,7 @@ function buildOps(): ShotOp[] {
     }
     // 草稿移除的键：原分镜存在 → null 置空（服务端浅合并无法真删键）
     for (const k of Object.keys(raw)) {
-      if (k === 'id' || k === 'duration' || k === 'duration_sec' || k === 'characters') continue
+      if (k === 'id' || k === 'duration' || k === 'duration_sec' || k === 'characters' || k === 'lines') continue
       if (!(k in fields)) patch[k] = null
     }
     // duration 仅在有效值出现时 patch（清空 = 维持原值）
@@ -593,6 +657,37 @@ async function requestClose() {
                   <datalist id="se-char-names">
                     <option v-for="n in charNames" :key="n" :value="n" />
                   </datalist>
+                </div>
+              </div>
+
+              <div class="se-field">
+                <label>台词 lines（回车添加台词 id；建议来自本集台词表）</label>
+                <div class="se-tags">
+                  <span
+                    v-for="id in lineList(active)"
+                    :key="id"
+                    class="se-tag mono"
+                    :title="lineLabelOf(id)"
+                  >
+                    {{ id }}
+                    <button type="button" aria-label="移除台词" :disabled="!canOperate" @click="removeLine(active, id)">
+                      <Icon name="x" :size="10" />
+                    </button>
+                  </span>
+                  <input
+                    type="text"
+                    class="se-tag-input"
+                    list="se-line-ids"
+                    placeholder="输入台词 id 回车"
+                    :disabled="!canOperate"
+                    @keydown.enter.prevent="addLine(active, $event)"
+                  />
+                  <datalist id="se-line-ids">
+                    <option v-for="s in lineSuggest" :key="s.id" :value="s.id">{{ s.label }}</option>
+                  </datalist>
+                </div>
+                <div v-if="lineSuggest.length" class="muted se-lines-tip">
+                  台词表共 {{ lineSuggest.length }} 句；每句恰好归属一镜，无台词镜留空（重新合成时按此对齐配音与字幕）
                 </div>
               </div>
 
@@ -1018,6 +1113,12 @@ async function requestClose() {
   font-family: inherit;
   outline: none;
   padding: 2px 0 !important;
+}
+
+/* [M11] 台词建议提示 */
+.se-lines-tip {
+  margin-top: 4px;
+  font-size: 11.5px;
 }
 
 /* 动态键值行 */

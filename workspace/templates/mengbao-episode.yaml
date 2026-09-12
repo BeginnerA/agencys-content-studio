@@ -1,5 +1,5 @@
 key: mengbao-episode
-version: 8
+version: 9
 name: 短剧·单集
 description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 场景道具档案与参考图（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
 genre: drama_short
@@ -206,12 +206,14 @@ steps:
   - key: make_storyboard
     action: ai_text
     title: 分镜与提示词包
-    after: [write_script, char_profile, set_profile]
+    after: [write_script, char_profile, set_profile, cast_lines]
     inputs:
       script: steps.write_script.asset
       setting: steps.ingest_docs.assets
       characters: steps.char_profile.asset
       sets: steps.set_profile.asset
+      # [M11] 台词表（切句产物）：shots[].lines 归属依据（音字对齐映射源）；with_voice=false 时该步跳过 → 空输入安全
+      lines: steps.cast_lines.asset
     params:
       prompt_tpl: storyboard-ep.md
       output_purpose: storyboard
@@ -307,5 +309,10 @@ steps:
       cover: true
       duration_per_shot: 4
       fit_voice: true
+      # [M11] 合成增强兜底（run 级 _compose 可覆盖；none/0 时与旧行为一致）
+      transition: none
+      transition_duration: 0.5
+      bgm_volume: 0.25
+      bgm_fade: 2
     output:
       purpose: final_video

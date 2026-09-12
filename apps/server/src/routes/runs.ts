@@ -8,7 +8,8 @@ import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
-import { HttpError, h, idParam, notFound } from './helpers'
+import { HttpError, h, idParam, notFound, wb } from './helpers'
+import { resetStepForRerun } from '../services/shot-workbench'
 
 export const runsRoutes = new Hono()
 
@@ -198,6 +199,39 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   }
   engine.startRun(newRun.id)
   return c.json({ run: toRunView(newRun) }, 202)
+}))
+
+// POST /runs/:id/steps/:stepKey/rerun —— [M11] 引擎级单步重跑（复用/重置该步子任务；succeeded 步骤全跳过）
+runsRoutes.post('/runs/:id/steps/:stepKey/rerun', h(async (c) => {
+  const runId = idParam(c)
+  const stepKey = c.req.param('stepKey')
+  if (!stepKey) throw new HttpError(400, 'bad_step_key', 'stepKey 路径参数缺失')
+  let body: Record<string, unknown> = {}
+  const raw = await c.req.text()
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+    }
+  }
+  const resetTasks = body['reset_tasks'] === true
+  const result = await wb(() => resetStepForRerun(runId, stepKey, { resetTasks }))
+  engine.startRun(runId)
+  const note = !result.hasTasks
+    ? `已重置「${result.stepKey}」并重新入队（该步骤无子任务，将整体重新执行；下游产物不变，如需生效请重跑下游或重新合成）`
+    : resetTasks
+      ? `已重置「${result.stepKey}」及全部 ${result.tasksTotal} 个子任务并重新入队（将全量重新执行）`
+      : `已重置「${result.stepKey}」并重新入队；成功子任务将复用（${result.tasksSucceeded} 个），预计执行 ${result.tasksReset} 个`
+  return c.json({
+    ok: true,
+    run_id: runId,
+    step_key: result.stepKey,
+    has_tasks: result.hasTasks,
+    tasks_total: result.tasksTotal,
+    tasks_succeeded: result.tasksSucceeded,
+    note,
+  })
 }))
 
 // POST /system/recover —— 手动触发崩溃恢复（幂等；诊断用）

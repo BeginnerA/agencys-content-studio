@@ -4,6 +4,7 @@
  * - 错误类型与 HttpError 解耦：路由层转 HTTP（对齐 run-create.ts 惯例）
  * - 三个核心语义：① 分镜 JSON 是唯一事实源 ② 产物即选择（改写 output.asset_ids）③ 状态重置 + 引擎复用
  * [M10] 结构性编辑扩展：ops 协议（reorder/add/remove/patch）+ 上传替换（外来图入镜）
+ * [M11] 引擎级单步重跑（resetStepForRerun：复用/重置子任务）+ 分镜 lines 字段校验（音字对齐映射源）
  */
 import { writeFileSync } from 'node:fs'
 import { extname } from 'node:path'
@@ -55,6 +56,8 @@ export interface ShotSpec {
   duration?: number
   /** LLM 分镜实际口径（storyboard-ep 提示词 schema 用 duration_sec；编辑写入 duration 时同步） */
   duration_sec?: number
+  /** [M11] 该镜配的台词句 id 数组（空数组 = 无台词镜；合成期音字对齐映射源，storyboard-ep v+1 产出） */
+  lines?: string[]
   [k: string]: unknown
 }
 
@@ -604,6 +607,14 @@ function applyShotPatch(shot: ShotSpec, fields: Record<string, unknown>): void {
       shot.characters = value.map((c) => (c as string).trim())
       continue
     }
+    if (key === 'lines') {
+      // [M11] 台词绑定（音字对齐映射源）：字符串数组（可为空 = 无台词镜），元素为非空台词 id
+      if (!Array.isArray(value) || value.some((c) => typeof c !== 'string' || !c.trim())) {
+        throw new WorkbenchError('bad_field', 'lines 需为字符串数组（元素为非空台词 id）')
+      }
+      shot.lines = value.map((c) => c.trim())
+      continue
+    }
     // 其余键宽松透传（请求体已经过 JSON.parse，值为 JSON-safe）
     shot[key] = value
   }
@@ -871,6 +882,59 @@ export async function resetStepForRecompose(runId: number, stepKey: string): Pro
     .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
     .where(eq(pipelineRuns.id, run.id))
   return { runId: run.id }
+}
+
+// ---------- [M11] 引擎级单步重跑 ----------
+
+/**
+ * [M11] 单步重跑（引擎级——不限 action）：assertRepairable → 可选子任务归零 →
+ * step pending / run queued；路由层随后 engine.startRun（succeeded 步骤全跳过，仅执行目标步）。
+ * - resetTasks=false（默认）：不动 gen_tasks——action 幂等段「succeeded 跳过 / failed 归零」自动生效；
+ * - resetTasks=true：该步全部任务置 pending（resultAssetId 保留作历史）→ 全量重新执行（计费）；
+ * - 无任务型步骤（ai_text 单跑 / tts / ffmpeg_merge → hasTasks=false 选项忽略）。
+ */
+export async function resetStepForRerun(
+  runId: number,
+  stepKey: string,
+  opts: { resetTasks?: boolean },
+): Promise<{
+  runId: number
+  stepKey: string
+  hasTasks: boolean
+  tasksTotal: number
+  tasksSucceeded: number
+  tasksReset: number
+}> {
+  const { run, step } = await assertRepairable(runId, stepKey)
+  const tasks = await db
+    .select({ id: genTasks.id, status: genTasks.status })
+    .from(genTasks)
+    .where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id)))
+  const succeeded = tasks.filter((t) => t.status === 'succeeded').length
+  const resetTasks = opts.resetTasks === true
+  const now = Date.now()
+  if (resetTasks && tasks.length > 0) {
+    await db
+      .update(genTasks)
+      .set({ status: 'pending', attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
+      .where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id)))
+  }
+  await db
+    .update(pipelineSteps)
+    .set({ status: 'pending', error: null, completedAt: null, updatedAt: now })
+    .where(eq(pipelineSteps.id, step.id))
+  await db
+    .update(pipelineRuns)
+    .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
+    .where(eq(pipelineRuns.id, run.id))
+  return {
+    runId: run.id,
+    stepKey: step.stepKey,
+    hasTasks: tasks.length > 0,
+    tasksTotal: tasks.length,
+    tasksSucceeded: succeeded,
+    tasksReset: resetTasks ? tasks.length : tasks.length - succeeded,
+  }
 }
 
 // ---------- 内部工具 ----------

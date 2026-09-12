@@ -6,6 +6,7 @@ import { vendorRoutes } from './routes/vendor-credentials'
 import { assetsRoutes } from './routes/assets'
 import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
+import { composeRoutes } from './routes/compose'
 import { exportsRoutes } from './routes/exports'
 import { memoriesRoutes } from './routes/memories'
 import { novelRoutes } from './routes/novel'
@@ -36,6 +37,7 @@ api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
 api.route('/', shotsRoutes)
+api.route('/', composeRoutes)
 api.route('/', batchesRoutes)
 api.route('/', statsRoutes)
 api.route('/', stylePresetsRoutes)

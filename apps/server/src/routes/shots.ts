@@ -3,12 +3,12 @@
  * - 服务层只改 DB，engine.startRun 在此同步调用（对齐 tasks.ts retry 手法）
  * - WorkbenchError → HttpError（状态码透传）；不触发执行的端点（edit / select / mutate / upload）不启动引擎
  * [M10] +mutate（结构性编辑：reorder/add/remove/patch）/ +upload（上传替换：multipart）
+ * [M11] wb 提取至 helpers 共用（compose/runs 路由接入；行为零变化）
  */
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { engine } from '../pipeline/engine'
 import {
-  WorkbenchError,
   applyShotSelection,
   applyStoryboardEdits,
   applyStoryboardOps,
@@ -20,7 +20,7 @@ import {
   type ShotOp,
   type ShotPick,
 } from '../services/shot-workbench'
-import { HttpError, h, idParam } from './helpers'
+import { HttpError, h, idParam, wb } from './helpers'
 import { toAssetView } from './assets'
 
 export const shotsRoutes = new Hono()
@@ -136,16 +136,6 @@ shotsRoutes.post('/runs/:id/recompose', h(async (c) => {
   engine.startRun(runId)
   return c.json({ ok: true, run_id: runId, note: '已重新入队合成（镜头选择/分镜最新值生效）' })
 }))
-
-/** WorkbenchError → HttpError（状态码透传） */
-async function wb<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn()
-  } catch (err) {
-    if (err instanceof WorkbenchError) throw new HttpError(err.status, err.code, err.message)
-    throw err
-  }
-}
 
 async function bodyJson(c: Context): Promise<Record<string, unknown>> {
   return await c.req.json().catch(() => {

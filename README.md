@@ -2,7 +2,7 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）
 
 ## 技术栈
 
@@ -168,6 +168,19 @@ pnpm dev    # 并行起双端：
 
 验证：`pnpm --filter @acs/server probe:m10`（六节：ops / output / upload / board / select / regression，零网络零计费）。
 
+## M11 能力速览（引擎级单步重跑 + 镜头级音字对齐 + BGM·转场）
+
+把成片生产链升级为「可重跑、可对齐、可配声、可转场」的完整后期能力：**引擎级单步重跑**（对任一步骤就地重跑——成功子任务默认复用零调用，也可全量归零重新执行）、**镜头级音字对齐**（分镜镜头与台词句显式绑定，合成时按实测配音时长重排镜段与字幕时间轴，成片与音轨严格等长）、**BGM 与转场**（成片配乐 + 镜头间过渡，Web 可视化配置并快照进 params 溯源）。设计三延续：**非破坏重跑**（复用模式不动已成功子任务产物）、**配置即参数**（compose 配置在合成时快照，存量 v8 run 行为零漂移）、**宽容降级**（老分镜无 lines / 脏数据 / 空数组均按原口径合成，不阻断出片）。
+
+- **单步重跑**（`POST /runs/:id/steps/:stepKey/rerun`）：默认复用模式（succeeded 子任务保留、仅重置失败 / 未完成，响应含 `tasks_succeeded` 与预计执行数）或 `reset_tasks=true` 全量归零（重新计费）；无子任务步骤整体重执行（提示下游产物不变）；活跃 run（running / waiting_input）拒绝 400
+- **镜头级音字对齐**（`ffmpeg-merge` 对齐链）：`make_storyboard` 新增 `lines` 输入（消费 `cast_lines` 台词表）→ 分镜每镜声明 `lines` 台词句 id 数组（`storyboard-ep` v7 契约：每句恰好归属一镜）→ 合成时 `parseShotLines` / `planVoiceAlignedSegments` / `planSrtShifts` 按配音实测时长规划镜段与字幕平移（补镜尾静音 / 空镜 / 句长兜底；老分镜无 lines 自动降级）
+- **BGM**（`/runs/:id/compose/config` GET/PUT + `/runs/:id/compose/bgm` GET/POST/DELETE）：上传（multipart + sha256 查重）或绑定既有音频资产；合成滤镜链 `stream_loop → atrim → volume → afade in/out → amix`（循环铺满全片 + 首尾淡入淡出 + 与配音原声混音）；音量 0–1 / 淡入淡出 0–2s clamp；`params.bgm` 溯源
+- **转场**：六种过渡（`none / fade / fadeblack / slideleft / slideright / dissolve`）+ 时长 0.1–2s；`xfade` 逐镜衔接（前 n−1 镜段长 +T 补偿，总长不变）；`params.transition` 溯源
+- **模板 / 提示词**：`mengbao-episode` v8 → v9（`make_storyboard.after` 增 `cast_lines` + `lines` 输入；`compose_video.params` 增 `transition` / `transition_duration` / `bgm_volume` / `bgm_fade` 默认值 none / 0.5s / 0.25 / 2s）；`storyboard-ep` v6 → v7（台词归属规则）；存量 v8 快照 run 行为不变
+- **Web**：`RerunModal.vue`（复用 / 全量二选 + 子任务计数预览）、`BgmModal.vue`（上传 / 绑定 / 移除 + 音量与淡入淡出）、`ShotBoard.vue` 转场行（下拉 + 时长 + 保存设置 + 配乐入口）与台词角标（「台词 N 句」）、`StoryboardEditor.vue` 台词 lines 控件、`RunDetailView.vue` 步骤卡重跑按钮
+
+验证：`pnpm --filter @acs/server probe:m11`（六节：rerun / align / bgm / transition / template / regression，零网络零计费）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -177,7 +190,7 @@ pnpm dev    # 并行起双端：
 | `topic-radar` v1 | 选题雷达（other） | 多维评分（需求势能 / 竞争密度 / 账号适配 / 长尾价值）+ 历史选题去重 + 常青生成 + 回灌调分；热点素材以导入替代联网采集 | 选题雷达 |
 | `video-plan` v1 | 创作策划（drama_short） | 五节策划案（题材定位 / 人物小传 / 爽点结构 / 视觉基调 + Look Dev / 单集节奏）+ 弧光机械核对 + 导演三视角（观众 / 平台 / 成本）自检 | 创作策划 |
 | `series-setup` v2 | 整剧立项·设定包（drama_short） | 整剧设计书 + 设定包四件（总设定 / 角色卡 / 世界观 / 场景视觉卡）+ 分集地图；单集正文回 `mengbao-episode` 逐集展开（token 取舍）；复用角色一致性链；v2 新增场景/道具档案链（`set_profile` 档案 → 素材提示词 → 参考图生成（`with_set_refs`）→ `entity_sync` 建档） | 剧本创作 |
-| `mengbao-episode` v8 | 短剧·单集（T3） | 双闸门（剧本必审 + 分镜可选审）+ `motion` 互斥分支 + **角色一致性链**和**配音字幕链**（原有）；v4 三条审阅开关：`with_deep_review` / `with_narrative_doc` / `with_edit_review`；v5 新增 `with_voice`（默认开）：台词切句（`lines-cast-ep.md`）→ 逐句配音 → measured 精确字幕 → `fit_voice` 多镜时长按配音总长均分（成片与音轨等长）；v6 新增 `i2v`（默认关，需 `motion=true`）：`gen_frames` 首帧图步骤 + `gen_motion` 首帧驱动与 `motion_prompt,image_prompt` 回退链（出图+视频双计费）；v7 增 `compose_video.shots` 输入：镜头工作台 per-shot 时长覆盖 + 选镜拼接消费，逐镜缺文件 skip+warn，存量 v6 run 行为等价；v8 新增场景/道具参考链（`with_set_refs` 开关 + set 四步 `set_profile` → `set_ref_prompts` → `gen_set_refs` → `sync_set`），出图按 `location`/`props` 注入场景/道具锚定与参考图 | 剧本创作 + 分镜提示词 |
+| `mengbao-episode` v9 | 短剧·单集（T3） | 双闸门（剧本必审 + 分镜可选审）+ `motion` 互斥分支 + **角色一致性链**和**配音字幕链**（原有）；v4 三条审阅开关：`with_deep_review` / `with_narrative_doc` / `with_edit_review`；v5 新增 `with_voice`（默认开）：台词切句（`lines-cast-ep.md`）→ 逐句配音 → measured 精确字幕 → `fit_voice` 多镜时长按配音总长均分（成片与音轨等长）；v6 新增 `i2v`（默认关，需 `motion=true`）：`gen_frames` 首帧图步骤 + `gen_motion` 首帧驱动与 `motion_prompt,image_prompt` 回退链（出图+视频双计费）；v7 增 `compose_video.shots` 输入：镜头工作台 per-shot 时长覆盖 + 选镜拼接消费，逐镜缺文件 skip+warn，存量 v6 run 行为等价；v8 新增场景/道具参考链（`with_set_refs` 开关 + set 四步 `set_profile` → `set_ref_prompts` → `gen_set_refs` → `sync_set`），出图按 `location`/`props` 注入场景/道具锚定与参考图；v9 新增台词归属链（`make_storyboard` 消费 `cast_lines` 台词表 + 每镜 `lines` 声明）与 `compose_video` 转场 / BGM 四键默认值 | 剧本创作 + 分镜提示词 |
 | `talking-clip` v3 | 对白口播·单条（T2） | 记忆闭环 + 账号档案 + 逐句情绪配音 + measured 精确字幕（原有）；v3 新增 `platform` 感知与 `with_platform_copy` 视频发布文案步骤（标题 / 话题 / 简介） | 内容编排 + 平台适配 |
 | `quick-video` v1 | 快速单片视频（talking_head） | 一句话创意极简输入 + 闸门默认关闭（`confirm` 开才审）+ 封面图兼成片背景单图成片；定位热点跟拍快出片 | 内容编排 + 文字创作 |
 | `note-clip` v2 | 图文笔记·单篇（T1） | 记忆召回 → 主稿（gate）→ 封面 + 可选内页配图 → 发布稿（原有）；v2 新增 `to_platforms` 多平台适配步骤（when） | 文字创作 + 平台适配 |
@@ -343,6 +356,22 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 7 | 实弹暴露缺陷修复②：computeStale 判定失效 | ✅ | 存量快照无 shots 引用 / 续跑链跨 run 资产引用 → shots_source 缺失/断链 → 分镜编辑后 stale 不动；修复 = 分镜资产时间兜底（不参与 compared，null 语义不变） |
 | 8 | stale 完整回环（Run 61） | ✅ | UI 保存 → 服务端 `stale:true` → 浏览器三板「待重新合成」→ recompose（#1133/1134）→ `stale:false` → 三板「合成已最新」 |
 | 9 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / loader / 适配器 / ffmpeg-merge / 模板 / schema 零 diff；改动限于 shot-workbench + routes/shots + Web（ShotBoard / StoryboardEditor / api / types）+ 探针（probe-m10 新增 / probe-m7 文案适配） |
+
+## M11 验收快照（2026-09-12，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：六节全绿 | ✅ | 双端 typecheck 0 错；`probe:m11` 全过（rerun / align / bgm / transition / template / regression） |
+| 2 | 兼容回归：m2a·m3·m6·m7·m8·m9·m10 | ✅ | 七探针全绿（探针基线随 M11 同步，零漂移） |
+| 3 | 单步重跑实弹（Run 98） | ✅ | 复用模式 `tasks_succeeded=20 / 预计执行 0`，重跑后 20 个子任务 attempts·completedAt 零变化（真复用不重执行）；活跃 run 重跑拒绝 400 |
+| 4 | 音字对齐实弹（成片 #1139） | ✅ | 分镜 `lines` 消费台词表 → 目标 110.928s 参数 / 日志 / ffprobe 三点吻合：video 110.920 / audio 110.928 / container 110.929；对照旧成片 #1110（video 69 / audio 104.64）拖尾 35.6s 消除 |
+| 5 | BGM 实弹（#1141 → #1142） | ✅ | 上传 m4a → 资产 #1141（purpose=bgm）；音量 0.8 / 淡入淡出 1s → 重合成 #1142：container 110.929 不变 + `params.bgm` 溯源；volumedetect 静音窗 -91.0 → -30.5dB、淡入区增益温和 |
+| 6 | 转场实弹（#1144） | ✅ | fade × 0.5s：日志「fade × 19 处」+ `params.transition={enabled,type,dur_sec}`；container 110.960（+0.032 xfade 亚帧取整、总长语义不变）；抽帧 PSNR：交叉窗内 t=3.0s 11.2dB vs 窗外 2.9s / 4.0s 均 41.0dB |
+| 7 | 回归闭环（#1146 移除 BGM + 转场 none） | ✅ | 容器 110.929 / video 110.920 / audio 110.928 与对齐基线逐值一致；静音窗回 -91.0dB；compose 参数无 BGM / 转场痕迹 |
+| 8 | 存量兼容（v8 快照 run #1136） | ✅ | 与基线 #1110 输出逐值一致（快照优先，无 M11 特征注入）；probe template 节 v8 快照断言全过 |
+| 9 | 浏览器 DOM 五组验证（Run 98） | ✅ | A 重跑按钮 + RerunModal 计数预览 / B 转场行 + 配乐入口 / C 镜头台词角标 / D BgmModal / E StoryboardEditor lines 控件 —— 五组全 PASS、零 console 错误 |
+| 10 | 实弹暴露缺陷修复：布局 2 处 | ✅ | ① 全局 `select{width:100%}` 命中转场下拉独占整行 → `.wb-sel` 收窄（auto / max 132px）；② 任务行 nowrap 长 prompt 经 grid `1fr` auto min 撑破轨道（整页横滚 10569px）→ `.cols` 改 `minmax(0,1fr)`；复验 scrollWidth 738 / 转场行单行 / 配乐按钮可见 |
+| 11 | 续跑链工作台限制（发现 · 列后续修复） | 发现 | 续跑链 run（98）工作台写侧 `no_producer` 拒绝、读侧溯源回退旧快照（804 无 lines）→ 台词角标无数据；锚点修正（input.shots → 1138）后 board 恢复。属 M10 溯源约束（step.runId===run.id）对续跑链的固有限制 |
 
 ## M7 验收快照（2026-09-12，实弹）
 
