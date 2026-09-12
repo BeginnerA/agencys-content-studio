@@ -1,88 +1,45 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import Modal from '../components/Modal.vue'
+import { onMounted, ref } from 'vue'
 import Icon from '../components/Icon.vue'
+import ProjectFormModal from '../components/ProjectFormModal.vue'
 import { projectApi, templateApi } from '../lib/api'
-import { ApiError } from '../lib/api'
 import { pendingOf } from '../lib/pending'
 import type { Project, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime } from '../lib/format'
-import { groupTemplates } from '../lib/scene'
+import { projectGenreText } from '../lib/scene'
 
 const projects = ref<Project[]>([])
 const templates = ref<TemplateMeta[]>([])
-/** [入口改造] 默认模板下拉按场景分组（optgroup） */
-const tplGroups = computed(() => groupTemplates(templates.value))
 const loading = ref(true)
 const err = ref('')
 
 // 新建项目弹窗
 const showNew = ref(false)
-const newName = ref('')
-const newBrief = ref('')
-const newGenre = ref('drama_short')
-const newTpl = ref('')
-const newErr = ref('')
-const creating = ref(false)
+
+/** 模板 key → 短名（列表未载/未知 key 回退原 key） */
+function tplName(key: string): string {
+  return templates.value.find((t) => t.key === key)?.name ?? key
+}
 
 async function load() {
   loading.value = true
   err.value = ''
-  try {
-    const data = await projectApi.list()
-    projects.value = data.items
-  } catch (e) {
-    err.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loading.value = false
+  // 项目列表为主数据；模板列表独立静默加载（仅用于短名展示，失败不阻塞）
+  const [p, tpls] = await Promise.allSettled([projectApi.list(), templateApi.list()])
+  if (p.status === 'fulfilled') {
+    projects.value = p.value.items
+  } else {
+    err.value = p.reason instanceof Error ? p.reason.message : String(p.reason)
   }
+  if (tpls.status === 'fulfilled') templates.value = tpls.value.items
+  loading.value = false
 }
 onMounted(() => void load())
 
-async function openNew() {
-  newName.value = ''
-  newBrief.value = ''
-  newGenre.value = 'drama_short'
-  newTpl.value = ''
-  newErr.value = ''
-  showNew.value = true
-  try {
-    const t = await templateApi.list()
-    templates.value = t.items
-    newTpl.value = t.items[0]?.key ?? ''
-  } catch {
-    // 模板加载失败不阻塞创建
-  }
+function onCreated() {
+  showNew.value = false
+  void load()
 }
-
-async function createProject() {
-  if (!newName.value.trim()) {
-    newErr.value = '请填写项目名'
-    return
-  }
-  creating.value = true
-  newErr.value = ''
-  try {
-    await projectApi.create({
-      name: newName.value.trim(),
-      genre: newGenre.value,
-      brief: newBrief.value.trim(),
-      template_key: newTpl.value || undefined,
-    })
-    showNew.value = false
-    await load()
-  } catch (e) {
-    newErr.value = e instanceof ApiError ? e.message : String(e)
-  } finally {
-    creating.value = false
-  }
-}
-
-const genres = [
-  { v: 'drama_short', t: '短剧' },
-  { v: 'article', t: '图文' },
-  { v: 'talk', t: '口播' },
-]
 
 /** 有待审阅时直达运行区待审阅筛选（ProjectDetailView 读取 ?tab=&filter=） */
 function cardTo(p: Project) {
@@ -97,7 +54,7 @@ function cardTo(p: Project) {
     <div class="page-h">
       <h1>项目</h1>
       <span class="sub">{{ projects.length }} 个</span>
-      <button class="btn primary" style="margin-left: auto" @click="openNew">
+      <button class="btn primary" style="margin-left: auto" @click="showNew = true">
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建项目
       </button>
     </div>
@@ -106,7 +63,7 @@ function cardTo(p: Project) {
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!projects.length" class="empty">
       还没有项目。<br /><br />
-      <button class="btn primary" @click="openNew">创建第一个项目</button>
+      <button class="btn primary" @click="showNew = true">创建第一个项目</button>
     </div>
 
     <div v-else class="grid">
@@ -124,8 +81,8 @@ function cardTo(p: Project) {
         </div>
         <div class="brief">{{ p.brief || '—' }}</div>
         <div class="meta">
-          <span class="chip">{{ genres.find((g) => g.v === p.genre)?.t ?? p.genre }}</span>
-          <span class="chip">{{ p.templateKey ?? '未绑定模板' }}</span>
+          <span class="chip">{{ projectGenreText(p.genre) }}</span>
+          <span class="chip">{{ p.templateKey ? tplName(p.templateKey) : '未绑定模板' }}</span>
           <span class="chip">{{ p.assetCount }} 资产</span>
         </div>
         <div v-if="p.recentRuns.length" class="runs">
@@ -139,37 +96,7 @@ function cardTo(p: Project) {
       </RouterLink>
     </div>
 
-    <Modal v-if="showNew" title="新建项目" :width="560" @close="showNew = false">
-      <label class="fld">
-        项目名 <span class="req">*</span>
-        <input v-model="newName" type="text" placeholder="如：萌宝镖客" />
-      </label>
-      <label class="fld">
-        体裁
-        <select v-model="newGenre">
-          <option v-for="g in genres" :key="g.v" :value="g.v">{{ g.t }}</option>
-        </select>
-      </label>
-      <label class="fld">
-        默认模板
-        <select v-model="newTpl">
-          <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">
-            <option v-for="t in g.items" :key="t.key" :value="t.key">{{ t.name }}</option>
-          </optgroup>
-        </select>
-      </label>
-      <label class="fld">
-        简介 brief
-        <textarea v-model="newBrief" rows="2" placeholder="一句话说明本项目定位（将作为创作上下文）" />
-      </label>
-      <div v-if="newErr" class="err-text">{{ newErr }}</div>
-      <template #footer>
-        <button class="btn" @click="showNew = false">取消</button>
-        <button class="btn primary" :disabled="creating" @click="createProject">
-          {{ creating ? '创建中…' : '创建' }}
-        </button>
-      </template>
-    </Modal>
+    <ProjectFormModal v-if="showNew" @done="onCreated" @close="showNew = false" />
   </div>
 </template>
 

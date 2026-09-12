@@ -6,7 +6,7 @@ import TemplateInputFields from './TemplateInputFields.vue'
 import type { Asset, TemplateDetail, TemplateMeta } from '../lib/types'
 import { projectApi, runApi, templateApi } from '../lib/api'
 
-const props = defineProps<{ projectId: number; initialTemplateKey?: string }>()
+const props = defineProps<{ projectId: number; initialTemplateKey?: string; defaultTemplateKey?: string }>()
 const emit = defineEmits<{ done: [runId: number]; close: [] }>()
 
 const templates = ref<TemplateMeta[]>([])
@@ -104,8 +104,11 @@ init()
     <template v-else>
       <!-- 第一步：场景选卡（默认入口，按「出成品 / 做规划 / 发布与复盘」分组） -->
       <template v-if="!tplKey">
-        <div class="lead muted">选择要做什么——产出类模板直接出成品；选题、策划、适配、复盘等辅助模板按需单独使用。</div>
-        <TemplatePicker :templates="templates" @select="selectTemplate" />
+        <div class="lead muted">
+          选择要做什么——产出类模板直接出成品；选题、策划、适配、复盘等辅助模板按需单独使用。
+          <template v-if="defaultTemplateKey">带「默认」标记的是本项目常用模板。</template>
+        </div>
+        <TemplatePicker :templates="templates" :default-key="defaultTemplateKey" @select="selectTemplate" />
       </template>
       <!-- 第二步：输入表单 -->
       <template v-else>

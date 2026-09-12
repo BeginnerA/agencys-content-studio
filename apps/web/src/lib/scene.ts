@@ -31,6 +31,36 @@ export function genreText(g: string): string {
   return GENRE_LABELS[g] ?? g
 }
 
+// ===== 项目体裁字典（与模板 genre 及存量数据对齐；见优化计划） =====
+
+/** 项目体裁选项（顺序即下拉顺序）：与库内存量值一致（drama_short/note/talking_head/other） */
+export const PROJECT_GENRES: { value: string; label: string }[] = [
+  { value: 'drama_short', label: '短剧' },
+  { value: 'note', label: '图文' },
+  { value: 'article', label: '长文' },
+  { value: 'talking_head', label: '口播' },
+  { value: 'other', label: '其他' },
+]
+
+/** 历史表单值 ≥ 现行字典的兼容归一（talk 为旧表单遗留值） */
+export function normalizeGenre(g: string): string {
+  return g === 'talk' ? 'talking_head' : g
+}
+
+/** 项目体裁展示：归一 → 项目字典 → 模板字典 → 原值兜底 */
+export function projectGenreText(g: string): string {
+  const k = normalizeGenre(g)
+  return PROJECT_GENRES.find((x) => x.value === k)?.label ?? GENRE_LABELS[k] ?? g
+}
+
+/** 体裁 → 默认模板弱关联（仅预选，不校验；命中模板列表才换） */
+export const GENRE_DEFAULT_TPL: Record<string, string> = {
+  drama_short: 'mengbao-episode',
+  note: 'note-clip',
+  article: 'article-clip',
+  talking_head: 'talking-clip',
+}
+
 export interface SceneGroup {
   key: string
   label: string

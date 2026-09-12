@@ -129,6 +129,10 @@ projectsRoutes.patch('/projects/:id', h(async (c) => {
     patch['name'] = body['name'].trim()
   }
   if (body['brief'] !== undefined) patch['brief'] = typeof body['brief'] === 'string' ? body['brief'] : null
+  if (body['genre'] !== undefined) {
+    if (typeof body['genre'] !== 'string' || !body['genre'].trim()) throw new HttpError(400, 'bad_genre', 'genre 需为非空字符串')
+    patch['genre'] = body['genre'].trim()
+  }
   if (body['status'] !== undefined) {
     if (!['active', 'archived'].includes(body['status'] as string)) throw new HttpError(400, 'bad_status', 'status 需为 active|archived')
     patch['status'] = body['status']

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { TemplateMeta } from '../lib/types'
 import { groupTemplates, genreText } from '../lib/scene'
 
-const props = defineProps<{ templates: TemplateMeta[]; selected?: string }>()
+const props = defineProps<{ templates: TemplateMeta[]; selected?: string; defaultKey?: string }>()
 const emit = defineEmits<{ select: [key: string] }>()
 
 const groups = computed(() => groupTemplates(props.templates))
@@ -26,7 +26,10 @@ const groups = computed(() => groupTemplates(props.templates))
           @click="emit('select', t.key)"
         >
           <span class="tc-h">
-            <span class="tc-nm">{{ t.name }}</span>
+            <span class="tc-nm">
+              {{ t.name }}
+              <span v-if="t.key === defaultKey" class="tc-def">默认</span>
+            </span>
             <span class="tc-meta">{{ t.stepCount }} 步 · {{ genreText(t.genre) }}</span>
           </span>
           <span class="tc-ds">{{ t.description }}</span>
@@ -118,6 +121,20 @@ const groups = computed(() => groupTemplates(props.templates))
 .tc-nm {
   font-size: 13px;
   font-weight: 600;
+}
+
+/** [优化] 「默认」徽章：项目默认模板标记（不改变默认选中态） */
+.tc-def {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-h);
+  background: var(--accent-weak);
+  border: 1px solid rgb(99 102 241 / 30%);
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-left: 5px;
+  vertical-align: 1px;
+  letter-spacing: 0.2px;
 }
 
 .tc-meta {

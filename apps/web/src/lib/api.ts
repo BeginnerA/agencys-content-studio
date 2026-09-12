@@ -83,7 +83,9 @@ export const projectApi = {
   list: () => api.get<Items<Project>>('/api/v1/projects'),
   create: (body: { name: string; genre: string; brief: string; template_key?: string }) =>
     api.post<Project>('/api/v1/projects', body),
-  detail: (id: number) => api.get<ProjectDetail>(`/api/v1/projects/${id}`),
+  detail: (id: number) => api.get<{ project: ProjectDetail }>(`/api/v1/projects/${id}`),
+  update: (id: number, body: { name?: string; brief?: string; genre?: string; template_key?: string }) =>
+    api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
   assets: (id: number, params = '') => api.get<Items<Asset>>(`/api/v1/projects/${id}/assets${params}`),
   runs: (id: number) => api.get<Items<Run>>(`/api/v1/runs?project_id=${id}`),
 }

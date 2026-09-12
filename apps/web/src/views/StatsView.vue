@@ -4,6 +4,7 @@ import Icon from '../components/Icon.vue'
 import { projectApi, statsApi } from '../lib/api'
 import type { Overview, Project, UsageSummary } from '../lib/types'
 import { KIND_TEXT, fmtCost, fmtQty } from '../lib/format'
+import { projectGenreText } from '../lib/scene'
 
 const loading = ref(true)
 const err = ref('')
@@ -15,7 +16,6 @@ const projectId = ref<number | ''>('')
 const days = ref(30)
 const DAY_OPTIONS = [7, 30, 90] as const
 const usageGroup = ref<'provider_model' | 'kind'>('provider_model')
-const GENRE_TEXT: Record<string, string> = { drama_short: '短剧', article: '图文', talk: '口播' }
 
 const STATUS_TEXT: Record<string, string> = {
   queued: '排队中',
@@ -278,7 +278,7 @@ function pct(n: number): string {
           <tbody>
             <tr v-for="p in projRows" :key="p.id">
               <td>{{ p.name }}</td>
-              <td class="muted">{{ GENRE_TEXT[p.genre] ?? p.genre }}</td>
+              <td class="muted">{{ projectGenreText(p.genre) }}</td>
               <td class="mono">{{ p.runs }}</td>
               <td class="mono">{{ pct(p.rate) }}</td>
               <td class="mono">{{ fmtCost(p.cost) }}</td>

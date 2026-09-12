@@ -1,7 +1,7 @@
 key: mengbao-episode
 version: 4
-name: 萌宝短剧·单集
-description: 适合：按单集剧本产出萌宝短剧成片（角色锚定 + 分镜出图）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 分镜（可审阅）→ 出图或动效 → 合成。
+name: 短剧·单集
+description: 适合：按单集剧本产出短剧成片（角色锚定 + 分镜出图）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 分镜（可审阅）→ 出图或动效 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]

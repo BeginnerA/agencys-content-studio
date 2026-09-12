@@ -6,10 +6,11 @@ import Icon from '../components/Icon.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import BatchFormModal from '../components/BatchFormModal.vue'
+import ProjectFormModal from '../components/ProjectFormModal.vue'
 import PublishModal from '../components/PublishModal.vue'
-import { batchApi, projectApi, publicationApi, uploadFiles } from '../lib/api'
+import { batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../lib/api'
 import { schedulePendingRefresh } from '../lib/pending'
-import type { Asset, Batch, ProjectDetail, Publication, Run } from '../lib/types'
+import type { Asset, Batch, ProjectDetail, Publication, Run, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime, fmtMs, fmtQty, purposeText, batchStatus, inputSummary, PLATFORM_TEXT } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 
@@ -70,7 +71,8 @@ async function loadCore(opts: { silent?: boolean } = {}) {
       projectApi.runs(projectId),
       batchApi.list(`?project_id=${projectId}`),
     ])
-    project.value = p
+    // 接口返回 { project } 包装（与 runApi.detail 同构）
+    project.value = p.project
     runs.value = r.items
     batches.value = b.items
   } catch (e) {
@@ -111,6 +113,7 @@ onMounted(() => {
   void loadCore()
   void loadAssets()
   void loadPubs()
+  void loadTplMetas()
   const s = getSocket()
   s.emit('join', `project:${projectId}`)
   // 事件定向刷新：step 事件只刷运行区（高频）；run 终态追加刷资产区（可能新增产物）；
@@ -375,6 +378,33 @@ function onPubSaved() {
   void loadPubs({ silent: true })
 }
 
+// ===== [优化] 编辑项目 / 模板短名 =====
+const showEdit = ref(false)
+const tplMetas = ref<TemplateMeta[]>([])
+
+/** 模板元数据静默加载（短名展示；失败回退裸 key） */
+async function loadTplMetas() {
+  try {
+    const t = await templateApi.list()
+    tplMetas.value = t.items
+  } catch {
+    // 静默
+  }
+}
+
+/** 模板 key → 短名（未载/未知 key 回退原 key） */
+function tplName(key: string): string {
+  return tplMetas.value.find((t) => t.key === key)?.name ?? key
+}
+
+/** 默认模板透传给运行入口（启动/批量弹窗预选与徽章） */
+const defaultTplKey = computed(() => project.value?.templateKey ?? undefined)
+
+function onEdited() {
+  showEdit.value = false
+  void loadCore({ silent: true })
+}
+
 /** runs 行内错误摘要 */
 function errOf(r: Run): string {
   if (r.status !== 'failed') return ''
@@ -389,8 +419,11 @@ function errOf(r: Run): string {
       <RouterLink to="/" class="back"><Icon name="arrow-left" :size="14" /> 项目</RouterLink>
       <h1>{{ project?.name ?? `项目 #${projectId}` }}</h1>
       <span v-if="project" class="badge completed">active</span>
-      <span v-if="project?.templateKey" class="sub mono">{{ project.templateKey }}</span>
+      <span v-if="project?.templateKey" class="sub">默认模板：{{ tplName(project.templateKey) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
+        <button class="btn" :disabled="!project" @click="showEdit = true">
+          <Icon name="pencil" :size="14" /> 编辑
+        </button>
         <button class="btn" @click="showUpload = true">
           <Icon name="upload" :size="14" /> 上传素材
         </button>
@@ -466,7 +499,7 @@ function errOf(r: Run): string {
           </div>
           <div v-for="r in waitingRuns" :key="r.id" class="gb-row">
             <span class="mono">Run #{{ r.id }}</span>
-            <span class="muted mono">{{ r.templateKey }}</span>
+            <span class="muted">{{ tplName(r.templateKey) }}</span>
             <span class="muted">停在 {{ r.currentStepKey ?? '—' }}</span>
             <RouterLink class="gb-go" :to="`/runs/${r.id}`">去审阅 →</RouterLink>
           </div>
@@ -511,7 +544,7 @@ function errOf(r: Run): string {
                     </button>
                   </td>
                   <td><span class="badge" :class="batchStatus(row.batch.status).cls">{{ batchStatus(row.batch.status).text }}</span></td>
-                  <td class="mono tkey">{{ row.batch.templateKey }}</td>
+                  <td class="tkey">{{ tplName(row.batch.templateKey) }}</td>
                   <td class="mono muted">
                     {{ row.batch.finished }}/{{ row.batch.total }} 完成
                     <template v-if="row.batch.failed"> · <span class="em">失败 {{ row.batch.failed }}</span></template>
@@ -541,7 +574,7 @@ function errOf(r: Run): string {
                 <tr v-else-if="row.kind === 'run'" class="rrow" @click="router.push(`/runs/${row.run.id}`)">
                   <td class="mono">{{ row.run.id }}</td>
                   <td><span class="badge" :class="row.run.status">{{ runStatus(row.run.status).text }}</span></td>
-                  <td class="mono tkey">{{ row.run.templateKey }}</td>
+                  <td class="tkey">{{ tplName(row.run.templateKey) }}</td>
                   <td class="sum">
                     <span v-if="errOf(row.run)" class="em" :title="row.run.error ?? ''">{{ errOf(row.run) }}</span>
                     <span v-else-if="row.run.summary?.durationMs" class="muted">共 {{ row.run.summary.stepCount }} 步 · {{ fmtMs(row.run.summary.durationMs) }}</span>
@@ -659,7 +692,13 @@ function errOf(r: Run): string {
     </template>
 
     <!-- 启动 run -->
-    <RunFormModal v-if="showRunForm" :project-id="projectId" @done="onRunCreated" @close="showRunForm = false" />
+    <RunFormModal
+      v-if="showRunForm"
+      :project-id="projectId"
+      :default-template-key="defaultTplKey"
+      @done="onRunCreated"
+      @close="showRunForm = false"
+    />
 
     <!-- 上传素材 -->
     <Modal v-if="showUpload" title="上传素材（入库为资产，sha256 去重）" :width="520" @close="showUpload = false">
@@ -687,7 +726,16 @@ function errOf(r: Run): string {
     </Modal>
 
     <!-- [M4] 批量创建 -->
-    <BatchFormModal v-if="showBatch" :project-id="projectId" @done="onBatchCreated" @close="showBatch = false" />
+    <BatchFormModal
+      v-if="showBatch"
+      :project-id="projectId"
+      :default-template-key="defaultTplKey"
+      @done="onBatchCreated"
+      @close="showBatch = false"
+    />
+
+    <!-- [优化] 编辑项目 -->
+    <ProjectFormModal v-if="showEdit && project" :project="project" @done="onEdited" @close="showEdit = false" />
 
     <!-- [M4] 标记发布 / 编辑回填 -->
     <PublishModal

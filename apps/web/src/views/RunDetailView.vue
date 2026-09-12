@@ -227,6 +227,11 @@ async function loadTplMetas() {
   }
 }
 
+/** 模板 key → 短名（未载/未知 key 回退原 key） */
+function tplName(key: string): string {
+  return tplMetas.value.find((t) => t.key === key)?.name ?? key
+}
+
 /** 完成态：当前模板声明的推荐下游（引用不存在/未加载的 key 静默过滤） */
 const nextOptions = computed(() => {
   const r = run.value
@@ -491,7 +496,7 @@ function onPubSaved() {
       </RouterLink>
       <h1>Run #{{ runId }}</h1>
       <span v-if="run" class="badge" :class="run.status">{{ runStatus(run.status).text }}</span>
-      <span v-if="run" class="sub mono">{{ run.templateKey }}</span>
+      <span v-if="run" class="sub">{{ tplName(run.templateKey) }}</span>
       <span v-if="snapshot" class="badge skip" :title="snapshotTip(snapshot)">快照 v{{ snapshot.rv }}</span>
       <span v-if="run?.summary?.durationMs" class="sub muted">{{ fmtMs(run.summary.durationMs) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">

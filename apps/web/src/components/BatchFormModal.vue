@@ -7,7 +7,7 @@ import type { Asset, TemplateDetail, TemplateMeta } from '../lib/types'
 import { batchApi, projectApi, templateApi } from '../lib/api'
 import { genreText, groupTemplates } from '../lib/scene'
 
-const props = defineProps<{ projectId: number }>()
+const props = defineProps<{ projectId: number; defaultTemplateKey?: string }>()
 const emit = defineEmits<{ done: [batchId: number]; close: [] }>()
 
 const loading = ref(true)
@@ -119,7 +119,9 @@ async function init() {
     const [tRes, aRes] = await Promise.all([templateApi.list(), projectApi.assets(props.projectId, '?limit=200')])
     templates.value = tRes.items
     assets.value = aRes.items
-    if (tRes.items.length) tplKey.value = tRes.items[0]?.key ?? ''
+    // [优化] 预选项目默认模板（命中且在列）；否则回退列表第一个
+    const initKey = props.defaultTemplateKey
+    tplKey.value = initKey && tRes.items.some((t) => t.key === initKey) ? initKey : (tRes.items[0]?.key ?? '')
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {

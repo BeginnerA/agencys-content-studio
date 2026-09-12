@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
-import { batchApi, exportApi } from '../lib/api'
-import type { BatchDetail } from '../lib/types'
+import { batchApi, exportApi, templateApi } from '../lib/api'
+import type { BatchDetail, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime, fmtCost, batchStatus, inputSummary } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
@@ -19,6 +19,23 @@ const notice = ref('')
 const cancelling = ref(false)
 const exporting = ref(false)
 const exportResult = ref<Array<{ runId: number; assetId: number; name: string }> | null>(null)
+
+// [优化] 模板短名（静默加载；失败回退裸 key）
+const tplMetas = ref<TemplateMeta[]>([])
+
+/** 模板 key → 短名（未载/未知 key 回退原 key） */
+function tplName(key: string): string {
+  return tplMetas.value.find((t) => t.key === key)?.name ?? key
+}
+
+async function loadTplMetas() {
+  try {
+    const t = await templateApi.list()
+    tplMetas.value = t.items
+  } catch {
+    // 静默
+  }
+}
 
 const batch = computed(() => detail.value?.batch ?? null)
 const runs = computed(() => detail.value?.runs ?? [])
@@ -74,6 +91,7 @@ function onRunEvent(p: StudioEventMap['run.step'] | StudioEventMap['run.complete
 
 onMounted(() => {
   refresh()
+  void loadTplMetas()
   studioOn('batch.updated', onBatchUpdated)
   studioOn('run.step', onRunEvent)
   studioOn('run.completed', onRunEvent)
@@ -134,7 +152,7 @@ function errOf(s: string | null): string {
       </RouterLink>
       <h1>{{ batch?.name ?? `批次 #${batchId}` }}</h1>
       <span v-if="batch" class="badge" :class="batchStatus(batch.status).cls">{{ batchStatus(batch.status).text }}</span>
-      <span v-if="batch" class="sub mono">{{ batch.templateKey }}</span>
+      <span v-if="batch" class="sub">{{ tplName(batch.templateKey) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
         <button v-if="running" class="btn danger" :disabled="cancelling" @click="cancelBatch">
           {{ cancelling ? '取消中…' : '取消批次' }}
