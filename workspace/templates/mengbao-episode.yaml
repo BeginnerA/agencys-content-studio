@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 4
+version: 5
 name: 短剧·单集
-description: 适合：按单集剧本产出短剧成片（角色锚定 + 分镜出图）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 分镜（可审阅）→ 出图或动效 → 合成。
+description: 适合：按单集剧本产出带配音字幕的短剧成片（角色锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]
@@ -49,11 +49,18 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: with_voice
+    label: 配音与字幕（false=默片直出；true=逐句配音+精确字幕）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
   # ai_video 兜底参数（provider 可在项目 settings 覆盖；minimax 支持 480p/768p，480p 单价更低）
   video: { provider: pollinations_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
+  # tts 兜底参数（provider 可在项目 settings 覆盖；声线六级链见 tts action）
+  audio: { provider: pollinations_audio, voice: "Cherry" }
 steps:
   - key: ingest_docs
     action: manual_ingest
@@ -91,6 +98,18 @@ steps:
       message: 请审阅第 {input.episode_number} 集深度审查报告（分级执行单 + R16/R17 验收）；认可通过后继续建档，如需重审可驳回附修改意见重跑
       when: input.with_deep_review == true
       skip_label: 认可通过
+  - key: cast_lines
+    action: ai_text
+    title: 台词切句
+    after: [write_script]
+    when: input.with_voice != false
+    inputs:
+      script: steps.write_script.asset
+    params:
+      prompt_tpl: lines-cast-ep.md
+      output_purpose: lines
+      output_format: lines-json
+      name_tpl: "{episode_number:03d}-台词.json"
   - key: char_profile
     action: ai_text
     title: 角色档案
@@ -174,6 +193,21 @@ steps:
       prompt_tpl: edit-audit.md
       output_purpose: script
       name_tpl: "{episode_number:03d}-可剪辑性验收.md"
+  - key: voice
+    action: tts
+    title: 逐句配音
+    after: [cast_lines]
+    inputs:
+      lines: steps.cast_lines.asset
+  - key: subtitle
+    action: subtitle
+    title: 字幕定时
+    after: [voice, cast_lines]
+    inputs:
+      lines: steps.cast_lines.asset
+      voices: steps.voice.assets
+    params:
+      prompt_tpl: lines-timing.md
   - key: gen_images
     action: ai_image
     title: 批量镜头出图
@@ -193,14 +227,17 @@ steps:
   - key: compose_video
     action: ffmpeg_merge
     title: 合成成片
-    after: [gen_images, gen_motion]
+    after: [gen_images, gen_motion, voice, subtitle]
     inputs:
       images: steps.gen_images.assets
       motion_clips: steps.gen_motion.assets
+      voices: steps.voice.assets
+      subtitle: steps.subtitle.assets
     params:
       fps: 25
       resolution: "1080x1920"
       cover: true
       duration_per_shot: 4
+      fit_voice: true
     output:
       purpose: final_video

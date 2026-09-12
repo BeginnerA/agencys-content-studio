@@ -92,6 +92,8 @@ export interface LlmResult {
   usage: LlmUsage | null
   provider: string
   model: string
+  /** OpenAI 兼容 finish_reason（'length' = 输出被 max_tokens 截断，推理模型 reasoning 占预算的信号） */
+  finishReason?: string
 }
 
 export class LlmNotConfiguredError extends Error {
@@ -137,7 +139,7 @@ export async function chatCompleteDetailed(
       throw new Error(`LLM 调用失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
     }
     const data = (await res.json()) as {
-      choices?: { message?: { content?: string; reasoning_content?: string } }[]
+      choices?: { message?: { content?: string; reasoning_content?: string }; finish_reason?: string }[]
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
     }
     const usage: LlmUsage | null = data.usage
@@ -149,17 +151,18 @@ export async function chatCompleteDetailed(
       : null
     const choice = data.choices?.[0]
     const content = data.choices?.[0]?.message?.content
+    const finishReason = choice?.finish_reason
     if (!content) {
       if (choice?.message?.reasoning_content) {
         if (opts.allowReasoningOnly)
-          return { content: choice.message.reasoning_content, usage, provider: ep.providerKey, model: ep.model }
+          return { content: choice.message.reasoning_content, usage, provider: ep.providerKey, model: ep.model, finishReason }
         throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
       }
       // 连通性测试放宽：choice 结构合法即视为链路可用（如 max_tokens 极小被 length 截断、未产出正文）
-      if (opts.allowEmptyContent && choice) return { content: '', usage, provider: ep.providerKey, model: ep.model }
+      if (opts.allowEmptyContent && choice) return { content: '', usage, provider: ep.providerKey, model: ep.model, finishReason }
       throw new Error('LLM 响应为空（choices/message/content 缺失）')
     }
-    return { content, usage, provider: ep.providerKey, model: ep.model }
+    return { content, usage, provider: ep.providerKey, model: ep.model, finishReason }
   } finally {
     clearTimeout(timer)
   }

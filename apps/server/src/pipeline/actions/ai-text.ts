@@ -53,6 +53,23 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   const ep = await resolveLlmEndpoint()
   ctx.log(`调用 LLM：${ep.model}（${ep.baseUrl}）…`)
   const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
+  // 默认 12000（deepseek 推理模型 reasoning 占预算）；分镜 JSON 输出长，固定 64000 兜底——
+  // 实测 deepseek-flash 生成 20 镜分镜：reasoning 18-19K + 正文 5-6K tokens，24000 上限会在 JSON 中途
+  // finish_reason=length 截断；64000 为其可用上限，生成自然收尾
+  const maxTokens =
+    outputFormat === 'storyboard-json'
+      ? 64000
+      : typeof llmCfg['max_tokens'] === 'number'
+        ? llmCfg['max_tokens']
+        : 12000
+  // 推理模型长思维链 + 长 JSON 输出：默认 10 分钟超时（2 分钟在 64000 预算下会被 abort）；
+  // params.timeout_ms → settings.llm.timeout_ms（模板 defaults / 项目设置）→ 600000 依次取
+  const timeoutMs =
+    typeof params['timeout_ms'] === 'number'
+      ? params['timeout_ms']
+      : typeof llmCfg['timeout_ms'] === 'number'
+        ? llmCfg['timeout_ms']
+        : 600_000
   const res = await chatCompleteDetailed(
     [
       { role: 'system', content: '你是内容创作流水线的执行引擎，严格按用户提供的提示词模板产出。只输出任务要求的内容本体，不输出任何解释性前言或后记。' },
@@ -61,8 +78,8 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     ep,
     {
       temperature: typeof llmCfg['temperature'] === 'number' ? llmCfg['temperature'] : 0.8,
-      // 默认 12000（deepseek 推理模型 reasoning 占预算）；分镜 JSON 输出长，固定 24000 防推理耗尽正文为空
-      maxTokens: outputFormat === 'storyboard-json' ? 24000 : (typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000),
+      maxTokens,
+      timeoutMs,
     },
   )
   // [M4] 用量记录（LLM 单次调用 → tokens_in/out 两行；失败不影响流水线）
@@ -72,7 +89,18 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   ctx.log(`LLM 返回 ${content.length} 字符`)
 
   // 输出契约校验（storyboard-json / lines-json / characters-json；返回条目数供日志）
-  const items = validateTextOutput(content, outputFormat)
+  let items: number
+  try {
+    items = validateTextOutput(content, outputFormat)
+  } catch (err) {
+    // 截断诊断：finish_reason=length（推理模型 reasoning 挤占预算）时，报错聚焦「预算不足」而非表层 JSON 语法
+    if (res.finishReason === 'length') {
+      throw new Error(
+        `LLM 输出被 max_tokens=${maxTokens} 截断（输出 ${content.length} 字符；reasoning 可能占满预算，分镜过长需调大预算）：${(err as Error).message}`,
+      )
+    }
+    throw err
+  }
   if (outputFormat === 'storyboard-json') ctx.log(`分镜解析通过：${items} 个镜头`)
   if (outputFormat === 'lines-json') ctx.log(`台词解析通过：${items} 句`)
   if (outputFormat === 'characters-json') ctx.log(`角色档案解析通过：${items} 名`)

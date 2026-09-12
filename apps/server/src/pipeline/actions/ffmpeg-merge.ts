@@ -38,6 +38,7 @@ interface Segment {
  * 可选 subtitle（SRT 资产，视频流经 subtitles 滤镜烧录，force_style 参数化）。
  * 时间轴：镜头实际时长优先（video 资产 duration 字段，缺失时 ffprobe 探测兜底）；
  * 静态图回退 duration_per_shot（默认 4s）。产物 tags 增 'with_audio'/'with_subtitle'。
+ * fit_voice=true 且为多镜静态图 + 配音时：按配音总长均分每镜时长（成片与音轨等长）。
  */
 export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const ffmpeg = resolveFfmpeg()
@@ -139,6 +140,35 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     if (stretched > durationPerShot) {
       ctx.log(`口播底图单张，时长由 ${durationPerShot}s 撑至 ${stretched}s（对齐配音/字幕，防尾段冻结）`)
       segments[0]!.durSec = stretched
+    }
+  }
+
+  // fit_voice：多镜静态图 + 配音 → 按配音总长均分每镜时长（成片与音轨等长，消除尾部静音/末帧定格）——
+  // 仅 images 模式生效（motion_clips 为真实时长不可拉伸）；单张静态图走上方口播撑长，不重复适配；
+  // 任一配音探测失败则放弃适配（回退 duration_per_shot，不阻断合成）
+  if (
+    params['fit_voice'] === true &&
+    !needStretch &&
+    segments.length > 1 &&
+    segments.every((s) => s.kind === 'image') &&
+    voicePaths.length > 0
+  ) {
+    let voiceSec = 0
+    let probeOk = true
+    for (const p of voicePaths) {
+      const d = probeMediaDuration(p)
+      if (d === null) {
+        probeOk = false
+        break
+      }
+      voiceSec += d
+    }
+    if (probeOk && voiceSec > 0) {
+      const per = Math.round((voiceSec / segments.length) * 1000) / 1000
+      for (const seg of segments) seg.durSec = per
+      ctx.log(`fit_voice：${segments.length} 镜按配音总长 ${voiceSec.toFixed(2)}s 均分（每镜 ${per}s，成片与音轨等长）`)
+    } else {
+      ctx.log('fit_voice 未生效：配音时长探测失败，回退 duration_per_shot')
     }
   }
 

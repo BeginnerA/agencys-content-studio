@@ -2,9 +2,6 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 设计规格：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-design.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-design.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m4-design.md`、`docs/superpowers/specs/2026-09-11-agencys-content-studio-m5-design.md`
-- 方向文档（L0）：`docs/superpowers/specs/2026-09-09-agencys-content-studio-roadmap.md`
-- 验收记录：`docs/superpowers/specs/2026-09-09-agencys-content-studio-m1-review.md`、`docs/superpowers/specs/2026-09-09-agencys-content-studio-m2-review.md`、`docs/superpowers/specs/2026-09-10-agencys-content-studio-m3-review.md`、`docs/superpowers/specs/2026-09-11-agencys-content-studio-m4-review.md`
 - 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）
 
 ## 技术栈
@@ -82,7 +79,7 @@ pnpm dev    # 并行起双端：
 
 ## M5 能力速览（方法论内化）
 
-- **模板家族 ×10**：外部「内容创作者套件」（8 技能：选题雷达 / 创作策划 / 文字创作 / 剧本创作 / 分镜提示词 / 平台适配 / 盘点复盘 / 内容编排）方法论平移为 studio 原生模板（见下表「方法论来源」列）；不映射项与理由见 M5 spec §1.3
+- **模板家族 ×10**：外部「内容创作者套件」（8 技能：选题雷达 / 创作策划 / 文字创作 / 剧本创作 / 分镜提示词 / 平台适配 / 盘点复盘 / 内容编排）方法论平移为 studio 原生模板（见下表「方法论来源」列）
 - **提示词体系**：+12 新 / 10 升——套件编号术语（R15 AI 味黑名单 / R16 钩子·反转·可剪辑性 / R17 整剧演进）作为自查清单标签内化；大方法论浓缩为检查清单（单文件 ≤ 约 12KB）
 - **闭环设计**：`review-restock` 回灌选题写入记忆 → `topic-radar` 召回调分（「选题 → 生产 → 复盘 → 回灌」闭环）；平台适配两种形态——独立模板 `platform-adapt` + 模板内 when 步骤（`note-clip.to_platforms` / `article-clip.to_platforms` / `talking-clip.with_platform_copy`）
 - **零代码证据**：全部改动为 `workspace/templates/*.yaml` + `workspace/prompts/*.md`；10 模板仅用既有 10 类 action 组合
@@ -96,7 +93,7 @@ pnpm dev    # 并行起双端：
 | `topic-radar` v1 | 选题雷达（other） | 多维评分（需求势能 / 竞争密度 / 账号适配 / 长尾价值）+ 历史选题去重 + 常青生成 + 回灌调分；热点素材以导入替代联网采集 | 选题雷达 |
 | `video-plan` v1 | 创作策划（drama_short） | 五节策划案（题材定位 / 人物小传 / 爽点结构 / 视觉基调 + Look Dev / 单集节奏）+ 弧光机械核对 + 导演三视角（观众 / 平台 / 成本）自检 | 创作策划 |
 | `series-setup` v1 | 整剧立项·设定包（drama_short） | 整剧设计书 + 设定包四件（总设定 / 角色卡 / 世界观 / 场景视觉卡）+ 分集地图；单集正文回 `mengbao-episode` 逐集展开（token 取舍）；复用角色一致性链 | 剧本创作 |
-| `mengbao-episode` v4 | 短剧·单集（T3） | 双闸门（剧本必审 + 分镜可选审）+ `motion` 互斥分支 + **角色一致性链**（原有）；v4 新增三条默认关闭开关：`with_deep_review` 剧本深度审查 / `with_narrative_doc` 叙事流分镜 / `with_edit_review` 可剪辑性把关（各带同条件闸门） | 剧本创作 + 分镜提示词 |
+| `mengbao-episode` v5 | 短剧·单集（T3） | 双闸门（剧本必审 + 分镜可选审）+ `motion` 互斥分支 + **角色一致性链**和**配音字幕链**（原有）；v4 三条审阅开关：`with_deep_review` / `with_narrative_doc` / `with_edit_review`；v5 新增 `with_voice`（默认开）：台词切句（`lines-cast-ep.md`）→ 逐句配音 → measured 精确字幕 → `fit_voice` 多镜时长按配音总长均分（成片与音轨等长） | 剧本创作 + 分镜提示词 |
 | `talking-clip` v3 | 对白口播·单条（T2） | 记忆闭环 + 账号档案 + 逐句情绪配音 + measured 精确字幕（原有）；v3 新增 `platform` 感知与 `with_platform_copy` 视频发布文案步骤（标题 / 话题 / 简介） | 内容编排 + 平台适配 |
 | `quick-video` v1 | 快速单片视频（talking_head） | 一句话创意极简输入 + 闸门默认关闭（`confirm` 开才审）+ 封面图兼成片背景单图成片；定位热点跟拍快出片 | 内容编排 + 文字创作 |
 | `note-clip` v2 | 图文笔记·单篇（T1） | 记忆召回 → 主稿（gate）→ 封面 + 可选内页配图 → 发布稿（原有）；v2 新增 `to_platforms` 多平台适配步骤（when） | 文字创作 + 平台适配 |
@@ -219,7 +216,7 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 
 ## M4 验收快照（2026-09-11）
 
-| # | 判据（spec §8） | 结果 | 证据（详见 m4-review） |
+| # | 判据 | 结果 | 证据 |
 |---|---|---|---|
 | 1 | 批量串行 + gate 停滞 | ✅ | 批次 1（Run 42–44）：挂起期活跃 ≤1、60s 不推进；终态 3/3/3 completed（01-serial 9/9） |
 | 2 | 批量 partial_failed + 断点续跑 | ✅ | 批次 2（Run 45–47）：partial_failed（s=2/f=3）；续跑 Run 48 独立批、已完成步复用（02b 6/6） |
@@ -234,7 +231,7 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 
 ## M3 验收快照（2026-09-10）
 
-| # | 判据（spec §10） | 结果 | 证据（详见 m3-review） |
+| # | 判据 | 结果 | 证据 |
 |---|---|---|---|
 | 1 | 记忆基建：status / 近义检索 / 重建索引 | ✅ | probe:m3 记忆 10 项；`/memories/status` 512 维；近义表达 top1 0.672（非字面） |
 | 2 | 记忆 action 链路：空召回占位 → 落库 → 二次召回注入 | ✅ | Run 33 remember 落库；Run 34 recall `{count:1, topScore:0.583}` 且 draft prompt 快照含召回段 |
@@ -249,7 +246,7 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 
 ## M2 验收快照（历史）
 
-| # | 判据（spec §10） | 结果 | 证据（详见 m2-review） |
+| # | 判据 | 结果 | 证据 |
 |---|---|---|---|
 | 1 | 编排语义实弹：gate skip / when 互斥 / 并行与 skipped 呈现 | ✅ | Run 24→26：分镜闸门「免审直接出图」记 `user_skip`（产物保留）；`gen_images` 按 `motion` 互斥跳过 |
 | 2 | 快照隔离：运行中改模板不影响续跑；新 run 用新模板 | ✅ | Run 29（gate 挂起 → PUT 改模板 → 批准续跑仍按快照）；Run 30（新 run 即时含新步骤） |
@@ -264,7 +261,7 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 
 ## M1 验收快照（历史）
 
-| # | 判据 | 结果 | 证据（详见 m1-review） |
+| # | 判据 | 结果 | 证据 |
 |---|---|---|---|
 | 1 | `pnpm dev` 双端 + `/health` 全绿 | ✅ | db/ffmpeg/workspace 均 ok |
 | 2 | Web 建项目 + 上传 imports 去重 | ✅ | 项目 1；brief×2/source×1 资产 |

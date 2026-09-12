@@ -6,6 +6,8 @@ import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 interface LineItem {
   id: string
   text: string
@@ -22,6 +24,8 @@ interface LineItem {
  *  - 多个资产：每资产全文 = 一句台词。
  * 产物：每句 1 个 audio 资产（purpose=voice，mime audio/mpeg，可复用/可替换/可溯源），
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
+ * 抗抖重试（params.retry，默认 1 → 共 2 次尝试）：短剧长链（数十句）单句瞬时网络抖动不应拖垮整步，
+ * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
  * 声线六级链（spec §6.2）：line.voice_hint → 角色库 voice → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
  * 情绪：emotion_hint → 基调词（首个「——」前段）→ 实例声明 emotion_param 时透传（emotion_map 映射）。
  */
@@ -45,6 +49,8 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
 
   const assetIds: number[] = []
   let failed = 0
+  const retryRaw = typeof params['retry'] === 'number' ? params['retry'] : 1
+  const maxAttempts = Math.max(0, Math.floor(retryRaw)) + 1
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
     try {
@@ -58,7 +64,18 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       })
       const emotionKey = parseEmotionKey(line.emotionHint ?? '')
       const emotionPayload = resolveEmotionPayload(emotionKey, ep.emotion)
-      const data = await synthSpeech(line.text, ep, { voice, speed, emotion: emotionPayload ?? undefined })
+      // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出
+      let data: Uint8Array
+      for (let attempt = 1; ; attempt++) {
+        try {
+          data = await synthSpeech(line.text, ep, { voice, speed, emotion: emotionPayload ?? undefined })
+          break
+        } catch (err) {
+          if (attempt >= maxAttempts) throw err
+          ctx.log(`句 ${line.id} 第 ${attempt}/${maxAttempts} 次失败，1.5s 后重试：${(err as Error).message}`)
+          await sleep(1500)
+        }
+      }
       const idx = String(i + 1).padStart(2, '0')
       const fileName = `${Date.now()}-voice-${idx}-${sanitizeName(line.id)}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', fileName)
@@ -107,7 +124,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${data.byteLength} 字节）`)
     } catch (err) {
       failed += 1
-      ctx.log(`句 ${line.id} 配音失败：${(err as Error).message}`)
+      ctx.log(`句 ${line.id} 配音失败（已尝试 ${maxAttempts} 次）：${(err as Error).message}`)
       if (failed === 1) throw err
     }
   }
