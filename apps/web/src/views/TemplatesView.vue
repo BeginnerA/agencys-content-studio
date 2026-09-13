@@ -2,8 +2,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
+import TemplateHelpModal from '../components/TemplateHelpModal.vue'
 import { ApiError, promptApi, templateApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
+import { SCENE_LABELS, genreText } from '../lib/scene'
+import { KIND_TEXT, actionText } from '../lib/template-dict'
 import type { PromptItem, TemplateDetail, TemplateMeta, TemplateStepDef, TemplateValidation } from '../lib/types'
 import { fmtSize, fmtTime } from '../lib/format'
 
@@ -19,6 +22,10 @@ const metas = ref<TemplateMeta[]>([])
 const metasLoading = ref(true)
 const listErr = ref('')
 const selected = ref<string | null>(null)
+/** [说明书改造] 视图模式：guide=说明书视图（默认，普通使用者视角）；edit=YAML 高级编辑 */
+const mode = ref<'guide' | 'edit'>('guide')
+/** [说明书改造] 字段速查弹层 */
+const helpDlg = ref(false)
 const yamlText = ref('')
 const baseline = ref('')
 const detail = ref<TemplateDetail | null>(null)
@@ -29,8 +36,10 @@ const loadErr = ref('')
 const actionErr = ref('')
 
 const dirty = computed(() => selected.value !== null && yamlText.value !== baseline.value)
-/** 实时解析结果：优先校验产物（编辑中实时结构），否则已保存版本 */
-const liveTpl = computed<TemplateDetail | null>(() => validation.value?.template ?? detail.value)
+/** 实时解析结果：编辑中优先校验产物（实时结构），否则已保存版本；说明书视图固定显示已保存版本 */
+const liveTpl = computed<TemplateDetail | null>(() =>
+  mode.value === 'edit' ? (validation.value?.template ?? detail.value) : detail.value,
+)
 
 async function refreshMetas(autoOpen = false) {
   metasLoading.value = true
@@ -59,6 +68,8 @@ async function openTemplate(key: string) {
   const seq = ++openSeq
   stopValidate()
   selected.value = key
+  // [说明书改造] 切换模板默认回说明书视图
+  mode.value = 'guide'
   loadErr.value = ''
   actionErr.value = ''
   validation.value = null
@@ -126,6 +137,15 @@ async function save() {
   }
 }
 
+// ===== [说明书改造] 视图模式切换：不丢弃编辑内容，未保存徽标持续提示 =====
+function toEdit() {
+  mode.value = 'edit'
+}
+
+function toGuide() {
+  mode.value = 'guide'
+}
+
 // ===== 新建 / 另存为副本 / 删除 =====
 const newDlg = ref(false)
 const newKey = ref('')
@@ -175,6 +195,8 @@ async function doCreate() {
     newDlg.value = false
     await refreshMetas()
     await openTemplate(key)
+    // [说明书改造] 新模板直接进入编辑（空骨架待填写）
+    mode.value = 'edit'
   } catch (e) {
     newErr.value = msg(e)
   } finally {
@@ -201,6 +223,8 @@ async function doCopy() {
     copyDlg.value = false
     await refreshMetas()
     await openTemplate(key)
+    // [说明书改造] 新建副本同样直接进入编辑
+    mode.value = 'edit'
   } catch (e) {
     copyErr.value = msg(e)
   } finally {
@@ -244,8 +268,6 @@ function onTab(e: KeyboardEvent) {
 }
 
 // ===== 只读信息：inputs 表 + steps 流程图（svg 竖排）=====
-const KIND_TEXT: Record<string, string> = { text: '文本', int: '整数', bool: '开关', files: '文件' }
-
 function kindText(k: string): string {
   return KIND_TEXT[k] ?? k
 }
@@ -260,6 +282,24 @@ interface FlowBadge {
   text: string
   cls: 'gate' | 'batch' | 'when' | 'any'
   tip: string
+}
+
+/** [说明书改造] 步骤徽标生成：svg 流程图与说明书步骤列表共用 */
+function stepBadgesOf(s: TemplateStepDef): FlowBadge[] {
+  const badges: FlowBadge[] = []
+  if (s.gate) badges.push({ text: '闸', cls: 'gate', tip: `人工闸门（${s.gate.mode}）` })
+  if (s.batch) badges.push({ text: '批', cls: 'batch', tip: `批量字段：${s.batch.field}` })
+  if (s.when) badges.push({ text: '条', cls: 'when', tip: '条件步骤（满足才执行）' })
+  if (s.when_any) badges.push({ text: '或', cls: 'any', tip: 'OR 条件组（任一满足）' })
+  return badges
+}
+
+/** [说明书改造] 说明书视图的友好徽标文案（编辑模式流程图仍用单字） */
+const GUIDE_BADGE_TEXT: Record<FlowBadge['cls'], string> = {
+  gate: '人工审阅',
+  batch: '批量逐项',
+  when: '条件执行',
+  any: '条件执行',
 }
 
 interface FlowBox {
@@ -288,11 +328,7 @@ const flow = computed(() => {
   steps.forEach((s, i) => idxByKey.set(s.key, i))
   steps.forEach((s, i) => {
     const y = BOX.top + i * (BOX.h + BOX.gap)
-    const badges: FlowBadge[] = []
-    if (s.gate) badges.push({ text: '闸', cls: 'gate', tip: `人工闸门（${s.gate.mode}）` })
-    if (s.batch) badges.push({ text: '批', cls: 'batch', tip: `批量字段：${s.batch.field}` })
-    if (s.when) badges.push({ text: '条', cls: 'when', tip: '条件步骤（满足才执行）' })
-    if (s.when_any) badges.push({ text: '或', cls: 'any', tip: 'OR 条件组（任一满足）' })
+    const badges = stepBadgesOf(s)
     boxes.push({ i, y, key: s.key, title: s.title, action: s.action, badges })
     // 依赖边：after 显式声明；缺省 = 前一步；[] = 无依赖
     const deps = s.after !== undefined ? s.after : i > 0 ? [steps[i - 1]!.key] : []
@@ -496,17 +532,24 @@ onMounted(() => {
       </aside>
 
       <section class="panel editor">
-        <div v-if="!selected" class="empty" style="padding: 80px 0">左侧选择一个模板开始编辑</div>
+        <div v-if="!selected" class="empty" style="padding: 80px 0">左侧选择一个模板，查看它做什么、要填什么、怎么运行</div>
         <template v-else>
           <div class="ehead">
-            <span class="tt mono">{{ selected }}</span>
-            <span class="badge" :class="dirty ? 'queued' : 'succeeded'">{{ dirty ? '未保存' : '已同步' }}</span>
-            <span v-if="liveTpl" class="muted">v{{ liveTpl.version }} · {{ liveTpl.steps.length }} 步</span>
+            <span class="tt">{{ detail?.name ?? selected }}</span>
+            <span class="kk mono">{{ selected }}</span>
+            <span v-if="detail" class="badge" :class="dirty ? 'queued' : 'succeeded'">{{ dirty ? '未保存' : '已同步' }}</span>
+            <span v-if="detail" class="muted">v{{ detail.version }} · {{ detail.steps.length }} 步</span>
             <div class="acts">
-              <button class="btn sm" :disabled="!yamlText" @click="openCopy">
-                <Icon name="doc" :size="12" /> 另存为副本
+              <button v-if="mode === 'edit'" class="btn sm" title="切回说明书视图（编辑内容保留）" @click="toGuide">
+                <Icon name="eye" :size="12" /> 返回说明
               </button>
-              <button class="btn sm danger" @click="removeTemplate(selected, liveTpl?.name ?? selected)">
+              <button class="btn sm" title="查看全部 YAML 字段的用途说明" @click="helpDlg = true">
+                <Icon name="sliders" :size="12" /> 字段速查
+              </button>
+              <button class="btn sm" title="以当前内容创建新模板" :disabled="!yamlText" @click="openCopy">
+                <Icon name="copy" :size="12" /> 另存为副本
+              </button>
+              <button class="btn sm danger" title="删除模板文件（不可撤销）" @click="removeTemplate(selected, detail?.name ?? selected)">
                 <Icon name="trash" :size="12" /> 删除
               </button>
             </div>
@@ -514,138 +557,202 @@ onMounted(() => {
           <div v-if="loadErr" class="err-text">{{ loadErr }}</div>
           <div v-if="actionErr" class="err-text">{{ actionErr }}</div>
 
-          <div class="edit">
-            <div class="ed">
-              <textarea
-                v-model="yamlText"
-                class="yaml"
-                spellcheck="false"
-                :aria-label="`${selected} 模板 YAML 编辑器`"
-                @keydown.tab.prevent="onTab"
-              ></textarea>
-            </div>
-            <div class="lint" aria-live="polite" aria-label="校验结果">
-              <div class="lh">校验</div>
-              <div v-if="validating" class="muted">校验中…</div>
-              <div v-else-if="!dirty" class="lk ok"><Icon name="check" :size="13" :stroke-width="2.4" /> 与文件一致</div>
-              <template v-else-if="validation">
-                <div v-if="validation.ok" class="lk ok">
-                  <Icon name="check" :size="13" :stroke-width="2.4" /> 校验通过
-                  <span v-if="validation.warnings.length" class="muted">（{{ validation.warnings.length }} 警告）</span>
-                </div>
-                <div v-else class="lk bad">
-                  <Icon name="x" :size="13" :stroke-width="2.4" /> {{ validation.errors.length }} 项错误
-                </div>
-                <ul v-if="validation.errors.length" class="er">
-                  <li v-for="(er, i) in validation.errors" :key="'e' + i">{{ er }}</li>
-                </ul>
-                <ul v-if="validation.warnings.length" class="wr">
-                  <li v-for="(w, i) in validation.warnings" :key="'w' + i">{{ w }}</li>
-                </ul>
-              </template>
-              <div v-else class="muted">编辑后自动校验…</div>
-            </div>
-          </div>
-          <div class="ebar">
-            <span class="muted">tab = 2 空格 · 保存由服务端二次校验（原子写，失败保留原文件）</span>
-            <button
-              class="btn primary"
-              :disabled="!dirty || saving || (validation !== null && !validation.ok)"
-              @click="save"
-            >
-              <Icon name="check" :size="13" :stroke-width="2.2" /> {{ saving ? '保存中…' : '保存' }}
-            </button>
-          </div>
+          <!-- ===== 说明书视图（默认）：这个模板做什么 / 填什么 / 跑什么 ===== -->
+          <template v-if="mode === 'guide'">
+            <template v-if="detail">
+              <p class="vdesc">{{ detail.description || '（模板未写介绍）' }}</p>
+              <div class="vmeta">
+                <span class="chip">{{ genreText(detail.genre) }}</span>
+                <span v-if="detail.scene" class="chip">{{ SCENE_LABELS[detail.scene] ?? detail.scene }}</span>
+                <span class="chip">v{{ detail.version }}</span>
+                <span class="chip">{{ detail.steps.length }} 步</span>
+              </div>
 
-          <!-- 只读信息：inputs 声明表 + steps 流程图 -->
-          <div v-if="liveTpl" class="info">
-            <div class="ih">输入声明</div>
-            <table v-if="liveTpl.inputs.length" class="tbl">
-              <thead>
-                <tr>
-                  <th>key</th>
-                  <th>label</th>
-                  <th>类型</th>
-                  <th>必填</th>
-                  <th>默认</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="inp in liveTpl.inputs" :key="inp.key">
-                  <td class="mono">{{ inp.key }}</td>
-                  <td>{{ inp.label ?? '—' }}</td>
-                  <td>{{ kindText(inp.kind) }}</td>
-                  <td>{{ inp.required ? '是' : '否' }}</td>
-                  <td class="mono">{{ fmtDefault(inp.default) }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="muted">未声明输入</div>
+              <div class="ih">启动时要填什么</div>
+              <table v-if="detail.inputs.length" class="tbl">
+                <thead>
+                  <tr>
+                    <th>字段</th>
+                    <th>问题</th>
+                    <th>类型</th>
+                    <th>必填</th>
+                    <th>默认</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="inp in detail.inputs" :key="inp.key">
+                    <td class="mono">{{ inp.key }}</td>
+                    <td>{{ inp.label ?? '—' }}</td>
+                    <td>{{ kindText(inp.kind) }}</td>
+                    <td>{{ inp.required ? '是' : '否' }}</td>
+                    <td class="mono">{{ fmtDefault(inp.default) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="muted">此模板不需要填写内容，选中它直接启动即可。</div>
 
-            <div class="ih">步骤流程（依赖与徽标）</div>
-            <svg
-              class="flow"
-              :viewBox="`0 0 560 ${flow.height}`"
-              role="img"
-              aria-label="步骤依赖流程图"
-            >
-              <defs>
-                <marker
-                  id="flow-arr"
-                  viewBox="0 0 8 8"
-                  refX="7"
-                  refY="4"
-                  markerWidth="7"
-                  markerHeight="7"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M0 0 L8 4 L0 8 z" class="farr" />
-                </marker>
-              </defs>
-              <path
-                v-for="(e, i) in flow.edges"
-                :key="'e' + i"
-                :d="e.d"
-                class="fedge"
-                marker-end="url(#flow-arr)"
-              />
-              <g v-for="b in flow.boxes" :key="'b' + b.i">
-                <rect :x="BOX.x" :y="b.y" :width="BOX.w" :height="BOX.h" rx="10" class="fbox" />
-                <text :x="BOX.x + 14" :y="b.y + 23" class="fk">{{ b.i + 1 }}. {{ b.key }}</text>
-                <text :x="BOX.x + 14" :y="b.y + 42" class="ft">{{ b.title }}</text>
-                <text :x="BOX.x + BOX.w - 14" :y="b.y + 23" text-anchor="end" class="fa">
-                  {{ b.action }}
-                </text>
-                <g v-for="(bd, bi) in b.badges" :key="bi">
-                  <title>{{ bd.tip }}</title>
-                  <rect
-                    :x="BOX.x + BOX.w - 14 - 24 - bi * BADGE_SLOT"
-                    :y="b.y + 31"
-                    width="24"
-                    height="16"
-                    rx="5"
-                    class="fb"
-                    :class="bd.cls"
-                  />
-                  <text
-                    :x="BOX.x + BOX.w - 14 - 12 - bi * BADGE_SLOT"
-                    :y="b.y + 43"
-                    text-anchor="middle"
-                    class="fbt"
-                    :class="bd.cls"
+              <div class="ih">流水线会做什么</div>
+              <ol class="steplist" role="list">
+                <li v-for="(s, i) in detail.steps" :key="s.key" class="step">
+                  <span class="s-idx">{{ i + 1 }}</span>
+                  <div class="s-r1">
+                    <span class="s-title">{{ s.title }}</span>
+                    <span class="s-act">{{ actionText(s.action) }}</span>
+                    <span
+                      v-for="(bd, bi) in stepBadgesOf(s)"
+                      :key="bi"
+                      class="s-bd"
+                      :class="bd.cls"
+                      :title="bd.tip"
+                    >{{ GUIDE_BADGE_TEXT[bd.cls] }}</span>
+                  </div>
+                </li>
+              </ol>
+
+              <div class="ebar">
+                <span class="muted">模板文件：workspace/templates/{{ selected }}.yaml · 保存后下一个新运行立即生效</span>
+                <button class="btn primary" title="打开 YAML 编辑器（高级模式）" @click="toEdit">
+                  <Icon name="pencil" :size="13" /> 编辑 YAML
+                </button>
+              </div>
+            </template>
+          </template>
+
+          <!-- ===== YAML 高级编辑 ===== -->
+          <template v-else>
+            <div class="edit">
+              <div class="ed">
+                <textarea
+                  v-model="yamlText"
+                  class="yaml"
+                  spellcheck="false"
+                  :aria-label="`${selected} 模板 YAML 编辑器`"
+                  @keydown.tab.prevent="onTab"
+                ></textarea>
+              </div>
+              <div class="lint" aria-live="polite" aria-label="校验结果">
+                <div class="lh">校验</div>
+                <div v-if="validating" class="muted">校验中…</div>
+                <div v-else-if="!dirty" class="lk ok"><Icon name="check" :size="13" :stroke-width="2.4" /> 与文件一致</div>
+                <template v-else-if="validation">
+                  <div v-if="validation.ok" class="lk ok">
+                    <Icon name="check" :size="13" :stroke-width="2.4" /> 校验通过
+                    <span v-if="validation.warnings.length" class="muted">（{{ validation.warnings.length }} 警告）</span>
+                  </div>
+                  <div v-else class="lk bad">
+                    <Icon name="x" :size="13" :stroke-width="2.4" /> {{ validation.errors.length }} 项错误
+                  </div>
+                  <ul v-if="validation.errors.length" class="er">
+                    <li v-for="(er, i) in validation.errors" :key="'e' + i">{{ er }}</li>
+                  </ul>
+                  <ul v-if="validation.warnings.length" class="wr">
+                    <li v-for="(w, i) in validation.warnings" :key="'w' + i">{{ w }}</li>
+                  </ul>
+                </template>
+                <div v-else class="muted">编辑后自动校验…</div>
+              </div>
+            </div>
+            <div class="ebar">
+              <span class="muted">tab = 2 空格 · 保存由服务端二次校验（原子写，失败保留原文件）</span>
+              <button
+                class="btn primary"
+                :disabled="!dirty || saving || (validation !== null && !validation.ok)"
+                @click="save"
+              >
+                <Icon name="check" :size="13" :stroke-width="2.2" /> {{ saving ? '保存中…' : '保存' }}
+              </button>
+            </div>
+
+            <!-- 只读信息：inputs 声明表 + steps 流程图 -->
+            <div v-if="liveTpl" class="info">
+              <div class="ih">输入声明</div>
+              <table v-if="liveTpl.inputs.length" class="tbl">
+                <thead>
+                  <tr>
+                    <th>key</th>
+                    <th>label</th>
+                    <th>类型</th>
+                    <th>必填</th>
+                    <th>默认</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="inp in liveTpl.inputs" :key="inp.key">
+                    <td class="mono">{{ inp.key }}</td>
+                    <td>{{ inp.label ?? '—' }}</td>
+                    <td>{{ kindText(inp.kind) }}</td>
+                    <td>{{ inp.required ? '是' : '否' }}</td>
+                    <td class="mono">{{ fmtDefault(inp.default) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="muted">未声明输入</div>
+
+              <div class="ih">步骤流程（依赖与徽标）</div>
+              <svg
+                class="flow"
+                :viewBox="`0 0 560 ${flow.height}`"
+                role="img"
+                aria-label="步骤依赖流程图"
+              >
+                <defs>
+                  <marker
+                    id="flow-arr"
+                    viewBox="0 0 8 8"
+                    refX="7"
+                    refY="4"
+                    markerWidth="7"
+                    markerHeight="7"
+                    orient="auto-start-reverse"
                   >
-                    {{ bd.text }}
+                    <path d="M0 0 L8 4 L0 8 z" class="farr" />
+                  </marker>
+                </defs>
+                <path
+                  v-for="(e, i) in flow.edges"
+                  :key="'e' + i"
+                  :d="e.d"
+                  class="fedge"
+                  marker-end="url(#flow-arr)"
+                />
+                <g v-for="b in flow.boxes" :key="'b' + b.i">
+                  <rect :x="BOX.x" :y="b.y" :width="BOX.w" :height="BOX.h" rx="10" class="fbox" />
+                  <text :x="BOX.x + 14" :y="b.y + 23" class="fk">{{ b.i + 1 }}. {{ b.key }}</text>
+                  <text :x="BOX.x + 14" :y="b.y + 42" class="ft">{{ b.title }}</text>
+                  <text :x="BOX.x + BOX.w - 14" :y="b.y + 23" text-anchor="end" class="fa">
+                    {{ b.action }}
                   </text>
+                  <g v-for="(bd, bi) in b.badges" :key="bi">
+                    <title>{{ bd.tip }}</title>
+                    <rect
+                      :x="BOX.x + BOX.w - 14 - 24 - bi * BADGE_SLOT"
+                      :y="b.y + 31"
+                      width="24"
+                      height="16"
+                      rx="5"
+                      class="fb"
+                      :class="bd.cls"
+                    />
+                    <text
+                      :x="BOX.x + BOX.w - 14 - 12 - bi * BADGE_SLOT"
+                      :y="b.y + 43"
+                      text-anchor="middle"
+                      class="fbt"
+                      :class="bd.cls"
+                    >
+                      {{ bd.text }}
+                    </text>
+                  </g>
                 </g>
-              </g>
-            </svg>
-            <div class="legend">
-              <span class="lg"><i class="dot gate" />闸门 gate</span>
-              <span class="lg"><i class="dot batch" />批量 batch</span>
-              <span class="lg"><i class="dot when" />条件 when</span>
-              <span class="lg"><i class="dot any" />OR 组 when_any</span>
+              </svg>
+              <div class="legend">
+                <span class="lg"><i class="dot gate" />闸门 gate</span>
+                <span class="lg"><i class="dot batch" />批量 batch</span>
+                <span class="lg"><i class="dot when" />条件 when</span>
+                <span class="lg"><i class="dot any" />OR 组 when_any</span>
+              </div>
             </div>
-          </div>
+          </template>
         </template>
       </section>
     </div>
@@ -707,13 +814,29 @@ onMounted(() => {
       </section>
     </div>
 
+    <!-- 字段速查 -->
+    <TemplateHelpModal v-if="helpDlg" @close="helpDlg = false" />
+
     <!-- 新建模板 -->
-    <Modal v-if="newDlg" title="新建模板" :width="420" @close="newDlg = false">
+    <Modal v-if="newDlg" title="新建模板" :width="500" @close="newDlg = false">
       <label class="fld">
         key（文件名，仅字母/数字/下划线/中划线）
         <input v-model="newKey" type="text" placeholder="my-template" @keydown.enter="doCreate" />
       </label>
-      <div class="muted" style="margin-bottom: 8px">将以最小骨架创建 workspace/templates/&lt;key&gt;.yaml</div>
+      <div class="muted" style="margin-bottom: 10px">将以最小骨架创建（从素材导入起步），创建后直接进入编辑器。</div>
+
+      <div class="caps">
+        <div class="caps-h">一个模板可以配置什么？</div>
+        <ul class="caps-list">
+          <li><span class="caps-t">启动表单</span>——运行时先让使用者填写的内容（文字 / 数字 / 开关 / 文件）</li>
+          <li><span class="caps-t">流水线步骤</span>——按顺序执行的动作：写稿、出图、配音、合成……</li>
+          <li><span class="caps-t">人工审阅闸门</span>——关键步骤暂停，等你批准 / 驳回 / 跳过</li>
+          <li><span class="caps-t">批量与条件</span>——数组字段逐项批量执行；满足条件才执行某一步</li>
+          <li><span class="caps-t">默认参数</span>——模型 / 音色 / 尺寸等预设，可在项目里覆盖</li>
+          <li><span class="caps-t">上下游接力</span>——完成后推荐下一个模板（运行页「下一步建议」）</li>
+        </ul>
+        <div class="caps-tip">改完点「字段速查」可查每个字段怎么填。</div>
+      </div>
       <div v-if="newErr" class="err-text">{{ newErr }}</div>
       <template #footer>
         <button class="btn" @click="newDlg = false">取消</button>
@@ -900,6 +1023,11 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.ehead .kk {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 .ehead .acts {
   margin-left: auto;
   display: inline-flex;
@@ -984,6 +1112,99 @@ textarea.yaml {
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
+}
+
+/* ---------- [说明书改造] 说明书视图 ---------- */
+.vdesc {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text-2);
+  margin: 0;
+}
+
+.vmeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+
+.steplist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+}
+
+.s-idx {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a5b4fc;
+  background: rgb(99 102 241 / 14%);
+}
+
+.s-r1 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.s-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.s-act {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.s-bd {
+  font-size: 10.5px;
+  line-height: 1.7;
+  padding: 0 7px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+
+.s-bd.gate {
+  color: #c4b5fd;
+  border-color: rgb(167 139 250 / 45%);
+  background: rgb(139 92 246 / 16%);
+}
+
+.s-bd.batch {
+  color: #86efac;
+  border-color: rgb(74 222 128 / 45%);
+  background: rgb(34 197 94 / 14%);
+}
+
+.s-bd.when,
+.s-bd.any {
+  color: #fcd34d;
+  border-color: rgb(251 191 36 / 45%);
+  background: rgb(245 158 11 / 14%);
 }
 
 /* ---------- 只读信息 ---------- */
@@ -1114,5 +1335,45 @@ textarea.yaml {
 .dot.any {
   background: rgb(245 158 11 / 26%);
   border-color: #fbbf24;
+}
+
+/* ---------- [说明书改造] 新建弹窗能力清单 ---------- */
+.caps {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.caps-h {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.caps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.caps-list li {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.caps-t {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.caps-tip {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
 }
 </style>
