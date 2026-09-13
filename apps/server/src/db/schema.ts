@@ -81,6 +81,7 @@ export const genTasks = sqliteTable(
     projectId: integer('project_id').notNull(),
     runId: integer('run_id'),
     stepId: integer('step_id'),
+    canvasNodeId: integer('canvas_node_id'), // [M16] 创作画布节点归属（run/step 均 null）
     kind: text('kind').notNull(), // image|video|text（text = M9 逐项文本任务）
     provider: text('provider'),
     model: text('model'),
@@ -338,6 +339,57 @@ export const publications = sqliteTable('publications', {
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [index('idx_publications_project').on(t.projectId), index('idx_publications_asset').on(t.assetId)])
 
+// ---------- [M16] 创作画布（写模型；节点状态/结果零存量，全部由 gen_tasks 派生） ----------
+
+/** [M16] 创作画布文档（项目域） */
+export const canvases = sqliteTable(
+  'canvases',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    name: text('name').notNull().default('未命名画布'),
+    viewport: text('viewport').notNull().default('{"x":0,"y":0,"zoom":1}'), // JSON pan/zoom 持久化
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_canvases_project').on(t.projectId)],
+)
+
+/** [M16] 画布节点（最小化：不存状态与结果——由 gen_tasks.canvasNodeId 派生） */
+export const canvasNodes = sqliteTable(
+  'canvas_nodes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    canvasId: integer('canvas_id').notNull(),
+    kind: text('kind').notNull(), // asset|gen
+    assetId: integer('asset_id'), // kind=asset：引用项目资产
+    title: text('title'),
+    spec: text('spec'), // JSON，仅 kind=gen（{genKind,prompt,...,edit?}）
+    x: real('x').notNull().default(0),
+    y: real('y').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_canvas_nodes_canvas').on(t.canvasId)],
+)
+
+/** [M16] 画布引用连线（手画；端口语义 reference|first_frame|last_frame|source） */
+export const canvasEdges = sqliteTable(
+  'canvas_edges',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    canvasId: integer('canvas_id').notNull(),
+    from: integer('from').notNull(), // 源节点 id（同画布）
+    to: integer('to').notNull(), // 目标节点 id（同画布）
+    port: text('port').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_canvas_edges_unique').on(t.canvasId, t.from, t.to, t.port),
+    index('idx_canvas_edges_canvas').on(t.canvasId),
+  ],
+)
+
 export type Project = typeof projects.$inferSelect
 export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
@@ -353,3 +405,6 @@ export type Episode = typeof episodes.$inferSelect
 export type Batch = typeof batches.$inferSelect
 export type UsageRecord = typeof usageRecords.$inferSelect
 export type Publication = typeof publications.$inferSelect
+export type Canvas = typeof canvases.$inferSelect
+export type CanvasNode = typeof canvasNodes.$inferSelect
+export type CanvasEdge = typeof canvasEdges.$inferSelect

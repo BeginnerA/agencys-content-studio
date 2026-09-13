@@ -109,6 +109,62 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // [M16] 画布任务归属列：gen_tasks.canvas_node_id（存量行 NULL）
+  const taskCols = await sqlite.execute("PRAGMA table_info('gen_tasks')")
+  const taskHas = new Set((taskCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!taskHas.has('canvas_node_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE gen_tasks ADD COLUMN canvas_node_id integer')
+      log.info('ensureColumn: gen_tasks.canvas_node_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  // [M16] 创作画布建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS canvases (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        name text DEFAULT '未命名画布' NOT NULL,
+        viewport text DEFAULT '{"x":0,"y":0,"zoom":1}' NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvases_project ON canvases (project_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS canvas_nodes (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        canvas_id integer NOT NULL,
+        kind text NOT NULL,
+        asset_id integer,
+        title text,
+        spec text,
+        x real DEFAULT 0 NOT NULL,
+        y real DEFAULT 0 NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_nodes_canvas ON canvas_nodes (canvas_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS canvas_edges (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        canvas_id integer NOT NULL,
+        "from" integer NOT NULL,
+        "to" integer NOT NULL,
+        port text NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_canvas_edges_unique ON canvas_edges (canvas_id, "from", "to", port)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_edges_canvas ON canvas_edges (canvas_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
   // [M8] 风格预设库建表兜底（migrate 体系外旧库）
   try {
     await sqlite.execute(

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
 import TemplateHelpModal from '../components/TemplateHelpModal.vue'
@@ -13,6 +14,8 @@ import { fmtSize, fmtTime } from '../lib/format'
 function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e)
 }
+
+const router = useRouter()
 
 // ===== 顶层页签：模板 / 提示词 =====
 const tab = ref<'tpl' | 'prompt'>('tpl')
@@ -548,6 +551,9 @@ onMounted(() => {
               </button>
               <button class="btn sm" title="以当前内容创建新模板" :disabled="!yamlText" @click="openCopy">
                 <Icon name="copy" :size="12" /> 另存为副本
+              </button>
+              <button class="btn sm" title="在流水线画布中预览编排设计（依赖边 / 数据引用 / 条件与闸门）" @click="router.push(`/canvas?template=${selected}`)">
+                <Icon name="flow" :size="12" /> 画布
               </button>
               <button class="btn sm danger" title="删除模板文件（不可撤销）" @click="removeTemplate(selected, detail?.name ?? selected)">
                 <Icon name="trash" :size="12" /> 删除

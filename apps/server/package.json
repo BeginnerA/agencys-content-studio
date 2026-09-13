@@ -21,6 +21,8 @@
     "probe:m12": "tsx scripts/probe-m12.ts",
     "probe:m13": "tsx scripts/probe-m13.ts",
     "probe:m14": "tsx scripts/probe-m14.ts",
+    "probe:m15": "tsx scripts/probe-m15.ts",
+    "probe:m16": "tsx scripts/probe-m16.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {

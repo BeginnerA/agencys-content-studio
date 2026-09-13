@@ -12,6 +12,7 @@ export type StudioEvent =
   | { type: 'task.updated'; runId: number | null; taskId: number; status: string; error?: string }
   | { type: 'batch.updated'; runId: number | null; batchId: number; projectId: number
       status: string; finished: number; total: number }
+  | { type: 'canvas.changed'; canvasId: number; projectId: number; nodeId?: number }
 
 type Handler = (e: StudioEvent) => void
 

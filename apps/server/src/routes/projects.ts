@@ -6,6 +6,9 @@ import { db } from '../db'
 import {
   assets,
   batches,
+  canvasEdges,
+  canvasNodes,
+  canvases,
   characters,
   genTasks,
   memories,
@@ -200,6 +203,10 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
   const runIds = (
     await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, id))
   ).map((r) => r.id)
+  // [M16] 创作画布归属画布 id（先清边/节点再清画布）
+  const canvasIds = (
+    await db.select({ id: canvases.id }).from(canvases).where(eq(canvases.projectId, id))
+  ).map((r) => r.id)
   // 无外键约束：事务内按依赖顺序清理（steps → runs → 其余按 project_id → projects 最后）
   const purged = await db.transaction(async (tx) => {
     const cnt = async (rows: Promise<{ id: number }[]>) => (await rows).length
@@ -215,6 +222,13 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
       publications: await cnt(tx.delete(publications).where(eq(publications.projectId, id)).returning({ id: publications.id })),
       memories: await cnt(tx.delete(memories).where(eq(memories.projectId, id)).returning({ id: memories.id })),
       characters: await cnt(tx.delete(characters).where(eq(characters.projectId, id)).returning({ id: characters.id })),
+      canvasEdges: canvasIds.length
+        ? await cnt(tx.delete(canvasEdges).where(inArray(canvasEdges.canvasId, canvasIds)).returning({ id: canvasEdges.id }))
+        : 0,
+      canvasNodes: canvasIds.length
+        ? await cnt(tx.delete(canvasNodes).where(inArray(canvasNodes.canvasId, canvasIds)).returning({ id: canvasNodes.id }))
+        : 0,
+      canvases: await cnt(tx.delete(canvases).where(eq(canvases.projectId, id)).returning({ id: canvases.id })),
       projects: await cnt(tx.delete(projects).where(eq(projects.id, id)).returning({ id: projects.id })),
     }
   })

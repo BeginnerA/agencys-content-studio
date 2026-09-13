@@ -31,6 +31,8 @@ function toggleSide() {
 const navs = [
   { to: '/', icon: 'folder', label: '项目' },
   { to: '/templates', icon: 'doc', label: '模板' },
+  { to: '/canvas', icon: 'flow', label: '画布' },
+  { to: '/creation', icon: 'wand', label: '创作' },
   { to: '/memories', icon: 'sparkles', label: '记忆' },
   { to: '/entities', icon: 'users', label: '素材' },
   { to: '/style-presets', icon: 'palette', label: '风格' },

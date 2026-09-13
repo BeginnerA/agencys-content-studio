@@ -5,11 +5,13 @@ import { logger as honoLogger } from 'hono/logger'
 import { createLogger } from './logger'
 import { WEB_DIST } from './env'
 import { apiRoutes } from './routes/api-configs'
+import { canvasRoutes } from './routes/canvas'
 import { vendorRoutes } from './routes/vendor-credentials'
 import { assetsRoutes } from './routes/assets'
 import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
 import { composeRoutes } from './routes/compose'
+import { creationRoutes } from './routes/creation'
 import { exportsRoutes } from './routes/exports'
 import { memoriesRoutes } from './routes/memories'
 import { novelRoutes } from './routes/novel'
@@ -52,6 +54,8 @@ api.route('/', tasksRoutes)
 api.route('/', novelRoutes)
 api.route('/', apiRoutes)
 api.route('/', vendorRoutes)
+api.route('/', canvasRoutes)
+api.route('/', creationRoutes)
 
 app.route('/api/v1', api)
 

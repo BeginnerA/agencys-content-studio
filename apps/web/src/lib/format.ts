@@ -104,6 +104,10 @@ export const PURPOSE_TEXT: Record<string, string> = {
   graph: '事件图谱',
   plan: '分集规划',
   regex: '切分正则',
+  // [M16] 创作画布
+  creation: '画布产物',
+  creation_video: '画布视频',
+  mask: '蒙版',
 }
 
 export function purposeText(p: string): string {

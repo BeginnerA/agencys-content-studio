@@ -2,7 +2,7 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）；**M12 旧版本清理与收藏 + 图像检测**（软删/回收两段式 + 三重保留 + 宽容降级检测；探针 66 项全绿，实弹全通过）；**M13 素材链补全**（视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库；探针 121 项全绿，实弹七项 7/7 + DOM 22/22）；**M14 平台层收官**（集级参数覆盖 / 剧集地图 / 静态托管；桌面端经决策取消；探针四节全绿，实弹 DOM 14/14）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）；**M12 旧版本清理与收藏 + 图像检测**（软删/回收两段式 + 三重保留 + 宽容降级检测；探针 66 项全绿，实弹全通过）；**M13 素材链补全**（视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库；探针 121 项全绿，实弹七项 7/7 + DOM 22/22）；**M14 平台层收官**（集级参数覆盖 / 剧集地图 / 静态托管；桌面端经决策取消；探针四节全绿，实弹 DOM 14/14）；**M15 流水线画布工作台**（依赖语义单一真源 + 画布读模型纯读 + 画布即工作台〔节点/边/状态/闸门/重跑/重新合成/日志抽屉〕；探针 78 项全绿，实弹 DOM 两轮全通过）；**M16 创作画布**（素材自由摆放 + 引用连线 + 就地生成与编辑〔声明制〕+ 联动三枚 + 低保真模板草案；首次引入画布文档新表〔canvases / canvas_nodes / canvas_edges〕；探针六节 126 项全绿，实弹全通过——含真实出图 ×2、模板草案与编辑通道退化验证）
 
 ## 技术栈
 
@@ -218,6 +218,35 @@ pnpm dev    # 并行起双端：
 - **桌面端〔已取消〕**（2026-09-12 用户决策）：项目定位本地单机 Web 工具，与红线「Electron / Docker / 远程部署 → 永久不做」一致；scaffold 全量删除（git 零残留）；静态托管独立保留
 
 验证：`pnpm --filter @acs/server probe:m14`（四节：params / series / static / regression，零网络零计费）。
+
+## M15 能力速览（流水线画布工作台）
+
+把「编排」与「运行」从列表视图升级为一张可操作的关系图：**模板/运行的步骤为节点 + 依赖与数据引用为边**，实时状态徽标挂在节点上，点开节点抽屉即可就地操作（闸门审阅 / 单步重跑 / 重新合成 / 任务重试）。设计三原则：**依赖语义单一真源**（`stepDeps` 从引擎抽为 `pipeline/dag.ts` 纯函数，画布布局与调度同源调用非复制）、**画布读模型纯读零写**（canvas 路由两枚全 GET；所有操作复用既有端点）、**视图状态独立于数据层**（350ms 防抖全量对账但保 pan/zoom/选中）。
+
+- **依赖语义抽取**（`pipeline/dag.ts`）：`stepDeps`（显式 `after` 多值去重 / 缺省前一步 / `when`·`when_any`·`gate.when` 隐含依赖）+ `stepDepEdges`（sched 边 origin: after / default / when）；engine 两处调用点改纯委托（−45 行，调度行为三重背书：diff 留痕 / probe `dag` 矩阵 18 项 / 回归断言）
+- **运行画布读模型**（`GET /runs/:id/canvas`，`services/canvas.ts` 纯读）：节点 = 步骤行 × 模板 def 合并（status / 执行统计〔任务 x/y·异常〕/ 闸门待审 / 产物引用 / skip 原因 / 错误）；边 = **sched 边**（承载布局与执行顺序）+ **data 边**（def.inputs 中 `steps.x.asset(s)` 整串引用；模板不可得时边为空）；操作可用性真值矩阵（rerun / 重新合成 / 任务重试 / gate / 取消 / 续跑）与 `checkRepairable` 同源对拍；坏快照 / 坏 output JSON / 孤儿行全部宽容兜底
+- **模板画布读模型**（`GET /templates/:key/canvas`）：设计态节点（key/seq/action/title + gate 摘要〔message 不内插 / skipLabel / when〕+ when/after 透传 + batch 摘要 + inputsRefs 设计态引用 + 产物 purpose），零运行字段
+- **画布即工作台**：节点抽屉 = 状态与操作（批准/驳回/跳过/中止走 GateDialog；单步重跑走 RerunModal〔整体执行型步骤提示属预期〕；重新合成 confirm → ffmpeg_merge 重置；任务重试/取消）+ 输入引用（启动输入 / 上游产物 / 资产库）+ 产物缩略图（AssetPreviewer 复用）+ 日志区（`[stepKey]` 过滤，尾部 200 行贴底自动滚动）；模板态 = 设计态说明（闸门/依赖/条件/批量/产物）
+- **实时对账**：socket 单通道 `/studio` 手动 join/leave `run:{id}` 房间（runId 可切换，不用 useStudio 单例）；`run.step / run.gate / run.completed / run.failed / task.updated` → 350ms 防抖重拉（in-flight 合并）；日志独立 1200ms 节流
+- **Web**：`CanvasView.vue`（页壳：query 单一真源 / 模式切换〔运行/模板〕/ 顶栏操作〔取消运行·断点续跑·启动运行〕/ 空态引导〔最近运行 + 模板 chips〕）、`CanvasBoard.vue`（分层布局：sched 边最长路径松弛防环 / 层内按 seq 垂直堆叠居中；手绘 pan/zoom〔zoom ∈ [0.3, 2.5]〕+ 首次数据到达自动 fit；SVG 贝塞尔边：sched 灰 / data 绿 / running 流动动画；状态徽标：running/gate/failed/ok/skip/cancel/idle）、`CanvasDrawer.vue`（节点抽屉两态）
+- **导航**：侧栏「画布」（`/canvas`）+ 运行页「画布视图」（`?run=`）+ 模板页「画布」（`?template=`）；画布内「运行详情 ↔ 画布」双向跳转
+
+验证：`pnpm --filter @acs/server probe:m15`（四节：dag / canvas-run / canvas-template / regression，78 项断言，零网络零计费）。
+
+## M16 能力速览（创作画布）
+
+把「自由创作」引入平台：项目级**画布文档**——素材节点自由摆放、引用连线（端口语义 reference / first_frame / last_frame / source）、就地生成（文生图 / 图生图 / 文生视频 / 图生视频）与就地编辑（局部重绘 / 消除 / 扩图），产物自动入库；与 M15 流水线画布并存互不替代。设计三原则：**URL 单一真源**（项目 / 画布切换全走 query，数据层随路由同步）、**状态零存量**（节点状态与结果全部由 `gen_tasks` 派生，不落冗余列）、**能力声明制**（编辑能力由适配器声明，未声明置灰 + 错误透传不炸）。
+
+- **数据模型**（首次引入新表）：`canvases` / `canvas_nodes` / `canvas_edges` 三表 + `gen_tasks.canvasNodeId` 列；沿用 `ensureTable` / `ensureColumn` 运行时幂等兜底（旧库升级不炸）；节点仅存 `{ kind, assetId | spec, x, y }`，状态零存量
+- **文档层**（`services/creation.ts` + 14 枚端点）：`buildCanvasDoc` 全量读模型（节点状态 / 最新任务 / readiness 输入预检 / editCapability 快照 / 任务历史）；端口矩阵校验 + 建边环检测（必拒绝成环 400）；删节点级联边 / 删画布级联 / 删项目级联清画布；复制画布（节点 id 重映射 + 边重建）
+- **执行通道**（`services/creation-gen.ts` 直连适配层，不复用 pipeline actions）：任务 `runId/stepId` 恒 null + `canvasNodeId` 归属；边 → 上游最新成功产物 → data URI 输入计划（`resolveNodeInputs`）；信号量 ≤2；失败自动重试 1 次（镜像 ai_image）；编辑走 `adapter.edit`；视频轮询 + 取消复用 `POST /tasks/:id/cancel`；`recordUsage` 归属项目；崩溃恢复 `recoverCanvasTasks` 标 failed（不自动重排队，重跑 = 一次点击）
+- **编辑能力**（声明制）：`ImageAdapter` 可选 `editing` 声明 + `edit()`（零破坏，既有 7 个适配器不声明即无）；首家 `aliyun-wan-image`（inpaint / outpaint 对表万相编辑系，erase 归一 inpaint 系）；蒙版 = `EditBrushModal` 涂抹 → 导出 PNG（最长边 1024）→ 上传 purpose `mask` → 回填 `spec.edit.maskAssetId`；未声明 → inspector 警告「执行将失败」+ 错误原样透传为任务 `errorMsg`
+- **实时对账**：socket `canvas:<id>` 房间 + `canvas.changed` 事件（入队 / processing / succeeded / failed 各状态转移 emit）；350ms 防抖全量重拉（保 pan/zoom/选中）
+- **Web**：`CreationView.vue`（顶栏：项目 / 画布选择器 + 新建 / 复制 / 删除 + 适应视图 + 送去运行 + 模板草案）、`CreationBoard.vue`（世界层 translate+scale / SVG 贝塞尔边 / 端口连线 / 节点拖拽本地即时 + 抬手落库 / 双击建节点 / drop 上传 / zoom ∈ [0.2, 2.5]）、`CreationInspector.vue`（spec 表单 / readiness / 任务历史 / 结果预览 / 联动入口）、`EditBrushModal.vue`（涂抹导出）、`CanvasTargetModal.vue`（目标画布选择 / 新建）；视口防抖落库（刷新保持）
+- **联动三枚**：run 产物 →「送入创作画布」（M15 抽屉 +1 按钮 → 素材节点网格落点）；画布产物 →「设为实体参考图」（`ref-assets` 并集挂接）；画布素材 →「送去运行」（`RunFormModal` prefill `setting_docs`：选中节点优先 / 全画布过滤 image·text）
+- **模板化沉淀**：复制画布；`buildTemplateDraft` 低保真草案（gen 节点拓扑序 → step 骨架 + 注释保留 prompt / 参数 + TODO 标注；validation 与 `/templates/validate` 同源直调）→ 前端 YAML 展示 + 「复制 YAML」
+
+验证：`pnpm --filter @acs/server probe:m16`（六节：canvas-doc / node-build / edit-cap / draft / linkage / regression，126 项断言，零网络零计费）。
 
 ## 内置模板
 
@@ -454,6 +483,32 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 7 | DOM 验收（无头 Chrome CDP） | ✅ | **14/14**：剧集地图卡（3 集）/ 三集行（001 已完成 Run#101 / 002 失败 Run#102 / 003 未起作裸行）/ 起作接力直达表单（`initialTemplateKey` 命中「短剧·单集」，无选卡）/ 覆盖区 summary + 5 控件 + 集号预填 3 + 滚动可见（open h=254 inView）；截图 2 张 `apps/web/tmp-m14-dom-1..2-*.png` |
 | 8 | 实弹暴露缺陷修复 | ✅ | `SeriesBoard` 头部 `.bh/.bt` 系 ProjectDetailView scoped 样式不穿透子组件 → 标题粘连 + 按钮组换行（DOM 截图目检发现 → 组件内补定义 → 复跑复验）；覆盖区滚动可见性经 W6d 实测（弹窗 body 滚动容器语义） |
 | 9 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / loader / 模板 / 提示词零 diff；schema.ts 仅 +series/episodes 两表（设计 §4 白名单内）；package.json 仅 +`probe:m14`；改动面 = 12 改 + 5 新件（probe-m14 / routes/series / services/run-params / services/series / SeriesBoard.vue） |
+
+## M15 验收快照（2026-09-13，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：四节全绿 | ✅ | 双端 typecheck 0 错；`probe:m15` **78 项断言全过**（dag 18 / canvas-run 43 / canvas-template 14 / regression 3）；回归 probe:m2a·m4·m14 全绿 |
+| 2 | 引擎等价重构（纯委托） | ✅ | `engine.ts` −45 行（`depsFor` / `whenExprs` → `pipeline/dag.ts` 同源纯函数）；probe `dag` 矩阵 18 项（显式 after 多值·去重·缺省前一步·when·when_any·gate.when 隐含·首步·坏表达式吞错）+ 引擎调度行为回归断言 |
+| 3 | 运行画布实弹（DOM · Run 102） | ✅ | 21 节点 / 74 边与模板步骤数一致；状态徽标 / 断点续跑可用性正确；RunDetail「画布视图」↔ 运行详情双入口往返；平移 / 缩放 / 适应 / 点空白清除选中 / × 关抽屉保持选中；日志按 `[make_storyboard]` 过滤无串行；首轮 15 项断言 14 通过 + 1 项数据态不适用（详见 #6/#7）；截图 6 张 `tmp-canvas-S1..S6-*` |
+| 4 | 画布即工作台实弹（DOM · 零真实提交） | ✅ | Run 96 failed 步 `gen_motion`：单步重跑按钮 enabled（title=「重跑该步骤（可复用成功子任务）」）→ RerunModal 打开（整体执行型步骤双单选 disabled + 说明，属预期）→ 取消无提交；Run 80 人工闸门：节点卡「闸门待审」+ 抽屉 message 文案 + 批准继续/驳回重跑/中止/直接入库四操作；全程零真实执行（零计费） |
+| 5 | 模板画布实弹（DOM） | ✅ | 21 节点全 idle 无运行徽标；设计态抽屉 `script_review`（闸门 required / 依赖 write_script / 条件 `input.with_deep_review == true`）；「启动运行」→ RunFormModal（项目默认 m8-实弹验收 + `initialTemplateKey` 直达表单）；空态 8 个最近运行 + 11 个模板 chips；Templates 页「画布」入口 → `/canvas?template=mengbao-episode`；截图 7 张 `tmp-canvas2-S1..S7-*` |
+| 6 | 实弹暴露缺陷修复（fit 时机） | ✅ | 首轮：挂载时数据未到按空布局 fit（100% 偏出视口，需手点「适应」）→ 修复 = `fitted` 标志 + 首次非空数据到达 `fitOnce`（watch nodes 数）；复验自动 30% 适应（transform `matrix(0.3,…,-67,153.6)`）；`resetView` 同步清数据防跨目标残留视口 |
+| 7 | 实弹备注（非缺陷） | 说明 | 812px 小窗 fit 后世界层两侧溢 67px——`zoom ∈ [0.3, 2.5]` 钳制下小窗口必然（1600px 窗口完全适配），属 spec 既定行为；Run 102 无 `.failed` 节点系服务重启中断态（running 残留无返修路径，走断点续跑）→ 改 Run 96 复验真实 failed 步 |
+| 8 | 越界核查（红线零 diff） | ✅ | `git status`：schema / db / refs / loader / adapters / workspace 模板提示词零 diff；canvas 路由两枚全 GET（零写端点）；`package.json` 仅 +`probe:m15`（dependencies 零新增）；改动面 = 10 改（178+/41−）+ 7 新件（`dag.ts` / `services/canvas.ts` / `routes/canvas.ts` / `probe-m15.ts` + `CanvasView` / `CanvasBoard` / `CanvasDrawer`） |
+
+## M16 验收快照（2026-09-13，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：六节全绿 | ✅ | 双端 typecheck 0 错；`probe:m16` **126 项断言全过**（canvas-doc 56 / node-build 34 / edit-cap 11 / draft 13 / linkage 10 / regression 2）；回归 `probe:m15`（内含 m2a / m4 / m14）全绿；存量库启动幂等升级无报错（实弹全程运行于既有 data 目录） |
+| 2 | 画布实弹（浏览器 DOM） | ✅ | 建画布 / 切换（画布 1 / 2 / 4）；素材拖入摆放；双击空白建生成节点；连线（素材 → 编辑节点源图入边「入 1」）；节点拖拽落库；Inspector 全表单（spec 保存 / readiness「已就绪，可执行」/ 任务历史 / 结果预览）；蒙版涂抹 → 上传 purpose `mask` 回填（蒙版资产 #1320）；pan / zoom / fit 视口防抖落库——刷新后 transform 逐值保持（`translate(52.9119px, 6.92147px) scale(0.996406)` ≡ DB viewport） |
+| 3 | 真实出图（零计费） | ✅ | 节点「图片 #7」pollinations flux.1-schnell：任务 #450 succeeded 16.2s → 徽标「成功」+ 缩略图（结果资产 #1323）；socket 修复后复跑 #451 17.5s |
+| 4 | 联动三枚 | ✅ | ① run 101 抽屉「送入创作画布」→ 新建画布「M15联动验证」：节点 5/6 网格落库（60,60 / 340,60）② 画布图 →「设为实体参考图」→「灯婆婆」refs=[1297] 验证 → PUT `{ref_asset_ids:[]}` 回滚 refs=[] 无损 ③「送去运行」prefill 两分支：全画布过滤 image/text（「选 1 项」=#1297）/ 选中视频节点优先（=#1296） |
+| 5 | 编辑通道（声明制退化验证） | ✅ | 无 key 环境：inspector 警告「当前图像端点未声明『局部重绘』能力，执行将失败」→ 执行 → 任务 #452 尝试 2 后 failed、错误原样透传「供应商『pollinations_image』未实现图像编辑能力」（零网络零计费）；蒙版 #1320 + 源图入边就位；截图 `tmp-m16-edit-cap-hint.png` / `tmp-m16-edit-fail.png` |
+| 6 | 模板草案（低保真导出） | ✅ | 弹窗渲染 YAML（`canvas-draft-4`）+ 校验自检「步骤 n7 缺 inputs」如实展示（草案待人工完善属设计定位）+「复制 YAML」→ 剪贴板回读全文 + toast；截图 `tmp-m16-draft-modal.png` |
+| 7 | socket 实时对账 + 缺陷修复复验 | ✅ | 消除实弹暴露的 4 处缺陷（TDZ ×2 / uploadFiles 契约 assets→items / **漏 join canvas 房间**：URL 同步 watch 于 setup 期先设 canvasId，房间 watch 后注册且无 immediate → 首次进入 / 刷新错失 null→id 变化；加 `{immediate:true}`）——修复后二次执行 #451：徽标 pending→succeeded 全自动流转（零手动刷新） |
+| 8 | 越界核查（红线复核） | ✅ | `git status`：refs / loader / workspace 模板提示词 / 既有适配器 `generate` 路径零 diff（aliyun-wan 仅 +编辑声明与 `edit()`）；schema.ts 仅 +3 表 +1 列（设计 §2.1 白名单）+ db 幂等兜底 + projects.ts +14（删项目级联清画布）；M15 `CanvasBoard.vue` 零 diff（`CanvasDrawer` 仅 +1 联动按钮；engine.ts 差异系 M15 纯委托留痕）；`package.json` 仅 +`probe:m16`（dependencies 零新增） |
 
 ## M7 验收快照（2026-09-12，实弹）
 

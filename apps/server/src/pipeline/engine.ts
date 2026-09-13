@@ -15,8 +15,9 @@ import { emitStudioEvent } from '../services/events'
 import { writeTextAsset } from '../services/storage'
 import { getAction } from './actions'
 import { createStepContext } from './context'
+import { stepDeps } from './dag'
 import { templateForRun } from './loader'
-import { evaluateWhen, interpolate, loadStepOutputs, parseWhenExpr, resolveInputs, whenRefs } from './refs'
+import { evaluateWhen, interpolate, loadStepOutputs, resolveInputs } from './refs'
 import type { Template, TemplateStepDef, StepResult } from './types'
 import { RunCancelledError, StepError } from './types'
 
@@ -258,7 +259,7 @@ class PipelineEngine {
           for (const def of template.steps) {
             const row = rowsByKey.get(def.key)
             if (!row || row.status !== 'pending') continue
-            const depKeys = this.depsFor(def, template, orderByKey)
+            const depKeys = stepDeps(def, template, orderByKey)
             if (depKeys.length === 0) continue
             const depRows = depKeys.map((k) => rowsByKey.get(k))
             if (depRows.some((r) => !r || ['pending', 'running', 'waiting_input'].includes(r.status))) continue
@@ -284,7 +285,7 @@ class PipelineEngine {
         for (const def of template.steps) {
           const row = rowsByKey.get(def.key)
           if (!row || row.status !== 'pending') continue
-          const depRows = this.depsFor(def, template, orderByKey).map((k) => rowsByKey.get(k))
+          const depRows = stepDeps(def, template, orderByKey).map((k) => rowsByKey.get(k))
           if (depRows.some((r) => !r || !['succeeded', 'skipped'].includes(r.status))) continue
           ready.push({ def, row })
         }
@@ -372,44 +373,6 @@ class PipelineEngine {
         log.warn(`run ${runId} settle 通知失败`, { error: (err as Error).message }),
       )
     }
-  }
-
-  /** 步骤实际依赖：显式 after（缺省 = 前一步骤）+ when 表达式中 steps.x.count 的隐式依赖 */
-  private depsFor(def: TemplateStepDef, template: Template, orderByKey: Map<string, number>): string[] {
-    const depKeys: string[] = []
-    const push = (k: string): void => {
-      if (k && k !== def.key && !depKeys.includes(k)) depKeys.push(k)
-    }
-    if (def.after !== undefined) {
-      for (const k of def.after) push(k)
-    } else {
-      const idx = orderByKey.get(def.key) ?? 0
-      if (idx > 0) {
-        const prev = template.steps[idx - 1]
-        if (prev) push(prev.key)
-      }
-    }
-    for (const raw of this.whenExprs(def)) {
-      try {
-        const ref = whenRefs(parseWhenExpr(raw))
-        if (ref.stepKey) push(ref.stepKey)
-      } catch {
-        // loader 已静态校验；快照损坏由执行期求值兜底报错
-      }
-    }
-    return depKeys
-  }
-
-  /** 平铺步骤全部条件表达式（when/when_any/gate.when） */
-  private whenExprs(def: TemplateStepDef): string[] {
-    const out: string[] = []
-    const add = (v: string | string[] | undefined): void => {
-      if (v) out.push(...(Array.isArray(v) ? v : [v]))
-    }
-    add(def.when)
-    add(def.when_any)
-    add(def.gate?.when)
-    return out
   }
 
   /** 步骤置 skipped（落库 + 事件；output 记原因痕迹） */

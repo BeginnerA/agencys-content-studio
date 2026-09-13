@@ -9,6 +9,7 @@ import { env } from './env'
 import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches } from './services/batch'
+import { recoverCanvasTasks } from './services/creation-gen'
 import { onStudioEvent } from './services/events'
 
 const log = createLogger('main')
@@ -40,20 +41,21 @@ async function main(): Promise<void> {
   const studio = io.of('/studio')
   studio.on('connection', (socket) => {
     socket.on('join', (room: string) => {
-      if (typeof room === 'string' && /^(run|project):\d+$/.test(room)) socket.join(room)
+      if (typeof room === 'string' && /^(run|project|canvas):\d+$/.test(room)) socket.join(room)
     })
     socket.on('leave', (room: string) => {
-      if (typeof room === 'string' && /^(run|project):\d+$/.test(room)) socket.leave(room)
+      if (typeof room === 'string' && /^(run|project|canvas):\d+$/.test(room)) socket.leave(room)
     })
     socket.on('disconnect', () => log.debug('socket disconnected', { id: socket.id }))
   })
 
-  // 进程内事件 → /studio：投递 run:{id}（如有）+ project:{id} 两个 room
-  // （batch.updated 等无 runId 事件经 projectId 投递；两者俱无 → 丢弃）
+  // 进程内事件 → /studio：投递 run:{id}（如有）+ canvas:{id}（[M16]）+ project:{id} room
+  // （batch.updated / canvas.changed 等无 runId 事件经 projectId 投递；两者俱无 → 丢弃）
   onStudioEvent((e) => {
-    const runId = e.runId
+    const runId = 'runId' in e ? e.runId : null
     const rooms: string[] = []
     if (runId !== null && runId !== undefined) rooms.push(`run:${runId}`)
+    if (e.type === 'canvas.changed') rooms.push(`canvas:${e.canvasId}`)
     const pid = 'projectId' in e && e.projectId ? e.projectId : 0
     if (!rooms.length && !pid) return
     void (async () => {
@@ -76,6 +78,9 @@ async function main(): Promise<void> {
   }
   // [M4] 批内 queued run 统一经批调度（recover 已过滤 batchId；此处按槽位约束推进）
   await reconcileBatches()
+
+  // [M16] 画布任务崩溃恢复：pending/processing 的 canvas 任务 → failed('服务重启中断')
+  await recoverCanvasTasks()
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`received ${signal}, shutting down`)

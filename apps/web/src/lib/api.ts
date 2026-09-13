@@ -5,8 +5,13 @@ import type {
   Asset,
   Batch,
   BatchDetail,
+  CanvasDoc,
+  CanvasDocNode,
+  CanvasListItem,
+  CanvasViewport,
   CleanupResult,
   ComposeConfig,
+  CreationNodeSpec,
   EntityItem,
   EntityKind,
   EntityPolishResult,
@@ -26,6 +31,7 @@ import type {
   RerunResult,
   Run,
   RunAssetLite,
+  RunCanvas,
   RunDetail,
   SeriesInfo,
   ShotBoardData,
@@ -34,6 +40,7 @@ import type {
   ShotPick,
   StyleExtractResult,
   StylePresetItem,
+  TemplateCanvas,
   TemplateDetail,
   TemplateMeta,
   TemplateValidation,
@@ -311,8 +318,8 @@ export async function uploadFiles(
     xhr.onerror = () => reject(new ApiError(0, 'network', '上传失败（网络错误）'))
     xhr.send(form)
   })
-  const parsed = JSON.parse(data) as { assets?: Asset[] }
-  return parsed.assets ?? []
+  const parsed = JSON.parse(data) as { items?: Asset[] }
+  return parsed.items ?? []
 }
 
 // ===== [M4] 批次 / 统计 / 导出 / 发布 / 设置 =====
@@ -509,3 +516,57 @@ export const seriesApi = {
   /** 删集（保留 run 与资产，仅删集行） */
   removeEpisode: (episodeId: number) => api.del<{ ok: boolean }>(`/api/v1/episodes/${episodeId}`),
 }
+
+// ===== [M15] 流水线画布（纯读读模型；操作全部复用既有端点） =====
+
+export const canvasApi = {
+  /** 运行画布：节点（状态/闸门/任务计数/产物/操作可用性）+ 边（调度依赖 + 数据引用） */
+  run: (id: number) => api.get<RunCanvas>(`/api/v1/runs/${id}/canvas`),
+  /** 模板画布：设计态编排预览（gate/when 摘要 + 两类边；无运行字段） */
+  template: (key: string) => api.get<TemplateCanvas>(`/api/v1/templates/${encodeURIComponent(key)}/canvas`),
+}
+
+// ===== [M16] 创作画布（写模型：自由摆放 / 引用连线 / 就地生成与编辑 / 联动三枚） =====
+
+type AddNodeBody =
+  | { kind: 'asset'; assetId: number; x: number; y: number; title?: string }
+  | { kind: 'gen'; spec: CreationNodeSpec; x: number; y: number; title?: string }
+
+export const creationApi = {
+  /** 项目画布列表（含节点数/更新时间） */
+  list: (projectId: number) => api.get<Items<CanvasListItem>>(`/api/v1/projects/${projectId}/canvases`),
+  /** 新建画布（空名 → 默认「未命名画布」） */
+  create: (projectId: number, name?: string) =>
+    api.post<{ canvas: { id: number; name: string; viewport: CanvasViewport } }>(`/api/v1/projects/${projectId}/canvases`, { name }),
+  /** 画布全量读模型（节点状态/readiness/editCapability 派生） */
+  doc: (id: number) => api.get<CanvasDoc>(`/api/v1/canvases/${id}`),
+  /** 改名 / 存视口 */
+  update: (id: number, body: { name?: string; viewport?: CanvasViewport }) =>
+    api.patch<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}`, body),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/canvases/${id}`),
+  /** 建节点（asset：项目域资产校验；gen：spec 合法校验） */
+  addNode: (canvasId: number, body: AddNodeBody) =>
+    api.post<{ node: { id: number } }>(`/api/v1/canvases/${canvasId}/nodes`, body),
+  /** 更新节点（拖拽落点 / 标题 / spec） */
+  updateNode: (id: number, patch: { x?: number; y?: number; title?: string | null; spec?: CreationNodeSpec }) =>
+    api.patch<{ node: { id: number } }>(`/api/v1/nodes/${id}`, patch),
+  removeNode: (id: number) => api.del<{ ok: boolean }>(`/api/v1/nodes/${id}`),
+  /** 建边（端口矩阵 + 环检测；非法 → 400 附原因） */
+  addEdge: (canvasId: number, body: { from: number; to: number; port: string }) =>
+    api.post<{ edge: { id: number } }>(`/api/v1/canvases/${canvasId}/edges`, body),
+  removeEdge: (id: number) => api.del<{ ok: boolean }>(`/api/v1/edges/${id}`),
+  /** 执行 gen 节点（readiness 不过 → 400 附 problems） */
+  run: (nodeId: number) => api.post<{ ok: boolean; taskId: number }>(`/api/v1/nodes/${nodeId}/run`),
+  /** 复制画布（节点 id 映射重建边） */
+  duplicate: (id: number, name?: string) =>
+    api.post<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}/duplicate`, { name }),
+  /** 模板草案（低保真导出 + 既有校验自检） */
+  templateDraft: (id: number, key?: string) =>
+    api.post<{ yaml: string; validation: TemplateValidation }>(`/api/v1/canvases/${id}/template-draft`, { key }),
+  /** 联动：画布产物并集挂接实体参考图 */
+  attachRefAssets: (entityId: number, assetIds: number[]) =>
+    api.post<{ ok: boolean; added: number }>(`/api/v1/entities/${entityId}/ref-assets`, { asset_ids: assetIds }),
+}
+
+/** [M16] 蒙版资产视图（EditBrushModal 上传回填） */
+export type { CanvasDocNode }

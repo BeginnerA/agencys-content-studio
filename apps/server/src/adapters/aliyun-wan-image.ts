@@ -20,10 +20,20 @@
  *
  * size 为服务端校验：wan2.6/wan2.5 总像素须在 [589824, 2073600]；wan2.2 宽高须在 [512, 1440]
  * （过小尺寸会在任务调度时 FAILED，错误经轮询返回）。
+ *
+ * [M16] 编辑通道（edit，同实例）：
+ * - POST /api/v1/services/aigc/image2image/image-synthesis（X-DashScope-Async: enable）
+ *   请求体 { model（默认 wanx2.1-imageedit）, input: { function, base_image_url[, mask_image_url][, prompt] }, parameters }
+ *   function：description_edit_with_mask = inpaint/erase；expand（parameters.angle/x_scale/y_scale）= outpaint
+ * - 轮询复用 /api/v1/tasks/{task_id}，成功取 output.results[].url；base/mask 支持 data URI（Base64）
  */
-import type { GeneratedImage, ImageAdapter, ImageGenRequest } from './types'
+import type { GeneratedImage, ImageAdapter, ImageEditRequest, ImageGenRequest } from './types'
 
 const DEFAULT_MODEL = 'wan2.6-t2i'
+/** [M16] 编辑通道默认模型（wanx2.1-imageedit 系：function 分派重绘/扩图） */
+const DEFAULT_EDIT_MODEL = 'wanx2.1-imageedit'
+/** [M16] 消除模式无用户指令时的默认提示词（description_edit_with_mask 要求 prompt 非空） */
+const DEFAULT_ERASE_PROMPT = '去除涂抹区域的物体，并用周围背景自然填补'
 const POLL_INTERVAL_MS = 3_000
 const POLL_TIMEOUT_MS = 180_000
 
@@ -35,6 +45,8 @@ export class AliyunWanImageAdapter implements ImageAdapter {
   readonly provider = 'aliyun_wan_image'
   /** 参考图注入能力：仅 wan2.7 同步分支（异步分支忽略 refs，不注入不报错） */
   readonly referenceImages = 'base64'
+  /** [M16] 编辑能力：wanx2.1-imageedit 系（inpaint/erase = description_edit_with_mask；outpaint = expand） */
+  readonly editing = { inpaint: true, outpaint: true }
 
   async generate(req: ImageGenRequest): Promise<GeneratedImage> {
     const model = String(req.model || '').trim() || DEFAULT_MODEL
@@ -101,6 +113,81 @@ export class AliyunWanImageAdapter implements ImageAdapter {
       }
       if (Date.now() > deadline) {
         throw new Error(`万相文生图轮询超时（>${POLL_TIMEOUT_MS / 60_000} 分钟，task_id=${taskId}）`)
+      }
+      await sleep(POLL_INTERVAL_MS)
+    }
+  }
+
+  /**
+   * [M16] 图像编辑（同步契约外壳，内部提交 + 轮询）：
+   * - inpaint/erase → function 'description_edit_with_mask'（mask 必填；erase 无指令走默认提示词）；
+   * - outpaint → function 'expand'（parameters.angle / x_scale / y_scale，缺省用官方默认）；
+   * - base/mask 均为 data URI；输出跟随输入尺寸，忽略 size。
+   */
+  async edit(req: ImageEditRequest): Promise<GeneratedImage> {
+    const baseImage = String(req.baseImage || '').trim()
+    if (!baseImage) throw new Error('万相图像编辑 baseImage 为空')
+    const model = String(req.model || '').trim() || DEFAULT_EDIT_MODEL
+    const isOutpaint = req.mode === 'outpaint'
+    const input: Record<string, unknown> = {
+      function: isOutpaint ? 'expand' : 'description_edit_with_mask',
+      base_image_url: baseImage,
+    }
+    const parameters: Record<string, unknown> = { n: 1 }
+    if (isOutpaint) {
+      const expand = req.expand ?? {}
+      if (typeof expand.angle === 'number') parameters.angle = expand.angle
+      if (typeof expand.xScale === 'number') parameters.x_scale = expand.xScale
+      if (typeof expand.yScale === 'number') parameters.y_scale = expand.yScale
+    } else {
+      const mask = String(req.mask || '').trim()
+      if (!mask) throw new Error('万相图像编辑缺少蒙版（inpaint/erase 需 mask）')
+      input.mask_image_url = mask
+      const prompt = String(req.prompt || '').trim() || (req.mode === 'erase' ? DEFAULT_ERASE_PROMPT : '')
+      if (!prompt) throw new Error('万相局部重绘缺少 prompt（要画什么）')
+      input.prompt = prompt
+    }
+
+    const submit = await postJson(
+      joinApiUrl(req.baseUrl, '/api/v1', '/services/aigc/image2image/image-synthesis'),
+      req.apiKey,
+      { model, input, parameters },
+    )
+    const direct = firstResultUrl(submit?.output?.results)
+    if (direct) return { kind: 'url', url: direct }
+    const taskId = submit?.output?.task_id
+    if (!taskId) throw new Error(errorMessage(submit, '万相图像编辑响应中缺少 output.task_id'))
+
+    const deadline = Date.now() + POLL_TIMEOUT_MS
+    for (;;) {
+      const task = await getJson(
+        joinApiUrl(req.baseUrl, '/api/v1', `/tasks/${encodeURIComponent(String(taskId))}`),
+        req.apiKey,
+      )
+      const output = task?.output && typeof task.output === 'object' ? task.output : {}
+      switch (output.task_status) {
+        case 'PENDING':
+        case 'RUNNING':
+          break
+        case 'SUCCEEDED': {
+          const url = firstResultUrl(output.results)
+          if (url) return { kind: 'url', url }
+          throw new Error(errorMessage(task, '万相图像编辑任务成功但响应中缺少图片 URL'))
+        }
+        case 'FAILED':
+          throw new Error(errorMessage(task, '万相图像编辑失败'))
+        case 'CANCELED':
+          throw new Error(errorMessage(task, '万相图像编辑任务已取消'))
+        case 'UNKNOWN':
+          throw new Error(errorMessage(task, '万相图像编辑任务不存在或已超过 24 小时查询有效期'))
+        default:
+          // 未知状态且带错误字段 → 视为失败；否则继续等待
+          if (task?.code || task?.message || output.code || output.message) {
+            throw new Error(errorMessage(task, '万相图像编辑任务查询失败'))
+          }
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`万相图像编辑轮询超时（>${POLL_TIMEOUT_MS / 60_000} 分钟，task_id=${taskId}）`)
       }
       await sleep(POLL_INTERVAL_MS)
     }

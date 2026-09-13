@@ -18,6 +18,23 @@ export type GeneratedImage =
   | { kind: 'url'; url: string; width?: number; height?: number }
   | { kind: 'base64'; data: string; mime: string; width?: number; height?: number }
 
+/**
+ * [M16] 图像编辑请求（局部重绘 / 消除 / 扩图）：baseImage/mask 均为 data URI；
+ * 仅声明 editing 能力的适配器需实现 edit（能力的唯一事实源）。
+ */
+export interface ImageEditRequest {
+  mode: 'inpaint' | 'erase' | 'outpaint'
+  baseImage: string
+  mask?: string
+  prompt?: string
+  expand?: { angle?: number; xScale?: number; yScale?: number }
+  size?: string
+  model?: string
+  baseUrl: string
+  apiKey: string
+  extra?: Record<string, unknown>
+}
+
 export interface ImageAdapter {
   /** provider key（与 api_providers.key 对应） */
   provider: string
@@ -26,7 +43,14 @@ export interface ImageAdapter {
    * 缺省（未声明）视为 'none'；声明必须与实现一致（能力的唯一事实源）。
    */
   readonly referenceImages?: 'none' | 'base64'
+  /**
+   * [M16] 编辑能力声明：inpaint=true 支持局部重绘/消除（mask），outpaint=true 支持扩图；
+   * 缺省（未声明）视为均不支持；声明必须与 edit 实现一致。
+   */
+  readonly editing?: { inpaint?: boolean; outpaint?: boolean }
   generate(req: ImageGenRequest): Promise<GeneratedImage>
+  /** [M16] 可选：图像编辑（仅声明 editing 能力的适配器实现） */
+  edit?(req: ImageEditRequest): Promise<GeneratedImage>
 }
 
 export interface VideoGenRequest {

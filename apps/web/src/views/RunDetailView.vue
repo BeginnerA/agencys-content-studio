@@ -628,6 +628,9 @@ function onRerunDone(result: RerunResult) {
       <span v-if="snapshot" class="badge skip" :title="snapshotTip(snapshot)">快照 v{{ snapshot.rv }}</span>
       <span v-if="run?.summary?.durationMs" class="sub muted">{{ fmtMs(run.summary.durationMs) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
+        <button class="btn" title="在流水线画布中查看（节点状态 / 闸门 / 任务 / 产物，可就地操作）" @click="router.push(`/canvas?run=${runId}`)">
+          <Icon name="flow" :size="14" /> 画布视图
+        </button>
         <button v-if="canCancel" class="btn danger" :disabled="busy" @click="cancelRun">取消运行</button>
         <button v-if="canResume" class="btn primary" :disabled="busy" @click="resumeRun">
           <Icon name="refresh" :size="14" /> 断点续跑
