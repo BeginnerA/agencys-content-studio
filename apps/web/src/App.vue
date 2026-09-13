@@ -28,11 +28,12 @@ function toggleSide() {
 }
 
 // 主导航（顺序即展示顺序；「项目」含全局待审阅角标）
+// 入口收敛（2026-09-13）：「画布」= 创作画布（/creation）；流水线画布（/canvas）为上下文视图，
+// 从运行页「画布视图」/ 模板页「画布」进入——导航不再单列
 const navs = [
   { to: '/', icon: 'folder', label: '项目' },
   { to: '/templates', icon: 'doc', label: '模板' },
-  { to: '/canvas', icon: 'flow', label: '画布' },
-  { to: '/creation', icon: 'wand', label: '创作' },
+  { to: '/creation', icon: 'wand', label: '画布' },
   { to: '/memories', icon: 'sparkles', label: '记忆' },
   { to: '/entities', icon: 'users', label: '素材' },
   { to: '/style-presets', icon: 'palette', label: '风格' },
