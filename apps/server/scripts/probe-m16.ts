@@ -250,7 +250,16 @@ async function main(): Promise<void> {
     })
     check(n4r.status === 201, 'POST 编辑节点（inpaint）→ 201')
     const N4: number = n4r.body.node.id
-    const nBad = await jreq('POST', `/api/v1/canvases/${C1}/nodes`, { kind: 'gen', spec: { genKind: 'audio' }, x: 0, y: 0 })
+    // [M17] 无产物图像 gen 节点：作为「上游无产物」用例源（视频 gen 已不可作 reference 源）
+    const n5r = await jreq('POST', `/api/v1/canvases/${C1}/nodes`, {
+      kind: 'gen',
+      spec: { genKind: 'image', prompt: '无产物源' },
+      x: 900,
+      y: 0,
+    })
+    check(n5r.status === 201, 'POST 图像生成节点（无任务）→ 201')
+    const N5: number = n5r.body.node.id
+    const nBad = await jreq('POST', `/api/v1/canvases/${C1}/nodes`, { kind: 'gen', spec: { genKind: 'xxx' }, x: 0, y: 0 })
     check(nBad.status === 400, 'POST 非法 spec → 400')
     const kBad = await jreq('POST', `/api/v1/canvases/${C1}/nodes`, { kind: 'xxx', x: 0, y: 0 })
     check(kBad.status === 400 && kBad.body?.error?.code === 'bad_kind', 'POST 非法 kind → 400 bad_kind')
@@ -280,8 +289,10 @@ async function main(): Promise<void> {
     check(eSelf.status === 400, '自环 → 400')
     const eC1 = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N2, to: N3, port: 'reference' })
     check(eC1.status === 201, '图像→视频 reference 边 → 201')
-    const eCycle = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N3, to: N2, port: 'reference' })
-    check(eCycle.status === 400, '环（N2→N3→N2）→ 400 拒绝')
+    const eC2 = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N2, to: N5, port: 'reference' })
+    check(eC2.status === 201, '图像→图像 reference 边 → 201')
+    const eCycle = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N5, to: N2, port: 'reference' })
+    check(eCycle.status === 400, '环（N2→N5→N2）→ 400 拒绝')
     const ePort = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N1, to: N2, port: 'foo' })
     check(ePort.status === 400, '非法端口 → 400')
     const eFmt = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: 'x', to: N2, port: 'reference' })
@@ -314,10 +325,10 @@ async function main(): Promise<void> {
       '编辑节点 readiness：inpaint 缺 prompt/蒙版 → problems 列出',
     )
     check(dn4?.editCapability !== null && dn4?.editCapability?.inpaint === false, '编辑节点 editCapability 快照（无端点 → false）')
-    // 上游无产物：加一条来自 gen（无产物）节点的 reference 边
-    const eUp = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N3, to: N4, port: 'reference' })
+    // 上游无产物：加一条来自 gen（无产物）节点的 reference 边（N5 无任务 → 无产物）
+    const eUp = await jreq('POST', `/api/v1/canvases/${C1}/edges`, { from: N5, to: N4, port: 'reference' })
     check(eUp.status === 201, '编辑节点可再挂 reference 上游')
-    // 先把 N3 的任务清空为无产物（其无任务）——N4 的 reference 来自 N3（无产物）→ 问题
+    // N5 无任务 → N4 的 reference 来自 N5（无产物）→ 问题
     const d4 = await jreq('GET', `/api/v1/canvases/${C1}`)
     const dn4b = docNode(d4.body, N4)
     check(
@@ -335,7 +346,7 @@ async function main(): Promise<void> {
     // 列表 nodeCount
     const list = await jreq('GET', `/api/v1/projects/${PID}/canvases`)
     const item1 = (list.body?.items ?? []).find((x: any) => x.id === C1)
-    check(item1?.nodeCount === 4, '画布列表 nodeCount=4')
+    check(item1?.nodeCount === 5, '画布列表 nodeCount=5')
 
     // 级联：删节点清边
     const nDel = await jreq('DELETE', `/api/v1/nodes/${N1}`)
@@ -471,7 +482,11 @@ async function main(): Promise<void> {
       firstFrameAssetId: null,
       lastFrameAssetId: null,
       sourceAssetId: 3,
+      promptText: null,
+      videoAssetIds: [],
+      audioAssetIds: [],
       problems: [],
+      notes: [],
     }
     const paramsFull = buildNodeTaskParams(specFull, { stylePresetIds: [9], plan: planFull })
     const expectedParams =

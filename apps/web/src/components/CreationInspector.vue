@@ -8,16 +8,18 @@
  * - 蒙版编辑器（EditBrushModal）内联；「设为实体参考图」内联面板；所有操作 emit refresh 由父级全量重拉
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type {
-  Asset, CanvasAssetLite, CanvasDocEdge, CanvasDocNode, CanvasEditMode, CanvasGenTaskLite,
-  CreationNodeSpec, EntityItem, EntityKind, NodeSpecEdit,
+  AnyNodeSpec, Asset, CanvasAssetLite, CanvasDocEdge, CanvasDocNode, CanvasEditMode, CanvasGenTaskLite,
+  CanvasResultItem, CreationNodeSpec, EntityItem, EntityKind, GenKind, NodeSpecEdit, TextNodeSpec,
 } from '../lib/types'
-import { assetApi, creationApi, entityApi, taskApi } from '../lib/api'
+import { assetApi, creationApi, entityApi, runApi, taskApi, type CanvasNodePatch } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import { fmtMs, fmtTime, KIND_TEXT, purposeText } from '../lib/format'
 import AssetPreviewer from './AssetPreviewer.vue'
 import EditBrushModal from './EditBrushModal.vue'
 import Icon from './Icon.vue'
+import Modal from './Modal.vue'
 
 const props = defineProps<{
   node: CanvasDocNode | null
@@ -26,8 +28,15 @@ const props = defineProps<{
   edges: CanvasDocEdge[]
   canvasId: number
   projectId: number
+  /** [M17] 写命令回调（View 执行 + 入撤销栈；await 返回即已落库） */
+  applyPatch: (p: { id: number; patch: CanvasNodePatch; label: string }) => Promise<void>
+  applyRun: (p: { id: number; variants: number; savePatch?: CanvasNodePatch }) => Promise<void>
+  applyExtract: (id: number) => Promise<void>
+  applyDelete: () => Promise<void>
+  applyRemoveEdge: (id: number) => Promise<void>
 }>()
 const emit = defineEmits<{ refresh: []; clear: []; notice: [msg: string] }>()
+const router = useRouter()
 
 const opErr = ref('')
 const opBusy = ref(false)
@@ -38,6 +47,14 @@ const TASK_CLS: Record<string, string> = { pending: 'pending', processing: 'proc
 const PORT_TEXT: Record<string, string> = { reference: '参考图', first_frame: '首帧', last_frame: '尾帧', source: '源图（编辑底图）' }
 const EDIT_MODE_TEXT: Record<CanvasEditMode, string> = { inpaint: '局部重绘', erase: '消除', outpaint: '扩图' }
 const ENT_KIND_LABEL: Record<EntityKind, string> = { character: '角色', scene: '场景', prop: '道具' }
+/** [M17] 实体类型文案（实体摘要 kind 为宽 string，兜底原值） */
+function entKindText(k: string): string {
+  return ENT_KIND_LABEL[k as EntityKind] ?? k
+}
+/** [M17] run 节点状态映射（pipeline_runs.status） */
+const RUN_TEXT: Record<string, string> = { queued: '排队', running: '运行中', waiting_input: '待输入', completed: '完成', failed: '失败', cancelled: '已取消' }
+const RUN_CLS: Record<string, string> = { queued: 'pending', running: 'processing', waiting_input: 'pending', completed: 'succeeded', failed: 'failed', cancelled: 'cancelled' }
+const RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
 function stText(s: string | null): string {
   return s && s !== 'idle' ? (TASK_TEXT[s] ?? s) : ''
@@ -45,11 +62,51 @@ function stText(s: string | null): string {
 function stCls(s: string | null): string | undefined {
   return s ? (TASK_CLS[s] ?? 'pending') : undefined
 }
+/** [M17] spec 类型守卫：是否 gen 规范（含 genKind；spec 已扩为 AnyNodeSpec 联合） */
+function asGenSpec(s: AnyNodeSpec | null | undefined): CreationNodeSpec | null {
+  return s && typeof s === 'object' && 'genKind' in s ? (s as CreationNodeSpec) : null
+}
+/** [M17] spec 类型守卫：是否文本规范（含 text） */
+function asTextSpec(s: AnyNodeSpec | null | undefined): TextNodeSpec | null {
+  return s && typeof s === 'object' && 'text' in s ? (s as TextNodeSpec) : null
+}
+/** [M17] gen 规范视图（模板/守卫通用；非 gen 节点为 null） */
+const genSpec = computed<CreationNodeSpec | null>(() => asGenSpec(props.node?.spec))
+/** [M17] run 节点可取消（有 run 且非终态） */
+const canCancelRun = computed<boolean>(() => {
+  const r = props.node?.run
+  return !!r && !RUN_TERMINAL.has(r.status)
+})
+/** [M17] 就绪度 notes（实体截断/降级提示） */
+const readinessNotes = computed<string[]>(() => props.node?.readiness?.notes ?? [])
+/** [M17] 节点副标题文案（五型全覆盖） */
+function kindLabel(n: CanvasDocNode): string {
+  switch (n.kind) {
+    case 'asset': return '素材'
+    case 'text': return '文本'
+    case 'entity': return '实体'
+    case 'run': return '运行'
+    default: {
+      const gk = asGenSpec(n.spec)?.genKind
+      if (gk === 'video') return '视频生成'
+      if (gk === 'audio') return '音频生成'
+      if (gk === 'compose') return '音视频合成'
+      return '图片生成'
+    }
+  }
+}
 function nodeIcon(n: CanvasDocNode): string {
   if (n.kind === 'asset') return 'photo'
-  if (!n.spec) return 'alert'
-  if (n.spec.edit) return 'brush'
-  return n.spec.genKind === 'video' ? 'video' : 'photo'
+  if (n.kind === 'text') return 'doc'
+  if (n.kind === 'entity') return 'users'
+  if (n.kind === 'run') return 'play'
+  const s = asGenSpec(n.spec)
+  if (!s) return 'alert'
+  if (s.edit) return 'brush'
+  if (s.genKind === 'video') return 'video'
+  if (s.genKind === 'audio') return 'speaker-wave'
+  if (s.genKind === 'compose') return 'film'
+  return 'photo'
 }
 function assetThumb(a: CanvasAssetLite | null): string | null {
   if (!a) return null
@@ -77,21 +134,23 @@ async function saveTitle(): Promise<void> {
   if (!t || t === n.title) return
   opErr.value = ''
   try {
-    await creationApi.updateNode(n.id, { title: t })
+    await props.applyPatch({ id: n.id, patch: { title: t }, label: '节点改名' })
     emit('notice', '标题已更新')
-    emit('refresh')
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   }
 }
 
 // ===== gen 节点：spec 表单 =====
-const fGenKind = ref<'image' | 'video'>('image')
+const fGenKind = ref<GenKind>('image')
 const fPrompt = ref('')
 const fSize = ref('')
 const fDuration = ref('')
 const fResolution = ref('')
 const fAspectRatio = ref('')
+const fVoice = ref('')
+const fSpeed = ref('')
+const fFps = ref('')
 const fProvider = ref('')
 const fModel = ref('')
 const fStyle = ref(true)
@@ -99,11 +158,16 @@ const fEditMode = ref<'' | CanvasEditMode>('')
 const fAngle = ref('')
 const fXScale = ref('')
 const fYScale = ref('')
+/** [M17] 执行变体数（1-4） */
+const fVariants = ref(1)
+/** [M17] text 节点文本表单 */
+const fText = ref('')
 
 function formSnapshot(): string {
   return JSON.stringify({
     g: fGenKind.value, p: fPrompt.value, s: fSize.value, d: fDuration.value, r: fResolution.value,
-    ar: fAspectRatio.value, pr: fProvider.value, m: fModel.value, st: fStyle.value, em: fEditMode.value,
+    ar: fAspectRatio.value, vo: fVoice.value, sp: fSpeed.value, fp: fFps.value,
+    pr: fProvider.value, m: fModel.value, st: fStyle.value, em: fEditMode.value,
     a: fAngle.value, xs: fXScale.value, ys: fYScale.value,
   })
 }
@@ -113,13 +177,16 @@ const formTouched = ref(false)
 const entOpen = ref(false)
 
 function fillForm(n: CanvasDocNode | null): void {
-  const s = n?.spec ?? null
+  const s = asGenSpec(n?.spec)
   fGenKind.value = s?.genKind ?? 'image'
   fPrompt.value = s?.prompt ?? ''
   fSize.value = s?.size ?? ''
   fDuration.value = s?.duration != null ? String(s.duration) : ''
   fResolution.value = s?.resolution ?? ''
   fAspectRatio.value = s?.aspectRatio ?? ''
+  fVoice.value = s?.voice ?? ''
+  fSpeed.value = s?.speed != null ? String(s.speed) : ''
+  fFps.value = s?.fps != null ? String(s.fps) : ''
   fProvider.value = s?.provider ?? ''
   fModel.value = s?.model ?? ''
   fStyle.value = s?.useStylePreset !== false
@@ -127,6 +194,8 @@ function fillForm(n: CanvasDocNode | null): void {
   fAngle.value = s?.edit?.expand?.angle != null ? String(s.edit.expand.angle) : ''
   fXScale.value = s?.edit?.expand?.xScale != null ? String(s.edit.expand.xScale) : ''
   fYScale.value = s?.edit?.expand?.yScale != null ? String(s.edit.expand.yScale) : ''
+  fVariants.value = 1
+  fText.value = asTextSpec(n?.spec)?.text ?? ''
   formBase = formSnapshot()
   formTouched.value = false
 }
@@ -139,27 +208,43 @@ watch(
   },
   { immediate: true },
 )
-watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale], () => {
+watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale], () => {
   formTouched.value = formSnapshot() !== formBase
 })
 
 /** 组装 spec（over.maskAssetId 供蒙版保存直填；表单为空的可选项不落库） */
 function buildSpec(over?: { maskAssetId?: number }): CreationNodeSpec {
-  const spec: CreationNodeSpec = { genKind: fGenKind.value, prompt: fPrompt.value.trim() }
-  const size = fSize.value.trim()
-  if (size) spec.size = size
-  const duration = Number(fDuration.value)
-  if (fGenKind.value === 'video' && fDuration.value.trim() && Number.isFinite(duration) && duration > 0) spec.duration = duration
-  const resolution = fResolution.value.trim()
-  if (resolution) spec.resolution = resolution
-  const aspectRatio = fAspectRatio.value.trim()
-  if (aspectRatio) spec.aspectRatio = aspectRatio
+  const gk = fGenKind.value
+  const spec: CreationNodeSpec = { genKind: gk, prompt: gk === 'compose' ? '' : fPrompt.value.trim() }
+  if (gk === 'image') {
+    const size = fSize.value.trim()
+    if (size) spec.size = size
+  } else if (gk === 'video') {
+    const duration = Number(fDuration.value)
+    if (fDuration.value.trim() && Number.isFinite(duration) && duration > 0) spec.duration = duration
+  } else if (gk === 'audio') {
+    const voice = fVoice.value.trim()
+    if (voice) spec.voice = voice
+    const speed = Number(fSpeed.value)
+    if (fSpeed.value.trim() && Number.isFinite(speed) && speed >= 0.25 && speed <= 4) spec.speed = speed
+  } else {
+    const fps = Number(fFps.value)
+    if (fFps.value.trim() && Number.isFinite(fps) && fps > 0) spec.fps = fps
+  }
+  if (gk !== 'audio') {
+    const resolution = fResolution.value.trim()
+    if (resolution) spec.resolution = resolution
+  }
+  if (gk === 'image' || gk === 'video') {
+    const aspectRatio = fAspectRatio.value.trim()
+    if (aspectRatio) spec.aspectRatio = aspectRatio
+  }
   const provider = fProvider.value.trim()
   if (provider) spec.provider = provider
   const model = fModel.value.trim()
   if (model) spec.model = model
-  spec.useStylePreset = fStyle.value
-  if (fGenKind.value === 'image' && fEditMode.value) {
+  if (gk === 'image' || gk === 'video') spec.useStylePreset = fStyle.value
+  if (gk === 'image' && fEditMode.value) {
     const edit: NodeSpecEdit = { mode: fEditMode.value }
     if (fEditMode.value === 'outpaint') {
       const expand: { angle?: number; xScale?: number; yScale?: number } = {}
@@ -171,7 +256,7 @@ function buildSpec(over?: { maskAssetId?: number }): CreationNodeSpec {
       if (fYScale.value.trim() && Number.isFinite(ys)) expand.yScale = ys
       if (Object.keys(expand).length) edit.expand = expand
     } else {
-      const mid = over?.maskAssetId ?? props.node?.spec?.edit?.maskAssetId
+      const mid = over?.maskAssetId ?? asGenSpec(props.node?.spec)?.edit?.maskAssetId
       if (mid) edit.maskAssetId = mid
     }
     spec.edit = edit
@@ -185,9 +270,8 @@ async function saveSpec(): Promise<void> {
   opBusy.value = true
   opErr.value = ''
   try {
-    await creationApi.updateNode(n.id, { spec: buildSpec() })
+    await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
     emit('notice', 'spec 已保存')
-    emit('refresh')
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -205,7 +289,7 @@ const sourceNode = computed<CanvasDocNode | null>(() => {
   return props.nodes.find((x) => x.id === e.from) ?? null
 })
 const sourceAsset = computed<CanvasAssetLite | null>(() => sourceNode.value?.asset ?? null)
-const currentMaskId = computed<number | null>(() => props.node?.spec?.edit?.maskAssetId ?? null)
+const currentMaskId = computed<number | null>(() => asGenSpec(props.node?.spec)?.edit?.maskAssetId ?? null)
 
 function openBrush(): void {
   if (!sourceAsset.value) return
@@ -218,9 +302,8 @@ async function onMaskSaved(assetId: number): Promise<void> {
   opBusy.value = true
   opErr.value = ''
   try {
-    await creationApi.updateNode(n.id, { spec: buildSpec({ maskAssetId: assetId }) })
+    await props.applyPatch({ id: n.id, patch: { spec: buildSpec({ maskAssetId: assetId }) }, label: '应用蒙版' })
     emit('notice', `蒙版已保存并应用（资产 #${assetId}）`)
-    emit('refresh')
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -231,11 +314,174 @@ async function onMaskSaved(assetId: number): Promise<void> {
 const capHint = computed<string | null>(() => {
   const n = props.node
   const cap = n?.editCapability
-  if (!n?.spec?.edit || !cap) return null
-  const mode = n.spec.edit.mode
+  const s = asGenSpec(n?.spec)
+  if (!s?.edit || !cap) return null
+  const mode = s.edit.mode
   const ok = mode === 'outpaint' ? cap.outpaint : cap.inpaint
   return ok ? null : `当前图像端点未声明「${EDIT_MODE_TEXT[mode]}」能力，执行将失败（可在高级选项指定支持编辑的端点）`
 })
+
+// ===== [M17] 表单持久化辅助（AI 扩写 / extract 前落库） =====
+/** 保存 text/gen 表单（有改动才写；写命令入撤销栈） */
+async function persistFormIfNeeded(): Promise<void> {
+  const n = props.node
+  if (!n) return
+  if (n.kind === 'text') {
+    const ts = asTextSpec(n.spec)
+    if (!ts || ts.text !== fText.value) {
+      await props.applyPatch({ id: n.id, patch: { spec: { text: fText.value } }, label: '编辑文本' })
+    }
+  } else if (n.kind === 'gen' && formTouched.value) {
+    await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+  }
+}
+
+// ===== [M17] text 节点：直编（blur 提交 PATCH，入撤销栈） =====
+async function saveText(): Promise<void> {
+  const n = props.node
+  if (!n || n.kind !== 'text') return
+  const ts = asTextSpec(n.spec)
+  if (ts && ts.text === fText.value) return
+  opBusy.value = true
+  opErr.value = ''
+  try {
+    await props.applyPatch({ id: n.id, patch: { spec: { text: fText.value } }, label: '编辑文本' })
+    emit('notice', '文本已保存')
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    opBusy.value = false
+  }
+}
+
+// ===== [M17] AI 扩写（对照弹窗：原/新，可编辑 → 应用 PATCH 入栈） =====
+const expandOpen = ref(false)
+const expandBusy = ref(false)
+const expandErr = ref('')
+const expandSrc = ref('')
+const expandDraft = ref('')
+const expandInstruction = ref('')
+/** 节点切换 / 取消选中时关闭扩写弹窗（结果归属原节点，避免误应用） */
+watch(() => props.node?.id ?? null, () => {
+  expandOpen.value = false
+})
+
+async function openExpand(): Promise<void> {
+  const n = props.node
+  if (!n) return
+  const src = n.kind === 'text' ? fText.value.trim() : fPrompt.value.trim()
+  if (!src) {
+    opErr.value = '内容为空，无法扩写'
+    return
+  }
+  opErr.value = ''
+  expandErr.value = ''
+  try {
+    // 先落库表单（服务端扩写取库内已存内容）
+    await persistFormIfNeeded()
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+    return
+  }
+  expandSrc.value = src
+  expandDraft.value = ''
+  expandInstruction.value = ''
+  expandOpen.value = true
+}
+
+async function doExpand(): Promise<void> {
+  const n = props.node
+  if (!n) return
+  expandBusy.value = true
+  expandErr.value = ''
+  try {
+    const r = await creationApi.promptExpand(n.id, expandInstruction.value.trim() || undefined)
+    expandDraft.value = r.prompt
+  } catch (e) {
+    expandErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    expandBusy.value = false
+  }
+}
+
+async function applyExpand(): Promise<void> {
+  const n = props.node
+  if (!n || !expandDraft.value.trim()) return
+  opBusy.value = true
+  opErr.value = ''
+  try {
+    if (n.kind === 'text') {
+      fText.value = expandDraft.value
+      await props.applyPatch({ id: n.id, patch: { spec: { text: expandDraft.value } }, label: '应用扩写' })
+    } else {
+      fPrompt.value = expandDraft.value
+      await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '应用扩写' })
+    }
+    expandOpen.value = false
+    emit('notice', '扩写已应用')
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    opBusy.value = false
+  }
+}
+
+// ===== [M17] 提取文本节点 =====
+async function doExtract(): Promise<void> {
+  const n = props.node
+  if (!n) return
+  opBusy.value = true
+  opErr.value = ''
+  try {
+    await persistFormIfNeeded()
+    await props.applyExtract(n.id)
+    emit('notice', '已提取为文本节点')
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    opBusy.value = false
+  }
+}
+
+// ===== [M17] 画廊采纳（PATCH adoptedTaskId 入栈；再点取消采纳） =====
+async function adoptResult(item: CanvasResultItem): Promise<void> {
+  const n = props.node
+  if (!n) return
+  const next = n.adoptedTaskId === item.taskId ? null : item.taskId
+  opBusy.value = true
+  opErr.value = ''
+  try {
+    await props.applyPatch({ id: n.id, patch: { adoptedTaskId: next }, label: next == null ? '取消采纳' : '采纳产物' })
+    emit('notice', next == null ? '已取消采纳' : `已采纳任务 #${item.taskId}`)
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    opBusy.value = false
+  }
+}
+
+// ===== [M17] run 节点：打开详情 / 取消 =====
+async function openRunDetail(): Promise<void> {
+  const r = props.node?.run
+  if (!r) return
+  void router.push({ path: `/runs/${r.id}` })
+}
+
+async function cancelRun(): Promise<void> {
+  const r = props.node?.run
+  if (!r) return
+  opBusy.value = true
+  opErr.value = ''
+  try {
+    await runApi.cancel(r.id)
+    emit('notice', `运行 #${r.id} 已取消`)
+    emit('refresh')
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    opBusy.value = false
+  }
+}
 
 // ===== 执行 / 取消 / 删除 =====
 const runTitle = computed(() => {
@@ -252,10 +498,8 @@ async function doRun(): Promise<void> {
   opBusy.value = true
   opErr.value = ''
   try {
-    await creationApi.updateNode(n.id, { spec: buildSpec() })
-    await creationApi.run(n.id)
-    emit('notice', `节点「${n.title}」已入队执行`)
-    emit('refresh')
+    await props.applyRun({ id: n.id, variants: fVariants.value, savePatch: { spec: buildSpec() } })
+    emit('notice', `节点「${n.title}」已入队执行${fVariants.value > 1 ? ` ×${fVariants.value}` : ''}`)
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -306,10 +550,9 @@ async function removeNode(): Promise<void> {
   opBusy.value = true
   opErr.value = ''
   try {
-    await creationApi.removeNode(n.id)
+    await props.applyDelete()
     emit('clear')
     emit('notice', '节点已删除')
-    emit('refresh')
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -339,9 +582,8 @@ async function dropEdge(id: number): Promise<void> {
   opBusy.value = true
   opErr.value = ''
   try {
-    await creationApi.removeEdge(id)
+    await props.applyRemoveEdge(id)
     emit('notice', '连线已断开')
-    emit('refresh')
   } catch (e) {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -445,8 +687,8 @@ async function attachTo(e: EntityItem): Promise<void> {
       </div>
       <div class="sub mono">
         #{{ node.id }} ·
-        {{ node.kind === 'asset' ? '素材' : node.spec?.genKind === 'video' ? '视频生成' : '图片生成' }}
-        <template v-if="node.spec?.edit"> · 编辑（{{ EDIT_MODE_TEXT[node.spec.edit.mode] }}）</template>
+        {{ kindLabel(node) }}
+        <template v-if="genSpec?.edit"> · 编辑（{{ EDIT_MODE_TEXT[genSpec.edit.mode] }}）</template>
       </div>
       <div v-if="node.kind === 'gen'" class="ci-status">
         <span v-if="stText(node.status)" class="badge" :class="stCls(node.status)">{{ stText(node.status) }}</span>
@@ -463,21 +705,31 @@ async function attachTo(e: EntityItem): Promise<void> {
             <select v-model="fGenKind">
               <option value="image">图片</option>
               <option value="video">视频</option>
+              <option value="audio">音频（TTS）</option>
+              <option value="compose">音视频合成</option>
             </select>
           </div>
-          <div class="frow">
-            <label class="flabel">提示词</label>
+          <div v-if="fGenKind !== 'compose'" class="frow">
+            <label class="flabel">{{ fGenKind === 'audio' ? '朗读文本' : '提示词' }}</label>
             <textarea
               v-model="fPrompt"
               rows="3"
-              :placeholder="fEditMode === 'inpaint' ? '要画什么（局部重绘必填）' : fEditMode === 'erase' ? '可留空（走消除默认提示词）' : '描述要生成的画面…'"
+              :placeholder="fGenKind === 'audio' ? '要朗读的文本…（留空则取「提示词」端口连线的文本节点）' : fEditMode === 'inpaint' ? '要画什么（局部重绘必填）' : fEditMode === 'erase' ? '可留空（走消除默认提示词）' : '描述要生成的画面…'"
             />
+            <div class="frow-ops">
+              <button type="button" class="btn sm" :disabled="opBusy || expandBusy" title="AI 扩写提示词/文本" @click="openExpand">
+                <Icon name="sparkles" :size="12" /> AI 扩写
+              </button>
+              <button type="button" class="btn sm" :disabled="opBusy" title="提取为独立文本节点" @click="doExtract">
+                <Icon name="doc" :size="12" /> 提取文本节点
+              </button>
+            </div>
           </div>
           <div v-if="fGenKind === 'image'" class="frow">
             <label class="flabel">画面尺寸</label>
             <input v-model="fSize" type="text" placeholder="如 832x1248（留空走项目/模板默认）" />
           </div>
-          <template v-else>
+          <template v-else-if="fGenKind === 'video'">
             <div class="frow">
               <label class="flabel">时长（秒）</label>
               <input v-model="fDuration" type="number" min="1" step="1" placeholder="如 5（留空走默认）" />
@@ -491,17 +743,38 @@ async function attachTo(e: EntityItem): Promise<void> {
               <input v-model="fAspectRatio" type="text" placeholder="如 9:16（留空走默认）" />
             </div>
           </template>
+          <template v-else-if="fGenKind === 'audio'">
+            <div class="frow">
+              <label class="flabel">声线</label>
+              <input v-model="fVoice" type="text" placeholder="如 zh-CN-XiaoxiaoNeural（留空走设置/实例声线）" />
+            </div>
+            <div class="frow">
+              <label class="flabel">语速</label>
+              <input v-model="fSpeed" type="number" step="0.05" min="0.25" max="4" placeholder="0.25–4（留空默认）" />
+            </div>
+          </template>
+          <template v-else>
+            <div class="frow">
+              <label class="flabel">分辨率</label>
+              <input v-model="fResolution" type="text" placeholder="如 1080x1920（留空跟随首个视频源）" />
+            </div>
+            <div class="frow">
+              <label class="flabel">帧率</label>
+              <input v-model="fFps" type="number" min="1" step="1" placeholder="如 30（留空跟随源）" />
+            </div>
+            <div class="muted mini">输入：视频端口（≥1，按连线创建序拼接）＋ 音频端口（可选，混音；有音轨时丢弃视频原声）。</div>
+          </template>
 
           <div class="frow">
             <label class="flabel">编辑模式</label>
-            <select v-model="fEditMode" :disabled="fGenKind === 'video'">
+            <select v-model="fEditMode" :disabled="fGenKind !== 'image'">
               <option value="">无（普通生成）</option>
               <option value="inpaint">局部重绘（涂抹后重画）</option>
               <option value="erase">消除（涂抹后去除）</option>
               <option value="outpaint">扩图（向外扩展画布）</option>
             </select>
           </div>
-          <div v-if="fGenKind === 'video' && fEditMode" class="muted mini">视频节点不支持编辑模式，保存时将忽略。</div>
+          <div v-if="fGenKind !== 'image' && fEditMode" class="muted mini">非图片节点不支持编辑模式，保存时将忽略。</div>
 
           <template v-if="fGenKind === 'image' && fEditMode && fEditMode !== 'outpaint'">
             <div class="maskrow">
@@ -575,6 +848,9 @@ async function attachTo(e: EntityItem): Promise<void> {
             </ul>
           </template>
           <div v-if="capHint" class="warn-t mini">{{ capHint }}</div>
+          <ul v-if="readinessNotes.length" class="notes">
+            <li v-for="(nt, i) in readinessNotes" :key="i">{{ nt }}</li>
+          </ul>
         </section>
       </template>
 
@@ -582,6 +858,12 @@ async function attachTo(e: EntityItem): Promise<void> {
       <section class="sec">
         <div class="sec-h">操作</div>
         <div class="ops">
+          <label v-if="node.kind === 'gen'" class="vsel" title="执行变体数（1-4，建多个任务并行排队）">
+            变体
+            <select v-model.number="fVariants">
+              <option v-for="n in 4" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </label>
           <button
             v-if="node.kind === 'gen'"
             type="button"
@@ -590,7 +872,7 @@ async function attachTo(e: EntityItem): Promise<void> {
             :title="runTitle"
             @click="doRun"
           >
-            <Icon name="play" :size="12" /> 执行
+            <Icon name="play" :size="12" /> 执行{{ fVariants > 1 ? ` ×${fVariants}` : '' }}
           </button>
           <button
             v-if="node.kind === 'gen' && node.canCancel"
@@ -643,13 +925,51 @@ async function attachTo(e: EntityItem): Promise<void> {
         </div>
       </section>
 
-      <!-- ===== gen：结果 ===== -->
-      <section v-if="node.kind === 'gen' && node.assetId != null" class="sec">
-        <div class="sec-h">结果（#{{ node.assetId }}）</div>
-        <button type="button" class="resbox" title="点击预览" @click="openPreview(node.assetId)">
+      <!-- ===== [M17] gen：显示产物 + 结果画廊（采纳） ===== -->
+      <section v-if="node.kind === 'gen'" class="sec">
+        <div class="sec-h">
+          显示产物
+          <span v-if="node.adoptedTaskId != null" class="muted mini">· 采纳任务 #{{ node.adoptedTaskId }}</span>
+          <span v-else-if="node.displayTaskId != null" class="muted mini">· 任务 #{{ node.displayTaskId }}</span>
+        </div>
+        <div v-if="node.displayTask && node.displayTask.asset" class="resbox static">
+          <audio v-if="node.displayTask.asset.kind === 'audio'" controls :src="node.displayTask.asset.urls.file" />
+          <video v-else-if="node.displayTask.asset.kind === 'video'" controls :src="node.displayTask.asset.urls.file" />
+          <button v-else type="button" class="unstyle" title="点击预览" @click="openPreview(node.displayTask.resultAssetId)">
+            <img v-if="assetThumb(node.displayTask.asset)" :src="assetThumb(node.displayTask.asset)!" alt="" />
+            <span v-else class="muted">{{ KIND_TEXT[node.displayTask.asset.kind] ?? node.displayTask.asset.kind }}</span>
+          </button>
+        </div>
+        <button
+          v-else-if="node.assetId != null && node.asset"
+          type="button"
+          class="resbox"
+          title="点击预览"
+          @click="openPreview(node.assetId)"
+        >
           <img v-if="assetThumb(node.asset)" :src="assetThumb(node.asset)!" alt="" />
-          <span v-else class="muted">{{ node.asset ? (KIND_TEXT[node.asset.kind] ?? node.asset.kind) : '资产缺失' }}</span>
+          <span v-else class="muted">{{ KIND_TEXT[node.asset.kind] ?? node.asset.kind }}</span>
         </button>
+        <div v-else class="muted">暂无产物</div>
+
+        <div class="sec-h">结果画廊（最近成功 {{ node.results.length }} 张）</div>
+        <div v-if="!node.results.length" class="muted">暂无成功产物</div>
+        <div v-else class="gallery">
+          <div v-for="r in node.results" :key="r.taskId" class="gitem" :class="{ adopted: r.taskId === node.adoptedTaskId }">
+            <button type="button" class="gthumb" :title="`任务 #${r.taskId} · ${fmtTime(r.createdAt)}（点击大图）`" @click="openPreview(r.assetId)">
+              <img v-if="r.asset && (r.asset.urls.thumb || r.asset.kind === 'image')" :src="r.asset.urls.thumb ?? r.asset.urls.file" alt="" />
+              <span v-else class="muted mini">{{ r.asset ? (KIND_TEXT[r.asset.kind] ?? r.asset.kind) : '缺失' }}</span>
+            </button>
+            <div class="gmeta">
+              <span v-if="r.taskId === node.adoptedTaskId" class="badge succeeded">已采纳</span>
+              <span v-else-if="r.taskId === node.displayTaskId" class="badge pending">最新</span>
+              <span class="mono mini">#{{ r.taskId }}</span>
+            </div>
+            <button type="button" class="btn sm" :disabled="opBusy" @click="adoptResult(r)">
+              {{ r.taskId === node.adoptedTaskId ? '取消采纳' : '采纳' }}
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- ===== asset 节点：素材信息 ===== -->
@@ -678,6 +998,86 @@ async function attachTo(e: EntityItem): Promise<void> {
               <span class="v mono">{{ node.asset.duration }}s</span>
             </div>
           </div>
+        </section>
+      </template>
+
+      <!-- ===== [M17] text 节点：文本内容 ===== -->
+      <template v-else-if="node.kind === 'text'">
+        <section class="sec">
+          <div class="sec-h">文本内容</div>
+          <div class="frow">
+            <textarea v-model="fText" rows="7" placeholder="输入文本…（连到生成节点的「提示词」端口即可作为其提示词）" @blur="saveText" />
+          </div>
+          <div class="frow-ops">
+            <button type="button" class="btn sm" :disabled="opBusy || expandBusy" title="AI 扩写文本" @click="openExpand">
+              <Icon name="sparkles" :size="12" /> AI 扩写
+            </button>
+            <button type="button" class="btn sm" :disabled="opBusy" title="立即保存文本" @click="saveText">
+              <Icon name="check" :size="12" /> 保存文本
+            </button>
+          </div>
+          <div class="muted mini">失焦自动保存；提取自生成节点的文本也会落到这里的独立节点。</div>
+          <div v-if="node.specError" class="err-text">{{ node.specError }}</div>
+        </section>
+      </template>
+
+      <!-- ===== [M17] entity 节点：实体直通 ===== -->
+      <template v-else-if="node.kind === 'entity'">
+        <section class="sec">
+          <div class="sec-h">实体</div>
+          <template v-if="node.entity">
+            <button
+              v-if="node.entity.asset"
+              type="button"
+              class="resbox"
+              title="点击预览参考图"
+              @click="openPreview(node.entity.asset.id)"
+            >
+              <img v-if="assetThumb(node.entity.asset)" :src="assetThumb(node.entity.asset)!" alt="" />
+              <span v-else class="muted">{{ KIND_TEXT[node.entity.asset.kind] ?? node.entity.asset.kind }}</span>
+            </button>
+            <div class="kvs">
+              <div class="kv"><span class="k">名称</span><span class="v">{{ node.entity.name }}</span></div>
+              <div class="kv"><span class="k">类型</span><span class="v">{{ entKindText(node.entity.kind) }}</span></div>
+              <div class="kv"><span class="k">参考图</span><span class="v mono">{{ node.entity.refCount }} 张</span></div>
+            </div>
+            <div class="muted mini">下游节点执行时按实体参考图注入（受实体截断策略约束）。</div>
+          </template>
+          <div v-else class="err-text">实体数据缺失（可能已被删除）</div>
+        </section>
+      </template>
+
+      <!-- ===== [M17] run 节点：内嵌运行 ===== -->
+      <template v-else-if="node.kind === 'run'">
+        <section class="sec">
+          <div class="sec-h">运行</div>
+          <template v-if="node.run">
+            <div class="kvs">
+              <div class="kv"><span class="k">运行</span><span class="v mono">#{{ node.run.id }}</span></div>
+              <div class="kv"><span class="k">模板</span><span class="v mono">{{ node.run.templateKey }}</span></div>
+              <div class="kv">
+                <span class="k">状态</span>
+                <span class="v">
+                  <span class="badge" :class="RUN_CLS[node.run.status] ?? 'pending'">
+                    {{ RUN_TEXT[node.run.status] ?? node.run.status }}
+                  </span>
+                </span>
+              </div>
+              <div class="kv"><span class="k">步骤</span><span class="v mono">{{ node.run.steps.succeeded }}/{{ node.run.steps.total }} 成功</span></div>
+              <div v-if="node.run.startedAt" class="kv"><span class="k">开始</span><span class="v mono">{{ fmtTime(node.run.startedAt) }}</span></div>
+              <div v-if="node.run.completedAt" class="kv"><span class="k">结束</span><span class="v mono">{{ fmtTime(node.run.completedAt) }}</span></div>
+            </div>
+            <div class="ops">
+              <button type="button" class="btn sm" @click="openRunDetail">
+                <Icon name="doc" :size="12" /> 打开运行详情
+              </button>
+              <button v-if="canCancelRun" type="button" class="btn sm danger" :disabled="opBusy" @click="cancelRun">
+                <Icon name="stop" :size="12" /> 取消运行
+              </button>
+            </div>
+            <div class="muted mini">画布内进度由轮询实时更新；详情页可查看每步输入输出。</div>
+          </template>
+          <div v-else class="err-text">运行数据缺失或被删除（可能已超出保留期）</div>
         </section>
       </template>
 
@@ -765,9 +1165,36 @@ async function attachTo(e: EntityItem): Promise<void> {
       </section>
     </template>
 
+    <!-- AI 扩写（对照弹窗：原文 / 可编辑草稿） -->
+    <Modal v-if="expandOpen && node" title="AI 扩写" :width="720" @close="expandOpen = false">
+      <div class="exp-body">
+        <div class="exp-col">
+          <div class="exp-h">原文</div>
+          <pre class="exp-pre">{{ expandSrc }}</pre>
+        </div>
+        <div class="exp-col">
+          <div class="exp-h">扩写结果（可编辑后应用）</div>
+          <textarea v-model="expandDraft" class="exp-ta" rows="10" placeholder="点击「开始扩写」生成…" />
+        </div>
+      </div>
+      <div class="frow">
+        <label class="flabel">补充要求（可选）</label>
+        <input v-model="expandInstruction" type="text" placeholder="如：更电影感、补充光影细节、控制在 120 字内…" @keydown.enter="doExpand" />
+      </div>
+      <div v-if="expandErr" class="err-text">{{ expandErr }}</div>
+      <template #footer>
+        <button type="button" class="btn" @click="expandOpen = false">关闭</button>
+        <button type="button" class="btn" :disabled="expandBusy" @click="doExpand">
+          <Icon name="sparkles" :size="12" /> {{ expandBusy ? '扩写中…' : expandDraft ? '重新扩写' : '开始扩写' }}
+        </button>
+        <button type="button" class="btn primary" :disabled="expandBusy || opBusy || !expandDraft.trim()" @click="applyExpand">
+          <Icon name="check" :size="12" /> 应用
+        </button>
+      </template>
+    </Modal>
     <!-- 蒙版编辑器（自持） -->
     <EditBrushModal
-      v-if="showBrush && node?.spec?.edit && sourceAsset"
+      v-if="showBrush && genSpec?.edit && sourceAsset"
       :project-id="projectId"
       :base-url="sourceAsset.urls.file"
       :base-name="sourceAsset.name"
@@ -1162,5 +1589,151 @@ async function attachTo(e: EntityItem): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== [M17] 新增块：frow-ops / notes / vsel / 画廊 / 弹窗 ===== */
+.frow-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.7;
+}
+
+.vsel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.vsel select {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.gitem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  padding: 5px;
+}
+
+.gitem.adopted {
+  border-color: var(--accent);
+}
+
+.gthumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 0;
+  cursor: pointer;
+  min-height: 56px;
+  color: var(--text-3);
+}
+
+.gthumb img {
+  display: block;
+  width: 100%;
+  height: 62px;
+  object-fit: cover;
+}
+
+.gmeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 18px;
+}
+
+.resbox.static {
+  cursor: default;
+}
+
+.resbox audio,
+.resbox video {
+  width: 100%;
+}
+
+.unstyle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-3);
+}
+
+.unstyle img {
+  display: block;
+  width: 100%;
+  max-height: 190px;
+  object-fit: contain;
+}
+
+.exp-body {
+  display: flex;
+  gap: 12px;
+}
+
+.exp-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exp-h {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.exp-pre {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.exp-ta {
+  font-size: 12.5px;
+  min-height: 264px;
+  resize: vertical;
 }
 </style>

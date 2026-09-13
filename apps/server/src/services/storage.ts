@@ -67,8 +67,10 @@ export function purposeSubDir(purpose?: string | null): string {
       return 'images'
     case 'final_video':
     case 'shot_video':
+    case 'creation_compose':
       return 'video'
     case 'voice':
+    case 'creation_audio':
       return 'audio'
     default:
       return 'source'

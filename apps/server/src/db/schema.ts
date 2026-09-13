@@ -361,12 +361,14 @@ export const canvasNodes = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     canvasId: integer('canvas_id').notNull(),
-    kind: text('kind').notNull(), // asset|gen
+    kind: text('kind').notNull(), // [M17] asset|gen|text|entity|run
     assetId: integer('asset_id'), // kind=asset：引用项目资产
     title: text('title'),
-    spec: text('spec'), // JSON，仅 kind=gen（{genKind,prompt,...,edit?}）
+    spec: text('spec'), // JSON：gen={genKind,prompt,...}；text={text}；entity={entityId}；run={runId} [M17]
     x: real('x').notNull().default(0),
     y: real('y').notNull().default(0),
+    adoptedTaskId: integer('adopted_task_id'), // [M17] 结果采纳（gen）：gen_tasks.id；null=未采纳取最新成功
+    seq: integer('seq'), // [M17] 故事板序号（1 起；排序/呈现/导出命名，不参与执行）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

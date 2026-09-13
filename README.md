@@ -2,7 +2,7 @@
 
 个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）。
 
-- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）；**M12 旧版本清理与收藏 + 图像检测**（软删/回收两段式 + 三重保留 + 宽容降级检测；探针 66 项全绿，实弹全通过）；**M13 素材链补全**（视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库；探针 121 项全绿，实弹七项 7/7 + DOM 22/22）；**M14 平台层收官**（集级参数覆盖 / 剧集地图 / 静态托管；桌面端经决策取消；探针四节全绿，实弹 DOM 14/14）；**M15 流水线画布工作台**（依赖语义单一真源 + 画布读模型纯读 + 画布即工作台〔节点/边/状态/闸门/重跑/重新合成/日志抽屉〕；探针 78 项全绿，实弹 DOM 两轮全通过）；**M16 创作画布**（素材自由摆放 + 引用连线 + 就地生成与编辑〔声明制〕+ 联动三枚 + 低保真模板草案；首次引入画布文档新表〔canvases / canvas_nodes / canvas_edges〕；探针六节 126 项全绿，实弹全通过——含真实出图 ×2、模板草案与编辑通道退化验证）
+- 状态：M1 骨架闭环 ✓；M2 流程引擎化 ✓；M3 记忆与角色一致性 ✓；**M4 打磨分发完成**（E1 批量运行 / E2 成本与用量 / E3 导出分发 / E4 复盘数据 / W1 Web 配套）；**M5 方法论内化完成**（内容创作者套件 8 技能 → 10 模板家族 + 24 个提示词文件；引擎零代码）；**M6 参考图驱动**（定妆照参考链 + 首帧 i2v + 模板/提示词升级；代码与探针全绿，实弹待跑）；**M7 镜头工作台**（镜头级轻工作台 + 选镜拼接 + per-shot 时长与逐镜容错；代码/模板/探针全绿，实弹目检通过——Run 40/61 全链：编辑/重生成/选片/剔除/逐镜容错/重新合成 + 浏览器截图）；**M8 场景/道具资产库 + 风格预设**（实体单表多态 + 场景/道具参考链 + 风格预设库与运行时注入；代码/模板/探针全绿，实弹目检待跑）；**M9 小说改编链**（小说导入 → 章节切分 → 逐章事件 → 事件图谱 → 分集规划 → 逐集剧本；新 action `text_split` + ai_text batch 扩展 + 模板 `novel-adapt` v1 + NovelBoard 看板；代码/模板/探针全绿，实弹 Run #100 全链通过）；**M10 镜头分镜编辑器 + 上传替换**（镜头拖拽重排 / 分镜大编辑器 / 上传图片替换分镜 + stale 兜底强化；代码/模板/探针全绿，实弹 Run 61 全链通过）；**M11 单步重跑 + 镜头级音字对齐 + BGM·转场**（rerun 端点 + 台词归属链 + compose 配置快照；代码/模板/探针全绿，实弹六步全通过）；**M12 旧版本清理与收藏 + 图像检测**（软删/回收两段式 + 三重保留 + 宽容降级检测；探针 66 项全绿，实弹全通过）；**M13 素材链补全**（视觉提取 / 多预设叠加 / 视频参考图 / 上传通道 / 批量润色 / states 入库；探针 121 项全绿，实弹七项 7/7 + DOM 22/22）；**M14 平台层收官**（集级参数覆盖 / 剧集地图 / 静态托管；桌面端经决策取消；探针四节全绿，实弹 DOM 14/14）；**M15 流水线画布工作台**（依赖语义单一真源 + 画布读模型纯读 + 画布即工作台〔节点/边/状态/闸门/重跑/重新合成/日志抽屉〕；探针 78 项全绿，实弹 DOM 两轮全通过）；**M16 创作画布**（素材自由摆放 + 引用连线 + 就地生成与编辑〔声明制〕+ 联动三枚 + 低保真模板草案；首次引入画布文档新表〔canvases / canvas_nodes / canvas_edges〕；探针六节 126 项全绿，实弹全通过——含真实出图 ×2、模板草案与编辑通道退化验证）；**M17 创作工作台**（创作画布四层补齐——创作循环〔变体抽卡 1–4 + 画廊采纳 + 实体参考直通 + 文本节点提示词复用〕/ 规模操控〔多选框选 + 快捷键 + 撤销重做命令栈 + 整理对齐 + 故事板序号〕/ 产出沉淀〔内嵌运行节点 + zip 打包导出 + 全局总览〕/ 能力扩展〔音频 TTS 节点 + 视频合成节点 + AI 扩写与规则串联〕；canvas_nodes +2 列 + 端口矩阵 v2；探针八节 274 项全绿，实弹全通过——含音频真实 TTS、compose 真实 ffmpeg、导出 zip 解包核对）
 
 ## 技术栈
 
@@ -248,6 +248,21 @@ pnpm dev    # 并行起双端：
 - **导航**（入口收敛）：侧栏单入口「画布」= 创作画布（`/creation`，无参数进入自动选首个项目）；流水线画布退为上下文视图（运行页「画布视图」/ 模板页「画布」进入，`/canvas` 直链保留）
 
 验证：`pnpm --filter @acs/server probe:m16`（六节：canvas-doc / node-build / edit-cap / draft / linkage / regression，126 项断言，零网络零计费）。
+
+## M17 能力速览（创作工作台）
+
+把创作画布从「带连线的执行器」升级为**完整创作工作台**：创作循环（怎么出好图）、规模操控（怎么管一堆节点）、产出沉淀（做完怎么出去）、能力扩展（音频与合成 / AI 辅助）四层一次补齐。设计三原则：**采纳优先**（节点对外引用与显示同源走 `pickDisplayTask`——采纳任务 > 最新成功）、**命令栈撤销**（客户端 `canvas-history`，删除逆操作 = 快照重建 + `restoreFromNodeId` 任务历史认领）、**确定性规则**（串联 / 整理 / 编号均为纯函数；LLM 决策式编排不在本版）。
+
+> ⚠ **交互变更（唯一破坏性）**：空白左键拖拽由「平移」改为**框选**（半透明选框，释放按全包含判定）；平移改为 **空格按住 + 左键拖** 或 **中键拖**。快捷键（输入框聚焦时除 Esc 全部让行）：`Delete/Backspace` 删除选中、`Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y` 撤销/重做、`Ctrl+D` 复制（偏移 +40,+40）、`Ctrl+A` 全选、`方向键 / Shift+方向键` 微移 10px / 1px、`F` 适应视图、`Esc` 清空选中 / 取消连线。
+
+- **创作循环**：变体执行（`POST /nodes/:id/run` 超集 `variants: 1–4`，按钮「执行 ×N」）→ 结果画廊（最近成功 ≤12 + 「采纳 ✓ / 最新」徽标 + 大图预览）→ `PATCH adoptedTaskId` 钉稿（下游引用即取采纳产物）；新 kind `entity`（实体参考图集直通 reference 端口，执行时展开 `refAssetIds`，超限截断记 notes）与 `text`（prompt 端口覆盖 spec.prompt，空文本 → 未就绪；`extract` 从 gen 节点 / 文本资产一键提取文本节点）
+- **工作台操控**：多选（Shift 加/减选）/ 框选 / 批量移动（多拖一次提交）·复制·删除·执行（`canvases/run`：就绪者入队、未就绪 skipped + problems 提示）；撤销/重做命令栈（≤100 步：移动 / 新建 / 删除 / 连线 / 复制 / 整理 / 编号 / 采纳 / 字段编辑入栈，pan·zoom·执行·导出不入栈）；一键整理（拓扑分层）/ 对齐 / 分布 / 批量编号（`seq` 落库，卡片 `#N` 徽标）
+- **产出沉淀**：内嵌 **run 节点**（「送去运行」不再跳转——视口中心新建 + toast「查看详情」入口；非终态 5s 轮询 + 「取消」）；**zip 打包导出**（`creation-export` 归档资产，条目 `<seq>-<title>-<assetId>.<ext>`（重名递增）+ `manifest.json`，下载复用既有资产通道）；**全局总览抽屉**（按严重度排序 失败 › 未就绪 › 运行中 › 就绪 › 完成，点击行选中并视口居中）
+- **音频与合成**：**audio 节点**（复用 `services/tts.ts` 六级声线链 + `recordUsage(tts)`，结果 `<audio>` 试听）；**compose 节点**（video 端口 ≤4 按边序 concat + audio 端口 ≤4 amix 混音，`buildComposeArgs` 纯函数 + 本地 ffmpeg 三级兜底）；产物落 `video/` 与 `audio/` 子目录
+- **AI 辅助**：提示词扩写（`POST /nodes/:id/prompt-expand` → 对照弹窗原/新可编辑 → 应用入撤销栈；未配置 LLM → 400 引导 Settings）；规则式串联（`nodes/chain`：text→prompt / 视频→video / 音频→audio / 图像→reference，skip 逐因记账）
+- **数据与兼容**：`canvas_nodes` +2 列（`adoptedTaskId` / `seq`，ensureColumn 幂等；旧库升级不炸）；端口矩阵 v2（+prompt / video / audio 端口；reference 扩实体源；from 侧类型校验补齐；run 节点不参与连线）；M16 既有 14 端点全部超集兼容（旧 body → 旧行为，响应只增字段）；生成主链 / M15 流水线画布零 diff；零新依赖（fflate 既在依赖）
+
+验证：`pnpm --filter @acs/server probe:m17`（八节：node-kinds / port-v2 / input-v2 / batch-ops / variant-adopt / run-node / export / llm-assist，274 项断言，零网络零计费）。
 
 ## 内置模板
 
@@ -510,6 +525,22 @@ curl "http://127.0.0.1:3001/api/v1/publications?project_id=1"
 | 6 | 模板草案（低保真导出） | ✅ | 弹窗渲染 YAML（`canvas-draft-4`）+ 校验自检「步骤 n7 缺 inputs」如实展示（草案待人工完善属设计定位）+「复制 YAML」→ 剪贴板回读全文 + toast；截图 `tmp-m16-draft-modal.png` |
 | 7 | socket 实时对账 + 缺陷修复复验 | ✅ | 消除实弹暴露的 4 处缺陷（TDZ ×2 / uploadFiles 契约 assets→items / **漏 join canvas 房间**：URL 同步 watch 于 setup 期先设 canvasId，房间 watch 后注册且无 immediate → 首次进入 / 刷新错失 null→id 变化；加 `{immediate:true}`）——修复后二次执行 #451：徽标 pending→succeeded 全自动流转（零手动刷新） |
 | 8 | 越界核查（红线复核） | ✅ | `git status`：refs / loader / workspace 模板提示词 / 既有适配器 `generate` 路径零 diff（aliyun-wan 仅 +编辑声明与 `edit()`）；schema.ts 仅 +3 表 +1 列（设计 §2.1 白名单）+ db 幂等兜底 + projects.ts +14（删项目级联清画布）；M15 `CanvasBoard.vue` 零 diff（`CanvasDrawer` 仅 +1 联动按钮；engine.ts 差异系 M15 纯委托留痕）；`package.json` 仅 +`probe:m16`（dependencies 零新增） |
+
+## M17 验收快照（2026-09-13，实弹）
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 静态 + 探针：八节全绿 | ✅ | 双端 typecheck 0 错；`probe:m17` **274 项断言全过**（node-kinds 37 / port-v2 40 / input-v2 37 / batch-ops 77 / variant-adopt 26 / run-node 10 / export 24 / llm-assist 23）；回归 `probe:m16`（内含 `probe:m15` → m2a / m4 / m14 零漂移）全绿；存量库启动幂等升级无报错 |
+| 2 | 创作循环实弹（画布 5「M17实弹」） | ✅ | 实体节点（素材甲）→ gen 节点 reference 连线（边落库）；变体执行 ×2（任务 #453/#454 同批成功 → 产物 #1325/#1324）；结果画廊「采纳 ✓ / 最新」切换与大图预览；采纳落库（节点 #19 `adoptedTaskId=457`，displayTask 派生）；下游执行引用上游产物（任务 #455-#457 输入快照 `referenceAssetIds=[1325]`） |
+| 3 | 批量操控 + 快捷键 | ✅ | 批量执行 started / skipped（未就绪附 problems）；框选 + 多拖（`nodes/batch` 一次提交一条入栈）；快捷键全集；Delete + Ctrl+Z 快照重建恢复（三轮循环实证）；删边 / 删节点均入撤销栈 |
+| 4 | 整理 / 对齐 / 编号 | ✅ | 「整理布局」layered 拓扑分层落库；对齐 / 分布；批量编号（`seq` 落库，卡片 `#N` 徽标） |
+| 5 | 导出 zip | ✅ | 资产 #1328（263,757B）→ `workspace/projects/10/exports/M17实弹-export-*.zip`；条目 `<seq>-<title>-<assetId>` + `manifest.json`（节点清单 / 采纳优先后打包）；下载复用资产通道 |
+| 6 | 送去运行（run 节点） | ✅ | 「送去运行」不跳转 → 视口中心建 run 节点 #24（运行 #103）+ 非终态 5s 轮询 + 「打开运行详情」直达（`/runs/:id`） |
+| 7 | 音频真实 TTS | ✅ | 节点 #25 → 任务 #458 succeeded 586ms → 资产 #1331（ID3 魔数，`siliconflow_audio` / CosyVoice2-0.5B / `voiceSource=settings` / `chars=20`）；UI 任务历史 + 「显示产物」+ 画廊「采纳」+ 卡片 ok 徽标；重跑 #460 → #1333 落 `workspace/projects/10/audio/`（57,343B） |
+| 8 | compose 真实 ffmpeg | ✅ | 节点 #29（640x360；2 视频 + 1 音频入边）→ 任务 #459 succeeded 502ms → 资产 #1332（178,495B / 10.333s / `ftyp isom` 魔数）；ffprobe 独立复核 h264 640x360 10.333s + aac 1.848s；`params` 快照 videos[1154,1153] audios[1273]；建边负例 400「视频输入端口仅合成节点支持」（表单未落库时 from / to 校验现场） |
+| 9 | 全局总览定位 | ✅ | 抽屉 10 行按严重度排序（失败 › 未就绪 › 运行中 › 就绪 › 完成）；点击行选中 + 视口居中（transform 位移 + 行 active + 卡片 sel + inViewport 实证）；收起正常 |
+| 10 | 实弹暴露缺陷修复 3 处 | ✅ | ①快照重建任务孤儿 → `restoreFromNodeId` 认领（探针 restore-claim 断言群）②redo/undo 循环认领源过期 → `snap.curId` 循环修复（三轮实证）③产物子目录映射缺失 → `purposeSubDir` +2（`creation_audio` → audio/、`creation_compose` → video/；重跑 #460 复验入 audio/） |
+| 11 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / loader / 适配器 / 模板 / 提示词零 diff；`schema.ts` 仅 +2 列（设计 §2.1 白名单）；M15 三组件零 diff；`package.json` 仅 +`probe:m17`（dependencies 零新增）；改动面 = 14 改 + 4 新件（`creation-ops.ts` / `creation-export.ts` / `probe-m17.ts` / `canvas-history.ts`） |
 
 ## M7 验收快照（2026-09-12，实弹）
 

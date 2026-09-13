@@ -13,12 +13,14 @@ import CreationInspector from '../components/CreationInspector.vue'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
 import RunFormModal from '../components/RunFormModal.vue'
-import { creationApi, projectApi, uploadFiles } from '../lib/api'
+import { creationApi, entityApi, exportApi, projectApi, runApi, uploadFiles, type AddNodeBody, type CanvasNodePatch } from '../lib/api'
+import { createCanvasHistory } from '../lib/canvas-history'
 import { confirmDialog } from '../lib/confirm'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 import type {
-  Asset, CanvasDoc, CanvasDocEdge, CanvasDocNode, CanvasListItem, CanvasViewport, Project, TemplateValidation,
+  Asset, CanvasArrangeMode, CanvasDoc, CanvasDocEdge, CanvasDocNode, CanvasExportResult, CanvasListItem,
+  CanvasViewport, CreationNodeSpec, EntityItem, EntityNodeSpec, Project, RunNodeSpec, TemplateValidation, TextNodeSpec,
 } from '../lib/types'
 
 const route = useRoute()
@@ -32,15 +34,25 @@ const doc = ref<CanvasDoc | null>(null)
 const loading = ref(false)
 const err = ref('')
 
-const selectedId = ref<number | null>(null)
+const selectedIds = ref<number[]>([])
 const selectedEdgeId = ref<number | null>(null)
+/** [M17] 撤销/重做命令栈（移动/新建/删除/连线/复制入栈；选中/视口不入栈） */
+const history = createCanvasHistory()
 const boardRef = ref<InstanceType<typeof CreationBoard> | null>(null)
+/** [M17] 命令栈按钮状态（嵌套 ref → computed 供模板解包） */
+const canUndo = computed(() => history.canUndo.value)
+const canRedo = computed(() => history.canRedo.value)
+const undoTitle = computed(() => (history.undoLabel.value ? `撤销：${history.undoLabel.value}（Ctrl+Z）` : '撤销（Ctrl+Z）'))
+const redoTitle = computed(() => (history.redoLabel.value ? `重做：${history.redoLabel.value}（Ctrl+Shift+Z）` : '重做（Ctrl+Shift+Z）'))
 
 const nodes = computed<CanvasDocNode[]>(() => doc.value?.nodes ?? [])
 const edges = computed<CanvasDocEdge[]>(() => doc.value?.edges ?? [])
-const selNode = computed<CanvasDocNode | null>(() =>
-  selectedId.value == null ? null : (nodes.value.find((n) => n.id === selectedId.value) ?? null),
-)
+/** 单选详情（多选 → null；P5 批量浮动条浮出） */
+const selNode = computed<CanvasDocNode | null>(() => {
+  const ids = selectedIds.value
+  if (ids.length !== 1) return null
+  return nodes.value.find((n) => n.id === ids[0]) ?? null
+})
 const selEdge = computed<CanvasDocEdge | null>(() =>
   selectedEdgeId.value == null ? null : (edges.value.find((e) => e.id === selectedEdgeId.value) ?? null),
 )
@@ -65,6 +77,10 @@ const listErr = ref('')
 const palette = ref<Asset[]>([])
 const paletteLoading = ref(false)
 const paletteErr = ref('')
+/** [M17] 素材面板 Tab（图片/视频/音频/实体；前三个沿用资产列表查询，实体走 /entities 合并三 kind） */
+const palKind = ref<'image' | 'video' | 'audio' | 'entity'>('image')
+/** [M17] 实体 Tab 数据（character+scene+prop 合并） */
+const palEntities = ref<EntityItem[]>([])
 const fileInput = ref<HTMLInputElement | null>(null)
 
 async function loadLists(): Promise<void> {
@@ -100,12 +116,25 @@ async function loadPalette(): Promise<void> {
   const pid = projectId.value
   if (pid == null) {
     palette.value = []
+    palEntities.value = []
     return
   }
   paletteLoading.value = true
   paletteErr.value = ''
   try {
-    const r = await projectApi.assets(pid, '?limit=120&kind=image')
+    if (palKind.value === 'entity') {
+      // [M17] 实体 Tab：项目域 + 全局（服务端 ?project_id= 视角），三 kind 合并展示
+      const params = `&project_id=${pid}`
+      const [c, s, p] = await Promise.all([
+        entityApi.list('character', params),
+        entityApi.list('scene', params),
+        entityApi.list('prop', params),
+      ])
+      if (projectId.value !== pid) return
+      palEntities.value = [...c.items, ...s.items, ...p.items]
+      return
+    }
+    const r = await projectApi.assets(pid, `?limit=120&kind=${palKind.value}`)
     if (projectId.value !== pid) return
     palette.value = r.items
   } catch (e) {
@@ -114,6 +143,7 @@ async function loadPalette(): Promise<void> {
     paletteLoading.value = false
   }
 }
+watch(palKind, () => void loadPalette())
 
 function goProject(pid: number): void {
   void router.replace({ path: '/creation', query: { project: String(pid) } })
@@ -157,9 +187,10 @@ function syncFromQuery(): void {
     void loadPalette()
   }
   if (canvasChanged) {
-    selectedId.value = null
+    selectedIds.value = []
     selectedEdgeId.value = null
     doc.value = null
+    history.clear() // 换画布：命令栈失效
     if (c != null) void loadDoc()
   }
 }
@@ -184,7 +215,8 @@ async function loadDoc(silent = false): Promise<void> {
       void loadCanvases()
       void loadPalette()
     }
-    if (selectedId.value != null && !d.nodes.some((n) => n.id === selectedId.value)) selectedId.value = null
+    const nodeIdSet = new Set(d.nodes.map((n) => n.id))
+    selectedIds.value = selectedIds.value.filter((id) => nodeIdSet.has(id))
     if (selectedEdgeId.value != null && !d.edges.some((e) => e.id === selectedEdgeId.value)) selectedEdgeId.value = null
   } catch (e) {
     if (!silent) err.value = e instanceof Error ? e.message : String(e)
@@ -234,34 +266,132 @@ function onCanvasEvent(p: StudioEventMap['canvas.changed']): void {
 }
 
 // ===== 选择 =====
-function onSelect(id: number | null): void {
-  selectedId.value = id
-  if (id != null) selectedEdgeId.value = null
+function onSelect(ids: number[]): void {
+  selectedIds.value = ids
+  if (ids.length) selectedEdgeId.value = null
 }
 function onSelectEdge(id: number | null): void {
   selectedEdgeId.value = id
-  if (id != null) selectedId.value = null
+  if (id != null) selectedIds.value = []
+}
+function onClearSelection(): void {
+  selectedIds.value = []
+  selectedEdgeId.value = null
 }
 
-// ===== 画布交互 → 写操作 =====
-async function onNodeMoved(p: { id: number; x: number; y: number }): Promise<void> {
-  if (doc.value) {
-    doc.value = { ...doc.value, nodes: doc.value.nodes.map((n) => (n.id === p.id ? { ...n, x: p.x, y: p.y } : n)) }
+// ===== 写操作辅助（乐观更新 / 命令栈）=====
+/** 批量移动乐观更新（本地先落点；失败由调用方重拉对账） */
+function optimisticMove(moves: Array<{ id: number; x: number; y: number }>): void {
+  if (!doc.value) return
+  const by = new Map(moves.map((m) => [m.id, m]))
+  doc.value = {
+    ...doc.value,
+    nodes: doc.value.nodes.map((n) => {
+      const m = by.get(n.id)
+      return m ? { ...n, x: m.x, y: m.y } : n
+    }),
   }
+}
+
+/** 批量移动提交（拖动组 / 方向键微移）→ nodes/batch + 入撤销栈一条 */
+async function commitMoves(moves: Array<{ id: number; x: number; y: number }>, label: string): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || !moves.length) return
+  const before = moves.map((m) => {
+    const n = nodes.value.find((x) => x.id === m.id)
+    return { id: m.id, x: n?.x ?? m.x, y: n?.y ?? m.y }
+  })
+  optimisticMove(moves)
   try {
-    await creationApi.updateNode(p.id, { x: p.x, y: p.y })
+    await creationApi.batchNodes(cid, moves.map((m) => ({ id: m.id, x: m.x, y: m.y })))
+    history.push({
+      label,
+      undo: async () => {
+        optimisticMove(before)
+        await creationApi.batchNodes(cid, before)
+      },
+      redo: async () => {
+        optimisticMove(moves)
+        await creationApi.batchNodes(cid, moves)
+      },
+    })
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
     void loadDoc(true)
   }
 }
+function onMoved(moves: Array<{ id: number; x: number; y: number }>): void {
+  void commitMoves(moves, moves.length > 1 ? `移动 ${moves.length} 个节点` : '移动节点')
+}
+function onNudge(moves: Array<{ id: number; x: number; y: number }>): void {
+  void commitMoves(moves, '微移节点')
+}
 
+/** 新建节点批 → 入撤销栈（undo 批量删除 / redo 重建；id 为可变引用） */
+async function addNodesCommand(cid: number, bodies: AddNodeBody[], label: string): Promise<number[]> {
+  const created = await Promise.all(bodies.map((b) => creationApi.addNode(cid, b)))
+  let ids = created.map((r) => r.node.id)
+  history.push({
+    label,
+    undo: async () => {
+      await Promise.all(ids.map((id) => creationApi.removeNode(id)))
+      const del = new Set(ids)
+      selectedIds.value = selectedIds.value.filter((x) => !del.has(x))
+      await loadDoc(true)
+    },
+    redo: async () => {
+      const again = await Promise.all(bodies.map((b) => creationApi.addNode(cid, b)))
+      ids = again.map((r) => r.node.id)
+      selectedIds.value = ids
+      await loadDoc(true)
+    },
+  })
+  return ids
+}
+
+/** 快照重建 create body（删除撤销用；损坏 spec → 抛错清栈） */
+function nodeCreateBody(n: CanvasDocNode): AddNodeBody {
+  const pos = { x: n.x, y: n.y }
+  const spec = n.spec
+  if (n.kind === 'gen') {
+    if (!spec) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+    return { kind: 'gen', spec: spec as CreationNodeSpec, ...pos }
+  }
+  if (n.kind === 'text') {
+    if (!spec || !('text' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+    return { kind: 'text', spec: { text: (spec as TextNodeSpec).text }, ...pos }
+  }
+  if (n.kind === 'entity') {
+    if (!spec || !('entityId' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+    return { kind: 'entity', entityId: (spec as EntityNodeSpec).entityId, ...pos }
+  }
+  if (n.kind === 'run') {
+    if (!spec || !('runId' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+    return { kind: 'run', runId: (spec as RunNodeSpec).runId, ...pos }
+  }
+  return { kind: 'asset', assetId: n.assetId ?? 0, ...pos }
+}
+
+// ===== 画布交互 → 写操作 =====
 async function onConnect(p: { from: number; to: number; port: string }): Promise<void> {
   const cid = canvasId.value
   if (cid == null) return
   try {
-    await creationApi.addEdge(cid, p)
+    const r = await creationApi.addEdge(cid, p)
+    let edgeId = r.edge.id
     toast('已连线')
+    history.push({
+      label: '连线',
+      undo: async () => {
+        await creationApi.removeEdge(edgeId)
+        await loadDoc(true)
+      },
+      redo: async () => {
+        const rr = await creationApi.addEdge(cid, p)
+        edgeId = rr.edge.id
+        await loadDoc(true)
+      },
+    })
     void loadDoc(true)
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
@@ -272,9 +402,10 @@ async function onCreateNode(p: { x: number; y: number }): Promise<void> {
   const cid = canvasId.value
   if (cid == null) return
   try {
-    const r = await creationApi.addNode(cid, { kind: 'gen', spec: { genKind: 'image', prompt: '' }, x: p.x, y: p.y })
+    const body: AddNodeBody = { kind: 'gen', spec: { genKind: 'image', prompt: '' }, x: p.x, y: p.y }
+    const ids = await addNodesCommand(cid, [body], '新建节点')
     await loadDoc(true)
-    selectedId.value = r.node.id
+    selectedIds.value = ids
     selectedEdgeId.value = null
     toast('已新建生成节点，请在右侧编辑参数')
   } catch (e) {
@@ -288,16 +419,13 @@ async function onDropFiles(p: { files: File[]; x: number; y: number }): Promise<
   if (pid == null || cid == null) return
   try {
     const assets = await uploadFiles(pid, 'reference', p.files)
+    const bodies: AddNodeBody[] = []
     for (let i = 0; i < assets.length; i++) {
       const a = assets[i]
       if (!a) continue
-      await creationApi.addNode(cid, {
-        kind: 'asset',
-        assetId: a.id,
-        x: p.x + (i % 3) * 36,
-        y: p.y + (i % 3) * 36,
-      })
+      bodies.push({ kind: 'asset', assetId: a.id, x: p.x + (i % 3) * 36, y: p.y + (i % 3) * 36 })
     }
+    await addNodesCommand(cid, bodies, `新建 ${bodies.length} 个素材节点`)
     toast(`已上传 ${assets.length} 个文件并建为素材节点`)
     void loadDoc(true)
     void loadPalette()
@@ -310,12 +438,256 @@ async function onDropAsset(p: { assetId: number; x: number; y: number }): Promis
   const cid = canvasId.value
   if (cid == null) return
   try {
-    await creationApi.addNode(cid, { kind: 'asset', assetId: p.assetId, x: p.x, y: p.y })
+    await addNodesCommand(cid, [{ kind: 'asset', assetId: p.assetId, x: p.x, y: p.y }], '新建素材节点')
     toast('已加入素材节点')
     void loadDoc(true)
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
   }
+}
+
+/** [M17] 删除选中（快照重建逆操作；undo: POST nodes 重映射 + gen 任务认领 + POST edges + PATCH extras）
+ *  rethrow=true（Inspector 调用）：错误上抛、成功静默（由 Inspector 显示）；false：本地 toast */
+async function onDeleteSelected(rethrow = false): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || !ids.length) return
+  const idSet = new Set(ids)
+  const snap: Array<{
+    oldId: number
+    /** [M17] 当前代实际节点 id（任务历史认领源；redo/undo 循环中随重建更新） */
+    curId: number
+    body: AddNodeBody
+    title: string | null
+    seq: number | null
+    adoptedTaskId: number | null
+  }> = []
+  try {
+    for (const id of ids) {
+      const n = nodes.value.find((x) => x.id === id)
+      if (!n) continue
+      snap.push({ oldId: id, curId: id, body: nodeCreateBody(n), title: n.title, seq: n.seq ?? null, adoptedTaskId: n.adoptedTaskId ?? null })
+    }
+  } catch (e) {
+    if (rethrow) throw e
+    toast(e instanceof Error ? e.message : String(e))
+    return
+  }
+  // 关联边快照（含悬挂到保留节点的边；内部边 from/to 均在删除集内）
+  const relEdges: Array<{ from: number; to: number; port: string }> = []
+  for (const e of edges.value) {
+    if (idSet.has(e.from) || idSet.has(e.to)) relEdges.push({ from: e.from, to: e.to, port: e.port })
+  }
+  let curIds = ids
+  try {
+    await creationApi.deleteNodes(cid, ids)
+    selectedIds.value = []
+    selectedEdgeId.value = null
+    await loadDoc(true)
+  } catch (e) {
+    if (rethrow) throw e
+    toast(e instanceof Error ? e.message : String(e))
+    return
+  }
+  if (!rethrow) toast(`已删除 ${snap.length} 个节点`)
+  history.push({
+    label: `删除 ${snap.length} 个节点`,
+    undo: async () => {
+      // 重建（id 重映射 → 边重建 → extras 恢复；任一步失败 → 上抛清栈）
+      const idMap = new Map<number, number>()
+      const newIds: number[] = []
+      for (const s of snap) {
+        // [M17] gen 节点重建附带认领任务历史（源=curId：任务实际所在的一代 id；否则 adoptedTaskId 恢复必失败）
+        const r = await creationApi.addNode(
+          cid,
+          s.body.kind === 'gen' ? { ...s.body, restoreFromNodeId: s.curId } : s.body,
+        )
+        s.curId = r.node.id
+        idMap.set(s.oldId, r.node.id)
+        newIds.push(r.node.id)
+        const patch: CanvasNodePatch = {}
+        if (s.title != null) patch.title = s.title
+        if (s.seq != null) patch.seq = s.seq
+        if (s.adoptedTaskId != null) patch.adoptedTaskId = s.adoptedTaskId
+        if (Object.keys(patch).length) await creationApi.updateNode(r.node.id, patch)
+      }
+      for (const e of relEdges) {
+        await creationApi.addEdge(cid, {
+          from: idMap.get(e.from) ?? e.from,
+          to: idMap.get(e.to) ?? e.to,
+          port: e.port,
+        })
+      }
+      curIds = newIds
+      selectedIds.value = newIds
+      await loadDoc(true)
+    },
+    redo: async () => {
+      await creationApi.deleteNodes(cid, curIds)
+      selectedIds.value = []
+      await loadDoc(true)
+    },
+  })
+}
+
+/** [M17] 复制选中（Ctrl+D：偏移 +40,+40；内部边重映射） */
+async function onCopySelected(): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || !ids.length) return
+  let newIds: number[] = []
+  const doCopy = async (): Promise<void> => {
+    const r = await creationApi.copyNodes(cid, ids)
+    newIds = r.nodes.map((n) => n.id)
+    selectedIds.value = newIds
+    selectedEdgeId.value = null
+    await loadDoc(true)
+  }
+  try {
+    await doCopy()
+    toast(`已复制 ${newIds.length} 个节点`)
+    history.push({
+      label: `复制 ${newIds.length} 个节点`,
+      undo: async () => {
+        await creationApi.deleteNodes(cid, newIds)
+        const del = new Set(newIds)
+        selectedIds.value = selectedIds.value.filter((x) => !del.has(x))
+        await loadDoc(true)
+      },
+      redo: async () => {
+        await doCopy()
+      },
+    })
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  }
+}
+
+/** [M17] 撤销 / 重做（失败 → toast + 清栈提示；对账重拉） */
+async function onUndo(): Promise<void> {
+  const label = history.undoLabel.value
+  try {
+    await history.undo()
+    if (label) toast(`已撤销：${label}`)
+  } catch (e) {
+    toast(`撤销失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`)
+    void loadDoc(true)
+  }
+}
+async function onRedo(): Promise<void> {
+  const label = history.redoLabel.value
+  try {
+    await history.redo()
+    if (label) toast(`已重做：${label}`)
+  } catch (e) {
+    toast(`重做失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`)
+    void loadDoc(true)
+  }
+}
+
+// ===== [M17] Inspector 写命令接线（props 回调；写操作入撤销栈，await 返回即已落库） =====
+/** 取单节点 patch 覆盖字段的当前值（表单变化判定 + 撤销逆操作源） */
+function patchCurrent(n: CanvasDocNode, patch: CanvasNodePatch): CanvasNodePatch {
+  const cur: CanvasNodePatch = {}
+  if ('x' in patch) cur.x = n.x
+  if ('y' in patch) cur.y = n.y
+  if ('title' in patch) cur.title = n.title
+  if ('spec' in patch && n.spec) cur.spec = n.spec
+  if ('seq' in patch) cur.seq = n.seq
+  if ('adoptedTaskId' in patch) cur.adoptedTaskId = n.adoptedTaskId
+  return cur
+}
+
+/** PATCH 单节点（改名/spec/文本/采纳）→ nodes/batch + 入撤销栈（逆操作 = 覆盖字段旧值回写） */
+async function applyNodePatch(p: { id: number; patch: CanvasNodePatch; label: string }): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  const n = nodes.value.find((x) => x.id === p.id)
+  const before = n ? patchCurrent(n, p.patch) : {}
+  await creationApi.batchNodes(cid, [{ id: p.id, ...p.patch }])
+  history.push({
+    label: p.label,
+    undo: async () => {
+      await creationApi.batchNodes(cid, [{ id: p.id, ...before }])
+      await loadDoc(true)
+    },
+    redo: async () => {
+      await creationApi.batchNodes(cid, [{ id: p.id, ...p.patch }])
+      await loadDoc(true)
+    },
+  })
+  await loadDoc(true)
+}
+
+/** 执行节点（表单有变化先落库并入栈；执行本身不入栈） */
+async function applyNodeRun(p: { id: number; variants: number; savePatch?: CanvasNodePatch }): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  const n = nodes.value.find((x) => x.id === p.id)
+  if (p.savePatch && n) {
+    const cur = patchCurrent(n, p.savePatch)
+    if (JSON.stringify(cur) !== JSON.stringify(p.savePatch)) {
+      await applyNodePatch({ id: p.id, patch: p.savePatch, label: '保存参数' })
+    }
+  }
+  await creationApi.run(p.id, p.variants > 1 ? p.variants : undefined)
+  await loadDoc(true)
+}
+
+/** 提取文本节点（undo 删除新节点 / redo 重提；id 可变引用）→ 选中新节点 */
+async function applyNodeExtract(id: number): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  const r = await creationApi.extractText(id)
+  let newId = r.node.id
+  history.push({
+    label: '提取文本节点',
+    undo: async () => {
+      await creationApi.removeNode(newId)
+      selectedIds.value = selectedIds.value.filter((x) => x !== newId)
+      await loadDoc(true)
+    },
+    redo: async () => {
+      const rr = await creationApi.extractText(id)
+      newId = rr.node.id
+      await loadDoc(true)
+      selectedIds.value = [newId]
+      selectedEdgeId.value = null
+    },
+  })
+  await loadDoc(true)
+  selectedIds.value = [newId]
+  selectedEdgeId.value = null
+}
+
+/** 断开连线（undo 重连 / redo 再断；edgeId 可变引用） */
+async function applyRemoveEdge(id: number): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  const e = edges.value.find((x) => x.id === id)
+  await creationApi.removeEdge(id)
+  if (selectedEdgeId.value === id) selectedEdgeId.value = null
+  if (e) {
+    let curId = id
+    history.push({
+      label: '断开连线',
+      undo: async () => {
+        const r = await creationApi.addEdge(cid, { from: e.from, to: e.to, port: e.port })
+        curId = r.edge.id
+        await loadDoc(true)
+      },
+      redo: async () => {
+        await creationApi.removeEdge(curId)
+        await loadDoc(true)
+      },
+    })
+  }
+  await loadDoc(true)
+}
+
+/** Inspector 删除入口（错误上抛由 Inspector 显示；成功提示由 Inspector notice 承担） */
+async function applyDeleteFromInspector(): Promise<void> {
+  await onDeleteSelected(true)
 }
 
 async function onViewportSettled(v: CanvasViewport): Promise<void> {
@@ -326,6 +698,322 @@ async function onViewportSettled(v: CanvasViewport): Promise<void> {
   } catch {
     // 视口持久化失败静默（不影响创作）
   }
+}
+
+// ===== [M17] 批量编排（多选浮动条 / 顶栏整理）=====
+const ARRANGE_LABEL: Record<CanvasArrangeMode, string> = {
+  layered: '分层整理',
+  grid: '按序号排列',
+  'align-left': '左对齐',
+  'align-right': '右对齐',
+  'align-top': '顶对齐',
+  'align-bottom': '底对齐',
+  'distribute-h': '水平分布',
+  'distribute-v': '垂直分布',
+}
+const batchBusy = ref(false)
+
+/** 整理/对齐/分布（positions 快照入栈；失败 toast） */
+async function runArrange(mode: CanvasArrangeMode, nodeIds?: number[]): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || !nodes.value.length) return
+  batchBusy.value = true
+  try {
+    const targets = nodeIds ? nodes.value.filter((n) => nodeIds.includes(n.id)) : nodes.value
+    const before = targets.map((n) => ({ id: n.id, x: n.x, y: n.y }))
+    const r = await creationApi.arrange(cid, mode === 'grid' ? { mode, nodeIds, sortBy: 'seq' } : { mode, nodeIds })
+    const after = r.positions
+    history.push({
+      label: ARRANGE_LABEL[mode],
+      undo: async () => {
+        await creationApi.batchNodes(cid, before)
+        await loadDoc(true)
+      },
+      redo: async () => {
+        await creationApi.batchNodes(cid, after)
+        await loadDoc(true)
+      },
+    })
+    await loadDoc(true)
+    toast(`${ARRANGE_LABEL[mode]}：更新 ${r.updated} 个节点`)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    batchBusy.value = false
+  }
+}
+function batchArrange(mode: CanvasArrangeMode): void {
+  void runArrange(mode, [...selectedIds.value])
+}
+function arrangeAll(mode: 'layered' | 'grid'): void {
+  void runArrange(mode)
+}
+
+/** 编号：按 x 序（同 x 按 y）编 seq 1..N → batch 一条命令 */
+async function batchNumber(): Promise<void> {
+  const cid = canvasId.value
+  const sel = nodes.value.filter((n) => selectedIds.value.includes(n.id))
+  if (cid == null || sel.length < 2) return
+  const sorted = [...sel].sort((a, b) => a.x - b.x || a.y - b.y)
+  const before = sorted.map((n) => ({ id: n.id, seq: n.seq ?? null }))
+  const updates = sorted.map((n, i) => ({ id: n.id, seq: i + 1 }))
+  batchBusy.value = true
+  try {
+    await creationApi.batchNodes(cid, updates)
+    history.push({
+      label: `编号 1–${updates.length}`,
+      undo: async () => {
+        await creationApi.batchNodes(cid, before)
+        await loadDoc(true)
+      },
+      redo: async () => {
+        await creationApi.batchNodes(cid, updates)
+        await loadDoc(true)
+      },
+    })
+    await loadDoc(true)
+    toast(`已按 x 序编号 1–${updates.length}`)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+/** 规则式串联（相邻对建边；created 可变引用，全跳过时提示原因） */
+async function batchChain(): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || ids.length < 2) return
+  batchBusy.value = true
+  try {
+    const r = await creationApi.chainNodes(cid, ids)
+    let created = r.created.map((e) => e.id)
+    if (!created.length) {
+      toast(`未能串联：${r.skipped[0]?.reason ?? '无可连接的相邻对'}`)
+      return
+    }
+    history.push({
+      label: `串联 ${created.length} 条边`,
+      undo: async () => {
+        await Promise.all(created.map((id) => creationApi.removeEdge(id)))
+        await loadDoc(true)
+      },
+      redo: async () => {
+        const rr = await creationApi.chainNodes(cid, ids)
+        created = rr.created.map((e) => e.id)
+        await loadDoc(true)
+      },
+    })
+    await loadDoc(true)
+    toast(r.skipped.length ? `已串联 ${created.length} 条边，跳过 ${r.skipped.length} 对` : `已串联 ${created.length} 条边`)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+/** 批量执行（只入队就绪节点；不入栈） */
+async function batchRun(): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || ids.length < 2) return
+  batchBusy.value = true
+  try {
+    const r = await creationApi.runBatch(cid, { nodeIds: ids })
+    await loadDoc(true)
+    if (r.started.length && r.skipped.length) toast(`已入队 ${r.started.length} 个节点，跳过 ${r.skipped.length} 个（未就绪）`)
+    else if (r.started.length) toast(`已入队 ${r.started.length} 个节点执行`)
+    else toast(`无可执行节点：${r.skipped[0]?.problems.join('；') ?? '均未就绪'}`)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+// ===== [M17] 导出 zip（打包为 archive 资产 → 下载复用资产文件端点） =====
+const exportBusy = ref(false)
+const showExport = ref(false)
+const exportResult = ref<CanvasExportResult | null>(null)
+
+async function onExportZip(): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  exportBusy.value = true
+  try {
+    exportResult.value = await creationApi.exportZip(cid)
+    showExport.value = true
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    exportBusy.value = false
+  }
+}
+
+// ===== [M17] run 节点轮询（存在非终态 run 时 5s；终态自动停） =====
+const RUN_TEXT: Record<string, string> = { queued: '排队', running: '运行中', waiting_input: '待输入', completed: '完成', failed: '失败', cancelled: '已取消' }
+const RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled'])
+let runPollTimer: number | null = null
+let runPollBusy = false
+
+function syncRunPoll(): void {
+  const live = nodes.value.some((n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status))
+  if (live && runPollTimer == null) {
+    runPollTimer = window.setInterval(() => void pollRuns(), 5000)
+  } else if (!live && runPollTimer != null) {
+    window.clearInterval(runPollTimer)
+    runPollTimer = null
+  }
+}
+
+async function pollRuns(): Promise<void> {
+  if (runPollBusy || !doc.value) return
+  const live = nodes.value.filter((n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status))
+  if (!live.length) {
+    syncRunPoll()
+    return
+  }
+  runPollBusy = true
+  try {
+    const details = await Promise.all(live.map((n) => runApi.detail(n.run!.id)))
+    if (!doc.value) return
+    const byId = new Map(details.map((d) => [d.run.id, d]))
+    doc.value = {
+      ...doc.value,
+      nodes: doc.value.nodes.map((n) => {
+        if (n.kind !== 'run' || !n.run) return n
+        const d = byId.get(n.run.id)
+        if (!d) return n
+        const succeeded = d.steps.filter((s) => s.status === 'succeeded').length
+        return {
+          ...n,
+          run: {
+            ...n.run,
+            status: d.run.status,
+            startedAt: d.run.startedAt,
+            completedAt: d.run.completedAt,
+            steps: { succeeded, total: d.steps.length },
+          },
+        }
+      }),
+    }
+  } catch {
+    // 轮询失败静默（下轮重试；不打扰创作）
+  } finally {
+    runPollBusy = false
+    syncRunPoll()
+  }
+}
+// doc 变更（含轮询自身回写）→ 同步轮询开关
+watch(nodes, syncRunPoll)
+
+// ===== [M17] 全局状态总览（doc 派生，零端点） =====
+const showOverview = ref(false)
+interface OvRow {
+  id: number
+  title: string
+  kind: string
+  dot: string
+  summary: string
+  rank: number
+}
+const KIND_SHORT: Record<string, string> = { asset: '素材', text: '文本', entity: '实体', run: '运行' }
+
+function genKindShort(n: CanvasDocNode): string {
+  const s = n.spec
+  const gk = s && typeof s === 'object' && 'genKind' in s ? s.genKind : null
+  if (gk === 'video') return '视频'
+  if (gk === 'audio') return '音频'
+  if (gk === 'compose') return '合成'
+  return '图片'
+}
+
+/** 严重度：失败(0) > 未就绪/损坏(1) > 运行中/排队(2) > 就绪(3) > 完成/空闲(4) */
+const overviewRows = computed<OvRow[]>(() => {
+  const rows: OvRow[] = []
+  for (const n of nodes.value) {
+    let rank = 4
+    let dot = 'idle'
+    let summary = ''
+    const kindText = n.kind === 'gen' ? genKindShort(n) : (KIND_SHORT[n.kind] ?? n.kind)
+    if (n.kind === 'gen') {
+      if (n.status === 'failed') {
+        rank = 0
+        dot = 'bad'
+        summary = n.latestTask?.errorMsg ?? '生成失败'
+      } else if (n.specError) {
+        rank = 1
+        dot = 'warn'
+        summary = n.specError
+      } else if (n.status === 'pending' || n.status === 'processing') {
+        rank = 2
+        dot = 'run'
+        summary = n.status === 'pending' ? '排队中' : '生成中'
+      } else if (n.readiness && !n.readiness.ready) {
+        rank = 1
+        dot = 'warn'
+        summary = n.readiness.problems[0] ?? '未就绪'
+      } else if (n.canRun) {
+        rank = 3
+        dot = 'ok'
+        summary = '已就绪'
+      } else if (n.status === 'succeeded') {
+        dot = 'ok'
+        summary = '已完成'
+      } else {
+        summary = '空闲'
+      }
+    } else if (n.kind === 'run') {
+      const st = n.run?.status
+      if (!st) {
+        rank = 1
+        dot = 'warn'
+        summary = '运行数据缺失'
+      } else if (st === 'failed') {
+        rank = 0
+        dot = 'bad'
+        summary = '运行失败'
+      } else if (!RUN_TERMINAL.has(st)) {
+        rank = 2
+        dot = 'run'
+        summary = `${RUN_TEXT[st] ?? st} · 步骤 ${n.run?.steps.succeeded ?? 0}/${n.run?.steps.total ?? 0}`
+      } else {
+        dot = st === 'completed' ? 'ok' : 'idle'
+        summary = RUN_TEXT[st] ?? st
+      }
+    } else if (n.kind === 'text') {
+      const t = n.spec && 'text' in n.spec ? n.spec.text : ''
+      summary = t ? t.replace(/\s+/g, ' ').slice(0, 26) : '（空文本）'
+    } else if (n.kind === 'entity') {
+      if (n.entity) summary = `${n.entity.name} · 参考 ${n.entity.refCount}`
+      else {
+        rank = 1
+        dot = 'warn'
+        summary = '实体缺失'
+      }
+    } else if (n.asset) {
+      summary = n.asset.name
+    } else if (n.assetId == null) {
+      summary = '空节点'
+    } else {
+      rank = 1
+      dot = 'warn'
+      summary = '资产缺失'
+    }
+    rows.push({ id: n.id, title: n.title, kind: kindText, dot, summary, rank })
+  }
+  return rows.sort((a, b) => a.rank - b.rank)
+})
+
+/** 总览点击 → 选中 + 视口居中（节点卡宽 220；中心偏移 110/70） */
+function focusNode(id: number): void {
+  const n = nodes.value.find((x) => x.id === id)
+  if (!n) return
+  selectedIds.value = [id]
+  selectedEdgeId.value = null
+  void nextTick(() => boardRef.value?.centerOn(n.x + 110, n.y + 70))
 }
 
 // ===== 素材面板 =====
@@ -341,11 +1029,42 @@ async function paletteClick(a: Asset): Promise<void> {
   const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
   const jitter = (paletteSeq++ % 5) * 26
   try {
-    await creationApi.addNode(cid, { kind: 'asset', assetId: a.id, x: at.x + jitter, y: at.y + jitter })
+    await addNodesCommand(cid, [{ kind: 'asset', assetId: a.id, x: at.x + jitter, y: at.y + jitter }], '新建素材节点')
     toast('已加入素材节点')
     void loadDoc(true)
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
+  }
+}
+
+/** [M17] 实体 Tab：类型标签 + 拖入 / 单击送至视口中心（建 entity 节点） */
+const ENT_KIND_TEXT: Record<EntityItem['kind'], string> = { character: '角色', scene: '场景', prop: '道具' }
+function paletteEntityDragStart(ev: DragEvent, e: EntityItem): void {
+  ev.dataTransfer?.setData('text/acs-entity-id', String(e.id))
+  if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy'
+}
+async function paletteEntityClick(e: EntityItem): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
+  const jitter = (paletteSeq++ % 5) * 26
+  try {
+    await addNodesCommand(cid, [{ kind: 'entity', entityId: e.id, x: at.x + jitter, y: at.y + jitter }], '新建实体节点')
+    toast('已加入实体节点')
+    void loadDoc(true)
+  } catch (err) {
+    toast(err instanceof Error ? err.message : String(err))
+  }
+}
+async function onDropEntity(p: { entityId: number; x: number; y: number }): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  try {
+    await addNodesCommand(cid, [{ kind: 'entity', entityId: p.entityId, x: p.x, y: p.y }], '新建实体节点')
+    toast('已加入实体节点')
+    void loadDoc(true)
+  } catch (err) {
+    toast(err instanceof Error ? err.message : String(err))
   }
 }
 
@@ -462,8 +1181,21 @@ function openSendRun(): void {
 }
 function onRunStarted(id: number): void {
   showRun.value = false
-  toast(`已启动运行 #${id}`)
-  void router.push({ path: `/runs/${id}` })
+  const cid = canvasId.value
+  if (cid == null) {
+    toast(`已启动运行 #${id}`)
+    return
+  }
+  const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
+  void (async () => {
+    try {
+      await addNodesCommand(cid, [{ kind: 'run', runId: id, x: at.x, y: at.y }], '新建运行节点')
+      await loadDoc(true)
+      toast(`已启动运行 #${id}，已加入运行节点（进度自动刷新）`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+    }
+  })()
 }
 
 // ===== 联动②：导出模板草案 =====
@@ -506,6 +1238,7 @@ onBeforeUnmount(() => {
   leaveCanvasRoom()
   if (refreshTimer != null) window.clearTimeout(refreshTimer)
   if (toastTimer != null) window.clearTimeout(toastTimer)
+  if (runPollTimer != null) window.clearInterval(runPollTimer)
 })
 </script>
 
@@ -566,6 +1299,12 @@ onBeforeUnmount(() => {
       <span class="sp" />
       <span v-if="listErr" class="muted" :title="listErr">目录加载失败</span>
       <span v-if="loading" class="muted">加载中…</span>
+      <button type="button" class="btn sm" :disabled="!canUndo" :title="undoTitle" @click="onUndo">
+        <Icon name="undo" :size="12" />
+      </button>
+      <button type="button" class="btn sm" :disabled="!canRedo" :title="redoTitle" @click="onRedo">
+        <Icon name="redo" :size="12" />
+      </button>
       <button type="button" class="btn sm" title="适应视图（0）" :disabled="canvasId == null" @click="boardRef?.fit()">
         <Icon name="zoom-in" :size="12" /> 适应视图
       </button>
@@ -587,6 +1326,43 @@ onBeforeUnmount(() => {
       >
         <Icon name="doc" :size="11" /> {{ draftBusy ? '导出中…' : '模板草案' }}
       </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="一键整理布局（按上下游分层排列；可撤销）"
+        :disabled="canvasId == null || batchBusy || !nodes.length"
+        @click="arrangeAll('layered')"
+      >
+        <Icon name="arrange" :size="11" /> 整理布局
+      </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="按故事板序号排列（grid；有 seq 优先，行优先）"
+        :disabled="canvasId == null || batchBusy || !nodes.length"
+        @click="arrangeAll('grid')"
+      >
+        <Icon name="flow" :size="11" /> 按序号
+      </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="打包导出画布产物（zip + manifest）"
+        :disabled="canvasId == null || exportBusy"
+        @click="onExportZip"
+      >
+        <Icon name="download" :size="11" /> {{ exportBusy ? '打包中…' : '导出' }}
+      </button>
+      <button
+        type="button"
+        class="btn sm"
+        :class="{ primary: showOverview }"
+        title="全局状态总览（按严重度排序；点击定位）"
+        :disabled="canvasId == null"
+        @click="showOverview = !showOverview"
+      >
+        <Icon name="eye" :size="11" /> 总览
+      </button>
     </div>
 
     <div v-if="err" class="errbar">
@@ -600,13 +1376,41 @@ onBeforeUnmount(() => {
       <!-- 左：素材面板 -->
       <aside v-if="canvasId != null" class="crt-palette" aria-label="素材面板">
         <div class="pal-h">
-          <span>素材（图片）</span>
+          <div class="pal-tabs">
+            <button type="button" class="pal-tab" :class="{ on: palKind === 'image' }" @click="palKind = 'image'">图片</button>
+            <button type="button" class="pal-tab" :class="{ on: palKind === 'video' }" @click="palKind = 'video'">视频</button>
+            <button type="button" class="pal-tab" :class="{ on: palKind === 'audio' }" @click="palKind = 'audio'">音频</button>
+            <button type="button" class="pal-tab" :class="{ on: palKind === 'entity' }" @click="palKind = 'entity'">实体</button>
+          </div>
           <button type="button" class="iconbtn" title="上传素材到项目" @click="pickFiles">
             <Icon name="upload" :size="12" />
           </button>
         </div>
         <div v-if="paletteLoading" class="muted mini">加载中…</div>
-        <div v-else-if="!palette.length" class="muted mini">项目暂无图片素材，可上传，或从流水线抽屉「送入创作画布」。</div>
+        <div v-else-if="palKind === 'entity' && !palEntities.length" class="muted mini">该项目暂无实体素材，可在「实体馆」页创建。</div>
+        <div v-else-if="palKind !== 'entity' && !palette.length" class="muted mini">该项目暂无此类素材，可上传，或从流水线抽屉「送入创作画布」。</div>
+        <div v-else-if="palKind === 'entity'" class="pal-list">
+          <button
+            v-for="e in palEntities"
+            :key="e.id"
+            type="button"
+            class="pal-item"
+            draggable="true"
+            :title="`${e.name}（${ENT_KIND_TEXT[e.kind]}；拖入画布 / 单击送至视口中心）`"
+            @dragstart="paletteEntityDragStart($event, e)"
+            @click="paletteEntityClick(e)"
+          >
+            <img
+              v-if="e.refAssets[0]"
+              :src="e.refAssets[0].urls.thumb ?? e.refAssets[0].urls.file"
+              loading="lazy"
+              alt=""
+            />
+            <span v-else class="pal-ph">无参考图</span>
+            <span class="pal-name">{{ e.name }}</span>
+            <span class="pal-ebadge">{{ ENT_KIND_TEXT[e.kind] }} · {{ e.refAssetIds.length }}图</span>
+          </button>
+        </div>
         <div v-else class="pal-list">
           <button
             v-for="a in palette"
@@ -641,18 +1445,49 @@ onBeforeUnmount(() => {
           ref="boardRef"
           :nodes="nodes"
           :edges="edges"
-          :selected-id="selectedId"
+          :selected-ids="selectedIds"
           :selected-edge-id="selectedEdgeId"
           :initial-viewport="doc.canvas.viewport"
           @select="onSelect"
           @select-edge="onSelectEdge"
-          @node-moved="onNodeMoved"
+          @moved="onMoved"
+          @nudge="onNudge"
           @connect="onConnect"
           @create-node="onCreateNode"
           @drop-files="onDropFiles"
           @drop-asset="onDropAsset"
+          @drop-entity="onDropEntity"
           @viewport-settled="onViewportSettled"
+          @delete-selected="onDeleteSelected"
+          @copy-selected="onCopySelected"
+          @undo="onUndo"
+          @redo="onRedo"
         />
+
+        <!-- [M17] 多选批量浮动条 -->
+        <div v-if="canvasId != null && doc && selectedIds.length >= 2" class="batch-bar panel">
+          <span class="bb-n">已选 {{ selectedIds.length }}</span>
+          <span class="bb-sep" />
+          <button type="button" class="btn sm" :disabled="batchBusy" title="左对齐" @click="batchArrange('align-left')">左对齐</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="右对齐" @click="batchArrange('align-right')">右对齐</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="顶对齐" @click="batchArrange('align-top')">顶对齐</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="底对齐" @click="batchArrange('align-bottom')">底对齐</button>
+          <span class="bb-sep" />
+          <button type="button" class="btn sm" :disabled="batchBusy" title="水平等间距分布" @click="batchArrange('distribute-h')">水平分布</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="垂直等间距分布" @click="batchArrange('distribute-v')">垂直分布</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="对选中集分层整理" @click="batchArrange('layered')">整理</button>
+          <span class="bb-sep" />
+          <button type="button" class="btn sm" :disabled="batchBusy" title="按选中顺序对相邻对自动建边（规则式）" @click="batchChain">串联</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="按 x 序编 seq 1..N（故事板序号）" @click="batchNumber">编号</button>
+          <button type="button" class="btn sm" :disabled="batchBusy" title="复制选中（偏移 +40,+40）" @click="onCopySelected">复制</button>
+          <span class="bb-sep" />
+          <button type="button" class="btn sm primary" :disabled="batchBusy" title="批量执行（只入队就绪节点）" @click="batchRun">
+            <Icon name="play" :size="11" /> 执行
+          </button>
+          <button type="button" class="btn sm danger" :disabled="batchBusy" title="删除选中节点" @click="onDeleteSelected()">
+            <Icon name="trash" :size="11" /> 删除
+          </button>
+        </div>
 
         <!-- 空态引导 -->
         <div v-else class="crt-guide">
@@ -661,7 +1496,7 @@ onBeforeUnmount(() => {
             <div class="gd-t">创作画布</div>
             <p class="muted gd-desc">
               自由摆放素材与生成节点、拖拽端口连线组织引用关系；双击空白新建生成节点，就地生成 / 编辑，
-              产物可一键送去运行或导出为模板草案。
+              产物可一键送去运行或导出为模板草案。左键拖拽框选（平移用空格 / 中键），Del 删除 / Ctrl+Z 撤销。
             </p>
             <div class="gd-sec">
               <div class="gd-h">选择画布</div>
@@ -694,10 +1529,44 @@ onBeforeUnmount(() => {
         :edges="edges"
         :canvas-id="canvasId"
         :project-id="activeProjectId"
+        :apply-patch="applyNodePatch"
+        :apply-run="applyNodeRun"
+        :apply-extract="applyNodeExtract"
+        :apply-delete="applyDeleteFromInspector"
+        :apply-remove-edge="applyRemoveEdge"
         @refresh="loadDoc(true)"
-        @clear="onSelect(null); onSelectEdge(null)"
+        @clear="onClearSelection"
         @notice="toast"
       />
+
+      <!-- [M17] 全局状态总览抽屉（doc 派生；点击定位） -->
+      <aside v-if="showOverview && canvasId != null" class="ov-drawer panel" aria-label="全局状态总览">
+        <div class="ov-h">
+          <span>总览</span>
+          <span class="muted mini">{{ nodes.length }} 节点</span>
+          <button type="button" class="iconbtn" title="收起" @click="showOverview = false">
+            <Icon name="x" :size="12" />
+          </button>
+        </div>
+        <div class="muted mini ov-legend">按严重度排序：失败 › 未就绪 › 运行中 › 就绪 › 完成 / 空闲；点击行定位到节点。</div>
+        <div v-if="!overviewRows.length" class="muted mini">画布暂无节点</div>
+        <div v-else class="ov-list">
+          <button
+            v-for="r in overviewRows"
+            :key="r.id"
+            type="button"
+            class="ov-row"
+            :class="{ active: selectedIds.includes(r.id) }"
+            :title="r.summary"
+            @click="focusNode(r.id)"
+          >
+            <span class="ov-dot" :class="r.dot" />
+            <span class="ov-title">{{ r.title }}</span>
+            <span class="ov-kind muted mini">{{ r.kind }}</span>
+            <span class="ov-sum">{{ r.summary }}</span>
+          </button>
+        </div>
+      </aside>
     </div>
 
     <!-- toast -->
@@ -736,6 +1605,22 @@ onBeforeUnmount(() => {
         <button type="button" class="btn primary" @click="copyDraft">
           <Icon name="copy" :size="12" /> 复制 YAML
         </button>
+      </template>
+    </Modal>
+
+    <!-- [M17] 导出画布产物 zip -->
+    <Modal v-if="showExport && exportResult" title="导出画布产物" :width="560" @close="showExport = false">
+      <div class="exp-meta">
+        <div class="em-row"><span class="em-k">打包</span><span class="em-v">{{ exportResult.stats.packed }} 个产物</span></div>
+        <div class="em-row"><span class="em-k">跳过</span><span class="em-v">{{ exportResult.stats.skipped }} 个（缺失产物 / 不打包类型）</span></div>
+        <div class="em-row"><span class="em-k">文件</span><span class="em-v mono">{{ exportResult.asset.name }}</span></div>
+      </div>
+      <div class="muted mini">zip 内含 manifest.json 与按序号命名的产物（seq-title-assetId.ext）；下载后可直接解包核对。</div>
+      <template #footer>
+        <button type="button" class="btn" @click="showExport = false">关闭</button>
+        <a class="btn primary" :href="exportApi.fileUrl(exportResult.asset.id, true)">
+          <Icon name="download" :size="12" /> 下载 zip
+        </a>
       </template>
     </Modal>
   </div>
@@ -828,6 +1713,27 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 
+.pal-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.pal-tab {
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-3);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pal-tab.on {
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .pal-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -835,6 +1741,7 @@ onBeforeUnmount(() => {
 }
 
 .pal-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -867,6 +1774,29 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+}
+
+.pal-ebadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  pointer-events: none;
+}
+
+.pal-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 62px;
+  border-radius: 5px;
+  border: 1px dashed var(--border);
+  font-size: 10px;
+  color: var(--text-3);
 }
 
 .mini {
@@ -1022,6 +1952,170 @@ onBeforeUnmount(() => {
   max-height: 52vh;
   overflow: auto;
   white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ===== [M17] 批量浮动条 / 总览抽屉 / 导出弹窗 ===== */
+.batch-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px;
+  border-radius: 10px;
+  z-index: 5;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+.bb-n {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.bb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.ov-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 312px;
+  max-width: 88vw;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 14px;
+  border-left: 1px solid var(--border);
+  box-shadow: -14px 0 30px rgb(0 0 0 / 34%);
+  overflow-y: auto;
+  z-index: 7;
+}
+
+.ov-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.ov-h .iconbtn {
+  margin-left: auto;
+}
+
+.ov-legend {
+  line-height: 1.6;
+}
+
+.ov-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ov-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.ov-row:hover {
+  border-color: var(--accent);
+}
+
+.ov-row.active {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.ov-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.ov-dot.bad {
+  background: var(--bad);
+}
+
+.ov-dot.warn {
+  background: var(--warn);
+}
+
+.ov-dot.run {
+  background: var(--accent);
+}
+
+.ov-dot.ok {
+  background: var(--ok);
+}
+
+.ov-title {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-kind {
+  flex: none;
+}
+
+.ov-sum {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+}
+
+.exp-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.em-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.em-k {
+  flex: none;
+  width: 44px;
+  color: var(--text-3);
+}
+
+.em-v {
+  min-width: 0;
   word-break: break-all;
 }
 </style>

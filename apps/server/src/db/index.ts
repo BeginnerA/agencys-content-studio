@@ -144,6 +144,8 @@ async function ensureSchemaColumns(): Promise<void> {
         spec text,
         x real DEFAULT 0 NOT NULL,
         y real DEFAULT 0 NOT NULL,
+        adopted_task_id integer,
+        seq integer,
         created_at integer NOT NULL,
         updated_at integer NOT NULL
       )`,
@@ -163,6 +165,26 @@ async function ensureSchemaColumns(): Promise<void> {
     await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_edges_canvas ON canvas_edges (canvas_id)')
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // [M17] 创作画布：节点采纳/序号列（建表后补齐：新库直接带列；存量旧表 ALTER；幂等）
+  const cnCols = await sqlite.execute("PRAGMA table_info('canvas_nodes')")
+  const cnHas = new Set((cnCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!cnHas.has('adopted_task_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE canvas_nodes ADD COLUMN adopted_task_id integer')
+      log.info('ensureColumn: canvas_nodes.adopted_task_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!cnHas.has('seq')) {
+    try {
+      await sqlite.execute('ALTER TABLE canvas_nodes ADD COLUMN seq integer')
+      log.info('ensureColumn: canvas_nodes.seq 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
   }
 
   // [M8] 风格预设库建表兜底（migrate 体系外旧库）

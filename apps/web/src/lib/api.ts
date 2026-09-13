@@ -1,13 +1,19 @@
 import type {
+  AnyNodeSpec,
   ApiConfig,
   ApiErrorBody,
   ApiProvider,
   Asset,
   Batch,
   BatchDetail,
+  CanvasArrangeMode,
   CanvasDoc,
   CanvasDocNode,
+  CanvasEdgeRow,
+  CanvasExportResult,
   CanvasListItem,
+  CanvasNodeRow,
+  CanvasRunBatchResult,
   CanvasViewport,
   CleanupResult,
   ComposeConfig,
@@ -526,11 +532,28 @@ export const canvasApi = {
   template: (key: string) => api.get<TemplateCanvas>(`/api/v1/templates/${encodeURIComponent(key)}/canvas`),
 }
 
-// ===== [M16] 创作画布（写模型：自由摆放 / 引用连线 / 就地生成与编辑 / 联动三枚） =====
+// ===== [M16/M17] 创作画布（写模型：自由摆放 / 引用连线 / 就地生成与编辑 / 批量运维 / 导出） =====
 
-type AddNodeBody =
-  | { kind: 'asset'; assetId: number; x: number; y: number; title?: string }
-  | { kind: 'gen'; spec: CreationNodeSpec; x: number; y: number; title?: string }
+/** 建节点请求（[M17] 5 型；restoreFromNodeId：快照重建时认领已删节点的任务历史——仅 gen 节点由撤销流程传入） */
+type RestoreClaim = { restoreFromNodeId?: number }
+export type AddNodeBody = RestoreClaim &
+  (
+    | { kind: 'asset'; assetId: number; x: number; y: number; title?: string }
+    | { kind: 'gen'; spec: CreationNodeSpec; x: number; y: number; title?: string }
+    | { kind: 'text'; spec: { text: string }; x: number; y: number; title?: string }
+    | { kind: 'entity'; entityId: number; x: number; y: number; title?: string }
+    | { kind: 'run'; runId: number; x: number; y: number; title?: string }
+  )
+
+/** 节点部分更新（单节点 PATCH 与 batch updates[] 同构；spec 按 kind 解析） */
+export interface CanvasNodePatch {
+  x?: number
+  y?: number
+  title?: string | null
+  spec?: AnyNodeSpec
+  seq?: number | null
+  adoptedTaskId?: number | null
+}
 
 export const creationApi = {
   /** 项目画布列表（含节点数/更新时间） */
@@ -544,19 +567,57 @@ export const creationApi = {
   update: (id: number, body: { name?: string; viewport?: CanvasViewport }) =>
     api.patch<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/canvases/${id}`),
-  /** 建节点（asset：项目域资产校验；gen：spec 合法校验） */
+  /** 建节点（asset：项目域资产校验；gen/text：spec 合法校验；entity/run：归属校验）→ DB 行
+   *  （restoreFromNodeId：撤销重建认领已删节点任务历史时响应附 claimed 计数） */
   addNode: (canvasId: number, body: AddNodeBody) =>
-    api.post<{ node: { id: number } }>(`/api/v1/canvases/${canvasId}/nodes`, body),
-  /** 更新节点（拖拽落点 / 标题 / spec） */
-  updateNode: (id: number, patch: { x?: number; y?: number; title?: string | null; spec?: CreationNodeSpec }) =>
-    api.patch<{ node: { id: number } }>(`/api/v1/nodes/${id}`, patch),
+    api.post<{ node: CanvasNodeRow; claimed?: number }>(`/api/v1/canvases/${canvasId}/nodes`, body),
+  /** 更新节点（拖拽落点 / 标题 / spec / 序号 / 采纳）→ DB 行 */
+  updateNode: (id: number, patch: CanvasNodePatch) =>
+    api.patch<{ node: CanvasNodeRow }>(`/api/v1/nodes/${id}`, patch),
   removeNode: (id: number) => api.del<{ ok: boolean }>(`/api/v1/nodes/${id}`),
+  /** [M17] 批量部分更新（预校验全量合法才写；spec 校验失败零写入） */
+  batchNodes: (canvasId: number, updates: Array<CanvasNodePatch & { id: number }>) =>
+    api.post<{ ok: boolean; updated: number }>(`/api/v1/canvases/${canvasId}/nodes/batch`, { updates }),
+  /** [M17] 批量删除（级联其全部连线）→ 删除计数 */
+  deleteNodes: (canvasId: number, ids: number[]) =>
+    api.post<{ deleted: number; edges: number }>(`/api/v1/canvases/${canvasId}/nodes/delete`, { ids }),
+  /** [M17] 批量复制（深拷；集合内部边重映射）→ 新 DB 行 */
+  copyNodes: (canvasId: number, ids: number[], offset?: { x?: number; y?: number }) =>
+    api.post<{ nodes: CanvasNodeRow[]; edges: CanvasEdgeRow[] }>(`/api/v1/canvases/${canvasId}/nodes/copy`, { ids, offset }),
+  /** [M17] 规则式串联（按给定顺序相邻连接；端口按产物类型决策，失败项入 skipped） */
+  chainNodes: (canvasId: number, ids: number[]) =>
+    api.post<{ created: CanvasEdgeRow[]; skipped: Array<{ from: number; to: number; reason: string }> }>(
+      `/api/v1/canvases/${canvasId}/nodes/chain`,
+      { ids },
+    ),
+  /** [M17] 整理/对齐/分布（sortBy:'seq' 时 seq 优先；落库并返回新落点） */
+  arrange: (canvasId: number, body: { mode: CanvasArrangeMode; nodeIds?: number[]; sortBy?: 'seq' }) =>
+    api.post<{ updated: number; positions: Array<{ id: number; x: number; y: number }> }>(
+      `/api/v1/canvases/${canvasId}/arrange`,
+      body,
+    ),
   /** 建边（端口矩阵 + 环检测；非法 → 400 附原因） */
   addEdge: (canvasId: number, body: { from: number; to: number; port: string }) =>
     api.post<{ edge: { id: number } }>(`/api/v1/canvases/${canvasId}/edges`, body),
   removeEdge: (id: number) => api.del<{ ok: boolean }>(`/api/v1/edges/${id}`),
-  /** 执行 gen 节点（readiness 不过 → 400 附 problems） */
-  run: (nodeId: number) => api.post<{ ok: boolean; taskId: number }>(`/api/v1/nodes/${nodeId}/run`),
+  /** 执行 gen 节点（readiness 不过 → 400 附 problems；[M17] variants 1-4，缺省 ×1） */
+  run: (nodeId: number, variants?: number) =>
+    api.post<{ ok: boolean; taskId: number; taskIds: number[] }>(
+      `/api/v1/nodes/${nodeId}/run`,
+      variants === undefined ? undefined : { variants },
+    ),
+  /** [M17] 批量执行（缺省全画布；只入队就绪节点，不级联等待） */
+  runBatch: (canvasId: number, body?: { nodeIds?: number[]; variants?: number }) =>
+    api.post<CanvasRunBatchResult>(`/api/v1/canvases/${canvasId}/run`, body),
+  /** [M17] 提取文本节点（gen: spec.prompt；asset: 文本资产全文；缺省位置 = 源节点右侧偏移） */
+  extractText: (nodeId: number, body?: { x?: number; y?: number }) =>
+    api.post<{ node: CanvasNodeRow }>(`/api/v1/nodes/${nodeId}/extract`, body),
+  /** [M17] AI 扩写（内容源 = text.text / gen.prompt；不落库；未配置 LLM → 400 引导 Settings） */
+  promptExpand: (nodeId: number, instruction?: string) =>
+    api.post<{ prompt: string; provider: string; model: string }>(`/api/v1/nodes/${nodeId}/prompt-expand`, { instruction }),
+  /** [M17] 打包导出 zip（→ archive 资产；下载复用 GET /assets/:id/file?download=1） */
+  exportZip: (canvasId: number, nodeIds?: number[]) =>
+    api.post<CanvasExportResult>(`/api/v1/canvases/${canvasId}/export`, { nodeIds }),
   /** 复制画布（节点 id 映射重建边） */
   duplicate: (id: number, name?: string) =>
     api.post<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}/duplicate`, { name }),

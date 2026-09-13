@@ -847,9 +847,18 @@ export interface CanvasBoardNode {
 
 // ===== [M16] 创作画布（写模型；GET /canvases/:id 全量读模型契约） =====
 
-export type CanvasNodeKind = 'asset' | 'gen'
-export type CanvasEdgePort = 'reference' | 'first_frame' | 'last_frame' | 'source'
+export type CanvasNodeKind = 'asset' | 'gen' | 'text' | 'entity' | 'run'
+export type CanvasEdgePort =
+  | 'reference'
+  | 'first_frame'
+  | 'last_frame'
+  | 'source'
+  | 'prompt'
+  | 'video'
+  | 'audio'
 export type CanvasEditMode = 'inpaint' | 'erase' | 'outpaint'
+/** [M17] 生成类型（image/video/audio 生成 + compose 音视频合成） */
+export type GenKind = 'image' | 'video' | 'audio' | 'compose'
 
 /** gen 节点编辑规格（inpaint/erase 需 maskAssetId；outpaint 用 expand 三元组） */
 export interface NodeSpecEdit {
@@ -860,12 +869,18 @@ export interface NodeSpecEdit {
 
 /** gen 节点 spec（服务端 parseNodeSpec 同构） */
 export interface CreationNodeSpec {
-  genKind: 'image' | 'video'
+  genKind: GenKind
   prompt: string
   size?: string
   duration?: number
   resolution?: string
   aspectRatio?: string
+  /** [M17] 输出帧率（仅 compose 有意义） */
+  fps?: number
+  /** [M17] 声线令牌（仅 audio；全 ASCII 供应商枚举） */
+  voice?: string
+  /** [M17] 语速（仅 audio，0.25-4） */
+  speed?: number
   /** 端点覆盖（缺省走 resolveEndpoint） */
   provider?: string
   model?: string
@@ -873,6 +888,24 @@ export interface CreationNodeSpec {
   useStylePreset?: boolean
   edit?: NodeSpecEdit
 }
+
+/** [M17] kind=text：文本节点（text→gen 的 prompt 源；资产全文提取） */
+export interface TextNodeSpec {
+  text: string
+}
+
+/** [M17] kind=entity：实体参考直通（characters 行） */
+export interface EntityNodeSpec {
+  entityId: number
+}
+
+/** [M17] kind=run：内嵌运行（pipeline_runs 行，须属同项目） */
+export interface RunNodeSpec {
+  runId: number
+}
+
+/** [M17] 读模型节点 spec 联合（按 kind 分派解析） */
+export type AnyNodeSpec = CreationNodeSpec | TextNodeSpec | EntityNodeSpec | RunNodeSpec
 
 /** 画布视口（pan/zoom 持久化） */
 export interface CanvasViewport {
@@ -921,21 +954,114 @@ export interface CanvasDocNode {
   x: number
   y: number
   title: string
-  /** asset 节点：引用资产；gen 节点：最新成功结果资产 */
+  /** [M17] 故事板序号（1 起；null = 未编号） */
+  seq: number | null
+  /** asset 节点：引用资产；gen 节点：显示产物（采纳优先）资产 */
   assetId: number | null
   asset: CanvasAssetLite | null
-  /** 仅 gen（解析成功时）；损坏 → null + specError */
-  spec: CreationNodeSpec | null
+  /** gen → CreationNodeSpec；text/entity/run → 对应 spec；损坏 → null + specError */
+  spec: AnyNodeSpec | null
   specError: string | null
   /** 仅 gen：latestTask?.status ?? 'idle' */
   status: string | null
   latestTask: CanvasGenTaskLite | null
   /** 最近 5 条摘要（新→旧） */
   tasks: CanvasGenTaskLite[]
-  readiness: { ready: boolean; problems: string[] } | null
+  /** [M17] 仅 gen：采纳任务 id（null = 未采纳） */
+  adoptedTaskId: number | null
+  /** [M17] 仅 gen：显示任务 id（采纳优先派生） */
+  displayTaskId: number | null
+  /** [M17] 仅 gen：显示任务（含产物资产冗余） */
+  displayTask: CanvasDisplayTask | null
+  /** [M17] 仅 gen：结果画廊（最近成功 ≤12） */
+  results: CanvasResultItem[]
+  /** [M17] 仅 entity：实体摘要 */
+  entity: CanvasEntityInfo | null
+  /** [M17] 仅 run：运行摘要 */
+  run: CanvasRunInfo | null
+  readiness: { ready: boolean; problems: string[]; notes?: string[] } | null
   editCapability: CanvasEditCapability | null
   canRun: boolean | null
   canCancel: boolean | null
+}
+
+/** [M17] gen 节点结果画廊条目（最近成功产物） */
+export interface CanvasResultItem {
+  taskId: number
+  assetId: number
+  asset: CanvasAssetLite | null
+  createdAt: number
+}
+
+/** [M17] entity 节点实体摘要 */
+export interface CanvasEntityInfo {
+  id: number
+  name: string
+  kind: string
+  refCount: number
+  asset: CanvasAssetLite | null
+}
+
+/** [M17] run 节点运行摘要 */
+export interface CanvasRunInfo {
+  id: number
+  templateKey: string
+  status: string
+  startedAt: number | null
+  completedAt: number | null
+  steps: { succeeded: number; total: number }
+}
+
+/** [M17] 显示任务（gen 采纳优先产物 + 资产冗余） */
+export type CanvasDisplayTask = CanvasGenTaskLite & { asset: CanvasAssetLite | null }
+
+/** [M17] 节点行原始形态（POST/PATCH/copy/extract 端点返回 DB 行，spec 为 JSON 字符串） */
+export interface CanvasNodeRow {
+  id: number
+  canvasId: number
+  kind: string
+  assetId: number | null
+  title: string | null
+  spec: string | null
+  x: number
+  y: number
+  adoptedTaskId: number | null
+  seq: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** [M17] 边行原始形态（copy 端点返回 DB 行） */
+export interface CanvasEdgeRow {
+  id: number
+  canvasId: number
+  from: number
+  to: number
+  port: string
+  createdAt: number
+}
+
+/** [M17] 整理模式（服务端 ARRANGE_MODES 同构） */
+export type CanvasArrangeMode =
+  | 'layered'
+  | 'grid'
+  | 'align-left'
+  | 'align-right'
+  | 'align-top'
+  | 'align-bottom'
+  | 'distribute-h'
+  | 'distribute-v'
+
+/** [M17] 批量执行结果（canvases/run） */
+export interface CanvasRunBatchResult {
+  started: Array<{ nodeId: number; taskId: number; taskIds: number[] }>
+  skipped: Array<{ nodeId: number; problems: string[] }>
+}
+
+/** [M17] 导出 zip 结果（creation-export） */
+export interface CanvasExportResult {
+  asset: { id: number; name: string; size: number | null }
+  stats: { packed: number; skipped: number }
 }
 
 /** 画布边（手画引用语义：from/to 均为节点 id） */
