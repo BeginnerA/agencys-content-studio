@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
+import { registerEscLayer } from '../lib/esc-layer'
 import Icon from './Icon.vue'
 
 defineProps<{ title: string; width?: number; zIndex?: number }>()
 const emit = defineEmits<{ close: [] }>()
 
+// 嵌套覆盖层（如本弹窗上再开资产预览器）时仅最顶层响应 Esc
+const escLayer = registerEscLayer()
+
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape' && escLayer.isTop()) emit('close')
 }
-onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onMounted(() => {
+  escLayer.hold()
+  window.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  escLayer.release()
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>

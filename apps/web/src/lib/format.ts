@@ -108,6 +108,9 @@ export const PURPOSE_TEXT: Record<string, string> = {
   creation: '画布产物',
   creation_video: '画布视频',
   mask: '蒙版',
+  // 记忆系统
+  memory: '记忆召回',
+  memory_log: '记忆日志',
 }
 
 export function purposeText(p: string): string {

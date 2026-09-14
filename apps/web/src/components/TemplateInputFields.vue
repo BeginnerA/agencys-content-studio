@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Asset, TemplateDetail } from '../lib/types'
+import { purposeText } from '../lib/format'
+import AssetPreviewer from './AssetPreviewer.vue'
+import Icon from './Icon.vue'
 
 const props = defineProps<{
   tpl: TemplateDetail | null
@@ -41,6 +44,14 @@ function toggleAsset(k: string, id: number) {
   else arr.push(id)
   emit('change', k, arr)
 }
+
+/** 预览：点击候选项的预览入口，打开统一资产查看器（←/→ 翻看候选；Esc 关闭） */
+const previewIdx = ref<number | null>(null)
+
+function openPreview(id: number) {
+  const i = props.assets.findIndex((a) => a.id === id)
+  if (i >= 0) previewIdx.value = i
+}
 </script>
 
 <template>
@@ -77,7 +88,18 @@ function toggleAsset(k: string, id: number) {
             <label v-for="a in assets" :key="a.id" class="opt">
               <input type="checkbox" :checked="picked(inp.key).includes(a.id)" @change="toggleAsset(inp.key, a.id)" />
               <span>#{{ a.id }}</span> {{ a.name }}
-              <em>{{ a.purpose }}</em>
+              <span class="opt-tail">
+                <em>{{ purposeText(a.purpose) }}</em>
+                <button
+                  type="button"
+                  class="pv"
+                  :title="`预览「${a.name}」内容`"
+                  :aria-label="`预览 ${a.name} 内容`"
+                  @click.stop.prevent="openPreview(a.id)"
+                >
+                  <Icon name="eye" :size="12" />
+                </button>
+              </span>
             </label>
             <div v-if="!assets.length" class="muted">项目暂无资产</div>
           </div>
@@ -91,13 +113,27 @@ function toggleAsset(k: string, id: number) {
             <label v-for="a in assets" :key="a.id" class="opt">
               <input type="checkbox" :checked="picked(inp.key).includes(a.id)" @change="toggleAsset(inp.key, a.id)" />
               <span>#{{ a.id }}</span> {{ a.name }}
-              <em>{{ a.purpose }}</em>
+              <span class="opt-tail">
+                <em>{{ purposeText(a.purpose) }}</em>
+                <button
+                  type="button"
+                  class="pv"
+                  :title="`预览「${a.name}」内容`"
+                  :aria-label="`预览 ${a.name} 内容`"
+                  @click.stop.prevent="openPreview(a.id)"
+                >
+                  <Icon name="eye" :size="12" />
+                </button>
+              </span>
             </label>
           </div>
           <div v-else class="muted">项目暂无资产——可先在项目页上传素材。</div>
         </template>
       </div>
     </template>
+
+    <!-- 预览：点击候选项的预览入口打开统一查看器（←/→ 翻看候选；Esc 关闭） -->
+    <AssetPreviewer v-if="previewIdx !== null" :assets="assets" :index="previewIdx" @close="previewIdx = null" />
   </div>
 </template>
 
@@ -142,10 +178,35 @@ function toggleAsset(k: string, id: number) {
   border-radius: 5px;
 }
 
-.opt em {
+.opt-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.opt-tail em {
   color: var(--text-3);
   font-style: normal;
-  margin-left: auto;
   font-size: 11px;
+}
+
+/* 预览按钮：图标按钮（aria-label 齐备），hover/focus 状态明确 */
+.pv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.pv:hover {
+  color: var(--accent-h);
+  background: var(--hover);
 }
 </style>

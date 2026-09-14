@@ -36,7 +36,7 @@ inputs:
     required: false
     default: 3
   - key: to_platforms
-    label: 多平台适配（选填，逗号分隔：xiaohongshu/zhihu/toutiao；留空=仅原稿）
+    label: 多平台适配（选填，逗号分隔：公众号/小红书/知乎/头条/抖音/快手/视频号/B站；留空=仅原稿）
     kind: text
     required: false
 defaults:

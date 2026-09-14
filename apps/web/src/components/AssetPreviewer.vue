@@ -5,11 +5,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { assetApi } from '../lib/api'
 import type { Asset } from '../lib/types'
 import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetQuality, purposeText, qualityText } from '../lib/format'
+import { registerEscLayer } from '../lib/esc-layer'
 import Icon from './Icon.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 
 const props = defineProps<{ assets: Asset[]; index?: number }>()
 const emit = defineEmits<{ close: []; changed: [asset: Asset] }>()
+
+// 嵌套覆盖层（如弹窗上开预览器）时仅最顶层响应 Esc：Esc 只关预览器，不误关下层弹窗
+const escLayer = registerEscLayer()
 
 const MAX_TEXT = 1.5 * 1024 * 1024 // 文本预览上限：超出只提供下载
 const JSON_PARSE_MAX = 512 * 1024 // 超过不做格式化/着色，防卡顿
@@ -254,7 +258,7 @@ function next() {
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
-    emit('close')
+    if (escLayer.isTop()) emit('close')
     return
   }
   if (e.key === 'ArrowLeft') prev()
@@ -279,6 +283,7 @@ watch(idx, () => {
 
 let prevOverflow = ''
 onMounted(() => {
+  escLayer.hold()
   window.addEventListener('keydown', onKey)
   prevOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
@@ -286,6 +291,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  escLayer.release()
   window.removeEventListener('keydown', onKey)
   document.body.style.overflow = prevOverflow
   if (copyTimer) window.clearTimeout(copyTimer)
