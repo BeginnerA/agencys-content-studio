@@ -297,6 +297,8 @@ a:hover {
 }
 
 /* ---------- 表单 ---------- */
+/* input:not([type]) = 未声明 type 的输入框（语义即 text），缺失会导致回落浏览器默认样式 */
+input:not([type]),
 input[type='text'],
 input[type='number'],
 input[type='password'],
@@ -348,6 +350,11 @@ input[type='checkbox'] {
 input[type='date'] {
   color-scheme: dark;
   font-variant-numeric: tabular-nums;
+}
+
+/* 原生数值控件暗色兜底：步进箭头随 color-scheme 渲染为深色样式 */
+input[type='number'] {
+  color-scheme: dark;
 }
 
 input[type='file']::file-selector-button {
