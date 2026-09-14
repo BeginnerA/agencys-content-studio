@@ -856,9 +856,10 @@ export type CanvasEdgePort =
   | 'prompt'
   | 'video'
   | 'audio'
+  | 'text'
 export type CanvasEditMode = 'inpaint' | 'erase' | 'outpaint'
-/** [M17] 生成类型（image/video/audio 生成 + compose 音视频合成） */
-export type GenKind = 'image' | 'video' | 'audio' | 'compose'
+/** [M17/M18] 生成类型（image/video/audio/compose + llm=文本处理/图生文） */
+export type GenKind = 'image' | 'video' | 'audio' | 'compose' | 'llm'
 
 /** gen 节点编辑规格（inpaint/erase 需 maskAssetId；outpaint 用 expand 三元组） */
 export interface NodeSpecEdit {
@@ -877,6 +878,20 @@ export interface CreationNodeSpec {
   aspectRatio?: string
   /** [M17] 输出帧率（仅 compose 有意义） */
   fps?: number
+  /** [M18] 合成转场 token（仅 compose；TRANSITIONS 枚举，服务端校验） */
+  transition?: ComposeTransition
+  /** [M18] 转场时长秒（仅 compose，0.1-2，缺省 0.5） */
+  transitionDuration?: number
+  /** [M18] BGM 音量 0-1（仅 compose，缺省 0.5） */
+  bgmVolume?: number
+  /** [M18] BGM 首尾淡入淡出（仅 compose，缺省 true） */
+  bgmFade?: boolean
+  /** [M18] BGM 资产 id（仅 compose；须属本项目 audio 资产） */
+  bgmAssetId?: number
+  /** [M18] LLM 采样温度（仅 llm，0-2，缺省 0.7） */
+  temperature?: number
+  /** [M18] LLM 最大输出 token（仅 llm，1-32000，缺省 2048） */
+  maxTokens?: number
   /** [M17] 声线令牌（仅 audio；全 ASCII 供应商枚举） */
   voice?: string
   /** [M17] 语速（仅 audio，0.25-4） */
@@ -956,6 +971,8 @@ export interface CanvasDocNode {
   title: string
   /** [M17] 故事板序号（1 起；null = 未编号） */
   seq: number | null
+  /** [M18] 成组归属（canvas_groups.id；null=未成组） */
+  groupId: number | null
   /** asset 节点：引用资产；gen 节点：显示产物（采纳优先）资产 */
   assetId: number | null
   asset: CanvasAssetLite | null
@@ -1058,6 +1075,39 @@ export interface CanvasRunBatchResult {
   skipped: Array<{ nodeId: number; problems: string[] }>
 }
 
+// ===== [M18] 执行成本预估（canvases/run-preview；单位与 usage.ts 同源） =====
+
+/** [M18] 计费单位（服务端 usage.ts UsageUnit 同构） */
+export type UsageUnit = 'tokens_in' | 'tokens_out' | 'image' | 'second' | 'char'
+
+/** [M18] 预估单行（unitPrice/subtotal 为 null = 未计价） */
+export interface PreviewUnitLine {
+  unit: UsageUnit
+  quantity: number
+  unitPrice: number | null
+  subtotal: number | null
+}
+
+/** [M18] 预估节点条目（ready = 无 problems 且非 busy） */
+export interface PreviewNodeItem {
+  nodeId: number
+  title: string
+  genKind: string
+  ready: boolean
+  busy: boolean
+  problems: string[]
+  units: PreviewUnitLine[]
+  total: number | null
+  /** tokens 不可预知（llm 按量计费）或单价链未命中 */
+  unpriced: boolean
+}
+
+/** [M18] 预估响应（amount 仅含有价节点；unpriced = 未计价节点数） */
+export interface PreviewCanvasResult {
+  nodes: PreviewNodeItem[]
+  total: { amount: number; unpriced: number; ready: number; blocked: number; busy: number }
+}
+
 /** [M17] 导出 zip 结果（creation-export） */
 export interface CanvasExportResult {
   asset: { id: number; name: string; size: number | null }
@@ -1072,11 +1122,23 @@ export interface CanvasDocEdge {
   port: string
 }
 
+/** [M18] 画布分组（成员由节点 groupId 前端派生；空组用存储 x/y 显示） */
+export interface CanvasGroup {
+  id: number
+  title: string
+  color: string | null
+  collapsed: boolean
+  x: number
+  y: number
+}
+
 /** [M16] 画布文档全量读模型 */
 export interface CanvasDoc {
   canvas: { id: number; projectId: number; name: string; viewport: CanvasViewport }
   nodes: CanvasDocNode[]
   edges: CanvasDocEdge[]
+  /** [M18] 节点分组（成组/折叠） */
+  groups: CanvasGroup[]
 }
 
 /** [M16] 画布列表项 */
@@ -1087,4 +1149,25 @@ export interface CanvasListItem {
   nodeCount: number
   createdAt: number
   updatedAt: number
+  /** [M18] 回收站标记（null=正常；非 null=软删时间戳） */
+  deletedAt: number | null
+  /** [M18] 列表封面（最近完成 succeeded 任务产物缩略；无 → null） */
+  cover: CanvasAssetLite | null
+}
+
+/** [M18] 画布快照元信息（列表用；不含文档全文） */
+export interface CanvasSnapshotMeta {
+  id: number
+  label: string
+  nodeCount: number
+  edgeCount: number
+  groupCount: number
+  createdAt: number
+}
+
+/** [M18] 快照恢复结果（restored = 重放计数；backupSnapshotId = 恢复前自动备份） */
+export interface SnapshotRestoreResult {
+  ok: boolean
+  backupSnapshotId: number
+  restored: { nodes: number; edges: number; groups: number }
 }

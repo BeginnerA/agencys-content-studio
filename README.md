@@ -264,6 +264,23 @@ pnpm dev    # 并行起双端：
 
 验证：`pnpm --filter @acs/server probe:m17`（八节：node-kinds / port-v2 / input-v2 / batch-ops / variant-adopt / run-node / export / llm-assist，274 项断言，零网络零计费）。
 
+## M18 能力速览（创作画布规模化与安全）
+
+在 M17 工作台之上补齐**安全（可逆删除）· 规模（成组 / 封面）· 能力（LLM 文本节点 / 模板 v2 试跑）· 快赢（抽帧 / 合成转场 BGM / 预估定价 / 停止全部）**四批共 14 项能力。设计三原则：**回收站优先**（画布删除由物理级联改软删，快照「保留 id 重放」保证恢复后任务历史不断链）、**读模型超集增量**（`GET /canvases` 与画布 doc 只增字段〔cover / groups / groupId〕，M16/M17 旧客户端与既有端点行为零破坏，除下方明示软删变更）、**流式与端口收敛**（导出 `zipSync` 全内存改 fflate 流式直写临时文件；LLM 文本节点并入端口矩阵 v3）。
+
+> ⚠ **语义变更**：`DELETE /canvases/:id` 由**物理级联删除**改为**软删进回收站**——节点 / 边物理保留，同时中断在途任务，响应 `{ mode:'trashed', deletedAt, cancelled }`；`GET /projects/:id/canvases`（默认）只返回活跃画布，软删项经 `?trash=1` 单列，可 `POST /canvases/:id/restore` 恢复或 `POST /canvases/:id/purge` 彻底删除（purge 才物理删 nodes/edges/groups/snapshots，gen_tasks 留痕）。新增快捷键 `Ctrl+G` 成组（≥2 选中；解组走组条菜单）。
+
+- **回收站与快照（安全）**：`canvases.deleted_at` 软删列 + `listCanvases({ trash })` / 软删 / `restore` / `purge` 四态；`canvas_snapshots` 表 + 文档快照 CRUD（`POST/GET /canvases/:id/snapshots`、`POST /canvases/:id/snapshots/:sid/restore`、`DELETE /canvases/:id/snapshots/:sid`，上限 20）——**恢复前自动备份当前态**、按保留 id 重放（节点 id 原样保留 → 生成任务历史认领不断链）、id 占用冲突 409 不半吊子
+- **LLM 文本节点（能力）**：gen 节点新 `genKind: 'llm'`（端口 v3：reference / text / prompt 入，产文本）；`executeLlmOnce` 复用 LLM 通道 + `recordUsage`；未配置 → readiness 预检提前引导 Settings；产物文本卡片就地预览
+- **模板 v2 与试跑（沉淀）**：draft v2 分级保真（shots / lines / files 结构映射 + entity→注释）+ **lossy 显式降级清单**；新 `literal` action（固定产物入库，零 LLM）+ `ai_text` `prompt_inline`；`POST /canvases/:id/template-try`（`{ nodeIds?, key? }` → `{ templateKey, runId, lossy, input }`）一键试跑（子图闭包 → 建 run → 视口中心自动新建 run 节点）
+- **成组与折叠（规模）**：`canvas_groups` 表 + `canvas_nodes.group_id`；doc `groups[]`（title/color/collapsed/x/y，成员前端派生包围盒）+ node `groupId`；端点 `POST /canvases/:id/groups`（≥1 节点、须属本画布、拒跨组、锚点=包围盒左上）/ `PATCH /canvases/:id/groups/:gid`（title/color/collapsed/x/y）/ `DELETE`（解组：成员归属清空、组行删）；copy 出节点 groupId 归零、删成员不级联删组（空组保留）；Ctrl+G 成组 / 组条折叠·重命名·改色·解组·拖拽移组
+- **封面与流式导出（规模）**：`listCanvases`（含回收站）+ `cover`——取画布最近完成 succeeded 任务产物缩略（两次批查避 N+1），画布选择卡片渲染缩略图；导出 zip `zipSync`→fflate `Zip`（文本 / manifest `ZipDeflate` level 6、媒体 `ZipPassThrough` store、`createReadStream` 分块）直写临时文件 → rename → 登记，端点 / 命名 / manifest 结构零变化
+- **快赢四枚（批 1）**：视频抽帧 `POST /nodes/:id/extract-frame`（`{ mode?, time?, x?, y? }`；first/last/custom + `-ss` 前置全尺寸 jpg → 建 asset 节点首帧接力）；compose v3 转场 + BGM（复用 `buildTransitionPlan` + ffmpeg-merge 滤镜串）；`POST /canvases/:id/run-preview` 真实定价预估（`{ nodeIds? }` → `{ nodes, total }` 零副作用，`resolveUnitPrice` 与 `recordUsage` 同源）；`POST /canvases/:id/tasks/cancel` 一键停止全部（pending/processing → cancelled）
+- **数据与兼容**：`canvases.deleted_at` / `canvas_nodes.group_id` 两列 + 两表（`canvas_groups` / `canvas_snapshots`，ensureColumn / ensureTable 幂等，旧库升级不炸）；端口矩阵 v3；M16/M17 既有端点全超集（旧 body → 旧行为，响应只增字段）；零新依赖
+- **Web**：`CreationView.vue`（顶栏停止全部 / 快照抽屉 / 试跑 / 回收站入口 / lossy 展示；批量面板预估成本 / 加实体参考 / 成组）、`CreationBoard.vue`（组框渲染 / 折叠隐藏成员与相关边 / 组条拖拽·重命名·改色·解组 / Ctrl+G / 画布选择封面卡片）、`CreationInspector.vue`（抽帧 / compose 转场·BGM / llm 表单与产物文本 / 实体参考）
+
+验证：`pnpm --filter @acs/server probe:m18`（九节：p1-schema + frame-extract / compose-v3 / run-preview / trash-snapshot / llm-node / template-v2 / groups / scale-zip，247 项断言，零网络零计费；含 30MB 大文件流式 store 逐字节对拍）；`probe:m1~m17` 回归全绿（适配 1 处：probe-m16「删画布 → 级联清空节点与边」断言随软删语义改为「软删 → 节点/边物理保留可恢复」）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。

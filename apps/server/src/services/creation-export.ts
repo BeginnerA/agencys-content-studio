@@ -1,16 +1,18 @@
 /**
- * [M17] 创作画布打包导出（zip 全内存 zipSync；零新依赖，spec §2.5）：
+ * [M17] 创作画布打包导出（[M18] zip 流式化：内存 O(64KB)；零新依赖，fflate，spec §2.6⑫）：
  * - 打包对象：asset 节点（其资产）/ gen 节点（displayTask 产物——采纳优先）/ text 节点（.txt）；
  * - entity / run 不参与打包（manifest.skipped 记账）；软删/缺文件/无产物 → skipped 不炸；
  * - 条目命名 <seq?>-<title|node-<id>>[-<assetId>].<ext>（重名 -1/-2 递增）；manifest.json 为首条目；
  * - nodeIds 缺省 = 全画布；显式数组 = 子集（空数组 → 抛错引导省略）；排序按 seq 优先（无 seq 按 x→y→id）；
+ * - [M18] 流式：manifest/文本 → ZipDeflate（压缩）；媒体 → ZipPassThrough（store，createReadStream 64KB 分块），
+ *   直写临时文件 → rename 落位（zipSync 全内存 → 大画布内存峰值高已消除）；条目命名 / manifest 结构零变化（探针 unzipSync 对拍等价）；
  * - 产物落手工 exports 目录（对齐 export.ts 先例）+ registerAsset(kind:'archive', purpose:'creation_export')；
  *   下载复用既有 GET /assets/:id/file?download=1。
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { inArray } from 'drizzle-orm'
-import { zipSync } from 'fflate'
+import { Zip, ZipDeflate, ZipPassThrough } from 'fflate'
 import { db } from '../db'
 import { assets, type Asset } from '../db/schema'
 import { createLogger } from '../logger'
@@ -45,7 +47,9 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
   const assetById = new Map(rows.map((a) => [a.id, a]))
 
   const used = new Set<string>()
-  const fileEntries: Array<{ name: string; data: Uint8Array }> = []
+  // [M18] 打包条目：文本/manifest 走内存 ZipDeflate；媒体走 absPath 流式 ZipPassThrough（不整文入内存）
+  type ZipItem = { name: string; data: Uint8Array } | { name: string; absPath: string }
+  const items: ZipItem[] = []
   const manifestFiles: Array<Record<string, unknown>> = []
   const manifestSkipped: Array<Record<string, unknown>> = []
   const skip = (n: CanvasDocNode, reason: string): void => {
@@ -65,7 +69,7 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
       }
       const name = uniqueEntryName(used, entryName(n, null, 'txt'))
       const data = new TextEncoder().encode(spec.text)
-      fileEntries.push({ name, data })
+      items.push({ name, data })
       manifestFiles.push({
         nodeId: n.id,
         kind: n.kind,
@@ -97,10 +101,16 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
       skip(n, `资产 #${n.assetId} 文件缺失`)
       continue
     }
+    let size = 0
+    try {
+      size = statSync(abs).size
+    } catch {
+      skip(n, `资产 #${n.assetId} 文件读取失败`)
+      continue
+    }
     const ext = (a.ext ?? extname(a.relPath).slice(1)) || 'bin'
     const name = uniqueEntryName(used, entryName(n, n.assetId, ext))
-    const data = readFileSync(abs)
-    fileEntries.push({ name, data })
+    items.push({ name, absPath: abs })
     manifestFiles.push({
       nodeId: n.id,
       kind: n.kind,
@@ -108,7 +118,7 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
       seq: n.seq ?? null,
       assetId: n.assetId,
       fileName: name,
-      size: data.byteLength,
+      size,
       prompt: digest(a.prompt),
     })
   }
@@ -120,16 +130,25 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
     files: manifestFiles,
     skipped: manifestSkipped,
   }
-  const zipEntries: Record<string, Uint8Array> = {
-    'manifest.json': new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
-  }
-  for (const f of fileEntries) zipEntries[f.name] = f.data
-  const buf = zipSync(zipEntries)
+  const manifestData = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
 
   ensureProjectDirs(doc.canvas.projectId)
   const zipName = `${sanitizeName(doc.canvas.name)}-export-${Date.now()}.zip`
   const relPath = join(String(doc.canvas.projectId), 'exports', sanitizeName(zipName))
-  writeFileSync(absPathOf(relPath), buf)
+  const absFinal = absPathOf(relPath)
+  const absTmp = `${absFinal}.tmp-${Date.now()}`
+  try {
+    await writeZipStream(absTmp, manifestData, items)
+    renameSync(absTmp, absFinal)
+  } catch (err) {
+    try {
+      if (existsSync(absTmp)) unlinkSync(absTmp)
+    } catch {
+      /* 清理失败不覆盖原始错误 */
+    }
+    throw err
+  }
+  const fileSize = statSync(absFinal).size
   const asset = await registerAsset(doc.canvas.projectId, {
     kind: 'archive',
     purpose: 'creation_export',
@@ -137,15 +156,73 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
     relPath,
     mime: 'application/zip',
     ext: 'zip',
-    fileSize: buf.byteLength,
+    fileSize,
     params: {
       canvasId: doc.canvas.id,
-      fileCount: fileEntries.length,
+      fileCount: items.length,
       skipped: manifestSkipped.length,
     },
   })
-  log.info(`画布导出包生成: ${zipName}（${fileEntries.length} 文件 / ${manifestSkipped.length} skipped, ${buf.byteLength} bytes）`)
-  return { asset, stats: { packed: fileEntries.length, skipped: manifestSkipped.length } }
+  log.info(`画布导出包生成: ${zipName}（${items.length} 文件 / ${manifestSkipped.length} skipped, ${fileSize} bytes）`)
+  return { asset, stats: { packed: items.length, skipped: manifestSkipped.length } }
+}
+
+/**
+ * [M18] fflate 流式 zip 直写文件：manifest/文本条目 → ZipDeflate（压缩）；媒体条目 → ZipPassThrough（store，不压缩）。
+ * 逐条目 add + push（媒体 createReadStream 分块），末尾 zip.end()；resolve = 写出总字节数；任一错误 reject（调用方清理临时文件）。
+ */
+function writeZipStream(absPath: string, manifestData: Uint8Array, items: Array<{ name: string; data?: Uint8Array; absPath?: string }>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const failOnce = (err: unknown): void => {
+      if (settled) return
+      settled = true
+      reject(err instanceof Error ? err : new Error(String(err)))
+    }
+    const out = createWriteStream(absPath)
+    out.on('error', failOnce)
+    let total = 0
+    const zip = new Zip((err, chunk, final) => {
+      if (err) {
+        failOnce(err)
+        return
+      }
+      total += chunk.length
+      out.write(Buffer.from(chunk))
+      if (final) out.end(() => {
+        if (settled) return
+        settled = true
+        resolve(total)
+      })
+    })
+    const mEntry = new ZipDeflate('manifest.json', { level: 6 })
+    zip.add(mEntry)
+    mEntry.push(manifestData, true)
+    void (async () => {
+      for (const it of items) {
+        if (it.data !== undefined) {
+          const e = new ZipDeflate(it.name, { level: 6 })
+          zip.add(e)
+          e.push(it.data, true)
+        } else {
+          const e = new ZipPassThrough(it.name)
+          zip.add(e)
+          const rs = createReadStream(it.absPath as string)
+          try {
+            await new Promise<void>((res, rej) => {
+              rs.on('data', (chunk) => e.push(chunk as Uint8Array, false))
+              rs.on('end', () => res())
+              rs.on('error', rej)
+            })
+            e.push(new Uint8Array(0), true)
+          } finally {
+            rs.close()
+          }
+        }
+      }
+      zip.end()
+    })().catch(failOnce)
+  })
 }
 
 /** nodeIds 选择：缺省/省略 = 全画布；显式数组 = 子集（空数组抛错；未知节点抛错；去重保序） */

@@ -187,6 +187,55 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // [M18] 创作画布：回收站软删列（canvases.deleted_at）+ 节点成组列（canvas_nodes.group_id）
+  const cvCols = await sqlite.execute("PRAGMA table_info('canvases')")
+  const cvHas = new Set((cvCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!cvHas.has('deleted_at')) {
+    try {
+      await sqlite.execute('ALTER TABLE canvases ADD COLUMN deleted_at integer')
+      log.info('ensureColumn: canvases.deleted_at 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!cnHas.has('group_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE canvas_nodes ADD COLUMN group_id integer')
+      log.info('ensureColumn: canvas_nodes.group_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  // [M18] 画布分组 / 文档快照建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS canvas_groups (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        canvas_id integer NOT NULL,
+        title text DEFAULT '未命名分组' NOT NULL,
+        color text,
+        collapsed integer DEFAULT 0 NOT NULL,
+        x real DEFAULT 0 NOT NULL,
+        y real DEFAULT 0 NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_groups_canvas ON canvas_groups (canvas_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS canvas_snapshots (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        canvas_id integer NOT NULL,
+        label text NOT NULL,
+        doc text NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_snapshots_canvas ON canvas_snapshots (canvas_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
   // [M8] 风格预设库建表兜底（migrate 体系外旧库）
   try {
     await sqlite.execute(

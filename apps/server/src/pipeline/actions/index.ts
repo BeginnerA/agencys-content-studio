@@ -6,6 +6,7 @@ import { aiVideo } from './ai-video'
 import { characterSync } from './character-sync'
 import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
+import { literal } from './literal'
 import { manualIngest } from './manual-ingest'
 import { memoryRecall } from './memory-recall'
 import { memoryWrite } from './memory-write'
@@ -21,6 +22,7 @@ export type ActionFn = (ctx: StepContext) => Promise<StepResult>
 /** action 注册表（与 loader.KNOWN_ACTIONS 同步；新增 action 两处都加） */
 const registry: Record<string, ActionFn> = {
   manual_ingest: manualIngest,
+  literal,
   ai_text: aiText,
   ai_image: aiImage,
   ffmpeg_merge: ffmpegMerge,

@@ -11,7 +11,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type {
   AnyNodeSpec, Asset, CanvasAssetLite, CanvasDocEdge, CanvasDocNode, CanvasEditMode, CanvasGenTaskLite,
-  CanvasResultItem, CreationNodeSpec, EntityItem, EntityKind, GenKind, NodeSpecEdit, TextNodeSpec,
+  CanvasResultItem, ComposeTransition, CreationNodeSpec, EntityItem, EntityKind, GenKind, NodeSpecEdit, TextNodeSpec,
 } from '../lib/types'
 import { assetApi, creationApi, entityApi, runApi, taskApi, type CanvasNodePatch } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
@@ -46,6 +46,15 @@ const TASK_TEXT: Record<string, string> = { pending: '等待', processing: '生�
 const TASK_CLS: Record<string, string> = { pending: 'pending', processing: 'processing', succeeded: 'succeeded', failed: 'failed', cancelled: 'cancelled' }
 const PORT_TEXT: Record<string, string> = { reference: '参考图', first_frame: '首帧', last_frame: '尾帧', source: '源图（编辑底图）' }
 const EDIT_MODE_TEXT: Record<CanvasEditMode, string> = { inpaint: '局部重绘', erase: '消除', outpaint: '扩图' }
+/** [M18] 转场中文标签（TRANSITIONS 枚举，与服务端 / M11 ComposeConfig 同源） */
+const TRANSITION_OPTIONS: Array<{ value: ComposeTransition; label: string }> = [
+  { value: 'none', label: '无（硬切）' },
+  { value: 'fade', label: '淡入淡出' },
+  { value: 'fadeblack', label: '渐黑过渡' },
+  { value: 'slideleft', label: '左滑入' },
+  { value: 'slideright', label: '右滑入' },
+  { value: 'dissolve', label: '溶解' },
+]
 const ENT_KIND_LABEL: Record<EntityKind, string> = { character: '角色', scene: '场景', prop: '道具' }
 /** [M17] 实体类型文案（实体摘要 kind 为宽 string，兜底原值） */
 function entKindText(k: string): string {
@@ -91,6 +100,7 @@ function kindLabel(n: CanvasDocNode): string {
       if (gk === 'video') return '视频生成'
       if (gk === 'audio') return '音频生成'
       if (gk === 'compose') return '音视频合成'
+      if (gk === 'llm') return 'LLM 文本处理'
       return '图片生成'
     }
   }
@@ -106,6 +116,7 @@ function nodeIcon(n: CanvasDocNode): string {
   if (s.genKind === 'video') return 'video'
   if (s.genKind === 'audio') return 'speaker-wave'
   if (s.genKind === 'compose') return 'film'
+  if (s.genKind === 'llm') return 'sparkles'
   return 'photo'
 }
 function assetThumb(a: CanvasAssetLite | null): string | null {
@@ -162,6 +173,19 @@ const fYScale = ref('')
 const fVariants = ref(1)
 /** [M17] text 节点文本表单 */
 const fText = ref('')
+/** [M18] compose：转场 token / 转场时长（字符串表单）/ BGM 资产（字符串表单）/ 音量 / 淡入淡出 */
+const fTransition = ref<ComposeTransition>('none')
+const fTransitionDuration = ref('')
+const fBgmAssetId = ref('')
+const fBgmVolume = ref('')
+const fBgmFade = ref(true)
+/** [M18] 抽帧：模式 / 指定时刻（秒）/ 忙锁 */
+const frameMode = ref<'first' | 'last' | 'custom'>('first')
+const frameTime = ref('')
+const frameBusy = ref(false)
+/** [M18] LLM 节点：采样温度 / 最大输出 token */
+const fTemperature = ref('')
+const fMaxTokens = ref('')
 
 function formSnapshot(): string {
   return JSON.stringify({
@@ -169,6 +193,8 @@ function formSnapshot(): string {
     ar: fAspectRatio.value, vo: fVoice.value, sp: fSpeed.value, fp: fFps.value,
     pr: fProvider.value, m: fModel.value, st: fStyle.value, em: fEditMode.value,
     a: fAngle.value, xs: fXScale.value, ys: fYScale.value,
+    tr: fTransition.value, td: fTransitionDuration.value, bg: fBgmAssetId.value, bv: fBgmVolume.value, bf: fBgmFade.value,
+    tm: fTemperature.value, mt: fMaxTokens.value,
   })
 }
 let formBase = ''
@@ -194,6 +220,13 @@ function fillForm(n: CanvasDocNode | null): void {
   fAngle.value = s?.edit?.expand?.angle != null ? String(s.edit.expand.angle) : ''
   fXScale.value = s?.edit?.expand?.xScale != null ? String(s.edit.expand.xScale) : ''
   fYScale.value = s?.edit?.expand?.yScale != null ? String(s.edit.expand.yScale) : ''
+  fTransition.value = s?.transition ?? 'none'
+  fTransitionDuration.value = s?.transitionDuration != null ? String(s.transitionDuration) : ''
+  fBgmAssetId.value = s?.bgmAssetId != null ? String(s.bgmAssetId) : ''
+  fBgmVolume.value = s?.bgmVolume != null ? String(s.bgmVolume) : ''
+  fBgmFade.value = s?.bgmFade !== false
+  fTemperature.value = s?.temperature != null ? String(s.temperature) : ''
+  fMaxTokens.value = s?.maxTokens != null ? String(s.maxTokens) : ''
   fVariants.value = 1
   fText.value = asTextSpec(n?.spec)?.text ?? ''
   formBase = formSnapshot()
@@ -208,7 +241,7 @@ watch(
   },
   { immediate: true },
 )
-watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale], () => {
+watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade, fTemperature, fMaxTokens], () => {
   formTouched.value = formSnapshot() !== formBase
 })
 
@@ -227,9 +260,29 @@ function buildSpec(over?: { maskAssetId?: number }): CreationNodeSpec {
     if (voice) spec.voice = voice
     const speed = Number(fSpeed.value)
     if (fSpeed.value.trim() && Number.isFinite(speed) && speed >= 0.25 && speed <= 4) spec.speed = speed
+  } else if (gk === 'llm') {
+    // [M18] LLM：温度 0-2（默认 0.7）、maxTokens 1-32000（默认 2048），为空不落库走服务端默认
+    const tm = Number(fTemperature.value)
+    if (fTemperature.value.trim() && Number.isFinite(tm) && tm >= 0 && tm <= 2) spec.temperature = tm
+    const mt = Number(fMaxTokens.value)
+    if (fMaxTokens.value.trim() && Number.isInteger(mt) && mt >= 1 && mt <= 32000) spec.maxTokens = mt
   } else {
     const fps = Number(fFps.value)
     if (fFps.value.trim() && Number.isFinite(fps) && fps > 0) spec.fps = fps
+    // [M18] 转场（'none' 省略；时长仅转场启用时落库，0.1-2 服务端同规则）
+    if (fTransition.value !== 'none') {
+      spec.transition = fTransition.value
+      const td = Number(fTransitionDuration.value)
+      if (fTransitionDuration.value.trim() && Number.isFinite(td) && td >= 0.1 && td <= 2) spec.transitionDuration = td
+    }
+    // [M18] BGM（未选省略；音量/淡出仅 BGM 启用时落库，缺省走服务端）
+    const ba = Number(fBgmAssetId.value)
+    if (fBgmAssetId.value && Number.isInteger(ba) && ba > 0) {
+      spec.bgmAssetId = ba
+      const bv = Number(fBgmVolume.value)
+      if (fBgmVolume.value.trim() && Number.isFinite(bv) && bv >= 0 && bv <= 1) spec.bgmVolume = bv
+      if (!fBgmFade.value) spec.bgmFade = false
+    }
   }
   if (gk !== 'audio') {
     const resolution = fResolution.value.trim()
@@ -440,6 +493,62 @@ async function doExtract(): Promise<void> {
     opErr.value = e instanceof Error ? e.message : String(e)
   } finally {
     opBusy.value = false
+  }
+}
+
+// ===== [M18] BGM 候选（本画布音频节点/资产产物；含 spec 现值兼容兜底） =====
+const bgmOptions = computed<Array<{ id: number; name: string }>>(() => {
+  const out: Array<{ id: number; name: string }> = []
+  const seen = new Set<number>()
+  const push = (id: number | null | undefined, name: string | null | undefined): void => {
+    if (id == null || seen.has(id)) return
+    seen.add(id)
+    out.push({ id, name: name ?? `资产 #${id}` })
+  }
+  for (const n of props.nodes) {
+    if (n.kind === 'asset' && n.asset?.kind === 'audio') push(n.assetId, n.asset.name)
+  }
+  for (const n of props.nodes) {
+    if (n.kind !== 'gen' || asGenSpec(n.spec)?.genKind !== 'audio') continue
+    if (n.displayTask?.asset?.kind === 'audio') push(n.displayTask.resultAssetId, n.displayTask.asset.name)
+  }
+  const cur = asGenSpec(props.node?.spec)?.bgmAssetId
+  if (cur != null) push(cur, `资产 #${cur}（画布外引用）`)
+  return out
+})
+
+// ===== [M18] 视频抽帧（gen(video) 显示产物 / asset 视频资产） =====
+const canExtractFrame = computed<boolean>(() => {
+  const n = props.node
+  if (!n) return false
+  if (n.kind === 'asset') return n.asset?.kind === 'video'
+  if (n.kind !== 'gen') return false
+  return asGenSpec(n.spec)?.genKind === 'video' && (n.assetId != null || n.displayTask?.resultAssetId != null)
+})
+
+async function doExtractFrame(): Promise<void> {
+  const n = props.node
+  if (!n || frameBusy.value) return
+  if (frameMode.value === 'custom' && !frameTime.value.trim()) {
+    opErr.value = '请先填写指定时刻（秒）'
+    return
+  }
+  frameBusy.value = true
+  opErr.value = ''
+  try {
+    if (n.kind === 'gen' && formTouched.value) {
+      await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+    }
+    const r = await creationApi.extractFrame(n.id, {
+      mode: frameMode.value,
+      time: frameMode.value === 'custom' ? Number(frameTime.value) : undefined,
+    })
+    emit('notice', `已抽取帧素材（节点 #${r.node.id} · 资产 #${r.asset.id}）`)
+    emit('refresh')
+  } catch (e) {
+    opErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    frameBusy.value = false
   }
 }
 
@@ -707,14 +816,15 @@ async function attachTo(e: EntityItem): Promise<void> {
               <option value="video">视频</option>
               <option value="audio">音频（TTS）</option>
               <option value="compose">音视频合成</option>
+              <option value="llm">LLM 文本处理</option>
             </select>
           </div>
           <div v-if="fGenKind !== 'compose'" class="frow">
-            <label class="flabel">{{ fGenKind === 'audio' ? '朗读文本' : '提示词' }}</label>
+            <label class="flabel">{{ fGenKind === 'audio' ? '朗读文本' : fGenKind === 'llm' ? '指令' : '提示词' }}</label>
             <textarea
               v-model="fPrompt"
               rows="3"
-              :placeholder="fGenKind === 'audio' ? '要朗读的文本…（留空则取「提示词」端口连线的文本节点）' : fEditMode === 'inpaint' ? '要画什么（局部重绘必填）' : fEditMode === 'erase' ? '可留空（走消除默认提示词）' : '描述要生成的画面…'"
+              :placeholder="fGenKind === 'audio' ? '要朗读的文本…（留空则取「提示词」端口连线的文本节点）' : fGenKind === 'llm' ? '给 LLM 的指令（如：总结要点 / 改写风格 / 描述画面），留空则取「提示词」端口' : fEditMode === 'inpaint' ? '要画什么（局部重绘必填）' : fEditMode === 'erase' ? '可留空（走消除默认提示词）' : '描述要生成的画面…'"
             />
             <div class="frow-ops">
               <button type="button" class="btn sm" :disabled="opBusy || expandBusy" title="AI 扩写提示词/文本" @click="openExpand">
@@ -753,6 +863,17 @@ async function attachTo(e: EntityItem): Promise<void> {
               <input v-model="fSpeed" type="number" step="0.05" min="0.25" max="4" placeholder="0.25–4（留空默认）" />
             </div>
           </template>
+          <template v-else-if="fGenKind === 'llm'">
+            <div class="frow">
+              <label class="flabel">采样温度</label>
+              <input v-model="fTemperature" type="number" step="0.1" min="0" max="2" placeholder="0–2（默认 0.7）" />
+            </div>
+            <div class="frow">
+              <label class="flabel">最大 token</label>
+              <input v-model="fMaxTokens" type="number" step="1" min="1" max="32000" placeholder="1–32000（默认 2048）" />
+            </div>
+            <div class="muted mini">输入：参考图（≤ 4）· 文本素材（≤ 4 段，合并为上下文）· 提示词（1 条，优先级高于本表单指令）。产物为文本资产，可连入图/视频/LLM 节点。</div>
+          </template>
           <template v-else>
             <div class="frow">
               <label class="flabel">分辨率</label>
@@ -762,6 +883,33 @@ async function attachTo(e: EntityItem): Promise<void> {
               <label class="flabel">帧率</label>
               <input v-model="fFps" type="number" min="1" step="1" placeholder="如 30（留空跟随源）" />
             </div>
+            <div class="frow">
+              <label class="flabel">转场</label>
+              <select v-model="fTransition">
+                <option v-for="t in TRANSITION_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+            </div>
+            <div v-if="fTransition !== 'none'" class="frow">
+              <label class="flabel">转场时长</label>
+              <input v-model="fTransitionDuration" type="number" step="0.1" min="0.1" max="2" placeholder="秒（0.1–2，默认 0.5）" />
+            </div>
+            <div class="frow">
+              <label class="flabel">背景音乐</label>
+              <select v-model="fBgmAssetId">
+                <option value="">无</option>
+                <option v-for="a in bgmOptions" :key="a.id" :value="String(a.id)">{{ a.name }}</option>
+              </select>
+            </div>
+            <template v-if="fBgmAssetId">
+              <div class="frow">
+                <label class="flabel">BGM 音量</label>
+                <input v-model="fBgmVolume" type="number" step="0.05" min="0" max="1" placeholder="0–1（默认 0.5）" />
+              </div>
+              <label class="chk">
+                <input v-model="fBgmFade" type="checkbox" />
+                <span>BGM 首尾淡入淡出（1.5s）</span>
+              </label>
+            </template>
             <div class="muted mini">输入：视频端口（≥1，按连线创建序拼接）＋ 音频端口（可选，混音；有音轨时丢弃视频原声）。</div>
           </template>
 
@@ -883,6 +1031,33 @@ async function attachTo(e: EntityItem): Promise<void> {
             @click="doCancel"
           >
             <Icon name="stop" :size="12" /> 取消任务
+          </button>
+          <label v-if="canExtractFrame" class="vsel" title="抽帧位置（首/尾帧可接力 i2v）">
+            抽帧
+            <select v-model="frameMode">
+              <option value="first">首帧</option>
+              <option value="last">尾帧</option>
+              <option value="custom">指定时刻</option>
+            </select>
+          </label>
+          <input
+            v-if="canExtractFrame && frameMode === 'custom'"
+            v-model="frameTime"
+            class="ft-time"
+            type="number"
+            min="0"
+            step="0.1"
+            placeholder="秒"
+          />
+          <button
+            v-if="canExtractFrame"
+            type="button"
+            class="btn sm"
+            :disabled="opBusy || frameBusy"
+            title="从视频产物抽取一帧为图片素材节点"
+            @click="doExtractFrame"
+          >
+            <Icon name="photo" :size="12" /> {{ frameBusy ? '抽帧中…' : '抽帧' }}
           </button>
           <span class="sp" />
           <button type="button" class="btn sm danger" :disabled="opBusy" title="删除节点（保留产物资产）" @click="removeNode">
@@ -1612,6 +1787,12 @@ async function attachTo(e: EntityItem): Promise<void> {
   gap: 5px;
   font-size: 12px;
   color: var(--text-3);
+}
+
+.ft-time {
+  width: 72px;
+  font-size: 12px;
+  padding: 4px 6px;
 }
 
 .vsel select {

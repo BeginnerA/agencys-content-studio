@@ -1,20 +1,35 @@
 import { readFileSync } from 'node:fs'
-import { and, asc, count, desc, eq, inArray, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
-import { assets, canvasEdges, canvasNodes, canvases, characters, genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
-import type { Canvas, CanvasEdge, CanvasNode } from '../db/schema'
+import {
+  assets,
+  canvasEdges,
+  canvasGroups,
+  canvasNodes,
+  canvasSnapshots,
+  canvases,
+  characters,
+  genTasks,
+  pipelineRuns,
+  pipelineSteps,
+} from '../db/schema'
+import type { Canvas, CanvasEdge, CanvasNode, CanvasSnapshot } from '../db/schema'
 import { getImageAdapter, resolveEndpoint } from '../adapters/provider'
-import { validateTemplateText, type TemplateValidation } from '../pipeline/loader'
+import { saveTemplate, templateFileOf, validateTemplateText, type TemplateValidation } from '../pipeline/loader'
 import { assertProjectAssets } from '../pipeline/refs'
+import { createRunRow, InvalidRunInputError } from './run-create'
+import { TRANSITIONS } from './compose-config'
+import { emitStudioEvent } from './events'
 import { absPathOf } from './storage'
 
 /**
  * [M16/M17] 创作画布文档层（写模型）：
  * - buildCanvasDoc：画布全量读模型——节点状态/结果零存量，由 gen_tasks（canvasNodeId）派生；[M17] 全型节点
- *   （asset|gen|text|entity|run）与端口矩阵 v2（prompt/video/audio + entity 源）、采纳优先（pickDisplayTask）、
+ *   （asset|gen|text|entity|run）与端口矩阵 v3（[M18] +text 端口 / +llm 目标 + entity 源）、采纳优先（pickDisplayTask）、
  *   结果画廊（results）、run 节点运行摘要；
  * - CRUD + 端口规则矩阵校验（含环检测 + [M17] from 侧类型校验）；duplicate 深拷；buildTemplateDraft 低保真草案导出；
  * - [M17] extractTextNode：从 gen（spec.prompt）或文本资产提取文本节点；
+ * - [M18] 回收站（软删/恢复/purge，findCanvas 为统一过滤点）+ 文档快照（保留 id 重放；恢复前自动备份）；
  * - 执行通道见 services/creation-gen.ts（本文件零网络、零适配器调用）。
  * 宽容降级：坏 spec / 上游缺产物 / 实体超限截断 → readiness problems/notes 列出（不炸）。
  */
@@ -24,18 +39,21 @@ import { absPathOf } from './storage'
 export const NODE_KINDS = ['asset', 'gen', 'text', 'entity', 'run'] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
 
-/** [M17] gen 节点生成类型（audio=配音；compose=视频合成） */
-export const GEN_KINDS = ['image', 'video', 'audio', 'compose'] as const
+/** [M17/M18] gen 节点生成类型（audio=配音；compose=视频合成；llm=文本处理/图生文） */
+export const GEN_KINDS = ['image', 'video', 'audio', 'compose', 'llm'] as const
 export type GenKind = (typeof GEN_KINDS)[number]
 
-export const EDGE_PORTS = ['reference', 'first_frame', 'last_frame', 'source', 'prompt', 'video', 'audio'] as const
+export const EDGE_PORTS = ['reference', 'first_frame', 'last_frame', 'source', 'prompt', 'video', 'audio', 'text'] as const
 export type EdgePort = (typeof EDGE_PORTS)[number]
 
 export const EDIT_MODES = ['inpaint', 'erase', 'outpaint'] as const
 export type EditMode = (typeof EDIT_MODES)[number]
 
-/** 参考图端口容量（图片 ≤6 / 视频 ≤2；镜像 ai_image / ai_video 单镜参考图上限） */
-export const REF_CAP: Record<'image' | 'video', number> = { image: 6, video: 2 }
+/** 参考图端口容量（图片 ≤6 / 视频 ≤2 / [M18] llm ≤4；镜像 ai_image / ai_video 单镜参考图上限） */
+export const REF_CAP: Record<'image' | 'video' | 'llm', number> = { image: 6, video: 2, llm: 4 }
+
+/** [M18] LLM 节点 text 端口（素材文本）上限 */
+export const LLM_TEXT_CAP = 4
 
 /** [M17] 合成节点单端口输入上限（video / audio 各 ≤4） */
 export const COMPOSE_CAP = 4
@@ -55,12 +73,26 @@ export interface NodeSpec {
   aspectRatio?: string
   /** [M17] 输出帧率（仅 compose 有意义） */
   fps?: number
+  /** [M18] 转场 token（仅 compose；TRANSITIONS 枚举） */
+  transition?: string
+  /** [M18] 转场时长秒（仅 compose，0.1-2，默认 0.5） */
+  transitionDuration?: number
+  /** [M18] BGM 资产 id（仅 compose；须属本项目 audio 资产） */
+  bgmAssetId?: number
+  /** [M18] BGM 音量（仅 compose，0-1，默认 0.5） */
+  bgmVolume?: number
+  /** [M18] BGM 首尾淡入淡出（仅 compose，默认 true） */
+  bgmFade?: boolean
   /** [M17] 声线令牌（仅 audio；全 ASCII 供应商枚举，语义短语经 resolveVoiceChain 降级） */
   voice?: string
   /** [M17] 语速（仅 audio，0.25-4） */
   speed?: number
   provider?: string
   model?: string
+  /** [M18] LLM 温度（仅 llm，0-2，默认 0.8） */
+  temperature?: number
+  /** [M18] LLM 输出预算 tokens（仅 llm，1-128000，默认 12000） */
+  maxTokens?: number
   useStylePreset?: boolean
   edit?: NodeSpecEdit
 }
@@ -144,6 +176,8 @@ export interface InputPlan {
   videoAssetIds: number[]
   /** [M17] compose 音频输入（边创建序） */
   audioAssetIds: number[]
+  /** [M18] text 端口（llm 素材文本，边创建序 ≤4） */
+  textInputs: string[]
   problems: string[]
   /** [M17] 宽容提示（实体截断等；不阻断执行） */
   notes: string[]
@@ -184,6 +218,8 @@ export interface CanvasDocNode {
   title: string
   /** [M17] 故事板序号（1 起；null = 未编号） */
   seq?: number | null
+  /** [M18] 成组归属（canvas_groups.id；null=未成组） */
+  groupId?: number | null
   /** asset 节点：引用资产；gen 节点：显示产物（采纳优先）资产（冗余方便前端） */
   assetId: number | null
   asset: AssetLite | null
@@ -219,10 +255,22 @@ export interface CanvasDocEdgeView {
   port: string
 }
 
+/** [M18] 画布分组视图（成员由节点 groupId 前端派生；空组用存储 x/y 显示） */
+export interface CanvasDocGroup {
+  id: number
+  title: string
+  color: string | null
+  collapsed: boolean
+  x: number
+  y: number
+}
+
 export interface CanvasDoc {
   canvas: { id: number; projectId: number; name: string; viewport: Viewport }
   nodes: CanvasDocNode[]
   edges: CanvasDocEdgeView[]
+  /** [M18] 节点分组（成组/折叠） */
+  groups: CanvasDocGroup[]
 }
 
 export interface CanvasListItem {
@@ -232,6 +280,10 @@ export interface CanvasListItem {
   nodeCount: number
   createdAt: number
   updatedAt: number
+  /** [M18] 回收站标记（null=正常；非 null=软删时间戳） */
+  deletedAt: number | null
+  /** [M18] 列表封面：该画布最近完成 succeeded 任务的产物缩略（无 → null） */
+  cover: AssetLite | null
 }
 
 // ---------- 解析与校验（纯函数，供探针直接断言） ----------
@@ -260,6 +312,42 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
     const f = o['fps']
     if (typeof f !== 'number' || !Number.isFinite(f) || f <= 0 || f > 120) throw new Error('spec.fps 需为 0-120 间的数字')
     spec.fps = f
+  }
+  if (o['transition'] !== undefined && o['transition'] !== null) {
+    const tr = o['transition']
+    if (typeof tr !== 'string' || !(TRANSITIONS as readonly string[]).includes(tr)) {
+      throw new Error(`spec.transition 非法（${TRANSITIONS.join('|')}）`)
+    }
+    spec.transition = tr
+  }
+  if (o['transitionDuration'] !== undefined && o['transitionDuration'] !== null) {
+    const td = o['transitionDuration']
+    if (typeof td !== 'number' || !Number.isFinite(td) || td < 0.1 || td > 2) throw new Error('spec.transitionDuration 需为 0.1-2 间的数字')
+    spec.transitionDuration = td
+  }
+  if (o['bgmAssetId'] !== undefined && o['bgmAssetId'] !== null) {
+    const b = o['bgmAssetId']
+    if (typeof b !== 'number' || !Number.isInteger(b) || b <= 0) throw new Error('spec.bgmAssetId 需为正整数')
+    spec.bgmAssetId = b
+  }
+  if (o['bgmVolume'] !== undefined && o['bgmVolume'] !== null) {
+    const bv = o['bgmVolume']
+    if (typeof bv !== 'number' || !Number.isFinite(bv) || bv < 0 || bv > 1) throw new Error('spec.bgmVolume 需为 0-1 间的数字')
+    spec.bgmVolume = bv
+  }
+  if (o['bgmFade'] !== undefined) {
+    if (typeof o['bgmFade'] !== 'boolean') throw new Error('spec.bgmFade 需为布尔')
+    spec.bgmFade = o['bgmFade']
+  }
+  if (o['temperature'] !== undefined && o['temperature'] !== null) {
+    const t = o['temperature']
+    if (typeof t !== 'number' || !Number.isFinite(t) || t < 0 || t > 2) throw new Error('spec.temperature 需为 0-2 间的数字')
+    spec.temperature = t
+  }
+  if (o['maxTokens'] !== undefined && o['maxTokens'] !== null) {
+    const mt = o['maxTokens']
+    if (typeof mt !== 'number' || !Number.isInteger(mt) || mt < 1 || mt > 128000) throw new Error('spec.maxTokens 需为 1-128000 的整数')
+    spec.maxTokens = mt
   }
   if (o['speed'] !== undefined && o['speed'] !== null) {
     const sp = o['speed']
@@ -369,6 +457,11 @@ export function safeParseRunSpec(raw: string | null): { spec: RunSpec | null; er
 export function specProblems(spec: NodeSpec, hasPromptInput = false): string[] {
   const problems: string[] = []
   if (spec.genKind === 'compose') return problems // 输入全部来自连线；缺 video 输入由 planNodeInputs 报
+  if (spec.genKind === 'llm') {
+    // [M18] 指令 = prompt 端口文本 > spec.prompt（LLM 未配置由 preflight 追加）
+    if (!spec.prompt.trim() && !hasPromptInput) problems.push('指令为空（填写 prompt 或连接文本节点）')
+    return problems
+  }
   if (spec.genKind === 'audio') {
     if (!spec.prompt.trim() && !hasPromptInput) problems.push('朗读文本为空（填写 prompt 或连接文本节点）')
     return problems
@@ -441,6 +534,8 @@ export function productKindOf(spec: NodeSpec | null): string | null {
       return 'audio'
     case 'compose':
       return 'video'
+    case 'llm':
+      return 'text' // [M18] 产物为 text 资产
     default:
       return null
   }
@@ -455,7 +550,7 @@ export function sourceKindOf(from: FromNodeInfo): string | null {
   return null
 }
 
-/** 端口规则矩阵校验 v2（建边用；返回错误文案或 null；from 提供时执行源侧类型校验） */
+/** 端口规则矩阵校验 v3（建边用；[M18] +text 端口 / +llm 目标；返回错误文案或 null；from 提供时执行源侧类型校验） */
 export function validateNewEdge(
   to: { id: number; kind: string; spec: NodeSpec | null },
   port: string,
@@ -475,10 +570,10 @@ export function validateNewEdge(
   const cur = existing.filter((e) => e.to === to.id && e.port === port)
   if (cur.some((e) => e.from === fromId)) return '该连线已存在'
   if (port === 'reference') {
-    if (spec.genKind !== 'image' && spec.genKind !== 'video') return '参考图端口仅图片/视频生成节点支持'
+    if (spec.genKind !== 'image' && spec.genKind !== 'video' && spec.genKind !== 'llm') return '参考图端口仅图片/视频/LLM 生成节点支持'
     if (from && src !== 'image' && src !== 'entity') return `参考图来源需为图片素材/生成图/实体节点（当前类型：${srcLabel}）`
-    const cap = REF_CAP[spec.genKind as 'image' | 'video']
-    if (cur.length >= cap) return `${spec.genKind === 'video' ? '视频' : '图片'}生成节点参考图上限 ${cap} 张`
+    const cap = REF_CAP[spec.genKind as 'image' | 'video' | 'llm']
+    if (cur.length >= cap) return `${spec.genKind === 'llm' ? 'LLM' : spec.genKind === 'video' ? '视频' : '图片'}生成节点参考图上限 ${cap} 张`
     return null
   }
   if (port === 'first_frame' || port === 'last_frame') {
@@ -495,12 +590,21 @@ export function validateNewEdge(
     return null
   }
   if (port === 'prompt') {
-    if (spec.genKind !== 'image' && spec.genKind !== 'video' && spec.genKind !== 'audio') {
-      return '提示词端口仅图片/视频/音频生成节点支持'
+    if (spec.genKind !== 'image' && spec.genKind !== 'video' && spec.genKind !== 'audio' && spec.genKind !== 'llm') {
+      return '提示词端口仅图片/视频/音频/LLM 生成节点支持'
     }
-    // 仅 text 节点（文本资产节点执行侧无文本注入通道，一并拒绝）
-    if (from && from.kind !== 'text') return `提示词端口仅接受文本节点（当前类型：${srcLabel}）`
+    // 仅 text 节点或 llm 节点（产物文本）（文本资产节点执行侧无文本注入通道，一并拒绝）
+    const fromText = from != null && (from.kind === 'text' || (from.kind === 'gen' && productKindOf(from.spec ?? null) === 'text'))
+    if (from && !fromText) return `提示词端口仅接受文本节点或 LLM 节点（当前类型：${srcLabel}）`
     if (cur.length >= 1) return '提示词最多 1 条'
+    return null
+  }
+  if (port === 'text') {
+    // [M18] text 端口：仅 llm 目标；源 = text / llm 节点（素材文本，非指令）
+    if (spec.genKind !== 'llm') return '文本素材端口仅 LLM 节点支持'
+    const fromText = from != null && (from.kind === 'text' || (from.kind === 'gen' && productKindOf(from.spec ?? null) === 'text'))
+    if (from && !fromText) return `文本素材来源需为文本节点或 LLM 节点（当前类型：${srcLabel}）`
+    if (cur.length >= LLM_TEXT_CAP) return `文本素材上限 ${LLM_TEXT_CAP} 段`
     return null
   }
   if (port === 'video') {
@@ -517,9 +621,10 @@ export function validateNewEdge(
 }
 
 /**
- * 输入计划 v2（纯函数）：入边 → 各端口输入资产/文本 + 问题清单 + 宽容提示。
+ * 输入计划 v3（纯函数）：入边 → 各端口输入资产/文本 + 问题清单 + 宽容提示。
  * 语义 = 引用快照（采纳优先）：执行时取上游「采纳产物（有效时）或最新成功产物」；
- * [M17] 扩展：prompt 端口（text 节点内容）、video/audio 端口（compose 输入）、entity 源（refAssetIds 展开截断）。
+ * [M17] 扩展：prompt 端口（text 节点内容）、video/audio 端口（compose 输入）、entity 源（refAssetIds 展开截断）；
+ * [M18] 扩展：text 端口（llm 素材文本 ≤4 段）。
  */
 export function planNodeInputs(
   spec: NodeSpec,
@@ -535,6 +640,7 @@ export function planNodeInputs(
     promptText: null,
     videoAssetIds: [],
     audioAssetIds: [],
+    textInputs: [],
     problems: [],
     notes: [],
   }
@@ -604,8 +710,8 @@ export function planNodeInputs(
       continue
     }
     if (e.port === 'prompt') {
-      if (spec.genKind !== 'image' && spec.genKind !== 'video' && spec.genKind !== 'audio') {
-        plan.problems.push('提示词连线仅图片/视频/音频节点可用')
+      if (spec.genKind !== 'image' && spec.genKind !== 'video' && spec.genKind !== 'audio' && spec.genKind !== 'llm') {
+        plan.problems.push('提示词连线仅图片/视频/音频/LLM 节点可用')
         continue
       }
       if (plan.promptText != null) continue
@@ -615,6 +721,24 @@ export function planNodeInputs(
         continue
       }
       plan.promptText = t.trim()
+      continue
+    }
+    if (e.port === 'text') {
+      // [M18] text 端口：llm 素材文本（≤4 段；空文本 → problem）
+      if (spec.genKind !== 'llm') {
+        plan.problems.push('文本素材连线仅 LLM 节点可用')
+        continue
+      }
+      if (plan.textInputs.length >= LLM_TEXT_CAP) {
+        plan.problems.push(`文本素材超过上限 ${LLM_TEXT_CAP} 段（已忽略多余连线）`)
+        continue
+      }
+      const t = upstream.get(e.from)?.text ?? null
+      if (t == null || !t.trim()) {
+        plan.problems.push(`文本素材来源 #${e.from} 暂无文本或为空`)
+        continue
+      }
+      plan.textInputs.push(t.trim())
       continue
     }
     if (e.port === 'video') {
@@ -764,8 +888,12 @@ function toTaskLite(t: typeof genTasks.$inferSelect): GenTaskLite {
 
 // ---------- 画布 CRUD ----------
 
-export async function listCanvases(projectId: number): Promise<CanvasListItem[]> {
-  const rows = await db.select().from(canvases).where(eq(canvases.projectId, projectId)).orderBy(desc(canvases.updatedAt))
+export async function listCanvases(projectId: number, opts?: { trash?: boolean }): Promise<CanvasListItem[]> {
+  const trash = opts?.trash === true
+  const where = trash
+    ? and(eq(canvases.projectId, projectId), isNotNull(canvases.deletedAt))
+    : and(eq(canvases.projectId, projectId), isNull(canvases.deletedAt))
+  const rows = await db.select().from(canvases).where(where).orderBy(desc(canvases.updatedAt))
   if (rows.length === 0) return []
   const counts = await db
     .select({ canvasId: canvasNodes.canvasId, n: count() })
@@ -773,14 +901,49 @@ export async function listCanvases(projectId: number): Promise<CanvasListItem[]>
     .where(inArray(canvasNodes.canvasId, rows.map((r) => r.id)))
     .groupBy(canvasNodes.canvasId)
   const byId = new Map(counts.map((c) => [c.canvasId, Number(c.n)]))
-  return rows.map((r) => ({
-    id: r.id,
-    projectId: r.projectId,
-    name: r.name,
-    nodeCount: byId.get(r.id) ?? 0,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-  }))
+  // [M18] cover 派生（两次批查避 N+1）：节点 → succeeded 有产物任务（completedAt 降序）取每画布最近一条 → 批查资产
+  const nodeRows = await db
+    .select({ id: canvasNodes.id, canvasId: canvasNodes.canvasId })
+    .from(canvasNodes)
+    .where(inArray(canvasNodes.canvasId, rows.map((r) => r.id)))
+  const nodeToCanvas = new Map(nodeRows.map((n) => [n.id, n.canvasId]))
+  const coverAssetByCanvas = new Map<number, number>()
+  if (nodeRows.length > 0) {
+    const taskRows = await db
+      .select({ canvasNodeId: genTasks.canvasNodeId, resultAssetId: genTasks.resultAssetId })
+      .from(genTasks)
+      .where(
+        and(
+          inArray(genTasks.canvasNodeId, nodeRows.map((n) => n.id)),
+          eq(genTasks.status, 'succeeded'),
+          isNotNull(genTasks.resultAssetId),
+        ),
+      )
+      .orderBy(desc(genTasks.completedAt))
+    for (const t of taskRows) {
+      if (t.canvasNodeId == null || t.resultAssetId == null) continue
+      const cid = nodeToCanvas.get(t.canvasNodeId)
+      if (cid == null) continue
+      if (!coverAssetByCanvas.has(cid)) coverAssetByCanvas.set(cid, t.resultAssetId) // 降序首条 = 最近完成
+    }
+  }
+  const coverIds = [...new Set([...coverAssetByCanvas.values()])]
+  const coverRows = coverIds.length ? await db.select().from(assets).where(inArray(assets.id, coverIds)) : []
+  const coverById = new Map(coverRows.map((a) => [a.id, a]))
+  return rows.map((r) => {
+    const coverId = coverAssetByCanvas.get(r.id)
+    const coverAsset = coverId != null ? coverById.get(coverId) : undefined
+    return {
+      id: r.id,
+      projectId: r.projectId,
+      name: r.name,
+      nodeCount: byId.get(r.id) ?? 0,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      deletedAt: r.deletedAt,
+      cover: coverAsset ? toAssetLite(coverAsset) : null,
+    }
+  })
 }
 
 export async function createCanvas(projectId: number, name?: string): Promise<Canvas> {
@@ -792,9 +955,13 @@ export async function createCanvas(projectId: number, name?: string): Promise<Ca
   return row!
 }
 
-export async function findCanvas(id: number): Promise<Canvas | null> {
+/** [M18] 画布行装载（统一过滤点）：默认仅活跃画布（已软删 → null，子端点一律 404）；includeDeleted 供 restore/purge */
+export async function findCanvas(id: number, opts?: { includeDeleted?: boolean }): Promise<Canvas | null> {
   const rows = await db.select().from(canvases).where(eq(canvases.id, id)).limit(1)
-  return rows[0] ?? null
+  const row = rows[0] ?? null
+  if (!row) return null
+  if (row.deletedAt != null && opts?.includeDeleted !== true) return null
+  return row
 }
 
 export async function updateCanvas(
@@ -817,13 +984,242 @@ export async function updateCanvas(
   return row ?? null
 }
 
-export async function deleteCanvas(id: number): Promise<boolean> {
-  const cur = await findCanvas(id)
-  if (!cur) return false
-  await db.delete(canvasEdges).where(eq(canvasEdges.canvasId, id))
-  await db.delete(canvasNodes).where(eq(canvasNodes.canvasId, id))
-  await db.delete(canvases).where(eq(canvases.id, id))
+// 注：原 M16 硬删 deleteCanvas 已由 M18 softDeleteCanvas（软删）+ purgeCanvas（彻底删）取代
+
+// ---------- [M18] 回收站（软删 / 恢复 / purge） ----------
+
+/** [M18] 软删（进回收站）：仅标 deletedAt（子行保留；在途任务由路由层 cancelCanvasTasks 取消） */
+export async function softDeleteCanvas(canvas: Canvas): Promise<Canvas> {
+  const now = Date.now()
+  const [row] = await db
+    .update(canvases)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(eq(canvases.id, canvas.id))
+    .returning()
+  emitStudioEvent({ type: 'canvas.changed', canvasId: canvas.id, projectId: canvas.projectId })
+  return row!
+}
+
+/** [M18] 回收站恢复（行须为已软删；路由层已做状态判定与 404） */
+export async function restoreCanvas(canvas: Canvas): Promise<Canvas> {
+  const [row] = await db
+    .update(canvases)
+    .set({ deletedAt: null, updatedAt: Date.now() })
+    .where(eq(canvases.id, canvas.id))
+    .returning()
+  emitStudioEvent({ type: 'canvas.changed', canvasId: canvas.id, projectId: canvas.projectId })
+  return row!
+}
+
+/** [M18] 彻底删除（行须为已软删；级联删 nodes/edges/groups/snapshots；gen_tasks 行保留留痕） */
+export async function purgeCanvas(canvasId: number): Promise<void> {
+  await db.delete(canvasEdges).where(eq(canvasEdges.canvasId, canvasId))
+  await db.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvasId))
+  await db.delete(canvasGroups).where(eq(canvasGroups.canvasId, canvasId))
+  await db.delete(canvasSnapshots).where(eq(canvasSnapshots.canvasId, canvasId))
+  await db.delete(canvases).where(eq(canvases.id, canvasId))
+}
+
+// ---------- [M18] 文档快照（保留 id 重放） ----------
+
+/** [M18] 每画布快照上限（手动创建满额 → 400 提示清理；恢复前自动备份满额 → 驱逐最旧） */
+export const SNAPSHOT_LIMIT = 20
+
+/** [M18] 快照文档形态（全量行 JSON；id 保留用于重放——adoptedTaskId→gen_tasks.canvasNodeId 不孤儿） */
+export interface CanvasSnapshotDoc {
+  nodes: Array<typeof canvasNodes.$inferSelect>
+  edges: Array<typeof canvasEdges.$inferSelect>
+  groups: Array<typeof canvasGroups.$inferSelect>
+}
+
+/** [M18] 快照元信息（列表；不含 doc 全文） */
+export interface CanvasSnapshotMeta {
+  id: number
+  label: string
+  nodeCount: number
+  edgeCount: number
+  groupCount: number
+  createdAt: number
+}
+
+/** [M18] 恢复冲突（快照行 id 被他画布占用；路由层映射 409） */
+export class SnapshotConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SnapshotConflictError'
+  }
+}
+
+/** [M18] 恢复结果（backupSnapshotId = 恢复前自动备份；restored = 重放行数） */
+export interface SnapshotRestoreResult {
+  backupSnapshotId: number
+  restored: { nodes: number; edges: number; groups: number }
+}
+
+/** 数组分块（SQLite 变量数上限保护） */
+function chunkIds(ids: number[], size = 500): number[][] {
+  const out: number[][] = []
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size))
+  return out
+}
+
+/** [M18] 采集当前文档全量行 */
+async function collectSnapshotDoc(canvasId: number): Promise<CanvasSnapshotDoc> {
+  const [nodes, edges, groups] = await Promise.all([
+    db.select().from(canvasNodes).where(eq(canvasNodes.canvasId, canvasId)).orderBy(asc(canvasNodes.id)),
+    db.select().from(canvasEdges).where(eq(canvasEdges.canvasId, canvasId)).orderBy(asc(canvasEdges.id)),
+    db.select().from(canvasGroups).where(eq(canvasGroups.canvasId, canvasId)).orderBy(asc(canvasGroups.id)),
+  ])
+  return { nodes, edges, groups }
+}
+
+/**
+ * [M18] 创建快照：label 缺省「快照 N」；auto=true 为恢复前自动备份（满额驱逐最旧腾位，不阻断恢复）
+ */
+export async function createSnapshot(canvasId: number, label: unknown, opts?: { auto?: boolean }): Promise<CanvasSnapshot> {
+  const canvas = await findCanvas(canvasId)
+  if (!canvas) throw new Error(`画布 ${canvasId} 不存在`)
+  const existing = await db
+    .select({ id: canvasSnapshots.id })
+    .from(canvasSnapshots)
+    .where(eq(canvasSnapshots.canvasId, canvasId))
+    .orderBy(asc(canvasSnapshots.createdAt), asc(canvasSnapshots.id))
+  if (existing.length >= SNAPSHOT_LIMIT) {
+    if (!opts?.auto) throw new Error(`快照已达上限（${SNAPSHOT_LIMIT}），请先删除旧快照`)
+    const evict = existing.slice(0, existing.length - SNAPSHOT_LIMIT + 1)
+    await db.delete(canvasSnapshots).where(inArray(canvasSnapshots.id, evict.map((r) => r.id)))
+  }
+  const name = typeof label === 'string' && label.trim() ? label.trim() : `快照 ${existing.length + 1}`
+  const doc = await collectSnapshotDoc(canvasId)
+  const [row] = await db
+    .insert(canvasSnapshots)
+    .values({ canvasId, label: name, doc: JSON.stringify(doc), createdAt: Date.now() })
+    .returning()
+  return row!
+}
+
+/** [M18] 快照列表（新→旧；含行数统计，不含 doc；画布不存在 → null） */
+export async function listSnapshots(canvasId: number): Promise<CanvasSnapshotMeta[] | null> {
+  const canvas = await findCanvas(canvasId)
+  if (!canvas) return null
+  const rows = await db
+    .select()
+    .from(canvasSnapshots)
+    .where(eq(canvasSnapshots.canvasId, canvasId))
+    .orderBy(desc(canvasSnapshots.createdAt), desc(canvasSnapshots.id))
+  return rows.map((r) => {
+    const doc = JSON.parse(r.doc) as CanvasSnapshotDoc
+    return {
+      id: r.id,
+      label: r.label,
+      nodeCount: doc.nodes.length,
+      edgeCount: doc.edges.length,
+      groupCount: doc.groups.length,
+      createdAt: r.createdAt,
+    }
+  })
+}
+
+/** [M18] 删除快照（画布域限定；不存在/不属本画布 → false） */
+export async function deleteSnapshot(canvasId: number, snapshotId: number): Promise<boolean> {
+  const rows = await db
+    .select({ id: canvasSnapshots.id })
+    .from(canvasSnapshots)
+    .where(and(eq(canvasSnapshots.id, snapshotId), eq(canvasSnapshots.canvasId, canvasId)))
+    .limit(1)
+  if (!rows[0]) return false
+  await db.delete(canvasSnapshots).where(eq(canvasSnapshots.id, snapshotId))
   return true
+}
+
+/**
+ * [M18] 快照恢复（保留 id 重放，spec §2.1）：
+ * ①事务内先冲突预检（快照行 id 被他画布占用 → 回滚 + 409）→ ②自动备份「恢复前备份」→
+ * ③清空现 nodes/edges/groups → ④按快照 doc 显式保留原 id 重插 → ⑤ emitCanvasChanged。
+ * 画布/快照不存在 → null（路由 404）；行数极少场景下 id 占用仅可能来自显式建行，仍走事务回滚保护。
+ */
+export async function restoreSnapshot(canvasId: number, snapshotId: number): Promise<SnapshotRestoreResult | null> {
+  const canvas = await findCanvas(canvasId)
+  if (!canvas) return null
+  const snapRows = await db
+    .select()
+    .from(canvasSnapshots)
+    .where(and(eq(canvasSnapshots.id, snapshotId), eq(canvasSnapshots.canvasId, canvasId)))
+    .limit(1)
+  const snap = snapRows[0]
+  if (!snap) return null
+  const doc = JSON.parse(snap.doc) as CanvasSnapshotDoc
+
+  // ① 自动备份（失败不阻断？——失败即中止：无备份不重放，保证可回退）
+  const backup = await createSnapshot(canvasId, `恢复前备份（${snap.label}）`, { auto: true })
+
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    // ② 冲突预检（事务内、清空前：看外部占用；本画布行即将被清空不构成冲突）
+    const clashNode = doc.nodes.length
+      ? (await Promise.all(chunkIds(doc.nodes.map((n) => n.id)).map((chunk) =>
+          tx.select({ id: canvasNodes.id, canvasId: canvasNodes.canvasId }).from(canvasNodes).where(inArray(canvasNodes.id, chunk)),
+        ))).flat().find((r) => r.canvasId !== canvasId)
+      : undefined
+    if (clashNode) throw new SnapshotConflictError(`快照恢复冲突：节点 #${clashNode.id} 已被其他画布占用（id 保留重放不可行）`)
+    const clashEdge = doc.edges.length
+      ? (await Promise.all(chunkIds(doc.edges.map((e) => e.id)).map((chunk) =>
+          tx.select({ id: canvasEdges.id, canvasId: canvasEdges.canvasId }).from(canvasEdges).where(inArray(canvasEdges.id, chunk)),
+        ))).flat().find((r) => r.canvasId !== canvasId)
+      : undefined
+    if (clashEdge) throw new SnapshotConflictError(`快照恢复冲突：边 #${clashEdge.id} 已被其他画布占用（id 保留重放不可行）`)
+    const clashGroup = doc.groups.length
+      ? (await Promise.all(chunkIds(doc.groups.map((g) => g.id)).map((chunk) =>
+          tx.select({ id: canvasGroups.id, canvasId: canvasGroups.canvasId }).from(canvasGroups).where(inArray(canvasGroups.id, chunk)),
+        ))).flat().find((r) => r.canvasId !== canvasId)
+      : undefined
+    if (clashGroup) throw new SnapshotConflictError(`快照恢复冲突：分组 #${clashGroup.id} 已被其他画布占用（id 保留重放不可行）`)
+
+    // ③ 清空现文档
+    await tx.delete(canvasEdges).where(eq(canvasEdges.canvasId, canvasId))
+    await tx.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvasId))
+    await tx.delete(canvasGroups).where(eq(canvasGroups.canvasId, canvasId))
+
+    // ④ 重放（显式保留 id；分组先于节点）
+    for (const g of doc.groups) {
+      await tx.insert(canvasGroups).values({
+        id: g.id,
+        canvasId,
+        title: g.title,
+        color: g.color,
+        collapsed: g.collapsed,
+        x: g.x,
+        y: g.y,
+        createdAt: g.createdAt,
+      })
+    }
+    for (const n of doc.nodes) {
+      await tx.insert(canvasNodes).values({
+        id: n.id,
+        canvasId,
+        kind: n.kind,
+        assetId: n.assetId,
+        title: n.title,
+        spec: n.spec,
+        x: n.x,
+        y: n.y,
+        adoptedTaskId: n.adoptedTaskId,
+        seq: n.seq,
+        groupId: n.groupId,
+        createdAt: n.createdAt,
+        updatedAt: now,
+      })
+    }
+    for (const e of doc.edges) {
+      await tx.insert(canvasEdges).values({ id: e.id, canvasId, from: e.from, to: e.to, port: e.port, createdAt: e.createdAt })
+    }
+  })
+
+  emitStudioEvent({ type: 'canvas.changed', canvasId, projectId: canvas.projectId })
+  return {
+    backupSnapshotId: backup.id,
+    restored: { nodes: doc.nodes.length, edges: doc.edges.length, groups: doc.groups.length },
+  }
 }
 
 /** 深拷：节点 id 映射后重建边（spec/assetId 引用原样） */
@@ -1187,6 +1583,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
   if (!canvas) return null
   const nodeRows = await db.select().from(canvasNodes).where(eq(canvasNodes.canvasId, canvasId)).orderBy(asc(canvasNodes.id))
   const edgeRows = await db.select().from(canvasEdges).where(eq(canvasEdges.canvasId, canvasId)).orderBy(asc(canvasEdges.id))
+  const groupRows = await db.select().from(canvasGroups).where(eq(canvasGroups.canvasId, canvasId)).orderBy(asc(canvasGroups.id))
   const nodeIds = nodeRows.map((n) => n.id)
 
   // 任务：全量按节点分组（新→旧）；最新一条 = tasks[0]
@@ -1309,6 +1706,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
       x: n.x,
       y: n.y,
       seq: n.seq ?? null,
+      groupId: n.groupId ?? null,
     }
     if (n.kind === 'asset') {
       const a = n.assetId != null ? assetById.get(n.assetId) : undefined
@@ -1475,10 +1873,11 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     canvas: { id: canvas.id, projectId: canvas.projectId, name: canvas.name, viewport },
     nodes,
     edges: edgeRows.map((e) => ({ id: e.id, from: e.from, to: e.to, port: e.port })),
+    groups: groupRows.map((g) => ({ id: g.id, title: g.title, color: g.color, collapsed: g.collapsed === 1, x: g.x, y: g.y })),
   }
 }
 
-/** 执行时输入计划 v2（实时解析：采纳优先；text/entity 上游展开；供 creation-gen 调用） */
+/** 执行时输入计划 v3（实时解析：采纳优先；text/entity 上游展开；[M18] llm 产物文本装载；供 creation-gen 调用） */
 export async function loadInputPlan(
   node: CanvasNode,
   incoming: Array<{ from: number; to: number; port: string }>,
@@ -1537,7 +1936,16 @@ export async function loadInputPlan(
       } else if (r.kind === 'gen') {
         const rid = displayAssetByNode.get(r.id)
         const a = rid != null ? assetById.get(rid) : undefined
-        upstream.set(r.id, { assetId: a?.id ?? null, mediaKind: a?.kind ?? null })
+        const up: UpstreamInfo = { assetId: a?.id ?? null, mediaKind: a?.kind ?? null }
+        // [M18] llm 产物文本装载：prompt/text 端口源侧取正文（文件缺失 → text 留空，planNodeInputs 报「暂无文本」）
+        if (a?.kind === 'text' && a.relPath) {
+          try {
+            up.text = readFileSync(absPathOf(a.relPath), 'utf8')
+          } catch {
+            up.text = null
+          }
+        }
+        upstream.set(r.id, up)
       } else if (r.kind === 'text') {
         const ts = safeParseTextSpec(r.spec)
         upstream.set(r.id, { assetId: null, mediaKind: null, text: ts.spec?.text ?? null })
@@ -1551,71 +1959,390 @@ export async function loadInputPlan(
   return planNodeInputs(spec, node.id, incoming, upstream)
 }
 
-// ---------- 模板草案（低保真导出） ----------
+// ---------- [M18] 模板草案 v2（literal + 主步骤 + lossy 清单） ----------
 
-/** 画布 → 流水线模板草案：gen 节点拓扑序 → step（prompt/参数注释保留 + TODO 标注）；复用 loader 校验自检 */
+/** 画布 → 流水线模板草案 v2：text/asset 节点 → inputs；gen 节点→ literal 包装 + 主步骤；llm→ ai_text prompt_inline；compose→ ffmpeg_merge；entity/run/参考图/编辑/转场/BGM → lossy */
 export async function buildTemplateDraft(
   canvasId: number,
   key?: string,
-): Promise<{ yaml: string; validation: TemplateValidation } | null> {
+): Promise<{ yaml: string; validation: TemplateValidation; lossy: string[] } | null> {
   const doc = await buildCanvasDoc(canvasId)
   if (!doc) return null
   const draftKey = key?.trim() || `canvas-draft-${canvasId}`
   if (!/^[\w-]+$/.test(draftKey)) throw new Error(`key「${draftKey}」非法（仅字母/数字/下划线/中划线）`)
-  const yaml = buildTemplateDraftYaml(doc, draftKey)
-  return { yaml, validation: validateTemplateText(yaml, draftKey) }
+  const { yaml, lossy } = buildTemplateDraftYaml(doc, draftKey)
+  return { yaml, validation: validateTemplateText(yaml, draftKey), lossy }
 }
 
-/** 纯函数：YAML 文本生成（探针直接断言） */
-export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): string {
+export interface TemplateDraftResult {
+  yaml: string
+  lossy: string[]
+}
+
+/** 纯函数：v2 YAML 文本 + lossy 清单（探针直接断言） */
+export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDraftResult {
+  const lossy: string[] = []
   const byId = new Map(doc.nodes.map((n) => [n.id, n]))
   const genSpecOf = (n: CanvasDocNode): NodeSpec | null => (n.kind === 'gen' && isGenSpec(n.spec) ? n.spec : null)
+  const textOf = (n: CanvasDocNode): string | null => {
+    if (n.kind !== 'text' || !n.spec || typeof n.spec !== 'object') return null
+    const t = (n.spec as { text?: unknown }).text
+    return typeof t === 'string' ? t : null
+  }
+
+  // 1) inputs 收集（text 节点 → text 输入；asset 节点 → files 输入）
+  const inputsYaml: string[] = []
+  const assetInputOf = new Map<number, string>() // asset nodeId → `a{id}`
+  for (const n of doc.nodes) {
+    if (n.kind === 'text') {
+      inputsYaml.push(
+        `  - { key: t${n.id}, kind: text, label: ${yamlScalar(n.title)}, default: ${yamlScalar(textOf(n) ?? '')}, required: false }`,
+      )
+    } else if (n.kind === 'asset' && n.assetId != null) {
+      assetInputOf.set(n.id, `a${n.id}`)
+      inputsYaml.push(`  - { key: a${n.id}, kind: files, label: ${yamlScalar(n.title)}, required: false }`)
+    } else if (n.kind === 'entity') {
+      lossy.push(`实体节点 #${n.id}（${n.title}）：模板引擎暂无参考图直通（写入注释）`)
+    } else if (n.kind === 'run') {
+      lossy.push(`运行节点 #${n.id}（${n.title}）：模板引擎不支持嵌套运行（写入注释）`)
+    }
+  }
+
+  // 2) gen 节点拓扑序
   const genNodes = doc.nodes.filter((n) => genSpecOf(n) != null)
   const order = topoSortGenNodeIds(genNodes.map((n) => n.id), doc.edges)
+
   const lines: string[] = []
-  lines.push(`# 由创作画布「${doc.canvas.name}」（canvas #${doc.canvas.id}）导出——低保真草案`)
-  lines.push('# 说明：每个画布生成节点映射为一个 step；prompt 与参数以注释保留，冒号后内容需人工改写为模板引用/输入。')
+  lines.push(`# 由创作画布「${doc.canvas.name}」（canvas #${doc.canvas.id}）导出——模板 v2 草案`)
+  lines.push('# 说明：literal 包装提示词为 shots/lines JSON；主步骤 ai_image/ai_video/tts/ai_text(prompt_inline)/ffmpeg_merge；entity/run/参考图/编辑/转场/BGM 写入 lossy。')
   lines.push(`key: ${key}`)
   lines.push('version: 1')
   lines.push(`name: ${yamlScalar(`${doc.canvas.name} 草案`)}`)
-  lines.push('description: 从创作画布导出的草案（待人工完善）')
+  lines.push('description: 从创作画布导出的 v2 草案')
   lines.push('genre: other')
-  lines.push('inputs: []')
+  if (inputsYaml.length === 0) lines.push('inputs: []')
+  else {
+    lines.push('inputs:')
+    lines.push(...inputsYaml)
+  }
+
+  if (order.length === 0) {
+    lines.push('steps: []')
+    return { yaml: `${lines.join('\n')}\n`, lossy }
+  }
+
   lines.push('steps:')
+  const finalStepOf = new Map<number, string>() // gen nodeId → 主步骤 key（供下游引用）
+
   for (const id of order) {
     const node = byId.get(id)!
     const spec = genSpecOf(node)!
-    const action =
-      spec.genKind === 'audio'
-        ? 'tts'
-        : spec.genKind === 'compose'
-          ? 'ffmpeg_merge'
-          : spec.edit || spec.genKind === 'image'
-            ? 'ai_image'
-            : 'ai_video'
-    const genUps = doc.edges.filter((e) => e.to === id && byId.get(e.from)?.kind === 'gen')
-    const assetUps = doc.edges.filter((e) => e.to === id && byId.get(e.from)?.kind === 'asset')
-    lines.push(`  - key: n${id}`)
+    const incoming = doc.edges.filter((e) => e.to === id)
+
+    // ---- llm → ai_text (prompt_inline) ----
+    if (spec.genKind === 'llm') {
+      const sk = `n${id}`
+      finalStepOf.set(id, sk)
+      const after = new Set<string>()
+      const inputPairs: Array<[string, string]> = []
+      let idx = 0
+      for (const e of incoming) {
+        if (e.port !== 'text' && e.port !== 'prompt') continue
+        const up = byId.get(e.from)
+        if (!up) continue
+        if (up.kind === 'text') {
+          inputPairs.push([`text${++idx}`, `input.t${up.id}`])
+        } else if (up.kind === 'gen') {
+          const fk = finalStepOf.get(up.id)
+          if (fk) {
+            inputPairs.push([`text${++idx}`, `steps.${fk}.asset`])
+            after.add(fk)
+          }
+        }
+      }
+      const refEdges = incoming.filter((e) => e.port === 'reference')
+      for (const e of refEdges) {
+        const up = byId.get(e.from)
+        if (up?.kind === 'gen') {
+          const fk = finalStepOf.get(up.id)
+          if (fk) after.add(fk)
+        }
+      }
+      if (refEdges.length > 0) {
+        lossy.push(`LLM 节点 #${id}（${node.title}）：${refEdges.length} 张参考图→ ai_text 不支持多模态输入（模板层降级，运行时需图生文替代）`)
+      }
+      lines.push(`  - key: ${sk}`)
+      lines.push('    action: ai_text')
+      lines.push(`    title: ${yamlScalar(node.title)}`)
+      lines.push(`    after: [${Array.from(after).join(', ')}]`)
+      if (inputPairs.length > 0) {
+        lines.push('    inputs:')
+        for (const [k, v] of inputPairs) lines.push(`      ${k}: ${v}`)
+      } else {
+        lines.push('    inputs: {}')
+      }
+      lines.push('    params:')
+      lines.push(`      prompt_inline: ${yamlScalar(spec.prompt || '（画布节点未指定指令）')}`)
+      lines.push('      output_purpose: creation_llm')
+      lines.push('      output_format: markdown')
+      if (spec.provider || spec.model) lines.push(`    # provider/model: ${spec.provider ?? '默认'} / ${spec.model ?? '默认'}`)
+      continue
+    }
+
+    // ---- compose → ffmpeg_merge ----
+    if (spec.genKind === 'compose') {
+      const sk = `n${id}`
+      finalStepOf.set(id, sk)
+      const vidRefs: string[] = []
+      const audRefs: string[] = []
+      const after = new Set<string>()
+      for (const e of incoming) {
+        const up = byId.get(e.from)
+        if (!up) continue
+        if (e.port === 'video') {
+          if (up.kind === 'gen') {
+            const fk = finalStepOf.get(up.id)
+            if (fk) {
+              vidRefs.push(`steps.${fk}.asset`)
+              after.add(fk)
+            }
+          } else if (up.kind === 'asset') {
+            const ak = assetInputOf.get(up.id)
+            if (ak) vidRefs.push(`input.${ak}`)
+          }
+        } else if (e.port === 'audio') {
+          if (up.kind === 'gen') {
+            const fk = finalStepOf.get(up.id)
+            if (fk) {
+              audRefs.push(`steps.${fk}.asset`)
+              after.add(fk)
+            }
+          } else if (up.kind === 'asset') {
+            const ak = assetInputOf.get(up.id)
+            if (ak) audRefs.push(`input.${ak}`)
+          }
+        }
+      }
+      lines.push(`  - key: ${sk}`)
+      lines.push('    action: ffmpeg_merge')
+      lines.push(`    title: ${yamlScalar(node.title)}`)
+      lines.push(`    after: [${Array.from(after).join(', ')}]`)
+      if (vidRefs.length === 0 && audRefs.length === 0) {
+        lossy.push(`合成节点 #${id}（${node.title}）：无视频/音频上游，运行时需手动提供 inputs`)
+        lines.push('    inputs: {}')
+      } else {
+        lines.push('    inputs:')
+        if (vidRefs.length > 0) {
+          lines.push('      motion_clips:')
+          for (const r of vidRefs) lines.push(`        - ${r}`)
+        }
+        if (audRefs.length > 0) {
+          lines.push('      voices:')
+          for (const r of audRefs) lines.push(`        - ${r}`)
+        }
+      }
+      lines.push('    params:')
+      if (spec.fps) lines.push(`      fps: ${spec.fps}`)
+      if (spec.resolution) lines.push(`      resolution: ${yamlScalar(spec.resolution)}`)
+      lines.push('      output_purpose: creation_compose')
+      if (spec.transition) lossy.push(`合成节点 #${id}：转场 ${spec.transition}（模板 ffmpeg_merge 无 xfade 参数，运行时需手工滤镜）`)
+      if (spec.bgmAssetId) lossy.push(`合成节点 #${id}：BGM asset#${spec.bgmAssetId}（模板无 BGM 专用字段，可手动追加至 voices）`)
+      continue
+    }
+
+    // ---- image / video / audio → literal + 主步骤 ----
+    const litKey = `n${id}_lit`
+    const sk = `n${id}`
+    finalStepOf.set(id, sk)
+    let action: string
+    let inputField: string
+    let asKind: 'storyboard-single' | 'lines-single'
+    let purpose: string
+    if (spec.genKind === 'audio') {
+      action = 'tts'
+      inputField = 'lines'
+      asKind = 'lines-single'
+      purpose = 'voice'
+    } else if (spec.genKind === 'video') {
+      action = 'ai_video'
+      inputField = 'shots'
+      asKind = 'storyboard-single'
+      purpose = 'creation_video'
+    } else {
+      action = 'ai_image'
+      inputField = 'shots'
+      asKind = 'storyboard-single'
+      purpose = 'creation_image'
+    }
+    const promptEdge = incoming.find((e) => e.port === 'prompt')
+    const promptFrom = promptEdge ? byId.get(promptEdge.from) : null
+    const after = new Set<string>()
+    let textRef: string | null = null
+    if (promptFrom?.kind === 'text') {
+      textRef = `input.t${promptFrom.id}`
+    } else if (promptFrom?.kind === 'gen') {
+      const fk = finalStepOf.get(promptFrom.id)
+      if (fk) {
+        textRef = `steps.${fk}.asset`
+        after.add(fk)
+      }
+    }
+    for (const e of incoming) {
+      if (e === promptEdge) continue
+      const up = byId.get(e.from)
+      if (up?.kind === 'gen') {
+        const fk = finalStepOf.get(up.id)
+        if (fk) after.add(fk)
+      }
+    }
+
+    // lit 步骤
+    lines.push(`  - key: ${litKey}`)
+    lines.push('    action: literal')
+    lines.push(`    title: ${yamlScalar(`${node.title} 文本`)}`)
+    lines.push(`    after: [${Array.from(after).join(', ')}]`)
+    if (textRef) {
+      lines.push('    inputs:')
+      lines.push(`      text: ${textRef}`)
+      lines.push('    params:')
+      lines.push(`      as: ${asKind}`)
+    } else {
+      lines.push('    inputs: {}')
+      lines.push('    params:')
+      lines.push(`      as: ${asKind}`)
+      lines.push(`      payload: ${yamlScalar(spec.prompt || '（画布节点未指定提示词）')}`)
+    }
+    // 主步骤
+    lines.push(`  - key: ${sk}`)
     lines.push(`    action: ${action}`)
     lines.push(`    title: ${yamlScalar(node.title)}`)
-    lines.push(`    after: [${genUps.map((e) => `n${e.from}`).join(', ')}]`)
-    lines.push(`    # TODO 待人工补全：原画布节点 #${id}${spec.edit ? `（编辑模式 ${spec.edit.mode}）` : ''}`)
-    lines.push(`    # prompt: ${yamlComment(spec.prompt || '（空）')}`)
-    if (spec.size) lines.push(`    # size: ${spec.size}`)
-    if (spec.duration) lines.push(`    # duration: ${spec.duration}`)
-    if (spec.resolution) lines.push(`    # resolution: ${spec.resolution}`)
-    if (spec.aspectRatio) lines.push(`    # aspectRatio: ${spec.aspectRatio}`)
-    if (spec.fps) lines.push(`    # fps: ${spec.fps}`)
-    if (spec.voice) lines.push(`    # voice: ${spec.voice}`)
-    if (spec.speed) lines.push(`    # speed: ${spec.speed}`)
+    lines.push(`    after: [${litKey}${after.size > 0 ? `, ${Array.from(after).join(', ')}` : ''}]`)
+    lines.push('    inputs:')
+    lines.push(`      ${inputField}: steps.${litKey}.asset`)
+    lines.push('    params:')
+    if (spec.size) lines.push(`      size: ${yamlScalar(spec.size)}`)
+    if (spec.duration) lines.push(`      duration: ${spec.duration}`)
+    if (spec.resolution) lines.push(`      resolution: ${yamlScalar(spec.resolution)}`)
+    if (spec.aspectRatio) lines.push(`      aspect_ratio: ${yamlScalar(spec.aspectRatio)}`)
+    if (spec.voice) lines.push(`      voice: ${yamlScalar(spec.voice)}`)
+    if (spec.speed) lines.push(`      speed: ${spec.speed}`)
+    lines.push(`      output_purpose: ${purpose}`)
+    if (spec.genKind === 'image') lines.push(`      use_style_preset: ${spec.useStylePreset !== false ? 'true' : 'false'}`)
     if (spec.provider || spec.model) lines.push(`    # provider/model: ${spec.provider ?? '默认'} / ${spec.model ?? '默认'}`)
-    if (spec.edit?.maskAssetId) lines.push(`    # 蒙版（${spec.edit.mode}）：asset#${spec.edit.maskAssetId}`)
-    for (const e of assetUps) {
-      const from = byId.get(e.from)!
-      lines.push(`    # 素材输入（${e.port}）：${yamlComment(from.title)}（asset#${from.assetId ?? '?'}）`)
+    const refEdges = incoming.filter((e) => e.port === 'reference' || e.port === 'first_frame' || e.port === 'last_frame' || e.port === 'source')
+    if (refEdges.length > 0) {
+      lossy.push(`${action} 节点 #${id}（${node.title}）：${refEdges.length} 条参考/首末帧/编辑源连线→ 模板层不映射，运行时需手工补充`)
+    }
+    if (spec.edit) {
+      lossy.push(`${action} 节点 #${id}：编辑模式（${spec.edit.mode}）→ 模板层不支持，运行时需替换为普通生成或后处理`)
     }
   }
-  return `${lines.join('\n')}\n`
+
+  return { yaml: `${lines.join('\n')}\n`, lossy }
+}
+
+// ---------- [M18] template-try（draft v2 → 保存模板 → 建 run） ----------
+
+/** template-try 失败错误（路由转 400；detail 可选附送 validation.errors 清单） */
+export class TemplateTryError extends Error {
+  constructor(public code: string, message: string, public detail?: unknown) {
+    super(message)
+    this.name = 'TemplateTryError'
+  }
+}
+
+export interface TemplateTryResult {
+  templateKey: string
+  runId: number
+  lossy: string[]
+  input: Record<string, unknown>
+}
+
+/** 从中文名称提取可安全的模板 key 基名（非字母数字下划线中划线 → '-'；默认 'canvas'） */
+function sanitizeTplKey(name: string): string {
+  const s = name.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+  return s || 'canvas'
+}
+
+/**
+ * [M18] 画布→模板→一键试跑：
+ * - nodeIds 给定：保留该集 + 上游闭包（包含资产/文本/实体），边只保留两端均在保留集内；
+ * - draft v2 同同构建 YAML + lossy；validate 失败 → TemplateTryError('validation_failed')；
+ * - key 缺省 `<canvas.name>-try`（sanitize）；冲突自动后缀 -2/-3/…（最多 30 层）；
+ * - inputs 预填：text 型不传（default 自会回填）；files 型传 asset 节点 assetId；
+ * - createRunRow（queued）→ {templateKey, runId, lossy, input}。
+ */
+export async function tryRunTemplate(
+  canvasId: number,
+  p: { nodeIds?: number[]; key?: string } = {},
+): Promise<TemplateTryResult | null> {
+  const fullDoc = await buildCanvasDoc(canvasId)
+  if (!fullDoc) return null
+
+  // 子图过滤：nodeIds + 上游闭包
+  let doc = fullDoc
+  if (p.nodeIds && p.nodeIds.length > 0) {
+    const byId = new Map(fullDoc.nodes.map((n) => [n.id, n]))
+    const incomingByTo = new Map<number, Array<{ from: number; to: number; port: string; id: number }>>()
+    for (const e of fullDoc.edges) {
+      const arr = incomingByTo.get(e.to) ?? []
+      arr.push(e)
+      incomingByTo.set(e.to, arr)
+    }
+    const keep = new Set<number>()
+    const stack: number[] = []
+    for (const id of p.nodeIds) if (byId.has(id)) stack.push(id)
+    while (stack.length) {
+      const id = stack.pop()!
+      if (keep.has(id)) continue
+      keep.add(id)
+      for (const e of incomingByTo.get(id) ?? []) if (!keep.has(e.from)) stack.push(e.from)
+    }
+    doc = {
+      ...fullDoc,
+      nodes: fullDoc.nodes.filter((n) => keep.has(n.id)),
+      edges: fullDoc.edges.filter((e) => keep.has(e.from) && keep.has(e.to)),
+    }
+  }
+
+  const baseKey = (p.key?.trim() || `${sanitizeTplKey(fullDoc.canvas.name)}-try`).slice(0, 60)
+  if (!/^[\w-]+$/.test(baseKey)) throw new TemplateTryError('bad_key', `key「${baseKey}」非法（仅字母/数字/下划线/中划线）`)
+  let finalKey = baseKey
+  let suffix = 2
+  while (templateFileOf(finalKey) && suffix < 32) {
+    finalKey = `${baseKey}-${suffix}`
+    suffix++
+  }
+  if (templateFileOf(finalKey)) throw new TemplateTryError('key_conflict', `模板 key「${baseKey}」冲突无法避让`)
+
+  const { yaml, lossy } = buildTemplateDraftYaml(doc, finalKey)
+  const validation = validateTemplateText(yaml, finalKey)
+  if (!validation.ok) {
+    throw new TemplateTryError('validation_failed', validation.errors.join('；'), validation.errors)
+  }
+  try {
+    saveTemplate(finalKey, yaml)
+  } catch (err) {
+    throw new TemplateTryError('save_failed', (err as Error).message)
+  }
+
+  // inputs 预填（files ← asset 节点 assetId；text 默认从模板 default 回填）
+  const input: Record<string, unknown> = {}
+  for (const n of doc.nodes) {
+    if (n.kind === 'asset' && n.assetId != null) input[`a${n.id}`] = [n.assetId]
+  }
+
+  try {
+    const run = await createRunRow({
+      projectId: doc.canvas.projectId,
+      templateKey: finalKey,
+      input,
+    })
+    return { templateKey: finalKey, runId: run.id, lossy, input }
+  } catch (err) {
+    if (err instanceof InvalidRunInputError) throw new TemplateTryError('bad_input', err.message)
+    throw new TemplateTryError('run_create_failed', (err as Error).message)
+  }
 }
 
 function yamlScalar(s: string): string {
@@ -1688,6 +2415,7 @@ function defaultGenTitle(spec: NodeSpec | null, id: number): string {
   if (spec.genKind === 'video') return `视频 #${id}`
   if (spec.genKind === 'audio') return `音频 #${id}`
   if (spec.genKind === 'compose') return `合成 #${id}`
+  if (spec.genKind === 'llm') return `LLM #${id}`
   return `图片 #${id}`
 }
 

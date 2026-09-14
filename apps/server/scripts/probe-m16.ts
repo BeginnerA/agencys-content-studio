@@ -380,12 +380,17 @@ async function main(): Promise<void> {
     check((await jreq('DELETE', '/api/v1/nodes/999999')).status === 404, 'DELETE 不存在节点 → 404')
     check((await jreq('DELETE', '/api/v1/edges/999999')).status === 404, 'DELETE 不存在边 → 404')
 
-    // 级联：删画布清节点+边
+    // [M18] 变更：DELETE 画布 → 软删（进回收站）；节点/边物理保留以支持恢复（原「物理级联清空」语义废弃）
+    const nodeBefore = Number((await db.select({ n: count() }).from(canvasNodes).where(eq(canvasNodes.canvasId, C1)))[0]?.n ?? -1)
+    const edgeBefore = await edgeCount(C1)
     const c1Del = await jreq('DELETE', `/api/v1/canvases/${C1}`)
-    check(c1Del.status === 200, 'DELETE 画布 → 200')
-    check((await jreq('GET', `/api/v1/canvases/${C1}`)).status === 404, '删除后 GET → 404')
+    check(c1Del.status === 200, 'DELETE 画布 → 200（M18：软删进回收站）')
+    check((await jreq('GET', `/api/v1/canvases/${C1}`)).status === 404, '软删后 GET → 404（正常读取过滤回收站项）')
     const nodeLeft = Number((await db.select({ n: count() }).from(canvasNodes).where(eq(canvasNodes.canvasId, C1)))[0]?.n ?? -1)
-    check(nodeLeft === 0 && (await edgeCount(C1)) === 0, '删画布 → 级联清空节点与边')
+    check(
+      nodeBefore > 0 && nodeLeft === nodeBefore && edgeBefore > 0 && (await edgeCount(C1)) === edgeBefore,
+      '软删 → 节点/边物理保留（可恢复；M18 适配替代原「级联清空」断言）',
+    )
   }
 
   /** ② node-build：输入映射纯矩阵 + 参数快照 + 执行通道失败链 */
@@ -485,6 +490,7 @@ async function main(): Promise<void> {
       promptText: null,
       videoAssetIds: [],
       audioAssetIds: [],
+      textInputs: [],
       problems: [],
       notes: [],
     }
@@ -696,25 +702,43 @@ async function main(): Promise<void> {
         { id: 3, from: 1, to: 4, port: 'source' },
       ],
     }
-    const yaml = buildTemplateDraftYaml(doc, 'canvas-draft-77')
-    check(yaml.includes('key: canvas-draft-77') && yaml.includes('inputs: []'), '草案：key/inputs 骨架')
+    // [M18] draft v2：buildTemplateDraftYaml 返回 {yaml, lossy[]}；asset 节点 → inputs（非 `inputs: []`）；
+    // 编辑/参考/蒙版注释 → lossy 清单（不再写入 YAML 注释）
+    const { yaml, lossy } = buildTemplateDraftYaml(doc, 'canvas-draft-77')
+    check(
+      yaml.includes('key: canvas-draft-77') &&
+        yaml.includes('inputs:') &&
+        yaml.includes('key: a1') &&
+        yaml.includes('kind: files'),
+      '草案 v2：key + asset 节点 → inputs.a1 files 输入',
+    )
     const iN2 = yaml.indexOf('key: n2')
     const iN4 = yaml.indexOf('key: n4')
     const iN3 = yaml.indexOf('key: n3')
-    check(iN2 > 0 && iN4 > iN2 && iN3 > iN4, '草案：gen 节点拓扑序 n2 → n4 → n3')
-    check(!yaml.includes('key: n1'), '草案：素材节点不产生 step')
-    check(yaml.includes('action: ai_video'), '草案：视频节点 action=ai_video')
-    check(yaml.includes('after: [n2]'), '草案：边 → after 引用（n3 after n2）')
-    check(yaml.includes('# TODO 待人工补全：原画布节点 #4（编辑模式 inpaint）'), '草案：编辑节点 TODO 标注')
-    check(yaml.includes('# 素材输入（source）：素材甲（asset#5）'), '草案：素材输入注释')
-    check(yaml.includes('# 蒙版（inpaint）：asset#8'), '草案：蒙版注释')
+    check(iN2 > 0 && iN4 > iN2 && iN3 > iN4, '草案 v2：gen 节点拓扑序 n2 → n4 → n3')
+    check(!yaml.includes('key: n1'), '草案 v2：素材节点不产生 step')
+    check(yaml.includes('action: literal'), '草案 v2：image/video 节点前置 literal 包装步骤')
+    check(yaml.includes('action: ai_video'), '草案 v2：视频节点 action=ai_video')
+    check(yaml.includes('as: storyboard-single'), '草案 v2：literal as=storyboard-single 包装 prompt')
+    check(yaml.includes('after: [n2]'), '草案 v2：边 → after 引用（n3 lit after n2）')
+    check(
+      lossy.some((s) => s.includes('#4') && s.includes('编辑模式')),
+      '草案 v2 lossy：编辑模式节点写入 lossy 清单',
+    )
+    check(
+      lossy.some((s) => s.includes('参考/首末帧/编辑源')),
+      '草案 v2 lossy：参考/编辑源连线写入 lossy 清单',
+    )
 
     // DB 层 + 同源一致性
     const cn = await jreq('POST', `/api/v1/projects/${PID}/canvases`, { name: '草案画布' })
     const C3: number = cn.body.canvas.id
     await jreq('POST', `/api/v1/canvases/${C3}/nodes`, { kind: 'gen', spec: { genKind: 'image', prompt: '草案镜' }, x: 0, y: 0 })
     const dr = await jreq('POST', `/api/v1/canvases/${C3}/template-draft`, { key: `probe-draft-${C3}` })
-    check(dr.status === 200 && typeof dr.body?.yaml === 'string', 'POST template-draft → 200 {yaml}')
+    check(
+      dr.status === 200 && typeof dr.body?.yaml === 'string' && Array.isArray(dr.body?.lossy),
+      'POST template-draft → 200 {yaml, validation, lossy[]}',
+    )
     const direct = validateTemplateText(dr.body.yaml, `probe-draft-${C3}`)
     check(
       dr.body?.validation?.ok === direct.ok &&

@@ -11,6 +11,7 @@ const log = createLogger('loader')
 /** M3 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
 export const KNOWN_ACTIONS = [
   'manual_ingest',
+  'literal',
   'ai_text',
   'ai_image',
   'ffmpeg_merge',

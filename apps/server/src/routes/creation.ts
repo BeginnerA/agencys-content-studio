@@ -17,37 +17,52 @@ import {
   buildTemplateDraft,
   claimNodeTasks,
   createCanvas,
-  deleteCanvas,
+  createSnapshot,
   deleteEdge,
   deleteNode,
+  deleteSnapshot,
   duplicateCanvas,
   extractTextNode,
   findCanvas,
   findNode,
   listCanvases,
+  listSnapshots,
+  purgeCanvas,
+  restoreCanvas,
+  restoreSnapshot,
+  SnapshotConflictError,
+  softDeleteCanvas,
+  tryRunTemplate,
+  TemplateTryError,
   updateCanvas,
   updateNode,
 } from '../services/creation'
-import { startCanvasNodeRun } from '../services/creation-gen'
+import { cancelCanvasTasks, extractNodeFrame, previewCanvasRun, startCanvasNodeRun } from '../services/creation-gen'
+import { createGroup, deleteGroup, GroupError, updateGroup } from '../services/creation-groups'
 import { exportCanvas } from '../services/creation-export'
 import { arrangeNodes, batchNodes, chainNodes, copyNodes, deleteNodes, promptExpandNode, runCanvasNodes } from '../services/creation-ops'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
- * [M16/M17] 创作画布路由（M16 既有 14 枚超集 + M17 新增 9 枚 = 23 枚）：
+ * [M16/M17/M18] 创作画布路由（M16 14 枚 + M17 9 枚 + M18 14 枚 = 37 枚）：
  * - 文档 CRUD：画布/节点/边（服务端全量校验——端口矩阵 v2 / 环检测 / 项目域资产 / [M17] from 侧类型）；
  * - [M17] 节点类型扩展：text / entity / run（全型节点建/改/删）；extract 文本提取；
  * - [M17] 批量操控：batch（预校验回滚）/ delete / copy / chain（规则串联）/ arrange（整理·对齐·分布）/ canvases/run（批量执行）；
- * - 执行入口 run（variants 1-4 超集；readiness 不过 → 400 附问题清单）；任务取消复用 POST /tasks/:id/cancel；
+ * - 执行入口 run（variants 1-4 超集；readiness 不过 → 400 附问题清单）；单任务取消复用 POST /tasks/:id/cancel；
+ *   [M18] canvases/:id/tasks/cancel 一键停止全部；
  * - [M17] 产出与辅助：export（zip 打包 → archive 资产）/ prompt-expand（AI 扩写，未配置 LLM → 400 引导 Settings）；
+ * - [M18] 快赢：extract-frame（视频抽帧 → asset 节点）/ run-preview（执行成本预估）；
+ * - [M18] 安全：DELETE 软删 + 回收站（trash 列表 / restore / purge）+ 文档快照（snapshots 创建/列表/恢复/删除）；
+ * - [M18] 深度：template-try（模板试跑建 run）；规模：groups（成组 CRUD）；
  * - 沉淀：duplicate（深拷）/ template-draft（低保真导出 + 既有校验自检）；
  * - 联动：/entities/:id/ref-assets（画布产物并集挂接实体，复用 attachRefAssets）。
  */
 export const creationRoutes = new Hono()
 
-// GET /projects/:id/canvases —— 画布列表（含节点数/更新时间）
+// GET /projects/:id/canvases —— 画布列表（含节点数/更新时间）[M18] ?trash=1 → 回收站列表
 creationRoutes.get('/projects/:id/canvases', h(async (c) => {
-  const items = await listCanvases(idParam(c))
+  const trash = c.req.query('trash') === '1'
+  const items = await listCanvases(idParam(c), { trash })
   return c.json({ items })
 }))
 
@@ -84,10 +99,65 @@ creationRoutes.patch('/canvases/:id', h(async (c) => {
   return c.json({ canvas })
 }))
 
-// DELETE /canvases/:id —— 删画布（级联节点 + 边；进行中任务由执行器自然宽限失败）
+// [M18] DELETE /canvases/:id —— 软删入回收站（子行保留；在途任务自动取消；purge 才彻底删除）
 creationRoutes.delete('/canvases/:id', h(async (c) => {
-  const okDel = await deleteCanvas(idParam(c))
-  if (!okDel) return notFound(c, `画布 ${c.req.param('id')}`)
+  const canvas = await findCanvas(idParam(c))
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  const row = await softDeleteCanvas(canvas)
+  const { cancelled } = await cancelCanvasTasks(canvas)
+  return c.json({ ok: true, mode: 'trashed', deletedAt: row.deletedAt, cancelled })
+}))
+
+// [M18] POST /canvases/:id/restore —— 回收站恢复（未在回收站 → 400 bad_state）→ { canvas }
+creationRoutes.post('/canvases/:id/restore', h(async (c) => {
+  const canvas = await findCanvas(idParam(c), { includeDeleted: true })
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  if (canvas.deletedAt == null) throw new HttpError(400, 'bad_state', '画布不在回收站中')
+  const row = await restoreCanvas(canvas)
+  return c.json({ canvas: row })
+}))
+
+// [M18] POST /canvases/:id/purge —— 彻底删除（要求先软删；级联删 nodes/edges/groups/snapshots；gen_tasks 留痕）
+creationRoutes.post('/canvases/:id/purge', h(async (c) => {
+  const canvas = await findCanvas(idParam(c), { includeDeleted: true })
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  if (canvas.deletedAt == null) throw new HttpError(400, 'bad_state', '仅回收站中的画布可彻底删除')
+  await purgeCanvas(canvas.id)
+  return c.json({ ok: true })
+}))
+
+// [M18] POST /canvases/:id/snapshots —— 创建快照 { label? }（默认「快照 N」；上限 20 满额 → 400）→ { snapshot }（201）
+creationRoutes.post('/canvases/:id/snapshots', h(async (c) => {
+  const id = idParam(c)
+  if (!(await findCanvas(id))) return notFound(c, `画布 ${c.req.param('id')}`)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const snap = await createSnapshot(id, body['label'])
+  return c.json({ snapshot: { id: snap.id, label: snap.label, createdAt: snap.createdAt } }, 201)
+}))
+
+// [M18] GET /canvases/:id/snapshots —— 快照列表（元信息新→旧；不含 doc 全文）
+creationRoutes.get('/canvases/:id/snapshots', h(async (c) => {
+  const items = await listSnapshots(idParam(c))
+  if (!items) return notFound(c, `画布 ${c.req.param('id')}`)
+  return c.json({ items })
+}))
+
+// [M18] POST /canvases/:id/snapshots/:sid/restore —— 保留 id 重放恢复（先自动备份；id 占用冲突 → 409）
+creationRoutes.post('/canvases/:id/snapshots/:sid/restore', h(async (c) => {
+  try {
+    const result = await restoreSnapshot(idParam(c), idParam(c, 'sid'))
+    if (!result) return notFound(c, '快照')
+    return c.json({ ok: true, ...result })
+  } catch (err) {
+    if (err instanceof SnapshotConflictError) throw new HttpError(409, 'conflict', err.message)
+    throw err
+  }
+}))
+
+// [M18] DELETE /canvases/:id/snapshots/:sid —— 删除快照（画布域限定；不存在/不属本画布 → 404）
+creationRoutes.delete('/canvases/:id/snapshots/:sid', h(async (c) => {
+  const okDel = await deleteSnapshot(idParam(c), idParam(c, 'sid'))
+  if (!okDel) return notFound(c, '快照')
   return c.json({ ok: true })
 }))
 
@@ -155,6 +225,19 @@ creationRoutes.post('/nodes/:id/extract', h(async (c) => {
   const node = await extractTextNode(idParam(c), body['x'], body['y'])
   if (!node) return notFound(c, `节点 ${c.req.param('id')}`)
   return c.json({ node }, 201)
+}))
+
+// [M18] POST /nodes/:id/extract-frame —— 视频抽帧 { mode?, time?, x?, y? } → { node, asset }（201）
+// 源：gen(video) 显示产物 / asset 节点视频资产；缺省位置 = 源节点右下偏移（宽容读体）
+creationRoutes.post('/nodes/:id/extract-frame', h(async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const { node, asset } = await extractNodeFrame(idParam(c), {
+    mode: body['mode'],
+    time: body['time'],
+    x: body['x'],
+    y: body['y'],
+  })
+  return c.json({ node, asset }, 201)
 }))
 
 // [M17] POST /canvases/:id/nodes/batch —— 批量部分更新 { updates:[{id,x?,y?,title?,spec?,seq?,adoptedTaskId?}] }
@@ -260,6 +343,24 @@ creationRoutes.post('/canvases/:id/run', h(async (c) => {
   return c.json({ started, skipped })
 }))
 
+// [M18] POST /canvases/:id/run-preview —— 执行成本预估 { nodeIds? } → { nodes, total }（零副作用）
+// 节点集合缺省 = 全部 gen 节点；ready = 无 problems 且非 busy；compose 零成本 / llm unpriced
+creationRoutes.post('/canvases/:id/run-preview', h(async (c) => {
+  const canvas = await findCanvas(idParam(c))
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const result = await previewCanvasRun(canvas, body['nodeIds'])
+  return c.json(result)
+}))
+
+// [M18] POST /canvases/:id/tasks/cancel —— 一键停止全部（pending/processing → cancelled）→ { cancelled: n }
+creationRoutes.post('/canvases/:id/tasks/cancel', h(async (c) => {
+  const canvas = await findCanvas(idParam(c))
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  const result = await cancelCanvasTasks(canvas)
+  return c.json(result)
+}))
+
 // [M17] POST /canvases/:id/export —— 打包导出 { nodeIds? }（zip → archive 资产；下载复用 GET /assets/:id/file?download=1）
 creationRoutes.post('/canvases/:id/export', h(async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
@@ -293,6 +394,79 @@ creationRoutes.post('/canvases/:id/template-draft', h(async (c) => {
   const draft = await buildTemplateDraft(idParam(c), typeof key === 'string' ? key : undefined)
   if (!draft) return notFound(c, `画布 ${c.req.param('id')}`)
   return c.json(draft)
+}))
+
+// [M18] POST /canvases/:id/template-try —— 一键试跑 { nodeIds?, key? } → { templateKey, runId, lossy, input }
+creationRoutes.post('/canvases/:id/template-try', h(async (c) => {
+  const body = await readJson(c)
+  const keyRaw = body['key']
+  if (keyRaw !== undefined && keyRaw !== null && typeof keyRaw !== 'string') {
+    throw new HttpError(400, 'bad_key', 'key 需为字符串')
+  }
+  const nodeIdsRaw = body['nodeIds']
+  let nodeIds: number[] | undefined
+  if (nodeIdsRaw !== undefined && nodeIdsRaw !== null) {
+    if (!Array.isArray(nodeIdsRaw) || nodeIdsRaw.some((x) => !Number.isInteger(x) || (x as number) <= 0)) {
+      throw new HttpError(400, 'bad_node_ids', 'nodeIds 需为正整数数组')
+    }
+    nodeIds = nodeIdsRaw as number[]
+  }
+  try {
+    const result = await tryRunTemplate(idParam(c), {
+      key: typeof keyRaw === 'string' ? keyRaw : undefined,
+      nodeIds,
+    })
+    if (!result) return notFound(c, `画布 ${c.req.param('id')}`)
+    return c.json(result, 201)
+  } catch (err) {
+    if (err instanceof TemplateTryError) {
+      const status = err.code === 'key_conflict' ? 409 : 400
+      throw new HttpError(status, err.code, err.message)
+    }
+    throw err
+  }
+}))
+
+// [M18] POST /canvases/:id/groups —— 成组 { nodeIds, title?, color? } → { group }（201）
+creationRoutes.post('/canvases/:id/groups', h(async (c) => {
+  const cid = idParam(c)
+  if (!(await findCanvas(cid))) return notFound(c, `画布 ${cid}`)
+  const body = await readJson(c)
+  try {
+    const group = await createGroup(cid, { nodeIds: body['nodeIds'], title: body['title'], color: body['color'] })
+    return c.json({ group }, 201)
+  } catch (err) {
+    if (err instanceof GroupError) throw new HttpError(400, err.code, err.message)
+    throw err
+  }
+}))
+
+// [M18] PATCH /canvases/:id/groups/:gid —— 改组 { title?, color?, collapsed?, x?, y? } → { group }
+creationRoutes.patch('/canvases/:id/groups/:gid', h(async (c) => {
+  const cid = idParam(c)
+  if (!(await findCanvas(cid))) return notFound(c, `画布 ${cid}`)
+  const gid = idParam(c, 'gid')
+  const body = await readJson(c)
+  try {
+    const group = await updateGroup(cid, gid, {
+      title: body['title'], color: body['color'], collapsed: body['collapsed'], x: body['x'], y: body['y'],
+    })
+    if (!group) return notFound(c, `分组 ${gid}`)
+    return c.json({ group })
+  } catch (err) {
+    if (err instanceof GroupError) throw new HttpError(400, err.code, err.message)
+    throw err
+  }
+}))
+
+// [M18] DELETE /canvases/:id/groups/:gid —— 解组（成员归属清空，组行删除）→ { ok }
+creationRoutes.delete('/canvases/:id/groups/:gid', h(async (c) => {
+  const cid = idParam(c)
+  if (!(await findCanvas(cid))) return notFound(c, `画布 ${cid}`)
+  const gid = idParam(c, 'gid')
+  const okDel = await deleteGroup(cid, gid)
+  if (!okDel) return notFound(c, `分组 ${gid}`)
+  return c.json({ ok: true })
 }))
 
 // POST /entities/:id/ref-assets —— 联动：资产并集挂接实体 { asset_ids }（项目域校验；全局实体拒绝）

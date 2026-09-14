@@ -21,7 +21,11 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   if (ctx.def.batch) return aiTextBatch(ctx)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = params['prompt_tpl']
-  if (typeof tplFile !== 'string' || !tplFile) throw new Error('params.prompt_tpl 缺失')
+  // [M18] prompt_inline 与 prompt_tpl 二选一必填（画布 llm 节点映射 → 直接内联指令，无需提示词文件）
+  const inlinePrompt = params['prompt_inline']
+  const hasTpl = typeof tplFile === 'string' && tplFile.length > 0
+  const hasInline = typeof inlinePrompt === 'string' && inlinePrompt.trim().length > 0
+  if (!hasTpl && !hasInline) throw new Error('params.prompt_tpl 或 params.prompt_inline 至少其一非空')
   const maxInputChars =
     typeof params['max_input_chars'] === 'number' && (params['max_input_chars'] as number) > 0
       ? Math.floor(params['max_input_chars'] as number)
@@ -30,7 +34,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   const outputFormat = typeof params['output_format'] === 'string' ? params['output_format'] : 'markdown'
   const runInput = JSON.parse(ctx.run.input) as Record<string, unknown>
 
-  const templateText = loadPromptTemplate(tplFile)
+  const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
   const sections: string[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
     if (k.startsWith('_')) continue // _review 等内部键不注入
@@ -364,7 +368,11 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
   const maxRetry = Math.max(0, batch.retry ?? 1)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = params['prompt_tpl']
-  if (typeof tplFile !== 'string' || !tplFile) throw new Error('params.prompt_tpl 缺失')
+  // [M18] prompt_inline 与 prompt_tpl 二选一必填（batch 同步支持，保证行为一致）
+  const inlinePrompt = params['prompt_inline']
+  const hasTpl = typeof tplFile === 'string' && tplFile.length > 0
+  const hasInline = typeof inlinePrompt === 'string' && inlinePrompt.trim().length > 0
+  if (!hasTpl && !hasInline) throw new Error('params.prompt_tpl 或 params.prompt_inline 至少其一非空')
   const outputPurpose = typeof params['output_purpose'] === 'string' ? params['output_purpose'] : 'text'
   const outputFormat = typeof params['output_format'] === 'string' ? params['output_format'] : 'markdown'
   const itemKey = typeof params['item_key'] === 'string' ? params['item_key'] : null
@@ -389,7 +397,7 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
     seen.add(id)
   }
 
-  const templateText = loadPromptTemplate(tplFile)
+  const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
   const staticSections = await buildStaticSections(ctx, field)
   const epHint = await resolveLlmEndpoint().catch(() => null)
 

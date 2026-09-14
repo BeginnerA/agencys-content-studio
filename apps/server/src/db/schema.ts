@@ -349,6 +349,7 @@ export const canvases = sqliteTable(
     projectId: integer('project_id').notNull(),
     name: text('name').notNull().default('未命名画布'),
     viewport: text('viewport').notNull().default('{"x":0,"y":0,"zoom":1}'), // JSON pan/zoom 持久化
+    deletedAt: integer('deleted_at'), // [M18] 回收站（null=正常；非 null=软删时间戳）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -369,6 +370,7 @@ export const canvasNodes = sqliteTable(
     y: real('y').notNull().default(0),
     adoptedTaskId: integer('adopted_task_id'), // [M17] 结果采纳（gen）：gen_tasks.id；null=未采纳取最新成功
     seq: integer('seq'), // [M17] 故事板序号（1 起；排序/呈现/导出命名，不参与执行）
+    groupId: integer('group_id'), // [M18] 成组归属（canvas_groups.id；null=未成组）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -392,6 +394,35 @@ export const canvasEdges = sqliteTable(
   ],
 )
 
+/** [M18] 画布节点分组（成员归属存 canvas_nodes.group_id；x/y 为组锚点，正常渲染用成员派生包围盒） */
+export const canvasGroups = sqliteTable(
+  'canvas_groups',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    canvasId: integer('canvas_id').notNull(),
+    title: text('title').notNull().default('未命名分组'),
+    color: text('color'), // UI 色 token（null=默认）
+    collapsed: integer('collapsed').notNull().default(0), // 折叠态持久化（0/1）
+    x: real('x').notNull().default(0), // 锚点（创建时=成员包围盒左上；空组显示用）
+    y: real('y').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_canvas_groups_canvas').on(t.canvasId)],
+)
+
+/** [M18] 画布文档快照（保留 id 重放恢复；doc = {nodes,edges,groups} 全量行 JSON） */
+export const canvasSnapshots = sqliteTable(
+  'canvas_snapshots',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    canvasId: integer('canvas_id').notNull(),
+    label: text('label').notNull(),
+    doc: text('doc').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_canvas_snapshots_canvas').on(t.canvasId)],
+)
+
 export type Project = typeof projects.$inferSelect
 export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
@@ -410,3 +441,5 @@ export type Publication = typeof publications.$inferSelect
 export type Canvas = typeof canvases.$inferSelect
 export type CanvasNode = typeof canvasNodes.$inferSelect
 export type CanvasEdge = typeof canvasEdges.$inferSelect
+export type CanvasGroup = typeof canvasGroups.$inferSelect
+export type CanvasSnapshot = typeof canvasSnapshots.$inferSelect

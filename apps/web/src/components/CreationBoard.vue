@@ -14,6 +14,7 @@ import type {
   AnyNodeSpec,
   CanvasDocEdge,
   CanvasDocNode,
+  CanvasGroup,
   CanvasViewport,
   CreationNodeSpec,
 } from '../lib/types'
@@ -23,6 +24,7 @@ import Icon from './Icon.vue'
 const props = defineProps<{
   nodes: CanvasDocNode[]
   edges: CanvasDocEdge[]
+  groups: CanvasGroup[]
   selectedIds: number[]
   selectedEdgeId: number | null
   initialViewport: CanvasViewport | null
@@ -40,6 +42,9 @@ const emit = defineEmits<{
   'viewport-settled': [v: CanvasViewport]
   'delete-selected': []
   'copy-selected': []
+  'group-create': []
+  'group-patch': [gid: number, patch: { title?: string; color?: string | null; collapsed?: boolean }]
+  'group-delete': [gid: number]
   undo: []
   redo: []
 }>()
@@ -83,6 +88,92 @@ function nodeH(n: CanvasDocNode): number {
   return nodeHeights.value[n.id] ?? DEFAULT_H
 }
 
+// ---- [M18] 分组：成员派生 / 折叠隐藏 / 包围盒 / 组条交互 ----
+function membersOf(gid: number): CanvasDocNode[] {
+  return props.nodes.filter((n) => n.groupId === gid)
+}
+const hiddenNodeIds = computed<Set<number>>(() => {
+  const s = new Set<number>()
+  for (const g of props.groups) {
+    if (g.collapsed) for (const n of props.nodes) if (n.groupId === g.id) s.add(n.id)
+  }
+  return s
+})
+function isNodeHidden(n: CanvasDocNode): boolean {
+  return hiddenNodeIds.value.has(n.id)
+}
+const renderNodes = computed(() => props.nodes.filter((n) => isNodeHidden(n) === false))
+/** 组包围盒（世界坐标；含成员实测尺寸 + 顶部组条空间；空组用锚点默认 240×120） */
+function groupBox(g: CanvasGroup): { x: number; y: number; w: number; h: number } {
+  const ms = membersOf(g.id)
+  if (ms.length === 0) return { x: g.x, y: g.y, w: 240, h: 120 }
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const n of ms) {
+    const p = nodeXY(n)
+    minX = Math.min(minX, p.x)
+    minY = Math.min(minY, p.y)
+    maxX = Math.max(maxX, p.x + NODE_W)
+    maxY = Math.max(maxY, p.y + nodeH(n))
+  }
+  return { x: minX - 12, y: minY - 34, w: maxX - minX + 24, h: maxY - minY + 46 }
+}
+function groupFrameStyle(g: CanvasGroup): Record<string, string> {
+  const b = groupBox(g)
+  if (g.collapsed) return { left: `${b.x}px`, top: `${b.y}px`, width: '220px', height: '32px' }
+  return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }
+}
+function isGroupSelected(g: CanvasGroup): boolean {
+  const ms = membersOf(g.id)
+  return ms.length > 0 && ms.every((n) => props.selectedIds.includes(n.id))
+}
+const editingGroupId = ref<number | null>(null)
+const editingTitle = ref('')
+const openGroupMenu = ref<number | null>(null)
+const GROUP_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink', 'gray']
+function startRename(g: CanvasGroup): void {
+  editingGroupId.value = g.id
+  editingTitle.value = g.title
+  openGroupMenu.value = null
+}
+function commitRename(g: CanvasGroup): void {
+  if (editingGroupId.value !== g.id) return
+  editingGroupId.value = null
+  const t = editingTitle.value.trim()
+  if (t && t !== g.title) emit('group-patch', g.id, { title: t })
+}
+function toggleCollapse(g: CanvasGroup): void {
+  emit('group-patch', g.id, { collapsed: !g.collapsed })
+  openGroupMenu.value = null
+}
+function toggleGroupMenu(g: CanvasGroup): void {
+  openGroupMenu.value = openGroupMenu.value === g.id ? null : g.id
+}
+function setGroupColor(g: CanvasGroup, color: string | null): void {
+  emit('group-patch', g.id, { color })
+  openGroupMenu.value = null
+}
+function ungroup(g: CanvasGroup): void {
+  emit('group-delete', g.id)
+  openGroupMenu.value = null
+}
+function onGroupBarPointerDown(ev: PointerEvent, g: CanvasGroup): void {
+  if (ev.button !== 0 || spaceDown.value) return
+  if (editingGroupId.value === g.id) return
+  ev.stopPropagation()
+  const ids = membersOf(g.id).map((n) => n.id)
+  emit('select', ids)
+  openGroupMenu.value = null
+  if (!ids.length) return
+  mode.value = 'node'
+  drag = { ids }
+  dragPx = { cx: ev.clientX, cy: ev.clientY }
+  dragGroup.value = null
+  viewportEl.value?.setPointerCapture(ev.pointerId)
+}
+
 // ---- 边路径（锚点：源右中 → 目标左中）----
 interface EdgePath {
   id: number
@@ -100,6 +191,7 @@ const edgePaths = computed<EdgePath[]>(() => {
     const a = nodeById.value.get(e.from)
     const b = nodeById.value.get(e.to)
     if (!a || !b) continue
+    if (hiddenNodeIds.value.has(e.from) || hiddenNodeIds.value.has(e.to)) continue // [M18] 折叠组成员：相关边隐藏
     const pa = nodeXY(a)
     const pb = nodeXY(b)
     out.push({
@@ -335,6 +427,12 @@ function onKeyDown(ev: KeyboardEvent): void {
     emit('copy-selected')
     return
   }
+  if (mod && key === 'g') {
+    // [M18] Ctrl+G 成组（须 ≥2 选中；解组走组条菜单）
+    ev.preventDefault()
+    if (props.selectedIds.length >= 2) emit('group-create')
+    return
+  }
   if (mod && key === 'a') {
     ev.preventDefault()
     emit('select', props.nodes.map((n) => n.id))
@@ -466,6 +564,7 @@ const PORT_TEXT: Record<string, string> = {
   prompt: '提示词（文本节点）',
   video: '视频输入（合成）',
   audio: '音频输入（合成）',
+  text: '文本素材（LLM）',
 }
 const TASK_CLS: Record<string, string> = {
   pending: 'pending',
@@ -532,6 +631,7 @@ function inputPortsOf(n: CanvasDocNode): string[] {
   if (!spec) return []
   if (spec.genKind === 'compose') return ['video', 'audio']
   if (spec.genKind === 'audio') return ['prompt']
+  if (spec.genKind === 'llm') return ['reference', 'text', 'prompt']
   const ports = ['reference']
   if (spec.genKind === 'video') ports.push('first_frame', 'last_frame')
   if (spec.edit) ports.push('source')
@@ -551,10 +651,17 @@ function genIcon(n: CanvasDocNode): string {
   if (spec.genKind === 'video') return 'video'
   if (spec.genKind === 'audio') return 'speaker-wave'
   if (spec.genKind === 'compose') return 'film'
+  if (spec.genKind === 'llm') return 'sparkles'
   return 'photo'
 }
 function isAudio(n: CanvasDocNode): boolean {
   return asGenSpec(n.spec)?.genKind === 'audio'
+}
+function isLlm(n: CanvasDocNode): boolean {
+  return asGenSpec(n.spec)?.genKind === 'llm'
+}
+function isTextAsset(n: CanvasDocNode): boolean {
+  return n.asset?.kind === 'text'
 }
 function specLine(n: CanvasDocNode): string {
   const spec = asGenSpec(n.spec)
@@ -614,6 +721,46 @@ function metaText(n: CanvasDocNode): string {
       class="cb-world"
       :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }"
     >
+      <!-- [M18] 分组层：成员派生包围盒框 + 顶部组条（折叠/重命名/改色/解组/拖拽移组）-->
+      <div
+        v-for="g in groups"
+        :key="`g${g.id}`"
+        class="cgroup"
+        :class="[g.color ? `cg-${g.color}` : '', { collapsed: g.collapsed, sel: isGroupSelected(g) }]"
+        :style="groupFrameStyle(g)"
+      >
+        <div class="cgroup-bar" @pointerdown="onGroupBarPointerDown($event, g)" @dblclick.stop="startRename(g)">
+          <button class="cgroup-tri" :title="g.collapsed ? '展开' : '折叠'" @pointerdown.stop @click.stop="toggleCollapse(g)">
+            {{ g.collapsed ? '▸' : '▾' }}
+          </button>
+          <input
+            v-if="editingGroupId === g.id"
+            v-model="editingTitle"
+            class="cgroup-rename"
+            @pointerdown.stop
+            @keydown.enter.prevent="commitRename(g)"
+            @keydown.esc.prevent="editingGroupId = null"
+            @blur="commitRename(g)"
+          />
+          <span v-else class="cgroup-title">{{ g.title }}</span>
+          <span class="cgroup-count">{{ membersOf(g.id).length }}</span>
+          <button class="cgroup-menu-btn" title="组操作" @pointerdown.stop @click.stop="toggleGroupMenu(g)">⋯</button>
+          <div v-if="openGroupMenu === g.id" class="cgroup-menu" @pointerdown.stop @dblclick.stop>
+            <div class="cgroup-colors">
+              <button class="cgroup-dot cg-none" :class="{ on: !g.color }" title="默认" @click="setGroupColor(g, null)" />
+              <button
+                v-for="c in GROUP_COLORS"
+                :key="c"
+                class="cgroup-dot"
+                :class="[`cg-${c}`, { on: g.color === c }]"
+                :title="c"
+                @click="setGroupColor(g, c)"
+              />
+            </div>
+            <button class="cgroup-act" @click="ungroup(g)">解组</button>
+          </div>
+        </div>
+      </div>
       <svg
         class="cb-edges"
         :width="svgBox.w"
@@ -659,7 +806,7 @@ function metaText(n: CanvasDocNode): string {
       </svg>
 
       <div
-        v-for="n in nodes"
+        v-for="n in renderNodes"
         :key="n.id"
         :ref="(el) => setNodeEl(n.id, el)"
         class="cnode"
@@ -758,6 +905,10 @@ function metaText(n: CanvasDocNode): string {
           <div v-else-if="isAudio(n)" class="cn-media cn-audio">
             <Icon name="speaker-wave" :size="18" />
             <em>音频</em>
+          </div>
+          <div v-else-if="isTextAsset(n) || (isLlm(n) && n.status === 'succeeded')" class="cn-media cn-audio">
+            <Icon name="doc" :size="18" />
+            <em>文本产物</em>
           </div>
           <div v-if="n.readiness && !n.readiness.ready" class="cn-warn" :title="n.readiness.problems.join('；')">
             <Icon name="alert" :size="11" /> {{ n.readiness.problems.length }} 项未就绪
@@ -876,6 +1027,177 @@ function metaText(n: CanvasDocNode): string {
   pointer-events: none;
   z-index: 3;
 }
+
+/* ---- [M18] 分组框与组条（spec §2.6⑩）---- */
+.cgroup {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgb(var(--cg, 148 163 184) / 55%);
+  border-radius: 12px;
+  background: rgb(var(--cg, 148 163 184) / 7%);
+  pointer-events: none; /* 框体不拦截：穿框仍可点节点 / 空白框选 */
+  z-index: 0;
+}
+
+.cgroup.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.cgroup.collapsed {
+  background: transparent;
+}
+
+.cgroup-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  max-width: 100%;
+  padding: 0 6px 0 3px;
+  border-radius: 10px 0 10px 0;
+  background: rgb(var(--cg, 100 116 139) / 92%);
+  color: #fff;
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+}
+
+.cgroup-tri {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cgroup-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cgroup-rename {
+  flex: 1;
+  min-width: 40px;
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 92%);
+  color: var(--text);
+}
+
+.cgroup-count {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: rgb(255 255 255 / 22%);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cgroup-menu-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cgroup-menu-btn:hover {
+  background: rgb(255 255 255 / 22%);
+}
+
+.cgroup-menu {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 156px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 30%);
+  pointer-events: auto;
+}
+
+.cgroup-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cgroup-colors .cgroup-dot {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 40%);
+  border-radius: 50%;
+  background: rgb(var(--cg, 148 163 184));
+  cursor: pointer;
+}
+
+.cgroup-colors .cgroup-dot.cg-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(148 163 184 / 60%);
+}
+
+.cgroup-colors .cgroup-dot.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cgroup-act {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cgroup-act:hover {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* 分组配色（--cg = rgb 三元组；与后端白名单一致）*/
+.cg-red { --cg: 239 68 68; }
+.cg-orange { --cg: 249 115 22; }
+.cg-amber { --cg: 245 158 11; }
+.cg-yellow { --cg: 234 179 8; }
+.cg-green { --cg: 34 197 94; }
+.cg-teal { --cg: 20 184 166; }
+.cg-blue { --cg: 59 130 246; }
+.cg-purple { --cg: 168 85 247; }
+.cg-pink { --cg: 236 72 153; }
+.cg-gray { --cg: 107 114 128; }
 
 /* ---- 节点卡 ---- */
 .cnode {

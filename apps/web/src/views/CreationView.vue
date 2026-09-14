@@ -16,11 +16,13 @@ import RunFormModal from '../components/RunFormModal.vue'
 import { creationApi, entityApi, exportApi, projectApi, runApi, uploadFiles, type AddNodeBody, type CanvasNodePatch } from '../lib/api'
 import { createCanvasHistory } from '../lib/canvas-history'
 import { confirmDialog } from '../lib/confirm'
+import { fmtCost, fmtQty, fmtTime } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 import type {
-  Asset, CanvasArrangeMode, CanvasDoc, CanvasDocEdge, CanvasDocNode, CanvasExportResult, CanvasListItem,
-  CanvasViewport, CreationNodeSpec, EntityItem, EntityNodeSpec, Project, RunNodeSpec, TemplateValidation, TextNodeSpec,
+  Asset, CanvasArrangeMode, CanvasDoc, CanvasDocEdge, CanvasDocNode, CanvasExportResult, CanvasGroup, CanvasListItem,
+  CanvasSnapshotMeta, CanvasViewport, CreationNodeSpec, EntityItem, EntityNodeSpec, PreviewCanvasResult, Project, RunNodeSpec, TemplateValidation,
+  TextNodeSpec,
 } from '../lib/types'
 
 const route = useRoute()
@@ -47,6 +49,7 @@ const redoTitle = computed(() => (history.redoLabel.value ? `重做：${history.
 
 const nodes = computed<CanvasDocNode[]>(() => doc.value?.nodes ?? [])
 const edges = computed<CanvasDocEdge[]>(() => doc.value?.edges ?? [])
+const groups = computed<CanvasGroup[]>(() => doc.value?.groups ?? [])
 /** 单选详情（多选 → null；P5 批量浮动条浮出） */
 const selNode = computed<CanvasDocNode | null>(() => {
   const ids = selectedIds.value
@@ -563,6 +566,48 @@ async function onCopySelected(): Promise<void> {
   }
 }
 
+// ===== [M18] 分组：成组 / 改组 / 解组（spec §2.6⑩）=====
+/** Ctrl+G / 批量条成组：把当前选中集（≥2）归入新组 */
+async function onGroupCreate(): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || ids.length < 2) return
+  try {
+    const { group } = await creationApi.createGroup(cid, { nodeIds: ids })
+    await loadDoc(true)
+    toast(`已建组「${group.title}」（${ids.length} 个节点）`)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  }
+}
+
+/** 组条改组（title / color / collapsed 局部）；重拉对账 */
+async function onGroupPatch(
+  gid: number,
+  patch: { title?: string; color?: string | null; collapsed?: boolean },
+): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  try {
+    await creationApi.updateGroup(cid, gid, patch)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  }
+  await loadDoc(true)
+}
+
+/** 解组（成员保留，组行删除） */
+async function onGroupDelete(gid: number): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  try {
+    await creationApi.deleteGroup(cid, gid)
+    await loadDoc(true)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  }
+}
+
 /** [M17] 撤销 / 重做（失败 → toast + 清栈提示；对账重拉） */
 async function onUndo(): Promise<void> {
   const label = history.undoLabel.value
@@ -830,6 +875,118 @@ async function batchRun(): Promise<void> {
     toast(e instanceof Error ? e.message : String(e))
   } finally {
     batchBusy.value = false
+  }
+}
+
+// ===== [M18] 一键停止全部（画布级在途任务；socket canvas.changed 驱动可见性） =====
+/** 在途 gen 任务（pending/processing；doc 由 socket 静默重拉） */
+const hasLiveTasks = computed(() =>
+  nodes.value.some((n) => n.kind === 'gen' && (n.status === 'pending' || n.status === 'processing')),
+)
+const cancelAllBusy = ref(false)
+
+async function onCancelAllTasks(): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || cancelAllBusy.value) return
+  cancelAllBusy.value = true
+  try {
+    const r = await creationApi.cancelTasks(cid)
+    await loadDoc(true)
+    toast(r.cancelled > 0 ? `已停止 ${r.cancelled} 个在途任务` : '当前没有在途任务')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    cancelAllBusy.value = false
+  }
+}
+
+// ===== [M18] 预估成本（批量面板 → 弹窗；零副作用） =====
+const showEstimate = ref(false)
+const estimateBusy = ref(false)
+const estimateResult = ref<PreviewCanvasResult | null>(null)
+/** [M18] 预估单位 / 生成类型文案（对齐 usage.ts UsageUnit 与 GEN_KINDS） */
+const UNIT_TEXT: Record<string, string> = { tokens_in: '输入 tokens', tokens_out: '输出 tokens', image: '张', second: '秒', char: '字符' }
+const GEN_KIND_TEXT: Record<string, string> = { image: '图片生成', video: '视频生成', audio: '音频生成', compose: '音视频合成', llm: '文本生成' }
+
+async function openEstimate(): Promise<void> {
+  const cid = canvasId.value
+  const ids = [...selectedIds.value]
+  if (cid == null || !ids.length || estimateBusy.value) return
+  estimateBusy.value = true
+  try {
+    estimateResult.value = await creationApi.runPreview(cid, ids)
+    showEstimate.value = true
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    estimateBusy.value = false
+  }
+}
+
+// ===== [M18] 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） =====
+const showRefPick = ref(false)
+const refPickBusy = ref(false)
+const refPickLoading = ref(false)
+const refPickErr = ref('')
+const refPickEntities = ref<EntityItem[]>([])
+
+/** 选中节点显示产物资产（去重；skipped = 无产物节点数） */
+function selectedProductAssets(): { assetIds: number[]; skipped: number } {
+  const assetIds: number[] = []
+  const seen = new Set<number>()
+  let contributing = 0
+  for (const n of nodes.value) {
+    if (!selectedIds.value.includes(n.id)) continue
+    const aid = n.kind === 'gen' ? (n.displayTask?.resultAssetId ?? n.assetId) : n.kind === 'asset' ? n.assetId : null
+    if (aid == null) continue
+    contributing += 1
+    if (!seen.has(aid)) {
+      seen.add(aid)
+      assetIds.push(aid)
+    }
+  }
+  return { assetIds, skipped: selectedIds.value.length - contributing }
+}
+
+async function openRefPick(): Promise<void> {
+  const pid = projectId.value
+  if (pid == null || refPickBusy.value) return
+  showRefPick.value = true
+  refPickErr.value = ''
+  refPickLoading.value = true
+  try {
+    const params = `&project_id=${pid}`
+    const [c, s, p] = await Promise.all([
+      entityApi.list('character', params),
+      entityApi.list('scene', params),
+      entityApi.list('prop', params),
+    ])
+    refPickEntities.value = [...c.items, ...s.items, ...p.items]
+  } catch (e) {
+    refPickErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    refPickLoading.value = false
+  }
+}
+
+async function attachToEntity(e: EntityItem): Promise<void> {
+  const { assetIds, skipped } = selectedProductAssets()
+  if (!assetIds.length) {
+    refPickErr.value = '选中节点均无显示产物（可先生成或采纳产物）'
+    return
+  }
+  refPickBusy.value = true
+  refPickErr.value = ''
+  try {
+    const r = await creationApi.attachRefAssets(e.id, assetIds)
+    showRefPick.value = false
+    toast(skipped > 0
+      ? `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张，跳过 ${skipped} 个无产物节点）`
+      : `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张）`)
+  } catch (err) {
+    refPickErr.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    refPickBusy.value = false
   }
 }
 
@@ -1137,9 +1294,9 @@ async function removeCanvas(): Promise<void> {
   const cid = canvasId.value
   if (cid == null || !doc.value) return
   const ok = await confirmDialog({
-    title: '删除画布',
-    message: `删除画布「${doc.value.canvas.name}」及其全部节点与连线？产物资产会保留在资产库。`,
-    confirmText: '删除画布',
+    title: '移入回收站',
+    message: `将画布「${doc.value.canvas.name}」移入回收站？在途任务将被取消；可稍后在「回收站」中恢复或彻底删除。`,
+    confirmText: '移入回收站',
     danger: true,
   })
   if (!ok) return
@@ -1149,9 +1306,159 @@ async function removeCanvas(): Promise<void> {
     await loadCanvases()
     const next = canvases.value[0]
     goCanvas(next ? next.id : null)
-    toast('画布已删除')
+    toast('画布已移入回收站')
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
+  }
+}
+
+// ===== [M18] 回收站（软删画布：恢复 / 彻底删除）=====
+const showTrash = ref(false)
+const trashLoading = ref(false)
+const trashItems = ref<CanvasListItem[]>([])
+const trashActing = ref<number | null>(null)
+
+async function openTrash(): Promise<void> {
+  showTrash.value = true
+  await loadTrash()
+}
+async function loadTrash(): Promise<void> {
+  const pid = projectId.value
+  if (pid == null) {
+    trashItems.value = []
+    return
+  }
+  trashLoading.value = true
+  try {
+    const r = await creationApi.list(pid, { trash: true })
+    trashItems.value = r.items
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    trashLoading.value = false
+  }
+}
+async function restoreTrashed(c: CanvasListItem): Promise<void> {
+  if (trashActing.value != null) return
+  trashActing.value = c.id
+  try {
+    await creationApi.restore(c.id)
+    toast(`画布「${c.name}」已恢复`)
+    await loadTrash()
+    await loadCanvases()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    trashActing.value = null
+  }
+}
+async function purgeTrashed(c: CanvasListItem): Promise<void> {
+  if (trashActing.value != null) return
+  const ok = await confirmDialog({
+    title: '彻底删除',
+    message: `彻底删除画布「${c.name}」及其全部节点与连线？此操作不可撤销（产物资产保留在资产库）。`,
+    confirmText: '彻底删除',
+    danger: true,
+  })
+  if (!ok) return
+  trashActing.value = c.id
+  try {
+    await creationApi.purge(c.id)
+    toast('画布已彻底删除')
+    await loadTrash()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    trashActing.value = null
+  }
+}
+
+// ===== [M18] 文档快照（保留 id 重放恢复；恢复前自动备份）=====
+const showSnaps = ref(false)
+const snapsBusy = ref(false)
+const snapsLoading = ref(false)
+const snapItems = ref<CanvasSnapshotMeta[]>([])
+const snapLabel = ref('')
+const snapActing = ref<number | null>(null)
+
+async function openSnaps(): Promise<void> {
+  if (canvasId.value == null) return
+  snapLabel.value = ''
+  showSnaps.value = true
+  await loadSnaps()
+}
+async function loadSnaps(): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  snapsLoading.value = true
+  try {
+    const r = await creationApi.snapshots(cid)
+    if (canvasId.value !== cid) return
+    snapItems.value = r.items
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    snapsLoading.value = false
+  }
+}
+async function createSnap(): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || snapsBusy.value) return
+  snapsBusy.value = true
+  try {
+    const r = await creationApi.createSnapshot(cid, snapLabel.value.trim() || undefined)
+    snapLabel.value = ''
+    toast(`快照「${r.snapshot.label}」已创建`)
+    await loadSnaps()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    snapsBusy.value = false
+  }
+}
+async function restoreSnap(s: CanvasSnapshotMeta): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || snapActing.value != null) return
+  const ok = await confirmDialog({
+    title: '恢复快照',
+    message: `将画布回退到「${s.label}」（${s.nodeCount} 节点 · ${s.edgeCount} 边）？当前状态会先自动备份为新快照；节点 id 原样保留，生成任务历史不断链。`,
+    confirmText: '恢复快照',
+    danger: true,
+  })
+  if (!ok) return
+  snapActing.value = s.id
+  try {
+    const r = await creationApi.restoreSnapshot(cid, s.id)
+    showSnaps.value = false
+    history.clear() // 快照恢复重放文档 → 命令栈失效
+    toast(`已恢复「${s.label}」（重放 ${r.restored.nodes} 节点/${r.restored.edges} 边；恢复前状态已自动备份）`)
+    await loadDoc(true)
+    void loadCanvases()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    snapActing.value = null
+  }
+}
+async function deleteSnap(s: CanvasSnapshotMeta): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null || snapActing.value != null) return
+  const ok = await confirmDialog({
+    title: '删除快照',
+    message: `删除快照「${s.label}」？此操作不可撤销。`,
+    confirmText: '删除快照',
+    danger: true,
+  })
+  if (!ok) return
+  snapActing.value = s.id
+  try {
+    await creationApi.deleteSnapshot(cid, s.id)
+    toast('快照已删除')
+    await loadSnaps()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    snapActing.value = null
   }
 }
 
@@ -1198,11 +1505,13 @@ function onRunStarted(id: number): void {
   })()
 }
 
-// ===== 联动②：导出模板草案 =====
+// ===== 联动②：导出模板草案 v2 =====
 const showDraft = ref(false)
 const draftBusy = ref(false)
+const draftTryBusy = ref(false)
 const draftYaml = ref('')
 const draftValidation = ref<TemplateValidation | null>(null)
+const draftLossy = ref<string[]>([])
 
 async function openDraft(): Promise<void> {
   const cid = canvasId.value
@@ -1212,6 +1521,7 @@ async function openDraft(): Promise<void> {
     const r = await creationApi.templateDraft(cid)
     draftYaml.value = r.yaml
     draftValidation.value = r.validation
+    draftLossy.value = r.lossy ?? []
     showDraft.value = true
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e))
@@ -1225,6 +1535,29 @@ async function copyDraft(): Promise<void> {
     toast('YAML 已复制到剪贴板')
   } catch {
     toast('复制失败（剪贴板不可用，可手动全选复制）')
+  }
+}
+
+/** [M18] 草案弹窗内「试跑」：建 queued run + 视口中心自动创建 run 节点 */
+async function tryRunFromDraft(): Promise<void> {
+  const cid = canvasId.value
+  if (cid == null) return
+  draftTryBusy.value = true
+  try {
+    const r = await creationApi.templateTry(cid)
+    const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
+    try {
+      await addNodesCommand(cid, [{ kind: 'run', runId: r.runId, x: at.x, y: at.y }], '试跑新建运行节点')
+      await loadDoc(true)
+    } catch (e) {
+      toast(`run 已建但节点创建失败：${e instanceof Error ? e.message : String(e)}`)
+    }
+    toast(`已试跑→ 模板「${r.templateKey}」· run #${r.runId}（queued）${r.lossy.length ? ` · ${r.lossy.length} 项降级` : ''}`)
+    showDraft.value = false
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e))
+  } finally {
+    draftTryBusy.value = false
   }
 }
 
@@ -1289,11 +1622,29 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="btn sm danger"
-        title="删除当前画布"
+        title="删除当前画布（移入回收站）"
         :disabled="canvasId == null"
         @click="removeCanvas"
       >
         <Icon name="trash" :size="11" />
+      </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="回收站（已删除画布：恢复 / 彻底删除）"
+        :disabled="projectId == null"
+        @click="openTrash"
+      >
+        <Icon name="inbox" :size="11" /> 回收站
+      </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="文档快照（保存 / 恢复画布状态；恢复保留节点 id）"
+        :disabled="canvasId == null"
+        @click="openSnaps"
+      >
+        <Icon name="clock" :size="11" /> 快照
       </button>
 
       <span class="sp" />
@@ -1352,6 +1703,16 @@ onBeforeUnmount(() => {
         @click="onExportZip"
       >
         <Icon name="download" :size="11" /> {{ exportBusy ? '打包中…' : '导出' }}
+      </button>
+      <button
+        v-if="hasLiveTasks"
+        type="button"
+        class="btn sm danger"
+        title="停止当前画布全部在途任务（等待/处理中 → 已取消）"
+        :disabled="cancelAllBusy"
+        @click="onCancelAllTasks"
+      >
+        <Icon name="stop" :size="11" /> {{ cancelAllBusy ? '停止中…' : '停止全部' }}
       </button>
       <button
         type="button"
@@ -1445,6 +1806,7 @@ onBeforeUnmount(() => {
           ref="boardRef"
           :nodes="nodes"
           :edges="edges"
+          :groups="groups"
           :selected-ids="selectedIds"
           :selected-edge-id="selectedEdgeId"
           :initial-viewport="doc.canvas.viewport"
@@ -1460,6 +1822,9 @@ onBeforeUnmount(() => {
           @viewport-settled="onViewportSettled"
           @delete-selected="onDeleteSelected"
           @copy-selected="onCopySelected"
+          @group-create="onGroupCreate"
+          @group-patch="onGroupPatch"
+          @group-delete="onGroupDelete"
           @undo="onUndo"
           @redo="onRedo"
         />
@@ -1480,6 +1845,26 @@ onBeforeUnmount(() => {
           <button type="button" class="btn sm" :disabled="batchBusy" title="按选中顺序对相邻对自动建边（规则式）" @click="batchChain">串联</button>
           <button type="button" class="btn sm" :disabled="batchBusy" title="按 x 序编 seq 1..N（故事板序号）" @click="batchNumber">编号</button>
           <button type="button" class="btn sm" :disabled="batchBusy" title="复制选中（偏移 +40,+40）" @click="onCopySelected">复制</button>
+          <button type="button" class="btn sm" title="把选中节点编为一组（Ctrl+G）" @click="onGroupCreate">成组</button>
+          <span class="bb-sep" />
+          <button
+            type="button"
+            class="btn sm"
+            :disabled="batchBusy || estimateBusy"
+            title="预估所选节点执行成本（零副作用；含未定价提示）"
+            @click="openEstimate"
+          >
+            <Icon name="chart" :size="11" /> {{ estimateBusy ? '预估中…' : '预估成本' }}
+          </button>
+          <button
+            type="button"
+            class="btn sm"
+            :disabled="batchBusy"
+            title="把选中节点的显示产物挂接为实体参考图（并集去重）"
+            @click="openRefPick"
+          >
+            <Icon name="users" :size="11" /> 实体参考
+          </button>
           <span class="bb-sep" />
           <button type="button" class="btn sm primary" :disabled="batchBusy" title="批量执行（只入队就绪节点）" @click="batchRun">
             <Icon name="play" :size="11" /> 执行
@@ -1505,10 +1890,22 @@ onBeforeUnmount(() => {
                   v-for="c in canvases"
                   :key="c.id"
                   type="button"
-                  class="chip chipbtn"
+                  class="chip chipbtn canvas-chip"
                   @click="goCanvas(c.id)"
                 >
-                  {{ c.name }}（{{ c.nodeCount }}）
+                  <span class="cc-cover">
+                    <img
+                      v-if="c.cover"
+                      :src="c.cover.urls.thumb ?? c.cover.urls.file"
+                      :alt="c.name"
+                      loading="lazy"
+                    />
+                    <Icon v-else name="photo" :size="16" />
+                  </span>
+                  <span class="cc-meta">
+                    <span class="cc-name">{{ c.name }}</span>
+                    <span class="cc-count">{{ c.nodeCount }} 节点</span>
+                  </span>
                 </button>
               </div>
               <div v-else class="muted">该项目暂无画布</div>
@@ -1583,14 +1980,14 @@ onBeforeUnmount(() => {
       @close="showRun = false"
     />
 
-    <!-- 模板草案 -->
-    <Modal v-if="showDraft" title="模板草案（低保真导出）" :width="760" @close="showDraft = false">
+    <!-- 模板草案 v2 -->
+    <Modal v-if="showDraft" title="模板草案 v2（literal + 主步骤 + lossy）" :width="780" @close="showDraft = false">
       <div class="draft-body">
         <div class="draft-meta">
           <span v-if="draftValidation" class="badge" :class="draftValidation.ok ? 'succeeded' : 'failed'">
             {{ draftValidation.ok ? '校验通过' : '校验未通过' }}
           </span>
-          <span class="muted mini">仅供人工整理为正式模板（workspace/templates）；不自动落盘。</span>
+          <span class="muted mini">仅供人工整理为正式模板（workspace/templates）；不落盘。「试跑」将自动保存为 `<画布名>-try` 并建 queued run。</span>
         </div>
         <ul v-if="draftValidation && draftValidation.errors.length" class="prob">
           <li v-for="(e2, i) in draftValidation.errors" :key="i">{{ e2 }}</li>
@@ -1598,12 +1995,27 @@ onBeforeUnmount(() => {
         <ul v-if="draftValidation && draftValidation.warnings.length" class="warnlist">
           <li v-for="(w, i) in draftValidation.warnings" :key="i">{{ w }}</li>
         </ul>
+        <div v-if="draftLossy.length" class="lossy">
+          <div class="lossy-head">降级清单（{{ draftLossy.length }}）：</div>
+          <ul>
+            <li v-for="(s, i) in draftLossy" :key="i">{{ s }}</li>
+          </ul>
+        </div>
         <pre class="yaml mono">{{ draftYaml }}</pre>
       </div>
       <template #footer>
         <button type="button" class="btn" @click="showDraft = false">关闭</button>
-        <button type="button" class="btn primary" @click="copyDraft">
+        <button type="button" class="btn" @click="copyDraft">
           <Icon name="copy" :size="12" /> 复制 YAML
+        </button>
+        <button
+          type="button"
+          class="btn primary"
+          :disabled="!draftValidation?.ok || draftTryBusy"
+          :title="draftValidation?.ok ? '保存为模板并建 run（queued）' : '校验未通过无法试跑'"
+          @click="tryRunFromDraft"
+        >
+          <Icon name="play" :size="12" /> {{ draftTryBusy ? '试跑中…' : '试跑' }}
         </button>
       </template>
     </Modal>
@@ -1621,6 +2033,134 @@ onBeforeUnmount(() => {
         <a class="btn primary" :href="exportApi.fileUrl(exportResult.asset.id, true)">
           <Icon name="download" :size="12" /> 下载 zip
         </a>
+      </template>
+    </Modal>
+
+    <!-- [M18] 执行成本预估（批量面板；零副作用） -->
+    <Modal v-if="showEstimate && estimateResult" title="执行成本预估" :width="640" @close="showEstimate = false">
+      <div class="exp-meta">
+        <div class="em-row">
+          <span class="em-k">合计</span>
+          <span class="em-v">≈ {{ fmtCost(estimateResult.total.amount) }}（仅含有价节点）</span>
+        </div>
+        <div class="em-row">
+          <span class="em-k">状态</span>
+          <span class="em-v">
+            {{ estimateResult.total.ready }} 就绪 · {{ estimateResult.total.blocked }} 受阻 · {{ estimateResult.total.busy }} 执行中
+          </span>
+        </div>
+      </div>
+      <div v-if="estimateResult.total.unpriced" class="warn-t mini">
+        {{ estimateResult.total.unpriced }} 个节点未配置单价或按量计费（tokens 不可预知），不计入合计。
+      </div>
+      <div class="est-list">
+        <div v-for="it in estimateResult.nodes" :key="it.nodeId" class="est-node">
+          <div class="est-row">
+            <span class="badge" :class="it.busy ? 'processing' : it.ready ? 'succeeded' : 'pending'">
+              {{ it.busy ? '执行中' : it.ready ? '就绪' : '受阻' }}
+            </span>
+            <span class="est-t" :title="it.title">{{ it.title }}</span>
+            <span class="muted mini">{{ GEN_KIND_TEXT[it.genKind] ?? it.genKind }}</span>
+            <span class="sp" />
+            <span class="mono mini est-amt">
+              {{ it.unpriced ? (it.units.length ? '部分未定价' : '按量计费') : (it.total == null ? '—' : fmtCost(it.total)) }}
+            </span>
+          </div>
+          <div v-if="it.units.length" class="muted mini est-units">
+            <span v-for="(u, i) in it.units" :key="i">
+              {{ i ? ' · ' : '' }}{{ fmtQty(u.quantity) }} {{ UNIT_TEXT[u.unit] ?? u.unit }}
+              <template v-if="u.unitPrice != null"> × {{ fmtCost(u.unitPrice) }}</template>
+              <template v-else> × 未定价</template>
+            </span>
+          </div>
+          <div v-if="it.problems.length" class="err-text mini">{{ it.problems.join('；') }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn" @click="showEstimate = false">关闭</button>
+      </template>
+    </Modal>
+
+    <!-- [M18] 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） -->
+    <Modal v-if="showRefPick" title="加入实体参考" :width="560" @close="showRefPick = false">
+      <div class="muted mini">将选中节点的显示产物挂接为实体参考图（并集去重；无产物的节点自动跳过）。</div>
+      <div v-if="refPickLoading" class="muted">加载中…</div>
+      <div v-else-if="!refPickEntities.length" class="muted">该项目暂无实体素材，可在「实体馆」页创建。</div>
+      <div v-else class="refpick-list">
+        <button
+          v-for="e in refPickEntities"
+          :key="e.id"
+          type="button"
+          class="pal-item"
+          :disabled="refPickBusy"
+          :title="`挂接为「${e.name}」参考图`"
+          @click="attachToEntity(e)"
+        >
+          <img v-if="e.refAssets[0]" :src="e.refAssets[0].urls.thumb ?? e.refAssets[0].urls.file" loading="lazy" alt="" />
+          <span v-else class="pal-ph">无参考图</span>
+          <span class="pal-name">{{ e.name }}</span>
+          <span class="pal-ebadge">{{ ENT_KIND_TEXT[e.kind] }} · {{ e.refAssetIds.length }}图</span>
+        </button>
+      </div>
+      <div v-if="refPickErr" class="err-text mini">{{ refPickErr }}</div>
+      <template #footer>
+        <button type="button" class="btn" @click="showRefPick = false">关闭</button>
+      </template>
+    </Modal>
+
+    <!-- [M18] 回收站（软删画布：恢复 / 彻底删除） -->
+    <Modal v-if="showTrash" title="回收站" :width="640" @close="showTrash = false">
+      <div class="muted mini">已删除的画布（在途任务已自动取消）。恢复后可继续编辑；彻底删除不可撤销。</div>
+      <div v-if="trashLoading" class="muted">加载中…</div>
+      <div v-else-if="!trashItems.length" class="muted">回收站是空的。</div>
+      <div v-else class="trash-list">
+        <div v-for="c in trashItems" :key="c.id" class="trash-item">
+          <div class="ti-main">
+            <div class="ti-name" :title="c.name">{{ c.name }}</div>
+            <div class="muted mini">{{ c.nodeCount }} 节点 · 删除于 {{ fmtTime(c.deletedAt) }}</div>
+          </div>
+          <span class="sp" />
+          <button type="button" class="btn sm" :disabled="trashActing != null" @click="restoreTrashed(c)">
+            <Icon name="undo" :size="11" /> 恢复
+          </button>
+          <button type="button" class="btn sm danger" :disabled="trashActing != null" @click="purgeTrashed(c)">
+            <Icon name="trash" :size="11" /> 彻底删除
+          </button>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn" @click="showTrash = false">关闭</button>
+      </template>
+    </Modal>
+
+    <!-- [M18] 文档快照（保留 id 重放；恢复前自动备份） -->
+    <Modal v-if="showSnaps" title="文档快照" :width="640" @close="showSnaps = false">
+      <div class="snap-bar">
+        <input v-model="snapLabel" class="snap-label-in" placeholder="快照名称（可选，缺省「快照 N」）" @keydown.enter="createSnap" />
+        <button type="button" class="btn sm" :disabled="snapsBusy" @click="createSnap">
+          <Icon name="plus" :size="11" /> {{ snapsBusy ? '创建中…' : '创建快照' }}
+        </button>
+      </div>
+      <div class="muted mini">恢复会先自动备份当前状态为新快照；节点 id 原样保留（生成任务历史不断链）。上限 20 个。</div>
+      <div v-if="snapsLoading" class="muted">加载中…</div>
+      <div v-else-if="!snapItems.length" class="muted">暂无快照。</div>
+      <div v-else class="snap-list">
+        <div v-for="s in snapItems" :key="s.id" class="snap-item">
+          <div class="ti-main">
+            <div class="ti-name" :title="s.label">{{ s.label }}</div>
+            <div class="muted mini">{{ s.nodeCount }} 节点 · {{ s.edgeCount }} 边 · {{ fmtTime(s.createdAt) }}</div>
+          </div>
+          <span class="sp" />
+          <button type="button" class="btn sm" :disabled="snapActing != null" @click="restoreSnap(s)">
+            <Icon name="undo" :size="11" /> 恢复
+          </button>
+          <button type="button" class="btn sm danger" :disabled="snapActing != null" @click="deleteSnap(s)">
+            <Icon name="trash" :size="11" /> 删除
+          </button>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn" @click="showSnaps = false">关闭</button>
       </template>
     </Modal>
   </div>
@@ -1886,6 +2426,55 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+/* [M18] 画布选择卡片：封面缩略（⑤） */
+.canvas-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  text-align: left;
+}
+
+.canvas-chip .cc-cover {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text-3);
+}
+
+.canvas-chip .cc-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.canvas-chip .cc-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.canvas-chip .cc-name {
+  max-width: 140px;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.canvas-chip .cc-count {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
 .crt-toast {
   position: fixed;
   left: 50%;
@@ -1939,6 +2528,27 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--warn);
   line-height: 1.7;
+}
+
+.lossy {
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 176, 32, 0.06);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.lossy-head {
+  color: var(--warn);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.lossy ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fg-dim);
 }
 
 .yaml {
@@ -2117,5 +2727,93 @@ onBeforeUnmount(() => {
 .em-v {
   min-width: 0;
   word-break: break-all;
+}
+
+/* ===== [M18] 执行成本预估 / 实体参考弹窗 ===== */
+.est-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.est-node {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.est-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.est-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.est-amt {
+  flex: none;
+}
+
+.refpick-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+/* ===== [M18] 回收站 / 文档快照弹窗 ===== */
+.trash-list,
+.snap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.trash-item,
+.snap-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--code-bg);
+  padding: 8px 10px;
+}
+
+.ti-main {
+  min-width: 0;
+}
+
+.ti-name {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snap-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.snap-label-in {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12.5px;
 }
 </style>

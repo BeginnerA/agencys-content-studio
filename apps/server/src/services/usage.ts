@@ -95,38 +95,57 @@ export function priceOf(
   return null
 }
 
+/**
+ * [M18] 定价解析（返回元/单位，已含基数换算）：实例级 apiConfigs.pricing → 全局 settings.pricing → null。
+ * recordUsage（写入快照）与 run-preview（成本预估）共用，保证两条链路口径零漂移。
+ */
+export async function resolveUnitPrice(q: {
+  kind: UsageKind
+  provider?: string | null
+  model?: string | null
+  unit: UsageUnit
+}): Promise<number | null> {
+  let unitPrice: number | null = null
+  // 1) 实例级定价：按 providerKey + model 查找匹配的活跃实例
+  if (q.provider) {
+    const cfgRows = await db
+      .select({ pricing: apiConfigs.pricing })
+      .from(apiConfigs)
+      .where(and(
+        eq(apiConfigs.providerKey, q.provider),
+        eq(apiConfigs.isActive, 1),
+        ...(q.model ? [eq(apiConfigs.model, q.model)] : []),
+      ))
+      .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
+      .limit(1)
+    if (cfgRows[0]?.pricing) {
+      try {
+        const instPricing = JSON.parse(cfgRows[0].pricing) as Record<string, unknown>
+        const val = instPricing[q.unit]
+        if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+          unitPrice = val / unitBase(q.unit)
+        }
+      } catch { /* pricing JSON 损坏，跳过 */ }
+    }
+  }
+  // 2) 全局定价兜底
+  if (unitPrice === null) {
+    const pricing = await loadPricing()
+    unitPrice = priceOf(pricing, q.kind, q.provider, q.model, q.unit)
+  }
+  return unitPrice
+}
+
 /** 记录一条用量（写入时定价快照；异常仅 log.warn，不抛） */
 export async function recordUsage(input: UsageInput): Promise<void> {
   try {
-    // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null
-    let unitPrice: number | null = null
-    // 1) 实例级定价：按 providerKey + model 查找匹配的活跃实例
-    if (input.provider) {
-      const cfgRows = await db
-        .select({ pricing: apiConfigs.pricing })
-        .from(apiConfigs)
-        .where(and(
-          eq(apiConfigs.providerKey, input.provider),
-          eq(apiConfigs.isActive, 1),
-          ...(input.model ? [eq(apiConfigs.model, input.model)] : []),
-        ))
-        .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
-        .limit(1)
-      if (cfgRows[0]?.pricing) {
-        try {
-          const instPricing = JSON.parse(cfgRows[0].pricing) as Record<string, unknown>
-          const val = instPricing[input.unit]
-          if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
-            unitPrice = val / unitBase(input.unit)
-          }
-        } catch { /* pricing JSON 损坏，跳过 */ }
-      }
-    }
-    // 2) 全局定价兜底
-    if (unitPrice === null) {
-      const pricing = await loadPricing()
-      unitPrice = priceOf(pricing, input.kind, input.provider, input.model, input.unit)
-    }
+    // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null（[M18] 抽取 resolveUnitPrice 与 run-preview 共用）
+    const unitPrice = await resolveUnitPrice({
+      kind: input.kind,
+      provider: input.provider,
+      model: input.model,
+      unit: input.unit,
+    })
     const cost = unitPrice === null ? null : Math.round(input.quantity * unitPrice * 1e6) / 1e6
     await db.insert(usageRecords).values({
       projectId: input.projectId,
