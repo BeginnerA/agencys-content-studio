@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { migrate } from 'drizzle-orm/libsql/migrator'
-import { DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
+import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
 import { seedProviders, seedVendorCredentials, migrateCredentialsFromConfigs } from './seed'
@@ -12,7 +12,7 @@ const log = createLogger('db')
 
 /** 启动前确保运行时目录存在 */
 export function ensureDirs(): void {
-  for (const dir of [DATA_DIR, TEMPLATES_DIR, PROMPTS_DIR, PROJECTS_DIR, RUN_LOGS_DIR]) {
+  for (const dir of [DATA_DIR, TEMPLATES_DIR, PROMPTS_DIR, PROJECTS_DIR, RUN_LOGS_DIR, BRAND_DIR]) {
     mkdirSync(dir, { recursive: true })
   }
 }
@@ -284,6 +284,25 @@ async function ensureSchemaColumns(): Promise<void> {
     )
     await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_project_number ON episodes (project_id, number)')
     await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_episodes_series ON episodes (series_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // [M19] 声音克隆音色库建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS voice_clones (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        name text NOT NULL UNIQUE,
+        provider_key text NOT NULL,
+        model text NOT NULL,
+        voice_id text NOT NULL,
+        status text DEFAULT 'ready' NOT NULL,
+        meta text DEFAULT '{}' NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }

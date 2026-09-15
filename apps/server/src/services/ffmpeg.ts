@@ -71,3 +71,23 @@ export function probeMediaDuration(file: string): number | null {
     return null
   }
 }
+
+/** 探测视频尺寸（首路视频流）；ffprobe 缺失/失败 → null（[M19] 派生画幅资产无 width 时兜底） */
+export function probeMediaSize(file: string): { width: number; height: number } | null {
+  const ffprobe = resolveFfprobe()
+  if (!ffprobe) return null
+  try {
+    const r = spawnSync(
+      ffprobe,
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', file],
+      { encoding: 'utf8', timeout: 10_000, windowsHide: true },
+    )
+    if (r.error || r.status !== 0) return null
+    const parts = String(r.stdout ?? '').trim().split('x')
+    const w = Number(parts[0])
+    const h = Number(parts[1])
+    return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? { width: w, height: h } : null
+  } catch {
+    return null
+  }
+}

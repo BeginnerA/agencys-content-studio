@@ -5,15 +5,17 @@ import { db } from '../db'
 import { assets, characters, type CharacterRow } from '../db/schema'
 import { assertProjectAssets } from '../pipeline/refs'
 import { attachRefAssets, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
+import { cancelEntityRefTask, listEntityRefTasks, startEntityRefGen } from '../services/entity-refgen'
 import { polishAppearance } from '../services/entity-polish'
 import { importFiles, kindByExt } from '../services/storage'
 import { recordLlmUsage } from '../services/usage'
 import { toAssetView } from './assets'
-import { HttpError, h, idParam, notFound } from './helpers'
+import { HttpError, h, idParam, notFound, wb } from './helpers'
 
 /**
  * M8 实体素材库路由：/entities（kind=character|scene|prop）+ /characters 兼容路径。
  * 同一 handler 双路径挂载；?kind= 缺省 character，旧客户端零改动。
+ * [M19 P6] /entities/ref-gen*：参考图批量生成（无 run 异步任务队列；校验在服务层）。
  */
 export const charactersRoutes = new Hono()
 
@@ -140,6 +142,31 @@ const polishEntities = h(async (c) => {
   return c.json({ ok: true, polished, failed })
 })
 charactersRoutes.post('/entities/polish', polishEntities)
+
+// POST /entities/ref-gen —— [M19 P6] 批量发起参考图生成（≤10 实体 × 1-4 变体；入队即返 202）
+// 体容 camelCase（spec 形态）与 snake_case（本路由既有风格）双写法
+charactersRoutes.post('/entities/ref-gen', h(async (c) => {
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const projectId = body['projectId'] ?? body['project_id']
+  const entityIds = body['entityIds'] ?? body['entity_ids']
+  const variants = body['variants'] ?? 1
+  const r = await wb(() => startEntityRefGen(Number(projectId), entityIds, variants))
+  return c.json({ ok: true, tasks: r.tasks, count: r.count, note: '已入队生成（完成后自动挂接该素材参考图）' }, 202)
+}))
+
+// GET /entities/ref-gen/tasks?project_id= —— 任务列表（全部在途 + 近 20 条终态；供页内进度初始化）
+charactersRoutes.get('/entities/ref-gen/tasks', h(async (c) => {
+  const raw = c.req.query('project_id') ?? c.req.query('projectId')
+  const r = await wb(() => listEntityRefTasks(Number(raw)))
+  return c.json(r)
+}))
+
+// POST /entities/ref-gen/tasks/:id/cancel —— 取消（仅 pending/processing；完成后弃存）
+charactersRoutes.post('/entities/ref-gen/tasks/:id/cancel', h(async (c) => {
+  const id = idParam(c)
+  await wb(() => cancelEntityRefTask(id))
+  return c.json({ ok: true, note: '任务已取消（已发出的生成请求无法中断，完成后弃存）' })
+}))
 
 // PUT /entities/:id|/characters/:id —— 局部更新（传即替换；ref_asset_ids 须属该行项目域）
 const updateEntity = h(async (c) => {

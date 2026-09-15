@@ -112,7 +112,7 @@ export const assets = sqliteTable(
     taskId: integer('task_id'),
     runId: integer('run_id'), // [M4] 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
-    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|subtitle|thumbnail|export|chapters|events|graph|plan|regex
+    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|final_video_derived|subtitle|thumbnail|export|chapters|events|graph|plan|regex|sfx
     name: text('name').notNull(),
     mime: text('mime'),
     ext: text('ext'),
@@ -423,6 +423,19 @@ export const canvasSnapshots = sqliteTable(
   (t) => [index('idx_canvas_snapshots_canvas').on(t.canvasId)],
 )
 
+/** [M19] 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
+export const voiceClones = sqliteTable('voice_clones', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(), // 音色名（用户可读；唯一）
+  providerKey: text('provider_key').notNull(), // 克隆供应商（api_providers.key，如 aliyun_qwen_tts）
+  model: text('model').notNull(), // 克隆目标模型（如 cosyvoice-v1；合成时需同模型使用）
+  voiceId: text('voice_id').notNull(), // 供应商返回的克隆 voice 标识
+  status: text('status').notNull().default('ready'), // v1 同步协议仅落成功行（ready）；预留异步协议
+  meta: text('meta').notNull().default('{}'), // JSON：协议/参数留痕（如 { protocol:'dashscope-enrollment', prefix }）
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 export type Project = typeof projects.$inferSelect
 export type PipelineRun = typeof pipelineRuns.$inferSelect
 export type PipelineStep = typeof pipelineSteps.$inferSelect
@@ -443,3 +456,4 @@ export type CanvasNode = typeof canvasNodes.$inferSelect
 export type CanvasEdge = typeof canvasEdges.$inferSelect
 export type CanvasGroup = typeof canvasGroups.$inferSelect
 export type CanvasSnapshot = typeof canvasSnapshots.$inferSelect
+export type VoiceClone = typeof voiceClones.$inferSelect

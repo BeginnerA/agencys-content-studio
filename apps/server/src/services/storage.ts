@@ -38,7 +38,7 @@ export function isJsonTextFormat(format?: string): boolean {
   return !!format && (JSON_FORMATS as readonly string[]).includes(format)
 }
 
-/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志 + M9 小说链；未列出的 purpose 回退 source） */
+/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志 + M9 小说链 + M19 SFX/派生画幅；未列出的 purpose 回退 source） */
 export function purposeSubDir(purpose?: string | null): string {
   switch (purpose) {
     case 'script':
@@ -66,11 +66,13 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'thumbnail':
       return 'images'
     case 'final_video':
+    case 'final_video_derived':
     case 'shot_video':
     case 'creation_compose':
       return 'video'
     case 'voice':
     case 'creation_audio':
+    case 'sfx':
       return 'audio'
     default:
       return 'source'

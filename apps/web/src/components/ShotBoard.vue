@@ -18,8 +18,9 @@ import type {
 import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
 import AssetPreviewer from './AssetPreviewer.vue'
-import BgmModal from './BgmModal.vue'
+import ComposeSettingsModal from './ComposeSettingsModal.vue'
 import Icon from './Icon.vue'
+import ShotSfxModal from './ShotSfxModal.vue'
 import StoryboardEditor from './StoryboardEditor.vue'
 
 const props = defineProps<{ runId: number; projectId: number; step: RunStep; active: boolean }>()
@@ -75,7 +76,10 @@ const cfgTransition = ref<ComposeTransition>('none')
 const cfgDur = ref(0.5)
 const cfgBusy = ref(false)
 const bgm = ref<Asset | null>(null)
-const bgmOpen = ref(false)
+const composeSettingsOpen = ref(false)
+// [M19] per-shot 音效（shotId → 绑定资产；镜头卡片「音效」按钮用）
+const sfxMap = ref<Record<string, Asset>>({})
+const sfxShotId = ref<string | null>(null)
 
 const shots = computed(() => board.value?.shots ?? [])
 const compose = computed(() => board.value?.compose ?? null)
@@ -527,6 +531,7 @@ const cfgDirty = computed(() => {
 async function loadComposeCfg() {
   if (!compose.value) {
     composeCfg.value = null
+    sfxMap.value = {}
     return
   }
   try {
@@ -536,6 +541,10 @@ async function loadComposeCfg() {
     cfgDur.value = typeof r.config.transition_duration === 'number' ? r.config.transition_duration : 0.5
     const b = await composeApi.getBgm(props.runId)
     bgm.value = b.bgm
+    const s = await composeApi.listSfx(props.runId)
+    const m: Record<string, Asset> = {}
+    for (const it of s.items) m[it.shotId] = it.asset
+    sfxMap.value = m
   } catch {
     composeCfg.value = null
   }
@@ -559,6 +568,25 @@ async function saveTransition() {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
     cfgBusy.value = false
+  }
+}
+
+// ---------- [M19] 镜头音效（SFX） ----------
+
+function openSfx(shot: ShotBoardShot) {
+  if (!canOperate.value) return
+  sfxShotId.value = shot.shotId
+}
+
+/** 弹窗内操作成功后重拉列表（弹窗内已提示，不重复 notice） */
+async function onSfxChanged() {
+  try {
+    const s = await composeApi.listSfx(props.runId)
+    const m: Record<string, Asset> = {}
+    for (const it of s.items) m[it.shotId] = it.asset
+    sfxMap.value = m
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
   }
 }
 
@@ -715,7 +743,7 @@ watch(
       </button>
     </div>
 
-    <!-- [M11] 合成设置行：转场 + 配乐（不触发执行；重新合成后生效） -->
+    <!-- [M19] 合成设置行：转场 + 合成设置（配乐/字幕样式；不触发执行；重新合成后生效） -->
     <div v-if="compose" class="wb-compose">
       <Icon name="film" :size="12" />
       <span class="muted">转场</span>
@@ -739,10 +767,10 @@ watch(
       <button
         class="btn sm push"
         :disabled="!canOperate"
-        :title="bgm ? `当前配乐：${bgm.name}` : '绑定 BGM（选择项目音频或上传）'"
-        @click="bgmOpen = true"
+        :title="bgm ? `合成设置（当前配乐：${bgm.name}）` : '合成设置：配乐 / 音效 / 字幕样式 / 水印与片头尾 / 多画幅'"
+        @click="composeSettingsOpen = true"
       >
-        <Icon name="speaker-wave" :size="12" /> 配乐{{ bgm ? `：${bgm.name.length > 8 ? bgm.name.slice(0, 8) + '…' : bgm.name}` : '' }}
+        <Icon name="sliders" :size="12" /> 合成设置
       </button>
     </div>
 
@@ -894,6 +922,19 @@ watch(
           <button class="wb-mini" :disabled="!shot.versions.length" @click="toggleGallery(shot)">
             版本 {{ shot.versions.length }}
           </button>
+          <button
+            class="wb-mini"
+            :class="{ on: !!sfxMap[shot.shotId] }"
+            :disabled="!canOperate"
+            :title="
+              sfxMap[shot.shotId]
+                ? `音效：${sfxMap[shot.shotId]!.name}（重新合成后生效）`
+                : '为该镜绑定音效（上传 / 项目音频；重新合成后生效）'
+            "
+            @click="openSfx(shot)"
+          >
+            音效{{ sfxMap[shot.shotId] ? ' · 1' : '' }}
+          </button>
         </div>
 
         <div v-if="promptShotId === shot.shotId" class="wb-prompt">
@@ -971,12 +1012,22 @@ watch(
       @changed="onPreviewAssetChanged"
     />
 
-    <BgmModal
-      v-if="bgmOpen"
+    <ComposeSettingsModal
+      v-if="composeSettingsOpen"
       :run-id="props.runId"
       :project-id="props.projectId"
-      @close="bgmOpen = false"
+      @close="composeSettingsOpen = false"
       @changed="loadComposeCfg"
+    />
+
+    <ShotSfxModal
+      v-if="sfxShotId"
+      :run-id="props.runId"
+      :project-id="props.projectId"
+      :shot-id="sfxShotId"
+      :bound="sfxMap[sfxShotId] ?? null"
+      @close="sfxShotId = null"
+      @changed="onSfxChanged"
     />
 
     <StoryboardEditor
@@ -1348,6 +1399,11 @@ watch(
   opacity: 0.4;
   cursor: not-allowed;
   text-decoration: none;
+}
+
+/* [M19] 音效按钮：已绑定高亮 */
+.wb-mini.on {
+  color: var(--ok);
 }
 
 /* ---------- 改词区 ---------- */

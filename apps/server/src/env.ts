@@ -30,6 +30,9 @@ export const PROMPTS_DIR = join(WORKSPACE_DIR, 'prompts')
 export const PROJECTS_DIR = join(WORKSPACE_DIR, 'projects')
 export const RUN_LOGS_DIR = join(WORKSPACE_DIR, 'logs', 'runs')
 
+/** [M19] 平台品牌资材目录（水印/片头/片尾文件；品牌三层模型的平台级 file 键落点） */
+export const BRAND_DIR = join(WORKSPACE_DIR, 'brand')
+
 /** [M14] Web 构建产物目录（桌面端 / 单端口部署的静态托管源；默认 apps/web/dist） */
 export const WEB_DIST = resolve(process.env.CSTUDIO_WEB_DIST ?? join(ROOT, 'apps', 'web', 'dist'))
 

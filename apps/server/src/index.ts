@@ -10,6 +10,7 @@ import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches } from './services/batch'
 import { recoverCanvasTasks } from './services/creation-gen'
+import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
 
 const log = createLogger('main')
@@ -81,6 +82,9 @@ async function main(): Promise<void> {
 
   // [M16] 画布任务崩溃恢复：pending/processing 的 canvas 任务 → failed('服务重启中断')
   await recoverCanvasTasks()
+
+  // [M19 P6] 素材批量生成任务崩溃恢复：本域 pending/processing → failed（不自动重排队，用户可在素材页重新发起）
+  await recoverEntityRefTasks()
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`received ${signal}, shutting down`)

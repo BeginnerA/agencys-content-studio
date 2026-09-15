@@ -32,11 +32,11 @@ function toggleSide() {
 // 从运行页「画布视图」/ 模板页「画布」进入——导航不再单列
 const navs = [
   { to: '/', icon: 'folder', label: '项目' },
-  { to: '/templates', icon: 'doc', label: '模板' },
   { to: '/creation', icon: 'wand', label: '画布' },
-  { to: '/memories', icon: 'sparkles', label: '记忆' },
   { to: '/entities', icon: 'users', label: '素材' },
   { to: '/style-presets', icon: 'palette', label: '风格' },
+  { to: '/templates', icon: 'doc', label: '模板' },
+  { to: '/memories', icon: 'sparkles', label: '记忆' },
   { to: '/stats', icon: 'chart', label: '统计' },
   { to: '/settings', icon: 'sliders', label: 'AI 配置' },
 ]

@@ -3,6 +3,7 @@ import { onMounted, ref, computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
+import BrandSettings from '../components/BrandSettings.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import SeriesBoard from '../components/SeriesBoard.vue'
@@ -26,6 +27,7 @@ const TABS = [
   { key: 'runs', label: '运行', icon: 'bolt' },
   { key: 'assets', label: '资产', icon: 'photo' },
   { key: 'pubs', label: '发布', icon: 'external' },
+  { key: 'brand', label: '品牌', icon: 'brush' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
@@ -205,9 +207,19 @@ function gotoRuns(f: RunFilter) {
   switchTab('runs')
 }
 
+/** [M19] 项目品牌已配置槽数（品牌 tab 角标） */
+const brandSlotCount = computed(() => {
+  const s = project.value?.settings
+  const b = s && typeof s === 'object' ? (s as Record<string, unknown>)['brand'] : undefined
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return 0
+  const o = b as Record<string, unknown>
+  return (['subtitle', 'watermark', 'intro', 'outro'] as const).filter((k) => o[k] !== undefined && o[k] !== null).length
+})
+
 function cntOf(key: TabKey): number {
   if (key === 'runs') return runs.value.length
   if (key === 'assets') return assetCount.value
+  if (key === 'brand') return brandSlotCount.value
   return pubs.value.length
 }
 
@@ -854,6 +866,11 @@ function errOf(r: Run): string {
           </table>
           <div v-else class="empty" style="padding: 16px 0">还没有发布记录——发布后回来登记，积累复盘数据</div>
         </div>
+      </section>
+
+      <!-- [M19] 品牌（平台/项目/run 三层；项目层覆盖平台，保存后重新合成生效） -->
+      <section v-show="activeTab === 'brand'" role="tabpanel" aria-labelledby="ptab-brand">
+        <BrandSettings scope="project" :project-id="projectId" @changed="loadCore({ silent: true })" />
       </section>
     </template>
 

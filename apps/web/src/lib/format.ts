@@ -86,6 +86,8 @@ export const PURPOSE_TEXT: Record<string, string> = {
   storyboard: '分镜',
   shot_image: '镜头图',
   final_video: '成片',
+  // [M19] 多画幅派生产物（A 端点 / B 合成内多路）
+  final_video_derived: '成片派生画幅',
   thumbnail: '封面',
   reference_character: '角色参考',
   reference_scene: '场景参考',
@@ -96,6 +98,8 @@ export const PURPOSE_TEXT: Record<string, string> = {
   set_log: '素材建档',
   subtitle: '字幕',
   voice: '配音',
+  // [M19] per-shot 音效绑定行
+  sfx: '镜头音效',
   lines: '台词',
   export: '成稿',
   // [M9] 小说改编链

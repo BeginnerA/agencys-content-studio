@@ -4,14 +4,18 @@
  * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
  * 声线仅角色 Tab；挑图选择器 + 全局/项目域约束与旧角色页一致。
  * [M13] 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
+ * [M19 P6] 多选批量生成参考图：弹窗选变体（≤10 素材 × 1-4）→ 无 run 异步队列 → 页内进度（socket 驱动 + 轮询兜底）
+ *   → 服务端自动挂接 ref_asset_ids；行内可取消 / 失败重试（重新发起）。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
-import { entityApi, projectApi, uploadEntityRefImage } from '../lib/api'
+import { entityApi, projectApi, uploadEntityRefImage, voiceCloneApi } from '../lib/api'
 import { ApiError } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
-import type { Asset, EntityItem, EntityKind, Project } from '../lib/types'
+import { getSocket, studioOff, studioOn } from '../lib/socket'
+import type { StudioEventMap } from '../lib/socket'
+import type { Asset, EntityItem, EntityKind, EntityRefGenTask, Project, VoiceCloneItem } from '../lib/types'
 
 interface KindCfg {
   kind: EntityKind
@@ -113,6 +117,43 @@ const uploadEl = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 const upNote = ref('')
 
+// [M19 P8] 克隆音色（角色声线写 clone:{id}；下拉选中即回填，可清除）
+const clones = ref<VoiceCloneItem[]>([])
+const cloneSel = ref('')
+
+/** 音色库拉取（失败静默：不阻断其余字段编辑） */
+async function loadClones() {
+  try {
+    clones.value = (await voiceCloneApi.list()).items
+  } catch {
+    clones.value = []
+  }
+}
+
+/** voice → 下拉选中态（仅 clone:{id} 且音色仍在库中时回显） */
+function syncCloneSel() {
+  const id = /^clone:(\d+)$/.exec(form.voice.trim())?.[1] ?? ''
+  cloneSel.value = id && clones.value.some((c) => c.id === Number(id)) ? id : ''
+}
+
+/** 下拉变更：选中 → voice 填 clone:{id}；清除 → 仅移除克隆令牌（手工声线文本不动） */
+function onCloneSelChange() {
+  if (!cloneSel.value) {
+    if (/^clone:\d+$/.test(form.voice.trim())) form.voice = ''
+    return
+  }
+  form.voice = `clone:${cloneSel.value}`
+}
+
+/** 声线展示：clone:{id} → 「音色名（克隆）」；库中无此行 → 标注失效（运行时该级自动降级） */
+function voiceLabel(v: string | null | undefined): string {
+  const s = (v ?? '').trim()
+  const m = /^clone:(\d+)$/.exec(s)
+  if (!m) return s
+  const c = clones.value.find((x) => x.id === Number(m[1]))
+  return c ? `${c.name}（克隆）` : `${s}（音色库无此条目，运行时降级）`
+}
+
 async function load() {
   loading.value = true
   err.value = ''
@@ -132,21 +173,33 @@ function switchKind(k: EntityKind) {
   kind.value = k
   selected.value = new Set()
   notice.value = ''
+  resetRefPanel()
   void load()
 }
 
 /** [M13] 筛选变更 → 清空批量选择（跨范围选择易误操作） */
 function onFilterChange() {
   selected.value = new Set()
+  // [M19 P6] 进度面板按项目归属展示，切筛选后不得继续展示上一个项目的任务
+  resetRefPanel()
   void load()
 }
 
 onMounted(() => {
   void load()
+  void loadClones()
   projectApi
     .list()
     .then((d) => (projects.value = d.items))
     .catch(() => (projects.value = []))
+  studioOn('entity.ref_gen', onRefGenEvent)
+})
+
+onBeforeUnmount(() => {
+  studioOff('entity.ref_gen', onRefGenEvent)
+  stopRefPolling()
+  if (refSyncAt != null) clearTimeout(refSyncAt)
+  if (joinedRefPid) getSocket().emit('leave', `project:${joinedRefPid}`)
 })
 
 /** 参考图候选：仅项目域可行（全局素材库不接受项目资产引用） */
@@ -180,6 +233,7 @@ function openNew() {
   formErr.value = ''
   upNote.value = ''
   showForm.value = true
+  cloneSel.value = ''
   void loadAssets(form.projectId)
 }
 
@@ -198,6 +252,9 @@ function openEdit(it: EntityItem) {
   upNote.value = ''
   showForm.value = true
   void loadAssets(form.projectId)
+  // [M19 P8] 已存 clone:{id} 回显到下拉（音色库未就绪时先拉一次）
+  if (!clones.value.length) void loadClones().then(syncCloneSel)
+  else syncCloneSel()
 }
 
 function onPickProject() {
@@ -317,6 +374,211 @@ async function polishSelected() {
   }
 }
 
+// ===== [M19 P6] 批量生成参考图（无 run 异步队列 + 页内进度）=====
+const REFGEN_MAX_ITEMS = 10
+const REFGEN_POLL_MS = 5_000
+const REFGEN_STATUS_TEXT: Record<EntityRefGenTask['status'], string> = {
+  pending: '排队中',
+  processing: '出图中',
+  succeeded: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+}
+
+const showRefGen = ref(false)
+const refVariants = ref(1)
+const refSubmitting = ref(false)
+const refBusyTask = ref(0)
+const refErr = ref('')
+/** 本批次归属项目（打开弹窗时由所选素材推导；服务端要求同项目且非全局） */
+const refPid = ref(0)
+/** 已认领任务 id（发起结果 + 服务端在途任务）：事件与轮询只更新这批 */
+const refBatch = ref(new Set<number>())
+const refTasks = ref<EntityRefGenTask[]>([])
+let refPoll: number | null = null
+let refSyncAt: number | null = null
+/** 本轮进度面板是否见过在途任务（只对「看着跑完」的批次弹提示 / 刷卡片，不抢他处发起的功劳） */
+let refWasLive = false
+let joinedRefPid = 0
+
+const selItems = computed(() => items.value.filter((c) => selected.value.has(c.id)))
+/** 所选素材的唯一项目 id（0 = 跨项目或含全局素材，服务端会整单拒绝 → 客户端先拦） */
+const selProjectId = computed(() => {
+  const pids = [...new Set(selItems.value.map((c) => c.projectId ?? 0))]
+  return pids.length === 1 ? pids[0]! : 0
+})
+const selNoAppearance = computed(() => selItems.value.filter((c) => !(c.appearance ?? '').trim()).map((c) => c.name))
+const refPlanned = computed(() => selItems.value.length * refVariants.value)
+const refLive = computed(() => refTasks.value.filter((t) => t.status === 'pending' || t.status === 'processing'))
+const refPct = computed(() => {
+  const n = refTasks.value.length
+  return n ? Math.round(((n - refLive.value.length) / n) * 100) : 0
+})
+
+/** join project:{pid} room：服务端仅向 run/canvas/project room 投递事件 */
+function joinProjectRoom(pid: number) {
+  if (joinedRefPid === pid) return
+  const s = getSocket()
+  if (joinedRefPid) s.emit('leave', `project:${joinedRefPid}`)
+  s.emit('join', `project:${pid}`)
+  joinedRefPid = pid
+}
+
+/** 服务端快照 → 合并进本页批次（按 id 覆盖，保持发起顺序） */
+function mergeRefTasks(rows: EntityRefGenTask[]) {
+  const byId = new Map(refTasks.value.map((t) => [t.id, t]))
+  for (const r of rows) byId.set(r.id, r)
+  refTasks.value = [...byId.values()].sort((a, b) => a.id - b.id)
+}
+
+/** 拉一次任务快照：认领在途任务（刷新页面 / 多标签下不重复发起），并收敛批次 */
+async function refreshRefTasks() {
+  if (!refPid.value) return
+  try {
+    const d = await entityApi.refGenTasks(refPid.value)
+    const rows = d.items.filter((t) => refBatch.value.has(t.id) || t.status === 'pending' || t.status === 'processing')
+    for (const t of rows) if (t.status === 'pending' || t.status === 'processing') refBatch.value.add(t.id)
+    mergeRefTasks(rows)
+    settleRefBatch()
+  } catch {
+    /* 静默：轮询下一轮再试（网络抖动不打断进度） */
+  }
+}
+
+/** 进度收敛：仍有在途 → 保活轮询；全部终态 → 停轮询 + 结果提示 + 刷卡片（新参考图已由服务端挂接） */
+function settleRefBatch() {
+  if (refLive.value.length) {
+    refWasLive = true
+    ensureRefPolling()
+    return
+  }
+  if (!refWasLive || !refTasks.value.length) return
+  refWasLive = false
+  stopRefPolling()
+  const ok = refTasks.value.filter((t) => t.status === 'succeeded').length
+  const bad = refTasks.value.filter((t) => t.status === 'failed')
+  notice.value =
+    `参考图生成完成：成功 ${ok} 张 / 共 ${refTasks.value.length} 个任务` +
+    (bad.length ? `，失败 ${bad.length} 项（行内可重试，原因见进度行）` : '') +
+    (bad.length ? `\n${bad[0]!.entityName}：${bad[0]!.errorMsg ?? '未知原因'}` : '') +
+    '\n新图已自动挂接到对应素材参考图。'
+  void load()
+}
+
+function ensureRefPolling() {
+  if (refPoll != null) return
+  refPoll = window.setInterval(() => {
+    if (refLive.value.length) void refreshRefTasks()
+    else stopRefPolling()
+  }, REFGEN_POLL_MS)
+}
+
+function stopRefPolling() {
+  if (refPoll != null) {
+    clearInterval(refPoll)
+    refPoll = null
+  }
+}
+
+/** socket 事件驱动：同一任务的高频事件合并后 400ms 拉一次快照（轮询仅作兜底） */
+function onRefGenEvent(p: StudioEventMap['entity.ref_gen']) {
+  if (!refBatch.value.has(p.taskId) || refSyncAt != null) return
+  refSyncAt = window.setTimeout(() => {
+    refSyncAt = null
+    void refreshRefTasks()
+  }, 400)
+}
+
+/** 收起 / 切换筛选：清空批次认领并停表（避免展示他项目任务或后台空转） */
+function resetRefPanel() {
+  stopRefPolling()
+  if (refSyncAt != null) {
+    clearTimeout(refSyncAt)
+    refSyncAt = null
+  }
+  refTasks.value = []
+  refBatch.value = new Set()
+  refWasLive = false
+}
+
+async function openRefGen() {
+  refErr.value = ''
+  const list = selItems.value
+  if (!list.length) {
+    refErr.value = '先勾选素材卡片（左上角复选框）'
+    return
+  }
+  if (list.length > REFGEN_MAX_ITEMS) {
+    refErr.value = `单次最多 ${REFGEN_MAX_ITEMS} 个素材（当前已选 ${list.length} 个）`
+    return
+  }
+  const pid = selProjectId.value
+  if (!pid) {
+    refErr.value = '所选素材须同属一个项目（全局素材不参与批量生成）'
+    return
+  }
+  refPid.value = pid
+  refVariants.value = 1
+  showRefGen.value = true
+  joinProjectRoom(pid)
+  await refreshRefTasks()
+}
+
+async function submitRefGen() {
+  if (refSubmitting.value) return
+  const ids = selItems.value.map((c) => c.id)
+  refErr.value = ''
+  if (!ids.length) {
+    refErr.value = '请先勾选素材'
+    return
+  }
+  refSubmitting.value = true
+  try {
+    const r = await entityApi.refGen(refPid.value, ids, refVariants.value)
+    for (const t of r.tasks) refBatch.value.add(t.id)
+    showRefGen.value = false
+    selected.value = new Set()
+    notice.value = `已入队 ${r.count} 个出图任务（项目#${refPid.value}），完成后自动挂接参考图。`
+    ensureRefPolling()
+    await refreshRefTasks()
+  } catch (e) {
+    refErr.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    refSubmitting.value = false
+  }
+}
+
+/** 取消单任务（服务端仅 pending/processing 可取消；已发出的出图请求完成后弃存） */
+async function cancelRefTask(t: EntityRefGenTask) {
+  if (refBusyTask.value) return
+  refBusyTask.value = t.id
+  try {
+    await entityApi.cancelRefGenTask(t.id)
+    await refreshRefTasks()
+  } catch (e) {
+    err.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    refBusyTask.value = 0
+  }
+}
+
+/** 失败重试 = 对该实体重新发起一轮入队（旧任务保留终态留痕） */
+async function retryRefTask(t: EntityRefGenTask) {
+  if (refBusyTask.value) return
+  refBusyTask.value = t.id
+  try {
+    const r = await entityApi.refGen(refPid.value, [t.entityId], 1)
+    for (const nt of r.tasks) refBatch.value.add(nt.id)
+    notice.value = ''
+    ensureRefPolling()
+    await refreshRefTasks()
+  } catch (e) {
+    err.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    refBusyTask.value = 0
+  }
+}
+
 /** [M13] 触发上传参考图文件选择（编辑态可用） */
 function pickUpload() {
   uploadEl.value?.click()
@@ -380,6 +642,14 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
         class="btn"
         style="margin-left: auto"
         :disabled="polishing || !selected.size"
+        :title="selected.size ? `已选素材批量出参考图（≤${REFGEN_MAX_ITEMS} 项，完成后自动挂接）` : '先勾选素材卡片'"
+        @click="openRefGen"
+      >
+        <Icon name="imageplus" :size="14" /> 生成参考图（{{ selected.size }}）
+      </button>
+      <button
+        class="btn"
+        :disabled="polishing || !selected.size"
         :title="selected.size ? `对已选 ${selected.size} 项润色 appearance（≤10 项/次）` : '先勾选素材卡片'"
         @click="polishSelected"
       >
@@ -392,6 +662,41 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
 
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="notice" class="notice-box">{{ notice }}</div>
+
+    <!-- [M19 P6] 批量生成进度（socket 驱动 + 轮询兜底；行内可取消 / 失败重试） -->
+    <div v-if="refTasks.length" class="refgen panel">
+      <div class="rg-head">
+        <span class="rg-t"><Icon name="imageplus" :size="13" /> 参考图生成进度（项目#{{ refPid }}）</span>
+        <span class="muted">{{ refTasks.length - refLive.length }}/{{ refTasks.length }} · {{ refPct }}%</span>
+        <button class="btn tiny" type="button" @click="resetRefPanel">收起</button>
+      </div>
+      <div class="bar"><span class="fill" :style="{ width: refPct + '%' }" /></div>
+      <div class="rg-rows">
+        <div v-for="t in refTasks" :key="t.id" class="rg-row">
+          <span class="badge" :class="t.status">{{ REFGEN_STATUS_TEXT[t.status] }}</span>
+          <span class="rg-nm">{{ t.entityName }}</span>
+          <span class="muted rg-v">变体 {{ t.variantIndex + 1 }}</span>
+          <span class="muted rg-msg">
+            <template v-if="t.errorMsg">{{ t.errorMsg }}</template>
+            <template v-else-if="t.status === 'succeeded' && t.resultAssetId">已挂接 asset#{{ t.resultAssetId }}</template>
+          </span>
+          <span class="rg-ops">
+            <button
+              v-if="t.status === 'pending' || t.status === 'processing'"
+              class="btn tiny"
+              :disabled="refBusyTask !== 0"
+              @click="cancelRefTask(t)"
+            >
+              <Icon name="stop" :size="11" /> 取消
+            </button>
+            <button v-else-if="t.status === 'failed'" class="btn tiny" :disabled="refBusyTask !== 0" @click="retryRefTask(t)">
+              <Icon name="refresh" :size="11" /> 重试
+            </button>
+          </span>
+        </div>
+      </div>
+      <div v-if="refLive.length" class="muted rg-tip">并发上限 2，其余排队中；完成后本页自动刷新卡片参考图张数。</div>
+    </div>
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!items.length" class="empty">{{ cfg.empty }}</div>
 
@@ -416,7 +721,7 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
             <span v-if="c.states.length > 2" class="chip">+{{ c.states.length - 2 }}</span>
           </div>
           <div class="meta muted">
-            <span v-if="c.voice"><Icon name="speaker-wave" :size="12" /> {{ c.voice }}</span>
+            <span v-if="c.voice"><Icon name="speaker-wave" :size="12" /> {{ voiceLabel(c.voice) }}</span>
             <span v-if="c.refAssetIds.length" class="chip">{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span>
           </div>
           <div class="ops">
@@ -455,10 +760,15 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
         <label v-if="kind === 'character'" class="fld">
           声线 voice（TTS 声线链 L2）
           <textarea v-model="form.voice" rows="2" placeholder="如：软糯童声（或网关 模型:音色 格式）" />
+          <!-- [M19 P8] 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->
+          <select v-model="cloneSel" @change="onCloneSelChange">
+            <option value="">{{ clones.length ? '选克隆音色（clone:{id}）…' : '选克隆音色——音色库为空（先到 Settings → 音色库复刻）' }}</option>
+            <option v-for="c in clones" :key="c.id" :value="String(c.id)">{{ c.name }}（{{ c.providerKey }} / {{ c.model }}）</option>
+          </select>
         </label>
       </div>
       <label v-if="kind === 'character'" class="fld">
-        状态变体 states（每行一条；格式「剧情节点：状态短语」）
+        状态变体 states（每行一条；格式「剧情节点：状态短语」；节点优先用「第N场 / 第N集」定位词，出图逐镜自动命中）
         <textarea v-model="form.states" rows="2" placeholder="如：第5场受伤：额头绷带" />
       </label>
       <label class="fld">
@@ -515,6 +825,40 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
       <template #footer>
         <button class="btn" @click="showForm = false">取消</button>
         <button class="btn primary" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      </template>
+    </Modal>
+
+    <!-- [M19 P6] 批量生成参考图弹窗：变体数 + 预估张数（实际校验与入队在服务端） -->
+    <Modal v-if="showRefGen" title="批量生成参考图" :width="560" @close="showRefGen = false">
+      <div class="rgbox">
+        <div class="rg-lbl">所选素材（{{ selItems.length }} 项 · 项目#{{ refPid }}）</div>
+        <div class="rg-chips">
+          <span v-for="c in selItems" :key="c.id" class="chip">{{ c.name }}</span>
+        </div>
+        <div v-if="selNoAppearance.length" class="rg-warn">
+          <Icon name="alert" :size="12" /> 缺 appearance 锚定：{{ selNoAppearance.join('、') }}——服务端会整单拒绝，请先补全或批量润色。
+        </div>
+        <label class="fld">
+          每个素材生成变体数
+          <select v-model.number="refVariants">
+            <option :value="1">1 张</option>
+            <option :value="2">2 张</option>
+            <option :value="3">3 张</option>
+            <option :value="4">4 张</option>
+          </select>
+        </label>
+        <div class="rg-note">
+          将生成 <b>{{ refPlanned }}</b> 张：出图配置取项目设置里的图像端点/模型/尺寸，提示词 = appearance + 项目画风词块 +
+          negative；已有参考图会作为锚定输入（最多 4 张），完成后自动追加挂接，可进编辑弹窗挑拣。
+        </div>
+        <div v-if="refLive.length" class="muted rg-note2">该项目另有 {{ refLive.length }} 个任务正在出图，本次将一并排队。</div>
+        <div v-if="refErr" class="err-text">{{ refErr }}</div>
+      </div>
+      <template #footer>
+        <button class="btn" @click="showRefGen = false">取消</button>
+        <button class="btn primary" :disabled="refSubmitting || !refPlanned" @click="submitRefGen">
+          {{ refSubmitting ? '入队中…' : `开始生成（${refPlanned} 张）` }}
+        </button>
       </template>
     </Modal>
   </div>
@@ -764,5 +1108,147 @@ const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[k
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ===== [M19 P6] 批量生成参考图：页内进度面板 + 弹窗 ===== */
+.refgen {
+  margin-bottom: 14px;
+  padding: 11px 13px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.rg-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.rg-t {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  font-weight: 600;
+}
+
+.bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgb(148 163 184 / 14%);
+  overflow: hidden;
+}
+
+.bar .fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--indigo-deep), var(--run));
+  transition: width 0.3s ease;
+}
+
+.rg-rows {
+  display: flex;
+  flex-direction: column;
+  max-height: 246px;
+  overflow-y: auto;
+}
+
+.rg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-top: 1px solid rgb(148 163 184 / 8%);
+}
+
+.rg-row:first-child {
+  border-top: none;
+}
+
+.rg-row .badge {
+  flex: none;
+  font-size: 11px;
+}
+
+.rg-nm {
+  flex: none;
+  max-width: 150px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rg-v {
+  flex: none;
+  font-size: 11px;
+}
+
+.rg-msg {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rg-ops {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+.rg-tip {
+  font-size: 11.5px;
+}
+
+.rgbox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rg-lbl {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.rg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rg-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgb(245 158 11 / 20%);
+  border-radius: 8px;
+  background: var(--warn-weak);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rg-note,
+.rg-note2 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.rg-note2 {
+  color: var(--text-3);
+}
+
+.rgbox b {
+  color: var(--accent);
 }
 </style>

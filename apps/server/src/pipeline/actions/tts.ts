@@ -1,6 +1,9 @@
 import { writeFileSync } from 'node:fs'
 import { loadCharacterIndex } from '../../services/character'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
+import { cloneEndpoint, loadCloneIndex, parseCloneRef, validCloneRef } from '../../services/tts-clone'
+import type { VoiceClone } from '../../db/schema'
+import type { AudioEndpoint } from '../../services/tts'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
 import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
@@ -28,6 +31,7 @@ interface LineItem {
  * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
  * 声线六级链（spec §6.2）：line.voice_hint → 角色库 voice → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
  * 情绪：emotion_hint → 基调词（首个「——」前段）→ 实例声明 emotion_param 时透传（emotion_map 映射）。
+ * [M19 P8] 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -39,15 +43,23 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const settingsVoice = typeof audCfg['voice'] === 'string' && audCfg['voice'] ? audCfg['voice'] : undefined
 
   const ep = await resolveAudioEndpoint(provider)
+  // [M19 P8] 音色库整步载入一次（无克隆行 → 空索引，声线链行为逐字不变）；命中后按 provider 换端点（同 provider 复用缓存）
+  const cloneIndex = await loadCloneIndex()
+  const cloneEpCache = new Map<string, AudioEndpoint>()
 
   const lineIds = ctx.assetIdsOf('lines')
   if (lineIds.length === 0) throw new Error('inputs.lines 无台词资产')
   const lines = await collectLines(ctx, lineIds)
   if (lines.length === 0) throw new Error('台词内容为空（lines 数组/资产全文均无文本）')
   const charIndex = await loadCharacterIndex(ctx.run.projectId)
-  ctx.log(`配音 ${lines.length} 句（逐句声线链 + 情绪解析${speed ? `, speed=${speed}` : ''}，模型取 audio 实例配置）`)
+  ctx.log(
+    `配音 ${lines.length} 句（逐句声线链 + 情绪解析${speed ? `, speed=${speed}` : ''}，模型取 audio 实例配置${
+      cloneIndex.size > 0 ? `；音色库 ${cloneIndex.size} 个克隆音色可引用 clone:{id}` : ''
+    }）`,
+  )
 
   const assetIds: number[] = []
+  const cloneSkipped = new Set<string>()
   let failed = 0
   const retryRaw = typeof params['retry'] === 'number' ? params['retry'] : 1
   const maxAttempts = Math.max(0, Math.floor(retryRaw)) + 1
@@ -55,20 +67,29 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
     const line = lines[i]!
     try {
       const charVoice = line.speaker ? charIndex.get(line.speaker)?.voice ?? undefined : undefined
-      const { voice, source } = resolveVoiceChain({
+      const hit = resolveVoiceChain({
         lineVoice: line.voiceHint,
         charVoice,
         paramVoice,
         settingsVoice,
         instanceVoice: ep.voice,
+        cloneIndex,
       })
+      for (const s of hit.cloneSkipped) {
+        if (cloneSkipped.has(s)) continue
+        cloneSkipped.add(s)
+        ctx.log(`克隆音色引用未命中（${s}）→ 跳过该级继续降级`)
+      }
+      // 命中克隆：换端点（provider 可不同于默认 audio 实例）+ 模型联动（克隆与合成必须同模型）+ voice 取供应商音色标识
+      const lineEp = hit.clone ? await cloneEndpoint(hit.clone, cloneEpCache) : ep
+      const voice = hit.voice
       const emotionKey = parseEmotionKey(line.emotionHint ?? '')
-      const emotionPayload = resolveEmotionPayload(emotionKey, ep.emotion)
+      const emotionPayload = resolveEmotionPayload(emotionKey, lineEp.emotion)
       // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出
       let data: Uint8Array
       for (let attempt = 1; ; attempt++) {
         try {
-          data = await synthSpeech(line.text, ep, { voice, speed, emotion: emotionPayload ?? undefined })
+          data = await synthSpeech(line.text, lineEp, { voice, speed, emotion: emotionPayload ?? undefined })
           break
         } catch (err) {
           if (attempt >= maxAttempts) throw err
@@ -96,14 +117,18 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
           lineId: line.id,
           speaker: line.speaker ?? null,
           voice,
-          voiceSource: source,
+          voiceSource: hit.clone ? 'clone' : hit.source,
+          // [M19 P8] 克隆溯源：命中时记音色库行 id/名称与实际命中级（voiceSource 统一 'clone'）
+          clone_id: hit.clone?.id ?? null,
+          clone_name: hit.clone?.name ?? null,
+          clone_level: hit.clone ? hit.source : null,
           voiceHint: line.voiceHint ?? null,
           emotionHint: line.emotionHint ?? null,
           emotionKey: emotionKey || null,
           emotionSent: emotionPayload?.value ?? null,
           speed: speed ?? null,
-          model: ep.model,
-          provider: ep.providerKey,
+          model: lineEp.model,
+          provider: lineEp.providerKey,
           chars: line.text.length,
         },
         tags: ['voice'],
@@ -117,8 +142,8 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         kind: 'tts',
         unit: 'char',
         quantity: line.text.length,
-        provider: ep.providerKey,
-        model: ep.model,
+        provider: lineEp.providerKey,
+        model: lineEp.model,
       })
       assetIds.push(asset.id)
       ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${data.byteLength} 字节）`)
@@ -185,20 +210,42 @@ function toLines(list: unknown[]): LineItem[] {
  * 自然语言声线基准短语（如「成年女声、清爽亲和」——voice_hint/角色库 voice 的方法论形态）跳过并继续降级：
  * 语义短语不是供应商枚举值，直接下发会 400（M3 验收实测 DashScope Invalid voice）；
  * 其原文仍逐句记录于 asset.params.voiceHint 供审计，声线链来源记实际下发级。
+ * [M19 P8] cloneIndex：写 `clone:{id}` 且索引命中 → 返回供应商真实 voiceId + clone 行（调用方据此换端点/模型）；
+ * 旧调用签名兼容（不传 cloneIndex 时行为逐字不变），此时 clone 令牌无法解析 → 记入 cloneSkipped 并跳过该级继续降级。
  */
+export type VoiceChainSource = 'line' | 'character' | 'params' | 'settings' | 'instance' | 'default'
+
 export function resolveVoiceChain(p: {
   lineVoice?: string
   charVoice?: string
   paramVoice?: string
   settingsVoice?: string
   instanceVoice?: string
-}): { voice: string; source: 'line' | 'character' | 'params' | 'settings' | 'instance' | 'default' } {
-  if (isProviderVoice(p.lineVoice)) return { voice: p.lineVoice!, source: 'line' }
-  if (isProviderVoice(p.charVoice)) return { voice: p.charVoice!, source: 'character' }
-  if (isProviderVoice(p.paramVoice)) return { voice: p.paramVoice!, source: 'params' }
-  if (isProviderVoice(p.settingsVoice)) return { voice: p.settingsVoice!, source: 'settings' }
-  if (isProviderVoice(p.instanceVoice)) return { voice: p.instanceVoice!, source: 'instance' }
-  return { voice: 'alloy', source: 'default' }
+  cloneIndex?: Map<number, VoiceClone>
+}): {
+  voice: string
+  source: VoiceChainSource
+  clone: VoiceClone | null
+  cloneSkipped: string[]
+} {
+  const cloneSkipped: string[] = []
+  const levels: Array<[VoiceChainSource, string | undefined]> = [
+    ['line', p.lineVoice],
+    ['character', p.charVoice],
+    ['params', p.paramVoice],
+    ['settings', p.settingsVoice],
+    ['instance', p.instanceVoice],
+  ]
+  for (const [source, raw] of levels) {
+    const clone = validCloneRef(raw, p.cloneIndex)
+    if (clone) return { voice: clone.voiceId, source, clone, cloneSkipped }
+    if (parseCloneRef(raw) !== null) {
+      cloneSkipped.push(`${source}=${String(raw).trim()}`)
+      continue
+    }
+    if (isProviderVoice(raw)) return { voice: raw!, source, clone: null, cloneSkipped }
+  }
+  return { voice: 'alloy', source: 'default', clone: null, cloneSkipped }
 }
 
 /** 供应商 voice 令牌判定：全 ASCII 可打印字符（voice 枚举 /「模型:音色」格式均满足；中文语义短语不满足） */

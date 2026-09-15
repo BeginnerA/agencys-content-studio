@@ -26,6 +26,8 @@ interface ShotSpec {
   props?: string[]
   /** [M8] 素材参考图链分类（scene|prop；output_purpose_by_category 按此分派 purpose） */
   category?: string
+  /** [M19 P7] 场次号（storyboard-ep v7 的 scene）：states「第N场」定位词命中依据；缺失 → 场次档不命中 */
+  scene?: number
 }
 
 const nowMs = (): number => Date.now()
@@ -40,7 +42,7 @@ const MAX_REFS_PER_SHOT = 6
 /**
  * ai_image：批量镜头出图（spec §5.3）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
- * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
+ * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 状态（[M19 P7] 角色 states 命中）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
  * 参考图（角色定妆照 + 场景/道具参考图）在供应商能力支持时转 data URI 注入（M6/M8，params.refUsed 记计划注入数）；
  * 并发上限 batch.max_concurrent（默认 2），失败按 batch.retry 重试。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功图）；
@@ -80,7 +82,14 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const indexes = { characters: charIndex, scenes: sceneIndex, props: propIndex }
   const { shots: charShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
   ctx.log(`角色锚定注入 ${injected} 镜${missing.length > 0 ? `（未命中角色：${missing.join('、')}）` : ''}`)
-  const { shots: setShots, sceneInjected, propInjected, missing: setMissing } = injectSetAnchors(charShots, sceneIndex, propIndex)
+  // [M19 P7] 角色状态锚定：逐镜命中角色 states（场次/集/文本三级）→ 追加状态短语；无 states / 无命中 → 零注入
+  const episode = ctx.run.input ? inputEpisode(ctx.run.input) : undefined
+  const stateRes = injectStateAnchors(charShots, charIndex, episode)
+  if (stateRes.injected > 0) {
+    const brief = stateRes.details.length > 6 ? ` / …共 ${stateRes.details.length} 条` : ''
+    ctx.log(`状态锚定注入 ${stateRes.injected} 镜：${stateRes.details.slice(0, 6).join(' / ')}${brief}`)
+  }
+  const { shots: setShots, sceneInjected, propInjected, missing: setMissing } = injectSetAnchors(stateRes.shots, sceneIndex, propIndex)
   ctx.log(`场景锚定 ${sceneInjected} 镜 / 道具锚定 ${propInjected} 镜${setMissing.length > 0 ? `（未命中：${setMissing.join('、')}）` : ''}`)
 
   const imgCfg = (ctx.settings.image ?? {}) as Record<string, unknown>
@@ -404,6 +413,103 @@ export function injectCharacterAnchors(
 }
 
 /**
+ * states 条目解析（纯函数）：首个「：」/「:」分割为 { node, phrase }；
+ * 无分隔符 → node=全串、phrase=''（两侧空白剔除；非字符串入参视为空条目）。
+ */
+export function parseStateEntry(s: unknown): { node: string; phrase: string } {
+  const raw = typeof s === 'string' ? s.trim() : ''
+  if (!raw) return { node: '', phrase: '' }
+  const i = raw.search(/[：:]/)
+  if (i < 0) return { node: raw, phrase: '' }
+  return { node: raw.slice(0, i).trim(), phrase: raw.slice(i + 1).trim() }
+}
+
+/** 定位词数值解析：阿拉伯数字或中文数字（一~九十九，含十/二十/三十五）；不可解析 → null */
+function numFromToken(raw: string): number | null {
+  const s = raw.trim()
+  if (!s) return null
+  if (/^\d+$/.test(s)) return Number(s)
+  const cn: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+  const m = /^(?:([一二三四五六七八九])?十)([一二三四五六七八九])?$/.exec(s)
+  if (m) return (m[1] ? cn[m[1]]! : 1) * 10 + (m[2] ? cn[m[2]]! : 0)
+  return cn[s] ?? null
+}
+
+/** states 命中档位：scene=场次定位词 / episode=集数定位词 / text=无定位词按文本包含 */
+export type StateMatchMode = 'scene' | 'episode' | 'text'
+
+/** states 定位词：第N场 / 第N场次 / 第N集（N = 阿拉伯数字或中文数字一至九十九） */
+const STATE_SCENE_RE = /第\s*(\d{1,3}|[一二三四五六七八九十]{1,3})\s*场(?:次)?/
+const STATE_EPISODE_RE = /第\s*(\d{1,3}|[一二三四五六七八九十]{1,3})\s*集/
+
+/**
+ * 单条 states 命中判定（纯函数，供探针直接 import 断言）：
+ * 1) 节点含「第N场/第N场次」（阿拉伯或中文数字）→ 与 ctx.scene 数值相等判命中（scene 缺失 → 不命中，**不做文本兜底**）；
+ * 2) 否则节点含「第N集」→ 与 ctx.episode 相等判命中（episode 缺失 → 不命中）；
+ * 3) 否则（无定位词）→ 节点串包含于 ctx.text 判命中。
+ * 恒返回 { hit, mode, node, phrase }，mode = 实际生效档位。
+ */
+export function matchStateEntry(
+  entry: string,
+  ctx: { scene?: number; episode?: number; text?: string },
+): { hit: boolean; mode: StateMatchMode; node: string; phrase: string } {
+  const { node, phrase } = parseStateEntry(entry)
+  const sceneHit = STATE_SCENE_RE.exec(node)
+  if (sceneHit) {
+    const n = numFromToken(sceneHit[1]!)
+    return { hit: n !== null && typeof ctx.scene === 'number' && ctx.scene === n, mode: 'scene', node, phrase }
+  }
+  const epHit = STATE_EPISODE_RE.exec(node)
+  if (epHit) {
+    const n = numFromToken(epHit[1]!)
+    return { hit: n !== null && typeof ctx.episode === 'number' && ctx.episode === n, mode: 'episode', node, phrase }
+  }
+  const text = typeof ctx.text === 'string' ? ctx.text : ''
+  return { hit: !!node && text.includes(node), mode: 'text', node, phrase }
+}
+
+/**
+ * 角色状态锚定注入（纯函数，供探针直接 import 断言）：
+ * 逐镜按 shot.characters 命中角色库 → 取该行 states 中命中条目（**多条命中取数组最后一条**：数组序即时间序，后覆盖前）
+ * → 追加「状态锚定（{角色名}·{节点}）：{状态短语}」到 image_prompt；details = 逐条注入明细（供日志）。
+ * 无 characters / 实体无 states / 无命中 / 短语为空 → 该镜原样返回；全零注入 → 返回入参数组引用（零 diff）。
+ */
+export function injectStateAnchors(
+  shots: ShotSpec[],
+  index: Map<string, CharacterRow>,
+  episode?: number,
+): { shots: ShotSpec[]; injected: number; details: string[] } {
+  const details: string[] = []
+  let injected = 0
+  const out = shots.map((shot) => {
+    const names = Array.isArray(shot.characters)
+      ? shot.characters.filter((n) => typeof n === 'string' && !!n.trim())
+      : []
+    if (names.length === 0) return shot
+    const scene = typeof shot.scene === 'number' && Number.isFinite(shot.scene) ? shot.scene : undefined
+    const text = [shot.id, shot.location ?? '', shot.image_prompt].join(' ')
+    const bits: string[] = []
+    for (const raw of names) {
+      const row = lookupCharacter(index, raw.trim())
+      if (!row) continue // 未命中角色由角色锚定段报告，此处静默
+      let best: { node: string; phrase: string } | null = null
+      for (const entry of parseStrArr(row.states)) {
+        const m = matchStateEntry(entry, { scene, episode, text })
+        if (m.hit && m.phrase) best = { node: m.node, phrase: m.phrase } // 后覆盖前
+      }
+      if (!best) continue
+      bits.push(`状态锚定（${row.name}·${best.node}）：${best.phrase}`)
+      details.push(`${shot.id} ${row.name}「${best.node}」→ ${best.phrase}`)
+    }
+    if (bits.length === 0) return shot
+    injected += 1
+    return { ...shot, image_prompt: `${shot.image_prompt.trim()}\n${bits.join('\n')}` }
+  })
+  if (injected === 0) return { shots, injected: 0, details: [] }
+  return { shots: out, injected, details }
+}
+
+/**
  * 场景/道具锚定注入（纯函数，供探针直接 import 断言）：
  * shot.location 命中场景库 → 追加「场景锚定（{name}）：{appearance}」（+「必须剔除：{negative}」）；
  * shot.props[] 逐项命中道具库 → 追加「道具锚定（{name}）：{appearance}」（+ 必须剔除）；
@@ -520,6 +626,27 @@ function purposeOf(shot: ShotSpec, params: Record<string, unknown>, fallback: st
     if (typeof v === 'string' && v) return v
   }
   return fallback
+}
+
+/** 字符串数组列（states/aliases 等 JSON 文本）宽容解析：非数组/坏 JSON → []；剔空白项 */
+function parseStrArr(s: string): string[] {
+  try {
+    const v = JSON.parse(s) as unknown
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+  } catch {
+    return []
+  }
+}
+
+/** run.input 的 episode_number（整数且 ≥1 才算；缺失/非法 → undefined：「第N集」档降级不命中） */
+function inputEpisode(inputJson: string): number | undefined {
+  try {
+    const v = (JSON.parse(inputJson) as Record<string, unknown>)['episode_number']
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+    return Number.isInteger(n) && n >= 1 ? n : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function parseNumArr(s: string): number[] {

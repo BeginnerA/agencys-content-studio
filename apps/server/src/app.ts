@@ -26,6 +26,7 @@ import { stylePresetsRoutes } from './routes/style-presets'
 import { systemRoutes } from './routes/system'
 import { tasksRoutes } from './routes/tasks'
 import { templatesRoutes } from './routes/templates'
+import { voiceCloneRoutes } from './routes/voice-clones'
 
 const log = createLogger('app')
 
@@ -52,6 +53,7 @@ api.route('/', exportsRoutes)
 api.route('/', publicationsRoutes)
 api.route('/', tasksRoutes)
 api.route('/', novelRoutes)
+api.route('/', voiceCloneRoutes)
 api.route('/', apiRoutes)
 api.route('/', vendorRoutes)
 api.route('/', canvasRoutes)

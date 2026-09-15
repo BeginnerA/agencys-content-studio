@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AspectDeriveModal from '../components/AspectDeriveModal.vue'
 import GateDialog from '../components/GateDialog.vue'
 import TaskPanel from '../components/TaskPanel.vue'
 import ShotBoard from '../components/ShotBoard.vue'
@@ -520,6 +521,15 @@ const publishCandidate = computed<number | null>(() => {
   return last ? last.id : null
 })
 
+// ===== [M19] 成片多画幅派生（A 路径：对最新 final_video 二次编码） =====
+const deriveOpen = ref(false)
+/** 有 final_video 产物才可派生 */
+const hasFinalVideo = computed(() => runAssets.value.some((a) => a.purpose === 'final_video'))
+/** 派生完成 → 刷新 run 产物（项目资产已新行，导出/发布候选跟着更新） */
+function onDerived() {
+  refreshExtras()
+}
+
 function onExportDone() {
   showExport.value = false
   refreshExtras()
@@ -731,6 +741,15 @@ function onRerunDone(result: RerunResult) {
                 <button class="btn sm" :disabled="busy || active" @click="recomposeStep(s)">
                   <Icon name="film" :size="12" /> 重新合成
                 </button>
+                <!-- [M19] A 路径：对已有成片二次派生其他发布画幅 -->
+                <button
+                  class="btn sm"
+                  :disabled="busy || active || !hasFinalVideo"
+                  :title="hasFinalVideo ? '从成片再编码一份 9:16 / 1:1 / 4:5 / 16:9 产物（不动原片）' : '尚未合成成片，无法派生'"
+                  @click="deriveOpen = true"
+                >
+                  <Icon name="crop" :size="12" /> 派生画幅
+                </button>
               </div>
 
               <!-- [M11] 单步重跑（显示条件对齐服务端 assertRepairable：run 收敛 + 目标步收敛 + 无其他 failed） -->
@@ -851,6 +870,15 @@ function onRerunDone(result: RerunResult) {
 
     <!-- [M4] 单 run 导出向导 / 标记发布 -->
     <ExportWizardModal v-if="showExport" :run-id="runId" @done="onExportDone" @close="showExport = false" />
+    <!-- [M19] 成片多画幅派生（A 路径） -->
+    <AspectDeriveModal
+      v-if="deriveOpen"
+      :run-id="runId"
+      :project-id="run?.projectId ?? 0"
+      :run-assets="runAssets"
+      @changed="onDerived"
+      @close="deriveOpen = false"
+    />
     <PublishModal
       v-if="showPublish"
       :project-id="run?.projectId ?? 0"

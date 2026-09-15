@@ -3,7 +3,8 @@ import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../services/storage'
-import { TRANSITIONS, loadBgmAsset, readComposeConfig } from '../../services/compose-config'
+import { TRANSITIONS, loadBgmAsset, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../services/compose-config'
+import { resolveBrandConfig, type ResolvedWatermark, type SubtitleStyleConfig, type WatermarkPosition } from '../../services/brand-config'
 import { shotDurationSec } from '../../services/shot-workbench'
 import { QUALITY_TEXT, type ImageQualityReason } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
@@ -12,7 +13,7 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
 /** 字幕 ASS 风格缺省（字号/边距按输出高度自适应；模板可用 defaults.video.subtitle_style 整体覆盖） */
-function defaultSubtitleStyle(height: number): string {
+export function defaultSubtitleStyle(height: number): string {
   const fontSize = Math.max(16, Math.round(height * 0.018))
   const marginV = Math.round(height * 0.02)
   const outline = Math.max(1, Math.round(height * 0.0009))
@@ -20,6 +21,79 @@ function defaultSubtitleStyle(height: number): string {
     `FontName=Noto Sans CJK SC,FontSize=${fontSize},PrimaryColour=&H00FFFFFF,` +
     `OutlineColour=&H00000000,BorderStyle=1,Outline=${outline},Shadow=0,MarginV=${marginV}`
   )
+}
+
+/** [M19] '#RRGGBB' → ASS 颜色 '&HAABBGGRR'（A=00 不透明） */
+export function toAssColor(hex: string): string {
+  return `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase()
+}
+
+/**
+ * [M19] 字幕样式结构化组装：基线 = defaultSubtitleStyle 现公式（字段序一致），cfg 已定义字段逐项覆盖。
+ * 零漂移红线：buildSubtitleStyle(H, {}) === defaultSubtitleStyle(H)（逐字相等）。
+ * alignment/bold 缺省不输出（追加于末尾，不影响基线串）。
+ */
+export function buildSubtitleStyle(height: number, cfg: SubtitleStyleConfig = {}): string {
+  const font = cfg.font ?? 'Noto Sans CJK SC'
+  const fontSize = Math.max(16, Math.round(height * (cfg.size_pct ?? 0.018)))
+  const primary = cfg.color ? toAssColor(cfg.color) : '&H00FFFFFF'
+  const outlineColor = cfg.outline_color ? toAssColor(cfg.outline_color) : '&H00000000'
+  const outline = Math.max(1, Math.round(height * (cfg.outline_pct ?? 0.0009)))
+  const shadow = cfg.shadow ?? 0
+  const marginV = Math.round(height * (cfg.margin_v_pct ?? 0.02))
+  let s =
+    `FontName=${font},FontSize=${fontSize},PrimaryColour=${primary},` +
+    `OutlineColour=${outlineColor},BorderStyle=1,Outline=${outline},Shadow=${shadow},MarginV=${marginV}`
+  if (cfg.alignment !== undefined) s += `,Alignment=${cfg.alignment}`
+  if (cfg.bold !== undefined) s += `,Bold=${cfg.bold ? 1 : 0}`
+  return s
+}
+
+/** [M19] 水印 overlay 定位表达式（九宫格 + 边距；margin 已整数化）：tl=24:24 / mc=(W-w)/2:(H-h)/2 … */
+export function watermarkOverlayXY(position: WatermarkPosition, marginPx: number): string {
+  const m = Math.round(marginPx)
+  const row = position.charAt(0)
+  const col = position.charAt(1)
+  const x = col === 'l' ? `${m}` : col === 'c' ? '(W-w)/2' : `W-w-${m}`
+  const y = row === 't' ? `${m}` : row === 'm' ? '(H-h)/2' : `H-h-${m}`
+  return `${x}:${y}`
+}
+
+/** [M19] 画幅字符串 'a:b' → 比值（非法入参抛错；服务层入口已先校验枚举） */
+function aspectRatio(aspect: string): { aw: number; ah: number } {
+  const [aw, ah] = aspect.split(':').map((n) => Number(n))
+  if (!aw || !ah || aw <= 0 || ah <= 0) throw new Error(`非法画幅：${aspect}`)
+  return { aw, ah }
+}
+
+/**
+ * [M19] 派生画幅尺寸（纯函数；A 派生端点与 B 多路渲染同源）：
+ * 以高为基准 w = round(srcH × aw/ah)；w 超宽则改为以宽为基准（**保证不放大**）；
+ * 结果向下取偶（libx264 yuv420p 要求宽高均为偶数，取偶只会变小不会变大）。
+ */
+export function resolveAspectSize(srcW: number, srcH: number, aspect: string): { w: number; h: number } {
+  const { aw, ah } = aspectRatio(aspect)
+  let w = Math.round(srcH * (aw / ah))
+  let h = srcH
+  if (w > srcW) {
+    w = srcW
+    h = Math.round(srcW * (ah / aw))
+  }
+  const even = (n: number): number => Math.max(2, Math.floor(n / 2) * 2)
+  return { w: even(w), h: even(h) }
+}
+
+/** [M19] 画幅几何滤镜串：crop 居中裁切 / pad 等比缩小后补黑边（尺寸需先经 resolveAspectSize） */
+export function aspectGeometryFilter(strategy: string, w: number, h: number): string {
+  return strategy === 'pad'
+    ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`
+    : `crop=${w}:${h}:(iw-${w})/2:(ih-${h})/2,setsar=1`
+}
+
+/** [M19] 与主画幅同比例 → 无需派生（重复编码无意义） */
+export function isSameAspect(w: number, h: number, aspect: string): boolean {
+  const { aw, ah } = aspectRatio(aspect)
+  return Math.abs(w / h - aw / ah) < 1e-6
 }
 
 /** 数值参数：params → defaults.video（settings）→ fallback */
@@ -88,6 +162,8 @@ export interface TransitionPlan {
  *      空镜 explicit??duration_per_shot，音频轨按镜序 [句…,静音] concat，SRT 平移后烧录；
  *   ② BGM：run 级直查（loadBgmAsset）循环铺满（atrim 到 total）+ volume + afade + amix；
  *   ③ 转场：xfade 链（前 n-1 镜段长 +T 补偿，offset = V_k，总长仍 Σd）；_compose 覆盖 transition/bgm_*。
+ *   ④ [M19] per-shot 音效：每镜 ≤1 条（purpose=sfx）；起点 = Σ_{j<i} d_j + 片头位移（与 xfade offsets 同口径），
+ *      adelay 注入 + 终混 amix（主轨/BGM 存在时 duration=first）；无绑定 → 音频链逐字节不变。
  */
 export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const ffmpeg = resolveFfmpeg()
@@ -294,7 +370,6 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
-  const totalStr = String(round3(total))
   // [M11] 转场计划（仅静态图 ≥2 镜生效；_compose 覆盖模板 params；禁用时 filter 与 M7 逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
   const transitionReq = composeCfg.transition ?? (typeof params['transition'] === 'string' ? params['transition'] : 'none')
@@ -331,150 +406,166 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       : `合成 ${segments.length} 段镜头视频 → ${width}x${height}@${fps}fps（按实际时长，总 ${total}s）`,
   )
   if (voicePaths.length > 0) ctx.log(`混流 ${voicePaths.length} 句配音轨（连续拼接${needStretch ? '' : `，对齐总时长 ${total}s`}）`)
-  const style = ((typeof params['subtitle_style'] === 'string' && params['subtitle_style'])
+  // [M19] 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
+  const brand = await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
+  // 字幕样式采用链：结构化优先（brand.subtitle 非空 → 接管）；否则旧链逐字节不变
+  const legacyStyle = (typeof params['subtitle_style'] === 'string' && params['subtitle_style'])
     || (typeof vidCfg['subtitle_style'] === 'string' && vidCfg['subtitle_style'])
-    || defaultSubtitleStyle(height)).replace(/['"]/g, '')
+  const style = brand.subtitle
+    ? buildSubtitleStyle(height, brand.subtitle).replace(/['"]/g, '')
+    : ((legacyStyle || defaultSubtitleStyle(height)) as string).replace(/['"]/g, '')
+  if (brand.subtitle && legacyStyle) {
+    ctx.log('结构化字幕配置已接管，subtitle_style 旧串被忽略')
+  }
+
+  // [M19] 品牌素材槽解析（水印/片头/片尾；时长探测失败 → 宽容跳过该槽，全链保持现行为）
+  const watermarkArg = brand.watermark ?? null
+  let introArg: { path: string; durSec: number } | null = null
+  if (brand.intro) {
+    const d = probeMediaDuration(brand.intro.path)
+    if (d !== null && d > 0) introArg = { path: brand.intro.path, durSec: d }
+    else ctx.log('片头时长探测失败，已跳过片头（检查品牌片头文件）')
+  }
+  let outroArg: { path: string; durSec: number } | null = null
+  if (brand.outro) {
+    const d = probeMediaDuration(brand.outro.path)
+    if (d !== null && d > 0) outroArg = { path: brand.outro.path, durSec: d }
+    else ctx.log('片尾时长探测失败，已跳过片尾（检查品牌片尾文件）')
+  }
+  if (introArg) ctx.log(`片头就绪：${round3(introArg.durSec)}s（来源 ${brand.intro!.source}），正片内容轴后移 +${round3(introArg.durSec)}s`)
+  if (outroArg) ctx.log(`片尾就绪：${round3(outroArg.durSec)}s（来源 ${brand.outro!.source}）`)
+  // [M19] per-shot 音效解析（run 级直查；每镜 ≤1 条；起点 = Σ_{j<i} d_j + 片头位移；缺文件跳过 + log）
+  const sfxVolume = clamp(composeCfg.sfx_volume ?? 1, 0, 2)
+  const sfxMap = await loadSfxAssets(ctx.run.id)
+  let sfxList: ComposeSfxInput[] = []
+  if (sfxMap.size > 0) {
+    const { entries, missing } = planSfxStarts(
+      segments.map((s) => s.durSec),
+      segments.map((s) => {
+        const a = rows.find((r) => r.id === s.id)
+        return a ? shotIdOfAsset(a) : null
+      }),
+      [...sfxMap.entries()].map(([shotId, a]) => ({
+        shotId,
+        assetId: a.id,
+        relPath: a.relPath,
+        fileOk: !!a.relPath && existsSync(absPathOf(a.relPath)),
+      })),
+      introArg ? round3(introArg.durSec) : 0,
+    )
+    for (const m of missing) ctx.log(`音效资产 #${m.assetId}（镜 ${m.shotId}）文件缺失，已跳过该条`)
+    sfxList = entries.map((e) => ({ path: absPathOf(e.relPath), startSec: e.startSec }))
+    if (sfxList.length > 0) ctx.log(`逐镜音效就绪：${sfxList.length} 条（音量 ${sfxVolume}）`)
+  }
 
   const runInput = JSON.parse(ctx.run.input) as Record<string, unknown>
   const ep = String(runInput['episode_number'] ?? Date.now()).padStart(3, '0')
   const outName = `ep${ep}-final-${Date.now()}.mp4`
   const outRel = relPathOf(ctx.run.projectId, 'final_video', outName)
   const outAbs = absPathOf(outRel)
+  // [M19] 多画幅原生渲染目标（与主画幅同比例者剔除；派生件落 video/ 子目录 purpose=final_video_derived）
+  const multiAspect = readMultiAspect(composeCfg)
+  const maTargets = multiAspect
+    ? multiAspect.aspects
+        .filter((a) => !isSameAspect(width, height, a))
+        .map((a) => ({
+          aspect: a,
+          outAbs: absPathOf(relPathOf(ctx.run.projectId, 'final_video_derived', `ep${ep}-final-${a.replace(':', 'x')}-${Date.now()}.mp4`)),
+        }))
+    : []
+  // [M19] 封面抽取点：有片头 → 片头时长 + 0.2s；否则 0.2s（现行为）
+  const coverAt = introArg ? round3(introArg.durSec + 0.2) : 0.2
 
-  // [M11] 字幕对齐平移：cue ↔ 句序（= voices 序）；Δ 全 0 不写副本；数量不符不平移（原样烧录）
+  // [M11/M19] 字幕平移：对齐逐 cue（cue ↔ 句序 = voices 序）与片头统移合并为一次重写；
+  // Δ 全 0 不写副本；数量不符不平移（原样烧录）；无片头且无对齐 → 不进入（零 diff）
+  const introShift = introArg ? round3(introArg.durSec) : 0
   let srtAbs: string | null = srtRelPath ? absPathOf(srtRelPath) : null
   let tempSrtAbs: string | null = null
-  if (alignPlan && srtRelPath) {
-    const shifts = planSrtShifts(alignPlan, voiceMetas.map((v) => v.lineId!))
-    if (!shifts) {
-      ctx.log(`字幕平移跳过（cue 数与配音句数 ${voiceMetas.length} 不符），SRT 原样烧录`)
-    } else if (shifts.every((d) => d < 1e-3)) {
-      ctx.log('字幕平移 Δ 全 0（无静音插入），直接使用原 SRT')
-    } else {
-      try {
-        const shifted = shiftSrtText(await ctx.readText(subtitleIds[0]!), shifts)
-        if (!shifted) {
-          ctx.log(`字幕平移跳过（SRT cue 数与配音句数 ${voiceMetas.length} 不符），原样烧录`)
-        } else {
-          tempSrtAbs = join(dirname(outAbs), `.aligned-${ctx.run.id}-${Date.now()}.srt`)
-          writeFileSync(tempSrtAbs, shifted, 'utf8')
-          srtAbs = tempSrtAbs
-          ctx.log(`字幕对齐平移：${shifts.length} 条 cue 重写（最大偏移 ${Math.max(...shifts).toFixed(2)}s，临时副本合成后清理）`)
-        }
-      } catch (err) {
-        ctx.log(`字幕平移失败（原样烧录）：${(err as Error).message}`)
-      }
-    }
-  }
-
-  // 组装 filter_complex：段归一（+settb）→ xfade/concat → [basev]；(字幕) → subtitles → [outv]；
-  // voices（+对齐静音段）→ [outa]；(BGM) → amix/anull → [aout]
-  const inputArgs: string[] = []
-  const fcParts: string[] = []
-  segments.forEach((seg, i) => {
-    const segLen = xfadePlan.enabled ? xfadePlan.videoLens[i]! : seg.durSec
-    if (seg.kind === 'image') {
-      inputArgs.push('-loop', '1', '-t', String(segLen), '-i', seg.path)
-    } else {
-      inputArgs.push('-i', seg.path)
-    }
-    fcParts.push(
-      `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p${xfadePlan.enabled ? ',settb=AVTB' : ''}[v${i}]`,
-    )
-  })
-  const segIn = segments.map((_, i) => `[v${i}]`).join('')
-  const hasAudio = voicePaths.length > 0
-  if (hasAudio) {
-    voicePaths.forEach((p, i) => {
-      inputArgs.push('-i', p)
-      const srcIdx = segments.length + i
-      fcParts.push(`[${srcIdx}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
-    })
+  if (srtRelPath && (alignPlan || introShift > 0)) {
+    let shifts: number[] | null = null
+    let alignMode = false
     if (alignPlan) {
-      // [M11] 对齐轨：按镜序 [句…, 镜尾静音(anullsrc)] concat（总长严格 = Σd；apad 兜底浮点）
-      const items: string[] = []
-      let silenceIdx = 0
-      for (const ps of alignPlan.segments) {
-        for (const lineId of ps.lineIds) {
-          const vi = voiceMetas.findIndex((v) => v.lineId === lineId)
-          if (vi < 0) throw new Error(`内部不一致：句 ${lineId} 无对应配音资产（对齐轨组装中止）`)
-          items.push(`[a${vi}]`)
-        }
-        if (ps.silenceSec > 0) {
-          fcParts.push(
-            `anullsrc=r=44100:cl=stereo:d=${round3(ps.silenceSec)},aformat=sample_fmts=fltp:channel_layouts=stereo[s${silenceIdx}]`,
-          )
-          items.push(`[s${silenceIdx}]`)
-          silenceIdx++
+      const alignShifts = planSrtShifts(alignPlan, voiceMetas.map((v) => v.lineId!))
+      if (alignShifts) {
+        alignMode = true
+        shifts = introShift > 0 ? alignShifts.map((d) => round3(d + introShift)) : alignShifts
+      } else if (introShift > 0) {
+        ctx.log(`字幕对齐平移跳过（cue 数与配音句数 ${voiceMetas.length} 不符），改按片头统移`)
+      } else {
+        ctx.log(`字幕平移跳过（cue 数与配音句数 ${voiceMetas.length} 不符），SRT 原样烧录`)
+      }
+    }
+    if (!shifts && introShift > 0) {
+      try {
+        const cues = countSrtCues(await ctx.readText(subtitleIds[0]!))
+        if (cues > 0) shifts = new Array<number>(cues).fill(introShift)
+        else ctx.log('字幕片头位移跳过（SRT 无有效 cue 行），原样烧录')
+      } catch (err) {
+        ctx.log(`字幕片头位移失败（原样烧录）：${(err as Error).message}`)
+      }
+    }
+    if (shifts) {
+      if (shifts.every((d) => d < 1e-3)) {
+        ctx.log('字幕平移 Δ 全 0（无静音插入），直接使用原 SRT')
+      } else {
+        try {
+          const shifted = shiftSrtText(await ctx.readText(subtitleIds[0]!), shifts)
+          if (!shifted) {
+            ctx.log(`字幕平移跳过（SRT cue 数与配音句数 ${voiceMetas.length} 不符），原样烧录`)
+          } else {
+            tempSrtAbs = join(dirname(outAbs), `${alignMode ? '.aligned-' : '.intro-'}${ctx.run.id}-${Date.now()}.srt`)
+            writeFileSync(tempSrtAbs, shifted, 'utf8')
+            srtAbs = tempSrtAbs
+            ctx.log(
+              alignMode
+                ? `字幕对齐平移：${shifts.length} 条 cue 重写（最大偏移 ${Math.max(...shifts).toFixed(2)}s${introShift > 0 ? '，含片头位移' : ''}，临时副本合成后清理）`
+                : `字幕片头位移：${shifts.length} 条 cue 统移 +${introShift}s（临时副本合成后清理）`,
+            )
+          }
+        } catch (err) {
+          ctx.log(`字幕平移失败（原样烧录）：${(err as Error).message}`)
         }
       }
-      fcParts.push(`${items.join('')}concat=n=${items.length}:v=0:a=1,apad=whole_dur=${totalStr}[outa]`)
-    } else {
-      const aIn = voicePaths.map((_, i) => `[a${i}]`).join('')
-      // 连续轨：apad 补静音到视频总长；音频超长不裁剪（口播超时保内容，输出时长自然取 max）
-      fcParts.push(`${aIn}concat=n=${voicePaths.length}:v=0:a=1,apad=whole_dur=${totalStr}[outa]`)
     }
-  }
-  // [M11] BGM 混音链：有主音轨 → amix 以主轨定长；无主音轨 → bgm 直接 [aout]
-  if (bgmPath) {
-    const bgmIdx = segments.length + voicePaths.length
-    inputArgs.push('-stream_loop', '-1', '-i', bgmPath)
-    const fadeDur = round3(bgmFade)
-    let chain =
-      `[${bgmIdx}:a]atrim=0:${totalStr},asetpts=PTS-STARTPTS,aresample=44100,`
-      + `aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${bgmVolume}`
-    if (fadeDur > 0) {
-      chain += `,afade=t=in:st=0:d=${fadeDur},afade=t=out:st=${round3(Math.max(0, total - bgmFade))}:d=${fadeDur}`
-    }
-    fcParts.push(`${chain}[bgm]`)
-    fcParts.push(hasAudio ? '[outa][bgm]amix=inputs=2:duration=first:normalize=0[aout]' : '[bgm]anull[aout]')
-  }
-  const videoOut = srtAbs ? 'outv' : 'basev'
-  if (xfadePlan.enabled) {
-    // [M11] xfade 链：offset o_k = V_k（前 n−1 镜段长 +T 补偿；末轮输出 [basev]，总长仍 Σd）
-    let prev = 'v0'
-    const boundaries = xfadePlan.offsets.length
-    for (let k = 0; k < boundaries; k++) {
-      const outLabel = k < boundaries - 1 ? `x${k + 1}` : 'basev'
-      fcParts.push(
-        `[${prev}][v${k + 1}]xfade=transition=${xfadePlan.type}:duration=${xfadePlan.durSec}:offset=${xfadePlan.offsets[k]}[${outLabel}]`,
-      )
-      prev = outLabel
-    }
-  } else {
-    fcParts.push(`${segIn}concat=n=${segments.length}:v=1:a=0[basev]`)
-  }
-  if (srtAbs) {
-    fcParts.push(
-      `[basev]subtitles='${basename(srtAbs)}':force_style='${style}'[outv]`,
-    )
   }
 
-  const maps = ['-map', `[${videoOut}]`]
-  const encAudio: string[] = []
-  if (hasAudio || bgmPath) {
-    maps.push('-map', bgmPath ? '[aout]' : '[outa]')
-    encAudio.push('-c:a', 'aac', '-b:a', '192k')
-  }
-  const args = [
-    '-y',
-    ...inputArgs,
-    '-filter_complex',
-    fcParts.join(';'),
-    ...maps,
-    '-c:v', 'libx264',
-    '-preset', 'medium',
-    '-crf', '20',
-    '-r', String(fps),
-    ...encAudio,
-    '-movflags', '+faststart',
+  // 组装 filter_complex 与编码参数（[M19] 提炼 buildComposeArgs 纯函数；无水印/片头尾 → 与 M11 逐字节一致）
+  const hasAudio = voicePaths.length > 0
+  const { args, cwd, totalAll, derived } = buildComposeArgs({
+    segments,
+    width,
+    height,
+    fps,
+    xfadePlan,
+    voicePaths,
+    lineIds: voiceMetas.map((v) => v.lineId!),
+    alignPlan,
+    total,
+    srtAbs,
+    style,
+    bgmPath,
+    bgmVolume,
+    bgmFade,
+    watermark: watermarkArg,
+    intro: introArg,
+    outro: outroArg,
+    sfx: sfxList,
+    sfxVolume,
+    multiAspect:
+      multiAspect && maTargets.length > 0
+        ? { strategy: multiAspect.strategy, targets: maTargets, subtitleCfg: brand.subtitle ?? null }
+        : undefined,
     outAbs,
-  ]
-  // subtitles filter 以相对路径（文件名）引用 SRT → cwd 指向其所在目录（对齐平移副本与输出同目录）
-  const cwd = srtAbs ? dirname(srtAbs) : undefined
+  })
+  if (derived.length > 0) {
+    ctx.log(
+      `多画幅原生渲染：主 ${width}x${height} + 派生 ${derived.map((d) => `${d.aspect}(${d.width}x${d.height})`).join('、')}`
+        + `（策略 ${multiAspect!.strategy}，编码 ×${derived.length + 1}，耗时相应增加）`,
+    )
+  }
 
   ctx.log(
-    `ffmpeg 开始合成（${segments.length} 段${hasAudio ? ' + 音频轨' : ''}${srtRelPath ? ' + 字幕' : ''}${bgmPath ? ' + BGM' : ''}${xfadePlan.enabled ? ' + 转场' : ''}）…`,
+    `ffmpeg 开始合成（${segments.length} 段${hasAudio ? ' + 音频轨' : ''}${srtRelPath ? ' + 字幕' : ''}${bgmPath ? ' + BGM' : ''}${xfadePlan.enabled ? ' + 转场' : ''}${watermarkArg ? ' + 水印' : ''}${introArg ? ' + 片头' : ''}${outroArg ? ' + 片尾' : ''}${sfxList.length > 0 ? ` + 音效×${sfxList.length}` : ''}）…`,
   )
   try {
     await runFfmpeg(ctx, ffmpeg, args, cwd)
@@ -503,7 +594,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     fileSize: size,
     width,
     height,
-    duration: Math.round(total),
+    duration: Math.round(totalAll),
     params: {
       fps,
       resolution,
@@ -512,7 +603,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       voices: voicePaths.length,
       subtitle: srtRelPath ? 1 : 0,
       subtitle_style: style,
-      duration: Math.round(total * 1000) / 1000,
+      duration: Math.round(totalAll * 1000) / 1000,
       // [M7] 输入快照（stale 检测数据源：与 output.asset_ids 同口径）+ 容错溯源（旧键全部保留不动）
       inputs: {
         images: mode === 'images' ? imageIds : null,
@@ -526,18 +617,25 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null },
       transition: { enabled: xfadePlan.enabled, type: xfadePlan.enabled ? xfadePlan.type : null, dur_sec: xfadePlan.enabled ? xfadePlan.durSec : null },
       bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null,
+      // [M19] 品牌溯源（无配置 → null；duration = 含片头尾总长）
+      watermark: watermarkArg
+        ? { position: watermarkArg.position, opacity: watermarkArg.opacity, width_pct: watermarkArg.width_pct, source: watermarkArg.source }
+        : null,
+      intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null,
+      outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null,
+      sfx: sfxList.length > 0 ? { count: sfxList.length, volume: sfxVolume } : null,
     },
     tags,
     stepId: ctx.step.id,
   })
-  ctx.log(`成片落盘 asset#${videoAsset.id} → ${outRel}（${Math.round(size / 1024 / 1024)} MB${hasAudio ? '，含音轨' : ''}${srtRelPath ? '，含字幕' : ''}）`)
+  ctx.log(`成片落盘 asset#${videoAsset.id} → ${outRel}（${Math.round(size / 1024 / 1024)} MB${hasAudio ? '，含音轨' : ''}${srtRelPath ? '，含字幕' : ''}${introArg || outroArg ? '，含片头尾' : ''}）`)
 
   const assetIds = [videoAsset.id]
   if (wantCover) {
     const coverName = `ep${ep}-cover-${Date.now()}.jpg`
     const coverRel = relPathOf(ctx.run.projectId, 'thumbnail', coverName)
     const coverAbs = absPathOf(coverRel)
-    await runFfmpeg(ctx, ffmpeg, ['-y', '-ss', '0.2', '-i', outAbs, '-frames:v', '1', '-q:v', '3', coverAbs])
+    await runFfmpeg(ctx, ffmpeg, ['-y', '-ss', String(coverAt), '-i', outAbs, '-frames:v', '1', '-q:v', '3', coverAbs])
     const coverAsset = await registerAsset(ctx.run.projectId, {
       runId: ctx.run.id,
       name: coverName,
@@ -553,6 +651,44 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     })
     assetIds.push(coverAsset.id)
     ctx.log(`封面提取完成 asset#${coverAsset.id}`)
+  }
+  // [M19] 多画幅派生件落资产（单路异常仅 warn，不影响成片与封面结果）
+  for (const d of derived) {
+    try {
+      if (!existsSync(d.outAbs)) {
+        ctx.log(`派生画幅 ${d.aspect} 产物缺失，已跳过落资产`)
+        continue
+      }
+      const dName = basename(d.outAbs)
+      const derivedAsset = await registerAsset(ctx.run.projectId, {
+        runId: ctx.run.id,
+        name: dName,
+        kind: 'video',
+        purpose: 'final_video_derived',
+        relPath: relPathOf(ctx.run.projectId, 'final_video_derived', dName),
+        mime: 'video/mp4',
+        ext: 'mp4',
+        fileSize: statSync(d.outAbs).size,
+        width: d.width,
+        height: d.height,
+        duration: Math.round(totalAll),
+        params: {
+          native: true,
+          aspect: d.aspect,
+          strategy: multiAspect!.strategy,
+          source: 'multi_render',
+          fps,
+          resolution: `${d.width}x${d.height}`,
+          duration: round3(totalAll),
+        },
+        tags: ['final', 'derived', d.aspect.replace(':', 'x')],
+        stepId: ctx.step.id,
+      })
+      assetIds.push(derivedAsset.id)
+      ctx.log(`派生画幅落盘 asset#${derivedAsset.id} ${d.aspect}（${d.width}x${d.height}）→ ${dName}`)
+    } catch (err) {
+      ctx.log(`派生画幅 ${d.aspect} 落资产失败（不影响成片）：${(err as Error).message}`)
+    }
   }
   return { assetIds }
 }
@@ -816,9 +952,21 @@ export function secToSrtTs(sec: number): string {
   )
 }
 
+/** [M11] SRT 时间戳行正则（cue 行：hh:mm:ss,mmm --> hh:mm:ss,mmm；兼容 . 分隔）；[M19] 提升为模块级共享常量 */
+const SRT_TIME_RE = /^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/
+
+/** [M19] SRT cue 数（时间戳行计数；片头位移平移前校验用） */
+export function countSrtCues(srt: string): number {
+  let n = 0
+  for (const line of srt.split(/\r?\n/)) {
+    if (SRT_TIME_RE.test(line)) n++
+  }
+  return n
+}
+
 /** [M11] SRT 逐 cue 平移（保格式；cue 数与 shifts 不符 → null） */
 export function shiftSrtText(srt: string, shifts: number[]): string | null {
-  const timeRe = /^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/
+  const timeRe = SRT_TIME_RE
   const lines = srt.split(/\r?\n/)
   let cueCount = 0
   for (const line of lines) {
@@ -870,6 +1018,338 @@ export function buildTransitionPlan(durations: number[], transition: string, dur
     offsets.push(acc)
   }
   return { enabled: true, type: transition, durSec, videoLens, offsets, totalDur: round3(acc + durations[n - 1]!) }
+}
+
+/** [M19] 品牌素材输入（水印：清洗参数 + 绝对路径） */
+export type ComposeWatermarkInput = ResolvedWatermark & { path: string }
+
+/** [M19] 片头/片尾输入（绝对路径 + 探测时长） */
+export interface ComposeClipInput {
+  path: string
+  durSec: number
+}
+
+/** [M19] per-shot 音效输入（绝对路径 + 镜起点秒；起点已含片头位移） */
+export interface ComposeSfxInput {
+  path: string
+  startSec: number
+}
+
+/**
+ * [M19] SFX 起点规划（纯函数；探针直测）——每镜 ≤1 条、起点 = Σ_{j<i} d_j + 片头位移：
+ * - 与 buildTransitionPlan offsets 同口径：转场时镜 i 起点即 offsets[i-1]（同一 Σd 公式，不随转场改变）；
+ * - fileOk=false（文件缺失）或 relPath 缺失 → 计入 missing 跳过，不产出条目。
+ */
+export function planSfxStarts(
+  segmentDurations: number[],
+  segmentShotIds: Array<string | null>,
+  sfxAssets: Array<{ shotId: string; assetId: number; relPath: string | null; fileOk: boolean }>,
+  introSec: number,
+): { entries: Array<{ assetId: number; relPath: string; startSec: number }>; missing: Array<{ shotId: string; assetId: number }> } {
+  const byShot = new Map(sfxAssets.map((a) => [a.shotId, a]))
+  const entries: Array<{ assetId: number; relPath: string; startSec: number }> = []
+  const missing: Array<{ shotId: string; assetId: number }> = []
+  let acc = 0
+  for (let i = 0; i < segmentDurations.length; i++) {
+    const sid = segmentShotIds[i] ?? null
+    const a = sid ? byShot.get(sid) : undefined
+    if (a) {
+      if (a.relPath && a.fileOk) entries.push({ assetId: a.assetId, relPath: a.relPath, startSec: round3(acc + introSec) })
+      else missing.push({ shotId: sid!, assetId: a.assetId })
+    }
+    acc = round3(acc + segmentDurations[i]!)
+  }
+  return { entries, missing }
+}
+
+/** [M19] buildComposeArgs 输入（主链解析后的纯数据） */
+export interface ComposeArgsInput {
+  segments: Segment[]
+  width: number
+  height: number
+  fps: number
+  xfadePlan: TransitionPlan
+  voicePaths: string[]
+  /** 配音句 lineId（与 voicePaths 同序；对齐轨组装用） */
+  lineIds: string[]
+  alignPlan: AlignPlan | null
+  /** 成片总长（秒；正片 Σd，未含片头尾） */
+  total: number
+  srtAbs: string | null
+  style: string
+  bgmPath: string | null
+  bgmVolume: number
+  bgmFade: number
+  watermark: ComposeWatermarkInput | null
+  intro: ComposeClipInput | null
+  outro: ComposeClipInput | null
+  /** [M19] per-shot 音效（空/缺省 = 音频链与 M11 逐字节一致） */
+  sfx?: ComposeSfxInput[]
+  /** [M19] SFX 全局音量（默认 1；服务层已 clamp 0–2） */
+  sfxVolume?: number
+  /** [M19] 多画幅原生渲染（缺省/targets 空 → args 与单画幅逐字节一致） */
+  multiAspect?: {
+    strategy: 'crop' | 'pad'
+    targets: Array<{ aspect: string; outAbs: string }>
+    /** 结构化字幕配置（非空时派生路按该路高度重算字号；null = 整串模式复用主串） */
+    subtitleCfg?: SubtitleStyleConfig | null
+  }
+  outAbs: string
+}
+
+/** [M19] 多画幅派生输出（buildComposeArgs 算定尺寸与标签；调用方据此落资产） */
+export interface ComposeDerivedOutput {
+  aspect: string
+  width: number
+  height: number
+  outAbs: string
+}
+
+/** [M19] buildComposeArgs 输出（totalAll = 含片头尾总长；无片头尾时 === round3(total)） */
+export interface ComposeArgsResult {
+  args: string[]
+  cwd: string | undefined
+  totalAll: number
+  /** [M19] 派生路输出（与 args 中的额外输出组同序；无派生 → []） */
+  derived: ComposeDerivedOutput[]
+}
+
+/**
+ * [M19] 合成 args 组装（纯函数；探针直测）——M7/M11 组装逻辑原样搬移 + 水印/片头尾开关：
+ * - 零 diff 红线：watermark/intro/outro 全 null 时 args/cwd 与 M7/M11 逐字节一致；
+ * - 输入顺序：segments → voices → BGM → watermark → intro → outro（auxIdx 依此递推）；
+ * - 片头尾：归一（scale/crop/setsar/fps/yuv420p）→ 与 [basev] concat（不参与转场）→ [basev2]；
+ * - 字幕烧录于拼接后（时间轴含片头位移）；水印 overlay 在字幕之后（最顶层）→ [outv]；
+ * - 配音轨 adelay（片头时长）→ apad 到 totalAll；BGM atrim/afade 末端锚定 totalAll；
+ * - [M19] SFX：逐条 adelay 注入（起点含片头位移）→ 终混并入 [aout]；无 SFX → 音频链逐字节不变。
+ * - [M19] 多画幅：拼接结果 split → 主路照旧 + 派生路各自几何/字幕/水印 → 每路独立输出组；未启用 → 逐字节不变。
+ */
+export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
+  const {
+    segments, width, height, fps, xfadePlan, voicePaths, lineIds, alignPlan, total,
+    srtAbs, style, bgmPath, bgmVolume, bgmFade, watermark, intro, outro, outAbs,
+  } = input
+  const sfxList = input.sfx ?? []
+  const sfxCount = sfxList.length
+  const sfxVolume = input.sfxVolume ?? 1
+  const maTargets = input.multiAspect?.targets ?? []
+  const maStrategy = input.multiAspect?.strategy ?? 'crop'
+  const maSubCfg = input.multiAspect?.subtitleCfg ?? null
+  const introDur = intro ? round3(intro.durSec) : 0
+  const outroDur = outro ? round3(outro.durSec) : 0
+  const totalAll = round3(total + introDur + outroDur)
+  const totalAllStr = String(totalAll)
+  const introMs = intro ? Math.round(intro.durSec * 1000) : 0
+  const introDelay = introMs > 0 ? `,adelay=${introMs}|${introMs}` : ''
+
+  const inputArgs: string[] = []
+  const fcParts: string[] = []
+  segments.forEach((seg, i) => {
+    const segLen = xfadePlan.enabled ? xfadePlan.videoLens[i]! : seg.durSec
+    if (seg.kind === 'image') {
+      inputArgs.push('-loop', '1', '-t', String(segLen), '-i', seg.path)
+    } else {
+      inputArgs.push('-i', seg.path)
+    }
+    fcParts.push(
+      `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p${xfadePlan.enabled ? ',settb=AVTB' : ''}[v${i}]`,
+    )
+  })
+  const segIn = segments.map((_, i) => `[v${i}]`).join('')
+  const hasAudio = voicePaths.length > 0
+  if (hasAudio) {
+    voicePaths.forEach((p, i) => {
+      inputArgs.push('-i', p)
+      const srcIdx = segments.length + i
+      fcParts.push(`[${srcIdx}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
+    })
+    if (alignPlan) {
+      // [M11] 对齐轨：按镜序 [句…, 镜尾静音(anullsrc)] concat（总长严格 = Σd；apad 兜底浮点）
+      const items: string[] = []
+      let silenceIdx = 0
+      for (const ps of alignPlan.segments) {
+        for (const lineId of ps.lineIds) {
+          const vi = lineIds.findIndex((id) => id === lineId)
+          if (vi < 0) throw new Error(`内部不一致：句 ${lineId} 无对应配音资产（对齐轨组装中止）`)
+          items.push(`[a${vi}]`)
+        }
+        if (ps.silenceSec > 0) {
+          fcParts.push(
+            `anullsrc=r=44100:cl=stereo:d=${round3(ps.silenceSec)},aformat=sample_fmts=fltp:channel_layouts=stereo[s${silenceIdx}]`,
+          )
+          items.push(`[s${silenceIdx}]`)
+          silenceIdx++
+        }
+      }
+      fcParts.push(`${items.join('')}concat=n=${items.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[outa]`)
+    } else {
+      const aIn = voicePaths.map((_, i) => `[a${i}]`).join('')
+      // 连续轨：adelay 片头位移 + apad 补静音到总长；音频超长不裁剪（口播超时保内容，输出时长自然取 max）
+      fcParts.push(`${aIn}concat=n=${voicePaths.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[outa]`)
+    }
+  }
+  // [M11] BGM 混音链：有主音轨 → amix 以主轨定长；无主音轨 → bgm 直接 [aout]
+  if (bgmPath) {
+    const bgmIdx = segments.length + voicePaths.length
+    inputArgs.push('-stream_loop', '-1', '-i', bgmPath)
+    // [M19] 淡出锚点：有片头尾 → totalAll；否则 total（零漂移）
+    const fadeBase = intro || outro ? totalAll : total
+    const fadeDur = round3(bgmFade)
+    let chain =
+      `[${bgmIdx}:a]atrim=0:${totalAllStr},asetpts=PTS-STARTPTS,aresample=44100,`
+      + `aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${bgmVolume}`
+    if (fadeDur > 0) {
+      chain += `,afade=t=in:st=0:d=${fadeDur},afade=t=out:st=${round3(Math.max(0, fadeBase - bgmFade))}:d=${fadeDur}`
+    }
+    fcParts.push(`${chain}[bgm]`)
+    // [M19] 有 SFX 时主混先出 [amain]，由 SFX 终混统一产出 [aout]；无 SFX → 现行为逐字节不变
+    if (hasAudio) fcParts.push(`[outa][bgm]amix=inputs=2:duration=first:normalize=0[${sfxCount > 0 ? 'amain' : 'aout'}]`)
+    else if (sfxCount === 0) fcParts.push('[bgm]anull[aout]')
+  }
+  // [M19] 品牌素材输入（水印 → 片头 → 片尾；索引递推；归一链先于 [basev] 拼接定义）
+  let auxIdx = segments.length + voicePaths.length + (bgmPath ? 1 : 0)
+  if (watermark) {
+    const wmIdx = auxIdx
+    auxIdx++
+    inputArgs.push('-i', watermark.path)
+    fcParts.push(
+      `[${wmIdx}:v]scale=${Math.round(width * watermark.width_pct)}:-1,format=rgba,colorchannelmixer=aa=${watermark.opacity}[wm]`,
+    )
+  }
+  if (intro) {
+    const introIdx = auxIdx
+    auxIdx++
+    inputArgs.push('-i', intro.path)
+    fcParts.push(
+      `[${introIdx}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[vintro]`,
+    )
+  }
+  if (outro) {
+    const outroIdx = auxIdx
+    inputArgs.push('-i', outro.path)
+    fcParts.push(
+      `[${outroIdx}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[voutro]`,
+    )
+  }
+  // [M19] per-shot 音效输入（索引位于全部素材槽之后；起点 adelay 已含片头位移；v1 不裁剪——超镜长自然溢出）
+  const sfxBaseIdx = segments.length + voicePaths.length + (bgmPath ? 1 : 0)
+    + (watermark ? 1 : 0) + (intro ? 1 : 0) + (outro ? 1 : 0)
+  sfxList.forEach((s, i) => {
+    inputArgs.push('-i', s.path)
+    const startMs = Math.round(s.startSec * 1000)
+    fcParts.push(
+      `[${sfxBaseIdx + i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,`
+      + `volume=${round3(sfxVolume)},adelay=${startMs}|${startMs}[sfx${i}]`,
+    )
+  })
+  // [M19] SFX 终混：有主音轨/BGM → amix(inputs=1+k, duration=first 以主轨定长)；
+  // 仅 SFX（无配音无 BGM）→ 组内 amix(longest) + apad 到 totalAll
+  if (sfxCount > 0) {
+    const sfxIns = sfxList.map((_, i) => `[sfx${i}]`).join('')
+    if (hasAudio || bgmPath) {
+      const mainIn = hasAudio && bgmPath ? '[amain]' : hasAudio ? '[outa]' : '[bgm]'
+      fcParts.push(`${mainIn}${sfxIns}amix=inputs=${1 + sfxCount}:duration=first:normalize=0[aout]`)
+    } else {
+      fcParts.push(`${sfxIns}amix=inputs=${sfxCount}:duration=longest:normalize=0,apad=whole_dur=${totalAllStr}[aout]`)
+    }
+  }
+  if (xfadePlan.enabled) {
+    // [M11] xfade 链：offset o_k = V_k（前 n−1 镜段长 +T 补偿；末轮输出 [basev]，总长仍 Σd）
+    let prev = 'v0'
+    const boundaries = xfadePlan.offsets.length
+    for (let k = 0; k < boundaries; k++) {
+      const outLabel = k < boundaries - 1 ? `x${k + 1}` : 'basev'
+      fcParts.push(
+        `[${prev}][v${k + 1}]xfade=transition=${xfadePlan.type}:duration=${xfadePlan.durSec}:offset=${xfadePlan.offsets[k]}[${outLabel}]`,
+      )
+      prev = outLabel
+    }
+  } else {
+    fcParts.push(`${segIn}concat=n=${segments.length}:v=1:a=0[basev]`)
+  }
+  // [M19] 片头尾拼接：仅存在侧参与（n=2/3）；字幕轴与音频位移均以拼接后为准
+  const concatBase = intro || outro ? 'basev2' : 'basev'
+  if (intro || outro) {
+    const parts = `${intro ? '[vintro]' : ''}[basev]${outro ? '[voutro]' : ''}`
+    const n = 1 + (intro ? 1 : 0) + (outro ? 1 : 0)
+    fcParts.push(`${parts}concat=n=${n}:v=1:a=0[basev2]`)
+  }
+  // [M19] 多画幅：split 于拼接后（含片头尾）——主路 [bm] 照旧，派生路 [b1..bk] 各自构图
+  const mainBase = maTargets.length > 0 ? 'bm' : concatBase
+  if (maTargets.length > 0) {
+    const labels = ['bm', ...maTargets.map((_, k) => `b${k + 1}`)].map((l) => `[${l}]`).join('')
+    fcParts.push(`[${concatBase}]split=${maTargets.length + 1}${labels}`)
+  }
+  const subOut: string | null = srtAbs ? (watermark ? 'subv' : 'outv') : null
+  if (srtAbs) {
+    fcParts.push(
+      `[${mainBase}]subtitles='${basename(srtAbs)}':force_style='${style}'[${subOut}]`,
+    )
+  }
+  // [M19] 水印 overlay（最顶层；字幕烧录之后）
+  if (watermark) {
+    const wmIn = srtAbs && subOut ? subOut : mainBase
+    fcParts.push(`[${wmIn}][wm]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
+  }
+  const videoOut = watermark || srtAbs ? 'outv' : mainBase
+
+  // [M19] 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（同一 [wm] 分流）
+  const derived: ComposeDerivedOutput[] = []
+  const derivedLabels: string[] = []
+  maTargets.forEach((t, k) => {
+    const { w, h } = resolveAspectSize(width, height, t.aspect)
+    let prev = `b${k + 1}`
+    fcParts.push(`[${prev}]${aspectGeometryFilter(maStrategy, w, h)}[dv${k}]`)
+    prev = `dv${k}`
+    if (srtAbs) {
+      const st = maSubCfg ? buildSubtitleStyle(h, maSubCfg).replace(/['"]/g, '') : style
+      fcParts.push(`[${prev}]subtitles='${basename(srtAbs)}':force_style='${st}'[dsub${k}]`)
+      prev = `dsub${k}`
+    }
+    if (watermark) {
+      fcParts.push(`[${prev}][wm]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[dwm${k}]`)
+      prev = `dwm${k}`
+    }
+    derivedLabels.push(prev)
+    derived.push({ aspect: t.aspect, width: w, height: h, outAbs: t.outAbs })
+  })
+
+  // [M19] 音频终标签（有 BGM/SFX → [aout]；仅配音 → [outa]；无音频 → null）
+  const audioTail = bgmPath || sfxCount > 0 ? 'aout' : hasAudio ? 'outa' : null
+  const encAudio: string[] = []
+  // [M19] 多路输出时同一音频 pad 不得被两个输出重复 -map（ffmpeg：Output with label ... already used elsewhere
+  // → Error opening output files: Invalid argument）→ asplit=1+k 分流，每路映射唯一标签；单路 → 原标签不变
+  const aMaps: string[] = []
+  if (audioTail) {
+    encAudio.push('-c:a', 'aac', '-b:a', '192k')
+    if (maTargets.length > 0) {
+      const outs = ['amapMain', ...maTargets.map((_, k) => `amapD${k}`)]
+      fcParts.push(`[${audioTail}]asplit=${outs.length}${outs.map((l) => `[${l}]`).join('')}`)
+      aMaps.push(...outs.map((l) => `[${l}]`))
+    } else {
+      aMaps.push(`[${audioTail}]`)
+    }
+  }
+  const encVideo = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-r', String(fps)]
+  // 多输出：每路独立 -map 组 + 同编码参数（音频按路分流）；无派生 → token 序与单输出逐字节一致
+  const am = (label: string | undefined): string[] => (label ? ['-map', label] : [])
+  const outGroups = ['-map', `[${videoOut}]`, ...am(aMaps[0]), ...encVideo, ...encAudio, '-movflags', '+faststart', outAbs]
+  derived.forEach((d, k) => {
+    outGroups.push(
+      '-map',
+      `[${derivedLabels[k]!}]`,
+      ...am(aMaps[k + 1]),
+      ...encVideo,
+      ...encAudio,
+      '-movflags',
+      '+faststart',
+      d.outAbs,
+    )
+  })
+  const args = ['-y', ...inputArgs, '-filter_complex', fcParts.join(';'), ...outGroups]
+  // subtitles filter 以相对路径（文件名）引用 SRT → cwd 指向其所在目录（对齐平移副本与输出同目录）
+  const cwd = srtAbs ? dirname(srtAbs) : undefined
+  return { args, cwd, totalAll, derived }
 }
 
 /** ffmpeg 执行：stderr 逐行 → step.log 事件；非零退出抛错（含尾部输出） */

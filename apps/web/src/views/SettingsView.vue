@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ApiConfigForm from '../components/ApiConfigForm.vue'
+import BrandSettings from '../components/BrandSettings.vue'
 import VendorCredentialForm from '../components/VendorCredentialForm.vue'
 import Icon from '../components/Icon.vue'
 import SearchSelect from '../components/SearchSelect.vue'
+import VoiceLibrary from '../components/VoiceLibrary.vue'
 import { configApi, settingsApi, statsApi, vendorApi } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import type { ApiConfig, ApiProvider, ProviderConfigLite, UsageItem, VendorCredential } from '../lib/types'
 import { fmtQty } from '../lib/format'
 
-// 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）
+// 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）+ [M19] 品牌（平台品牌资产）/ 音色库（声音克隆）
 const TABS = [
   { key: 'text', label: '文本生成', icon: 'pencil', types: ['llm'], hint: '剧本 / 文案 / 结构化输出（LLM）' },
   { key: 'image', label: '图片生成', icon: 'photo', types: ['image'], hint: '分镜 / 角色 / 封面出图' },
   { key: 'video', label: '视频生成', icon: 'video', types: ['video'], hint: '镜头动效 / AI 视频生成' },
   { key: 'audio', label: '语音合成', icon: 'speaker-wave', types: ['audio'], hint: '配音 / TTS（OpenAI 兼容 /audio/speech）' },
+  { key: 'voices', label: '音色库', icon: 'wand', types: [], hint: '声音克隆（角色声线以 clone:{id} 引用）' },
+  { key: 'brand', label: '品牌', icon: 'brush', types: [], hint: '水印 / 片头 / 片尾 / 字幕样式（平台默认；项目与 run 可覆盖）' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
@@ -387,7 +391,7 @@ async function savePricing() {
         >
           <Icon :name="t.icon" :size="13" :stroke-width="1.8" />
           {{ t.label }}
-          <span class="cnt">{{ cntOf(t.key) }}</span>
+          <span v-if="t.types.length" class="cnt">{{ cntOf(t.key) }}</span>
         </button>
       </div>
     </div>
@@ -396,6 +400,13 @@ async function savePricing() {
     <div v-if="loading" class="empty">加载中…</div>
 
     <template v-else>
+      <!-- [M19] 品牌 tab：平台品牌（水印/片头/片尾/字幕样式；项目与 run 可覆盖） -->
+      <BrandSettings v-if="activeTab === 'brand'" scope="platform" />
+
+      <!-- [M19 P8] 音色库 tab：声音克隆（列表/试听/删除 + 新建复刻） -->
+      <VoiceLibrary v-else-if="activeTab === 'voices'" />
+
+      <template v-else>
       <!-- 就绪摘要（当前能力） -->
       <div class="ready" :class="readiness.tone">
         <span class="r-dot" />
@@ -618,6 +629,7 @@ async function savePricing() {
           </div>
         </div>
       </details>
+      </template>
     </template>
 
     <ApiConfigForm

@@ -120,4 +120,10 @@ onBeforeUnmount(() => {
   gap: 8px;
   background: var(--panel-2);
 }
+
+/* 底栏提示文案较长时不得压缩按钮（中文可逐字换行，会把「关闭」挤成两行） */
+.foot :deep(.btn) {
+  flex: none;
+  white-space: nowrap;
+}
 </style>

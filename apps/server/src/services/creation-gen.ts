@@ -31,6 +31,7 @@ import { saveGeneratedMedia } from './net'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, writeTextAsset } from './storage'
 import { combineStyleSnippets, resolveProjectStyleSnippets } from './style-preset'
 import { resolveAudioEndpoint, synthSpeech } from './tts'
+import { cloneEndpoint, loadCloneIndex } from './tts-clone'
 import { recordLlmUsage, recordUsage, resolveUnitPrice, type UsageKind, type UsageUnit } from './usage'
 
 /**
@@ -1087,19 +1088,27 @@ function runComposeFfmpeg(ffmpeg: string, args: string[]): Promise<void> {
   })
 }
 
-/** [M17] 音频执行径：声线链（params → settings → 实例 → alloy）→ synthSpeech → 落盘 → succeeded + 用量(tts/char) */
+/** [M17] 音频执行径：声线链（params → settings → 实例 → alloy）→ synthSpeech → 落盘 → succeeded + 用量(tts/char)
+ * [M19 P8] 任一级写 clone:{id} 且音色库命中 → 换 provider 端点 + 克隆绑定模型（无效引用降级同声线链口径） */
 async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode, spec: NodeSpec, plan: InputPlan): Promise<void> {
   const text = (plan.promptText ?? spec.prompt).trim()
   if (!text) throw new Error('音频文本为空（请在 prompt 填写内容或连线提示词节点）')
   const endpoint = await resolveAudioEndpoint(spec.provider)
   const settingsVoice = await projectAudioVoice(canvas.projectId)
-  const { voice, source: voiceSource } = resolveVoiceChain({
+  const { voice, source: voiceSource, clone, cloneSkipped } = resolveVoiceChain({
     paramVoice: spec.voice,
     settingsVoice,
     instanceVoice: endpoint.voice,
+    cloneIndex: await loadCloneIndex(),
   })
-  log.info(`canvas node #${node.id} 音频合成：${endpoint.providerKey}/${endpoint.model} voice=${voice}（${voiceSource}）${text.length} 字`)
-  const data = await synthSpeech(text, endpoint, { voice, speed: spec.speed })
+  if (cloneSkipped.length > 0) log.warn(`canvas node #${node.id} 克隆音色引用未命中（${cloneSkipped.join('、')}）→ 跳过该级继续降级`)
+  const ep = clone ? await cloneEndpoint(clone) : endpoint
+  log.info(
+    `canvas node #${node.id} 音频合成：${ep.providerKey}/${ep.model} voice=${voice}（${
+      clone ? `clone:${clone.id} ${clone.name}` : voiceSource
+    }）${text.length} 字`,
+  )
+  const data = await synthSpeech(text, ep, { voice, speed: spec.speed })
   if (await taskCancelled(taskId)) return // 生成不可中断——完成后若已取消 → 弃存
 
   const fileName = `${Date.now()}-voice-node${node.id}.mp3`
@@ -1120,10 +1129,12 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
     params: {
       canvasId: canvas.id,
       nodeId: node.id,
-      provider: endpoint.providerKey,
-      model: endpoint.model,
+      provider: ep.providerKey,
+      model: ep.model,
       voice,
-      voiceSource,
+      voiceSource: clone ? 'clone' : voiceSource,
+      clone_id: clone?.id ?? null,
+      clone_name: clone?.name ?? null,
       speed: spec.speed ?? null,
       chars: text.length,
     },
@@ -1142,8 +1153,8 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
     kind: 'tts',
     unit: 'char',
     quantity: text.length,
-    provider: endpoint.providerKey,
-    model: endpoint.model,
+    provider: ep.providerKey,
+    model: ep.model,
   })
   log.info(`canvas node #${node.id} 音频完成 → asset#${asset.id}`)
 }

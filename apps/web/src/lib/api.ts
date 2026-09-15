@@ -3,9 +3,13 @@ import type {
   ApiConfig,
   ApiErrorBody,
   ApiProvider,
+  AspectStrategy,
+  AspectValue,
   Asset,
   Batch,
   BatchDetail,
+  BrandConfig,
+  BrandSlotKey,
   CanvasArrangeMode,
   CanvasDoc,
   CanvasDocNode,
@@ -19,10 +23,14 @@ import type {
   CanvasViewport,
   CleanupResult,
   ComposeConfig,
+  ComposeSfxItem,
   CreationNodeSpec,
+  DeriveAspectResult,
   EntityItem,
   EntityKind,
   EntityPolishResult,
+  EntityRefGenIssueResult,
+  EntityRefGenTask,
   Episode,
   ExportAssetLite,
   FetchModelsResult,
@@ -56,6 +64,8 @@ import type {
   TemplateValidation,
   UsageSummary,
   VendorCredential,
+  VoiceCloneItem,
+  VoiceCloneProvider,
 } from './types'
 
 /** 统一请求封装：错误解析为 {code,message}，抛 ApiError */
@@ -255,6 +265,14 @@ export const entityApi = {
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/entities/${id}`),
   /** [M13] 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动） */
   polish: (ids: number[]) => api.post<EntityPolishResult>('/api/v1/entities/polish', { ids }),
+  /** [M19 P6] 批量发起参考图生成（≤10 实体 × 1-4 变体；202 入队即返，完成后服务端自动挂接 ref_asset_ids） */
+  refGen: (projectId: number, entityIds: number[], variants = 1) =>
+    api.post<EntityRefGenIssueResult>('/api/v1/entities/ref-gen', { projectId, entityIds, variants }),
+  /** [M19 P6] 本项任务列表（全部在途置顶 + 近 20 条终态） */
+  refGenTasks: (projectId: number) =>
+    api.get<{ items: EntityRefGenTask[]; counts: Record<string, number> }>(`/api/v1/entities/ref-gen/tasks?project_id=${projectId}`),
+  /** [M19 P6] 取消单任务（仅 pending/processing；已发出的出图请求完成后弃存） */
+  cancelRefGenTask: (taskId: number) => api.post<{ ok: boolean; note?: string }>(`/api/v1/entities/ref-gen/tasks/${taskId}/cancel`, {}),
 }
 
 /** [M13] 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；全局实体 400） */
@@ -376,6 +394,106 @@ export const settingsApi = {
   /** value 即 PUT body（JSON） */
   put: (key: string, value: unknown) =>
     api.put<{ ok: boolean; key: string; updatedAt: number }>(`/api/v1/settings/${encodeURIComponent(key)}`, value),
+}
+
+/**
+ * [M19] 平台品牌资产（Settings 品牌 tab；水印/片头/片尾）。
+ * 槽参数（position/opacity/enabled 等）走 settingsApi.put('brand', ...) 整体写；本 API 只管文件键通道。
+ */
+export const brandAssetApi = {
+  /** multipart 上传（watermark 须图片 / intro|outro 须视频；≤200MB）→ 更新后 brand 全量 */
+  upload: async (slot: BrandSlotKey, file: File): Promise<{ brand: BrandConfig }> => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    let res: Response
+    try {
+      res = await fetch(`/api/v1/settings/brand/assets/${slot}`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as { brand: BrandConfig }
+  },
+  /** 预览 URL（ts 传值防缓存；无引用/文件缺失 → 404） */
+  fileUrl: (slot: BrandSlotKey, ts?: number) => `/api/v1/settings/brand/assets/${slot}${ts ? `?t=${ts}` : ''}`,
+  /** 清除引用（仅删 file 键；磁盘文件保留）→ 更新后 brand 全量 */
+  clear: (slot: BrandSlotKey) =>
+    api.del<{ ok: boolean; brand: BrandConfig; note: string }>(`/api/v1/settings/brand/assets/${slot}`),
+}
+
+/**
+ * [M19 P8] 平台音色库（Settings 音色库 tab；声音克隆）。
+ * 密钥不落本表：服务端经 Settings → 语音合成实例（api_configs）解析端点与 Key。
+ */
+async function voiceCloneSend(path: string, body: FormData | Record<string, unknown>): Promise<Response> {
+  const isForm = body instanceof FormData
+  let res: Response
+  try {
+    res = await fetch(path, {
+      method: 'POST',
+      headers: isForm ? undefined : { 'Content-Type': 'application/json' },
+      body: isForm ? body : JSON.stringify(body),
+    })
+  } catch {
+    throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+  }
+  if (!res.ok) {
+    let code = 'http_' + res.status
+    let message = `HTTP ${res.status}`
+    try {
+      const data = (await res.json()) as ApiErrorBody
+      if (data?.error?.message) {
+        code = data.error.code
+        message = data.error.message
+      }
+    } catch {
+      // 非 JSON 错误体，保留默认
+    }
+    throw new ApiError(res.status, code, message)
+  }
+  return res
+}
+
+export const voiceCloneApi = {
+  /** 音色列表 + 能力位矩阵（available=false 的供应商不可选） */
+  list: () => api.get<{ items: VoiceCloneItem[]; providers: VoiceCloneProvider[] }>('/api/v1/voice-clones'),
+  /** multipart 克隆创建（样本 wav/mp3 ≤10MB；失败不落行：400 校验 / 502 供应商详情） */
+  create: async (p: {
+    name: string
+    provider: string
+    file?: File | null
+    targetModel?: string
+    sampleUrl?: string
+  }): Promise<{ ok: boolean; clone: VoiceCloneItem; warnings: string[] }> => {
+    const form = new FormData()
+    form.append('name', p.name)
+    form.append('provider', p.provider)
+    if (p.targetModel) form.append('target_model', p.targetModel)
+    if (p.sampleUrl) form.append('sample_url', p.sampleUrl)
+    if (p.file) form.append('file', p.file, p.file.name)
+    const res = await voiceCloneSend('/api/v1/voice-clones', form)
+    return (await res.json()) as { ok: boolean; clone: VoiceCloneItem; warnings: string[] }
+  },
+  /** 移除本地登记（供应商侧音色未删；引用该音色的声线配置自动降级） */
+  remove: (id: number) => api.del<{ ok: boolean; name: string; note: string }>(`/api/v1/voice-clones/${id}`),
+  /** 试听（≤200 字）→ mp3 Blob（不落资产、不记账） */
+  test: async (id: number, text: string): Promise<Blob> => {
+    const res = await voiceCloneSend(`/api/v1/voice-clones/${id}/test`, { text })
+    return await res.blob()
+  },
 }
 
 // ===== [M7] 镜头工作台 =====
@@ -504,6 +622,53 @@ export const composeApi = {
   },
   /** 移除 BGM（软删本 run 有效行） */
   removeBgm: (runId: number) => api.del<{ ok: boolean; note: string }>(`/api/v1/runs/${runId}/compose/bgm`),
+  /** [M19] SFX 列表（shotId → 资产；每镜 ≤1 条有效） */
+  listSfx: (runId: number) => api.get<{ items: ComposeSfxItem[] }>(`/api/v1/runs/${runId}/compose/sfx`),
+  /** [M19] 绑定项目音频资产到指定镜头（复制行；不污染源资产） */
+  bindSfx: (runId: number, shotId: string, assetId: number) =>
+    api.post<{ ok: boolean; item: ComposeSfxItem; note: string }>(`/api/v1/runs/${runId}/compose/sfx`, {
+      shot_id: shotId,
+      asset_id: assetId,
+    }),
+  /** [M19] 上传音频绑定到指定镜头（multipart：shot_id + file） */
+  uploadSfx: async (runId: number, shotId: string, file: File) => {
+    const form = new FormData()
+    form.append('shot_id', shotId)
+    form.append('file', file, file.name)
+    let res: Response
+    try {
+      res = await fetch(`/api/v1/runs/${runId}/compose/sfx`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as { ok: boolean; item: ComposeSfxItem; note: string }
+  },
+  /** [M19] 移除某镜音效（软删该镜全部有效行） */
+  removeSfx: (runId: number, shotId: string) =>
+    api.del<{ ok: boolean; note: string }>(`/api/v1/runs/${runId}/compose/sfx/${encodeURIComponent(shotId)}`),
+  /**
+   * [M19] 成片多画幅派生（A 路径；源 = 该 run 最新 final_video）。
+   * 单路重编码同步完成（本地单机工具，长成片耗时相应增长）；同参已派生 → reused。
+   */
+  deriveAspect: (runId: number, aspect: AspectValue, strategy?: AspectStrategy) =>
+    api.post<DeriveAspectResult>(`/api/v1/runs/${runId}/derive-aspect`, {
+      aspect,
+      ...(strategy ? { strategy } : {}),
+    }),
 }
 
 // ===== [M14] 剧集实体（series → episodes 两级，一项目一剧） =====

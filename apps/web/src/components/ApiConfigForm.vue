@@ -204,7 +204,7 @@ async function submit() {
   <Modal :title="config ? `编辑实例：${config.name}` : `新建 ${provider.name} 实例`" :width="560" @close="emit('close')">
     <label class="fld">
       实例名
-      <input v-model="name" type="text" placeholder="如：主用文生图 / DeepSeek 网关" />
+      <input v-model="name" type="text" placeholder="如：主用图像 / DeepSeek 网关" />
     </label>
 
     <!-- 供应商凭证选择（替代原来的 API Key 字段） -->

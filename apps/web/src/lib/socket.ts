@@ -18,6 +18,8 @@ export interface StudioEventMap {
   'task.updated': { runId: number | null; taskId: number; status: string; error?: string }
   'batch.updated': { runId: number | null; batchId: number; projectId: number; status: string; finished: number; total: number }
   'canvas.changed': { canvasId: number; projectId: number; nodeId?: number }
+  /** [M19 P6] 素材参考图批量生成（无 run；投递 project:{id} room） */
+  'entity.ref_gen': { projectId: number; taskId: number; entityId: number; status: string; error?: string }
 }
 
 export type StudioEventName = keyof StudioEventMap

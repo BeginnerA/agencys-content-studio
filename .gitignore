@@ -6,9 +6,10 @@ dist/
 # runtime data（数据库与本地密钥，不入库）
 data/
 
-# 运行时产物（项目资产与运行日志由平台生成）
+# 运行时产物（项目资产与运行日志由平台生成；brand/ 为平台品牌上传件目录，ensureDirs 自动创建）
 workspace/projects/
 workspace/logs/
+workspace/brand/
 
 # env & secrets
 .env

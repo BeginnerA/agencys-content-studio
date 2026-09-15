@@ -359,6 +359,27 @@ export interface EntityPolishResult {
   failed: Array<{ id: number; error: string }>
 }
 
+/** [M19 P6] 参考图批量生成任务视图（无 run 异步队列；GET /entities/ref-gen/tasks） */
+export interface EntityRefGenTask {
+  id: number
+  entityId: number
+  /** 实体名（服务层已按主数据带出；已删除时回退「素材#{id}」） */
+  entityName: string
+  variantIndex: number
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
+  errorMsg: string | null
+  resultAssetId: number | null
+  updatedAt: number
+}
+
+/** [M19 P6] 发起结果（202 入队即返；tasks 按实体去重后顺序 × variants 展开） */
+export interface EntityRefGenIssueResult {
+  ok: boolean
+  tasks: Array<{ id: number; entityId: number }>
+  count: number
+  note?: string
+}
+
 export interface MemoryStatus {
   ready: boolean
   modelDir: string
@@ -614,6 +635,54 @@ export interface NovelBoardData {
   events: { total: number; done: number; failed: number } | null
 }
 
+// ===== [M19] 品牌配置（三层：平台 / 项目 / run；字段级浅合并） =====
+
+/** [M19] 素材槽（水印/片头/片尾）：enabled=false 强制禁用；file=平台 BRAND_DIR 文件名；asset_id=项目资产 */
+export interface BrandMaterialSlot {
+  enabled?: boolean
+  file?: string
+  asset_id?: number
+}
+
+/** [M19] 品牌素材槽键（平台资产上传/预览/清除端点路径参数） */
+export type BrandSlotKey = 'watermark' | 'intro' | 'outro'
+
+/** [M19] 水印位置（九宫格：上/中/下 × 左/中/右） */
+export type WatermarkPosition = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
+
+/** [M19] 水印配置（服务端 clamp：opacity 0.05–1、width_pct 0.03–0.5、margin_px 0–200） */
+export interface WatermarkConfig extends BrandMaterialSlot {
+  position?: WatermarkPosition
+  opacity?: number
+  width_pct?: number
+  margin_px?: number
+}
+
+/** [M19] 字幕样式结构化配置（字段缺省 = 公式基线：字号 1.8% 高 / 底边距 2%） */
+export interface SubtitleStyleConfig {
+  font?: string
+  /** FontSize = round(H × size_pct)（服务端 clamp 0.008–0.06） */
+  size_pct?: number
+  color?: string
+  outline_color?: string
+  /** Outline = max(1, round(H × pct))（服务端 clamp 0–0.005） */
+  outline_pct?: number
+  shadow?: number
+  /** MarginV = round(H × pct)（服务端 clamp 0–0.1） */
+  margin_v_pct?: number
+  /** ASS 对齐（2 底部 / 5 中间 / 8 顶部） */
+  alignment?: 2 | 5 | 8
+  bold?: boolean
+}
+
+/** [M19] 品牌配置（run 级 _compose.brand 同构；PUT 槽位传 null = 清除该槽覆盖回落继承） */
+export interface BrandConfig {
+  subtitle?: SubtitleStyleConfig | null
+  watermark?: WatermarkConfig | null
+  intro?: BrandMaterialSlot | null
+  outro?: BrandMaterialSlot | null
+}
+
 // ===== [M11] 单步重跑 / 合成设置（BGM·转场） =====
 
 /** [M11] 转场枚举（对齐 ffmpeg xfade 子集；与服务端 TRANSITIONS 同值） */
@@ -629,6 +698,39 @@ export interface ComposeConfig {
   bgm_volume?: number
   /** 0–2 秒（服务端 clamp） */
   bgm_fade?: number
+  /** [M19] 品牌配置（run 级覆盖；PUT 槽位传 null = 清除该槽覆盖；整键 null = 清空） */
+  brand?: BrandConfig | null
+  /** [M19] per-shot 音效全局音量（默认 1；服务端 clamp 0–2） */
+  sfx_volume?: number
+  /** [M19] 多画幅原生渲染（B 路径：合成内多路；PUT null = 清除 = 不启用） */
+  multi_aspect?: MultiAspectConfig | null
+}
+
+/** [M19] 镜头音效绑定项（GET /runs/:id/compose/sfx；每镜 ≤1 条有效） */
+export interface ComposeSfxItem {
+  shotId: string
+  asset: Asset
+}
+
+/** [M19] 常用发布画幅（与服务端 ASPECTS 同值） */
+export type AspectValue = '9:16' | '1:1' | '4:5' | '16:9'
+
+/** [M19] 画幅适配策略（与服务端 ASPECT_STRATEGIES 同值）：crop 居中裁切 | pad 等比补黑边 */
+export type AspectStrategy = 'crop' | 'pad'
+
+/** [M19] 多画幅原生渲染配置（_compose.multi_aspect；aspects 去重后 1–3 项） */
+export interface MultiAspectConfig {
+  enabled: boolean
+  aspects: AspectValue[]
+  strategy: AspectStrategy
+}
+
+/** [M19] 派生画幅结果（POST /runs/:id/derive-aspect；reused = 同画幅+同策略+同源成片命中幂等） */
+export interface DeriveAspectResult {
+  ok: boolean
+  asset: Asset
+  reused: boolean
+  note: string
 }
 
 /** [M11] 单步重跑结果（POST /runs/:id/steps/:stepKey/rerun；无 tasks_reset 字段，预计执行数在 note 文案） */
@@ -1170,4 +1272,29 @@ export interface SnapshotRestoreResult {
   ok: boolean
   backupSnapshotId: number
   restored: { nodes: number; edges: number; groups: number }
+}
+
+// ===== [M19 P8] 音色库（声音克隆） =====
+
+/** [M19] 克隆音色行（voice_clones；meta 为供应商留痕 JSON 字符串） */
+export interface VoiceCloneItem {
+  id: number
+  /** 音色名（唯一；引用令牌 clone:{id} 按 id 定位） */
+  name: string
+  providerKey: string
+  /** 克隆目标模型（合成必须同模型，服务端 cloneEndpoint 自动覆盖） */
+  model: string
+  /** 供应商返回的音色标识 */
+  voiceId: string
+  status: string
+  meta: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** [M19] 克隆能力位（audio 供应商目录全量；available=false → UI 置灰） */
+export interface VoiceCloneProvider {
+  key: string
+  name: string
+  available: boolean
 }
