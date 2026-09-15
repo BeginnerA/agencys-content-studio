@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     buildShotBoard,
     resetShotForRegenerate,
     resetStepForRecompose,
-  } = await import('../src/services/shot-workbench')
+  } = await import('../src/services/shot')
 
   const log = createLogger('probe-m7')
   let failed = 0

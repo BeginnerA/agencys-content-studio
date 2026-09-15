@@ -870,7 +870,7 @@ async function main(): Promise<void> {
     } = refgen
     const { inArray } = await import('drizzle-orm')
     const { onStudioEvent } = await import('../src/services/events')
-    const { WorkbenchError } = await import('../src/services/shot-workbench')
+    const { WorkbenchError } = await import('../src/services/shot')
     const { combineStyleSnippets, resolveProjectStyleSnippets } = await import('../src/services/style-preset')
     const { stylePresets } = await import('../src/db/schema')
 

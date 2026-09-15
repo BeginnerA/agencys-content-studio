@@ -1,0 +1,97 @@
+export interface ProviderConfigLite {
+  id: number
+  name: string
+  serviceType: string
+  model: string
+  credentialId?: number | null
+  isDefault: boolean
+  isActive: boolean
+  /** 编辑回显：自定义端点（GET /api-configs 提供；未设置为 null/undefined） */
+  baseUrl?: string | null
+  /** 编辑回显：Key 脱敏尾 4 位（未配置密钥为 null/undefined） */
+  apiKeyMasked?: string | null
+  /** 编辑回显：实例扩展参数（供适配器透传，如火山 TTS 的 appid；后端默认 {}） */
+  extra?: Record<string, unknown> | null
+  /** 实例级定价 JSON */
+  pricing?: Record<string, number> | null
+}
+
+export interface ApiProvider {
+  key: string
+  name: string
+  serviceType: 'llm' | 'image' | 'video' | 'audio'
+  vendor: string | null
+  description: string
+  defaultUrl: string | null
+  presetModels: string[]
+  isActive: boolean
+  configs: ProviderConfigLite[]
+}
+
+export interface ApiConfig {
+  id: number
+  providerKey: string
+  serviceType: string
+  credentialId: number | null
+  credentialVendor: string | null
+  credentialName: string | null
+  name: string
+  baseUrl: string | null
+  apiKeyRef: string | null
+  apiKeyMasked: string | null
+  model: string | null
+  extra: Record<string, unknown>
+  pricing: Record<string, number>
+  priority: number
+  isDefault: boolean
+  isActive: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/** 供应商凭证（厂商级，API Key 只配一次） */
+export interface VendorCredential {
+  id: number
+  vendor: string
+  name: string
+  baseUrl: string | null
+  apiKeyMasked: string
+  hasKey: boolean
+  extra: Record<string, unknown>
+  isActive: boolean
+  configCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** POST /api-configs/fetch-models 响应：在线目录 / 预置回退 */
+export interface FetchModelsResult {
+  models: string[]
+  source: 'live' | 'preset'
+  note?: string
+}
+
+// ===== [M19 P8] 音色库（声音克隆） =====
+
+/** [M19] 克隆音色行（voice_clones；meta 为供应商留痕 JSON 字符串） */
+export interface VoiceCloneItem {
+  id: number
+  /** 音色名（唯一；引用令牌 clone:{id} 按 id 定位） */
+  name: string
+  providerKey: string
+  /** 克隆目标模型（合成必须同模型，服务端 cloneEndpoint 自动覆盖） */
+  model: string
+  /** 供应商返回的音色标识 */
+  voiceId: string
+  status: string
+  meta: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** [M19] 克隆能力位（audio 供应商目录全量；available=false → UI 置灰） */
+export interface VoiceCloneProvider {
+  key: string
+  name: string
+  available: boolean
+}

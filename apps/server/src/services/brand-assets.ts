@@ -14,7 +14,7 @@ import { db } from '../db'
 import { settings } from '../db/schema'
 import { BRAND_DIR } from '../env'
 import { readPlatformBrand, type BrandConfig } from './brand-config'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 import { kindByExt, mimeOfExt, sanitizeName } from './storage'
 
 /** 品牌素材槽（水印/片头/片尾） */

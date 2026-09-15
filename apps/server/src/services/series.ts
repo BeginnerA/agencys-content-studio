@@ -7,7 +7,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, episodes, pipelineRuns, series, type Episode, type Series } from '../db/schema'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 
 /** 行的更新时间戳（保证已存在返回时只读） */
 const now = (): number => Date.now()

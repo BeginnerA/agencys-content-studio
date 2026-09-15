@@ -14,7 +14,7 @@ import { assets, pipelineRuns, type Asset } from '../db/schema'
 import { aspectGeometryFilter, resolveAspectSize } from '../pipeline/actions/ffmpeg-merge'
 import { ASPECTS, ASPECT_STRATEGIES } from './compose-config'
 import { probeMediaDuration, probeMediaSize, resolveFfmpeg } from './ffmpeg'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from './storage'
 
 export type AspectStrategy = 'crop' | 'pad'

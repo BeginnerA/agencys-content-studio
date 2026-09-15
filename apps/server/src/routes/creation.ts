@@ -37,10 +37,10 @@ import {
   updateCanvas,
   updateNode,
 } from '../services/creation'
-import { cancelCanvasTasks, extractNodeFrame, previewCanvasRun, startCanvasNodeRun } from '../services/creation-gen'
-import { createGroup, deleteGroup, GroupError, updateGroup } from '../services/creation-groups'
-import { exportCanvas } from '../services/creation-export'
-import { arrangeNodes, batchNodes, chainNodes, copyNodes, deleteNodes, promptExpandNode, runCanvasNodes } from '../services/creation-ops'
+import { cancelCanvasTasks, extractNodeFrame, previewCanvasRun, startCanvasNodeRun } from '../services/creation/gen'
+import { createGroup, deleteGroup, GroupError, updateGroup } from '../services/creation/groups'
+import { exportCanvas } from '../services/creation/export'
+import { arrangeNodes, batchNodes, chainNodes, copyNodes, deleteNodes, promptExpandNode, runCanvasNodes } from '../services/creation/ops'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**

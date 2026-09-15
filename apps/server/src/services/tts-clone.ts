@@ -7,7 +7,7 @@ import { db } from '../db'
 import { apiProviders, voiceClones, type VoiceClone } from '../db/schema'
 import { createLogger } from '../logger'
 import { probeMediaDuration } from './ffmpeg'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 import { resolveAudioEndpoint, synthSpeech, type AudioEndpoint } from './tts'
 
 /**

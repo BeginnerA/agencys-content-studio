@@ -20,7 +20,7 @@ import {
   type ShotEditItem,
   type ShotOp,
   type ShotPick,
-} from '../services/shot-workbench'
+} from '../services/shot'
 import { HttpError, h, idParam, wb } from './helpers'
 import { toAssetView } from './assets'
 

@@ -318,7 +318,7 @@ async function main(): Promise<void> {
 
   /** ② canvas-run：运行画布 HTTP 全链（状态矩阵 + 边对拍 + 操作可用性） */
   const sectionCanvasRun = async (): Promise<void> => {
-    const { checkRepairable } = await import('../src/services/shot-workbench')
+    const { checkRepairable } = await import('../src/services/shot')
 
     // 404
     const miss = await jreq('GET', '/api/v1/runs/999999/canvas')

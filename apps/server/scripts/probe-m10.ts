@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     importShotAsset,
     reorderShots,
     uploadAndBindShotAsset,
-  } = await import('../src/services/shot-workbench')
+  } = await import('../src/services/shot')
 
   const log = createLogger('probe-m10')
   let failed = 0

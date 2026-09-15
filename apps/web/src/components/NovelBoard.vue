@@ -14,8 +14,8 @@ import type {
 } from '../lib/types'
 import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
-import AssetPreviewer from './AssetPreviewer.vue'
-import Icon from './Icon.vue'
+import AssetPreviewer from './asset/previewer/index.vue'
+import Icon from './common/Icon.vue'
 
 const props = defineProps<{ runId: number; step: RunStep }>()
 

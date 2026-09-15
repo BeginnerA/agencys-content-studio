@@ -14,7 +14,7 @@ import { extname } from 'node:path'
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, pipelineRuns, type Asset, type PipelineRun } from '../db/schema'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 import { mergeBrand, normalizeBrandPatch, type BrandConfig } from './brand-config'
 import {
   absPathOf,

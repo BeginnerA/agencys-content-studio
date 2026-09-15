@@ -5,7 +5,7 @@ import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../adapters
 import { createLogger } from '../logger'
 import { assetToDataUri } from './asset-ref'
 import { attachRefAssets, type EntityKind } from './character'
-import { WorkbenchError } from './shot-workbench'
+import { WorkbenchError } from './shot'
 import { emitStudioEvent } from './events'
 import { scheduleImageCheck } from './image-check'
 import { saveGeneratedMedia } from './net'

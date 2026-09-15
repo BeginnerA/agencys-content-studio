@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { WorkbenchError } from '../services/shot-workbench'
+import { WorkbenchError } from '../services/shot'
 
 /** 路径 :id 参数解析（非法/缺 → 400 或 404） */
 export function idParam(c: Context, name = 'id'): number {

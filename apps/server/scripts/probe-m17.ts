@@ -76,8 +76,8 @@ async function main(): Promise<void> {
   const { app } = await import('../src/app')
   const { env } = await import('../src/env')
   const { loadInputPlan, pickDisplayTask, planNodeInputs, specProblems } = await import('../src/services/creation')
-  const { chainPortCandidates, computeArrange } = await import('../src/services/creation-ops')
-  const { buildComposeArgs, extendTaskParams, parseResolution } = await import('../src/services/creation-gen')
+  const { chainPortCandidates, computeArrange } = await import('../src/services/creation/ops')
+  const { buildComposeArgs, extendTaskParams, parseResolution } = await import('../src/services/creation/gen')
   const { absPathOf, ensureProjectDirs } = await import('../src/services/storage')
 
   const log = createLogger('probe-m17')

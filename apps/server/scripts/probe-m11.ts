@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const { assets, genTasks, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { absPathOf, ensureProjectDirs, registerAsset, relPathOf } = await import('../src/services/storage')
-  const { WorkbenchError, resetStepForRerun } = await import('../src/services/shot-workbench')
+  const { WorkbenchError, resetStepForRerun } = await import('../src/services/shot')
 
   const log = createLogger('probe-m11')
   let failed = 0

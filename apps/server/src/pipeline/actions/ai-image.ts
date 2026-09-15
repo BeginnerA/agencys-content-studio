@@ -8,7 +8,7 @@ import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../service
 import { saveGeneratedMedia } from '../../services/net'
 import { scheduleImageCheck } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
-import { shotDurationSec } from '../../services/shot-workbench'
+import { shotDurationSec } from '../../services/shot'
 import { recordUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'

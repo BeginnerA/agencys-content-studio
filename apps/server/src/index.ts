@@ -9,7 +9,7 @@ import { env } from './env'
 import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches } from './services/batch'
-import { recoverCanvasTasks } from './services/creation-gen'
+import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
 

@@ -9,7 +9,7 @@ import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
-import { resetStepForRerun } from '../services/shot-workbench'
+import { resetStepForRerun } from '../services/shot'
 import { mapRunToEpisode } from '../services/series'
 
 export const runsRoutes = new Hono()

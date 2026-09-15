@@ -301,6 +301,16 @@ M18 后全景评审的最大缺口集群一次性收口：**批 1 品牌化**（
 
 验证：`pnpm --filter @acs/server probe:m19`（八节 **378 项断言**，零网络零计费：subtitle-style 20 / brand-watermark 32 / intro-outro 16 / sfx 41 / aspect 57 / ref-gen 79 / states 39 / voice-clone 94）；`probe:m2a ~ m18` 全量回归 **零适配全绿**（17 个探针合计 2233 项断言）；实弹（真实合成 ffprobe 对账 + 真实出图 + 真实阿里云声音复刻与 `clone:` 配音）见 `docs/superpowers/specs/2026-09-15-agencys-content-studio-m19-review.md`。
 
+## M28 能力速览（架构重组：巨型文件拆分与目录域化）
+
+纯重构里程碑（行为零变更 / 零新依赖）：15 个千行文件 + 2 个 800 行级追加文件全部拆分，固化「单文件 ≤800 行」全仓红线。服务端按域目录化（`services/creation/`〔含 `gen/` 子域〕/ `services/shot/` / `pipeline/actions/ffmpeg-merge/`）；Web 视图全目录化（`views/<domain>/index.vue`）+ 组件域归组（`components/common|creation|shot|run|project|template|asset|brand|config|pipeline-canvas`）+ `lib/types/` 按域拆分；**函数体逐字保留、导出面冻结**，全部 import 路径机械改写（46 行）。
+
+- **服务端四件**：`creation.ts`(2,442) → 22 文件含 `gen/` 8；`creation-gen.ts`(1,398) → `creation/gen/` 8 文件；`ffmpeg-merge.ts`(1,375) → 10 文件；`shot-workbench.ts`(1,217) → `services/shot/` 8 文件；`creation-ops/groups/export` 收敛入 `creation/`
+- **Web 十三件**：CreationView(2,819)→27 / CreationInspector(1,920)→10 / ShotBoard(1,588)→6 / CreationBoard(1,482)→5 / TemplatesView(1,385)→11 / RunDetailView(1,345)→10 / types.ts(1,300)→11 / EntitiesView(1,254)→6 / ProjectDetailView(1,238)→7 / StoryboardEditor(1,183)→4 / SettingsView(1,171)→6 / AssetPreviewer(821)→2 / CanvasDrawer(869)→2；router 与全部引用机械改写
+- **红线终态**：全仓扫描 >800 行仅存豁免 2（`lib/api.ts` / `components/brand/BrandSettings.vue`）+ 排除 4（探针脚本，归 M26-H5）；不改清单（引擎 / 适配器 / schema / 模板提示词 / package.json）零 diff
+- **验证**：`tsc` + `vue-tsc` + `vite build` 全绿；17 探针（m2a–m19）「全部通过」零适配；实弹（设置 / 项目 / 镜头工作台 / 画布抽屉 / 素材预览）console 零 error；详见 `docs/superpowers/specs/2026-09-15-agencys-content-studio-m28-review.md`
+- **备注**：M2–M19 速览中的文件名为当时历史记述，现行目录结构以本节为准
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。

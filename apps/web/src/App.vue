@@ -2,8 +2,8 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getSocket } from './lib/socket'
-import Icon from './components/Icon.vue'
-import ConfirmHost from './components/ConfirmHost.vue'
+import Icon from './components/common/Icon.vue'
+import ConfirmHost from './components/common/ConfirmHost.vue'
 import { pending, refreshPending, startPendingWatcher } from './lib/pending'
 
 const route = useRoute()

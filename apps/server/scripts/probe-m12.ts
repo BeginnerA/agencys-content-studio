@@ -401,7 +401,7 @@ async function main(): Promise<void> {
   }
 
   const sectionBoard = async (): Promise<void> => {
-    const { toVersionView } = await import('../src/services/shot-workbench')
+    const { toVersionView } = await import('../src/services/shot')
     const stub = (over: Partial<Asset>): Asset =>
       ({
         id: 901,

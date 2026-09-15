@@ -78,7 +78,7 @@ async function main(): Promise<void> {
     buildNodeTaskParams,
     recoverCanvasTasks,
     startCanvasNodeRun,
-  } = await import('../src/services/creation-gen')
+  } = await import('../src/services/creation/gen')
   const {
     buildTemplateDraft,
     buildTemplateDraftYaml,

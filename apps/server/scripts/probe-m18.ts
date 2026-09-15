@@ -225,7 +225,7 @@ async function main(): Promise<void> {
 
   /** ① [P2] 抽帧：frameTimeOf 全模式矩阵 + buildFrameExtractArgs 快照 + 端点全链（真实 ffmpeg） */
   const sectionFrameExtract = async (): Promise<void> => {
-    const { buildFrameExtractArgs, frameTimeOf } = await import('../src/services/creation-gen')
+    const { buildFrameExtractArgs, frameTimeOf } = await import('../src/services/creation/gen')
 
     // ---- frameTimeOf 全模式矩阵 ----
     check(frameTimeOf('first', null, 10) === 0.1, 'first：常规 10s → 0.1（避开淡入）')
@@ -314,7 +314,7 @@ async function main(): Promise<void> {
 
   /** ② [P2] 合成 v3：buildComposeArgs 快照（旧形态零变化/转场/BGM/降级）+ 真实合成全链 */
   const sectionComposeV3 = async (): Promise<void> => {
-    const { buildComposeArgs } = await import('../src/services/creation-gen')
+    const { buildComposeArgs } = await import('../src/services/creation/gen')
     const SZ = { width: 100, height: 100 }
 
     // ---- 旧形态零变化（probe-m17 快照基线） ----
@@ -649,7 +649,7 @@ async function main(): Promise<void> {
   /** ⑤ [P4] LLM 节点：端口矩阵 v3 + specProblems/parseNodeSpec + 未配置引导 + stub 执行链（多模态/用量/落库）+ 产物文本下游装载 */
   const sectionLlmNode = async (): Promise<void> => {
     const { validateNewEdge, productKindOf, parseNodeSpec, specProblems, planNodeInputs } = await import('../src/services/creation')
-    const { preflightNode } = await import('../src/services/creation-gen')
+    const { preflightNode } = await import('../src/services/creation/gen')
     const llmSpec = parseNodeSpec({ genKind: 'llm', prompt: '请总结' })
     const throwsWith = (fn: () => unknown, kw: string): boolean => {
       try {
@@ -1142,7 +1142,7 @@ async function main(): Promise<void> {
   /** ⑨ [P6] 封面派生 + 流式 zip */
   const sectionScaleZip = async (): Promise<void> => {
     const { unzipSync, strFromU8 } = await import('fflate')
-    const { exportCanvas } = await import('../src/services/creation-export')
+    const { exportCanvas } = await import('../src/services/creation/export')
     const { listCanvases } = await import('../src/services/creation')
 
     // ===== cover 派生 =====
