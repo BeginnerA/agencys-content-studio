@@ -175,6 +175,26 @@ const sb = props.sb
   cursor: not-allowed;
 }
 
+.wb-mini {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s;
+  flex: none;
+}
+
+.wb-mini:hover {
+  color: var(--text);
+}
+
+.wb-mini:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-heart {
     transition: none;

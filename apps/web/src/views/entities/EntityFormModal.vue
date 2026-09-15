@@ -10,46 +10,65 @@ const { kind, cfg, projects, busy, showForm, form, formErr, assetOptions, assets
     <Modal
       v-if="showForm"
       :title="form.id ? `编辑${cfg.label}「${form.name}」` : `新建${cfg.label}`"
-      :width="640"
+      :width="720"
       @close="showForm = false"
     >
-      <div class="frow">
-        <label class="fld">
-          {{ cfg.nameLabel }} <span class="req">*</span>
-          <input v-model="form.name" type="text" :placeholder="cfg.namePh" />
-        </label>
-        <label class="fld">
-          别名（逗号 / 顿号分隔）
-          <input v-model="form.aliases" type="text" :placeholder="cfg.aliasPh" />
-        </label>
+      <!-- 基本信息 -->
+      <div class="section">
+        <div class="section-title">基本信息</div>
+        <div class="frow">
+          <label class="fld">
+            {{ cfg.nameLabel }} <span class="req">*</span>
+            <input v-model="form.name" type="text" :placeholder="cfg.namePh" />
+          </label>
+          <label class="fld">
+            别名（逗号 / 顿号分隔）
+            <input v-model="form.aliases" type="text" :placeholder="cfg.aliasPh" />
+          </label>
+        </div>
       </div>
-      <label class="fld">
-        {{ cfg.apLabel }}
-        <textarea v-model="form.appearance" rows="3" :placeholder="cfg.apPh" />
-      </label>
-      <div class="frow">
+
+      <!-- 视觉描述 -->
+      <div class="section">
+        <div class="section-title">视觉描述</div>
+        <label class="fld">
+          {{ cfg.apLabel }}
+          <textarea v-model="form.appearance" rows="3" :placeholder="cfg.apPh" />
+        </label>
         <label class="fld">
           必须剔除 negative
           <textarea v-model="form.negative" rows="2" :placeholder="cfg.negPh" />
         </label>
-        <label v-if="kind === 'character'" class="fld">
-          声线 voice（TTS 声线链 L2）
-          <textarea v-model="form.voice" rows="2" placeholder="如：软糯童声（或网关 模型:音色 格式）" />
-          <!-- [M19 P8] 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->
-          <select v-model="cloneSel" @change="onCloneSelChange">
-            <option value="">{{ clones.length ? '选克隆音色（clone:{id}）…' : '选克隆音色——音色库为空（先到 Settings → 音色库复刻）' }}</option>
-            <option v-for="c in clones" :key="c.id" :value="String(c.id)">{{ c.name }}（{{ c.providerKey }} / {{ c.model }}）</option>
-          </select>
+      </div>
+
+      <!-- 声音设定（仅角色） -->
+      <div v-if="kind === 'character'" class="section">
+        <div class="section-title">声音设定</div>
+        <label class="fld voice-fld">
+          <span class="voice-label">声线 voice（TTS 声线链 L2）</span>
+          <div class="voice-row">
+            <textarea v-model="form.voice" rows="2" placeholder="如：软糯童声（或网关 模型:音色 格式）" class="voice-ta" />
+            <!-- [M19 P8] 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->
+            <select v-model="cloneSel" @change="onCloneSelChange" class="voice-sel">
+              <option value="">{{ clones.length ? '选克隆音色（clone:{id}）…' : '音色库为空（先到 Settings → 音色库复刻）' }}</option>
+              <option v-for="c in clones" :key="c.id" :value="String(c.id)">{{ c.name }}（{{ c.providerKey }} / {{ c.model }}）</option>
+            </select>
+          </div>
         </label>
       </div>
-      <label v-if="kind === 'character'" class="fld">
-        状态变体 states（每行一条；格式「剧情节点：状态短语」；节点优先用「第N场 / 第N集」定位词，出图逐镜自动命中）
-        <textarea v-model="form.states" rows="2" placeholder="如：第5场受伤：额头绷带" />
-      </label>
-      <label class="fld">
-        简介 summary
-        <input v-model="form.summary" type="text" :placeholder="cfg.summaryPh" />
-      </label>
+
+      <!-- 状态与简介 -->
+      <div class="section">
+        <div class="section-title">状态与简介</div>
+        <label v-if="kind === 'character'" class="fld">
+          状态变体 states（每行一条；格式「剧情节点：状态短语」；节点优先用「第N场 / 第N集」定位词，出图逐镜自动命中）
+          <textarea v-model="form.states" rows="2" placeholder="如：第5场受伤：额头绷带" />
+        </label>
+        <label class="fld">
+          简介 summary
+          <input v-model="form.summary" type="text" :placeholder="cfg.summaryPh" />
+        </label>
+      </div>
 
       <div class="refbox">
         <div class="rhead">
@@ -114,6 +133,26 @@ const { kind, cfg, projects, busy, showForm, form, formErr, assetOptions, assets
   display: none;
 }
 
+/* ---- 分组 ---- */
+.section {
+  margin-bottom: 4px;
+}
+
+.section + .section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.section-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* ---- 两栏行 ---- */
 .frow {
   display: flex;
   gap: 12px;
@@ -123,6 +162,35 @@ const { kind, cfg, projects, busy, showForm, form, formErr, assetOptions, assets
   flex: 1;
 }
 
+/* ---- 声音行：textarea + select 并排 ---- */
+.voice-fld {
+  margin-bottom: 0;
+}
+
+.voice-label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.voice-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.voice-row .voice-ta {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-row .voice-sel {
+  flex: none;
+  width: 220px;
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+/* ---- 参考图 ---- */
 .refbox {
   margin-top: 4px;
   display: flex;
@@ -187,6 +255,7 @@ const { kind, cfg, projects, busy, showForm, form, formErr, assetOptions, assets
   align-items: center;
   justify-content: center;
 }
+
 .btn.tiny {
   padding: 3px 10px;
   font-size: 12px;

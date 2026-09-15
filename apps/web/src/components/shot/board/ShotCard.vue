@@ -403,8 +403,8 @@ const sb = props.sb
 .wb-mini {
   border: none;
   background: none;
-  color: var(--accent-h);
-  font-size: 11.5px;
+  color: var(--text-3);
+  font-size: 11px;
   cursor: pointer;
   padding: 0 2px;
   transition: color 0.15s;
@@ -412,14 +412,12 @@ const sb = props.sb
 }
 
 .wb-mini:hover {
-  color: #fff;
-  text-decoration: underline;
+  color: var(--text);
 }
 
 .wb-mini:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
-  text-decoration: none;
 }
 
 /* [M19] 音效按钮：已绑定高亮 */

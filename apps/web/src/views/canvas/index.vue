@@ -352,6 +352,12 @@ function fitView(): void {
   boardRef.value?.fit()
 }
 
+function goBack(): void {
+  // 优先回到模板页；若 history 中无上一页（直接访问 /canvas），则 fallback 到模板页
+  if (window.history.length > 1) router.back()
+  else void router.push('/templates')
+}
+
 function showTab(t: 'run' | 'template'): void {
   tab.value = t
   if (t === 'run') {
@@ -433,6 +439,9 @@ onBeforeUnmount(() => {
   <div class="cv-page">
     <!-- ===== 顶栏 ===== -->
     <div class="cv-bar">
+      <button type="button" class="btn sm" title="返回上一页" @click="goBack">
+        <Icon name="arrow-left" :size="13" />
+      </button>
       <div class="tabs" role="tablist" aria-label="运行画布 / 模板画布切换">
         <button
           type="button"
@@ -467,15 +476,6 @@ onBeforeUnmount(() => {
           <span class="badge" :class="curRun.status">{{ runStatus(curRun.status).text }}</span>
           <span class="muted mono">#{{ curRun.id }}</span>
         </template>
-        <button
-          v-if="runId != null"
-          type="button"
-          class="btn sm"
-          title="打开运行详情页"
-          @click="router.push(`/runs/${runId}`)"
-        >
-          <Icon name="external" :size="12" /> 运行详情
-        </button>
         <button
           v-if="runCanvas?.runActions.canCancel"
           type="button"
