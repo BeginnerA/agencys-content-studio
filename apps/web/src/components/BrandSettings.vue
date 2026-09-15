@@ -6,7 +6,7 @@
  * - scope='run'：run 级覆盖（_compose.brand）——水印/片头尾三态（继承/禁用/自定义）+ 显示继承值与来源
  * 全部操作不触发执行（提示「重新合成后生效」）；成功后 emit changed。
  */
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { brandAssetApi, composeApi, projectApi, settingsApi, uploadFiles } from '../lib/api'
 import type {
   Asset,
@@ -20,7 +20,7 @@ import type {
 import Icon from './Icon.vue'
 
 const props = defineProps<{ scope: 'platform' | 'project' | 'run'; projectId?: number; runId?: number }>()
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{ changed: []; preview: [data: { brand: BrandConfig; wmFile: string }] }>()
 
 const loading = ref(true)
 const busy = ref(false)
@@ -290,6 +290,10 @@ async function loadProject() {
   wmAssetId.value = typeof b.watermark?.asset_id === 'number' ? b.watermark.asset_id : 0
   introAssetId.value = typeof b.intro?.asset_id === 'number' ? b.intro.asset_id : 0
   outroAssetId.value = typeof b.outro?.asset_id === 'number' ? b.outro.asset_id : 0
+  // [M20 fix] project scope 也需设置文件路径，否则预览 wmFile/introFile/outroFile 永远为空
+  wmFile.value = fileOf(b, 'watermark')
+  introFile.value = fileOf(b, 'intro')
+  outroFile.value = fileOf(b, 'outro')
   fillCommon(b)
   await refreshProjectAssets()
 }
@@ -513,6 +517,52 @@ function saveRunClip(slot: 'intro' | 'outro') {
 const wmParamsDisabled = computed(() => busy.value || (props.scope === 'run' && wmMode.value !== 'custom'))
 /** 保存按钮文案（run 水印） */
 const runWmBtnText = computed(() => (wmMode.value === 'inherit' ? '清除覆盖（用继承）' : '保存覆盖'))
+
+// [M20] 表单 → 预览实时联动：监听所有表单字段，变化时 emit preview 供父组件 BrandPreview 即时渲染
+const formWatchSrc = computed(() => ({
+  sub: { on: subOn.value, font: subFont.value, size: subSize.value, color: subColor.value, outlineColor: subOutlineColor.value, outline: subOutline.value, shadow: subShadow.value, marginV: subMarginV.value, align: subAlign.value, bold: subBold.value },
+  wm: { enabled: wmEnabled.value, position: wmPosition.value, opacity: wmOpacity.value, width: wmWidth.value, margin: wmMargin.value },
+  intro: introEnabled.value,
+  outro: outroEnabled.value,
+  wmFile: wmFile.value,
+  introFile: introFile.value,
+  outroFile: outroFile.value,
+  // [M20 fix2] 项目资产来源纳入监听：选择/切换项目资产（asset_id）时预览才会更新
+  wmAssetId: wmAssetId.value,
+  introAssetId: introAssetId.value,
+  outroAssetId: outroAssetId.value,
+}))
+watch(formWatchSrc, (v) => {
+  const brand: BrandConfig = {}
+  if (v.sub.on) {
+    brand.subtitle = {
+      font: v.sub.font || undefined,
+      size_pct: pctStore(v.sub.size, 0.8, 6),
+      color: v.sub.color,
+      outline_color: v.sub.outlineColor,
+      outline_pct: pctStore(v.sub.outline, 0, 0.5),
+      shadow: Math.round(Math.min(8, Math.max(0, Number(v.sub.shadow) || 0))),
+      margin_v_pct: pctStore(v.sub.marginV, 0, 10),
+      alignment: v.sub.align,
+      bold: v.sub.bold,
+    }
+  }
+  brand.watermark = {
+    position: v.wm.position,
+    opacity: pctStore(v.wm.opacity, 5, 100),
+    width_pct: pctStore(v.wm.width, 3, 50),
+    margin_px: Math.round(Math.min(200, Math.max(0, Number(v.wm.margin) || 0))),
+  }
+  // [M20 fix2] 项目资产来源：asset_id 优先于 file（镜像服务端 resolveMaterialPath 语义）
+  if (v.wmAssetId > 0) brand.watermark.asset_id = v.wmAssetId
+  if (!v.wm.enabled) brand.watermark.enabled = false
+  brand.intro = { enabled: v.intro, file: v.introFile || undefined }
+  if (v.introAssetId > 0) brand.intro.asset_id = v.introAssetId
+  brand.outro = { enabled: v.outro, file: v.outroFile || undefined }
+  if (v.outroAssetId > 0) brand.outro.asset_id = v.outroAssetId
+  emit('preview', { brand, wmFile: v.wmFile })
+}, { deep: true })
+
 /** 片头/片尾覆盖模式读写（v-for 内 v-model 不能写三元表达式，改 checked + change） */
 function clipModeOf(slot: 'intro' | 'outro'): 'inherit' | 'off' | 'on' {
   return slot === 'intro' ? introMode.value : outroMode.value

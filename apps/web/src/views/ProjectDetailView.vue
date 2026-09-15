@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
 import BrandSettings from '../components/BrandSettings.vue'
+import BrandPreview from '../components/BrandPreview.vue'
 import AssetGrid from '../components/AssetGrid.vue'
 import RunFormModal from '../components/RunFormModal.vue'
 import SeriesBoard from '../components/SeriesBoard.vue'
@@ -14,7 +15,7 @@ import PublishModal from '../components/PublishModal.vue'
 import { assetApi, batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../lib/api'
 import { confirmDialog } from '../lib/confirm'
 import { schedulePendingRefresh } from '../lib/pending'
-import type { Asset, Batch, ProjectDetail, Publication, Run, TemplateMeta } from '../lib/types'
+import type { Asset, Batch, BrandConfig, ProjectDetail, Publication, Run, TemplateMeta } from '../lib/types'
 import { runStatus, fmtTime, fmtMs, fmtQty, fmtSize, purposeText, batchStatus, inputSummary, PLATFORM_TEXT } from '../lib/format'
 import { getSocket, studioOff, studioOn } from '../lib/socket'
 
@@ -68,6 +69,20 @@ const pubLoading = ref(true)
 const coreErr = ref('')
 const assetErr = ref('')
 const pubErr = ref('')
+
+// [M20] 项目品牌预览快照（BrandSettings 表单变化时实时更新）
+const projBrandSnap = ref<BrandConfig>({})
+const projWmFileSnap = ref('')
+const projIntroFileSnap = ref('')
+const projOutroFileSnap = ref('')
+const projWmPreviewTs = ref(0)
+function onProjectPreview(data: { brand: BrandConfig; wmFile: string }) {
+  projBrandSnap.value = data.brand
+  projWmFileSnap.value = data.wmFile
+  projIntroFileSnap.value = (data.brand.intro?.file as string) || ''
+  projOutroFileSnap.value = (data.brand.outro?.file as string) || ''
+  projWmPreviewTs.value = Date.now()
+}
 
 async function loadCore(opts: { silent?: boolean } = {}) {
   if (!opts.silent) coreLoading.value = true
@@ -869,8 +884,13 @@ function errOf(r: Run): string {
       </section>
 
       <!-- [M19] 品牌（平台/项目/run 三层；项目层覆盖平台，保存后重新合成生效） -->
-      <section v-show="activeTab === 'brand'" role="tabpanel" aria-labelledby="ptab-brand">
-        <BrandSettings scope="project" :project-id="projectId" @changed="loadCore({ silent: true })" />
+      <section v-show="activeTab === 'brand'" role="tabpanel" aria-labelledby="ptab-brand" class="proj-brand">
+        <div class="proj-brand-form">
+          <BrandSettings scope="project" :project-id="projectId" @changed="loadCore({ silent: true })" @preview="onProjectPreview" />
+        </div>
+        <aside class="proj-brand-preview">
+          <BrandPreview :brand="projBrandSnap" :wm-file="projWmFileSnap" :wm-preview-ts="projWmPreviewTs" :intro-file="projIntroFileSnap" :outro-file="projOutroFileSnap" />
+        </aside>
       </section>
     </template>
 
@@ -1182,6 +1202,31 @@ function errOf(r: Run): string {
 @media (max-width: 860px) {
   .stat-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.proj-brand {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.proj-brand-form {
+  min-width: 0;
+}
+
+.proj-brand-preview {
+  position: sticky;
+  top: 16px;
+}
+
+@media (max-width: 960px) {
+  .proj-brand {
+    grid-template-columns: 1fr;
+  }
+  .proj-brand-preview {
+    position: static;
   }
 }
 

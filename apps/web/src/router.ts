@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/entities', name: 'entities', component: () => import('./views/EntitiesView.vue') },
     { path: '/style-presets', name: 'style-presets', component: () => import('./views/StylePresetsView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
+    { path: '/system', name: 'system', component: () => import('./views/SystemSettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
