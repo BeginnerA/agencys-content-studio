@@ -119,7 +119,7 @@ async function generate() {
 </script>
 
 <template>
-  <Modal title="派生画幅 · 多比例分发" :width="560" @close="emit('close')">
+  <Modal title="派生画幅 · 多比例分发" :width="720" @close="emit('close')">
     <div class="ax">
       <div v-if="loading" class="muted">加载中…</div>
       <template v-else>
