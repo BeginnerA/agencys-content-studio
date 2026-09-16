@@ -46,7 +46,7 @@ const emit = defineEmits<{ refresh: []; clear: []; notice: [msg: string] }>()
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   form,
-  genSpec, opErr, opBusy, formTouched, frameBusy, canExtractFrame, fVariants, frameMode, frameTime, runTitle,
+  genSpec, opErr, opBusy, formTouched, frameBusy, canExtractFrame, fVariants, frameMode, frameTime, uniformCount, runTitle,
   incoming, outgoing, edgeFrom, edgeTo,
   doRun, doCancel, doExtractFrame, removeNode, dropEdge,
   saveSpec, openExpand, doExpand, applyExpand, doExtract, saveText,
@@ -188,12 +188,19 @@ function onPreviewChanged(updated: Asset): void {
           >
             <Icon name="stop" :size="12" /> 取消任务
           </button>
-          <label v-if="canExtractFrame" class="vsel" title="抽帧位置（首/尾帧可接力 i2v）">
+          <label v-if="canExtractFrame" class="vsel" title="抽帧位置（首/尾帧可接力 i2v；均匀抽帧批量出图）">
             抽帧
             <select v-model="frameMode">
               <option value="first">首帧</option>
               <option value="last">尾帧</option>
               <option value="custom">指定时刻</option>
+              <option value="uniform">均匀抽帧</option>
+            </select>
+          </label>
+          <label v-if="canExtractFrame && frameMode === 'uniform'" class="vsel" title="均匀抽帧数量（2–9；3 帧恰为首/中/尾）">
+            数量
+            <select v-model.number="uniformCount">
+              <option v-for="n in 8" :key="n + 1" :value="n + 1">{{ n + 1 }} 帧</option>
             </select>
           </label>
           <input
@@ -213,7 +220,7 @@ function onPreviewChanged(updated: Asset): void {
             title="从视频产物抽取一帧为图片素材节点"
             @click="doExtractFrame"
           >
-            <Icon name="photo" :size="12" /> {{ frameBusy ? '抽帧中…' : '抽帧' }}
+            <Icon name="photo" :size="12" /> {{ frameBusy ? '抽帧中…' : frameMode === 'uniform' ? '均匀抽帧' : '抽帧' }}
           </button>
           <span class="sp" />
           <button type="button" class="btn sm danger" :disabled="opBusy" title="删除节点（保留产物资产）" @click="removeNode">

@@ -1,5 +1,5 @@
 import { writeTextAsset } from '../../services/storage'
-import { interpolate } from '../refs'
+import { interpolate, normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
@@ -11,6 +11,8 @@ import type { StepResult } from '../types'
  *   | 'lines-single'（包成 tts 可解析的单句 lines JSON）；
  * params.name_tpl：文件名模板（{input.x} 内插，缺省 `${stepKey}.txt` / `.json`）；
  * params.output_purpose：资产 purpose（缺省 'text'）。
+ * [M22] inputs.refs（资产 id 数组）与 inputs.first_frame（首个）：仅 storyboard-single 生效，
+ * 注入单镜 ref_asset_ids / first_frame_asset_id（画布参考边保真直通）。
  * 产物：1 个文本资产（stepId 归属），供下游 ai_image.inputs.shots / tts.inputs.lines / ai_text.inputs 消费。
  */
 export async function literal(ctx: StepContext): Promise<StepResult> {
@@ -33,12 +35,20 @@ export async function literal(ctx: StepContext): Promise<StepResult> {
   if (!text || !text.trim()) throw new Error('literal 缺文本内容（inputs.text 或 params.payload 至少其一非空）')
 
   // 3) as 转换
+  // [M22] refs / first_frame 直通仅 storyboard-single 生效；其他形态忽略（存在输入时提示）
+  if (as !== 'storyboard-single' && (ctx.input['refs'] !== undefined || ctx.input['first_frame'] !== undefined)) {
+    ctx.log(`inputs.refs / inputs.first_frame 仅 as=storyboard-single 生效，当前 as=${as} 已忽略`)
+  }
   let content: string
   let format: string | undefined
   let defaultExt: string
   if (as === 'storyboard-single') {
-    const payload = { shots: [{ id: 's1', image_prompt: text.trim() }] }
-    content = JSON.stringify(payload, null, 2)
+    const shot: Record<string, unknown> = { id: 's1', image_prompt: text.trim() }
+    const refs = normalizePositiveIds(ctx.input['refs'])
+    if (refs.length > 0) shot['ref_asset_ids'] = refs
+    const ff = normalizePositiveIds(ctx.input['first_frame'])[0]
+    if (ff !== undefined) shot['first_frame_asset_id'] = ff
+    content = JSON.stringify({ shots: [shot] }, null, 2)
     format = 'storyboard-json'
     defaultExt = 'json'
   } else if (as === 'lines-single') {

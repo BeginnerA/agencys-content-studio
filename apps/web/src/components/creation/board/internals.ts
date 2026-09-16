@@ -36,8 +36,10 @@ export interface BoardEmits {
   'delete-selected': []
   'copy-selected': []
   'group-create': []
-  'group-patch': [gid: number, patch: { title?: string; color?: string | null; collapsed?: boolean }]
+  'group-patch': [gid: number, patch: { title?: string; color?: string | null; collapsed?: boolean; parentId?: number | null }]
   'group-delete': [gid: number]
+  /** [M22] 组条拖拽：后代组锚点批量平移（与 moved 节点平移同源 dx/dy） */
+  'groups-moved': [moves: Array<{ id: number; x: number; y: number }>]
   undo: []
   redo: []
 }

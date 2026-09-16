@@ -327,6 +327,23 @@ M18 后缺口集群「工作台体验」+ Backlog 存量项（键盘流 / 并行
 
 验证：`pnpm --filter @acs/server probe:m21`（六节 **86 项断言**，零网络零计费：search 15 / revisions 10 / concurrency 28 / hot-params 18 / tags-sql 10 / settings-kv 5）；`probe:m2a ~ m19` 全量回归 **零适配全绿**（17 个探针）；`tsc` + `vue-tsc` 双端全绿；实弹（C6 并发设置保存与回落 / C7 热调 run 103 全链留痕与幂等 / C5 闸门面板 + revisions / C4 面板打开 / C1 HTTP 兜底命中）。
 
+## M22 能力速览（创作画布深化：编辑与保真）
+
+M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布内音字对齐全链 + 参考边保真 v3；**批 2** 组嵌套 + 快照 diff / 分支 + compose 智能裁剪；**批 3** 回收站保留期自动清理 + 跨画布复制 + PNG/SVG 导出 + 多帧抽帧。设计三原则：**缺省全关零漂移**（新字段缺省时 compose args 逐字节不变，快照断言锁定）、**宽容降级**（对齐 / 字幕 / 清理 / 抽帧失败一律 note 不阻断主链）、**混合策略自包含**（同项目跨画布直接引用；跨项目拷贝资产文件与实体级联，画布自包含）。
+
+- **音字对齐全链（批 1）**：compose spec +`align` / `subtitle`（none·auto·asset）/ `subtitleAssetId` / `burnSubtitles`；段级配对 video[i]↔audio[i]（边序）——段时长 `max(视频, 音频)`：视频 `tpad` 冻帧补足 + 音频 `apad+atrim` 静音填充 + `concat` 顺序拼接；SRT 自动生成（音轨文本）/ 已有字幕平移重钉（数量不符降级）；`subtitles` 滤镜烧录（Windows 路径转义）；转场与对齐互斥宽容禁用；SRT 落资产 `creation_subtitle`；前端 GenForm 四控件
+- **参考保真 v3（批 1）**：draft 路径 reference / first_frame 两类 lossy 清零——literal +`inputs.refs` / `inputs.first_frame`（flatten + 正整数过滤）；引擎 shots +`ref_asset_ids` / `first_frame_asset_id`（ai-image 前插合并去重；ai-video 首帧「画布直通 > gen_frames 索引」优先）；last_frame / source 仍按预期 lossy
+- **组嵌套（批 2）**：`canvas_groups` +`parent_id`（ensureColumn 幂等）；多层组（`groupIds` / `parentId` 入组、移组防环 400 `group_cycle`、删父组子组提升、折叠递归隐藏后代、包围盒递归并集、拖动组递归平移）；前端按深度升序渲染 + 「移入组 ▸ / 移出到顶层」菜单
+- **快照 diff / 分支（批 2）**：`GET …/snapshots/:sid/diff?against=live|<sid2>` 字段级差异（added / removed / modified + 200 字符截断）；`POST …/snapshots/:sid/branch` 从快照分支为新画布（事务内新 id 重放：组 → 节点 → 边全映射）；快照 Modal「对比」视图 + 「分支为新画布」
+- **compose 智能裁剪（批 2）**：+`fit`（pad 信箱缺省 / crop 裁切满幅——`scale:increase,crop` 链）；缺省零漂移
+- **回收站自动清理（批 3）**：settings `trash { retentionDays 1–365（默认 30）, autoPurge（默认 true）}`；纯函数 `selectExpiredCanvases` + `purgeExpiredCanvases` 全表扫（复用 purgeCanvas 级联；gen_tasks 留痕）；启动 + 6h 定时（unref）；设置页「数据」Tab；手动 purge 逃生口保留
+- **跨画布复制（批 3）**：`POST /canvases/:id/nodes/copy-to`——同项目深拷（内部边重映射、`+40,+40` 偏移）；跨项目级联拷贝（资产文件 `copyFileSync` + `copiedFrom` 留痕、compose BGM / edit mask 引用重写、实体级联 + `refAssetIds` 逐张拷贝、run 节点跳过报告、`adoptedTaskId` 置 null）；前端多选 →「复制到画布…」弹窗 → 摘要 toast + 目标画布计数即时刷新
+- **PNG / SVG 导出（批 3）**：服务端 `buildCanvasSvg` 纯函数（视口包围盒 +40 padding / 节点卡色板 / 贝塞尔边 + 箭头 marker / 组框嵌套递归 / XML 五字符转义）→ `POST …/export-image` 落资产 `creation_svg`；前端导出菜单三合一（zip 打包 / PNG 2x 光栅化下载 / SVG 下载）
+- **多帧抽帧（批 3）**：`uniform` 模式 count 2–9——`t_i = 0.1 + (dur − 0.2) × i / (count − 1)`（count=3 恰为首 / 中 / 尾；dur ≤ 0.3 退化首帧；时长未知报错）；N 帧网格排布（缺省 +60/+140 起、3 列 ×260 / 行高 ×200）；响应兼容单帧 `{node, asset}` + uniform 追加 `{nodes, assets}`
+- **数据与兼容**：无新表；`canvas_groups` +1 列 / `settings` +1 key / compose spec +5 字段（align / subtitle / subtitleAssetId / burnSubtitles / fit）；新端点 4 枚 + 扩展 3 处；缺省全关零漂移（probe-m16/m17/m18 回归为证）
+
+验证：`pnpm --filter @acs/server probe:m22`（十一节 **169 项断言**，零网络零计费：spec-fields 9 / trash 12 / schema 2 / align 25 / refs 12 / group-nest 18 / snapshot-diff 18 / fit 4 / copy-to 23 / export-svg 23 / multi-frame 23）；`probe:m2a ~ m19 + m21` 全量回归 **零适配全绿**（18 探针）；`tsc` + `vue-tsc` 双端全绿；三层实弹（HTTP API 16 PASS〔真实库跨项目 P10→P14：9 复制 / 1 run 跳过 / 6 资产级联 / 0 警告〕/ 浏览器 e2e 8/8〔复制弹窗、SVG / PNG 双 toast、均匀抽帧 3 帧落板〕/ 修复复核 PASS）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。

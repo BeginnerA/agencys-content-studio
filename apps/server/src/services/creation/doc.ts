@@ -335,7 +335,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     canvas: { id: canvas.id, projectId: canvas.projectId, name: canvas.name, viewport },
     nodes,
     edges: edgeRows.map((e) => ({ id: e.id, from: e.from, to: e.to, port: e.port })),
-    groups: groupRows.map((g) => ({ id: g.id, title: g.title, color: g.color, collapsed: g.collapsed === 1, x: g.x, y: g.y })),
+    groups: groupRows.map((g) => ({ id: g.id, title: g.title, color: g.color, collapsed: g.collapsed === 1, x: g.x, y: g.y, parentId: g.parentId ?? null })),
   }
 }
 

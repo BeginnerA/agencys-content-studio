@@ -409,6 +409,8 @@ export const canvasGroups = sqliteTable(
     collapsed: integer('collapsed').notNull().default(0), // 折叠态持久化（0/1）
     x: real('x').notNull().default(0), // 锚点（创建时=成员包围盒左上；空组显示用）
     y: real('y').notNull().default(0),
+    /** [M22] 父组 id（NULL=顶层；组嵌套——防环与归属校验在服务层） */
+    parentId: integer('parent_id'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('idx_canvas_groups_canvas').on(t.canvasId)],

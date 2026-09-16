@@ -25,6 +25,14 @@ export const LLM_TEXT_CAP = 4
 /** [M17] 合成节点单端口输入上限（video / audio 各 ≤4） */
 export const COMPOSE_CAP = 4
 
+/** [M22] 字幕模式（compose：none=不出字幕 / auto=音轨文本自动生成 / asset=已有 SRT 资产重钉） */
+export const SUBTITLE_MODES = ['none', 'auto', 'asset'] as const
+export type SubtitleMode = (typeof SUBTITLE_MODES)[number]
+
+/** [M22] 对齐时画面适配（compose：pad=信箱补边（现状零漂移）/ crop=裁切满幅） */
+export const COMPOSE_FITS = ['pad', 'crop'] as const
+export type ComposeFit = (typeof COMPOSE_FITS)[number]
+
 export interface NodeSpecEdit {
   mode: EditMode
   maskAssetId?: number
@@ -50,6 +58,16 @@ export interface NodeSpec {
   bgmVolume?: number
   /** [M18] BGM 首尾淡入淡出（仅 compose，默认 true） */
   bgmFade?: boolean
+  /** [M22] 音字对齐（仅 compose，默认 false；video[i]↔audio[i] 边序配对，段时长=max，短段冻帧/静音补齐） */
+  align?: boolean
+  /** [M22] 字幕模式（仅 compose，默认 'none'） */
+  subtitle?: SubtitleMode
+  /** [M22] 字幕资产 id（subtitle='asset'：已有 SRT 资产，存在性校验在服务层——bgmAssetId 先例） */
+  subtitleAssetId?: number
+  /** [M22] 烧录字幕（仅 compose，默认 false——缺省仅生成 SRT 资产） */
+  burnSubtitles?: boolean
+  /** [M22] 对齐画面适配（仅 compose，默认 'pad'） */
+  fit?: ComposeFit
   /** [M17] 声线令牌（仅 audio；全 ASCII 供应商枚举，语义短语经 resolveVoiceChain 降级） */
   voice?: string
   /** [M17] 语速（仅 audio，0.25-4） */
@@ -230,6 +248,8 @@ export interface CanvasDocGroup {
   collapsed: boolean
   x: number
   y: number
+  /** [M22] 父组 id（null=顶层；前端嵌套渲染/移组菜单依赖） */
+  parentId: number | null
 }
 
 export interface CanvasDoc {
@@ -305,6 +325,33 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
   if (o['bgmFade'] !== undefined) {
     if (typeof o['bgmFade'] !== 'boolean') throw new Error('spec.bgmFade 需为布尔')
     spec.bgmFade = o['bgmFade']
+  }
+  if (o['align'] !== undefined) {
+    if (typeof o['align'] !== 'boolean') throw new Error('spec.align 需为布尔')
+    spec.align = o['align']
+  }
+  if (o['subtitle'] !== undefined && o['subtitle'] !== null) {
+    const st = o['subtitle']
+    if (typeof st !== 'string' || !(SUBTITLE_MODES as readonly string[]).includes(st)) {
+      throw new Error(`spec.subtitle 非法（${SUBTITLE_MODES.join('|')}）`)
+    }
+    spec.subtitle = st as SubtitleMode
+  }
+  if (o['subtitleAssetId'] !== undefined && o['subtitleAssetId'] !== null) {
+    const sa = o['subtitleAssetId']
+    if (typeof sa !== 'number' || !Number.isInteger(sa) || sa <= 0) throw new Error('spec.subtitleAssetId 需为正整数')
+    spec.subtitleAssetId = sa
+  }
+  if (o['burnSubtitles'] !== undefined) {
+    if (typeof o['burnSubtitles'] !== 'boolean') throw new Error('spec.burnSubtitles 需为布尔')
+    spec.burnSubtitles = o['burnSubtitles']
+  }
+  if (o['fit'] !== undefined && o['fit'] !== null) {
+    const ft = o['fit']
+    if (typeof ft !== 'string' || !(COMPOSE_FITS as readonly string[]).includes(ft)) {
+      throw new Error(`spec.fit 非法（${COMPOSE_FITS.join('|')}）`)
+    }
+    spec.fit = ft as ComposeFit
   }
   if (o['temperature'] !== undefined && o['temperature'] !== null) {
     const t = o['temperature']

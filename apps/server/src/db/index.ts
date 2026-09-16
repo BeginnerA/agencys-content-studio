@@ -218,6 +218,7 @@ async function ensureSchemaColumns(): Promise<void> {
         collapsed integer DEFAULT 0 NOT NULL,
         x real DEFAULT 0 NOT NULL,
         y real DEFAULT 0 NOT NULL,
+        parent_id integer,
         created_at integer NOT NULL
       )`,
     )
@@ -234,6 +235,18 @@ async function ensureSchemaColumns(): Promise<void> {
     await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_canvas_snapshots_canvas ON canvas_snapshots (canvas_id)')
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // [M22] 画布组嵌套列：canvas_groups.parent_id（存量行 NULL=顶层；新库建表已带列）
+  const cgCols = await sqlite.execute("PRAGMA table_info('canvas_groups')")
+  const cgHas = new Set((cgCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!cgHas.has('parent_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE canvas_groups ADD COLUMN parent_id integer')
+      log.info('ensureColumn: canvas_groups.parent_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
   }
 
   // [M8] 风格预设库建表兜底（migrate 体系外旧库）

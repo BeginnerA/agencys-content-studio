@@ -78,12 +78,15 @@ export {
 export {
   SNAPSHOT_LIMIT,
   SnapshotConflictError,
+  branchSnapshot,
+  collectSnapshotDoc,
   createSnapshot,
   deleteSnapshot,
+  diffSnapshotAgainst,
   listSnapshots,
   restoreSnapshot,
 } from './snapshots'
-export type { CanvasSnapshotDoc, CanvasSnapshotMeta, SnapshotRestoreResult } from './snapshots'
+export type { CanvasSnapshotDoc, CanvasSnapshotMeta, SnapshotDiffResult, SnapshotRestoreResult } from './snapshots'
 
 export {
   addAssetNode,
@@ -102,6 +105,10 @@ export {
 export type { NodePatch } from './nodes'
 
 export { addEdge, deleteEdge } from './edges'
+
+// [M22] 跨画布复制（同项目直接引用 / 跨项目资产级联拷贝）
+export { copyNodesToCanvas } from './copy-to'
+export type { CopyToResult, CopyToSkip } from './copy-to'
 
 export { buildCanvasDoc } from './doc'
 

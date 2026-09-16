@@ -10,6 +10,7 @@ import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
 import { shotDurationSec } from '../../services/shot'
 import { recordUsage } from '../../services/usage'
+import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
@@ -22,6 +23,10 @@ interface ShotSpec {
   location?: string
   /** [M13] 道具名列表（与道具库对齐）：命中 → 注入道具参考图（无首帧时） */
   props?: string[]
+  /** [M22] 画布/模板直通首帧资产（优先于 gen_frames 索引）；正整数 */
+  first_frame_asset_id?: number
+  /** [M22] 画布/模板直通参考资产（与场景/道具收集合并，保序去重）；正整数 */
+  ref_asset_ids?: number[]
 }
 
 const nowMs = (): number => Date.now()
@@ -41,6 +46,8 @@ const POLL_TIMEOUT_MS = 10 * 60_000
  * data URI 驱动 i2v；能力不支持/缺图 → 降级纯文生（params.firstFrameAssetId 记快照）。
  * [M13] 场景/道具参考图（shot.location / shot.props 命中实体库）：无首帧图的镜头按 reference_image 注入
  * （首帧优先决策：有首帧则跳过，兼规避 Wan 帧/参考互斥）；params.setRefAssetIds 记快照。
+ * [M22] 分镜直通字段（画布/模板写入）：first_frame_asset_id 优先于 gen_frames 索引；
+ * ref_asset_ids 与场景/道具收集合并（保序去重），仍受首帧优先与 refCap 决策约束。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功视频）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
  * 未成功任务的 prompt/生成参数执行时与当前分镜/项目设置同步（修正分镜或调
@@ -131,8 +138,8 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
       resolution: resolution ?? null,
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,
-      firstFrameAssetId: frameIndex.get(shot.id) ?? null,
-      setRefAssetIds: collectSetRefAssetIds(shot, sceneIndex, propIndex),
+      firstFrameAssetId: shotFirstFrameOf(shot) ?? frameIndex.get(shot.id) ?? null,
+      setRefAssetIds: normalizePositiveIds([...(shot.ref_asset_ids ?? []), ...collectSetRefAssetIds(shot, sceneIndex, propIndex)]),
     })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
@@ -460,6 +467,12 @@ async function videoReferenceCapability(provider?: string): Promise<'none' | 'ba
   } catch {
     return 'none'
   }
+}
+
+/** [M22] 分镜直通首帧资产读取（正整数校验；无效 → null，回退 gen_frames 索引） */
+export function shotFirstFrameOf(shot: ShotSpec): number | null {
+  const v = shot.first_frame_asset_id
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null
 }
 
 /**

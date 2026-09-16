@@ -28,6 +28,8 @@ interface ShotSpec {
   category?: string
   /** [M19 P7] 场次号（storyboard-ep v7 的 scene）：states「第N场」定位词命中依据；缺失 → 场次档不命中 */
   scene?: number
+  /** [M22] 画布直通参考图资产 id（前插注入，保序去重；与实体锚定参考共存） */
+  ref_asset_ids?: number[]
 }
 
 const nowMs = (): number => Date.now()
@@ -561,7 +563,7 @@ export function injectSetAnchors(
 
 /**
  * 本镜参考图收集（纯函数，任务 params.refAssetIds 快照源）：
- * 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
+ * [M22] shot.ref_asset_ids 直通（前插）→ 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
  * 保序去重；总量 ≤MAX_REFS_PER_SHOT。
  */
 export function collectRefAssetIds(
@@ -575,6 +577,10 @@ export function collectRefAssetIds(
     seen.add(id)
     ids.push(id)
     return true
+  }
+  // 0) [M22] 画布直通（shots.ref_asset_ids 前插——画布连线比实体锚定更显式）
+  for (const raw of shot.ref_asset_ids ?? []) {
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) push(raw)
   }
   // 1) 角色（M6 语义：按出场顺序截断至 4）
   let charAdded = 0

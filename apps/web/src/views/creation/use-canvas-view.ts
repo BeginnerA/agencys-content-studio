@@ -16,6 +16,7 @@ import { useCanvasOverview } from './use-canvas-overview'
 import { useCanvasPalette } from './use-canvas-palette'
 import { useCanvasTrash } from './use-canvas-trash'
 import { useCanvasSnapshots } from './use-canvas-snapshots'
+import { useCanvasCopyTo } from './use-canvas-copyto'
 
 /** [M28] 视图装配入口；URL 与 socket 的 immediate 顺序保持原页语义。 */
 export function useCanvasView() {
@@ -38,6 +39,7 @@ export function useCanvasView() {
   const palette = useCanvasPalette({ ...state, ...commands, ...document, ...target })
   const trash = useCanvasTrash({ ...state, ...target })
   const snapshots = useCanvasSnapshots({ ...state, ...document, ...target })
+  const copyTo = useCanvasCopyTo({ ...state, ...document, ...target })
 
   const { loadLists } = target
   const { onCanvasEvent } = socket
@@ -71,6 +73,7 @@ export function useCanvasView() {
     ...palette,
     ...trash,
     ...snapshots,
+    ...copyTo,
   })
 }
 

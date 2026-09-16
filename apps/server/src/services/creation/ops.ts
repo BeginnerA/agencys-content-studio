@@ -22,16 +22,16 @@ import { recordLlmUsage } from '../usage'
 
 // ---------- 解析与装载 ----------
 
-/** ids 解析：非空正整数数组（去重保序） */
-function parseNodeIds(raw: unknown, label = 'ids'): number[] {
+/** ids 解析：非空正整数数组（去重保序）；[M22] 导出供 copy-to 复用（同文案同语义） */
+export function parseNodeIds(raw: unknown, label = 'ids'): number[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new Error(`${label} 需为非空正整数数组`)
   const ids = [...new Set(raw.map(Number))]
   if (ids.some((n) => !Number.isInteger(n) || n <= 0)) throw new Error(`${label} 需为非空正整数数组`)
   return ids
 }
 
-/** 节点批查 + 归属校验（缺失 → 抛；返回按入参序；重复 id 去重后仅一条） */
-async function loadCanvasNodes(canvas: Canvas, ids: number[]): Promise<CanvasNode[]> {
+/** 节点批查 + 归属校验（缺失 → 抛；返回按入参序；重复 id 去重后仅一条）；[M22] 导出供 copy-to 复用 */
+export async function loadCanvasNodes(canvas: Canvas, ids: number[]): Promise<CanvasNode[]> {
   const rows = await db
     .select()
     .from(canvasNodes)
@@ -119,7 +119,7 @@ export async function deleteNodes(canvas: Canvas, rawIds: unknown): Promise<{ de
 /** 复制偏移缺省值（+40,+40） */
 export const COPY_OFFSET_DEFAULT = { x: 40, y: 40 }
 
-function parseOffset(raw: unknown): { x: number; y: number } {
+export function parseOffset(raw: unknown): { x: number; y: number } {
   if (raw === undefined || raw === null) return { ...COPY_OFFSET_DEFAULT }
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('offset 需为 { x?, y? } 对象')
   const o = raw as Record<string, unknown>

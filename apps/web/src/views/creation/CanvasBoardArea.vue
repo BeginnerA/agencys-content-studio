@@ -28,6 +28,7 @@ const props = defineProps<{ cv: Pick<CanvasViewState,
   | 'onGroupCreate'
   | 'onGroupPatch'
   | 'onGroupDelete'
+  | 'onGroupsMoved'
   | 'onUndo'
   | 'onRedo'
   | 'batchBusy'
@@ -75,6 +76,7 @@ const boardRef = toRef(cv, 'boardRef')
           @group-create="cv.onGroupCreate"
           @group-patch="cv.onGroupPatch"
           @group-delete="cv.onGroupDelete"
+          @groups-moved="cv.onGroupsMoved"
           @undo="cv.onUndo"
           @redo="cv.onRedo"
         />

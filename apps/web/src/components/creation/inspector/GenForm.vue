@@ -95,6 +95,14 @@ const form = props.form
               <input v-model="form.fFps" type="number" min="1" step="1" placeholder="如 30（留空跟随源）" />
             </div>
             <div class="frow">
+              <label class="flabel">画面适配</label>
+              <select v-model="form.fFit">
+                <option value="pad">信箱补边（完整画面）</option>
+                <option value="crop">裁切满幅（铺满画幅）</option>
+              </select>
+            </div>
+            <div v-if="form.fFit === 'crop'" class="warn-t mini">裁切会裁掉画面边缘（输入画面比例不一致时铺满整幅）。</div>
+            <div class="frow">
               <label class="flabel">转场</label>
               <select v-model="form.fTransition">
                 <option v-for="t in TRANSITION_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
@@ -121,7 +129,33 @@ const form = props.form
                 <span>BGM 首尾淡入淡出（1.5s）</span>
               </label>
             </template>
-            <div class="muted mini">输入：视频端口（≥1，按连线创建序拼接）＋ 音频端口（可选，混音；有音轨时丢弃视频原声）。</div>
+            <label class="chk">
+              <input v-model="form.fAlign" type="checkbox" />
+              <span>音字对齐（视频段 ↔ 音频段依次配对，段长取较长者）</span>
+            </label>
+            <div class="frow">
+              <label class="flabel">字幕</label>
+              <select v-model="form.fSubtitle">
+                <option value="none">无</option>
+                <option value="auto">自动生成（取音轨文本）</option>
+                <option value="asset">已有字幕资产</option>
+              </select>
+            </div>
+            <div v-if="form.fSubtitle === 'asset'" class="frow">
+              <label class="flabel">字幕资产</label>
+              <select v-model="form.fSubtitleAssetId">
+                <option value="">选择 SRT 资产…</option>
+                <option v-for="a in form.subtitleOptions" :key="a.id" :value="String(a.id)">{{ a.name }}</option>
+              </select>
+            </div>
+            <div v-if="form.fSubtitle === 'asset' && !form.subtitleOptions.length" class="muted mini">画布中暂无 SRT 资产：可先用「自动生成」产出，或从资产库将 .srt 送入本画布。</div>
+            <label v-if="form.fSubtitle !== 'none'" class="chk">
+              <input v-model="form.fBurnSubtitles" type="checkbox" />
+              <span>烧录字幕到画面（不勾选仅生成 SRT 资产）</span>
+            </label>
+            <div v-if="form.fAlign && form.fTransition !== 'none'" class="warn-t mini">对齐模式与转场互斥，执行时将禁用转场。</div>
+            <div v-if="form.fSubtitle !== 'none' && !form.fAlign" class="warn-t mini">字幕生成依赖音字对齐，请先开启「音字对齐」。</div>
+            <div class="muted mini">输入：视频端口（≥1，按连线创建序拼接）＋ 音频端口（可选，混音；有音轨时丢弃视频原声）。对齐开启时：视频段 ↔ 音频段依次配对，短段冻帧/静音补齐。</div>
           </template>
 
           <div class="frow">

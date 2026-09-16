@@ -58,6 +58,7 @@ import type {
   ShotEditItem,
   ShotOp,
   ShotPick,
+  SnapshotDiffResult,
   SnapshotRestoreResult,
   StyleExtractResult,
   StylePresetItem,
@@ -795,6 +796,12 @@ export const creationApi = {
     api.post<SnapshotRestoreResult>(`/api/v1/canvases/${id}/snapshots/${sid}/restore`),
   /** [M18] 删除快照（画布域限定；不存在/不属本画布 → 404） */
   deleteSnapshot: (id: number, sid: number) => api.del<{ ok: boolean }>(`/api/v1/canvases/${id}/snapshots/${sid}`),
+  /** [M22] 快照对比：快照 ↔ live/另一快照 字段级差异（against 缺省 live；快照缺失 → 404） */
+  snapshotDiff: (id: number, sid: number, against?: string) =>
+    api.get<SnapshotDiffResult>(`/api/v1/canvases/${id}/snapshots/${sid}/diff?against=${encodeURIComponent(against ?? 'live')}`),
+  /** [M22] 从快照分支为新画布（新 id 重放；name 缺省「{源名} 分支」）→ 新画布 */
+  branchSnapshot: (id: number, sid: number, name?: string) =>
+    api.post<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}/snapshots/${sid}/branch`, { name }),
   /** 建节点（asset：项目域资产校验；gen/text：spec 合法校验；entity/run：归属校验）→ DB 行
    *  （restoreFromNodeId：撤销重建认领已删节点任务历史时响应附 claimed 计数） */
   addNode: (canvasId: number, body: AddNodeBody) =>
@@ -812,6 +819,15 @@ export const creationApi = {
   /** [M17] 批量复制（深拷；集合内部边重映射）→ 新 DB 行 */
   copyNodes: (canvasId: number, ids: number[], offset?: { x?: number; y?: number }) =>
     api.post<{ nodes: CanvasNodeRow[]; edges: CanvasEdgeRow[] }>(`/api/v1/canvases/${canvasId}/nodes/copy`, { ids, offset }),
+  /** [M22] 跨画布复制（同项目直接引用 / 跨项目资产级联拷贝）→ 新建行 + 跳过/警告报告 */
+  copyTo: (canvasId: number, body: { targetCanvasId: number; ids: number[]; offset?: { x?: number; y?: number } }) =>
+    api.post<{
+      nodes: CanvasNodeRow[]
+      edges: CanvasEdgeRow[]
+      skipped: Array<{ nodeId: number; reason: string }>
+      assetsCopied: number
+      warnings: string[]
+    }>(`/api/v1/canvases/${canvasId}/nodes/copy-to`, body),
   /** [M17] 规则式串联（按给定顺序相邻连接；端口按产物类型决策，失败项入 skipped） */
   chainNodes: (canvasId: number, ids: number[]) =>
     api.post<{ created: CanvasEdgeRow[]; skipped: Array<{ from: number; to: number; reason: string }> }>(
@@ -846,15 +862,25 @@ export const creationApi = {
   /** [M17] 提取文本节点（gen: spec.prompt；asset: 文本资产全文；缺省位置 = 源节点右侧偏移） */
   extractText: (nodeId: number, body?: { x?: number; y?: number }) =>
     api.post<{ node: CanvasNodeRow }>(`/api/v1/nodes/${nodeId}/extract`, body),
-  /** [M18] 视频抽帧（gen(video) 显示产物 / asset 视频资产 → 新建 asset 节点；缺省位置 = 源节点右下偏移） */
-  extractFrame: (nodeId: number, body?: { mode?: 'first' | 'last' | 'custom'; time?: number; x?: number; y?: number }) =>
-    api.post<{ node: CanvasNodeRow; asset: Asset }>(`/api/v1/nodes/${nodeId}/extract-frame`, body),
+  /** [M18/M22·⑨] 视频抽帧（gen(video) 显示产物 / asset 视频资产 → 新建 asset 节点；缺省位置 = 源节点右下偏移）
+   *  [M22] mode='uniform' + count 2–9：均匀多帧 → 响应追加 nodes/assets（node/asset = 首帧兼容） */
+  extractFrame: (
+    nodeId: number,
+    body?: { mode?: 'first' | 'last' | 'custom' | 'uniform'; time?: number; count?: number; x?: number; y?: number },
+  ) =>
+    api.post<{ node: CanvasNodeRow; asset: Asset; nodes?: CanvasNodeRow[]; assets?: Asset[] }>(
+      `/api/v1/nodes/${nodeId}/extract-frame`,
+      body,
+    ),
   /** [M17] AI 扩写（内容源 = text.text / gen.prompt；不落库；未配置 LLM → 400 引导 Settings） */
   promptExpand: (nodeId: number, instruction?: string) =>
     api.post<{ prompt: string; provider: string; model: string }>(`/api/v1/nodes/${nodeId}/prompt-expand`, { instruction }),
   /** [M17] 打包导出 zip（→ archive 资产；下载复用 GET /assets/:id/file?download=1） */
   exportZip: (canvasId: number, nodeIds?: number[]) =>
     api.post<CanvasExportResult>(`/api/v1/canvases/${canvasId}/export`, { nodeIds }),
+  /** [M22] 布局图导出（SVG 落资产库；svg 文本供前端光栅化 PNG） */
+  exportImage: (canvasId: number, format: 'svg' = 'svg') =>
+    api.post<{ assetId: number; svg: string }>(`/api/v1/canvases/${canvasId}/export-image`, { format }),
   /** 复制画布（节点 id 映射重建边） */
   duplicate: (id: number, name?: string) =>
     api.post<{ canvas: { id: number; name: string } }>(`/api/v1/canvases/${id}/duplicate`, { name }),
@@ -870,14 +896,17 @@ export const creationApi = {
   /** 联动：画布产物并集挂接实体参考图 */
   attachRefAssets: (entityId: number, assetIds: number[]) =>
     api.post<{ ok: boolean; added: number }>(`/api/v1/entities/${entityId}/ref-assets`, { asset_ids: assetIds }),
-  /** [M18] 成组（nodeIds 须属本画布且未成组；违规 400）*/
-  createGroup: (canvasId: number, body: { nodeIds: number[]; title?: string; color?: string | null }) =>
+  /** [M18/M22] 成组（nodeIds/groupIds 至少一非空；groupIds 须顶层组；parentId 装入新组；违规 400）*/
+  createGroup: (
+    canvasId: number,
+    body: { nodeIds?: number[]; groupIds?: number[]; parentId?: number | null; title?: string; color?: string | null },
+  ) =>
     api.post<{ group: CanvasGroup }>(`/api/v1/canvases/${canvasId}/groups`, body),
-  /** [M18] 改组（title/color/collapsed/x/y 局部）*/
+  /** [M18/M22] 改组（title/color/collapsed/x/y/parentId 局部；parentId=null 提升顶层）*/
   updateGroup: (
     canvasId: number,
     gid: number,
-    patch: { title?: string; color?: string | null; collapsed?: boolean; x?: number; y?: number },
+    patch: { title?: string; color?: string | null; collapsed?: boolean; x?: number; y?: number; parentId?: number | null },
   ) => api.patch<{ group: CanvasGroup }>(`/api/v1/canvases/${canvasId}/groups/${gid}`, patch),
   /** [M18] 解组（成员归属清空 + 组行删除）*/
   deleteGroup: (canvasId: number, gid: number) =>

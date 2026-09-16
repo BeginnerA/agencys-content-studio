@@ -867,7 +867,15 @@ async function main(): Promise<void> {
       canvas: { id: 88, projectId: PID, name: '全型画布', viewport: { x: 0, y: 0, zoom: 1 } },
       nodes: [
         { ...emptyNode, kind: 'text', id: 1, title: '主题', spec: { text: '猫和咖啡' } },
-        { ...emptyNode, kind: 'asset', id: 2, title: '参考图', assetId: 99 },
+        {
+          ...emptyNode,
+          kind: 'asset',
+          id: 2,
+          title: '参考图',
+          assetId: 99,
+          // [M22] 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
+          asset: { id: 99, kind: 'image', purpose: null, name: '参考图', mime: 'image/png', width: null, height: null, duration: null, prompt: null, urls: { file: 'f', thumb: null } },
+        },
         { ...emptyNode, kind: 'entity', id: 3, title: '主角', spec: { entityKind: 'character', entityId: 1, name: '小萌' } as any },
         { ...emptyNode, kind: 'run', id: 4, title: '嵌套运行', spec: { runId: 1 } as any },
         { ...emptyNode, id: 10, title: 'LLM 大纲', spec: parseNodeSpec({ genKind: 'llm', prompt: '扩写主题' }) },
@@ -885,6 +893,7 @@ async function main(): Promise<void> {
         { id: 6, from: 13, to: 14, port: 'audio' },
         { id: 7, from: 2, to: 13, port: 'reference' },
       ],
+      groups: [],
     }
 
     const { yaml, lossy } = buildTemplateDraftYaml(doc, 'probe-v2-88')
@@ -925,12 +934,16 @@ async function main(): Promise<void> {
     )
     check(yaml.includes('payload: "喵呜"') && yaml.includes('voice: "Cherry"'), 'draft v2：audio lit payload 回退 + tts voice')
     check(
-      lossy.some((s) => s.includes('#11') && s.includes('参考/首末帧')),
-      'draft v2 lossy：image 参考连线',
+      yaml.includes('refs:') && yaml.includes('- input.a2'),
+      'draft v2：image reference 边 → lit inputs.refs（M22 保真直通）',
     )
     check(
-      lossy.some((s) => s.includes('#12') && s.includes('参考/首末帧')),
-      'draft v2 lossy：video first_frame 连线',
+      yaml.includes('first_frame: steps.n11.asset'),
+      'draft v2：video first_frame 边 → lit inputs.first_frame（M22 保真直通）',
+    )
+    check(
+      lossy.some((s) => s.includes('#13') && s.includes('未映射')),
+      'draft v2 lossy：audio reference 连线未映射（M22 收缩文案）',
     )
     const val = validateTemplateText(yaml, 'probe-v2-88')
     check(val.ok, `draft v2 通过 validateTemplateText：${val.errors.join(' | ')}`)
@@ -1031,8 +1044,8 @@ async function main(): Promise<void> {
       'template-try 201 {templateKey, runId, lossy, input}',
     )
     check(
-      Array.isArray(try1.body?.lossy) && try1.body.lossy.some((s: string) => s.includes('#' + nI) && s.includes('参考')),
-      'template-try lossy 非空（参考连线写入）',
+      Array.isArray(try1.body?.lossy) && !try1.body.lossy.some((s: string) => s.includes('#' + nI) && s.includes('未映射')),
+      'template-try lossy：参考连线已直通映射（M22，不计入 lossy）',
     )
     check(
       try1.body?.input && JSON.stringify(try1.body.input[`a${nA}`]) === JSON.stringify([AV]),

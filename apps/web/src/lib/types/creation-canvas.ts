@@ -23,6 +23,11 @@ export interface NodeSpecEdit {
   expand?: { angle?: number; xScale?: number; yScale?: number }
 }
 
+/** [M22] 字幕模式（compose：none=不出字幕 / auto=音轨文本自动生成 / asset=已有 SRT 资产重钉） */
+export type ComposeSubtitleMode = 'none' | 'auto' | 'asset'
+/** [M22] 对齐画面适配（compose：pad=信箱补边（现状零漂移）/ crop=裁切满幅） */
+export type ComposeFit = 'pad' | 'crop'
+
 /** gen 节点 spec（服务端 parseNodeSpec 同构） */
 export interface CreationNodeSpec {
   genKind: GenKind
@@ -43,6 +48,16 @@ export interface CreationNodeSpec {
   bgmFade?: boolean
   /** [M18] BGM 资产 id（仅 compose；须属本项目 audio 资产） */
   bgmAssetId?: number
+  /** [M22] 音字对齐（仅 compose；video[i]↔audio[i] 段级配对，时长取较长者，短段冻帧/静音补齐） */
+  align?: boolean
+  /** [M22] 字幕模式（仅 compose，缺省 none；生成/烧录均依赖 align） */
+  subtitle?: ComposeSubtitleMode
+  /** [M22] 字幕资产 id（subtitle='asset'：已有 SRT 资产按段重钉） */
+  subtitleAssetId?: number
+  /** [M22] 烧录字幕（仅 compose，缺省 false——缺省仅生成 SRT 资产） */
+  burnSubtitles?: boolean
+  /** [M22] 对齐画面适配（仅 compose，缺省 pad；P2 生效） */
+  fit?: ComposeFit
   /** [M18] LLM 采样温度（仅 llm，0-2，缺省 0.7） */
   temperature?: number
   /** [M18] LLM 最大输出 token（仅 llm，1-32000，缺省 2048） */
@@ -277,7 +292,7 @@ export interface CanvasDocEdge {
   port: string
 }
 
-/** [M18] 画布分组（成员由节点 groupId 前端派生；空组用存储 x/y 显示） */
+/** [M18/M22] 画布分组（成员由节点 groupId 前端派生；空组用存储 x/y 显示；parentId 支持嵌套） */
 export interface CanvasGroup {
   id: number
   title: string
@@ -285,6 +300,8 @@ export interface CanvasGroup {
   collapsed: boolean
   x: number
   y: number
+  /** [M22] 所属父组（null=顶层；嵌套多层） */
+  parentId: number | null
 }
 
 /** [M16] 画布文档全量读模型 */
@@ -325,4 +342,57 @@ export interface SnapshotRestoreResult {
   ok: boolean
   backupSnapshotId: number
   restored: { nodes: number; edges: number; groups: number }
+}
+
+// ===== [M22] 快照对比（服务端 snapshot-diff 同构；展示值经 200 字符截断） =====
+
+/** 单项字段变更（before/after 已截断，展示直用） */
+export interface SnapshotDiffChange {
+  field: string
+  before: unknown
+  after: unknown
+}
+
+/** 行级简单条目（added/removed 用） */
+export interface SnapshotDiffItem {
+  id: number
+  title: string
+}
+
+/** 行级变更条目（modified 用） */
+export interface SnapshotDiffEntry {
+  id: number
+  title: string
+  changes: SnapshotDiffChange[]
+}
+
+export interface SnapshotDiffBucket {
+  added: SnapshotDiffItem[]
+  removed: SnapshotDiffItem[]
+  modified: SnapshotDiffEntry[]
+}
+
+export interface SnapshotDiffCount {
+  added: number
+  removed: number
+  modified: number
+}
+
+export interface SnapshotDiffSummary {
+  nodes: SnapshotDiffCount
+  edges: SnapshotDiffCount
+  groups: SnapshotDiffCount
+}
+
+export interface SnapshotDiff {
+  summary: SnapshotDiffSummary
+  nodes: SnapshotDiffBucket
+  edges: SnapshotDiffBucket
+  groups: SnapshotDiffBucket
+}
+
+/** [M22] 快照对比响应（base=对比基准快照；target=live 或另一快照） */
+export interface SnapshotDiffResult extends SnapshotDiff {
+  base: { kind: 'snapshot'; id: number; label: string }
+  target: { kind: 'snapshot'; id: number; label: string } | { kind: 'live' }
 }

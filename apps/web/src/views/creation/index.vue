@@ -17,9 +17,16 @@ import CanvasEstimateModal from './CanvasEstimateModal.vue'
 import CanvasRefModal from './CanvasRefModal.vue'
 import CanvasTrashModal from './CanvasTrashModal.vue'
 import CanvasSnapshotsModal from './CanvasSnapshotsModal.vue'
+import CanvasCopyToModal from './CanvasCopyToModal.vue'
 import { useCanvasView } from './use-canvas-view'
 
 const cv = useCanvasView()
+
+/** [M22] 检查器 refresh（抽帧等改节点数操作）：静默重拉文档 + 刷画布目录（下拉计数） */
+function onInspectorRefresh(): void {
+  void cv.loadDoc(true)
+  void cv.loadCanvases()
+}
 </script>
 
 <template>
@@ -49,7 +56,7 @@ const cv = useCanvasView()
         :apply-extract="cv.applyNodeExtract"
         :apply-delete="cv.applyDeleteFromInspector"
         :apply-remove-edge="cv.applyRemoveEdge"
-        @refresh="cv.loadDoc(true)"
+        @refresh="onInspectorRefresh"
         @clear="cv.onClearSelection"
         @notice="cv.toast"
       />
@@ -67,6 +74,7 @@ const cv = useCanvasView()
     <CanvasRefModal :cv="cv" />
     <CanvasTrashModal :cv="cv" />
     <CanvasSnapshotsModal :cv="cv" />
+    <CanvasCopyToModal :cv="cv" />
   </div>
 </template>
 

@@ -2,17 +2,17 @@
 import { ref } from 'vue'
 import { creationApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { CanvasSnapshotMeta } from '../../lib/types'
+import type { CanvasSnapshotMeta, SnapshotDiffResult } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 import type { CanvasTarget } from './use-canvas-target'
 
 type Dependencies = Pick<CanvasState, 'canvasId' | 'toast' | 'history'>
   & Pick<CanvasDocument, 'loadDoc'>
-  & Pick<CanvasTarget, 'loadCanvases'>
+  & Pick<CanvasTarget, 'loadCanvases' | 'goCanvas'>
 
 export function useCanvasSnapshots(deps: Dependencies) {
-  const { canvasId, toast, history, loadDoc, loadCanvases } = deps
+  const { canvasId, toast, history, loadDoc, loadCanvases, goCanvas } = deps
 
   // ===== [M18] 文档快照（保留 id 重放恢复；恢复前自动备份）=====
   const showSnaps = ref(false)
@@ -103,6 +103,69 @@ export function useCanvasSnapshots(deps: Dependencies) {
     }
   }
 
+  // ===== [M22] 快照对比（diff）：快照 ↔ live/另一快照 字段级差异 =====
+  /** 当前对比基准快照（null=未打开对比视图） */
+  const diffFor = ref<CanvasSnapshotMeta | null>(null)
+  /** 对比目标：'live'（当前画布）或快照 id 字符串 */
+  const diffAgainst = ref('live')
+  const diffLoading = ref(false)
+  const diffData = ref<SnapshotDiffResult | null>(null)
+
+  async function openDiff(s: CanvasSnapshotMeta): Promise<void> {
+    diffFor.value = s
+    diffAgainst.value = 'live'
+    branchFor.value = null
+    await loadDiff()
+  }
+  async function loadDiff(): Promise<void> {
+    const cid = canvasId.value
+    const s = diffFor.value
+    if (cid == null || !s) return
+    diffLoading.value = true
+    try {
+      diffData.value = await creationApi.snapshotDiff(cid, s.id, diffAgainst.value)
+    } catch (e) {
+      diffData.value = null
+      toast(e instanceof Error ? e.message : String(e))
+    } finally {
+      diffLoading.value = false
+    }
+  }
+  function closeDiff(): void {
+    diffFor.value = null
+    diffData.value = null
+  }
+
+  // ===== [M22] 从快照分支为新画布（命名 → 创建 → 跳转） =====
+  /** 待分支快照（null=未展开命名面板） */
+  const branchFor = ref<CanvasSnapshotMeta | null>(null)
+  const branchName = ref('')
+  const branchBusy = ref(false)
+
+  function startBranch(s: CanvasSnapshotMeta): void {
+    branchFor.value = s
+    branchName.value = ''
+    diffFor.value = null
+  }
+  async function branchSnap(): Promise<void> {
+    const cid = canvasId.value
+    const s = branchFor.value
+    if (cid == null || !s || branchBusy.value) return
+    branchBusy.value = true
+    try {
+      const r = await creationApi.branchSnapshot(cid, s.id, branchName.value.trim() || undefined)
+      showSnaps.value = false
+      branchFor.value = null
+      toast(`已从「${s.label}」分支为新画布「${r.canvas.name}」`)
+      await loadCanvases()
+      goCanvas(r.canvas.id)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+    } finally {
+      branchBusy.value = false
+    }
+  }
+
   return {
     showSnaps,
     snapsBusy,
@@ -115,6 +178,18 @@ export function useCanvasSnapshots(deps: Dependencies) {
     createSnap,
     restoreSnap,
     deleteSnap,
+    diffFor,
+    diffAgainst,
+    diffLoading,
+    diffData,
+    openDiff,
+    loadDiff,
+    closeDiff,
+    branchFor,
+    branchName,
+    branchBusy,
+    startBranch,
+    branchSnap,
   }
 }
 

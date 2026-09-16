@@ -1,10 +1,11 @@
 // [M28·批1a] 自 services/creation.ts 拆分：文档快照（创建/列表/删除/恢复，保留 id 重放）。
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
-import { canvasEdges, canvasGroups, canvasNodes, canvasSnapshots } from '../../db/schema'
-import type { CanvasSnapshot } from '../../db/schema'
+import { canvasEdges, canvasGroups, canvasNodes, canvasSnapshots, canvases } from '../../db/schema'
+import type { Canvas, CanvasSnapshot } from '../../db/schema'
 import { emitStudioEvent } from '../events'
 import { findCanvas } from './canvas'
+import { diffSnapshotDocs, type SnapshotDiff } from './snapshot-diff'
 
 // ---------- [M18] 文档快照（保留 id 重放） ----------
 
@@ -49,8 +50,8 @@ function chunkIds(ids: number[], size = 500): number[][] {
   return out
 }
 
-/** [M18] 采集当前文档全量行 */
-async function collectSnapshotDoc(canvasId: number): Promise<CanvasSnapshotDoc> {
+/** [M18/M22] 采集当前文档全量行（diff 端点取 live 文档复用；快照重建重放语义靠调用侧） */
+export async function collectSnapshotDoc(canvasId: number): Promise<CanvasSnapshotDoc> {
   const [nodes, edges, groups] = await Promise.all([
     db.select().from(canvasNodes).where(eq(canvasNodes.canvasId, canvasId)).orderBy(asc(canvasNodes.id)),
     db.select().from(canvasEdges).where(eq(canvasEdges.canvasId, canvasId)).orderBy(asc(canvasEdges.id)),
@@ -166,7 +167,7 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
     await tx.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvasId))
     await tx.delete(canvasGroups).where(eq(canvasGroups.canvasId, canvasId))
 
-    // ④ 重放（显式保留 id；分组先于节点）
+    // ④ 重放（显式保留 id；分组先于节点；[M22] parentId 保留重放——旧快照无字段容错）
     for (const g of doc.groups) {
       await tx.insert(canvasGroups).values({
         id: g.id,
@@ -176,6 +177,7 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
         collapsed: g.collapsed,
         x: g.x,
         y: g.y,
+        parentId: g.parentId ?? null,
         createdAt: g.createdAt,
       })
     }
@@ -206,4 +208,116 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
     backupSnapshotId: backup.id,
     restored: { nodes: doc.nodes.length, edges: doc.edges.length, groups: doc.groups.length },
   }
+}
+
+// ---------- [M22] 快照 diff / 分支（spec §2.5） ----------
+
+/** 快照行读取（画布域限定；不存在/不属本画布 → null） */
+async function readSnapshotRow(canvasId: number, snapshotId: number): Promise<CanvasSnapshot | null> {
+  const rows = await db
+    .select()
+    .from(canvasSnapshots)
+    .where(and(eq(canvasSnapshots.id, snapshotId), eq(canvasSnapshots.canvasId, canvasId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/** [M22] diff 端点响应形状（base=基准快照；target=live 或另一快照；diff 三桶展开） */
+export interface SnapshotDiffResult {
+  base: { kind: 'snapshot'; id: number; label: string }
+  target: { kind: 'snapshot'; id: number; label: string } | { kind: 'live' }
+  summary: SnapshotDiff['summary']
+  nodes: SnapshotDiff['nodes']
+  edges: SnapshotDiff['edges']
+  groups: SnapshotDiff['groups']
+}
+
+/**
+ * [M22] 快照对比：against 缺省/='live'（快照 ↔ 当前文档），或另一快照 sid 字符串。
+ * sid / sid2 须属本画布（否则 null → 路由 404）。
+ */
+export async function diffSnapshotAgainst(canvasId: number, snapshotId: number, against: string): Promise<SnapshotDiffResult | null> {
+  const canvas = await findCanvas(canvasId)
+  if (!canvas) return null
+  const baseSnap = await readSnapshotRow(canvasId, snapshotId)
+  if (!baseSnap) return null
+  const baseDoc = JSON.parse(baseSnap.doc) as CanvasSnapshotDoc
+  const base = { kind: 'snapshot' as const, id: baseSnap.id, label: baseSnap.label }
+  const a = (against ?? '').trim()
+  if (a === '' || a === 'live') {
+    const diff = diffSnapshotDocs(baseDoc, await collectSnapshotDoc(canvasId))
+    return { base, target: { kind: 'live' }, ...diff }
+  }
+  const sid2 = Number(a)
+  const targetSnap = Number.isInteger(sid2) && sid2 > 0 ? await readSnapshotRow(canvasId, sid2) : null
+  if (!targetSnap) return null
+  const diff = diffSnapshotDocs(baseDoc, JSON.parse(targetSnap.doc) as CanvasSnapshotDoc)
+  return { base, target: { kind: 'snapshot', id: targetSnap.id, label: targetSnap.label }, ...diff }
+}
+
+/**
+ * [M22] 分支为新画布：单事务内新 id 重放（groups 先插 parentId 回填 → nodes groupId 映射 → edges 端点映射）。
+ * 与 restoreSnapshot（保留 id）不同：全新画布空间无 id 冲突（duplicateCanvas 深拷哲学）；name 缺省「{源画布名} 分支」。
+ */
+export async function branchSnapshot(canvasId: number, snapshotId: number, name?: unknown): Promise<Canvas | null> {
+  const canvas = await findCanvas(canvasId)
+  if (!canvas) return null
+  const snap = await readSnapshotRow(canvasId, snapshotId)
+  if (!snap) return null
+  const doc = JSON.parse(snap.doc) as CanvasSnapshotDoc
+  const now = Date.now()
+  const label = typeof name === 'string' && name.trim() ? name.trim() : `${canvas.name} 分支`
+  const newId = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(canvases)
+      .values({ projectId: canvas.projectId, name: label, viewport: canvas.viewport, createdAt: now, updatedAt: now })
+      .returning({ id: canvases.id })
+    const cid = created!.id
+    // 组：先插（parentId 暂 null）记录旧→新映射，再回填（单遍插入时父映射可能未知）
+    const gidMap = new Map<number, number>()
+    for (const g of doc.groups) {
+      const [row] = await tx
+        .insert(canvasGroups)
+        .values({ canvasId: cid, title: g.title, color: g.color, collapsed: g.collapsed, x: g.x, y: g.y, parentId: null, createdAt: g.createdAt })
+        .returning({ id: canvasGroups.id })
+      gidMap.set(g.id, row!.id)
+    }
+    for (const g of doc.groups) {
+      if (g.parentId == null) continue
+      const pid = gidMap.get(g.parentId)
+      if (pid == null) continue
+      await tx.update(canvasGroups).set({ parentId: pid }).where(eq(canvasGroups.id, gidMap.get(g.id)!))
+    }
+    // 节点：group_id 经映射；assetId/spec/adoptedTaskId/seq 原样
+    const nidMap = new Map<number, number>()
+    for (const n of doc.nodes) {
+      const [row] = await tx
+        .insert(canvasNodes)
+        .values({
+          canvasId: cid,
+          kind: n.kind,
+          assetId: n.assetId,
+          title: n.title,
+          spec: n.spec,
+          x: n.x,
+          y: n.y,
+          adoptedTaskId: n.adoptedTaskId,
+          seq: n.seq,
+          groupId: n.groupId != null ? (gidMap.get(n.groupId) ?? null) : null,
+          createdAt: n.createdAt,
+          updatedAt: now,
+        })
+        .returning({ id: canvasNodes.id })
+      nidMap.set(n.id, row!.id)
+    }
+    // 边：from/to 经映射（端点悬空跳过——与 duplicateCanvas 同策略）
+    for (const e of doc.edges) {
+      const from = nidMap.get(e.from)
+      const to = nidMap.get(e.to)
+      if (from === undefined || to === undefined) continue
+      await tx.insert(canvasEdges).values({ canvasId: cid, from, to, port: e.port, createdAt: e.createdAt })
+    }
+    return cid
+  })
+  return newId ? findCanvas(newId) : null
 }

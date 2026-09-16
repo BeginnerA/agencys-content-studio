@@ -52,25 +52,91 @@ function nodeH(n: CanvasDocNode): number {
   return nodeHeights.value[n.id] ?? DEFAULT_H
 }
 
-// ---- [M18] 分组：成员派生 / 折叠隐藏 / 包围盒 / 组条交互 ----
-function membersOf(gid: number): CanvasDocNode[] {
-  return props.nodes.filter((n) => n.groupId === gid)
+// ---- [M18/M22] 分组：嵌套递归派生 / 折叠隐藏 / 包围盒 / 组条交互 ----
+/** [M22] 直接子组 */
+function childGroupsOf(gid: number): CanvasGroup[] {
+  return props.groups.filter((g) => g.parentId === gid)
 }
-const hiddenNodeIds = computed<Set<number>>(() => {
+/** [M22] 全部后代组 id（不含自身；栈式遍历 + 守卫防环） */
+function descGroupIds(gid: number): number[] {
+  const out: number[] = []
+  const stack = [gid]
+  let guard = 0
+  while (stack.length && guard < 1000) {
+    const cur = stack.pop() as number
+    for (const c of childGroupsOf(cur)) {
+      out.push(c.id)
+      stack.push(c.id)
+    }
+    guard += 1
+  }
+  return out
+}
+/** [M22] 组子树全部成员节点（自身直接成员 + 全部后代组成员） */
+function descendantNodesOf(gid: number): CanvasDocNode[] {
+  const gset = new Set([gid, ...descGroupIds(gid)])
+  return props.nodes.filter((n) => n.groupId != null && gset.has(n.groupId))
+}
+function descNodeIds(gid: number): number[] {
+  return descendantNodesOf(gid).map((n) => n.id)
+}
+/** [M22] 组渲染深度（顶层 0；父链守卫防环） */
+function groupDepth(g: CanvasGroup): number {
+  let d = 0
+  let cur = g.parentId
+  let guard = 0
+  while (cur != null && guard < 100) {
+    d += 1
+    cur = props.groups.find((x) => x.id === cur)?.parentId ?? null
+    guard += 1
+  }
+  return d
+}
+/** [M22 实弹] 折叠组隐藏全部后代组框（父组折叠 → 整个子树收起，含子组） */
+const hiddenGroupIds = computed<Set<number>>(() => {
   const s = new Set<number>()
   for (const g of props.groups) {
-    if (g.collapsed) for (const n of props.nodes) if (n.groupId === g.id) s.add(n.id)
+    if (!g.collapsed) continue
+    for (const x of descGroupIds(g.id)) s.add(x)
   }
+  return s
+})
+/** 渲染顺序：嵌套深度升序（祖先背景先画、后代后画；同深度保持原序）；折叠组的后代组框跳过 */
+const renderGroups = computed(() =>
+  [...props.groups]
+    .filter((g) => !hiddenGroupIds.value.has(g.id))
+    .sort((a, b) => groupDepth(a) - groupDepth(b)),
+)
+const hiddenNodeIds = computed<Set<number>>(() => {
+  const s = new Set<number>()
+  // [M22] 折叠组隐藏自身成员 + 全部后代组成员
+  const gset = new Set<number>()
+  for (const g of props.groups) {
+    if (!g.collapsed) continue
+    gset.add(g.id)
+    for (const x of descGroupIds(g.id)) gset.add(x)
+  }
+  if (!gset.size) return s
+  for (const n of props.nodes) if (n.groupId != null && gset.has(n.groupId)) s.add(n.id)
   return s
 })
 function isNodeHidden(n: CanvasDocNode): boolean {
   return hiddenNodeIds.value.has(n.id)
 }
 const renderNodes = computed(() => props.nodes.filter((n) => isNodeHidden(n) === false))
-/** 组包围盒（世界坐标；含成员实测尺寸 + 顶部组条空间；空组用锚点默认 240×120） */
+/** [M22] 空子树组锚点（拖拽中随 dragGroup 即时偏移） */
+function groupAnchor(g: CanvasGroup): { x: number; y: number } {
+  const d = dragGroup.value
+  if (d?.moved && d.gids?.includes(g.id)) return { x: g.x + d.dx, y: g.y + d.dy }
+  return { x: g.x, y: g.y }
+}
+/** 组包围盒（世界坐标；递归成员实测尺寸 + 顶部组条空间；空子树用锚点默认 240×120） */
 function groupBox(g: CanvasGroup): { x: number; y: number; w: number; h: number } {
-  const ms = membersOf(g.id)
-  if (ms.length === 0) return { x: g.x, y: g.y, w: 240, h: 120 }
+  const ms = descendantNodesOf(g.id)
+  if (ms.length === 0) {
+    const a = groupAnchor(g)
+    return { x: a.x, y: a.y, w: 240, h: 120 }
+  }
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -90,7 +156,7 @@ function groupFrameStyle(g: CanvasGroup): Record<string, string> {
   return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }
 }
 function isGroupSelected(g: CanvasGroup): boolean {
-  const ms = membersOf(g.id)
+  const ms = descendantNodesOf(g.id)
   return ms.length > 0 && ms.every((n) => props.selectedIds.includes(n.id))
 }
 const editingGroupId = ref<number | null>(null)
@@ -121,6 +187,19 @@ function setGroupColor(g: CanvasGroup, color: string | null): void {
 }
 function ungroup(g: CanvasGroup): void {
   emit('group-delete', g.id)
+  openGroupMenu.value = null
+}
+// [M22] 移组：候选 = 同画布非自身非后代（防环）；null = 提升顶层
+function parentCandidates(g: CanvasGroup): CanvasGroup[] {
+  const bad = new Set([g.id, ...descGroupIds(g.id)])
+  return props.groups.filter((x) => !bad.has(x.id))
+}
+function moveIntoGroup(g: CanvasGroup, parent: CanvasGroup): void {
+  emit('group-patch', g.id, { parentId: parent.id })
+  openGroupMenu.value = null
+}
+function moveToTopLevel(g: CanvasGroup): void {
+  emit('group-patch', g.id, { parentId: null })
   openGroupMenu.value = null
 }
 
@@ -170,7 +249,7 @@ const {
   onGroupBarPointerDown, onDblClick, onDragOver, onDrop,
   fitView, centerWorld, centerOn,
 } = useBoardInteractions(props, emit, {
-  vp, viewportEl, nodeById, nodeXY, nodeH, membersOf, editingGroupId, openGroupMenu,
+  vp, viewportEl, nodeById, nodeXY, nodeH, descNodeIds, descGroupIds, editingGroupId, openGroupMenu,
 })
 
 defineExpose({ fit: fitView, centerWorld, centerOn })
@@ -196,9 +275,9 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
       class="cb-world"
       :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }"
     >
-      <!-- [M18] 分组层：成员派生包围盒框 + 顶部组条（折叠/重命名/改色/解组/拖拽移组）-->
+      <!-- [M18/M22] 分组层：递归包围盒框 + 顶部组条（折叠/重命名/改色/移组/解组；深度升序渲染）-->
       <div
-        v-for="g in groups"
+        v-for="g in renderGroups"
         :key="`g${g.id}`"
         class="cgroup"
         :class="[g.color ? `cg-${g.color}` : '', { collapsed: g.collapsed, sel: isGroupSelected(g) }]"
@@ -218,7 +297,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
             @blur="commitRename(g)"
           />
           <span v-else class="cgroup-title">{{ g.title }}</span>
-          <span class="cgroup-count">{{ membersOf(g.id).length }}</span>
+          <span class="cgroup-count">{{ descendantNodesOf(g.id).length }}</span>
           <button class="cgroup-menu-btn" title="组操作" @pointerdown.stop @click.stop="toggleGroupMenu(g)">⋯</button>
           <div v-if="openGroupMenu === g.id" class="cgroup-menu" @pointerdown.stop @dblclick.stop>
             <div class="cgroup-colors">
@@ -231,6 +310,19 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
                 :title="c"
                 @click="setGroupColor(g, c)"
               />
+            </div>
+            <button v-if="g.parentId != null" class="cgroup-act" @click="moveToTopLevel(g)">移出到顶层</button>
+            <div class="cgroup-h">移入组</div>
+            <div class="cgroup-parents">
+              <button
+                v-for="p in parentCandidates(g)"
+                :key="p.id"
+                class="cgroup-act"
+                @click="moveIntoGroup(g, p)"
+              >
+                {{ p.title }}
+              </button>
+              <div v-if="!parentCandidates(g).length" class="mini muted">无可选目标组</div>
             </div>
             <button class="cgroup-act" @click="ungroup(g)">解组</button>
           </div>
@@ -328,7 +420,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   border-radius: 12px;
   background: rgb(var(--cg, 148 163 184) / 7%);
   pointer-events: none; /* 框体不拦截：穿框仍可点节点 / 空白框选 */
-  z-index: 0;
+  /* [M22 实弹] 不设 z-index：避免创建层叠上下文把菜单 z:5 锁在内部（被节点层盖住→点击穿透选节点）；组框仍按 DOM 序垫底 */
 }
 
 .cgroup.sel {
@@ -461,6 +553,20 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
 .cgroup-colors .cgroup-dot.on {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* [M22] 移组区：小标题 + 候选列表（防溢出滚动） */
+.cgroup-h {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.cgroup-parents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow-y: auto;
 }
 
 .cgroup-act {

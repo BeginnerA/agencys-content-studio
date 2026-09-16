@@ -18,28 +18,32 @@ interface BoardInteractionsDeps {
   nodeById: ComputedRef<Map<number, CanvasDocNode>>
   nodeXY: (n: CanvasDocNode) => { x: number; y: number }
   nodeH: (n: CanvasDocNode) => number
-  membersOf: (gid: number) => CanvasDocNode[]
+  /** [M22] 组子树递归成员节点 id（含全部后代组） */
+  descNodeIds: (gid: number) => number[]
+  /** [M22] 组子树后代组 id（不含自身；锚点平移用） */
+  descGroupIds: (gid: number) => number[]
   editingGroupId: Ref<number | null>
   openGroupMenu: Ref<number | null>
 }
 
 export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps: BoardInteractionsDeps) {
-  const { vp, viewportEl, nodeById, nodeXY, nodeH, membersOf, editingGroupId, openGroupMenu } = deps
+  const { vp, viewportEl, nodeById, nodeXY, nodeH, descNodeIds, descGroupIds, editingGroupId, openGroupMenu } = deps
   const { pan, zoom } = vp
 
-  /** 拖拽中的整组本地即时偏移（优先于渲染）；抬起 emit 后由父级乐观更新替换 */
-  const dragGroup = ref<{ ids: number[]; dx: number; dy: number; moved: boolean } | null>(null)
+  /** 拖拽中的整组本地即时偏移（优先于渲染）；抬起 emit 后由父级乐观更新替换
+   *  [M22] gids：组条拖拽时的「自身+后代组」锚点平移集（空组包围盒跟随） */
+  const dragGroup = ref<{ ids: number[]; dx: number; dy: number; moved: boolean; gids?: number[] } | null>(null)
 
   function onGroupBarPointerDown(ev: PointerEvent, g: CanvasGroup): void {
     if (ev.button !== 0 || spaceDown.value) return
     if (editingGroupId.value === g.id) return
     ev.stopPropagation()
-    const ids = membersOf(g.id).map((n) => n.id)
+    // [M22] 递归：选中/拖拽全部后代节点；后代组（含自身）锚点同步平移
+    const ids = descNodeIds(g.id)
     emit('select', ids)
     openGroupMenu.value = null
-    if (!ids.length) return
     mode.value = 'node'
-    drag = { ids }
+    drag = { ids, gids: [g.id, ...descGroupIds(g.id)] }
     dragPx = { cx: ev.clientX, cy: ev.clientY }
     dragGroup.value = null
     viewportEl.value?.setPointerCapture(ev.pointerId)
@@ -69,7 +73,7 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
   const mode = ref<Mode>('idle')
   const spaceDown = ref(false)
   let panMoved = false
-  let drag: { ids: number[] } | null = null
+  let drag: { ids: number[]; gids?: number[] } | null = null
   let dragPx: { cx: number; cy: number } | null = null
   let boxStart: { x: number; y: number } | null = null
   let boxMoved = false
@@ -172,6 +176,14 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
           .filter((n) => sel.has(n.id))
           .map((n) => ({ id: n.id, x: Math.round(n.x + d.dx), y: Math.round(n.y + d.dy) }))
         if (moves.length) emit('moved', moves)
+        // [M22] 组条拖拽：后代组锚点跟随平移（空组包围盒用锚点）
+        if (d.gids?.length) {
+          const gsel = new Set(d.gids)
+          const gmoves = props.groups
+            .filter((g) => gsel.has(g.id))
+            .map((g) => ({ id: g.id, x: Math.round(g.x + d.dx), y: Math.round(g.y + d.dy) }))
+          if (gmoves.length) emit('groups-moved', gmoves)
+        }
       }
       drag = null
       dragPx = null

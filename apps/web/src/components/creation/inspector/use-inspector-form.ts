@@ -12,6 +12,8 @@ import type {
   CanvasEditMode,
   CanvasGenTaskLite,
   CanvasResultItem,
+  ComposeFit,
+  ComposeSubtitleMode,
   ComposeTransition,
   CreationNodeSpec,
   EntityItem,
@@ -67,9 +69,18 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const fBgmAssetId = ref('')
   const fBgmVolume = ref('')
   const fBgmFade = ref(true)
+  /** [M22] compose：音字对齐 / 字幕模式 / 字幕资产（字符串表单）/ 烧录字幕 / 画面适配 */
+  const fAlign = ref(false)
+  const fSubtitle = ref<ComposeSubtitleMode>('none')
+  const fSubtitleAssetId = ref('')
+  const fBurnSubtitles = ref(false)
+  /** [M22] 对齐画面适配（pad=信箱补边（默认）/ crop=裁切满幅） */
+  const fFit = ref<ComposeFit>('pad')
   /** [M18] 抽帧：模式 / 指定时刻（秒）/ 忙锁 */
-  const frameMode = ref<'first' | 'last' | 'custom'>('first')
+  const frameMode = ref<'first' | 'last' | 'custom' | 'uniform'>('first')
   const frameTime = ref('')
+  /** [M22·⑨] 均匀抽帧数量（2–9，默认 3；count=3 恰为首/中/尾） */
+  const uniformCount = ref(3)
   const frameBusy = ref(false)
   /** [M18] LLM 节点：采样温度 / 最大输出 token */
   const fTemperature = ref('')
@@ -82,6 +93,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
       pr: fProvider.value, m: fModel.value, st: fStyle.value, em: fEditMode.value,
       a: fAngle.value, xs: fXScale.value, ys: fYScale.value,
       tr: fTransition.value, td: fTransitionDuration.value, bg: fBgmAssetId.value, bv: fBgmVolume.value, bf: fBgmFade.value,
+      al: fAlign.value, sb: fSubtitle.value, sa: fSubtitleAssetId.value, bs: fBurnSubtitles.value, ft: fFit.value,
       tm: fTemperature.value, mt: fMaxTokens.value,
     })
   }
@@ -113,6 +125,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     fBgmAssetId.value = s?.bgmAssetId != null ? String(s.bgmAssetId) : ''
     fBgmVolume.value = s?.bgmVolume != null ? String(s.bgmVolume) : ''
     fBgmFade.value = s?.bgmFade !== false
+    fAlign.value = s?.align === true
+    fSubtitle.value = s?.subtitle ?? 'none'
+    fSubtitleAssetId.value = s?.subtitleAssetId != null ? String(s.subtitleAssetId) : ''
+    fBurnSubtitles.value = s?.burnSubtitles === true
+    fFit.value = s?.fit ?? 'pad'
     fTemperature.value = s?.temperature != null ? String(s.temperature) : ''
     fMaxTokens.value = s?.maxTokens != null ? String(s.maxTokens) : ''
     fVariants.value = 1
@@ -129,7 +146,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     },
     { immediate: true },
   )
-  watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade, fTemperature, fMaxTokens], () => {
+  watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade, fAlign, fSubtitle, fSubtitleAssetId, fBurnSubtitles, fFit, fTemperature, fMaxTokens], () => {
     formTouched.value = formSnapshot() !== formBase
   })
 
@@ -171,6 +188,19 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
         if (fBgmVolume.value.trim() && Number.isFinite(bv) && bv >= 0 && bv <= 1) spec.bgmVolume = bv
         if (!fBgmFade.value) spec.bgmFade = false
       }
+      // [M22] 音字对齐（仅 true 落库）
+      if (fAlign.value) spec.align = true
+      // [M22] 字幕（'none' 省略；asset 时落 subtitleAssetId；烧录仅字幕启用时落库）
+      if (fSubtitle.value !== 'none') {
+        spec.subtitle = fSubtitle.value
+        if (fSubtitle.value === 'asset') {
+          const sa = Number(fSubtitleAssetId.value)
+          if (fSubtitleAssetId.value && Number.isInteger(sa) && sa > 0) spec.subtitleAssetId = sa
+        }
+        if (fBurnSubtitles.value) spec.burnSubtitles = true
+      }
+      // [M22] 画面适配（缺省 pad 不落库——现状零漂移；仅 crop 落库）
+      if (fFit.value === 'crop') spec.fit = 'crop'
     }
     if (gk !== 'audio') {
       const resolution = fResolution.value.trim()
@@ -205,6 +235,12 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     return spec
   }
 
+  /** [M22 实弹] 保存成功后以当前表单为新基线（消除「有未保存修改」提示残留） */
+  function markFormSaved(): void {
+    formBase = formSnapshot()
+    formTouched.value = false
+  }
+
   async function saveSpec(): Promise<void> {
     const n = props.node
     if (!n) return
@@ -212,6 +248,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opErr.value = ''
     try {
       await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+      markFormSaved()
       emit('notice', 'spec 已保存')
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -274,6 +311,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
       }
     } else if (n.kind === 'gen' && formTouched.value) {
       await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+      markFormSaved()
     }
   }
 
@@ -405,6 +443,28 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     return out
   })
 
+  // ===== [M22] 字幕资产候选（purpose=creation_subtitle 的文本资产；含 spec 现值兼容兜底） =====
+  const subtitleOptions = computed<Array<{ id: number; name: string }>>(() => {
+    const out: Array<{ id: number; name: string }> = []
+    const seen = new Set<number>()
+    const push = (id: number | null | undefined, name: string | null | undefined): void => {
+      if (id == null || seen.has(id)) return
+      seen.add(id)
+      out.push({ id, name: name ?? `资产 #${id}` })
+    }
+    const isSub = (a: CanvasAssetLite | null): boolean => !!a && a.kind === 'text' && (a.purpose === 'creation_subtitle' || a.name.endsWith('.srt'))
+    for (const n of props.nodes) {
+      if (n.kind === 'asset' && isSub(n.asset)) push(n.assetId, n.asset?.name)
+    }
+    for (const n of props.nodes) {
+      if (n.kind !== 'gen' || asGenSpec(n.spec)?.genKind !== 'compose') continue
+      if (isSub(n.displayTask?.asset ?? null)) push(n.displayTask?.resultAssetId, n.displayTask?.asset?.name)
+    }
+    const cur = asGenSpec(props.node?.spec)?.subtitleAssetId
+    if (cur != null) push(cur, `资产 #${cur}（画布外引用）`)
+    return out
+  })
+
   // ===== [M18] 视频抽帧（gen(video) 显示产物 / asset 视频资产） =====
   const canExtractFrame = computed<boolean>(() => {
     const n = props.node
@@ -426,12 +486,18 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     try {
       if (n.kind === 'gen' && formTouched.value) {
         await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+        markFormSaved()
       }
       const r = await creationApi.extractFrame(n.id, {
         mode: frameMode.value,
         time: frameMode.value === 'custom' ? Number(frameTime.value) : undefined,
+        count: frameMode.value === 'uniform' ? uniformCount.value : undefined,
       })
-      emit('notice', `已抽取帧素材（节点 #${r.node.id} · 资产 #${r.asset.id}）`)
+      if (r.nodes && r.nodes.length > 1) {
+        emit('notice', `已均匀抽取 ${r.nodes.length} 帧（节点 #${r.nodes.map((x) => x.id).join('、#')}）`)
+      } else {
+        emit('notice', `已抽取帧素材（节点 #${r.node.id} · 资产 #${r.asset.id}）`)
+      }
       emit('refresh')
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -496,6 +562,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opErr.value = ''
     try {
       await props.applyRun({ id: n.id, variants: fVariants.value, savePatch: { spec: buildSpec() } })
+      markFormSaved()
       emit('notice', `节点「${n.title}」已入队执行${fVariants.value > 1 ? ` ×${fVariants.value}` : ''}`)
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -636,18 +703,19 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     // 表单字段
     fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle,
     fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade,
+    fAlign, fSubtitle, fSubtitleAssetId, fBurnSubtitles, fFit,
     fTemperature, fMaxTokens, fText,
     // 交互状态
     opErr, opBusy, formTouched, expandBusy,
     entOpen, entKind, entList, entLoading, entBusy, entErr,
     // 派生视图
-    genSpec, canCancelRun, readinessNotes, sourceNode, sourceAsset, currentMaskId, capHint, bgmOptions, canExtractFrame,
+    genSpec, canCancelRun, readinessNotes, sourceNode, sourceAsset, currentMaskId, capHint, bgmOptions, subtitleOptions, canExtractFrame,
   })
 
   return {
     form,
     // —— 视图层（index 解构直用；函数下传面板子组件）——
-    genSpec, opErr, opBusy, formTouched, frameBusy, canExtractFrame, fVariants, frameMode, frameTime, runTitle,
+    genSpec, opErr, opBusy, formTouched, frameBusy, canExtractFrame, fVariants, frameMode, frameTime, uniformCount, runTitle,
     incoming, outgoing, edgeFrom, edgeTo,
     doRun, doCancel, doExtractFrame, removeNode, dropEdge,
     saveSpec, openExpand, doExpand, applyExpand, doExtract, saveText,

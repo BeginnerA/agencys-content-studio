@@ -24,10 +24,10 @@ export function useCanvasGroups(deps: Dependencies) {
     }
   }
 
-  /** 组条改组（title / color / collapsed 局部）；重拉对账 */
+  /** 组条改组（title / color / collapsed / parentId 局部）；重拉对账 */
   async function onGroupPatch(
     gid: number,
-    patch: { title?: string; color?: string | null; collapsed?: boolean },
+    patch: { title?: string; color?: string | null; collapsed?: boolean; parentId?: number | null },
   ): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
@@ -37,6 +37,18 @@ export function useCanvasGroups(deps: Dependencies) {
       toast(e instanceof Error ? e.message : String(e))
     }
     await loadDoc(true)
+  }
+
+  /** [M22] 组条拖拽：后代组（含自身）锚点批量平移（节点平移走 moved 通道；失败重拉对账） */
+  async function onGroupsMoved(moves: Array<{ id: number; x: number; y: number }>): Promise<void> {
+    const cid = canvasId.value
+    if (cid == null || !moves.length) return
+    try {
+      await Promise.all(moves.map((m) => creationApi.updateGroup(cid, m.id, { x: m.x, y: m.y })))
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+      await loadDoc(true)
+    }
   }
 
   /** 解组（成员保留，组行删除） */
@@ -55,6 +67,7 @@ export function useCanvasGroups(deps: Dependencies) {
     onGroupCreate,
     onGroupPatch,
     onGroupDelete,
+    onGroupsMoved,
   }
 }
 

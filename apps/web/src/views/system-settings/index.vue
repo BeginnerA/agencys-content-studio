@@ -23,6 +23,7 @@ const TABS = [
   { key: 'brand', label: '品牌', icon: 'brush', hint: '水印 / 片头 / 片尾 / 字幕样式（平台默认；项目与 run 可覆盖）' },
   { key: 'notify', label: '通知', icon: 'bell', hint: '长任务离开页面也能感知（仅后台标签页推送）' },
   { key: 'run', label: '运行', icon: 'sliders', hint: '全局并发上限（跨批次与多开任务的总闸门）' },
+  { key: 'data', label: '数据', icon: 'trash', hint: '回收站保留期与自动清理（过期画布定时彻底删除）' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
@@ -148,10 +149,53 @@ async function saveRun() {
   }
 }
 
+// ---------- [M22] 数据设置（settings key 'trash'：回收站保留期 + 自动清理） ----------
+
+const TRASH_LO = 1
+const TRASH_HI = 365
+const trashDays = ref(30)
+const trashAuto = ref(true)
+const trashSaving = ref(false)
+const trashHint = ref('')
+
+async function loadData() {
+  try {
+    const r = await settingsApi.list()
+    const raw = r.items.find((it) => it.key === 'trash')?.value
+    const o = raw && typeof raw === 'object' ? (raw as { retentionDays?: unknown; autoPurge?: unknown }) : {}
+    const n = Number(o.retentionDays)
+    trashDays.value = Number.isFinite(n) ? Math.min(TRASH_HI, Math.max(TRASH_LO, Math.round(n))) : 30
+    trashAuto.value = typeof o.autoPurge === 'boolean' ? o.autoPurge : true
+  } catch {
+    /* 读取失败保持默认（30 天 / 开启） */
+  }
+}
+
+async function saveData() {
+  trashSaving.value = true
+  trashHint.value = ''
+  // 前端先行归一（与服务端读取链 clamp 语义对齐：0→1 / 999→365 / 非法→默认 30）
+  const raw = Number(trashDays.value)
+  const n = Number.isFinite(raw) ? Math.min(TRASH_HI, Math.max(TRASH_LO, Math.round(raw))) : 30
+  trashDays.value = n
+  try {
+    await settingsApi.put('trash', { retentionDays: n, autoPurge: trashAuto.value })
+    trashHint.value = '已保存（启动时与每 6 小时扫描生效）'
+    window.setTimeout(() => {
+      if (trashHint.value.startsWith('已保存')) trashHint.value = ''
+    }, 2500)
+  } catch (err) {
+    trashHint.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    trashSaving.value = false
+  }
+}
+
 // 初始加载
 refreshPreview()
 loadNotify()
 loadRun()
+loadData()
 </script>
 
 <template>
@@ -282,6 +326,48 @@ loadRun()
         </div>
         <div class="rc-foot muted">
           <span v-if="concHint">{{ concHint }}</span>
+        </div>
+      </div>
+    </div>
+    <!-- 数据 Tab（[M22] ⑥：回收站保留期自动清理） -->
+    <div v-if="activeTab === 'data'" class="sys-data">
+      <div class="panel rc-card">
+        <div class="rc-head">
+          <h3>回收站自动清理</h3>
+          <span class="muted">过期软删画布将连同节点/连线/分组/快照一并彻底清理（生成任务留痕保留）</span>
+        </div>
+
+        <div class="rc-row">
+          <span class="rc-lb">保留期</span>
+          <input
+            v-model.number="trashDays"
+            class="rc-num"
+            type="number"
+            :min="TRASH_LO"
+            :max="TRASH_HI"
+            step="1"
+            aria-label="回收站保留期（1–365 天）"
+            @keydown.enter="saveData"
+          />
+          <span class="muted">天（1–365，默认 30）</span>
+        </div>
+
+        <label class="rc-ck">
+          <input v-model="trashAuto" type="checkbox" />
+          <span>启用自动清理（服务启动时 + 每 6 小时扫描一次）</span>
+        </label>
+
+        <div class="rc-row">
+          <button class="btn primary" type="button" :disabled="trashSaving" @click="saveData">
+            {{ trashSaving ? '保存中…' : '保存' }}
+          </button>
+        </div>
+
+        <div class="rc-note muted">
+          配置存于 settings「trash」；回收站弹窗内的「彻底删除」手动操作不受影响。关闭自动清理后，过期画布将一直保留至手动处理。
+        </div>
+        <div class="rc-foot muted">
+          <span v-if="trashHint">{{ trashHint }}</span>
         </div>
       </div>
     </div>
@@ -453,5 +539,19 @@ loadRun()
 .rc-foot {
   min-height: 16px;
   font-size: 11.5px;
+}
+
+/* [M22] 数据设置卡片 */
+.sys-data {
+  max-width: 640px;
+}
+
+.rc-ck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px;
 }
 </style>

@@ -35,7 +35,7 @@ export function topoSortGenNodeIds(genIds: number[], edges: Array<{ from: number
 
 // ---------- [M18] 模板草案 v2（literal + 主步骤 + lossy 清单） ----------
 
-/** 画布 → 流水线模板草案 v2：text/asset 节点 → inputs；gen 节点→ literal 包装 + 主步骤；llm→ ai_text prompt_inline；compose→ ffmpeg_merge；entity/run/参考图/编辑/转场/BGM → lossy */
+/** 画布 → 流水线模板草案 v2：text/asset 节点 → inputs；gen 节点→ literal 包装 + 主步骤；llm→ ai_text prompt_inline；compose→ ffmpeg_merge；[M22] 参考/首帧边（image 源）→ literal inputs；entity/run/末帧/编辑源/编辑/转场/BGM → lossy */
 export async function buildTemplateDraft(
   canvasId: number,
   key?: string,
@@ -88,7 +88,7 @@ export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDra
 
   const lines: string[] = []
   lines.push(`# 由创作画布「${doc.canvas.name}」（canvas #${doc.canvas.id}）导出——模板 v2 草案`)
-  lines.push('# 说明：literal 包装提示词为 shots/lines JSON；主步骤 ai_image/ai_video/tts/ai_text(prompt_inline)/ffmpeg_merge；entity/run/参考图/编辑/转场/BGM 写入 lossy。')
+  lines.push('# 说明：literal 包装提示词为 shots/lines JSON；主步骤 ai_image/ai_video/tts/ai_text(prompt_inline)/ffmpeg_merge；参考/首帧边（图片源）映射 literal inputs；entity/run/末帧/编辑源/编辑/转场/BGM 写入 lossy。')
   lines.push(`key: ${key}`)
   lines.push('version: 1')
   lines.push(`name: ${yamlScalar(`${doc.canvas.name} 草案`)}`)
@@ -270,16 +270,52 @@ export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDra
       }
     }
 
+    // [M22] 参考边保真：reference（image 源）→ inputs.refs；first_frame（image 源，video 专用，取首条）→ inputs.first_frame；
+    // 末帧/编辑源/非图片源/多帧溢出 → unmapped（lossy 汇总）；literal 侧 as=storyboard-single 直通 shots[0] 保真字段
+    const refExprOf = (up: CanvasDocNode): string | null => {
+      if (up.kind === 'asset') {
+        const ak = assetInputOf.get(up.id)
+        return ak && up.asset?.kind === 'image' ? `input.${ak}` : null
+      }
+      if (genSpecOf(up)?.genKind !== 'image') return null
+      const fk = finalStepOf.get(up.id)
+      return fk ? `steps.${fk}.asset` : null
+    }
+    const refExprs: string[] = []
+    let ffExpr: string | null = null
+    let unmappedRefs = 0
+    for (const e of incoming) {
+      if (e.port !== 'reference' && e.port !== 'first_frame' && e.port !== 'last_frame' && e.port !== 'source') continue
+      const up = byId.get(e.from)
+      const mapped =
+        up && ((e.port === 'reference' && asKind === 'storyboard-single') || (e.port === 'first_frame' && action === 'ai_video'))
+          ? refExprOf(up)
+          : null
+      if (!mapped) {
+        unmappedRefs++
+        continue
+      }
+      if (e.port === 'reference') refExprs.push(mapped)
+      else if (ffExpr == null) ffExpr = mapped
+      else unmappedRefs++
+    }
+
     // lit 步骤
     lines.push(`  - key: ${litKey}`)
     lines.push('    action: literal')
     lines.push(`    title: ${yamlScalar(`${node.title} 文本`)}`)
     lines.push(`    after: [${Array.from(after).join(', ')}]`)
-    if (textRef) {
+    if (textRef || refExprs.length > 0 || ffExpr != null) {
       lines.push('    inputs:')
-      lines.push(`      text: ${textRef}`)
+      if (textRef) lines.push(`      text: ${textRef}`)
+      if (refExprs.length > 0) {
+        lines.push('      refs:')
+        for (const r of refExprs) lines.push(`        - ${r}`)
+      }
+      if (ffExpr != null) lines.push(`      first_frame: ${ffExpr}`)
       lines.push('    params:')
       lines.push(`      as: ${asKind}`)
+      if (!textRef) lines.push(`      payload: ${yamlScalar(spec.prompt || '（画布节点未指定提示词）')}`)
     } else {
       lines.push('    inputs: {}')
       lines.push('    params:')
@@ -303,9 +339,8 @@ export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDra
     lines.push(`      output_purpose: ${purpose}`)
     if (spec.genKind === 'image') lines.push(`      use_style_preset: ${spec.useStylePreset !== false ? 'true' : 'false'}`)
     if (spec.provider || spec.model) lines.push(`    # provider/model: ${spec.provider ?? '默认'} / ${spec.model ?? '默认'}`)
-    const refEdges = incoming.filter((e) => e.port === 'reference' || e.port === 'first_frame' || e.port === 'last_frame' || e.port === 'source')
-    if (refEdges.length > 0) {
-      lossy.push(`${action} 节点 #${id}（${node.title}）：${refEdges.length} 条参考/首末帧/编辑源连线→ 模板层不映射，运行时需手工补充`)
+    if (unmappedRefs > 0) {
+      lossy.push(`${action} 节点 #${id}（${node.title}）：${unmappedRefs} 条连线未映射（末帧/编辑源/非图片源）→ 运行时需手工补充`)
     }
     if (spec.edit) {
       lossy.push(`${action} 节点 #${id}：编辑模式（${spec.edit.mode}）→ 模板层不支持，运行时需替换为普通生成或后处理`)

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '../../../db'
 import { assets, canvasEdges, genTasks, projects } from '../../../db/schema'
@@ -20,7 +20,8 @@ import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../style-p
 import { resolveAudioEndpoint, synthSpeech } from '../../tts'
 import { cloneEndpoint, loadCloneIndex } from '../../tts-clone'
 import { recordLlmUsage, recordUsage } from '../../usage'
-import { buildComposeArgs } from './compose-args'
+import { buildComposeArgs, planAlignedSegments } from './compose-args'
+import { buildSegmentSrt, parseSrtCues, retimeSrtCues } from './subtitle'
 import { appendStyleSnippet, buildEditParams, parseResolution, type ComposeSize } from './params'
 import { emitCanvasChanged, nowMs, pollCanvasVideoTask, taskCancelled } from './video'
 
@@ -230,6 +231,8 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
 interface ComposeInput {
   path: string
   duration: number | null
+  /** [M22] 资产 prompt（tts 语音文本——字幕 'auto' 模式文本源） */
+  prompt: string | null
 }
 
 async function composeInputsOf(assetIds: number[], label: string): Promise<ComposeInput[]> {
@@ -243,7 +246,7 @@ async function composeInputsOf(assetIds: number[], label: string): Promise<Compo
     if (!a.relPath) throw new Error(`${label}输入 asset#${id} 无本地文件`)
     const abs = absPathOf(a.relPath)
     if (!existsSync(abs)) throw new Error(`${label}输入 asset#${id} 文件缺失（${a.relPath}）`)
-    out.push({ path: abs, duration: typeof a.duration === 'number' && a.duration > 0 ? a.duration : null })
+    out.push({ path: abs, duration: typeof a.duration === 'number' && a.duration > 0 ? a.duration : null, prompt: a.prompt })
   }
   return out
 }
@@ -468,6 +471,62 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
   // [M18] 段时长：资产元数据优先，缺失 ffprobe 兜底；任一未知 → durations=null → 转场/BGM 宽容降级
   const resolvedDurs = videoIns.map((v) => v.duration ?? probeMediaDuration(v.path))
   const durations = resolvedDurs.every((d): d is number => typeof d === 'number' && d > 0) ? resolvedDurs : null
+  // [M22] 音字对齐：段级配对计划（video[i]↔audio[i]，段时长 max）；段数不匹配/任一段时长未知 → 宽容降级为现状
+  const resolvedADurs = audioIns.map((a) => a.duration ?? probeMediaDuration(a.path))
+  const alignPlan = spec.align ? planAlignedSegments(resolvedDurs, resolvedADurs) : null
+  if (spec.align && !alignPlan) log.warn(`canvas node #${node.id} 音字对齐已降级（视频/音频段数不匹配或时长未知）`)
+  if (alignPlan && spec.transition && spec.transition !== 'none') log.warn(`canvas node #${node.id} 对齐模式与转场互斥，已禁用转场`)
+  // [M22] 字幕链：'auto'=音频段 prompt 文本生成 / 'asset'=已有 SRT 按段重钉 → 先落库（烧录引用文件绝对路径，不删留档）
+  let subtitleAssetId: number | null = null
+  let burnSubPath: string | null = null
+  if (alignPlan && spec.subtitle && spec.subtitle !== 'none') {
+    const segStarts: Array<{ startSec: number; segDur: number }> = []
+    let segCursor = 0
+    for (const d of alignPlan.segDurs) {
+      segStarts.push({ startSec: segCursor, segDur: d })
+      segCursor = Math.round((segCursor + d) * 1000) / 1000
+    }
+    let srtText: string | null = null
+    if (spec.subtitle === 'asset') {
+      if (spec.subtitleAssetId != null) {
+        try {
+          const [subInput] = await composeInputsOf([spec.subtitleAssetId], '字幕')
+          if (!subInput) throw new Error('字幕资产缺失')
+          srtText = retimeSrtCues(parseSrtCues(readFileSync(subInput.path, 'utf8')), segStarts)
+          if (!srtText) log.warn(`canvas node #${node.id} 已有字幕 cue 数与段数不符，降级不生成字幕`)
+        } catch (err) {
+          log.warn(`canvas node #${node.id} 已有字幕读取失败，降级不生成字幕：${(err as Error).message}`)
+        }
+      } else {
+        log.warn(`canvas node #${node.id} 字幕模式 asset 但未指定 subtitleAssetId，跳过`)
+      }
+    } else if (spec.subtitle === 'auto') {
+      srtText = buildSegmentSrt(
+        audioIns.map((a, i) => ({
+          startSec: segStarts[i]!.startSec,
+          voiceDur: resolvedADurs[i] ?? 0,
+          segDur: alignPlan.segDurs[i]!,
+          text: a.prompt ?? '',
+        })),
+      )
+      if (!srtText) log.warn(`canvas node #${node.id} 音频段无文本，字幕未生成`)
+    }
+    if (srtText) {
+      const subAsset = await writeTextAsset(canvas.projectId, {
+        name: `合成字幕 #${node.id}.srt`,
+        content: srtText,
+        purpose: 'creation_subtitle',
+        format: 'srt',
+        taskId,
+        runId: null,
+        params: { canvasId: canvas.id, nodeId: node.id, subtitle: spec.subtitle ?? null, segs: alignPlan.segDurs.length },
+        tags: ['subtitle'],
+      })
+      subtitleAssetId = subAsset.id
+      if (spec.burnSubtitles && subAsset.relPath) burnSubPath = absPathOf(subAsset.relPath)
+      log.info(`canvas node #${node.id} 字幕生成 → asset#${subAsset.id}（${alignPlan.segDurs.length} 段${burnSubPath ? '，烧录' : ''}）`)
+    }
+  }
   let bgmPath: string | null = null
   if (spec.bgmAssetId != null) {
     const [b] = await composeInputsOf([spec.bgmAssetId], '背景音乐')
@@ -497,12 +556,18 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
     bgmPath,
     bgmVolume: spec.bgmVolume ?? null,
     bgmFade: spec.bgmFade ?? null,
+    align: alignPlan ? { videoDurs: resolvedDurs as number[], audioDurs: resolvedADurs as number[] } : null,
+    subtitlePath: burnSubPath,
+    fit: spec.fit ?? null,
   })
   if (await taskCancelled(taskId)) return
-  const transDesc = spec.transition && spec.transition !== 'none' && durations ? `转场=${spec.transition}` : ''
+  const transDesc = spec.transition && spec.transition !== 'none' && durations && !alignPlan ? `转场=${spec.transition}` : ''
   const bgmDesc = bgmPath && durations ? 'BGM=有' : ''
+  const alignDesc = alignPlan ? `对齐=${alignPlan.segDurs.length}段` : ''
+  const subDesc = subtitleAssetId != null ? `字幕#${subtitleAssetId}` : ''
+  const fitDesc = spec.fit === 'crop' ? '裁切=满幅' : ''
   log.info(
-    `canvas node #${node.id} 合成开始：${videoPaths.length} 视频 + ${audioPaths.length} 音频${size ? ` → ${size.width}x${size.height}` : ''}${spec.fps ? ` @${spec.fps}fps` : ''}${transDesc ? ` ${transDesc}` : ''}${bgmDesc ? ` ${bgmDesc}` : ''}`,
+    `canvas node #${node.id} 合成开始：${videoPaths.length} 视频 + ${audioPaths.length} 音频${size ? ` → ${size.width}x${size.height}` : ''}${spec.fps ? ` @${spec.fps}fps` : ''}${transDesc ? ` ${transDesc}` : ''}${bgmDesc ? ` ${bgmDesc}` : ''}${alignDesc ? ` ${alignDesc}` : ''}${subDesc ? ` ${subDesc}` : ''}${fitDesc ? ` ${fitDesc}` : ''}`,
   )
   await runComposeFfmpeg(ffmpeg, args)
   if (await taskCancelled(taskId)) {
@@ -536,6 +601,12 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
       transition: spec.transition ?? null,
       transitionDuration: spec.transitionDuration ?? null,
       bgmAssetId: spec.bgmAssetId ?? null,
+      // [M22] 对齐/字幕快照
+      align: alignPlan != null,
+      segDurs: alignPlan?.segDurs ?? null,
+      subtitle: spec.subtitle ?? null,
+      subtitleAssetId,
+      burnSubtitles: !!spec.burnSubtitles,
     },
     tags: ['compose'],
   })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from '../../components/common/Icon.vue'
-import { toRef } from 'vue'
+import { ref, toRef } from 'vue'
 import type { CanvasViewState } from './use-canvas-view'
 
 const props = defineProps<{ cv: Pick<CanvasViewState,
@@ -20,6 +20,8 @@ const props = defineProps<{ cv: Pick<CanvasViewState,
   | 'removeCanvas'
   | 'openTrash'
   | 'openSnaps'
+  | 'selectedIds'
+  | 'openCopyTo'
   | 'listErr'
   | 'loading'
   | 'canUndo'
@@ -38,6 +40,9 @@ const props = defineProps<{ cv: Pick<CanvasViewState,
   | 'arrangeAll'
   | 'exportBusy'
   | 'onExportZip'
+  | 'imageBusy'
+  | 'onExportSvg'
+  | 'onExportPng'
   | 'hasLiveTasks'
   | 'cancelAllBusy'
   | 'onCancelAllTasks'
@@ -45,6 +50,15 @@ const props = defineProps<{ cv: Pick<CanvasViewState,
 > }>()
 const cv = props.cv
 const canvasNameInput = toRef(cv, 'canvasNameInput')
+
+/** [M22] 导出菜单（zip / PNG / SVG 三合一；透明背板点击关闭） */
+const exportMenu = ref(false)
+function pickExport(kind: 'zip' | 'png' | 'svg'): void {
+  exportMenu.value = false
+  if (kind === 'zip') void cv.onExportZip()
+  else if (kind === 'png') void cv.onExportPng()
+  else void cv.onExportSvg()
+}
 </script>
 
 <template>
@@ -117,6 +131,15 @@ const canvasNameInput = toRef(cv, 'canvasNameInput')
       >
         <Icon name="clock" :size="11" /> 快照
       </button>
+      <button
+        type="button"
+        class="btn sm"
+        title="把选中节点复制到其他画布（同项目直接引用；跨项目自动拷贝素材与实体）"
+        :disabled="cv.canvasId == null || !cv.selectedIds.length"
+        @click="cv.openCopyTo"
+      >
+        <Icon name="copy" :size="11" /> 复制到画布…
+      </button>
 
       <span class="sp" />
       <span v-if="cv.listErr" class="muted" :title="cv.listErr">目录加载失败</span>
@@ -166,15 +189,28 @@ const canvasNameInput = toRef(cv, 'canvasNameInput')
       >
         <Icon name="flow" :size="11" /> 按序号
       </button>
-      <button
-        type="button"
-        class="btn sm"
-        title="打包导出画布产物（zip + manifest）"
-        :disabled="cv.canvasId == null || cv.exportBusy"
-        @click="cv.onExportZip"
-      >
-        <Icon name="download" :size="11" /> {{ cv.exportBusy ? '打包中…' : '导出' }}
-      </button>
+      <!-- [M22] 导出菜单（zip / PNG / SVG 三合一；原单枚 zip 按钮并入） -->
+      <div class="exp-wrap">
+        <button
+          type="button"
+          class="btn sm"
+          title="导出：打包 zip / 布局图 PNG / 布局图 SVG"
+          :disabled="cv.canvasId == null || cv.exportBusy || cv.imageBusy"
+          @click="exportMenu = !exportMenu"
+        >
+          <Icon name="download" :size="11" />
+          {{ cv.exportBusy ? '打包中…' : cv.imageBusy ? '导出中…' : '导出' }}
+          <Icon name="chevron-down" :size="9" />
+        </button>
+        <template v-if="exportMenu">
+          <div class="exp-backdrop" @pointerdown="exportMenu = false" />
+          <div class="exp-menu panel">
+            <button type="button" class="exp-item" @click="pickExport('zip')">打包 zip（产物 + manifest）</button>
+            <button type="button" class="exp-item" @click="pickExport('png')">导出 PNG（布局图 · 2x）</button>
+            <button type="button" class="exp-item" @click="pickExport('svg')">导出 SVG（布局图）</button>
+          </div>
+        </template>
+      </div>
       <button
         v-if="cv.hasLiveTasks"
         type="button"
@@ -228,4 +264,42 @@ const canvasNameInput = toRef(cv, 'canvasNameInput')
   flex: 1;
 }
 
+/* [M22] 导出菜单（三合一） */
+.exp-wrap {
+  position: relative;
+}
+
+.exp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.exp-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  min-width: 210px;
+  padding: 4px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+.exp-item {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12.5px;
+  font-family: inherit;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.exp-item:hover {
+  background: var(--code-bg);
+}
 </style>

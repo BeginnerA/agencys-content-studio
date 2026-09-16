@@ -691,7 +691,15 @@ async function main(): Promise<void> {
     const doc: CanvasDoc = {
       canvas: { id: 77, projectId: PID, name: '夹具画布', viewport: { x: 0, y: 0, zoom: 1 } },
       nodes: [
-        { ...emptyNode, id: 1, kind: 'asset', title: '素材甲', assetId: 5 },
+        {
+          ...emptyNode,
+          id: 1,
+          kind: 'asset',
+          title: '素材甲',
+          assetId: 5,
+          // [M22] 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
+          asset: { id: 5, kind: 'image', purpose: null, name: '素材甲', mime: 'image/png', width: null, height: null, duration: null, prompt: null, urls: { file: 'f', thumb: null } },
+        },
         { ...emptyNode, id: 2, title: '图片 #2', spec: { genKind: 'image', prompt: '镜头一' } },
         { ...emptyNode, id: 3, title: '视频 #3', spec: { genKind: 'video', prompt: '运镜', duration: 5 } },
         { ...emptyNode, id: 4, title: '编辑 #4', spec: { genKind: 'image', prompt: '', edit: { mode: 'inpaint', maskAssetId: 8 } } },
@@ -726,8 +734,16 @@ async function main(): Promise<void> {
       '草案 v2 lossy：编辑模式节点写入 lossy 清单',
     )
     check(
-      lossy.some((s) => s.includes('参考/首末帧/编辑源')),
-      '草案 v2 lossy：参考/编辑源连线写入 lossy 清单',
+      yaml.includes('refs:') && yaml.includes('- input.a1'),
+      '草案 v2：reference 边（图片 asset 源）→ lit inputs.refs（M22 保真直通）',
+    )
+    check(
+      yaml.includes('first_frame: steps.n2.asset'),
+      '草案 v2：first_frame 边（image gen 源）→ lit inputs.first_frame（M22 保真直通）',
+    )
+    check(
+      lossy.some((s) => s.includes('#4') && s.includes('未映射')),
+      '草案 v2 lossy：编辑源连线未映射（M22 收缩文案）',
     )
 
     // DB 层 + 同源一致性

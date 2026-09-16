@@ -94,6 +94,28 @@ export async function resolveInputs(
   return out
 }
 
+/**
+ * [M22] 正整数资产 id 归一（纯函数）：递归展开嵌套数组 → 整数 >0 过滤 → 保序去重。
+ * 用途：literal inputs.refs/first_frame（解析结果含 input.x 原样数组与 steps.x.asset 数组的嵌套）
+ * 与 ai-video 直通参考合并（shot.ref_asset_ids）。
+ */
+export function normalizePositiveIds(raw: unknown): number[] {
+  const out: number[] = []
+  const seen = new Set<number>()
+  const walk = (x: unknown): void => {
+    if (typeof x === 'number' && Number.isInteger(x) && x > 0) {
+      if (!seen.has(x)) {
+        seen.add(x)
+        out.push(x)
+      }
+    } else if (Array.isArray(x)) {
+      for (const it of x) walk(it)
+    }
+  }
+  walk(raw)
+  return out
+}
+
 const INTERP = /\{((?:input\.)?[\w-]+)(?::(0\d+)d)?\}/g
 
 /**

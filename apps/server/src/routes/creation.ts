@@ -13,6 +13,7 @@ import {
   addRunNode,
   addTextNode,
   assertRestorableSource,
+  branchSnapshot,
   buildCanvasDoc,
   buildTemplateDraft,
   claimNodeTasks,
@@ -21,6 +22,7 @@ import {
   deleteEdge,
   deleteNode,
   deleteSnapshot,
+  diffSnapshotAgainst,
   duplicateCanvas,
   extractTextNode,
   findCanvas,
@@ -41,6 +43,9 @@ import { cancelCanvasTasks, extractNodeFrame, previewCanvasRun, startCanvasNodeR
 import { createGroup, deleteGroup, GroupError, updateGroup } from '../services/creation/groups'
 import { exportCanvas } from '../services/creation/export'
 import { arrangeNodes, batchNodes, chainNodes, copyNodes, deleteNodes, promptExpandNode, runCanvasNodes } from '../services/creation/ops'
+import { copyNodesToCanvas } from '../services/creation/copy-to'
+import { buildCanvasSvg } from '../services/creation/export-svg'
+import { writeTextAsset } from '../services/storage'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
@@ -53,6 +58,7 @@ import { HttpError, h, idParam, notFound } from './helpers'
  * - [M17] 产出与辅助：export（zip 打包 → archive 资产）/ prompt-expand（AI 扩写，未配置 LLM → 400 引导 Settings）；
  * - [M18] 快赢：extract-frame（视频抽帧 → asset 节点）/ run-preview（执行成本预估）；
  * - [M18] 安全：DELETE 软删 + 回收站（trash 列表 / restore / purge）+ 文档快照（snapshots 创建/列表/恢复/删除）；
+ * - [M22] 快照扩展：diff（快照 ↔ live/快照 字段级差异）+ branch（从快照分支为新画布）；组嵌套（groupIds/parentId 透传）；
  * - [M18] 深度：template-try（模板试跑建 run）；规模：groups（成组 CRUD）；
  * - 沉淀：duplicate（深拷）/ template-draft（低保真导出 + 既有校验自检）；
  * - 联动：/entities/:id/ref-assets（画布产物并集挂接实体，复用 attachRefAssets）。
@@ -161,6 +167,21 @@ creationRoutes.delete('/canvases/:id/snapshots/:sid', h(async (c) => {
   return c.json({ ok: true })
 }))
 
+// [M22] GET /canvases/:id/snapshots/:sid/diff?against=live|<sid2> —— 快照 ↔ live/另一快照 字段级差异（快照缺失 → 404）
+creationRoutes.get('/canvases/:id/snapshots/:sid/diff', h(async (c) => {
+  const result = await diffSnapshotAgainst(idParam(c), idParam(c, 'sid'), c.req.query('against') ?? 'live')
+  if (!result) return notFound(c, '快照')
+  return c.json(result)
+}))
+
+// [M22] POST /canvases/:id/snapshots/:sid/branch —— 从快照分支为新画布（新 id 重放；{ name? } 缺省「{源名} 分支」）→ { canvas }（201）
+creationRoutes.post('/canvases/:id/snapshots/:sid/branch', h(async (c) => {
+  const body = await readJson(c)
+  const canvasRow = await branchSnapshot(idParam(c), idParam(c, 'sid'), body['name'])
+  if (!canvasRow) return notFound(c, '快照')
+  return c.json({ canvas: canvasRow }, 201)
+}))
+
 // POST /canvases/:id/nodes —— 建节点：
 //   { kind:'asset', assetId, x, y } / { kind:'gen', spec, x, y }（M16）
 //   [M17] { kind:'text', spec:{text}, x, y } / { kind:'entity', entityId, x, y } / { kind:'run', runId, x, y }
@@ -227,17 +248,19 @@ creationRoutes.post('/nodes/:id/extract', h(async (c) => {
   return c.json({ node }, 201)
 }))
 
-// [M18] POST /nodes/:id/extract-frame —— 视频抽帧 { mode?, time?, x?, y? } → { node, asset }（201）
+// [M18/M22·⑨] POST /nodes/:id/extract-frame —— 视频抽帧 { mode?, time?, count?, x?, y? }（201）
 // 源：gen(video) 显示产物 / asset 节点视频资产；缺省位置 = 源节点右下偏移（宽容读体）
+// [M22] mode=uniform：count 2–9 均匀多帧 → 响应追加 { nodes, assets }（node/asset = 首帧兼容）
 creationRoutes.post('/nodes/:id/extract-frame', h(async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
-  const { node, asset } = await extractNodeFrame(idParam(c), {
+  const result = await extractNodeFrame(idParam(c), {
     mode: body['mode'],
     time: body['time'],
+    count: body['count'],
     x: body['x'],
     y: body['y'],
   })
-  return c.json({ node, asset }, 201)
+  return c.json(result, 201)
 }))
 
 // [M17] POST /canvases/:id/nodes/batch —— 批量部分更新 { updates:[{id,x?,y?,title?,spec?,seq?,adoptedTaskId?}] }
@@ -266,6 +289,20 @@ creationRoutes.post('/canvases/:id/nodes/copy', h(async (c) => {
   const body = await readJson(c)
   const { nodes, edges } = await copyNodes(canvas, body['ids'], body['offset'])
   return c.json({ nodes, edges }, 201)
+}))
+
+// [M22] POST /canvases/:id/nodes/copy-to —— 跨画布复制 { targetCanvasId, ids, offset? }（同项目直接引用 / 跨项目资产级联拷贝）→ { nodes, edges, skipped, assetsCopied, warnings }
+creationRoutes.post('/canvases/:id/nodes/copy-to', h(async (c) => {
+  const src = await findCanvas(idParam(c))
+  if (!src) return notFound(c, `画布 ${c.req.param('id')}`)
+  const body = await readJson(c)
+  const targetId = Number(body['targetCanvasId'])
+  if (!Number.isInteger(targetId) || targetId <= 0) throw new HttpError(400, 'bad_target', 'targetCanvasId 需为正整数')
+  const target = await findCanvas(targetId)
+  if (!target) return notFound(c, `目标画布 ${targetId}`)
+  if (target.id === src.id) throw new HttpError(400, 'self_copy', '目标画布不能是源画布自身（同画布复制请用 /nodes/copy）')
+  const result = await copyNodesToCanvas(src, target, body['ids'], body['offset'])
+  return c.json(result, 201)
 }))
 
 // [M17] POST /canvases/:id/nodes/chain —— 规则式串联 { ids } → { created, skipped:[{from,to,reason}] }
@@ -372,6 +409,26 @@ creationRoutes.post('/canvases/:id/export', h(async (c) => {
   )
 }))
 
+// [M22] POST /canvases/:id/export-image —— 布局图导出 { format?: 'svg' }（v1 仅 svg）→ buildCanvasSvg 落资产库 → { assetId, svg }
+creationRoutes.post('/canvases/:id/export-image', h(async (c) => {
+  const canvas = await findCanvas(idParam(c))
+  if (!canvas) return notFound(c, `画布 ${c.req.param('id')}`)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const format = body['format'] ?? 'svg'
+  if (format !== 'svg') throw new HttpError(400, 'bad_format', 'format 仅支持 svg（v1）')
+  const doc = await buildCanvasDoc(canvas.id)
+  if (!doc) return notFound(c, `画布 ${c.req.param('id')}`)
+  const svg = buildCanvasSvg(doc)
+  const asset = await writeTextAsset(canvas.projectId, {
+    name: `${canvas.name}.svg`,
+    content: svg,
+    purpose: 'creation_svg',
+    format: 'svg',
+    params: { canvasId: canvas.id, nodes: doc.nodes.length, edges: doc.edges.length, groups: doc.groups.length },
+  })
+  return c.json({ assetId: asset.id, svg }, 201)
+}))
+
 // POST /canvases/:id/duplicate —— 复制画布 { name? }（节点 id 映射后重建边）
 creationRoutes.post('/canvases/:id/duplicate', h(async (c) => {
   const body = await readJson(c)
@@ -427,13 +484,19 @@ creationRoutes.post('/canvases/:id/template-try', h(async (c) => {
   }
 }))
 
-// [M18] POST /canvases/:id/groups —— 成组 { nodeIds, title?, color? } → { group }（201）
+// [M18/M22] POST /canvases/:id/groups —— 成组 { nodeIds?, groupIds?, parentId?, title?, color? } → { group }（201）
 creationRoutes.post('/canvases/:id/groups', h(async (c) => {
   const cid = idParam(c)
   if (!(await findCanvas(cid))) return notFound(c, `画布 ${cid}`)
   const body = await readJson(c)
   try {
-    const group = await createGroup(cid, { nodeIds: body['nodeIds'], title: body['title'], color: body['color'] })
+    const group = await createGroup(cid, {
+      nodeIds: body['nodeIds'],
+      groupIds: body['groupIds'],
+      parentId: body['parentId'],
+      title: body['title'],
+      color: body['color'],
+    })
     return c.json({ group }, 201)
   } catch (err) {
     if (err instanceof GroupError) throw new HttpError(400, err.code, err.message)
@@ -441,7 +504,7 @@ creationRoutes.post('/canvases/:id/groups', h(async (c) => {
   }
 }))
 
-// [M18] PATCH /canvases/:id/groups/:gid —— 改组 { title?, color?, collapsed?, x?, y? } → { group }
+// [M18/M22] PATCH /canvases/:id/groups/:gid —— 改组 { title?, color?, collapsed?, x?, y?, parentId? } → { group }
 creationRoutes.patch('/canvases/:id/groups/:gid', h(async (c) => {
   const cid = idParam(c)
   if (!(await findCanvas(cid))) return notFound(c, `画布 ${cid}`)
@@ -450,6 +513,8 @@ creationRoutes.patch('/canvases/:id/groups/:gid', h(async (c) => {
   try {
     const group = await updateGroup(cid, gid, {
       title: body['title'], color: body['color'], collapsed: body['collapsed'], x: body['x'], y: body['y'],
+      // [M22] 移组：显式 null=提升顶层；缺失=不改（undefined 跳过）
+      parentId: body['parentId'],
     })
     if (!group) return notFound(c, `分组 ${gid}`)
     return c.json({ group })

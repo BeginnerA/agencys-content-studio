@@ -6,12 +6,12 @@ import type { CanvasState } from './use-canvas-state'
 import type { CanvasCommands } from './use-canvas-commands'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'toast' | 'boardRef'>
+type Dependencies = Pick<CanvasState, 'canvasId' | 'doc' | 'toast' | 'boardRef'>
   & Pick<CanvasCommands, 'addNodesCommand'>
   & Pick<CanvasDocument, 'loadDoc'>
 
 export function useCanvasExport(deps: Dependencies) {
-  const { canvasId, toast, boardRef, addNodesCommand, loadDoc } = deps
+  const { canvasId, doc, toast, boardRef, addNodesCommand, loadDoc } = deps
 
   // ===== [M17] 导出 zip（打包为 archive 资产 → 下载复用资产文件端点） =====
   const exportBusy = ref(false)
@@ -29,6 +29,87 @@ export function useCanvasExport(deps: Dependencies) {
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       exportBusy.value = false
+    }
+  }
+
+  // ===== [M22] 布局图导出（服务端 SVG 落库 + 前端下载/光栅化；零新依赖） =====
+  const imageBusy = ref(false)
+
+  /** Blob 触发浏览器下载（临时 a[download]；OBJECT URL 延迟回收） */
+  function downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
+  }
+
+  /** SVG 文本 → PNG Blob（浏览器原生 Image + canvas 2x 光栅化） */
+  async function svgToPngBlob(svgText: string, scale = 2): Promise<Blob> {
+    const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }))
+    try {
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('SVG 光栅化失败（图片加载错误）'))
+        img.src = url
+      })
+      const w = img.naturalWidth || img.width || 1200
+      const h = img.naturalHeight || img.height || 800
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(w * scale))
+      canvas.height = Math.max(1, Math.round(h * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas 2d 上下文不可用')
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 编码失败'))), 'image/png')
+      })
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  /** 当前画布名（文件名用；缺省兜底 canvas-{id}） */
+  function canvasFileName(cid: number): string {
+    return doc.value?.canvas.name?.trim() || `canvas-${cid}`
+  }
+
+  /** 导出 SVG（服务端落资产库 + 前端文本直下） */
+  async function onExportSvg(): Promise<void> {
+    const cid = canvasId.value
+    if (cid == null || imageBusy.value) return
+    imageBusy.value = true
+    try {
+      const r = await creationApi.exportImage(cid)
+      const name = canvasFileName(cid)
+      downloadBlob(new Blob([r.svg], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`)
+      toast(`已导出 SVG（资产 #${r.assetId}）：${name}.svg`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+    } finally {
+      imageBusy.value = false
+    }
+  }
+
+  /** 导出 PNG（复用服务端 SVG → 前端 2x 光栅化下载） */
+  async function onExportPng(): Promise<void> {
+    const cid = canvasId.value
+    if (cid == null || imageBusy.value) return
+    imageBusy.value = true
+    try {
+      const r = await creationApi.exportImage(cid)
+      const name = canvasFileName(cid)
+      const blob = await svgToPngBlob(r.svg)
+      downloadBlob(blob, `${name}.png`)
+      toast(`已导出 PNG（2x 光栅化）：${name}.png`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+    } finally {
+      imageBusy.value = false
     }
   }
 
@@ -93,6 +174,9 @@ export function useCanvasExport(deps: Dependencies) {
     showExport,
     exportResult,
     onExportZip,
+    imageBusy,
+    onExportSvg,
+    onExportPng,
     showDraft,
     draftBusy,
     draftTryBusy,

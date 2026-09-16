@@ -57,6 +57,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'regex':
       return 'texts'
     case 'export':
+    case 'creation_svg': // [M22] 画布布局图 SVG 导出（与 export 同类归档）
       return 'exports'
     case 'shot_image':
     case 'first_frame':
@@ -180,8 +181,9 @@ export async function writeTextAsset(
       kind: 'text',
       purpose: opts.purpose,
       name: opts.name,
-      mime: isJsonTextFormat(opts.format) ? 'application/json' : 'text/markdown',
-      ext: isJsonTextFormat(opts.format) ? 'json' : 'md',
+      // [M22] srt 单独归位（烧录/下载/前端候选过滤可依赖 mime/ext；其余同现状零漂移）；[M22.P3] svg 同理
+      mime: opts.format === 'srt' ? 'application/x-subrip' : opts.format === 'svg' ? 'image/svg+xml' : isJsonTextFormat(opts.format) ? 'application/json' : 'text/markdown',
+      ext: opts.format === 'srt' ? 'srt' : opts.format === 'svg' ? 'svg' : isJsonTextFormat(opts.format) ? 'json' : 'md',
       fileSize: data.byteLength,
       sha256: sha256Hex(data),
       relPath,

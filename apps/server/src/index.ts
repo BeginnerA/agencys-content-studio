@@ -10,6 +10,7 @@ import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState, refreshGlobalConcurrency } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches, pumpStalledBatches } from './services/batch'
 import { startScheduler, stopScheduler } from './services/schedule'
+import { purgeExpiredCanvases } from './services/trash-sweep'
 import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
@@ -95,6 +96,14 @@ async function main(): Promise<void> {
   // [M20] 启动排产调度器（60s 轮询 + 幂等触发）
   startScheduler()
 
+  // [M22·6] 回收站保留期自动清理：启动执行一次 + 6h 周期（unref 防挂起；autoPurge=false 由服务内跳过）
+  void purgeExpiredCanvases().catch((err) => log.error('trash sweep failed', err))
+  const trashSweepTimer = setInterval(
+    () => void purgeExpiredCanvases().catch((err) => log.error('trash sweep failed', err)),
+    6 * 60 * 60 * 1000,
+  )
+  trashSweepTimer.unref()
+
   // [M21 C6] 全局并发 pump 定时兜底（30s）：异常态自愈（settle 丢失等）；
   // 批停滞扫描同样兜底（可救起「settle 链路未覆盖」等极端残留的 queued 批 run）
   const globalPumpTimer = setInterval(() => {
@@ -106,6 +115,7 @@ async function main(): Promise<void> {
     log.info(`received ${signal}, shutting down`)
     stopScheduler()
     clearInterval(globalPumpTimer)
+    clearInterval(trashSweepTimer)
     await new Promise((resolve) => io.close(() => resolve(null)))
     process.exit(0)
   }
