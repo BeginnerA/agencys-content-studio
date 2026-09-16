@@ -308,6 +308,7 @@ M18 后全景评审的最大缺口集群一次性收口：**批 1 品牌化**（
 - **服务端四件**：`creation.ts`(2,442) → 22 文件含 `gen/` 8；`creation-gen.ts`(1,398) → `creation/gen/` 8 文件；`ffmpeg-merge.ts`(1,375) → 10 文件；`shot-workbench.ts`(1,217) → `services/shot/` 8 文件；`creation-ops/groups/export` 收敛入 `creation/`
 - **Web 十三件**：CreationView(2,819)→27 / CreationInspector(1,920)→10 / ShotBoard(1,588)→6 / CreationBoard(1,482)→5 / TemplatesView(1,385)→11 / RunDetailView(1,345)→10 / types.ts(1,300)→11 / EntitiesView(1,254)→6 / ProjectDetailView(1,238)→7 / StoryboardEditor(1,183)→4 / SettingsView(1,171)→6 / AssetPreviewer(821)→2 / CanvasDrawer(869)→2；router 与全部引用机械改写
 - **红线终态**：全仓扫描 >800 行仅存豁免 2（`lib/api.ts` / `components/brand/BrandSettings.vue`）+ 排除 4（探针脚本，归 M26-H5）；不改清单（引擎 / 适配器 / schema / 模板提示词 / package.json）零 diff
+- **红线增量登记（2026-09-16 复扫，M23 收官后）**：新增破线 2——`views/canvas/index.vue`（1172；`68d46c1` 单提交自 722 增量）与 `components/pipeline-canvas/CanvasBoard.vue`（855；P3 编辑模式）→ 登记**「触发条件式待拆」**（拆分时机 = M26 工程批〔H2 残余〕或 canvas 域被实质触碰时〔可插 M28 式纯重构微批次〕；范式对齐 M28——thin `index.vue` + `use-*.ts` + 面板组件），本次仅登记不做即时重构；`lib/api.ts` 已增至 969（存量豁免内，随 api 域拆分）；探针脚本超限现为 5（m16–m19 / m22，归 M26-H5）；复扫口径同 M28（含注释与空行），脚本留档 `.qoder/tmp-m28-scan800.mjs`
 - **验证**：`tsc` + `vue-tsc` + `vite build` 全绿；17 探针（m2a–m19）「全部通过」零适配；实弹（设置 / 项目 / 镜头工作台 / 画布抽屉 / 素材预览）console 零 error；详见 `docs/superpowers/specs/2026-09-15-agencys-content-studio-m28-review.md`
 - **备注**：M2–M19 速览中的文件名为当时历史记述，现行目录结构以本节为准
 
