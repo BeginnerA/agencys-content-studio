@@ -306,4 +306,70 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // [M20] publications 表新增 title/ab_group 列（A/B 测试 + 标题识别）
+  const pubCols = await sqlite.execute("PRAGMA table_info('publications')")
+  const pubHas = new Set((pubCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!pubHas.has('title')) {
+    try {
+      await sqlite.execute('ALTER TABLE publications ADD COLUMN title text')
+      log.info('ensureColumn: publications.title 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!pubHas.has('ab_group')) {
+    try {
+      await sqlite.execute('ALTER TABLE publications ADD COLUMN ab_group text')
+      log.info('ensureColumn: publications.ab_group 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
+  // [M20] 排产计划表建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS schedules (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        name text NOT NULL,
+        template_key text NOT NULL,
+        cron_expr text NOT NULL,
+        scheduled_at integer NOT NULL,
+        status text DEFAULT 'pending' NOT NULL,
+        last_triggered_at integer,
+        last_batch_id integer,
+        input_template text DEFAULT '{}' NOT NULL,
+        note text,
+        is_active integer DEFAULT 1 NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_schedules_project ON schedules (project_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules (status)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_schedules_scheduled ON schedules (scheduled_at)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // [M20] 预算告警记录表建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS budget_alerts (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        scope text NOT NULL,
+        scope_id integer,
+        kind text NOT NULL,
+        budget real NOT NULL,
+        spent real NOT NULL,
+        ratio real NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_budget_alerts_scope ON budget_alerts (scope)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

@@ -9,6 +9,7 @@ import { env } from './env'
 import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches } from './services/batch'
+import { startScheduler, stopScheduler } from './services/schedule'
 import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
@@ -86,8 +87,12 @@ async function main(): Promise<void> {
   // [M19 P6] 素材批量生成任务崩溃恢复：本域 pending/processing → failed（不自动重排队，用户可在素材页重新发起）
   await recoverEntityRefTasks()
 
+  // [M20] 启动排产调度器（60s 轮询 + 幂等触发）
+  startScheduler()
+
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`received ${signal}, shutting down`)
+    stopScheduler()
     await new Promise((resolve) => io.close(() => resolve(null)))
     process.exit(0)
   }

@@ -334,6 +334,8 @@ export const publications = sqliteTable('publications', {
   url: text('url'),
   publishedAt: integer('published_at'),
   metrics: text('metrics').notNull().default('{}'), // JSON: {views,likes,comments,favorites,shares}（仅存不算）
+  title: text('title'),            // [M20] 发布标题（A/B 测试识别）
+  abGroup: text('ab_group'),       // [M20] A/B 测试分组标记
   note: text('note'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
@@ -423,6 +425,33 @@ export const canvasSnapshots = sqliteTable(
   (t) => [index('idx_canvas_snapshots_canvas').on(t.canvasId)],
 )
 
+/** [M20] 排产计划表（轻量调度：计划 → 幂等触发 → batch 创建；红线内自研，非重型引擎） */
+export const schedules = sqliteTable(
+  'schedules',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    name: text('name').notNull(),
+    templateKey: text('template_key').notNull(),
+    // ISO 8601 或简单 cron 表达式（v1 仅支持一次性定时：scheduledAt 时刻触发一次）
+    cronExpr: text('cron_expr').notNull(), // 预留；v1 固定为 'once'
+    scheduledAt: integer('scheduled_at').notNull(), // 计划触发时间（unix ms）
+    status: text('status').notNull().default('pending'), // pending|triggered|completed|cancelled|failed
+    lastTriggeredAt: integer('last_triggered_at'),
+    lastBatchId: integer('last_batch_id'), // 触发后创建的 batch id
+    inputTemplate: text('input_template').notNull().default('{}'), // JSON：批量输入模板（触发时展开）
+    note: text('note'),
+    isActive: integer('is_active').notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_schedules_project').on(t.projectId),
+    index('idx_schedules_status').on(t.status),
+    index('idx_schedules_scheduled').on(t.scheduledAt),
+  ],
+)
+
 /** [M19] 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
 export const voiceClones = sqliteTable('voice_clones', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -457,3 +486,18 @@ export type CanvasEdge = typeof canvasEdges.$inferSelect
 export type CanvasGroup = typeof canvasGroups.$inferSelect
 export type CanvasSnapshot = typeof canvasSnapshots.$inferSelect
 export type VoiceClone = typeof voiceClones.$inferSelect
+export type Schedule = typeof schedules.$inferSelect
+
+/** [M20] 预算告警记录（超阈告警留痕；24h 去抖） */
+export const budgetAlerts = sqliteTable('budget_alerts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  scope: text('scope').notNull(), // project|global
+  scopeId: integer('scope_id'), // projectId（global 为 null）
+  kind: text('kind').notNull(), // monthly|total
+  budget: real('budget').notNull(),
+  spent: real('spent').notNull(),
+  ratio: real('ratio').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, (t) => [index('idx_budget_alerts_scope').on(t.scope)])
+
+export type BudgetAlert = typeof budgetAlerts.$inferSelect

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 日期选择（Dark Studio 主题）：触发器 + 弹出日历，替换原生 input[type=date]。
-// - v-model 为 'YYYY-MM-DD' 字符串（与原生 date input 语义一致；空串 = 未选择）
+// 日期 / 日期时间选择（Dark Studio 主题）：触发器 + 弹出日历，替换原生 input[type=date] / datetime-local。
+// - v-model 默认为 'YYYY-MM-DD'；withTime 模式下为 'YYYY-MM-DDTHH:mm'
+// - withTime：时/分用下拉选择，选日或改时间即时提交 v-model，「确定」收起面板
 // - 配色全量取自品牌 token：触发面卯槽深 · 选中品牌渐变 · hover 靛弱底 · 今天靛描边
 // - 键盘：←/→/↑/↓ 移动焦点日 · Enter/空格 选中 · PgUp/PgDn 翻月 · Esc 收起（不透传给 Modal）
 // - 触发按钮：Enter/空格/↓ 打开；点击外部收起；空间不足自动上翻
@@ -12,8 +13,10 @@ const props = withDefaults(
     modelValue: string
     placeholder?: string
     ariaLabel?: string
+    /** 开启后 v-model 格式变为 'YYYY-MM-DDTHH:mm'，面板底部显示时间选择 */
+    withTime?: boolean
   }>(),
-  { placeholder: '选择日期', ariaLabel: '选择日期' },
+  { placeholder: '选择日期', ariaLabel: '选择日期', withTime: false },
 )
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
@@ -30,15 +33,24 @@ const viewM = ref(0)
 /** 键盘焦点日（roving tabindex） */
 const focusKey = ref('')
 
+// ---------- 时间状态（withTime 模式草稿；选值即提交） ----------
+const timeH = ref('09')
+const timeM = ref('00')
+
 // ---------- 日期工具（本地时区；手工解析避免 UTC 偏移坑） ----------
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
+
+/** 时间下拉选项（00-23 时 / 00-59 分） */
+const HOURS = Array.from({ length: 24 }, (_, i) => pad2(i))
+const MINUTES = Array.from({ length: 60 }, (_, i) => pad2(i))
 function toKey(y: number, m: number, d: number): string {
   return `${y}-${pad2(m + 1)}-${pad2(d)}`
 }
 function parseKey(s: string): { y: number; m: number; d: number } | null {
-  const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  // 兼容 withTime 模式：截取前 10 位日期部分
+  const mm = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
   if (!mm) return null
   const [, ys, ms, ds] = mm
   if (!ys || !ms || !ds) return null
@@ -56,7 +68,12 @@ const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 const sel = computed(() => parseKey(props.modelValue))
 const displayText = computed(() => {
   const s = sel.value
-  return s ? `${s.y}年${s.m + 1}月${s.d}日` : ''
+  if (!s) return ''
+  const base = `${s.y}年${s.m + 1}月${s.d}日`
+  if (!props.withTime) return base
+  // 从 modelValue 提取时间部分
+  const tm = /T(\d{2}):(\d{2})/.exec(props.modelValue)
+  return tm ? `${base} ${tm[1]}:${tm[2]}` : `${base} ${timeH.value}:${timeM.value}`
 })
 const viewLabel = computed(() => `${viewY.value}年${viewM.value + 1}月`)
 
@@ -113,15 +130,22 @@ function openPanel() {
   const s = sel.value
   viewY.value = s ? s.y : NOW.getFullYear()
   viewM.value = s ? s.m : NOW.getMonth()
-  focusKey.value = s ? props.modelValue : todayKey
+  focusKey.value = s ? toKey(s.y, s.m, s.d) : todayKey
+  // withTime：草稿时间与 modelValue 对齐（无时间部分时回默认 09:00）
+  if (props.withTime) {
+    const tm = /T(\d{2}):(\d{2})/.exec(props.modelValue)
+    timeH.value = tm ? tm[1]! : '09'
+    timeM.value = tm ? tm[2]! : '00'
+  }
   open.value = true
   void nextTick(() => {
-    // 按视口空间选择展开方向（同 SearchSelect 的判定）
+    // 按实测面板高度与视口空间选择展开方向
     const box = triggerEl.value?.getBoundingClientRect()
     if (box) {
+      const need = (panelEl.value?.offsetHeight ?? 330) + 8
       const below = window.innerHeight - box.bottom - 12
       const above = box.top - 12
-      up.value = above > below && below < 330
+      up.value = above > below && below < need
     }
     focusCell()
   })
@@ -137,20 +161,32 @@ function toggle() {
   else openPanel()
 }
 
+/** 组装输出值：withTime 模式拼接 T{HH}:{mm} */
+function buildValue(dateKey: string): string {
+  return props.withTime ? `${dateKey}T${timeH.value}:${timeM.value}` : dateKey
+}
+
 // ---------- 选择 ----------
 function pick(y: number, m: number, d: number) {
-  emit('update:modelValue', toKey(y, m, d))
-  closePanel(true)
+  emit('update:modelValue', buildValue(toKey(y, m, d)))
+  if (!props.withTime) closePanel(true)
 }
 
 function pickToday() {
-  emit('update:modelValue', todayKey)
-  closePanel(true)
+  emit('update:modelValue', buildValue(todayKey))
+  if (!props.withTime) closePanel(true)
 }
 
 function clear() {
   emit('update:modelValue', '')
   closePanel(true)
+}
+
+/** 时间下拉变化：已有选中日期时即时提交（避免收起面板后丢失时间改动） */
+function commitTime() {
+  const s = sel.value
+  if (!s) return
+  emit('update:modelValue', buildValue(toKey(s.y, s.m, s.d)))
 }
 
 // ---------- 键盘 ----------
@@ -186,6 +222,14 @@ function onTriggerKey(e: KeyboardEvent) {
 }
 
 function onPanelKey(e: KeyboardEvent) {
+  // 时间行 / 底栏控件自行处理键盘（仅 Esc 仍收起面板，不透传给 Modal）
+  if ((e.target as HTMLElement | null)?.closest('.dp-time-row, .dp-foot')) {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      closePanel(true)
+    }
+    return
+  }
   if (e.key === 'ArrowLeft') {
     e.preventDefault()
     moveFocus(-1)
@@ -291,9 +335,25 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
         </div>
       </div>
 
+      <div v-if="withTime" class="dp-time-row">
+        <span class="dp-time-label">时间</span>
+        <div class="dp-time">
+          <select v-model="timeH" class="dp-tsel" aria-label="时" @change="commitTime">
+            <option v-for="h in HOURS" :key="h" :value="h">{{ h }}</option>
+          </select>
+          <span class="dp-tsep" aria-hidden="true">:</span>
+          <select v-model="timeM" class="dp-tsel" aria-label="分" @change="commitTime">
+            <option v-for="m in MINUTES" :key="m" :value="m">{{ m }}</option>
+          </select>
+        </div>
+      </div>
+
       <div class="dp-foot">
-        <button type="button" class="dp-link" @click="pickToday">今天</button>
-        <button type="button" class="dp-link dim" @click="clear">清除</button>
+        <div class="dp-foot-l">
+          <button type="button" class="dp-link" @click="pickToday">今天</button>
+          <button type="button" class="dp-link dim" @click="clear">清除</button>
+        </div>
+        <button v-if="withTime" type="button" class="dp-done" @click="closePanel(true)">确定</button>
       </div>
     </div>
   </div>
@@ -506,6 +566,90 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   border-top: 1px solid var(--border);
 }
 
+.dp-foot-l {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* withTime 模式「确定」：选值已即时提交，仅收起面板 */
+.dp-done {
+  border: none;
+  padding: 4px 12px;
+  border-radius: 7px;
+  background: var(--grad-brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.dp-done:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- 时间选择（withTime 模式：时/分下拉；width:auto 抵消全局 select 的 100%） ---------- */
+.dp-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.dp-time-label {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.dp-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dp-tsel {
+  width: auto;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  outline: none;
+  color-scheme: dark;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dp-tsel:hover {
+  border-color: rgb(99 102 241 / 45%);
+}
+
+.dp-tsel:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 26%);
+}
+
+.dp-tsep {
+  color: var(--text-2);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* 时间行已有分隔线，底栏不再重复画线 */
+.dp-time-row + .dp-foot {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+
 .dp-link {
   border: none;
   background: none;
@@ -539,7 +683,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   .dp-ic,
   .dp-nav,
   .dp-cell,
-  .dp-link {
+  .dp-link,
+  .dp-tsel,
+  .dp-done {
     transition: none;
   }
 }

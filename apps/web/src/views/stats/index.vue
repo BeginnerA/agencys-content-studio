@@ -5,6 +5,24 @@ import { projectApi, statsApi } from '../../lib/api'
 import type { Overview, Project, UsageSummary } from '../../lib/types'
 import { KIND_TEXT, fmtCost, fmtQty } from '../../lib/format'
 import { projectGenreText } from '../../lib/scene'
+import ScheduleCalendar from './ScheduleCalendar.vue'
+import BudgetPanel from './BudgetPanel.vue'
+import PublicationPanel from './PublicationPanel.vue'
+import CostPanel from './CostPanel.vue'
+import ReviewPanel from './ReviewPanel.vue'
+import PlatformPresets from './PlatformPresets.vue'
+
+// [M20] Tab 切换：概览 / 排产 / 预算 / 发布 / 成本 / 复盘
+const TABS = [
+  { key: 'overview', label: '概览', icon: 'chart' },
+  { key: 'schedule', label: '排产', icon: 'calendar' },
+  { key: 'budget', label: '预算', icon: 'shield' },
+  { key: 'publications', label: '发布', icon: 'share' },
+  { key: 'cost', label: '成本', icon: 'dollar' },
+  { key: 'review', label: '复盘', icon: 'file' },
+] as const
+type TabKey = (typeof TABS)[number]['key']
+const activeTab = ref<TabKey>('overview')
 
 const loading = ref(true)
 const err = ref('')
@@ -141,19 +159,57 @@ function pct(n: number): string {
   <div>
     <div class="page-h">
       <h1>统计</h1>
-      <span class="sub">近 {{ days }} 天 · 运行 / 成本 / 发布复盘</span>
+      <span class="sub">运行 / 成本 / 发布 / 排产 / 预算 / A/B 测试</span>
       <div class="ctl">
-        <select v-model="projectId" aria-label="按项目筛选">
-          <option value="">全部项目</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
-        <div class="seg" role="group" aria-label="时间窗口">
-          <button v-for="d in DAY_OPTIONS" :key="d" :class="{ on: days === d }" @click="days = d">
-            {{ d }} 天
+        <!-- [M20] Tab 切换 -->
+        <div class="seg" role="tablist">
+          <button v-for="t in TABS" :key="t.key" :class="{ on: activeTab === t.key }" role="tab" :aria-selected="activeTab === t.key" @click="activeTab = t.key">
+            <Icon :name="t.icon" :size="13" /> {{ t.label }}
           </button>
         </div>
+        <template v-if="activeTab === 'overview'">
+          <select v-model="projectId" aria-label="按项目筛选">
+            <option value="">全部项目</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <div class="seg" role="group" aria-label="时间窗口">
+            <button v-for="d in DAY_OPTIONS" :key="d" :class="{ on: days === d }" @click="days = d">
+              {{ d }} 天
+            </button>
+          </div>
+        </template>
       </div>
     </div>
+
+    <!-- [M20] 排产 Tab -->
+    <div v-show="activeTab === 'schedule'" role="tabpanel">
+      <ScheduleCalendar />
+    </div>
+
+    <!-- [M20] 预算 Tab -->
+    <div v-show="activeTab === 'budget'" role="tabpanel">
+      <BudgetPanel />
+    </div>
+
+    <!-- [M20] 发布 Tab -->
+    <div v-show="activeTab === 'publications'" role="tabpanel">
+      <PublicationPanel />
+    </div>
+
+    <!-- [M20] 成本 Tab -->
+    <div v-show="activeTab === 'cost'" role="tabpanel">
+      <CostPanel />
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border)" />
+      <PlatformPresets />
+    </div>
+
+    <!-- [M20] 复盘 Tab -->
+    <div v-show="activeTab === 'review'" role="tabpanel">
+      <ReviewPanel />
+    </div>
+
+    <!-- 概览 Tab（原有内容） -->
+    <div v-show="activeTab === 'overview'">
 
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="loading && !ov" class="empty">加载中…</div>
@@ -293,6 +349,7 @@ function pct(n: number): string {
         </table>
       </div>
     </template>
+    </div>
   </div>
 </template>
 

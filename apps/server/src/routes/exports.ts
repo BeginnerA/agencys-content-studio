@@ -1,11 +1,12 @@
 /**
  * [M4] 导出 REST（E3）：生成/列表/run 产物/批量导出
+ * [M20] B8：平台导出预设管理（CRUD + 默认预设）
  * - 下载复用 GET /assets/:id/file?download=1（Range 已支持，不改动）
  */
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
-import { pipelineRuns, projects, type Asset } from '../db/schema'
+import { pipelineRuns, projects, settings, type Asset } from '../db/schema'
 import { summarizeBatch } from '../services/batch'
 import { ExportError, buildRunExport, collectRunAssets, listExports } from '../services/export'
 import { HttpError, h, idParam, notFound } from './helpers'
@@ -92,3 +93,78 @@ function safeParse(s: string | null): unknown {
     return s
   }
 }
+
+// ---------- [M20] B8 平台导出预设 ----------
+
+/** 默认平台预设（与 publications 平台枚举对齐） */
+const DEFAULT_PRESETS: Record<string, ExportPreset> = {
+  douyin: { platform: 'douyin', label: '抖音', aspect: '9:16', maxDuration: 60, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+  wechat_channels: { platform: 'wechat_channels', label: '视频号', aspect: '9:16', maxDuration: 180, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+  kuaishou: { platform: 'kuaishou', label: '快手', aspect: '9:16', maxDuration: 120, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+  xiaohongshu: { platform: 'xiaohongshu', label: '小红书', aspect: '4:5', maxDuration: 60, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+  bilibili: { platform: 'bilibili', label: 'B站', aspect: '16:9', maxDuration: 600, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+}
+
+interface ExportPreset {
+  platform: string
+  label: string
+  aspect: string
+  maxDuration: number
+  namingPattern: string
+  includeCover: boolean
+  includeSubtitle: boolean
+  watermark?: boolean
+}
+
+async function loadPresets(): Promise<Record<string, ExportPreset>> {
+  const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'export_presets')).limit(1)
+  if (!rows[0]?.value) return { ...DEFAULT_PRESETS }
+  try {
+    const parsed = JSON.parse(rows[0].value) as Record<string, ExportPreset>
+    return { ...DEFAULT_PRESETS, ...parsed }
+  } catch {
+    return { ...DEFAULT_PRESETS }
+  }
+}
+
+async function savePresets(presets: Record<string, ExportPreset>): Promise<void> {
+  const json = JSON.stringify(presets)
+  const existing = await db.select({ key: settings.key }).from(settings).where(eq(settings.key, 'export_presets')).limit(1)
+  if (existing.length) {
+    await db.update(settings).set({ value: json, updatedAt: Date.now() }).where(eq(settings.key, 'export_presets'))
+  } else {
+    await db.insert(settings).values({ key: 'export_presets', value: json, updatedAt: Date.now() })
+  }
+}
+
+/** GET /exports/presets —— 获取平台预设列表 */
+exportsRoutes.get('/exports/presets', h(async (c) => {
+  const presets = await loadPresets()
+  return c.json({ items: Object.values(presets), defaults: Object.keys(DEFAULT_PRESETS) })
+}))
+
+/** PUT /exports/presets —— 更新平台预设（全量覆盖） */
+exportsRoutes.put('/exports/presets', h(async (c) => {
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const items = body['items']
+  if (!Array.isArray(items)) throw new HttpError(400, 'bad_input', 'items 需为数组')
+  const map: Record<string, ExportPreset> = {}
+  for (const raw of items) {
+    const p = raw as Partial<ExportPreset>
+    if (!p.platform || !p.label) continue
+    map[p.platform] = {
+      platform: p.platform,
+      label: p.label,
+      aspect: p.aspect ?? '9:16',
+      maxDuration: p.maxDuration ?? 60,
+      namingPattern: p.namingPattern ?? '{project}_{template}_run{run}',
+      includeCover: p.includeCover !== false,
+      includeSubtitle: p.includeSubtitle !== false,
+      watermark: p.watermark,
+    }
+  }
+  await savePresets(map)
+  return c.json({ items: Object.values(map) })
+}))

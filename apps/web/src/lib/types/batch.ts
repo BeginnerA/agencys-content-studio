@@ -95,6 +95,8 @@ export interface Publication {
   url: string | null
   publishedAt: number | null
   metrics: Record<string, number> | null
+  title: string | null
+  abGroup: string | null
   note: string | null
   createdAt: number
   updatedAt: number
