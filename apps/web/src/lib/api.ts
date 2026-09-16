@@ -40,16 +40,19 @@ import type {
   MemoryStatus,
   NovelBoardData,
   Overview,
+  ParamChange,
   PreviewCanvasResult,
   Project,
   ProjectDetail,
   PromptItem,
   Publication,
   RerunResult,
+  RevisionItem,
   Run,
   RunAssetLite,
   RunCanvas,
   RunDetail,
+  SearchResult,
   SeriesInfo,
   ShotBoardData,
   ShotEditItem,
@@ -124,7 +127,7 @@ interface Items<T> {
 export const projectApi = {
   /** 项目列表（?status=active|archived，默认 active） */
   list: (params = '') => api.get<Items<Project>>(`/api/v1/projects${params}`),
-  create: (body: { name: string; genre: string; brief: string; template_key?: string }) =>
+  create: (body: { name: string; genre: string; brief: string; template_key?: string; tags?: string[] }) =>
     api.post<Project>('/api/v1/projects', body),
   detail: (id: number) => api.get<{ project: ProjectDetail }>(`/api/v1/projects/${id}`),
   update: (
@@ -137,6 +140,8 @@ export const projectApi = {
       status?: 'active' | 'archived'
       /** [M8] 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_ids） */
       settings?: Record<string, unknown>
+      /** [M21] 标签（覆盖式写入） */
+      tags?: string[]
     },
   ) => api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, body),
   /** 资产列表（?limit/offset/kind/purpose/tag；total 为过滤条件下总数） */
@@ -196,6 +201,12 @@ export const runApi = {
   gate: (id: number, body: Record<string, unknown>) => api.post<RunDetail>(`/api/v1/runs/${id}/gate`, body),
   cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
   resume: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`),
+  /** [M21] 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */
+  revisions: (id: number, stepKey: string) =>
+    api.get<{ items: RevisionItem[] }>(`/api/v1/runs/${id}/steps/${encodeURIComponent(stepKey)}/revisions`),
+  /** [M21] 集级参数热调（受限：queued/running/waiting_input；组内深合并 + 留痕） */
+  updateParams: (id: number, params: Record<string, Record<string, unknown>>) =>
+    api.patch<{ run: Run; applied: ParamChange[] }>(`/api/v1/runs/${id}/params`, { params }),
 }
 
 export const taskApi = {
@@ -231,6 +242,9 @@ export const assetApi = {
   /** [M12] 收藏切换（PATCH 白名单 is_favorite；版本清理保留豁免） */
   favorite: (id: number, fav: boolean) =>
     api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, { is_favorite: fav ? 1 : 0 }),
+  /** [M21] 标签编辑（PATCH 白名单 tags；覆盖式写入字符串数组） */
+  updateTags: (id: number, tags: string[]) =>
+    api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, { tags }),
   /** [M12] 图像有效性检测（同步；仅图片；结果写 params.quality） */
   check: (id: number) => api.post<{ asset: Asset }>(`/api/v1/assets/${id}/check`),
   /** [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯） */
@@ -238,6 +252,16 @@ export const assetApi = {
     api.post<CleanupResult>(`/api/v1/projects/${projectId}/assets/cleanup-versions`),
   /** [M12] 回收空间（物理删除已清理资产文件；不可逆；行保留） */
   gc: (projectId: number) => api.post<GcResult>(`/api/v1/projects/${projectId}/assets/gc`),
+}
+
+/** [M21] 全局搜索（关键词九域 + 语义文本域；模型不可用自动降级不抛错） */
+export const searchApi = {
+  /** limit 默认 5、上限 20（后端 clamp）；q 空/超 100 字符 → 400 */
+  search: (q: string, limit?: number) =>
+    api.get<SearchResult>(`/api/v1/search?q=${encodeURIComponent(q)}${limit !== undefined ? `&limit=${limit}` : ''}`),
+  /** 文本资产向量全量重建（模型不可用 → 后端 503 model_unavailable） */
+  reindex: () =>
+    api.post<{ total: number; indexed: number; skipped: number; failed: number }>('/api/v1/search/reindex'),
 }
 
 // ===== [M3/M8] 记忆 / 实体素材 =====

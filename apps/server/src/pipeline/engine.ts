@@ -6,6 +6,7 @@ import {
   pipelineRuns,
   pipelineSteps,
   projects,
+  settings,
   type GenTask,
   type PipelineRun,
   type PipelineStep,
@@ -43,6 +44,52 @@ function notifySettled(runId: number): void {
 
 const now = (): number => Date.now()
 
+// ===== [M21 C6] 全局并发上限（settings 'concurrency' → env → 默认 3；1–6 clamp） =====
+
+const DEFAULT_GLOBAL_MAX = 3
+const GLOBAL_MAX_RANGE = { lo: 1, hi: 6 } as const
+
+function clampGlobalMax(n: number): number {
+  return Math.min(GLOBAL_MAX_RANGE.hi, Math.max(GLOBAL_MAX_RANGE.lo, Math.round(n)))
+}
+
+/** 解析生效的全局并发上限：settings.key='concurrency' {max} → env CSTUDIO_GLOBAL_MAX_CONCURRENT → 默认 3 */
+export async function resolveConcurrencyMax(): Promise<number> {
+  try {
+    const rows = await db.select().from(settings).where(eq(settings.key, 'concurrency')).limit(1)
+    if (rows[0]) {
+      try {
+        const n = Number((JSON.parse(rows[0].value) as { max?: unknown }).max)
+        if (Number.isFinite(n)) return clampGlobalMax(n)
+      } catch {
+        /* JSON 损坏 → 继续兜底 */
+      }
+    }
+  } catch {
+    /* settings 表缺失 → 兜底 */
+  }
+  const envRaw = process.env.CSTUDIO_GLOBAL_MAX_CONCURRENT
+  if (envRaw?.trim()) {
+    const n = Number(envRaw)
+    if (Number.isFinite(n)) return clampGlobalMax(n)
+  }
+  return DEFAULT_GLOBAL_MAX
+}
+
+/** 生效上限缓存（startRun 同步闸门读取）；由 refreshGlobalConcurrency 刷新 */
+let cachedGlobalMax = DEFAULT_GLOBAL_MAX
+
+/** 刷新并返回生效上限（启动 / pumpGlobal 每轮调用） */
+export async function refreshGlobalConcurrency(): Promise<number> {
+  cachedGlobalMax = await resolveConcurrencyMax()
+  return cachedGlobalMax
+}
+
+/** 当前生效上限（同步读缓存；诊断 / 探针用） */
+export function currentGlobalMax(): number {
+  return cachedGlobalMax
+}
+
 /** gate 决策记录挂在 step.output（保留审阅痕迹供 UI 展示） */
 interface StepOutputDoc {
   asset_ids: number[]
@@ -61,9 +108,16 @@ interface StepOutputDoc {
  */
 class PipelineEngine {
   private active = new Set<number>()
+  /** [M21 C6] 全局补位泵防重入（同刻至多一轮） */
+  private pumpingGlobal = false
 
   isRunning(runId: number): boolean {
     return this.active.has(runId)
+  }
+
+  /** [M21 C6] 当前活跃执行数（全局闸门观察点） */
+  activeCount(): number {
+    return this.active.size
   }
 
   /**
@@ -71,13 +125,65 @@ class PipelineEngine {
    * - 跳过 succeeded 步骤（断点续跑语义）
    * - 遇 waiting_input 步骤（他人工闸）→ 挂起等待
    * - 遇 pending/failed 步骤 → 从该处恢复执行
+   * [M21 C6] 三态返回：'running'=已在 active（幂等吸收）；'deferred'=全局闸门已满
+   * （异步将该 run 归一到 queued，等 pumpGlobal 补位）；'started'=本次真正启动。
    */
-  startRun(runId: number): void {
-    if (this.active.has(runId)) return
+  startRun(runId: number): 'started' | 'deferred' | 'running' {
+    if (this.active.has(runId)) return 'running'
+    if (this.active.size >= cachedGlobalMax) {
+      void this.normalizeToQueued(runId)
+      return 'deferred'
+    }
     this.active.add(runId)
     void this.runChain(runId).catch((err) => {
       log.error(`run ${runId} 执行链异常`, { error: (err as Error).message })
     })
+    return 'started'
+  }
+
+  /** [M21 C6] defer 归一：仅 running/waiting_input/queued → queued（不触碰终态；与用户 cancel 并发安全） */
+  private async normalizeToQueued(runId: number): Promise<void> {
+    try {
+      await db
+        .update(pipelineRuns)
+        .set({ status: 'queued', updatedAt: now() })
+        .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'waiting_input', 'queued'])))
+    } catch (err) {
+      log.warn(`run ${runId} defer 归一 queued 失败`, { error: (err as Error).message })
+    }
+  }
+
+  /**
+   * [M21 C6] 全局并发补位泵（防重入）：挑 `queued AND batch_id IS NULL` 的 run（createdAt ASC）
+   * 补足 max − active 槽位；批内 queued run 不归本泵（保持 batchSeq 序由 batch.ts pump 管）。
+   * 触发点：runChain 结束 / 启动恢复后 / 30s 定时兜底。
+   */
+  async pumpGlobal(): Promise<void> {
+    if (this.pumpingGlobal) return
+    this.pumpingGlobal = true
+    try {
+      const max = await refreshGlobalConcurrency()
+      while (this.active.size < max) {
+        const rows = await db
+          .select({ id: pipelineRuns.id })
+          .from(pipelineRuns)
+          .where(and(eq(pipelineRuns.status, 'queued'), isNull(pipelineRuns.batchId)))
+          .orderBy(asc(pipelineRuns.createdAt))
+          .limit(max - this.active.size)
+        if (!rows.length) return
+        let started = 0
+        for (const r of rows) {
+          if (this.active.size >= max) break
+          if (this.startRun(r.id) === 'started') started += 1
+        }
+        // 整轮零启动（全被幂等吸收 / 已在推进）→ 退出防死循环
+        if (started === 0) return
+      }
+    } catch (err) {
+      log.warn('全局并发 pump 异常', { error: (err as Error).message })
+    } finally {
+      this.pumpingGlobal = false
+    }
   }
 
   /** 闸门批准：可选文本覆盖产物 → 本步 succeeded → 自动续跑 */
@@ -372,6 +478,8 @@ class PipelineEngine {
       void this.settleIfTerminal(runId).catch((err) =>
         log.warn(`run ${runId} settle 通知失败`, { error: (err as Error).message }),
       )
+      // [M21 C6] 槽位释放 → 全局补位（下一批 queued run 自动启动）
+      void this.pumpGlobal()
     }
   }
 

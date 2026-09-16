@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { projectApi, statsApi } from '../../lib/api'
 import type { Overview, Project, UsageSummary } from '../../lib/types'
@@ -22,7 +23,21 @@ const TABS = [
   { key: 'review', label: '复盘', icon: 'file' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
-const activeTab = ref<TabKey>('overview')
+
+// [M21] ?tab= 深链接（命令面板「新建排产计划」等直达）；切 Tab 不回写 URL（对齐 M20 现状）
+const route = useRoute()
+function initTab(): TabKey {
+  const t = route.query.tab
+  return typeof t === 'string' && TABS.some((x) => x.key === t) ? (t as TabKey) : 'overview'
+}
+const activeTab = ref<TabKey>(initTab())
+watch(
+  () => route.query.tab,
+  () => {
+    const t = initTab()
+    if (t !== activeTab.value) activeTab.value = t
+  },
+)
 
 const loading = ref(true)
 const err = ref('')

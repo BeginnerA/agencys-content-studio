@@ -7,8 +7,8 @@ import { db, initDb } from './db'
 import { pipelineRuns } from './db/schema'
 import { env } from './env'
 import { createLogger } from './logger'
-import { engine, onRunSettled, recoverInterruptedState } from './pipeline/engine'
-import { notifyRunSettled, reconcileBatches } from './services/batch'
+import { engine, onRunSettled, recoverInterruptedState, refreshGlobalConcurrency } from './pipeline/engine'
+import { notifyRunSettled, reconcileBatches, pumpStalledBatches } from './services/batch'
 import { startScheduler, stopScheduler } from './services/schedule'
 import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
@@ -72,12 +72,17 @@ async function main(): Promise<void> {
     void notifyRunSettled(runId).catch((err) => log.error(`settle→pump run ${runId} 失败`, err))
   })
 
+  // [M21 C6] 全局并发上限载入（startRun 同步闸门读缓存；先于恢复启动）
+  await refreshGlobalConcurrency()
+
   // 崩溃恢复：running → failed(interrupted)；queued 重新入队执行
   const { requeued } = await recoverInterruptedState()
   for (const runId of requeued) {
     log.info(`recover: requeue run ${runId}`)
-    try { await engine.startRun(runId) } catch (err) { log.error(`recover: run ${runId} startRun failed`, err) }
+    try { engine.startRun(runId) } catch (err) { log.error(`recover: run ${runId} startRun failed`, err) }
   }
+  // [M21 C6] 恢复后全局补位：首波被 defer（闸门满）的 run 交给泵拉起
+  await engine.pumpGlobal()
   // [M4] 批内 queued run 统一经批调度（recover 已过滤 batchId；此处按槽位约束推进）
   await reconcileBatches()
 
@@ -90,9 +95,17 @@ async function main(): Promise<void> {
   // [M20] 启动排产调度器（60s 轮询 + 幂等触发）
   startScheduler()
 
+  // [M21 C6] 全局并发 pump 定时兜底（30s）：异常态自愈（settle 丢失等）；
+  // 批停滞扫描同样兜底（可救起「settle 链路未覆盖」等极端残留的 queued 批 run）
+  const globalPumpTimer = setInterval(() => {
+    void engine.pumpGlobal()
+    void pumpStalledBatches().catch((err) => log.error('stalled batch scan failed', err))
+  }, 30_000)
+
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`received ${signal}, shutting down`)
     stopScheduler()
+    clearInterval(globalPumpTimer)
     await new Promise((resolve) => io.close(() => resolve(null)))
     process.exit(0)
   }

@@ -28,6 +28,7 @@ import { tasksRoutes } from './routes/tasks'
 import { templatesRoutes } from './routes/templates'
 import { voiceCloneRoutes } from './routes/voice-clones'
 import { schedulesRoutes } from './routes/schedules'
+import { searchRoutes } from './routes/search'
 
 const log = createLogger('app')
 
@@ -60,6 +61,7 @@ api.route('/', apiRoutes)
 api.route('/', vendorRoutes)
 api.route('/', canvasRoutes)
 api.route('/', creationRoutes)
+api.route('/', searchRoutes)
 
 app.route('/api/v1', api)
 

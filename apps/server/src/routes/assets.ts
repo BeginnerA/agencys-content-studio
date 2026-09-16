@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { readFileSync, statSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
-import { and, count, desc, eq, isNull } from 'drizzle-orm'
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
@@ -30,16 +30,16 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const conds = [eq(assets.projectId, projectId), isNull(assets.deletedAt)]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))
+  // [M21] tag 过滤下推 SQL（json_each 展开数组做 JSON 精确成员匹配——含引号/反斜杠/跨元素拼接串均无误配漏配；
+  // json_valid 守卫防历史脏数据炸查询）——修复 limit/offset 后内存过滤的分页错位
+  if (tag) {
+    conds.push(sql`json_valid(${assets.tags}) AND EXISTS (SELECT 1 FROM json_each(${assets.tags}) WHERE json_each.value = ${tag})`)
+  }
   const where = and(...conds)
   const total = Number((await db.select({ n: count() }).from(assets).where(where))[0]?.n ?? 0)
   let query = db.select().from(assets).where(where).orderBy(desc(assets.updatedAt)).$dynamic()
   if (hasLimit) query = query.limit(limit).offset(offset)
-  let rows = await query
-  if (tag) {
-    rows = rows.filter((a) => {
-      try { return (JSON.parse(a.tags) as string[]).includes(tag) } catch { return false }
-    })
-  }
+  const rows = await query
   return c.json({ items: rows.map(toAssetView), total })
 }))
 

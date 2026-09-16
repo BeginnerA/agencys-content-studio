@@ -452,6 +452,40 @@ label.fld .req {
   margin-top: 1px;
 }
 
+/* [M21] 侧栏搜索入口（logo 下 / nav 上；打开全局命令面板） */
+.side .search-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+  color: #9aa8c0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.side .search-btn:hover {
+  background: var(--hover);
+  color: #e8edf6;
+  border-color: var(--border-strong);
+}
+
+.side .search-btn kbd {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 .side .navs {
   display: flex;
   flex-direction: column;
@@ -577,6 +611,16 @@ label.fld .req {
 .side.collapsed .logo .lt,
 .side.collapsed a.nav .lb,
 .side.collapsed .foot {
+  display: none;
+}
+
+.side.collapsed .search-btn {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.side.collapsed .search-btn .lb,
+.side.collapsed .search-btn kbd {
   display: none;
 }
 

@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getSocket } from './lib/socket'
 import Icon from './components/common/Icon.vue'
 import ConfirmHost from './components/common/ConfirmHost.vue'
+import CommandPalette from './components/common/CommandPalette.vue'
 import { pending, refreshPending, startPendingWatcher } from './lib/pending'
+import { initNotify } from './lib/notify'
+import { bindHotkey, initHotkeys } from './lib/hotkeys'
+import { NAVS } from './lib/nav'
 
 const route = useRoute()
+const router = useRouter()
 let stopPendingWatcher: (() => void) | null = null
+
+// [M21] 全局命令面板（Ctrl/Cmd+K 经 lib/hotkeys 单例注册；批 2 已迁移统一键盘流）
+const paletteOpen = ref(false)
+let unbindPaletteKey: (() => void) | null = null
 
 // 侧栏折叠：偏好持久化到 localStorage（不可用时静默降级为展开）
 const SIDE_KEY = 'agencys.side.collapsed'
@@ -27,20 +36,7 @@ function toggleSide() {
   }
 }
 
-// 主导航（顺序即展示顺序；「项目」含全局待审阅角标）
-// 入口收敛（2026-09-13）：「画布」= 创作画布（/creation）；流水线画布（/canvas）为上下文视图，
-// 从运行页「画布视图」/ 模板页「画布」进入——导航不再单列
-const navs = [
-  { to: '/', icon: 'folder', label: '项目' },
-  { to: '/creation', icon: 'wand', label: '画布' },
-  { to: '/entities', icon: 'users', label: '素材' },
-  { to: '/style-presets', icon: 'palette', label: '风格' },
-  { to: '/templates', icon: 'doc', label: '模板' },
-  { to: '/memories', icon: 'sparkles', label: '记忆' },
-  { to: '/stats', icon: 'chart', label: '统计' },
-  { to: '/settings', icon: 'sliders', label: 'AI 配置' },
-  { to: '/system', icon: 'cog', label: '设置' },
-]
+// 主导航（定义于 lib/nav.ts，与命令面板共享；「项目」含全局待审阅角标）
 
 onMounted(() => {
   // 全局单连接：先连接便于页面级 join room（重复 connect 由 io 单例避免）
@@ -48,6 +44,13 @@ onMounted(() => {
   if (!s.connected) s.connect()
   // 全局待审阅角标：首拉 + 30s 轮询 + 可见性恢复
   stopPendingWatcher = startPendingWatcher()
+  // [M21] 浏览器通知（run 终态 / 闸门 / 批次收敛；不可用静默降级）
+  initNotify(router)
+  // [M21] 全局快捷键：唯一文档级监听 + Ctrl/Cmd+K 切换命令面板
+  initHotkeys()
+  unbindPaletteKey = bindHotkey({ key: 'k', ctrlOrMeta: true }, () => {
+    paletteOpen.value = !paletteOpen.value
+  })
 })
 
 // 路由切换时刷新待审阅角标（导航后数据可能已过期；并发合并避免重复请求）
@@ -59,6 +62,7 @@ watch(
 onBeforeUnmount(() => {
   // 不主动断开：单页内多个视图共享连接
   stopPendingWatcher?.()
+  unbindPaletteKey?.()
 })
 </script>
 
@@ -92,9 +96,20 @@ onBeforeUnmount(() => {
           <small>模板化流水线工作台</small>
         </span>
       </div>
+      <button
+        class="search-btn"
+        type="button"
+        aria-label="搜索（Ctrl K）"
+        :title="collapsed ? '搜索（Ctrl K）' : undefined"
+        @click="paletteOpen = true"
+      >
+        <Icon name="search" :size="15" />
+        <span class="lb">搜索</span>
+        <kbd>Ctrl K</kbd>
+      </button>
       <nav id="side-nav" class="navs">
         <RouterLink
-          v-for="n in navs"
+          v-for="n in NAVS"
           :key="n.to"
           class="nav"
           :to="n.to"
@@ -131,5 +146,7 @@ onBeforeUnmount(() => {
     </main>
     <!-- 全局命令式确认弹窗（confirmDialog()）宿主 -->
     <ConfirmHost />
+    <!-- [M21] 全局命令面板（搜索直达；Ctrl/Cmd+K 或侧栏按钮打开） -->
+    <CommandPalette v-if="paletteOpen" @close="paletteOpen = false" />
   </div>
 </template>

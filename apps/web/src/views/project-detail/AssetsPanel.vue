@@ -3,7 +3,7 @@ import AssetGrid from '../../components/asset/AssetGrid.vue'
 import { purposeText } from '../../lib/format'
 import type { ProjectDetailApi } from './use-project-detail'
 const props = defineProps<{ s: ProjectDetailApi }>()
-const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purposeFilter, purposes, filteredAssets, favOnly, assetNotice, assetBusy, onFavorite, onAssetChanged, doCleanupVersions, doGc } = props.s
+const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purposeFilter, purposes, tagFilter, allTags, tagSelectMode, checkedIds, bulkTagInput, bulkBusy, onToggleCheck, toggleTagSelect, applyBulkTag, filteredAssets, favOnly, assetNotice, assetBusy, onFavorite, onAssetChanged, doCleanupVersions, doGc } = props.s
 </script>
 
 <template>
@@ -24,6 +24,19 @@ const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purpo
                   </option>
                 </template>
               </select>
+              <select v-model="tagFilter" style="width: 130px" aria-label="按标签筛选资产">
+                <option value="all">全部标签</option>
+                <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <button
+                class="btn sm"
+                :class="{ danger: tagSelectMode }"
+                :disabled="bulkBusy"
+                :title="tagSelectMode ? '退出批量选择（已选自动清空）' : '选择多个资产批量追加标签'"
+                @click="toggleTagSelect"
+              >
+                {{ tagSelectMode ? '退出批量' : '批量打标' }}
+              </button>
               <button
                 class="btn sm"
                 :disabled="assetBusy"
@@ -45,9 +58,34 @@ const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purpo
           </div>
           <div v-if="assetErr" class="err-text">{{ assetErr }}</div>
           <div v-if="assetNotice" class="asset-notice">{{ assetNotice }}</div>
+          <!-- [M21] 批量打标工具条（选择模式下展示；应用 = 追加去重） -->
+          <div v-if="tagSelectMode" class="bulk">
+            <span class="muted">已选 {{ checkedIds.length }} 项</span>
+            <input
+              v-model="bulkTagInput"
+              type="text"
+              placeholder="输入标签（追加去重）"
+              aria-label="批量标签"
+              style="width: 200px"
+              :disabled="bulkBusy"
+              @keydown.enter.prevent="applyBulkTag"
+            />
+            <button
+              class="btn sm primary"
+              :disabled="bulkBusy || !checkedIds.length || !bulkTagInput.trim()"
+              @click="applyBulkTag"
+            >
+              {{ bulkBusy ? '应用中…' : '应用' }}
+            </button>
+            <button class="btn sm" :disabled="bulkBusy" @click="toggleTagSelect">取消</button>
+            <span class="muted">点击卡片切换选中（不打开预览）</span>
+          </div>
           <AssetGrid
             :assets="filteredAssets"
             :loading="assetLoading"
+            :selectable="tagSelectMode"
+            :checked-ids="checkedIds"
+            @toggle-check="onToggleCheck"
             @favorite="onFavorite"
             @changed="onAssetChanged"
           />
@@ -96,5 +134,18 @@ const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purpo
   border: 1px solid rgb(34 197 94 / 24%);
   border-radius: 8px;
   padding: 7px 10px;
+}
+
+/* [M21] 批量打标工具条 */
+.bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid rgb(99 102 241 / 32%);
+  border-radius: 8px;
+  background: var(--accent-weak);
 }
 </style>

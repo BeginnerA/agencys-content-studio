@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import ProjectDangerModal from '../../components/project/ProjectDangerModal.vue'
 import ProjectFormModal from '../../components/project/ProjectFormModal.vue'
@@ -13,9 +14,24 @@ const projects = ref<Project[]>([])
 const templates = ref<TemplateMeta[]>([])
 const loading = ref(true)
 const err = ref('')
+const route = useRoute()
+const router = useRouter()
 
 // 新建项目弹窗
 const showNew = ref(false)
+
+// [M21] ?new=1 深链接（命令面板「新建项目」直达）；消费后清 query（防刷新重复弹）
+watch(
+  () => route.query.new,
+  (v) => {
+    if (v !== '1') return
+    showNew.value = true
+    const rest = { ...route.query }
+    delete rest.new
+    void router.replace({ query: rest })
+  },
+  { immediate: true },
+)
 
 // 列表状态筛选（进行中 / 已归档）
 const statusTab = ref<'active' | 'archived'>('active')
@@ -25,6 +41,19 @@ const dangerProject = ref<Project | null>(null)
 
 // 恢复中的项目 id（按卡片禁用）
 const restoringId = ref(0)
+
+// ===== [M21] 标签筛选（客户端聚合去重） =====
+const tagFilter = ref('all')
+
+const allTags = computed(() => {
+  const set = new Set<string>()
+  for (const p of projects.value) for (const t of p.tags ?? []) set.add(t)
+  return [...set].sort((x, y) => x.localeCompare(y, 'zh'))
+})
+
+const filteredProjects = computed(() =>
+  tagFilter.value === 'all' ? projects.value : projects.value.filter((p) => (p.tags ?? []).includes(tagFilter.value)),
+)
 
 /** 模板 key → 短名（列表未载/未知 key 回退原 key） */
 function tplName(key: string): string {
@@ -109,7 +138,11 @@ function cardTo(p: Project) {
           已归档
         </button>
       </div>
-      <span class="sub">{{ projects.length }} 个</span>
+      <select v-if="allTags.length" v-model="tagFilter" style="width: 140px" aria-label="按标签筛选项目">
+        <option value="all">全部标签</option>
+        <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
+      </select>
+      <span class="sub">{{ filteredProjects.length }} 个</span>
       <button class="btn primary" style="margin-left: auto" @click="showNew = true">
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建项目
       </button>
@@ -125,8 +158,10 @@ function cardTo(p: Project) {
       <template v-else>没有已归档的项目。</template>
     </div>
 
+    <div v-else-if="!filteredProjects.length" class="empty">无标签「{{ tagFilter }}」的项目</div>
+
     <div v-else class="grid">
-      <RouterLink v-for="p in projects" :key="p.id" class="card panel" :to="cardTo(p)">
+      <RouterLink v-for="p in filteredProjects" :key="p.id" class="card panel" :to="cardTo(p)">
         <div class="top">
           <span class="nm">{{ p.name }}</span>
           <span class="tops">
@@ -155,6 +190,9 @@ function cardTo(p: Project) {
           <span class="chip">{{ projectGenreText(p.genre) }}</span>
           <span class="chip">{{ p.templateKey ? tplName(p.templateKey) : '未绑定模板' }}</span>
           <span class="chip">{{ p.assetCount }} 资产</span>
+        </div>
+        <div v-if="p.tags?.length" class="meta tags">
+          <span v-for="t in p.tags" :key="t" class="chip tag">{{ t }}</span>
         </div>
         <div v-if="p.recentRuns.length" class="runs">
           <div v-for="r in p.recentRuns.slice(0, 3)" :key="r.id" class="run">
@@ -290,6 +328,16 @@ function cardTo(p: Project) {
   color: var(--text-2);
   padding: 2px 9px;
   border-radius: 999px;
+}
+
+/* [M21] 标签 chips 与筛选色 */
+.tags {
+  margin-top: 6px;
+}
+
+.chip.tag {
+  color: var(--accent-h);
+  background: var(--accent-weak);
 }
 
 .runs {

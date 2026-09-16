@@ -6,15 +6,24 @@ import AssetPreviewer from './previewer/index.vue'
 import AssetThumb from './AssetThumb.vue'
 import Icon from '../common/Icon.vue'
 
-const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean }>()
-const emit = defineEmits<{ pick: [asset: Asset]; favorite: [asset: Asset]; changed: [asset: Asset] }>()
+const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean; selectable?: boolean; checkedIds?: number[] }>()
+const emit = defineEmits<{ pick: [asset: Asset]; favorite: [asset: Asset]; changed: [asset: Asset]; toggleCheck: [asset: Asset] }>()
 
 const previewIdx = ref<number | null>(null)
 
-/** 整卡激活：pickable 模式回传资产，否则打开统一预览器 */
+/** [M21] 选择模式：选中集合判断 */
+function isChecked(a: Asset): boolean {
+  return !!props.checkedIds?.includes(a.id)
+}
+
+/** 整卡激活：pickable 回传资产；selectable 切换选中（不改预览）；否则打开统一预览器 */
 function activate(a: Asset) {
   if (props.pickable) {
     emit('pick', a)
+    return
+  }
+  if (props.selectable) {
+    emit('toggleCheck', a)
     return
   }
   previewIdx.value = Math.max(0, props.assets.findIndex((x) => x.id === a.id))
@@ -26,7 +35,7 @@ function kindText(kind: string): string {
 
 /** 键盘与读屏可用的整卡描述 */
 function ariaLabel(a: Asset): string {
-  const act = props.pickable ? '选择' : '预览'
+  const act = props.pickable ? '选择' : props.selectable ? (isChecked(a) ? '取消选中' : '选中') : '预览'
   return `${a.name}，${kindText(a.kind)}，${fmtSize(a.fileSize)}，${fmtTime(a.createdAt)}，回车${act}`
 }
 
@@ -56,10 +65,19 @@ function qualityWarn(a: Asset): string | null {
         @click="activate(a)"
       >
         <AssetThumb :asset="a" :pickable="pickable" />
-        <span v-if="qualityWarn(a)" class="qbadge" :title="`检测异常：${qualityWarn(a)}（预览中可重检）`">
+        <span v-if="selectable" class="ck" :class="{ on: isChecked(a) }" aria-hidden="true">
+          <Icon v-if="isChecked(a)" name="check" :size="11" :stroke-width="2.6" />
+        </span>
+        <span
+          v-if="qualityWarn(a)"
+          class="qbadge"
+          :class="{ right: selectable }"
+          :title="`检测异常：${qualityWarn(a)}（预览中可重检）`"
+        >
           <Icon name="alert" :size="11" /> {{ qualityWarn(a) }}
         </span>
         <span
+          v-if="!selectable"
           class="fav"
           :class="{ on: a.isFavorite === 1 }"
           role="button"
@@ -74,6 +92,11 @@ function qualityWarn(a: Asset): string | null {
         </span>
         <span class="meta">
           <span class="nm" :title="a.name">{{ a.name }}</span>
+          <span v-if="a.tags?.length" class="tgs" :title="a.tags.join('、')">
+            <span class="tg">{{ a.tags[0] }}</span>
+            <span v-if="a.tags.length > 1" class="tg">{{ a.tags[1] }}</span>
+            <span v-if="a.tags.length > 2" class="tg more">+{{ a.tags.length - 2 }}</span>
+          </span>
           <span class="sub">
             <span class="kind">{{ kindText(a.kind) }}</span>
             <span class="sep">·</span>
@@ -183,6 +206,63 @@ function qualityWarn(a: Asset): string | null {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* [M21] 选择模式复选框（空格视觉指示；整卡点击即切换） */
+.ck {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid rgb(255 255 255 / 55%);
+  background: rgb(10 14 24 / 55%);
+  backdrop-filter: blur(4px);
+  color: #fff;
+}
+
+.ck.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* 选择模式：质量角标避让左上复选框，移至右上 */
+.qbadge.right {
+  left: auto;
+  right: 6px;
+}
+
+/* [M21] 标签 chips（≤2 + N；title 展开全文） */
+.tgs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tg {
+  flex: none;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--text-2);
+}
+
+.tg.more {
+  color: var(--text-3);
 }
 
 /* [M12] 质量异常角标（不阻断；提示在预览中重检） */

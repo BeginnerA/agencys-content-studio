@@ -257,6 +257,53 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     }
   }
 
+  // ===== [M21] 标签编辑（footer 内联；变更即存） =====
+  const tagDraft = ref('')
+  const tagBusy = ref(false)
+  const tagErr = ref('')
+  // 本地基准覆盖层：宿主 props 刷新滞后（或未接 @changed）期间，以最近一次成功保存为基准，
+  // 避免基于陈旧快照回写「复活」已删标签；资产切换时因 id 不匹配自动失效
+  const tagState = ref<{ id: number; tags: string[] } | null>(null)
+
+  /** 当前资产标签（本地覆盖优先） */
+  const curTags = computed<string[]>(() => {
+    const a = cur.value
+    if (!a) return []
+    if (tagState.value && tagState.value.id === a.id) return tagState.value.tags
+    return a.tags ?? []
+  })
+
+  /** 保存标签（覆盖式写入字符串数组）→ 同步本地基准 + 宿主 */
+  async function saveTags(next: string[]) {
+    const a = cur.value
+    if (!a || tagBusy.value) return
+    tagBusy.value = true
+    tagErr.value = ''
+    try {
+      const r = await assetApi.updateTags(a.id, next)
+      tagState.value = { id: r.asset.id, tags: r.asset.tags ?? next }
+      emit('changed', r.asset)
+    } catch (e) {
+      tagErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      tagBusy.value = false
+    }
+  }
+
+  /** 回车添加（去重；空白忽略；基准为本地覆盖后的最新值） */
+  function addTag() {
+    const t = tagDraft.value.trim()
+    if (!cur.value || !t) return
+    tagDraft.value = ''
+    if (curTags.value.includes(t)) return
+    void saveTags([...curTags.value, t])
+  }
+
+  function removeTag(t: string) {
+    if (!cur.value) return
+    void saveTags(curTags.value.filter((x) => x !== t))
+  }
+
   // ===== 多资产切换 / 键盘 =====
   function prev() {
     if (hasPrev.value) idx.value -= 1
@@ -288,6 +335,8 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     naturalSize.value = null
     copied.value = false
     checkMsg.value = ''
+    tagDraft.value = ''
+    tagErr.value = ''
     void loadText()
   })
 
@@ -344,6 +393,12 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     checkBusy,
     checkMsg,
     doCheck,
+    tagDraft,
+    tagBusy,
+    tagErr,
+    curTags,
+    addTag,
+    removeTag,
     prev,
     next,
     downloadHref,

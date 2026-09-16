@@ -5,6 +5,7 @@ import { count, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { genTasks, settings } from '../db/schema'
 import { WORKSPACE_DIR } from '../env'
+import { refreshGlobalConcurrency } from '../pipeline/engine'
 import { resolveFfmpeg } from '../services/ffmpeg'
 import { clearBrandAsset, getBrandAssetInfo, isBrandSlot, uploadBrandAsset, type BrandSlot } from '../services/brand-assets'
 import { createLogger } from '../logger'
@@ -72,6 +73,8 @@ systemRoutes.put('/settings/:key', h(async (c) => {
   } else {
     await db.insert(settings).values({ key, value: JSON.stringify(value), updatedAt: t })
   }
+  // [M21 C6] concurrency 配置即改即生效：刷新引擎内存缓存（否则运行中进程持续读旧上限，重启才变）
+  if (key === 'concurrency') await refreshGlobalConcurrency()
   return c.json({ ok: true, key, updatedAt: t })
 }))
 

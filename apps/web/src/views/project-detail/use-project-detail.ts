@@ -332,6 +332,8 @@ export function useProjectDetailPage() {
   // ===== 资产筛选（接口上限 200 在网格下方明示） =====
   const ASSET_LIMIT = 200
   const purposeFilter = ref('all')
+  /** [M21] 标签筛选（客户端聚合去重，'all' = 不过滤） */
+  const tagFilter = ref('all')
 
   const purposes = computed(() => {
     const set = new Set(assets.value.map((a) => a.purpose))
@@ -342,6 +344,7 @@ export function useProjectDetailPage() {
     let list = assets.value
     if (purposeFilter.value !== 'all') list = list.filter((a) => a.purpose === purposeFilter.value)
     if (favOnly.value) list = list.filter((a) => a.isFavorite === 1)
+    if (tagFilter.value !== 'all') list = list.filter((a) => (a.tags ?? []).includes(tagFilter.value))
     return list
   })
 
@@ -414,6 +417,62 @@ export function useProjectDetailPage() {
     } finally {
       assetBusy.value = false
     }
+  }
+
+  // ===== [M21] 标签：聚合 / 批量打标（追加去重；并发 ≤6） =====
+  /** 当前加载资产的标签聚合（去重排序） */
+  const allTags = computed(() => {
+    const set = new Set<string>()
+    for (const a of assets.value) for (const t of a.tags ?? []) set.add(t)
+    return [...set].sort((x, y) => x.localeCompare(y, 'zh'))
+  })
+
+  const tagSelectMode = ref(false)
+  const checkedIds = ref<number[]>([])
+  const bulkTagInput = ref('')
+  const bulkBusy = ref(false)
+
+  function onToggleCheck(a: Asset) {
+    const i = checkedIds.value.indexOf(a.id)
+    if (i >= 0) checkedIds.value.splice(i, 1)
+    else checkedIds.value.push(a.id)
+  }
+
+  function toggleTagSelect() {
+    tagSelectMode.value = !tagSelectMode.value
+    if (!tagSelectMode.value) checkedIds.value = []
+  }
+
+  /** 应用：选中项逐个追加标签（去重）；并发 6 workers + allSettled，失败计数提示 */
+  async function applyBulkTag() {
+    const tag = bulkTagInput.value.trim()
+    if (!tag || !checkedIds.value.length || bulkBusy.value) return
+    bulkBusy.value = true
+    assetErr.value = ''
+    assetNotice.value = ''
+    const ids = new Set(checkedIds.value)
+    const queue = assets.value.filter((a) => ids.has(a.id))
+    let ok = 0
+    let fail = 0
+    const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
+      while (queue.length) {
+        const a = queue.shift()!
+        try {
+          const r = await assetApi.updateTags(a.id, [...new Set([...(a.tags ?? []), tag])])
+          onAssetChanged(r.asset)
+          ok += 1
+        } catch {
+          fail += 1
+        }
+      }
+    })
+    await Promise.allSettled(workers)
+    bulkBusy.value = false
+    if (fail) assetErr.value = `批量打标：${ok} 成功 / ${fail} 失败（可刷新后重试）`
+    else assetNotice.value = `已为 ${ok} 个资产追加标签「${tag}」`
+    bulkTagInput.value = ''
+    checkedIds.value = []
+    tagSelectMode.value = false
   }
 
   // ===== 上传素材 =====
@@ -613,6 +672,15 @@ export function useProjectDetailPage() {
     ASSET_LIMIT,
     purposeFilter,
     purposes,
+    tagFilter,
+    allTags,
+    tagSelectMode,
+    checkedIds,
+    bulkTagInput,
+    bulkBusy,
+    onToggleCheck,
+    toggleTagSelect,
+    applyBulkTag,
     filteredAssets,
     favOnly,
     assetNotice,

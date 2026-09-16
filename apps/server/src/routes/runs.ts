@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '../db'
-import { genTasks, pipelineRuns, pipelineSteps, projects } from '../db/schema'
+import { genTasks, pipelineRuns, pipelineSteps, projects, assets } from '../db/schema'
 import { engine, recoverInterruptedState } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
+import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
@@ -237,6 +238,81 @@ runsRoutes.post('/runs/:id/steps/:stepKey/rerun', h(async (c) => {
     tasks_succeeded: result.tasksSucceeded,
     note,
   })
+}))
+
+// GET /runs/:id/steps/:stepKey/revisions —— [M21] 步骤文本产物版本链（倒序 + current 标记）
+// 数据源：同 run 同 step 的 kind='text' 未删资产行（每次文本写入/reject 重跑/text_override 定稿各产生一版）
+runsRoutes.get('/runs/:id/steps/:stepKey/revisions', h(async (c) => {
+  const runId = idParam(c)
+  const stepKey = c.req.param('stepKey')
+  if (!stepKey) throw new HttpError(400, 'bad_step_key', 'stepKey 路径参数缺失')
+  const run = await findRun(runId)
+  if (!run) return notFound(c, `run ${runId}`)
+  const stepRows = await db
+    .select()
+    .from(pipelineSteps)
+    .where(and(eq(pipelineSteps.runId, runId), eq(pipelineSteps.stepKey, stepKey)))
+    .limit(1)
+  const step = stepRows[0]
+  if (!step) return notFound(c, `步骤 ${stepKey}`)
+  const rows = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.runId, runId), eq(assets.stepId, step.id), eq(assets.kind, 'text'), isNull(assets.deletedAt)))
+    .orderBy(desc(assets.createdAt), desc(assets.id))
+  // current = 步骤当前产物（output.asset_ids[0]）；无文本产物 → 空列表（非 404）
+  const output = safeParse(step.output) as { asset_ids?: number[] } | null
+  const currentId = output?.asset_ids?.[0]
+  return c.json({
+    items: rows.map((a) => ({ assetId: a.id, name: a.name, createdAt: a.createdAt, current: a.id === currentId })),
+  })
+}))
+
+// PATCH /runs/:id/params —— [M21] 集级参数热调（受限 + 留痕）
+// 状态门：queued|running|waiting_input；组内字段级深合并（改 image.model 不影响既有 image.size）；不可删键
+// 生效：未执行步骤经 createStepContext 每步重读 run.input（已开始步骤与 in-flight 任务不受影响）
+// 留痕：run.input._params_log 追加 { at, changes:[{group,key,from,to}], source:'user' }
+runsRoutes.patch('/runs/:id/params', h(async (c) => {
+  const runId = idParam(c)
+  const run = await findRun(runId)
+  if (!run) return notFound(c, `run ${runId}`)
+  if (!['queued', 'running', 'waiting_input'].includes(run.status)) {
+    throw new HttpError(409, 'run_settled', `run 已终态（${run.status}）：参数热调仅限排队/运行/等待审阅中的 run`)
+  }
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const { params, errors } = validateRunParams(body['params'])
+  if (errors.length > 0) throw new HttpError(400, 'bad_params', errors.join('；'))
+  // 组内字段级深合并 + 变更清单（仅实际变化键入 changes；无变化 → 幂等返回，不写留痕）
+  const root = safeParse(run.input)
+  const input = (root && typeof root === 'object' && !Array.isArray(root) ? { ...(root as Record<string, unknown>) } : {}) as Record<string, unknown>
+  const oldParams = readRunParams(run.input)
+  const merged: Record<string, Record<string, unknown>> = {}
+  for (const g of PARAM_GROUPS) {
+    const old = oldParams[g]
+    if (old && Object.keys(old).length) merged[g] = { ...old }
+  }
+  const changes: Array<{ group: string; key: string; from: unknown; to: unknown }> = []
+  for (const [g, fields] of Object.entries(params)) {
+    const group = (merged[g] ??= {})
+    for (const [k, v] of Object.entries(fields ?? {})) {
+      if (group[k] === v) continue
+      changes.push({ group: g, key: k, from: group[k] ?? null, to: v })
+      group[k] = v
+    }
+  }
+  if (changes.length === 0) return c.json({ run: toRunView(run), applied: [] })
+  const plog = Array.isArray(input['_params_log']) ? [...(input['_params_log'] as unknown[])] : []
+  plog.push({ at: Date.now(), changes, source: 'user' })
+  input['_params'] = merged
+  input['_params_log'] = plog
+  // [M21 评审修复] 条件写：仅当仍处可热调状态才落库（闭合前置检查与写入之间的终态竞态窗口）
+  const upd = await db
+    .update(pipelineRuns)
+    .set({ input: JSON.stringify(input), updatedAt: Date.now() })
+    .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['queued', 'running', 'waiting_input'])))
+  if (upd.rowsAffected === 0) throw new HttpError(409, 'run_settled', 'run 已终态：本次参数未写入（与终态并发）')
+  const fresh = await findRun(runId)
+  return c.json({ run: toRunView(fresh!), applied: changes })
 }))
 
 // POST /system/recover —— 手动触发崩溃恢复（幂等；诊断用）

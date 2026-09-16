@@ -372,4 +372,24 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // [M21] assets 表新增 embedding/embedding_model 列（文本资产语义索引；存量行 NULL = 未索引）
+  const assetCols = await sqlite.execute("PRAGMA table_info('assets')")
+  const assetHas = new Set((assetCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!assetHas.has('embedding')) {
+    try {
+      await sqlite.execute('ALTER TABLE assets ADD COLUMN embedding text')
+      log.info('ensureColumn: assets.embedding 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!assetHas.has('embedding_model')) {
+    try {
+      await sqlite.execute('ALTER TABLE assets ADD COLUMN embedding_model text')
+      log.info('ensureColumn: assets.embedding_model 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
 }

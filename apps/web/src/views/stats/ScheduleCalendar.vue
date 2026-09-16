@@ -4,7 +4,7 @@
  * 月历形式展示排产计划，支持创建/取消/恢复/重置/删除操作。
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import Modal from '../../components/common/Modal.vue'
 import DatePicker from '../../components/common/DatePicker.vue'
@@ -14,6 +14,7 @@ import type { Project, ScheduleCalendarItem, TemplateMeta, TemplateDetail, Templ
 import { fmtTime } from '../../lib/format'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(true)
 const err = ref('')
 const items = ref<ScheduleCalendarItem[]>([])
@@ -146,6 +147,19 @@ onMounted(() => {
   void load()
 })
 watch([viewDate, projectId], () => void load())
+
+// [M21] ?new=1 深链接（命令面板「新建排产计划」直达）；消费后清 query（保留 tab 等其余键）
+watch(
+  () => route.query.new,
+  (v) => {
+    if (v !== '1') return
+    openForm()
+    const rest = { ...route.query }
+    delete rest.new
+    void router.replace({ query: rest })
+  },
+  { immediate: true },
+)
 
 /** 加载模板详情 + 预填默认值 */
 async function loadTemplateDetail(key: string) {

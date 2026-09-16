@@ -12,7 +12,7 @@ const props = defineProps<{ assets: Asset[]; index?: number }>()
 const emit = defineEmits<{ close: []; changed: [asset: Asset] }>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, prev, next, downloadHref } = useAssetPreviewer(props, emit)
+const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, prev, next, downloadHref } = useAssetPreviewer(props, emit)
 </script>
 
 <template>
@@ -168,6 +168,25 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
         <!-- 底栏：元信息 + 提示词快照 -->
         <footer class="foot">
           <div class="metaline mono">{{ metaLine }}</div>
+          <div class="tagedit">
+            <span class="tglb">标签</span>
+            <span v-for="t in curTags" :key="t" class="tgchip">
+              {{ t }}
+              <button class="tgx" type="button" :disabled="tagBusy" :aria-label="`删除标签 ${t}`" @click="removeTag(t)">
+                <Icon name="x" :size="10" :stroke-width="2.6" />
+              </button>
+            </span>
+            <input
+              v-model="tagDraft"
+              type="text"
+              class="tginput"
+              placeholder="输入后回车添加"
+              aria-label="新增标签"
+              :disabled="tagBusy"
+              @keydown.enter.prevent="addTag"
+            />
+            <span v-if="tagErr" class="err-text">{{ tagErr }}</span>
+          </div>
           <div v-if="checkMsg" class="chk" :class="{ bad: checkMsg.startsWith('检测失败') }">{{ checkMsg }}</div>
           <details v-if="cur.prompt" class="prmt">
             <summary>提示词快照（可复制溯源）</summary>
@@ -511,6 +530,61 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
 .metaline {
   font-size: 11.5px;
   color: var(--text-3);
+}
+
+/* [M21] 标签编辑（回车添加 / chip × 删除；变更即存） */
+.tagedit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tglb {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.tgchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  line-height: 18px;
+  padding: 0 6px 0 9px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--text-2);
+}
+
+.tgx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.tgx:hover {
+  color: var(--bad);
+  background: var(--hover);
+}
+
+.tgx:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tginput {
+  width: 150px;
+  font-size: 11.5px;
+  padding: 3px 8px;
 }
 
 /* [M12] 重检结果（成功绿 / 失败红） */

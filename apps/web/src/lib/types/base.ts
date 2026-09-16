@@ -67,6 +67,23 @@ export interface RunDetail {
   steps: RunStep[]
 }
 
+/** [M21] Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */
+export interface RevisionItem {
+  assetId: number
+  name: string
+  createdAt: number
+  /** 是否步骤当前产物（step.output.asset_ids[0]） */
+  current: boolean
+}
+
+/** [M21] 参数热调变更项（PATCH /runs/:id/params 的 applied；同构于 run.input._params_log.changes） */
+export interface ParamChange {
+  group: string
+  key: string
+  from: unknown
+  to: unknown
+}
+
 export interface AssetUrls {
   file: string
   thumb: string | null

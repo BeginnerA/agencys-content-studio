@@ -3,7 +3,7 @@
  * - 通用表（batches 无体裁逻辑）；调度逻辑零改动（复用 engine.startRun/cancelRun）
  * - pump 幂等：每轮从 DB 重算计数与槽位；批内互斥防 settle 风暴并发重入
  */
-import { asc, eq, inArray, sum } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, sum } from 'drizzle-orm'
 import { db } from '../db'
 import { batches, pipelineRuns, usageRecords, type PipelineRun } from '../db/schema'
 import { createLogger } from '../logger'
@@ -81,7 +81,7 @@ export async function createBatch(p: {
   return { batch: fresh, runIds }
 }
 
-/** engine 钩子入口（index.ts 注册）：run 属批 → 推进该批 */
+/** engine 钩子入口（index.ts 注册）：任何 run settle 都先推进所属批（若有），再扫停滞批 */
 export async function notifyRunSettled(runId: number): Promise<void> {
   const rows = await db
     .select({ batchId: pipelineRuns.batchId })
@@ -89,8 +89,21 @@ export async function notifyRunSettled(runId: number): Promise<void> {
     .where(eq(pipelineRuns.id, runId))
     .limit(1)
   const batchId = rows[0]?.batchId
-  if (!batchId) return
-  await pump(batchId)
+  // [M21 C6] 槽位释放与批次无关：批 settle 释放的全局槽位同样可救起其它批的 deferred run。
+  // 因此属批分支不提前 return——先推进本批，再统一扫停滞批（否则批间救援被阻断）
+  if (batchId) await pump(batchId)
+  await pumpStalledBatches()
+}
+
+/** [M21 C6] 有 queued run 的 running 批次 → 逐批重试（幂等：pump 内已有 status 守卫与批内互斥；30s 定时器亦复用） */
+export async function pumpStalledBatches(): Promise<void> {
+  const rows = await db
+    .selectDistinct({ batchId: pipelineRuns.batchId })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.status, 'queued'), isNotNull(pipelineRuns.batchId)))
+  for (const r of rows) {
+    if (r.batchId !== null) await pump(r.batchId)
+  }
 }
 
 /** 单批推进（§D）：每轮从 DB 重算（幂等）；批内互斥 */

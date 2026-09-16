@@ -13,6 +13,7 @@ import RunTimeline from './RunTimeline.vue'
 import RunLogPanel from './RunLogPanel.vue'
 import RunCostPanel from './RunCostPanel.vue'
 import RunExportsPanel from './RunExportsPanel.vue'
+import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
 import { useRunExtras } from './use-run-extras'
@@ -83,6 +84,8 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
         :artifact-name="gateTextName"
         :skip-label="gateSkipLabel"
         :busy="busy"
+        :run-id="runId"
+        :step-key="gateStep.stepKey"
         @decided="decide"
       />
 
@@ -95,6 +98,8 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
           <RunLogPanel :u="u" />
 
           <TaskPanel v-if="hasTasks" :run-id="runId" :active="active" class="tpanel-wrap" @changed="loadDetail()" />
+
+          <RunParamsPanel v-if="run" :run="run" @changed="loadDetail()" />
 
           <RunCostPanel :e="e" />
 

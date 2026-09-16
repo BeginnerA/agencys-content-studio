@@ -311,6 +311,22 @@ M18 后全景评审的最大缺口集群一次性收口：**批 1 品牌化**（
 - **验证**：`tsc` + `vue-tsc` + `vite build` 全绿；17 探针（m2a–m19）「全部通过」零适配；实弹（设置 / 项目 / 镜头工作台 / 画布抽屉 / 素材预览）console 零 error；详见 `docs/superpowers/specs/2026-09-15-agencys-content-studio-m28-review.md`
 - **备注**：M2–M19 速览中的文件名为当时历史记述，现行目录结构以本节为准
 
+## M21 能力速览（工作台体验：检索·通知·键盘流）
+
+M18 后缺口集群「工作台体验」+ Backlog 存量项（键盘流 / 并行上限）合一收口：**批 1 快赢三枚**（全局搜索 / 浏览器通知 / 资产与项目标签 UI）+ **批 2**（命令面板 / Gate diff 审阅）+ **批 3**（全局并发上限 / 集级参数热调）共 7 项。设计三原则：**读模型与 UI 为主**（搜索零新依赖：SQL LIKE + 本地向量语义 + 自研 LCS diff）、**快照即证据不破**（热调只增改 `run.input._params` + `_params_log` 全量留痕，`template_snapshot` 零触碰）、**两泵互补无滞留**（全局并发闸门与批调度经 settle 链协同：任一 run settle 均推进本批并扫描全部停滞批，30s 定时器兜底）。
+
+- **全局搜索（批 1）**：`GET /search?q=` 九域关键词命中（项目 / 运行 / 资产 / 实体 / 画布 / 文本 / 发布 / 批次 / 排产；`% _ \` 转义、纯数字按 run id 精确）+ 文本域语义混合（bge-small 本地向量 `minScore 0.25`，模型不可用自动降级关键词并标注降级态）+ `POST /search/reindex`（单 inflight 防重 + 首搜自动索引 + `indexing` 状态透出）；前端 Ctrl/Cmd+K 面板；assets +2 列（`embedding` / `embedding_model`，ensureColumn 幂等）
+- **浏览器通知（批 1）**：Notification API + 权限引导 + run 终态 / 闸门到达 / 批次完成三类推送（Socket.IO 事件链复用）；仅 `document.hidden` 时推送、无权限静默降级；settings `notify` 四开关
+- **资产 / 项目标签 UI（批 1）**：资产预览器内联增删标签（成功保存即更新本地基准，防宿主刷新滞后期间的陈旧回写）、资产网格标签徽标 + 筛选、多选批量打标；项目表单标签字段 + 列表筛选；`?tag=` 过滤下推 SQL（`json_each` 精确成员匹配 + `json_valid` 守卫——修复 limit/offset 后内存过滤的分页错位，含引号 / 反斜杠 / 跨元素拼接串零误配）
+- **命令面板（批 2）**：Ctrl/Cmd+K 面板 = 导航 9 页 + 全局动作（新建项目 / 新建排产计划，`?new=1` 深链接）+ 上下文动作（run 页取消运行 / 批次页取消批次，确认弹窗防误触）+ 搜索直达
+- **Gate diff 审阅（批 2）**：`GET /runs/:id/steps/:k/revisions` 版本链端点 + 闸门弹窗 diff tab——自研 LCS 行级对比（+/- 渲染、行长 5000 上限 + 前后缀裁剪）
+- **全局并发上限（批 3）**：settings `concurrency.max` 1–6（默认 3，env `CSTUDIO_GLOBAL_MAX_CONCURRENT` 兜底）；engine 全局闸门（startRun 三态：started / running / deferred，deferred 归一 queued 等泵补位）+ 批协同（settle → 本批 pump + 全量停滞批扫描）+ 30s 定时兜底；`PUT /settings/concurrency` 即改即生效；设置页「运行」Tab
+- **集级参数热调（批 3）**：`PATCH /runs/:id/params`——状态门（queued / running / waiting_input）+ 组内字段级深合并 + 字段白名单 + 无变化幂等 + 条件写防终态竞态；`_params_log` 追加留痕（at / changes / source）；未执行步骤每步重读生效（已执行与 in-flight 不动）；运行页参数面板（当前值对照 / 留痕时间线 / 终态只读）
+- **数据与兼容**：无新表（assets +2 列 / settings +2 key）；引擎单 run 执行链 / DAG / gate 语义逐字不变（startRun 返回值为增量信息，既有调用方零破坏）；搜索零新依赖；`?tag=` 语义对齐完整标签匹配
+- **Web**：`CommandPalette.vue` / `RunParamsPanel.vue` / `lib/notify.ts` / `lib/hotkeys.ts` / `lib/diff.ts` / `lib/nav.ts`；`GateDialog.vue` diff tab；`AssetGrid.vue` / `previewer/` / `AssetsPanel.vue` / `ProjectFormModal.vue` 标签链；`system-settings/index.vue` 通知与运行 Tab；`App.vue` 面板挂载 + 通知初始化
+
+验证：`pnpm --filter @acs/server probe:m21`（六节 **86 项断言**，零网络零计费：search 15 / revisions 10 / concurrency 28 / hot-params 18 / tags-sql 10 / settings-kv 5）；`probe:m2a ~ m19` 全量回归 **零适配全绿**（17 个探针）；`tsc` + `vue-tsc` 双端全绿；实弹（C6 并发设置保存与回落 / C7 热调 run 103 全链留痕与幂等 / C5 闸门面板 + revisions / C4 面板打开 / C1 HTTP 兜底命中）。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。

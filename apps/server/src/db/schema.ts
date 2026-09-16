@@ -129,6 +129,8 @@ export const assets = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
     deletedAt: integer('deleted_at'),
+    embedding: text('embedding'), // [M21] 文本资产语义索引向量（JSON number[]；仅 kind='text' 写入，NULL = 未索引）
+    embeddingModel: text('embedding_model'), // [M21] 写入时模型标识（modelName@dims，与 memories 同构）
   },
   (t) => [
     index('idx_assets_project_purpose').on(t.projectId, t.purpose),

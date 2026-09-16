@@ -21,6 +21,8 @@ const name = ref('')
 const genre = ref('drama_short')
 const tplKey = ref('')
 const brief = ref('')
+/** [M21] 标签（逗号 / 顿号分隔；提交时拆分为数组去重） */
+const tagsInput = ref('')
 const err = ref('')
 const busy = ref(false)
 /** 用户在本弹窗内是否手动改过模板（改过后切体裁不再覆盖） */
@@ -76,6 +78,7 @@ onMounted(async () => {
     genre.value = normalizeGenre(p.genre)
     brief.value = p.brief ?? ''
     tplKey.value = p.templateKey ?? ''
+    tagsInput.value = (p.tags ?? []).join('，')
     // [M13] 视觉风格：读 settings.style_preset_ids（数组优先；回退旧单值键；列表失败保留裸值显示）
     const st = p.settings ?? {}
     const rawIds: unknown[] = Array.isArray(st['style_preset_ids'])
@@ -109,6 +112,7 @@ async function submit() {
       brief: brief.value.trim(),
       genre: genre.value,
       template_key: tplKey.value || undefined,
+      tags: [...new Set(tagsInput.value.split(/[,，、]/).map((t) => t.trim()).filter(Boolean))],
     }
     if (props.project) {
       // [M13] 读-合并写 settings（保留既有其他键；无勾选 → null + 显式清理旧单值键）
@@ -170,6 +174,10 @@ async function submit() {
         </div>
       </div>
     </div>
+    <label class="fld">
+      标签（逗号分隔；用于列表筛选与全局搜索）
+      <input v-model="tagsInput" type="text" placeholder="如：萌宝，民国，镖局" />
+    </label>
     <label class="fld">
       简介 brief
       <textarea v-model="brief" rows="2" placeholder="一句话说明本项目定位（将作为创作上下文）" />
