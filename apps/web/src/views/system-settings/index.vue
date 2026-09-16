@@ -158,7 +158,7 @@ loadRun()
   <div>
     <div class="page-h">
       <h1>设置</h1>
-      <span class="sub">平台级通用配置（品牌、后续更多设置项）</span>
+      <span class="sub">平台级通用配置</span>
       <div class="tabs" role="tablist" aria-label="设置分类">
         <button
           v-for="t in TABS"
