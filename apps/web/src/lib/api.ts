@@ -10,6 +10,7 @@ import type {
   BatchDetail,
   BrandConfig,
   BrandSlotKey,
+  CanvasAdviceResult,
   CanvasArrangeMode,
   CanvasDoc,
   CanvasDocNode,
@@ -18,6 +19,7 @@ import type {
   CanvasGroup,
   CanvasListItem,
   CanvasNodeRow,
+  CanvasOverview,
   CanvasRunBatchResult,
   CanvasSnapshotMeta,
   CanvasViewport,
@@ -64,6 +66,7 @@ import type {
   StylePresetItem,
   TemplateCanvas,
   TemplateDetail,
+  TemplateEdits,
   TemplateMeta,
   TemplateValidation,
   UsageSummary,
@@ -172,6 +175,18 @@ export const templateApi = {
       { yaml },
     ),
   remove: (key: string) => api.del<{ ok: boolean }>(`/api/v1/templates/${encodeURIComponent(key)}`),
+  /** [M23] 设计态编辑草案：edits 白名单应用 → YAML 序列化（不落盘）→ { yaml, validation, editsApplied } */
+  editDraft: (key: string, edits: TemplateEdits) =>
+    api.post<{ yaml: string; validation: TemplateValidation; editsApplied: number }>(
+      `/api/v1/templates/${encodeURIComponent(key)}/edit-draft`,
+      { edits },
+    ),
+  /** [M23] 编辑落盘为新模板（原文件零触碰；newKey 缺省 <原key>-edit，冲突自动后缀）→ { templateKey, validation } */
+  editSave: (key: string, edits: TemplateEdits, newKey?: string) =>
+    api.post<{ templateKey: string; validation: TemplateValidation; editsApplied: number }>(
+      `/api/v1/templates/${encodeURIComponent(key)}/edit-save`,
+      { edits, newKey },
+    ),
 }
 
 /** 提示词文件（workspace/prompts 内相对路径，子目录用 / 分隔） */
@@ -742,6 +757,8 @@ export const canvasApi = {
   run: (id: number) => api.get<RunCanvas>(`/api/v1/runs/${id}/canvas`),
   /** 模板画布：设计态编排预览（gate/when 摘要 + 两类边；无运行字段） */
   template: (key: string) => api.get<TemplateCanvas>(`/api/v1/templates/${encodeURIComponent(key)}/canvas`),
+  /** [M23] 全景聚合：项目内跨批次（组内 batchSeq 升序）+ 独立 runs + stats */
+  overview: (projectId: number) => api.get<CanvasOverview>(`/api/v1/canvas/overview?project_id=${projectId}`),
 }
 
 // ===== [M16/M17] 创作画布（写模型：自由摆放 / 引用连线 / 就地生成与编辑 / 批量运维 / 导出） =====
@@ -893,6 +910,8 @@ export const creationApi = {
       `/api/v1/canvases/${id}/template-try`,
       body ?? {},
     ),
+  /** [M23] LLM 建议式编排（显式单次触发；未配置 → 400 llm_unavailable；仅建议不执行） */
+  advice: (id: number) => api.post<CanvasAdviceResult>(`/api/v1/canvases/${id}/advice`),
   /** 联动：画布产物并集挂接实体参考图 */
   attachRefAssets: (entityId: number, assetIds: number[]) =>
     api.post<{ ok: boolean; added: number }>(`/api/v1/entities/${entityId}/ref-assets`, { asset_ids: assetIds }),

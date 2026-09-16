@@ -3,11 +3,12 @@
  * - batchNodes：批量部分更新（复用 validateNodePatch：预校验全量合法才写，同文案同语义）；
  * - deleteNodes：批量删除（级联边 + 计数）；copyNodes：批量复制（深拷；集合内部边重映射重建）；
  * - chainNodes：规则式串联（相邻对按源产物类型自动选端口建边；失败 skip 记账 {from,to,reason}）；
- * - computeArrange / arrangeNodes：整理·对齐·分布（纯函数 + 落库；layered 层深=最长上游路径 / grid 行优先）；
+ * - computeArrange / arrangeNodes：整理·对齐·分布（纯函数 + 落库；layered 层深=最长上游路径 / grid 行优先 / force d3 力导向 [M23]）；
  * - runCanvasNodes：批量执行（仅入队就绪节点；未就绪/忙碌 → skipped 附 problems；variants 1-4 透传；不级联等待）；
  * - promptExpandNode：AI 扩写（text/gen 内容源 → chatCompleteDetailed → 不落库；用量经 recordLlmUsage）。
  * 依赖方向：creation-ops → creation / creation-gen / llm（单向）；本文件不经手 socket 事件（对齐文档层 CRUD）。
  */
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
 import { and, asc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, canvasEdges, canvasNodes } from '../../db/schema'
@@ -304,6 +305,7 @@ export const ARRANGE_ROW_H = 240
 export const ARRANGE_MODES = [
   'layered',
   'grid',
+  'force',
   'align-left',
   'align-right',
   'align-top',
@@ -359,10 +361,70 @@ function computeDepths(nodes: ArrangeNodeInput[], edges: Array<{ from: number; t
   return depth
 }
 
+// ---------- [M23] 力导向（d3-force） ----------
+
+/** 力导向参数（spec §2.3）：固定 tick 数 + 固定初始坐标 + d3 固定 LCG = 同输入同输出（无随机源） */
+export const FORCE_TICKS = 300
+export const FORCE_LINK_DISTANCE = 320
+export const FORCE_CHARGE = -900
+export const FORCE_COLLIDE_RADIUS = 140
+
+interface ForceNode extends SimulationNodeDatum {
+  id: number
+  x: number
+  y: number
+}
+
 /**
- * [M17] 整理布局纯函数（探针直接断言）：返回 id → 新坐标（未列入 = 不移动）。
+ * [M23] force 分支：注入现有坐标 → stop() 后手动 tick(FORCE_TICKS) → round + 整体平移
+ * （包围盒左上 → 原锚；单节点原坐标不动）。NaN 兜底：异常坐标回落原值。
+ */
+function computeForceArrange(
+  nodes: ArrangeNodeInput[],
+  edges: Array<{ from: number; to: number }>,
+  anchorX: number,
+  anchorY: number,
+): Map<number, { x: number; y: number }> {
+  const out = new Map<number, { x: number; y: number }>()
+  if (nodes.length === 1) {
+    const only = nodes[0]!
+    out.set(only.id, { x: only.x, y: only.y })
+    return out
+  }
+  const ids = new Set(nodes.map((n) => n.id))
+  const simNodes: ForceNode[] = nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, vx: 0, vy: 0 }))
+  const links: Array<SimulationLinkDatum<ForceNode>> = edges
+    .filter((e) => ids.has(e.from) && ids.has(e.to))
+    .map((e) => ({ source: e.from, target: e.to }))
+  const sim = forceSimulation<ForceNode>(simNodes)
+    .force(
+      'link',
+      forceLink<ForceNode, SimulationLinkDatum<ForceNode>>(links)
+        .id((d) => d.id)
+        .distance(FORCE_LINK_DISTANCE),
+    )
+    .force('charge', forceManyBody<ForceNode>().strength(FORCE_CHARGE))
+    .force('collide', forceCollide<ForceNode>(FORCE_COLLIDE_RADIUS))
+    .force('center', forceCenter<ForceNode>(0, 0))
+    .stop()
+  sim.tick(FORCE_TICKS)
+  const minX = Math.min(...simNodes.map((n) => n.x))
+  const minY = Math.min(...simNodes.map((n) => n.y))
+  const orig = new Map(nodes.map((n) => [n.id, n]))
+  for (const n of simNodes) {
+    const o = orig.get(n.id)!
+    const x = Number.isFinite(n.x) ? Math.round(n.x - minX + anchorX) : o.x
+    const y = Number.isFinite(n.y) ? Math.round(n.y - minY + anchorY) : o.y
+    out.set(n.id, { x, y })
+  }
+  return out
+}
+
+/**
+ * [M17][M23] 整理布局纯函数（探针直接断言）：返回 id → 新坐标（未列入 = 不移动）。
  * - layered：列 = 层深（distinct 归一化），同层按 (seq, x, y) 行序；x = 锚X + 列×300、y = 锚Y + 行×240；
  * - grid：行优先、列数 = max(2, ceil(√n))；sortBy:'seq' 时有 seq 优先（先 seq 组后无 seq 组）；
+ * - force：[M23] d3-force 确定性迭代（tick 300）；输出 round 后平移至原锚；单节点原坐标不动；
  * - align-*：点语义（服务端不持有渲染尺寸）取包围盒边缘；distribute-*：n≥3 中间点等距（首尾不动）。
  * 锚 = 目标集包围盒左上角（minX, minY）。
  */
@@ -407,6 +469,9 @@ export function computeArrange(
       })
     })
     return out
+  }
+  if (mode === 'force') {
+    return computeForceArrange(nodes, opts.edges, anchorX, anchorY)
   }
   const maxX = Math.max(...nodes.map((n) => n.x))
   const maxY = Math.max(...nodes.map((n) => n.y))

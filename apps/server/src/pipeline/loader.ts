@@ -40,6 +40,20 @@ export function templateFileOf(key: string): string | null {
   return null
 }
 
+/**
+ * [M23] 模板 key 避让：base 未被占用 → 原样返回；否则追加后缀 -2/-3/…（最多 30 层）；
+ * 仍冲突 → null（调用方报错）。template-try 与 edit-save 共用。
+ */
+export function avoidTemplateKeyConflict(baseKey: string): string | null {
+  let finalKey = baseKey
+  let suffix = 2
+  while (templateFileOf(finalKey) && suffix < 32) {
+    finalKey = `${baseKey}-${suffix}`
+    suffix += 1
+  }
+  return templateFileOf(finalKey) ? null : finalKey
+}
+
 /** 模板轻量校验：缺关键字段/引用未知 step → 抛错（含模板名与路径提示） */
 function validate(raw: Record<string, unknown>, key: string): Template {
   const name = typeof raw.name === 'string' ? raw.name : key

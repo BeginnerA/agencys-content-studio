@@ -1,181 +1,370 @@
 <script setup lang="ts">
 import CreationBoard from '../../components/creation/board/index.vue'
 import Icon from '../../components/common/Icon.vue'
-import { toRef } from 'vue'
+import { computed, toRef } from 'vue'
+import ActionMenu, {
+  type ActionMenuItem,
+} from '../../components/common/ActionMenu.vue'
 import type { CanvasViewState } from './use-canvas-view'
 
-const props = defineProps<{ cv: Pick<CanvasViewState,
-  | 'boardRef'
-  | 'canvasId'
-  | 'doc'
-  | 'nodes'
-  | 'edges'
-  | 'groups'
-  | 'selectedIds'
-  | 'selectedEdgeId'
-  | 'onSelect'
-  | 'onSelectEdge'
-  | 'onMoved'
-  | 'onNudge'
-  | 'onConnect'
-  | 'onCreateNode'
-  | 'onDropFiles'
-  | 'onDropAsset'
-  | 'onDropEntity'
-  | 'onViewportSettled'
-  | 'onDeleteSelected'
-  | 'onCopySelected'
-  | 'onGroupCreate'
-  | 'onGroupPatch'
-  | 'onGroupDelete'
-  | 'onGroupsMoved'
-  | 'onUndo'
-  | 'onRedo'
-  | 'batchBusy'
-  | 'batchArrange'
-  | 'batchChain'
-  | 'batchNumber'
-  | 'estimateBusy'
-  | 'openEstimate'
-  | 'openRefPick'
-  | 'batchRun'
-  | 'canvases'
-  | 'goCanvas'
-  | 'projectId'
-  | 'createCanvas'
-> }>()
+const props = defineProps<{
+  cv: Pick<
+    CanvasViewState,
+    | 'boardRef'
+    | 'canvasId'
+    | 'doc'
+    | 'nodes'
+    | 'edges'
+    | 'groups'
+    | 'selectedIds'
+    | 'selectedEdgeId'
+    | 'onSelect'
+    | 'onSelectEdge'
+    | 'onMoved'
+    | 'onNudge'
+    | 'onConnect'
+    | 'onCreateNode'
+    | 'onDropFiles'
+    | 'onDropAsset'
+    | 'onDropEntity'
+    | 'onViewportSettled'
+    | 'onDeleteSelected'
+    | 'onCopySelected'
+    | 'openCopyTo'
+    | 'onClearSelection'
+    | 'onGroupCreate'
+    | 'onGroupPatch'
+    | 'onGroupDelete'
+    | 'onGroupsMoved'
+    | 'onUndo'
+    | 'onRedo'
+    | 'batchBusy'
+    | 'batchArrange'
+    | 'batchChain'
+    | 'batchNumber'
+    | 'estimateBusy'
+    | 'openEstimate'
+    | 'openRefPick'
+    | 'batchRun'
+    | 'canvases'
+    | 'goCanvas'
+    | 'projectId'
+    | 'createCanvas'
+  >
+}>()
 const cv = props.cv
 const boardRef = toRef(cv, 'boardRef')
+const alignItems = computed<ActionMenuItem[]>(() => [
+  { id: 'left', label: '左对齐', action: () => cv.batchArrange('align-left') },
+  {
+    id: 'right',
+    label: '右对齐',
+    action: () => cv.batchArrange('align-right'),
+  },
+  { id: 'top', label: '顶对齐', action: () => cv.batchArrange('align-top') },
+  {
+    id: 'bottom',
+    label: '底对齐',
+    action: () => cv.batchArrange('align-bottom'),
+  },
+  {
+    id: 'horizontal',
+    label: '水平等间距分布',
+    separator: true,
+    action: () => cv.batchArrange('distribute-h'),
+  },
+  {
+    id: 'vertical',
+    label: '垂直等间距分布',
+    action: () => cv.batchArrange('distribute-v'),
+  },
+  {
+    id: 'layered',
+    label: '分层整理选中节点',
+    icon: 'arrange',
+    separator: true,
+    action: () => cv.batchArrange('layered'),
+  },
+])
+const organizeItems = computed<ActionMenuItem[]>(() => [
+  {
+    id: 'group',
+    label: '编为一组',
+    icon: 'folder',
+    shortcut: 'Ctrl+G',
+    action: cv.onGroupCreate,
+  },
+  {
+    id: 'chain',
+    label: '自动串联',
+    icon: 'link',
+    detail: '按选中顺序连接相邻节点',
+    action: cv.batchChain,
+  },
+  {
+    id: 'number',
+    label: '故事板编号',
+    icon: 'flow',
+    detail: '从左到右编号 1–N',
+    action: cv.batchNumber,
+  },
+])
+const editItems = computed<ActionMenuItem[]>(() => [
+  {
+    id: 'copy',
+    label: '复制选中节点',
+    icon: 'copy',
+    shortcut: 'Ctrl+D',
+    action: cv.onCopySelected,
+  },
+  {
+    id: 'copy-to',
+    label: '复制到其他画布…',
+    icon: 'external',
+    action: cv.openCopyTo,
+  },
+  {
+    id: 'reference',
+    label: '设为实体参考',
+    icon: 'users',
+    separator: true,
+    action: cv.openRefPick,
+  },
+  {
+    id: 'delete',
+    label: '删除选中节点',
+    icon: 'trash',
+    shortcut: 'Del',
+    separator: true,
+    danger: true,
+    action: () => cv.onDeleteSelected(),
+  },
+])
 </script>
 
 <template>
-      <!-- 中：画布 -->
-      <div class="crt-board">
-        <CreationBoard
-          v-if="cv.canvasId != null && cv.doc"
-          :key="cv.canvasId"
-          ref="boardRef"
-          :nodes="cv.nodes"
-          :edges="cv.edges"
-          :groups="cv.groups"
-          :selected-ids="cv.selectedIds"
-          :selected-edge-id="cv.selectedEdgeId"
-          :initial-viewport="cv.doc.canvas.viewport"
-          @select="cv.onSelect"
-          @select-edge="cv.onSelectEdge"
-          @moved="cv.onMoved"
-          @nudge="cv.onNudge"
-          @connect="cv.onConnect"
-          @create-node="cv.onCreateNode"
-          @drop-files="cv.onDropFiles"
-          @drop-asset="cv.onDropAsset"
-          @drop-entity="cv.onDropEntity"
-          @viewport-settled="cv.onViewportSettled"
-          @delete-selected="cv.onDeleteSelected"
-          @copy-selected="cv.onCopySelected"
-          @group-create="cv.onGroupCreate"
-          @group-patch="cv.onGroupPatch"
-          @group-delete="cv.onGroupDelete"
-          @groups-moved="cv.onGroupsMoved"
-          @undo="cv.onUndo"
-          @redo="cv.onRedo"
+  <!-- 中：画布 -->
+  <div class="crt-board">
+    <div
+      v-if="cv.canvasId != null && cv.doc && cv.selectedIds.length"
+      class="selection-bar"
+      aria-label="选中节点操作"
+      @keydown.space.stop
+    >
+      <div class="selection-count">
+        <span
+          >已选 <strong>{{ cv.selectedIds.length }}</strong> 个节点</span
+        >
+        <button
+          type="button"
+          class="btn clear-selection"
+          title="取消选择（Esc）"
+          aria-label="取消选择"
+          @click="cv.onClearSelection"
+        >
+          <Icon name="x" :size="14" />
+        </button>
+      </div>
+      <div
+        class="selection-tools"
+        :key="`${cv.canvasId}-${cv.selectedIds.join(',')}`"
+      >
+        <ActionMenu
+          v-if="cv.selectedIds.length >= 2"
+          label="对齐分布"
+          icon="arrange"
+          :items="alignItems"
+          :disabled="cv.batchBusy"
         />
+        <ActionMenu
+          v-if="cv.selectedIds.length >= 2"
+          label="编排"
+          icon="flow"
+          :items="organizeItems"
+          :disabled="cv.batchBusy"
+        />
+        <ActionMenu
+          label="编辑选中"
+          icon="pencil"
+          :items="editItems"
+          :disabled="cv.batchBusy"
+        />
+        <button
+          type="button"
+          class="btn"
+          :disabled="cv.batchBusy || cv.estimateBusy"
+          @click="cv.openEstimate"
+        >
+          <Icon name="chart" :size="14" />
+          {{ cv.estimateBusy ? '预估中…' : '预估成本' }}
+        </button>
+        <button
+          v-if="cv.selectedIds.length >= 2"
+          type="button"
+          class="btn primary"
+          :disabled="cv.batchBusy"
+          title="仅将选中且就绪的节点加入执行队列"
+          @click="cv.batchRun"
+        >
+          <Icon name="play" :size="14" /> 执行选中
+        </button>
+      </div>
+    </div>
+    <div class="board-surface">
+      <CreationBoard
+        v-if="cv.canvasId != null && cv.doc"
+        :key="cv.canvasId"
+        ref="boardRef"
+        :nodes="cv.nodes"
+        :edges="cv.edges"
+        :groups="cv.groups"
+        :selected-ids="cv.selectedIds"
+        :selected-edge-id="cv.selectedEdgeId"
+        :initial-viewport="cv.doc.canvas.viewport"
+        @select="cv.onSelect"
+        @select-edge="cv.onSelectEdge"
+        @moved="cv.onMoved"
+        @nudge="cv.onNudge"
+        @connect="cv.onConnect"
+        @create-node="cv.onCreateNode"
+        @drop-files="cv.onDropFiles"
+        @drop-asset="cv.onDropAsset"
+        @drop-entity="cv.onDropEntity"
+        @viewport-settled="cv.onViewportSettled"
+        @delete-selected="cv.onDeleteSelected"
+        @copy-selected="cv.onCopySelected"
+        @group-create="cv.onGroupCreate"
+        @group-patch="cv.onGroupPatch"
+        @group-delete="cv.onGroupDelete"
+        @groups-moved="cv.onGroupsMoved"
+        @undo="cv.onUndo"
+        @redo="cv.onRedo"
+      />
 
-        <!-- [M17] 多选批量浮动条 -->
-        <div v-if="cv.canvasId != null && cv.doc && cv.selectedIds.length >= 2" class="batch-bar panel">
-          <span class="bb-n">已选 {{ cv.selectedIds.length }}</span>
-          <span class="bb-sep" />
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="左对齐" @click="cv.batchArrange('align-left')">左对齐</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="右对齐" @click="cv.batchArrange('align-right')">右对齐</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="顶对齐" @click="cv.batchArrange('align-top')">顶对齐</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="底对齐" @click="cv.batchArrange('align-bottom')">底对齐</button>
-          <span class="bb-sep" />
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="水平等间距分布" @click="cv.batchArrange('distribute-h')">水平分布</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="垂直等间距分布" @click="cv.batchArrange('distribute-v')">垂直分布</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="对选中集分层整理" @click="cv.batchArrange('layered')">整理</button>
-          <span class="bb-sep" />
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="按选中顺序对相邻对自动建边（规则式）" @click="cv.batchChain">串联</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="按 x 序编 seq 1..N（故事板序号）" @click="cv.batchNumber">编号</button>
-          <button type="button" class="btn sm" :disabled="cv.batchBusy" title="复制选中（偏移 +40,+40）" @click="cv.onCopySelected">复制</button>
-          <button type="button" class="btn sm" title="把选中节点编为一组（Ctrl+G）" @click="cv.onGroupCreate">成组</button>
-          <span class="bb-sep" />
-          <button
-            type="button"
-            class="btn sm"
-            :disabled="cv.batchBusy || cv.estimateBusy"
-            title="预估所选节点执行成本（零副作用；含未定价提示）"
-            @click="cv.openEstimate"
-          >
-            <Icon name="chart" :size="11" /> {{ cv.estimateBusy ? '预估中…' : '预估成本' }}
-          </button>
-          <button
-            type="button"
-            class="btn sm"
-            :disabled="cv.batchBusy"
-            title="把选中节点的显示产物挂接为实体参考图（并集去重）"
-            @click="cv.openRefPick"
-          >
-            <Icon name="users" :size="11" /> 实体参考
-          </button>
-          <span class="bb-sep" />
-          <button type="button" class="btn sm primary" :disabled="cv.batchBusy" title="批量执行（只入队就绪节点）" @click="cv.batchRun">
-            <Icon name="play" :size="11" /> 执行
-          </button>
-          <button type="button" class="btn sm danger" :disabled="cv.batchBusy" title="删除选中节点" @click="cv.onDeleteSelected()">
-            <Icon name="trash" :size="11" /> 删除
-          </button>
-        </div>
-
-        <!-- 空态引导 -->
-        <div v-else class="crt-guide">
-          <div class="gd-card panel">
-            <Icon name="wand" :size="30" />
-            <div class="gd-t">创作画布</div>
-            <p class="muted gd-desc">
-              自由摆放素材与生成节点、拖拽端口连线组织引用关系；双击空白新建生成节点，就地生成 / 编辑，
-              产物可一键送去运行或导出为模板草案。左键拖拽框选（平移用空格 / 中键），Del 删除 / Ctrl+Z 撤销。
-            </p>
-            <div class="gd-sec">
-              <div class="gd-h">选择画布</div>
-              <div v-if="cv.canvases.length" class="chips">
-                <button
-                  v-for="c in cv.canvases"
-                  :key="c.id"
-                  type="button"
-                  class="chip chipbtn canvas-chip"
-                  @click="cv.goCanvas(c.id)"
-                >
-                  <span class="cc-cover">
-                    <img
-                      v-if="c.cover"
-                      :src="c.cover.urls.thumb ?? c.cover.urls.file"
-                      :alt="c.name"
-                      loading="lazy"
-                    />
-                    <Icon v-else name="photo" :size="16" />
-                  </span>
-                  <span class="cc-meta">
-                    <span class="cc-name">{{ c.name }}</span>
-                    <span class="cc-count">{{ c.nodeCount }} 节点</span>
-                  </span>
-                </button>
-              </div>
-              <div v-else class="muted">该项目暂无画布</div>
+      <!-- 空态引导 -->
+      <div v-else class="crt-guide">
+        <div class="gd-card panel">
+          <Icon name="wand" :size="30" />
+          <div class="gd-t">创作画布</div>
+          <p class="muted gd-desc">
+            自由摆放素材与生成节点、拖拽端口连线组织引用关系；双击空白新建生成节点，就地生成
+            / 编辑，
+            产物可一键送去运行或导出为模板草案。左键拖拽框选（平移用空格 /
+            中键），Del 删除 / Ctrl+Z 撤销。
+          </p>
+          <div class="gd-sec">
+            <div class="gd-h">选择画布</div>
+            <div v-if="cv.canvases.length" class="chips">
+              <button
+                v-for="c in cv.canvases"
+                :key="c.id"
+                type="button"
+                class="chip chipbtn canvas-chip"
+                @click="cv.goCanvas(c.id)"
+              >
+                <span class="cc-cover">
+                  <img
+                    v-if="c.cover"
+                    :src="c.cover.urls.thumb ?? c.cover.urls.file"
+                    :alt="c.name"
+                    loading="lazy"
+                  />
+                  <Icon v-else name="photo" :size="16" />
+                </span>
+                <span class="cc-meta">
+                  <span class="cc-name">{{ c.name }}</span>
+                  <span class="cc-count">{{ c.nodeCount }} 节点</span>
+                </span>
+              </button>
             </div>
-            <button type="button" class="btn primary" :disabled="cv.projectId == null" @click="cv.createCanvas">
-              <Icon name="plus" :size="13" /> 新建画布
-            </button>
+            <div v-else class="muted">该项目暂无画布</div>
           </div>
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="cv.projectId == null"
+            @click="cv.createCanvas"
+          >
+            <Icon name="plus" :size="13" /> 新建画布
+          </button>
         </div>
       </div>
-
+      <slot />
+    </div>
+  </div>
 </template>
 
 <style scoped>
 .crt-board {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+  container-name: board-area;
+}
+.board-surface {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--panel);
+}
+.selection-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.selection-count strong {
+  color: var(--run);
+  font: 600 14px var(--mono);
+}
+.selection-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.selection-bar .btn {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.selection-bar .clear-selection {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+}
+@container board-area (max-width: 660px) {
+  .selection-bar {
+    gap: 6px;
+  }
+  .selection-count {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+@media (pointer: coarse) {
+  .selection-bar .btn {
+    min-height: 44px;
+  }
 }
 
 .crt-guide {
@@ -285,34 +474,7 @@ const boardRef = toRef(cv, 'boardRef')
   color: var(--text-3);
 }
 
-/* ===== [M17] 批量浮动条 / 总览抽屉 / 导出弹窗 ===== */
-.batch-bar {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: calc(100% - 24px);
-  padding: 7px 10px;
-  border-radius: 10px;
-  z-index: 5;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+.crt-guide {
+  overflow-y: auto;
 }
-
-.bb-n {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.bb-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-}
-
 </style>

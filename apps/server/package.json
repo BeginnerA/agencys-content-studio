@@ -28,12 +28,14 @@
     "probe:m19": "tsx scripts/probe-m19.ts",
     "probe:m21": "tsx scripts/probe-m21.ts",
     "probe:m22": "tsx scripts/probe-m22.ts",
+    "probe:m23": "tsx scripts/probe-m23.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
     "@huggingface/transformers": "^3.8.1",
     "@libsql/client": "^0.18.0",
+    "d3-force": "^3.0.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.3",
@@ -45,6 +47,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^26.5.0",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",

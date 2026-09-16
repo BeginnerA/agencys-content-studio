@@ -228,10 +228,11 @@ export interface CanvasEdgeRow {
   createdAt: number
 }
 
-/** [M17] 整理模式（服务端 ARRANGE_MODES 同构） */
+/** [M17] 整理模式（服务端 ARRANGE_MODES 同构；[M23] +force） */
 export type CanvasArrangeMode =
   | 'layered'
   | 'grid'
+  | 'force'
   | 'align-left'
   | 'align-right'
   | 'align-top'
@@ -395,4 +396,26 @@ export interface SnapshotDiff {
 export interface SnapshotDiffResult extends SnapshotDiff {
   base: { kind: 'snapshot'; id: number; label: string }
   target: { kind: 'snapshot'; id: number; label: string } | { kind: 'live' }
+}
+
+// ===== [M23] LLM 建议式编排（POST /canvases/:id/advice 契约；仅建议不执行） =====
+
+/** 建议 kind（raw = LLM 原文解析失败降级标记，白名单外） */
+export type CanvasAdviceKind = 'structure' | 'connect' | 'config' | 'generate' | 'cleanup' | 'raw'
+
+/** 单条建议（targetNodeId 已由服务端校验存在→剔除；定位用） */
+export interface CanvasAdviceItem {
+  kind: CanvasAdviceKind
+  targetNodeId?: number
+  title: string
+  detail: string
+}
+
+/** 建议响应（mode：json=结构化归一成功 / raw=原文降级；usage 为 null=用量未知） */
+export interface CanvasAdviceResult {
+  advice: CanvasAdviceItem[]
+  mode: 'json' | 'raw'
+  provider: string
+  model: string
+  usage: { tokensIn: number; tokensOut: number } | null
 }

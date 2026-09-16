@@ -214,6 +214,33 @@ export async function summarizeBatch(batchId: number): Promise<{
   return { batch, runs: runs.map((r) => ({ ...r, cost: costByRun.get(r.id) ?? null })) }
 }
 
+/** 批次视图投影（REST 层与 [M23] overview 聚合共用；自 routes/batches.ts 迁入） */
+export function toBatchView(b: typeof batches.$inferSelect): Record<string, unknown> {
+  return {
+    id: b.id,
+    projectId: b.projectId,
+    templateKey: b.templateKey,
+    name: b.name,
+    status: b.status,
+    schedule: safeParse(b.schedule) ?? { max_concurrent: 1 },
+    total: b.total,
+    finished: b.finished,
+    succeeded: b.succeeded,
+    failed: b.failed,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  }
+}
+
+function safeParse(s: string | null): unknown {
+  if (!s) return null
+  try {
+    return JSON.parse(s)
+  } catch {
+    return s
+  }
+}
+
 /** 并发上限归一 1–3（REST 层已对超限 400；此处兜底非 REST 调用） */
 function clampConcurrent(v: number | undefined): number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 3 ? v : 1

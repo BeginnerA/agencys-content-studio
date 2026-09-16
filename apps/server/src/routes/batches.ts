@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { batches, projects } from '../db/schema'
-import { cancelBatch, createBatch, summarizeBatch } from '../services/batch'
+import { cancelBatch, createBatch, summarizeBatch, toBatchView } from '../services/batch'
 import { InvalidRunInputError } from '../services/run-create'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -96,23 +96,7 @@ batchesRoutes.post('/batches/:id/cancel', h(async (c) => {
   return c.json({ batch: toBatchView(fresh) })
 }))
 
-function toBatchView(b: typeof batches.$inferSelect): Record<string, unknown> {
-  return {
-    id: b.id,
-    projectId: b.projectId,
-    templateKey: b.templateKey,
-    name: b.name,
-    status: b.status,
-    schedule: safeParse(b.schedule) ?? { max_concurrent: 1 },
-    total: b.total,
-    finished: b.finished,
-    succeeded: b.succeeded,
-    failed: b.failed,
-    createdAt: b.createdAt,
-    updatedAt: b.updatedAt,
-  }
-}
-
+/** input 快照解析（宽容：失败原样返回） */
 function safeParse(s: string | null): unknown {
   if (!s) return null
   try {

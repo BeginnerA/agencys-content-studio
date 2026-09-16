@@ -7,6 +7,8 @@
  * - 落点：空白双击建生成节点；drop 文件由父级上传后建素材节点（本组件只报世界坐标与文件）
  * - 视口：useBoardViewport（初始 = 画布持久化；settled 后 emit，父级防抖 PATCH）
  * - [M17] 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（spec §2.4，README 明示）
+ * - [M23] 渲染虚拟化：renderNodes / edgePaths 按可见世界矩形裁剪（半屏外扩；尺寸未实测 → 全量兜底）；
+ *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真，spec §2.2）
  */
 import { computed, ref } from 'vue'
 import { useBoardViewport } from '../../../lib/board-viewport'
@@ -26,7 +28,7 @@ const vp = useBoardViewport({
   initial: props.initialViewport,
   onSettled: (v) => emit('viewport-settled', v),
 })
-const { viewportEl, pan, zoom, onWheel } = vp
+const { viewportEl, pan, zoom, onWheel, viewW, viewH } = vp
 
 // ---- 数据索引与位置 ----
 const nodeById = computed(() => new Map(props.nodes.map((n) => [n.id, n])))
@@ -123,7 +125,28 @@ const hiddenNodeIds = computed<Set<number>>(() => {
 function isNodeHidden(n: CanvasDocNode): boolean {
   return hiddenNodeIds.value.has(n.id)
 }
-const renderNodes = computed(() => props.nodes.filter((n) => isNodeHidden(n) === false))
+/** [M23] 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底，spec §2.2） */
+const VIEW_MARGIN = 0.5
+const visibleWorld = computed<{ x1: number; y1: number; x2: number; y2: number } | null>(() => {
+  const vw = viewW.value
+  const vh = viewH.value
+  if (!vw || !vh) return null
+  const x1 = -pan.value.x / zoom.value
+  const y1 = -pan.value.y / zoom.value
+  const x2 = (vw - pan.value.x) / zoom.value
+  const y2 = (vh - pan.value.y) / zoom.value
+  const mx = (x2 - x1) * VIEW_MARGIN
+  const my = (y2 - y1) * VIEW_MARGIN
+  return { x1: x1 - mx, y1: y1 - my, x2: x2 + mx, y2: y2 + my }
+})
+/** [M23] 节点矩形 × 可见矩形相交判定（不可见节点高度兜底 DEFAULT_H） */
+function inView(n: CanvasDocNode): boolean {
+  const r = visibleWorld.value
+  if (!r) return true
+  const p = nodeXY(n)
+  return p.x + NODE_W >= r.x1 && p.x <= r.x2 && p.y + nodeH(n) >= r.y1 && p.y <= r.y2
+}
+const renderNodes = computed(() => props.nodes.filter((n) => isNodeHidden(n) === false && inView(n)))
 /** [M22] 空子树组锚点（拖拽中随 dragGroup 即时偏移） */
 function groupAnchor(g: CanvasGroup): { x: number; y: number } {
   const d = dragGroup.value
@@ -207,11 +230,14 @@ function moveToTopLevel(g: CanvasGroup): void {
 // ---- 边路径（锚点：源右中 → 目标左中）----
 const edgePaths = computed<EdgePath[]>(() => {
   const out: EdgePath[] = []
+  // [M23] 虚拟化：任一端可见才渲染（两端均不可见 → 裁掉，spec §2.2）
+  const visIds = new Set(renderNodes.value.map((n) => n.id))
   for (const e of props.edges) {
     const a = nodeById.value.get(e.from)
     const b = nodeById.value.get(e.to)
     if (!a || !b) continue
     if (hiddenNodeIds.value.has(e.from) || hiddenNodeIds.value.has(e.to)) continue // [M18] 折叠组成员：相关边隐藏
+    if (!visIds.has(e.from) && !visIds.has(e.to)) continue
     const pa = nodeXY(a)
     const pb = nodeXY(b)
     out.push({
@@ -346,20 +372,33 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
     <div v-if="boxRect" class="cb-box" :style="boxStyle" />
 
     <!-- 缩放控制（右下角；不拦截视口手势） -->
-    <div class="cb-zoombar" @pointerdown.stop @dblclick.stop>
-      <button type="button" class="zb" title="缩小" @click="vp.zoomBy(1 / 1.25)">
+    <div class="cb-zoombar" role="group" aria-label="画布缩放" @pointerdown.stop @dblclick.stop @keydown.stop>
+      <button type="button" class="zb" title="缩小" aria-label="缩小" @click="vp.zoomBy(1 / 1.25)">
         <Icon name="zoom-out" :size="13" />
       </button>
-      <button type="button" class="pct" title="适应视图" @click="fitView">{{ Math.round(zoom * 100) }}%</button>
-      <button type="button" class="zb" title="放大" @click="vp.zoomBy(1.25)">
+      <button type="button" class="pct" title="恢复 100% 缩放" aria-label="恢复 100% 缩放" @click="vp.zoomBy(1 / zoom)">{{ Math.round(zoom * 100) }}%</button>
+      <button type="button" class="zb" title="放大" aria-label="放大" @click="vp.zoomBy(1.25)">
         <Icon name="zoom-in" :size="13" />
       </button>
-      <button type="button" class="zb zb-fit" title="适应视图" @click="fitView">适应</button>
+      <button type="button" class="zb zb-fit" title="适应全部节点（F）" @click="fitView">适应</button>
     </div>
 
-    <div class="cb-hint" aria-hidden="true">
-      左拖框选 · 空格/中键拖平移 · 滚轮缩放 · 双击空白建节点 · 拖入素材 · Del 删除 · Ctrl+Z 撤销
-    </div>
+    <details class="cb-help" @pointerdown.stop @dblclick.stop @keydown.stop @keydown.esc.prevent="($event.currentTarget as HTMLDetailsElement).open = false">
+      <summary>操作指南</summary>
+      <div class="help-card panel">
+        <strong>画布操作</strong>
+        <dl>
+          <div><dt>框选节点</dt><dd>空白处左键拖动</dd></div>
+          <div><dt>平移画布</dt><dd>空格 + 拖动 / 中键</dd></div>
+          <div><dt>缩放 / 适应</dt><dd>滚轮 / F</dd></div>
+          <div><dt>新建节点</dt><dd>双击空白处</dd></div>
+          <div><dt>多选 / 全选</dt><dd>Shift + 单击 / Ctrl+A</dd></div>
+          <div><dt>复制 / 成组</dt><dd>Ctrl+D / Ctrl+G</dd></div>
+          <div><dt>撤销 / 重做</dt><dd>Ctrl+Z / Ctrl+Shift+Z</dd></div>
+          <div><dt>删除 / 取消选择</dt><dd>Del / Esc</dd></div>
+        </dl>
+      </div>
+    </details>
   </div>
 </template>
 
@@ -371,6 +410,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   overflow: hidden;
   background: var(--bg);
   outline: none;
+  container: canvas-viewport / inline-size;
   cursor: default;
   user-select: none;
   touch-action: none;
@@ -618,7 +658,10 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   border: none;
   background: none;
   color: var(--text-2);
-  padding: 4px 7px;
+  padding: 6px 8px;
+  min-width: 32px;
+  min-height: 32px;
+  justify-content: center;
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
@@ -634,7 +677,8 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
 }
 
 .pct {
-  min-width: 40px;
+  min-width: 48px;
+  min-height: 32px;
   border: none;
   background: none;
   font: inherit;
@@ -651,16 +695,18 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   color: #fff;
 }
 
-.cb-hint {
-  position: absolute;
-  left: 14px;
-  bottom: 14px;
-  font-size: 11px;
-  color: var(--text-3);
-  background: rgb(15 23 42 / 84%);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 5px 11px;
-  pointer-events: none;
+.cb-help { position: absolute; left: 14px; bottom: 14px; z-index: 4; font-size: 12px; color: var(--text-2); }
+.cb-help summary { display: flex; align-items: center; min-height: 40px; padding: 6px 12px; list-style: none; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; }
+.cb-help summary::-webkit-details-marker { display: none; }
+.cb-help summary:hover, .cb-help[open] summary { color: var(--text); border-color: var(--border-strong); }
+.help-card { position: absolute; left: 0; bottom: calc(100% + 8px); width: 300px; max-width: calc(100cqw - 28px); padding: 14px; color: var(--text); box-shadow: var(--shadow-lg); }
+.help-card dl { display: grid; gap: 10px; margin: 12px 0 0; }
+.help-card dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.help-card dd { margin: 0; color: var(--text-2); text-align: right; }
+@container canvas-viewport (max-width: 340px) {
+  .cb-help { bottom: 64px; }
+  .cb-zoombar { right: 8px; bottom: 10px; }
 }
+@media (pointer: coarse) { .zb, .pct, .cb-help summary { min-height: 44px; } }
+.cb-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>

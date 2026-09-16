@@ -42,10 +42,12 @@ import {
 import { cancelCanvasTasks, extractNodeFrame, previewCanvasRun, startCanvasNodeRun } from '../services/creation/gen'
 import { createGroup, deleteGroup, GroupError, updateGroup } from '../services/creation/groups'
 import { exportCanvas } from '../services/creation/export'
+import { canvasAdvice } from '../services/creation/advice'
 import { arrangeNodes, batchNodes, chainNodes, copyNodes, deleteNodes, promptExpandNode, runCanvasNodes } from '../services/creation/ops'
 import { copyNodesToCanvas } from '../services/creation/copy-to'
 import { buildCanvasSvg } from '../services/creation/export-svg'
 import { writeTextAsset } from '../services/storage'
+import { LlmNotConfiguredError } from '../services/llm'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
@@ -59,6 +61,7 @@ import { HttpError, h, idParam, notFound } from './helpers'
  * - [M18] 快赢：extract-frame（视频抽帧 → asset 节点）/ run-preview（执行成本预估）；
  * - [M18] 安全：DELETE 软删 + 回收站（trash 列表 / restore / purge）+ 文档快照（snapshots 创建/列表/恢复/删除）；
  * - [M22] 快照扩展：diff（快照 ↔ live/快照 字段级差异）+ branch（从快照分支为新画布）；组嵌套（groupIds/parentId 透传）；
+ * - [M23] 建议式编排：advice（确定性摘要 + LLM 建议；未配置 → 400 llm_unavailable；仅建议不执行）；
  * - [M18] 深度：template-try（模板试跑建 run）；规模：groups（成组 CRUD）；
  * - 沉淀：duplicate（深拷）/ template-draft（低保真导出 + 既有校验自检）；
  * - 联动：/entities/:id/ref-assets（画布产物并集挂接实体，复用 attachRefAssets）。
@@ -354,6 +357,19 @@ creationRoutes.post('/nodes/:id/prompt-expand', h(async (c) => {
   const result = await promptExpandNode(idParam(c), body['instruction'])
   if (!result) return notFound(c, `节点 ${c.req.param('id')}`)
   return c.json(result)
+}))
+
+// [M23] POST /canvases/:id/advice —— LLM 建议式编排（确定性摘要 + canvas-advice.md；仅建议不执行）
+// → { advice, mode, provider, model, usage }；LLM 未配置 → 400 llm_unavailable；画布缺失 → 404
+creationRoutes.post('/canvases/:id/advice', h(async (c) => {
+  try {
+    const result = await canvasAdvice(idParam(c))
+    if (!result) return notFound(c, `画布 ${c.req.param('id')}`)
+    return c.json(result)
+  } catch (err) {
+    if (err instanceof LlmNotConfiguredError) throw new HttpError(400, 'llm_unavailable', err.message)
+    throw err
+  }
 }))
 
 // [M17] POST /canvases/:id/arrange —— 整理/对齐/分布 { mode, nodeIds?, sortBy? } → { updated, positions }

@@ -1,4 +1,5 @@
 import type { RunStatus, StepStatus } from './base'
+import type { Batch } from './batch'
 
 // ===== [M15] 流水线画布（GET /runs/:id/canvas · GET /templates/:key/canvas 契约） =====
 
@@ -101,6 +102,15 @@ export interface RunCanvas {
   runActions: { canCancel: boolean; canResume: boolean }
 }
 
+/** [M23] 模板节点输入字段（画布内编辑数据源；string 顶层字段可编辑，其余只读 JSON 预览） */
+export interface InputFieldView {
+  key: string
+  /** 当前值（string 原值；非 string → JSON.stringify 截断预览） */
+  value: string
+  /** 顶层 string 字段 → true（可覆盖）；其余 → false（仅预览） */
+  editable: boolean
+}
+
 /** [M15] 模板画布节点（设计态，无运行字段） */
 export interface TemplateCanvasNode {
   key: string
@@ -114,6 +124,8 @@ export interface TemplateCanvasNode {
   batch: { field: string; maxConcurrent?: number; retry?: number } | null
   output: { purpose: string } | null
   inputsRefs: CanvasRefEntry[]
+  /** [M23] 编辑模式逐字段视图（保序：模板 inputs 声明顺序） */
+  inputFields: InputFieldView[]
 }
 
 /** [M15] 模板画布读模型 */
@@ -145,4 +157,63 @@ export interface CanvasBoardNode {
   whenText?: string | null
   /** 模板态：批量字段摘要 */
   batchField?: string | null
+}
+
+// ===== [M23] 全景聚合（GET /canvas/overview 契约；E1/E2） =====
+
+/** 全景 run 摘要（批次组内与独立组同构；cost 口径对齐 summarizeBatch） */
+export interface OverviewRunLite {
+  id: number
+  batchSeq: number | null
+  templateKey: string
+  /** 固化快照版本（快照缺失 → null） */
+  templateVersion: number | null
+  status: RunStatus
+  error: string | null
+  input: unknown
+  cost: number | null
+  startedAt: number | null
+  completedAt: number | null
+  createdAt: number
+}
+
+/** 全景批次组：批次头（Batch 同构）+ 组内 runs（batchSeq 升序） */
+export interface CanvasOverviewBatch extends Batch {
+  runs: OverviewRunLite[]
+}
+
+/** [M23] 全景读模型（项目内跨批次/跨模板聚合） */
+export interface CanvasOverview {
+  project: { id: number; name: string }
+  /** 新批在前（createdAt desc） */
+  batches: CanvasOverviewBatch[]
+  /** 无批次归属 runs（createdAt desc） */
+  standaloneRuns: OverviewRunLite[]
+  stats: { runCount: number; byStatus: Record<string, number>; totalCost: number }
+}
+
+// ===== [M23] 模板画布内编辑（本地草稿层；不参与网络契约） =====
+
+/** 单步骤覆盖（对齐 P3 template-edit edits.steps[]：{ key, title?, texts? }） */
+export interface StepOverride {
+  title?: string
+  texts?: Record<string, string>
+}
+
+/** 编辑区逐字段视图（父级算好 overlay 值 + dirty；抽屉纯展示） */
+export interface EditFieldState {
+  key: string
+  /** overlay 后值（未覆盖 → 模板原值） */
+  value: string
+  editable: boolean
+  dirty: boolean
+}
+
+/** 编辑区节点视图（抽屉 props.editNode） */
+export interface EditNodeState {
+  key: string
+  /** overlay 后标题（允许空串 → UI 红框提示） */
+  title: string
+  titleDirty: boolean
+  fields: EditFieldState[]
 }

@@ -3,101 +3,169 @@ import Icon from '../../components/common/Icon.vue'
 import { toRef } from 'vue'
 import type { CanvasViewState } from './use-canvas-view'
 
-const props = defineProps<{ cv: Pick<CanvasViewState,
-  | 'fileInput'
-  | 'canvasId'
-  | 'palKind'
-  | 'pickFiles'
-  | 'paletteLoading'
-  | 'palEntities'
-  | 'palette'
-  | 'ENT_KIND_TEXT'
-  | 'paletteEntityDragStart'
-  | 'paletteEntityClick'
-  | 'paletteDragStart'
-  | 'paletteClick'
-  | 'paletteErr'
-  | 'onFilePicked'
-> }>()
+const props = defineProps<{
+  cv: Pick<
+    CanvasViewState,
+    | 'fileInput'
+    | 'canvasId'
+    | 'palKind'
+    | 'pickFiles'
+    | 'paletteLoading'
+    | 'palEntities'
+    | 'palette'
+    | 'ENT_KIND_TEXT'
+    | 'paletteEntityDragStart'
+    | 'paletteEntityClick'
+    | 'paletteDragStart'
+    | 'paletteClick'
+    | 'paletteErr'
+    | 'onFilePicked'
+  >
+}>()
+const emit = defineEmits<{ close: [] }>()
 const cv = props.cv
 const fileInput = toRef(cv, 'fileInput')
 </script>
 
 <template>
-      <!-- 左：素材面板 -->
-      <aside v-if="cv.canvasId != null" class="crt-palette" aria-label="素材面板">
-        <div class="pal-h">
-          <div class="pal-tabs">
-            <button type="button" class="pal-tab" :class="{ on: cv.palKind === 'image' }" @click="cv.palKind = 'image'">图片</button>
-            <button type="button" class="pal-tab" :class="{ on: cv.palKind === 'video' }" @click="cv.palKind = 'video'">视频</button>
-            <button type="button" class="pal-tab" :class="{ on: cv.palKind === 'audio' }" @click="cv.palKind = 'audio'">音频</button>
-            <button type="button" class="pal-tab" :class="{ on: cv.palKind === 'entity' }" @click="cv.palKind = 'entity'">实体</button>
-          </div>
-          <button type="button" class="iconbtn" title="上传素材到项目" @click="cv.pickFiles">
-            <Icon name="upload" :size="12" />
-          </button>
-        </div>
-        <div v-if="cv.paletteLoading" class="muted mini">加载中…</div>
-        <div v-else-if="cv.palKind === 'entity' && !cv.palEntities.length" class="muted mini">该项目暂无实体素材，可在「实体馆」页创建。</div>
-        <div v-else-if="cv.palKind !== 'entity' && !cv.palette.length" class="muted mini">该项目暂无此类素材，可上传，或从流水线抽屉「送入创作画布」。</div>
-        <div v-else-if="cv.palKind === 'entity'" class="pal-list">
-          <button
-            v-for="e in cv.palEntities"
-            :key="e.id"
-            type="button"
-            class="pal-item"
-            draggable="true"
-            :title="`${e.name}（${cv.ENT_KIND_TEXT[e.kind]}；拖入画布 / 单击送至视口中心）`"
-            @dragstart="cv.paletteEntityDragStart($event, e)"
-            @click="cv.paletteEntityClick(e)"
-          >
-            <img
-              v-if="e.refAssets[0]"
-              :src="e.refAssets[0].urls.thumb ?? e.refAssets[0].urls.file"
-              loading="lazy"
-              alt=""
-            />
-            <span v-else class="pal-ph">无参考图</span>
-            <span class="pal-name">{{ e.name }}</span>
-            <span class="pal-ebadge">{{ cv.ENT_KIND_TEXT[e.kind] }} · {{ e.refAssetIds.length }}图</span>
-          </button>
-        </div>
-        <div v-else class="pal-list">
-          <button
-            v-for="a in cv.palette"
-            :key="a.id"
-            type="button"
-            class="pal-item"
-            draggable="true"
-            :title="`${a.name}（拖入画布 / 单击送至视口中心）`"
-            @dragstart="cv.paletteDragStart($event, a)"
-            @click="cv.paletteClick(a)"
-          >
-            <img v-if="a.urls.thumb || a.kind === 'image'" :src="a.urls.thumb ?? a.urls.file" loading="lazy" alt="" />
-            <span class="pal-name">{{ a.name }}</span>
-          </button>
-        </div>
-        <div v-if="cv.paletteErr" class="err-text mini">{{ cv.paletteErr }}</div>
-        <input
-          ref="fileInput"
-          type="file"
-          multiple
-          accept="image/*,video/*,audio/*,.md,.txt,.json"
-          class="hidden-file"
-          @change="cv.onFilePicked"
+  <!-- 左：素材面板 -->
+  <aside
+    v-if="cv.canvasId != null"
+    class="crt-palette"
+    aria-label="素材面板"
+    @keydown.space.stop
+  >
+    <div class="pal-h">
+      <strong>项目素材</strong>
+      <button
+        type="button"
+        class="iconbtn"
+        title="收起素材面板"
+        aria-label="收起素材面板"
+        @click="emit('close')"
+      >
+        <Icon name="chevron-left" :size="15" />
+      </button>
+    </div>
+    <button type="button" class="btn upload-btn" @click="cv.pickFiles">
+      <Icon name="upload" :size="14" /> 上传素材
+    </button>
+    <div class="tabs pal-tabs" role="group" aria-label="素材类型">
+      <button
+        type="button"
+        class="tab"
+        :class="{ on: cv.palKind === 'image' }"
+        :aria-pressed="cv.palKind === 'image'"
+        @click="cv.palKind = 'image'"
+      >
+        图片
+      </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ on: cv.palKind === 'video' }"
+        :aria-pressed="cv.palKind === 'video'"
+        @click="cv.palKind = 'video'"
+      >
+        视频
+      </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ on: cv.palKind === 'audio' }"
+        :aria-pressed="cv.palKind === 'audio'"
+        @click="cv.palKind = 'audio'"
+      >
+        音频
+      </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ on: cv.palKind === 'entity' }"
+        :aria-pressed="cv.palKind === 'entity'"
+        @click="cv.palKind = 'entity'"
+      >
+        实体
+      </button>
+    </div>
+    <p class="pal-help">拖入画布，或单击添加到画布中心</p>
+    <div v-if="cv.paletteLoading" class="muted mini">加载中…</div>
+    <div
+      v-else-if="cv.palKind === 'entity' && !cv.palEntities.length"
+      class="muted mini"
+    >
+      该项目暂无实体素材，可在「实体馆」页创建。
+    </div>
+    <div
+      v-else-if="cv.palKind !== 'entity' && !cv.palette.length"
+      class="muted mini"
+    >
+      该项目暂无此类素材，可上传，或从流水线抽屉「送入创作画布」。
+    </div>
+    <div v-else-if="cv.palKind === 'entity'" class="pal-list">
+      <button
+        v-for="e in cv.palEntities"
+        :key="e.id"
+        type="button"
+        class="pal-item"
+        draggable="true"
+        :title="`${e.name}（${cv.ENT_KIND_TEXT[e.kind]}；拖入画布 / 单击送至视口中心）`"
+        @dragstart="cv.paletteEntityDragStart($event, e)"
+        @click="cv.paletteEntityClick(e)"
+      >
+        <img
+          v-if="e.refAssets[0]"
+          :src="e.refAssets[0].urls.thumb ?? e.refAssets[0].urls.file"
+          loading="lazy"
+          alt=""
         />
-      </aside>
-
+        <span v-else class="pal-ph">无参考图</span>
+        <span class="pal-name">{{ e.name }}</span>
+        <span class="pal-ebadge"
+          >{{ cv.ENT_KIND_TEXT[e.kind] }} · {{ e.refAssetIds.length }}图</span
+        >
+      </button>
+    </div>
+    <div v-else class="pal-list">
+      <button
+        v-for="a in cv.palette"
+        :key="a.id"
+        type="button"
+        class="pal-item"
+        draggable="true"
+        :title="`${a.name}（拖入画布 / 单击送至视口中心）`"
+        @dragstart="cv.paletteDragStart($event, a)"
+        @click="cv.paletteClick(a)"
+      >
+        <img
+          v-if="a.urls.thumb || a.kind === 'image'"
+          :src="a.urls.thumb ?? a.urls.file"
+          loading="lazy"
+          alt=""
+        />
+        <span class="pal-name">{{ a.name }}</span>
+      </button>
+    </div>
+    <div v-if="cv.paletteErr" class="err-text mini">{{ cv.paletteErr }}</div>
+    <input
+      ref="fileInput"
+      type="file"
+      multiple
+      accept="image/*,video/*,audio/*,.md,.txt,.json"
+      class="hidden-file"
+      @change="cv.onFilePicked"
+    />
+  </aside>
 </template>
 
 <style scoped>
 .crt-palette {
-  width: 208px;
+  width: 224px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   background: var(--panel);
   border-right: 1px solid var(--border);
   overflow-y: auto;
@@ -114,23 +182,29 @@ const fileInput = toRef(cv, 'fileInput')
 
 .pal-tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  width: 100%;
 }
-
-.pal-tab {
-  border: 1px solid var(--border);
-  background: var(--code-bg);
-  color: var(--text-3);
-  font-size: 10.5px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  cursor: pointer;
+.pal-tabs .tab {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 2px;
+  font-size: 12px;
+}
+.pal-help {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.upload-btn {
+  justify-content: center;
+  min-height: 36px;
   font-family: inherit;
 }
-
-.pal-tab.on {
-  color: #fff;
-  border-color: var(--accent);
+.pal-h strong {
+  font-size: 13px;
+  color: var(--text);
 }
 
 .pal-list {
@@ -167,8 +241,8 @@ const fileInput = toRef(cv, 'fileInput')
 }
 
 .pal-name {
-  font-size: 10px;
-  color: var(--text-3);
+  font-size: 12px;
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -204,6 +278,10 @@ const fileInput = toRef(cv, 'fileInput')
 
 .iconbtn {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border: none;
   background: none;
   color: var(--text-3);
@@ -220,5 +298,4 @@ const fileInput = toRef(cv, 'fileInput')
 .hidden-file {
   display: none;
 }
-
 </style>

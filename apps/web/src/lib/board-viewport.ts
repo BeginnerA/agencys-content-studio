@@ -4,8 +4,10 @@
  * - 坐标换算：screenToWorld（drop / 双击落点）；fit 按内容包围盒（自由摆放）
  * - 视口持久化：onSettled 500ms 防抖回调（调用方 PATCH /canvases/:id { viewport }；与基线相同跳过
  *   ——避免挂载 / 程序化应用时无谓写库）
+ * - [M23] 视口尺寸跟踪（viewW / viewH）：ResizeObserver 监听；无实现环境退化为挂载时快照；
+ *   渲染虚拟化依赖（spec §2.2；0 = 未实测 → 调用方全量渲染兜底）
  */
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 export interface ViewportState {
   x: number
@@ -36,6 +38,34 @@ export function useBoardViewport(opts: {
   const viewportEl = ref<HTMLElement | null>(null)
   const pan = ref({ x: opts.initial?.x ?? 40, y: opts.initial?.y ?? 40 })
   const zoom = ref(opts.initial ? clamp(opts.initial.zoom, ZOOM_MIN, ZOOM_MAX) : 1)
+
+  // ---- [M23] 视口尺寸（虚拟化可见区；未实测 0 → 全量渲染兜底）----
+  const viewW = ref(0)
+  const viewH = ref(0)
+  let sizeObserver: ResizeObserver | null = null
+
+  watch(
+    viewportEl,
+    (el) => {
+      sizeObserver?.disconnect()
+      sizeObserver = null
+      if (!el) return
+      viewW.value = el.clientWidth
+      viewH.value = el.clientHeight
+      if (typeof ResizeObserver === 'undefined') return
+      sizeObserver = new ResizeObserver(() => {
+        viewW.value = el.clientWidth
+        viewH.value = el.clientHeight
+      })
+      sizeObserver.observe(el)
+    },
+    { immediate: true },
+  )
+
+  onBeforeUnmount(() => {
+    sizeObserver?.disconnect()
+    sizeObserver = null
+  })
 
   // 基线：相等 → 不回写（挂载 / setViewport 程序化应用不触发 PATCH）
   let baseJson = JSON.stringify({ x: pan.value.x, y: pan.value.y, zoom: zoom.value })
@@ -136,6 +166,8 @@ export function useBoardViewport(opts: {
     viewportEl,
     pan,
     zoom,
+    viewW,
+    viewH,
     setViewport,
     currentViewport,
     beginPan,

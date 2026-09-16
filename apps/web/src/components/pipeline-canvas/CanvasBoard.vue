@@ -5,6 +5,9 @@
  * - 布局：层号 = sched 边拓扑最长路径松弛（防环最多 n 轮）；层内按 seq 垂直堆叠居中
  * - pan = 视口 pointer capture（节点卡 @pointerdown.stop）；缩放 = 滚轮光标锚定 [0.3, 2.5]；键盘 +/-/0
  * - 数据层 props 全量替换不影响视图状态（pan/zoom 为组件内 ref；跨目标切换由父级 :key 重建）
+ * - [M23] 编辑模式（editMode 仅模板画布编辑态）：节点右缘输出口拖拽连线（window pointermove/up +
+ *   elementFromPoint 落点检测；临时线世界坐标 = (clientX-rect.left-pan)/zoom）；sched 边点选 + Del 删除
+ *   → emit connect / delEdge（链路语义校验与 after 物化由父级编辑层应用）
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import type { CanvasBoardNode, CanvasEdge } from '../../lib/types'
@@ -16,8 +19,16 @@ const props = defineProps<{
   edges: CanvasEdge[]
   selectedKey: string | null
   mode: 'run' | 'template'
+  /** [M23] 编辑模式：输出口拖拽连线 + 调度边点选/删除（仅模板画布编辑态传 true） */
+  editMode?: boolean
 }>()
-const emit = defineEmits<{ select: [key: string] }>()
+const emit = defineEmits<{
+  select: [key: string]
+  /** [M23] 拖拽连线完成（上游 → 下游；合法性由父级编辑层校验/拒绝） */
+  connect: [from: string, to: string]
+  /** [M23] 调度边删除（Del 键；after 移除语义由父级应用） */
+  delEdge: [from: string, to: string]
+}>()
 
 // ---- 常量（spec：节点卡 ~240×96、层距 300、行距 140）----
 const NODE_W = 240
@@ -84,6 +95,9 @@ interface EdgePath {
   d: string
   type: 'sched' | 'data'
   flowing: boolean
+  /** [M23] 编辑态边选中/删除定位用 */
+  from: string
+  to: string
 }
 const edgePaths = computed<EdgePath[]>(() => {
   const pos = layout.value.pos
@@ -103,6 +117,8 @@ const edgePaths = computed<EdgePath[]>(() => {
       d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
       type: e.type,
       flowing: props.mode === 'run' && e.type === 'sched' && statusByKey.get(e.to) === 'running',
+      from: e.from,
+      to: e.to,
     })
   }
   // sched 在下、data 在上（同对混合双保留时数据边可见）
@@ -140,7 +156,10 @@ function onPointerUp(ev: PointerEvent): void {
   dragging = false
   const el = ev.currentTarget as HTMLElement
   if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId)
-  if (!dragMoved) emit('select', '') // 点空白 = 取消选中（拖动不触发）
+  if (!dragMoved) {
+    selEdge.value = null // [M23] 点空白 = 取消边选中 / 取消节点选中（拖动不触发）
+    emit('select', '')
+  }
 }
 
 function applyZoom(nz: number, cx: number, cy: number): void {
@@ -176,10 +195,96 @@ function onKeydown(ev: KeyboardEvent): void {
   if (ev.key === '+' || ev.key === '=') zoomBy(1.2)
   else if (ev.key === '-' || ev.key === '_') zoomBy(1 / 1.2)
   else if (ev.key === '0') fit()
-  else return
+  else if ((ev.key === 'Delete' || ev.key === 'Backspace') && props.editMode && selEdge.value) {
+    // [M23] 删除选中调度边（仍存在才 emit；after 移除语义由父级应用）
+    const cur = selEdge.value
+    if (props.edges.some((e) => e.type === 'sched' && e.from === cur.from && e.to === cur.to)) {
+      emit('delEdge', cur.from, cur.to)
+    }
+    selEdge.value = null
+    ev.preventDefault()
+    return
+  } else return
   ev.preventDefault()
 }
 defineExpose({ fit })
+
+// ---- [M23] 编辑模式：拖拽连线 / 边选择 / 删除 ----
+const selEdge = ref<{ from: string; to: string } | null>(null)
+const connectFrom = ref<string | null>(null)
+const connectPos = ref({ x: 0, y: 0 })
+const dropKey = ref<string | null>(null)
+
+/** 客户端坐标 → 世界坐标（临时线 / 落点高亮绘制用） */
+function toWorld(clientX: number, clientY: number): { x: number; y: number } {
+  const el = viewport.value
+  if (!el) return { x: 0, y: 0 }
+  const rect = el.getBoundingClientRect()
+  return { x: (clientX - rect.left - pan.value.x) / zoom.value, y: (clientY - rect.top - pan.value.y) / zoom.value }
+}
+
+/** elementFromPoint 落点检测：取最近节点卡的 data-node-key */
+function nodeKeyAt(clientX: number, clientY: number): string | null {
+  const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+  return el?.closest<HTMLElement>('[data-node-key]')?.dataset['nodeKey'] ?? null
+}
+
+function onPortDown(ev: PointerEvent, key: string): void {
+  ev.stopPropagation()
+  ev.preventDefault()
+  connectFrom.value = key
+  connectPos.value = toWorld(ev.clientX, ev.clientY)
+  dropKey.value = null
+  window.addEventListener('pointermove', onConnectMove)
+  window.addEventListener('pointerup', onConnectUp)
+}
+function onConnectMove(ev: PointerEvent): void {
+  if (connectFrom.value == null) return
+  connectPos.value = toWorld(ev.clientX, ev.clientY)
+  const k = nodeKeyAt(ev.clientX, ev.clientY)
+  dropKey.value = k && k !== connectFrom.value ? k : null
+}
+function onConnectUp(ev: PointerEvent): void {
+  window.removeEventListener('pointermove', onConnectMove)
+  window.removeEventListener('pointerup', onConnectUp)
+  const from = connectFrom.value
+  connectFrom.value = null
+  dropKey.value = null
+  if (from == null) return
+  const to = nodeKeyAt(ev.clientX, ev.clientY)
+  if (to && to !== from) emit('connect', from, to)
+}
+
+function onEdgeClick(e: EdgePath): void {
+  if (!props.editMode || e.type !== 'sched') return
+  selEdge.value = { from: e.from, to: e.to }
+}
+function isEdgeSel(e: EdgePath): boolean {
+  const s = selEdge.value
+  return !!s && e.type === 'sched' && s.from === e.from && s.to === e.to
+}
+
+/** 拖拽临时线（输出口锚点 → 指针世界坐标；锚点 = 卡右中） */
+const tempPath = computed(() => {
+  const from = connectFrom.value
+  if (from == null) return ''
+  const p = layout.value.pos.get(from)
+  if (!p) return ''
+  const x1 = PAD + p.x + NODE_W
+  const y1 = PAD + p.y + NODE_H / 2
+  const x2 = connectPos.value.x
+  const y2 = connectPos.value.y
+  const dx = Math.max(48, Math.abs(x2 - x1) / 2)
+  return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
+})
+
+// 退出编辑模式 → 清边选中（选中态不跨模式残留）
+watch(
+  () => props.editMode,
+  (v) => {
+    if (!v) selEdge.value = null
+  },
+)
 
 // 首次数据到达时补一次全图居中（挂载时数据常未到，空布局 fit 无意义；此后刷新不重置）
 let fitted = false
@@ -267,7 +372,13 @@ function hasChips(n: CanvasBoardNode): boolean {
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
       }"
     >
-      <svg class="cv-edges" :width="worldW" :height="worldH" :viewBox="`0 0 ${worldW} ${worldH}`">
+      <svg
+        class="cv-edges"
+        :class="{ editable: editMode }"
+        :width="worldW"
+        :height="worldH"
+        :viewBox="`0 0 ${worldW} ${worldH}`"
+      >
         <defs>
           <marker
             id="cv-arrow-sched"
@@ -297,9 +408,13 @@ function hasChips(n: CanvasBoardNode): boolean {
           :key="e.k"
           :d="e.d"
           class="cv-edge"
-          :class="[e.type, { flowing: e.flowing }]"
+          :class="[e.type, { flowing: e.flowing, sel: isEdgeSel(e) }]"
           :marker-end="e.type === 'sched' ? 'url(#cv-arrow-sched)' : 'url(#cv-arrow-data)'"
+          @pointerdown.stop
+          @click.stop="onEdgeClick(e)"
         />
+        <!-- [M23] 拖拽连线临时线（无箭头；指针穿透） -->
+        <path v-if="tempPath" :d="tempPath" class="cv-edge temp" />
       </svg>
 
       <button
@@ -307,9 +422,10 @@ function hasChips(n: CanvasBoardNode): boolean {
         :key="n.key"
         type="button"
         class="cnode"
-        :class="[cardClass(n), { sel: n.key === selectedKey }]"
+        :class="[cardClass(n), { sel: n.key === selectedKey, drop: n.key === dropKey }]"
         :style="nodeStyle(n.key)"
         :title="n.title"
+        :data-node-key="n.key"
         @pointerdown.stop
         @click="emit('select', n.key)"
       >
@@ -342,6 +458,13 @@ function hasChips(n: CanvasBoardNode): boolean {
           >闸门待审</span>
           <span v-if="n.hasError" class="cn-chip bad">错误</span>
         </span>
+        <!-- [M23] 编辑模式输出口：拖拽到任一节点 = 新增调度依赖（上游 → 下游） -->
+        <span
+          v-if="editMode"
+          class="cn-port"
+          title="拖拽到下游节点 = 新增调度依赖"
+          @pointerdown="onPortDown($event, n.key)"
+        />
       </button>
     </div>
 
@@ -357,6 +480,11 @@ function hasChips(n: CanvasBoardNode): boolean {
         </svg>
         数据引用
       </span>
+    </div>
+
+    <!-- [M23] 编辑模式提示（底部居中；指针穿透） -->
+    <div v-if="editMode" class="cv-edit-hint">
+      拖拽节点右缘圆点连线（上游 → 下游） · 点选调度边后 Del 删除
     </div>
 
     <!-- 缩放控制（右下角；@pointerdown.stop 防误触 pan/取消选中） -->
@@ -436,6 +564,30 @@ function hasChips(n: CanvasBoardNode): boolean {
   }
 }
 
+/* ---- [M23] 编辑模式：sched 边点选 / 临时线 ---- */
+.cv-edges.editable .cv-edge.sched {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.cv-edges.editable .cv-edge.sched:hover {
+  stroke: rgb(148 163 184 / 92%);
+  stroke-width: 2.4;
+}
+
+.cv-edge.sel,
+.cv-edges.editable .cv-edge.sched.sel {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+}
+
+.cv-edge.temp {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  pointer-events: none;
+}
+
 /* ---- 节点卡 ---- */
 .cnode {
   position: absolute;
@@ -464,6 +616,12 @@ function hasChips(n: CanvasBoardNode): boolean {
 .cnode.sel {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* [M23] 连线拖拽悬停落点高亮 */
+.cnode.drop {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(129 140 248 / 30%);
 }
 
 .cnode.running {
@@ -577,6 +735,47 @@ function hasChips(n: CanvasBoardNode): boolean {
 .cn-chip.ok {
   color: var(--ok);
   border-color: rgb(34 197 94 / 35%);
+}
+
+/* [M23] 编辑模式输出口（卡内侧右缘——.cnode overflow:hidden 不得放在卡外） */
+.cn-port {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--panel);
+  cursor: crosshair;
+  opacity: 0.72;
+  transition: opacity 0.15s, transform 0.15s;
+  touch-action: none;
+}
+
+.cn-port:hover {
+  opacity: 1;
+  transform: scale(1.18);
+}
+
+/* [M23] 编辑模式提示（底部居中胶囊；指针穿透） */
+.cv-edit-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 460px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-2);
+  background: rgb(15 23 42 / 84%);
+  border: 1px solid rgb(129 140 248 / 45%);
+  border-radius: 999px;
+  padding: 5px 14px;
+  pointer-events: none;
 }
 
 /* ---- 图例 / 缩放栏 ---- */

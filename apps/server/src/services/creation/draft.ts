@@ -1,5 +1,5 @@
 // [M28·批1a] 自 services/creation.ts 拆分：模板草案 v2（YAML 纯函数 + draft/template-try 两通道）+ 拓扑排序。
-import { saveTemplate, templateFileOf, validateTemplateText, type TemplateValidation } from '../../pipeline/loader'
+import { avoidTemplateKeyConflict, saveTemplate, validateTemplateText, type TemplateValidation } from '../../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../run-create'
 import { buildCanvasDoc } from './doc'
 import { isGenSpec, type CanvasDoc, type CanvasDocNode, type NodeSpec } from './spec'
@@ -416,13 +416,8 @@ export async function tryRunTemplate(
 
   const baseKey = (p.key?.trim() || `${sanitizeTplKey(fullDoc.canvas.name)}-try`).slice(0, 60)
   if (!/^[\w-]+$/.test(baseKey)) throw new TemplateTryError('bad_key', `key「${baseKey}」非法（仅字母/数字/下划线/中划线）`)
-  let finalKey = baseKey
-  let suffix = 2
-  while (templateFileOf(finalKey) && suffix < 32) {
-    finalKey = `${baseKey}-${suffix}`
-    suffix++
-  }
-  if (templateFileOf(finalKey)) throw new TemplateTryError('key_conflict', `模板 key「${baseKey}」冲突无法避让`)
+  const finalKey = avoidTemplateKeyConflict(baseKey)
+  if (!finalKey) throw new TemplateTryError('key_conflict', `模板 key「${baseKey}」冲突无法避让`)
 
   const { yaml, lossy } = buildTemplateDraftYaml(doc, finalKey)
   const validation = validateTemplateText(yaml, finalKey)

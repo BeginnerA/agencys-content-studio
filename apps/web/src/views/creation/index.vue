@@ -18,9 +18,12 @@ import CanvasRefModal from './CanvasRefModal.vue'
 import CanvasTrashModal from './CanvasTrashModal.vue'
 import CanvasSnapshotsModal from './CanvasSnapshotsModal.vue'
 import CanvasCopyToModal from './CanvasCopyToModal.vue'
+import CanvasAdviceModal from './CanvasAdviceModal.vue'
 import { useCanvasView } from './use-canvas-view'
+import { ref } from 'vue'
 
 const cv = useCanvasView()
+const showPalette = ref(window.innerWidth >= 1100)
 
 /** [M22] 检查器 refresh（抽帧等改节点数操作）：静默重拉文档 + 刷画布目录（下拉计数） */
 function onInspectorRefresh(): void {
@@ -31,7 +34,11 @@ function onInspectorRefresh(): void {
 
 <template>
   <div class="crt-page">
-    <CanvasToolbar :cv="cv" />
+    <CanvasToolbar
+      :cv="cv"
+      :show-palette="showPalette"
+      @toggle-palette="showPalette = !showPalette"
+    />
     <div v-if="cv.err" class="errbar">
       <Icon name="alert" :size="13" />
       <span class="eb-t">{{ cv.err }}</span>
@@ -40,33 +47,40 @@ function onInspectorRefresh(): void {
 
     <!-- ===== 舞台 ===== -->
     <div class="crt-stage">
-      <CanvasPalette :cv="cv" />
-      <CanvasBoardArea :cv="cv" />
-      <!-- 右：检查器（选中时覆盖） -->
-      <CreationInspector
-        v-if="cv.canvasId != null && (cv.selNode || cv.selEdge)"
-        :node="cv.selNode"
-        :edge="cv.selEdge"
-        :nodes="cv.nodes"
-        :edges="cv.edges"
-        :canvas-id="cv.canvasId"
-        :project-id="cv.activeProjectId"
-        :apply-patch="cv.applyNodePatch"
-        :apply-run="cv.applyNodeRun"
-        :apply-extract="cv.applyNodeExtract"
-        :apply-delete="cv.applyDeleteFromInspector"
-        :apply-remove-edge="cv.applyRemoveEdge"
-        @refresh="onInspectorRefresh"
-        @clear="cv.onClearSelection"
-        @notice="cv.toast"
+      <CanvasPalette
+        v-show="showPalette"
+        :cv="cv"
+        @close="showPalette = false"
       />
+      <CanvasBoardArea :cv="cv">
+        <!-- 右：检查器（选中时覆盖） -->
+        <CreationInspector
+          v-if="cv.canvasId != null && (cv.selNode || cv.selEdge)"
+          :node="cv.selNode"
+          :edge="cv.selEdge"
+          :nodes="cv.nodes"
+          :edges="cv.edges"
+          :canvas-id="cv.canvasId"
+          :project-id="cv.activeProjectId"
+          :apply-patch="cv.applyNodePatch"
+          :apply-run="cv.applyNodeRun"
+          :apply-extract="cv.applyNodeExtract"
+          :apply-delete="cv.applyDeleteFromInspector"
+          :apply-remove-edge="cv.applyRemoveEdge"
+          @refresh="onInspectorRefresh"
+          @clear="cv.onClearSelection"
+          @notice="cv.toast"
+        />
 
-      <CanvasOverview :cv="cv" />
+        <CanvasOverview :cv="cv" />
+      </CanvasBoardArea>
     </div>
 
     <!-- toast -->
     <Transition name="toast">
-      <div v-if="cv.toastMsg" class="crt-toast">{{ cv.toastMsg }}</div>
+      <div v-if="cv.toastMsg" class="crt-toast" role="status">
+        {{ cv.toastMsg }}
+      </div>
     </Transition>
 
     <CanvasOutputModals :cv="cv" />
@@ -75,6 +89,7 @@ function onInspectorRefresh(): void {
     <CanvasTrashModal :cv="cv" />
     <CanvasSnapshotsModal :cv="cv" />
     <CanvasCopyToModal :cv="cv" />
+    <CanvasAdviceModal :cv="cv" />
   </div>
 </template>
 
@@ -83,8 +98,9 @@ function onInspectorRefresh(): void {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: calc(100vh - 44px);
-  min-height: 420px;
+  height: calc(100dvh - 44px);
+  min-height: 540px;
+  container: creation / inline-size;
 }
 
 .errbar {
@@ -116,6 +132,20 @@ function onInspectorRefresh(): void {
   background: var(--bg);
 }
 
+.crt-stage :deep(.ci),
+.crt-stage :deep(.ov-drawer) {
+  max-width: 100%;
+}
+@container creation (max-width: 760px) {
+  .crt-stage :deep(.crt-palette) {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 8;
+    width: min(240px, 100%);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
 .crt-toast {
   position: fixed;
   left: 50%;
@@ -134,7 +164,9 @@ function onInspectorRefresh(): void {
 
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
 }
 
 .toast-enter-from,
@@ -142,5 +174,4 @@ function onInspectorRefresh(): void {
   opacity: 0;
   transform: translateX(-50%) translateY(8px);
 }
-
 </style>

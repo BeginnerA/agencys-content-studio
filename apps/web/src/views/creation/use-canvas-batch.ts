@@ -15,6 +15,7 @@ export function useCanvasBatch(deps: Dependencies) {
   const ARRANGE_LABEL: Record<CanvasArrangeMode, string> = {
     layered: '分层整理',
     grid: '按序号排列',
+    force: '力导向排列',
     'align-left': '左对齐',
     'align-right': '右对齐',
     'align-top': '顶对齐',
@@ -56,7 +57,7 @@ export function useCanvasBatch(deps: Dependencies) {
   function batchArrange(mode: CanvasArrangeMode): void {
     void runArrange(mode, [...selectedIds.value])
   }
-  function arrangeAll(mode: 'layered' | 'grid'): void {
+  function arrangeAll(mode: 'layered' | 'grid' | 'force'): void {
     void runArrange(mode)
   }
 

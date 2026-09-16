@@ -111,6 +111,12 @@ async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: strin
       settled = true
       clearTimeout(timer)
       if (code === 0) {
+        // [M23·回归修复] exit=0 且无产物 = ffmpeg 静默空输出（seek 超出可用帧；6.x 二进制行为，9.x 为非零退出）
+        // → 归入「无帧可取」参与寻址降级（与 FRAME_SEEK_BACKOFFS 语义对齐）
+        if (!existsSync(tmp)) {
+          reject(new FrameExtractError(`抽帧无输出（exit=0，无帧可取）：${tail.split(/\r?\n/).filter(Boolean).slice(-2).join(' | ') || '(无输出)'}`, true))
+          return
+        }
         try {
           renameSync(tmp, outAbs)
           resolve()
@@ -128,7 +134,8 @@ async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: strin
 
 /**
  * [M18] 抽帧执行：ffmpeg 单帧 → 目标（tmp+rename 原子写；超时 30s；失败抛错含 stderr 尾部）。
- * 寻址降级：请求时刻无帧可取（超出末帧 PTS）→ 按 FRAME_SEEK_BACKOFFS 回退重试（仅 ffmpeg 非零退出时可降级）。
+ * 寻址降级：请求时刻无帧可取（超出末帧 PTS）→ 按 FRAME_SEEK_BACKOFFS 回退重试
+ * （ffmpeg 非零退出、或 exit=0 静默空输出〔[M23] 回归修复纳入〕均可降级）。
  */
 export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec: number): Promise<void> {
   const ffmpeg = resolveFfmpeg()

@@ -4,6 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { projects } from '../db/schema'
 import {
+  avoidTemplateKeyConflict,
   deleteTemplate,
   listTemplates,
   loadTemplate,
@@ -11,6 +12,13 @@ import {
   templateFileOf,
   validateTemplateText,
 } from '../pipeline/loader'
+import {
+  applyTemplateEdits,
+  serializeTemplate,
+  TemplateEditError,
+  type TemplateEditsResult,
+} from '../pipeline/template-edit'
+import type { Template } from '../pipeline/types'
 import { HttpError, h } from './helpers'
 
 export const templatesRoutes = new Hono()
@@ -101,4 +109,56 @@ templatesRoutes.delete('/templates/:key', h(async (c) => {
   }
   deleteTemplate(key)
   return c.json({ ok: true })
+}))
+
+/** [M23] edits 应用（TemplateEditError → 400 bad_edits；其余原样上抛） */
+function applyEditsOr400(tpl: Template, edits: unknown): TemplateEditsResult {
+  try {
+    return applyTemplateEdits(tpl, edits)
+  } catch (err) {
+    if (err instanceof TemplateEditError) throw new HttpError(400, 'bad_edits', err.message)
+    throw err
+  }
+}
+
+// [M23] POST /templates/:key/edit-draft —— 受控编辑草案（edits 白名单应用 → 序列化 YAML；不落盘）
+// body { edits } → { yaml, validation, editsApplied }；模板缺失 404；edits 非法 400 bad_edits
+templatesRoutes.post('/templates/:key/edit-draft', h(async (c) => {
+  const key = c.req.param('key') ?? ''
+  if (!templateFileOf(key)) throw new HttpError(404, 'template_not_found', `模板「${key}」不存在`)
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const result = applyEditsOr400(loadTemplate(key), body['edits'])
+  const yaml = serializeTemplate(result.template)
+  return c.json({ yaml, validation: validateTemplateText(yaml, key), editsApplied: result.applied })
+}))
+
+// [M23] POST /templates/:key/edit-save —— edits 落盘为新模板（key 缺省 <原key>-edit；冲突自动后缀避让；
+// 原文件零触碰）→ { templateKey, validation, editsApplied }；校验失败 400 template_invalid
+templatesRoutes.post('/templates/:key/edit-save', h(async (c) => {
+  const key = c.req.param('key') ?? ''
+  if (!templateFileOf(key)) throw new HttpError(404, 'template_not_found', `模板「${key}」不存在`)
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const result = applyEditsOr400(loadTemplate(key), body['edits'])
+  const newKeyRaw = body['newKey']
+  if (newKeyRaw !== undefined && newKeyRaw !== null && typeof newKeyRaw !== 'string') {
+    throw new HttpError(400, 'bad_key', 'newKey 需为字符串')
+  }
+  const proposed = typeof newKeyRaw === 'string' && newKeyRaw.trim() ? newKeyRaw.trim() : `${key}-edit`
+  const baseKey = proposed.slice(0, 60)
+  if (!/^[\w-]+$/.test(baseKey)) {
+    throw new HttpError(400, 'bad_key', `key「${baseKey}」非法（仅字母/数字/下划线/中划线）`)
+  }
+  const finalKey = avoidTemplateKeyConflict(baseKey)
+  if (!finalKey) throw new HttpError(409, 'key_conflict', `模板 key「${baseKey}」冲突无法避让`)
+  const yaml = serializeTemplate(result.template, { key: finalKey })
+  const validation = validateTemplateText(yaml, finalKey)
+  if (!validation.ok || !validation.template) {
+    throw new HttpError(400, 'template_invalid', validation.errors.join('；'))
+  }
+  saveTemplate(finalKey, yaml)
+  return c.json({ templateKey: finalKey, validation, editsApplied: result.applied })
 }))

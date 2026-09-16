@@ -81,3 +81,17 @@ export interface TemplateDetail {
   defaults: Record<string, unknown>
   steps: TemplateStepDef[]
 }
+
+// ===== [M23] 设计态编辑补丁（POST /templates/:key/edit-draft · edit-save 契约） =====
+
+/** 单步骤编辑（对齐服务端 applyTemplateEdits 白名单；after null = 回落缺省语义，数组 = 显式） */
+export interface TemplateEditStep {
+  key: string
+  after?: string[] | null
+  title?: string
+  texts?: Record<string, string>
+}
+
+export interface TemplateEdits {
+  steps: TemplateEditStep[]
+}

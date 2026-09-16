@@ -90,6 +90,13 @@ export interface RunCanvas {
   runActions: { canCancel: boolean; canResume: boolean }
 }
 
+/** [M23] 模板画布编辑模式：inputs 顶层字段视图（string 原值可编辑；其余 JSON 预览只读） */
+export interface InputFieldView {
+  key: string
+  value: string
+  editable: boolean
+}
+
 export interface TemplateCanvasNode {
   key: string
   seq: number
@@ -102,6 +109,8 @@ export interface TemplateCanvasNode {
   batch: { field: string; maxConcurrent?: number; retry?: number } | null
   output: { purpose: string } | null
   inputsRefs: RefEntry[]
+  /** [M23] inputs 顶层字段视图（编辑模式数据源；spec §2.5） */
+  inputFields: InputFieldView[]
 }
 
 export interface TemplateCanvas {
@@ -359,6 +368,7 @@ export async function buildTemplateCanvas(key: string): Promise<TemplateCanvas> 
     batch: def.batch ? { field: def.batch.field, maxConcurrent: def.batch.maxConcurrent, retry: def.batch.retry } : null,
     output: def.output ?? null,
     inputsRefs: collectRefs(def.inputs),
+    inputFields: inputFieldsOf(def.inputs),
   }))
   const edges: CanvasEdge[] = []
   const seenEdge = new Set<string>()
@@ -454,6 +464,26 @@ function collectRefs(inputs: Record<string, unknown>): RefEntry[] {
   }
   for (const [field, v] of Object.entries(inputs)) scan(v, field)
   return out
+}
+
+/** [M23] inputs 顶层字段视图：string → 可编辑原值；其余 → JSON 预览（截断 400，只读） */
+const INPUT_PREVIEW_CAP = 400
+
+function inputFieldsOf(inputs: Record<string, unknown>): InputFieldView[] {
+  return Object.entries(inputs).map(([key, v]) => {
+    if (typeof v === 'string') return { key, value: v, editable: true }
+    let json: string
+    try {
+      json = JSON.stringify(v) ?? String(v)
+    } catch {
+      json = String(v)
+    }
+    return {
+      key,
+      value: json.length > INPUT_PREVIEW_CAP ? `${json.slice(0, INPUT_PREVIEW_CAP)}…` : json,
+      editable: false,
+    }
+  })
 }
 
 // ---------- 小工具 ----------
