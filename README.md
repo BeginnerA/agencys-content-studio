@@ -20,6 +20,8 @@ pnpm dev    # 并行起双端：
 
 首次启动自动建库（drizzle migrate）与 seed（供应商目录）。密钥只存 `data/secrets.json`（0600），不入库不进 git。
 
+质量门禁（M26）：`pnpm ci:check` 一键跑双端 typecheck + 模板校验 + 全量探针（fail-fast）；`pnpm probe:all` 并行全量探针 / `pnpm probe:ci` 串行快失败 / `pnpm validate:templates` 模板校验；`pnpm --filter @acs/server bench` 规模化压测基准（非阻断）。可选启用推送前钩子：`git config core.hooksPath .githooks`。
+
 ## 从场景入口开始：一看就懂的上手指南
 
 > 记不住模板名？不需要。打开「启动流水线」，按“我想做什么”选一张**场景卡**即可——10 个模板按 出成品 / 做规划 / 发布与复盘 三组呈现。
@@ -308,7 +310,7 @@ M18 后全景评审的最大缺口集群一次性收口：**批 1 品牌化**（
 - **服务端四件**：`creation.ts`(2,442) → 22 文件含 `gen/` 8；`creation-gen.ts`(1,398) → `creation/gen/` 8 文件；`ffmpeg-merge.ts`(1,375) → 10 文件；`shot-workbench.ts`(1,217) → `services/shot/` 8 文件；`creation-ops/groups/export` 收敛入 `creation/`
 - **Web 十三件**：CreationView(2,819)→27 / CreationInspector(1,920)→10 / ShotBoard(1,588)→6 / CreationBoard(1,482)→5 / TemplatesView(1,385)→11 / RunDetailView(1,345)→10 / types.ts(1,300)→11 / EntitiesView(1,254)→6 / ProjectDetailView(1,238)→7 / StoryboardEditor(1,183)→4 / SettingsView(1,171)→6 / AssetPreviewer(821)→2 / CanvasDrawer(869)→2；router 与全部引用机械改写
 - **红线终态**：全仓扫描 >800 行仅存豁免 2（`lib/api.ts` / `components/brand/BrandSettings.vue`）+ 排除 4（探针脚本，归 M26-H5）；不改清单（引擎 / 适配器 / schema / 模板提示词 / package.json）零 diff
-- **红线增量登记（2026-09-16 复扫，M23 收官后）**：新增破线 2——`views/canvas/index.vue`（1172；`68d46c1` 单提交自 722 增量）与 `components/pipeline-canvas/CanvasBoard.vue`（855；P3 编辑模式）→ 登记**「触发条件式待拆」**（拆分时机 = M26 工程批〔H2 残余〕或 canvas 域被实质触碰时〔可插 M28 式纯重构微批次〕；范式对齐 M28——thin `index.vue` + `use-*.ts` + 面板组件），本次仅登记不做即时重构；`lib/api.ts` 已增至 969（存量豁免内，随 api 域拆分）；探针脚本超限现为 5（m16–m19 / m22，归 M26-H5）；复扫口径同 M28（含注释与空行），脚本留档 `.qoder/tmp-m28-scan800.mjs`
+- **红线增量登记（2026-09-16 复扫，M23 收官后）**：新增破线 2——`views/canvas/index.vue`（1172；`68d46c1` 单提交自 722 增量）与 `components/pipeline-canvas/CanvasBoard.vue`（855；P3 编辑模式）→ 登记**「触发条件式待拆」**（拆分时机 = M26 工程批〔H2 残余〕或 canvas 域被实质触碰时〔可插 M28 式纯重构微批次〕；范式对齐 M28——thin `index.vue` + `use-*.ts` + 面板组件），本次仅登记不做即时重构；`lib/api.ts` 已增至 969（存量豁免内，随 api 域拆分）；探针脚本超限现为 5（m16–m19 / m22，归 M26-H5）；复扫口径同 M28（含注释与空行），脚本留档 `.qoder/tmp-m28-scan800.mjs`。**【后续收账（M26，2026-09-17）】**上述待拆已全部完成：5 前端 >800（含 2 豁免 + 2 新破线）与 5 探针均已拆分，全仓 `scripts` + `web/src` 复扫 **>800 = 0**（见下文 M26 能力速览）
 - **验证**：`tsc` + `vue-tsc` + `vite build` 全绿；17 探针（m2a–m19）「全部通过」零适配；实弹（设置 / 项目 / 镜头工作台 / 画布抽屉 / 素材预览）console 零 error；详见 `docs/superpowers/specs/2026-09-15-agencys-content-studio-m28-review.md`
 - **备注**：M2–M19 速览中的文件名为当时历史记述，现行目录结构以本节为准
 
@@ -373,6 +375,20 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 - **数据与兼容**：零新表零新列；白名单 +2 action（adapt_audit / video_analyze）/ 端点 +3（PATCH content / novel append / fetch-source）/ 提示词 +4 / 模板 +2（novel-audit / video-reverse）改 1（novel-adapt v2）/ 新依赖 +2（mammoth / fflate，沿 M23 d3-force 纯解析库例外原则）；引擎 / DAG / 模板加载签名零触碰；novel-board 响应扩展加法零破坏
 
 验证：`pnpm --filter @acs/server exec tsx scripts/probe-m25.ts`（八节 **141 项断言**，零网络零计费）；全量回归 22 探针 **21 零适配 + m9 一处 version 同步**（novel-adapt v2 主动升版）全绿；`tsc` + `vue-tsc` 双端全绿；三层实弹（P1 导入/编辑 22 + P2 图谱/审计/合并/增量 25（含真实 LLM 审计双链）+ P3 抓取/视频全链 ~30：真实公网 URL 抓取入库 + 真实 TTS 造口播样本 → 真实 ASR 命中（hasTranscript=true）+ 多模态时间轴 + storyboard-json 直通 8 镜）+ 浏览器章节编辑器/图谱 SVG/抓取 modal；详见 `docs/superpowers/specs/2026-09-17-agencys-content-studio-m25-review.md`。
+
+## M26 能力速览（工程基建与平台化）
+
+零产品行为变更的工程里程碑（纯基建 + 纯重构，零新运行时依赖，不进任何生产构建路径）：把此前全手动的回归面固化为本地 CI，并收口 M28 遗留的「单文件 ≤800 行」红线残余。
+
+- **本地 CI（H1）**：`pnpm ci:check` 一键聚合三段门禁——① `pnpm -r typecheck`（双端 tsc + vue-tsc）② `pnpm --filter @acs/server validate:templates`（14 模板 / 101 步全量加载零抛错零警告）③ `probe:ci`（全量探针 fail-fast 串行）。仓库在 Gitee，**不引外部 CI 平台**；`.githooks/pre-push`（`git config core.hooksPath .githooks` 可选启用）跑 typecheck + 模板校验轻量档。开发：`pnpm dev`（server + web 并行）/ `pnpm dev:server` / `pnpm dev:web`。
+- **探针统一 runner（H5）**：`scripts/run-probes.ts` 自动发现 `probe-*.ts`、并行 worker 池（缺省并发 min(4, CPU-1)，`--jobs=` 覆盖）、逐枚计时 + PASS/FAIL 汇总对齐表 + `--fail-fast`。`probe:all`（并行全量）/ `probe:ci`（fail-fast 串行）。5 枚 >800 探针（m16/m17/m18/m19/m22）经 `probe-lib.ts`（isolatedEnv / makeChecker / runSections）零漂移拆分——**断言总数逐枚相等、`probe:mXX` 入口与 `--section=` 单节能力不变**。
+- **规模化压测基准（H3）**：`pnpm --filter @acs/server bench`（`bench-stress.ts`）在隔离临时库种子（缺省 1000 项目 / 10000 资产 / 长 run 链），量测关键列表/聚合查询、`buildCanvasDoc` 大图、内存 RSS 峰值，产出 p50/p95 基准报告（**非阻断**，供方法库沉淀）；零网络零计费、临时库自清理。
+- **Ollama 本地模型（H4）**：`ollama_llm` 作为一等预置 provider（`api_providers` seed，vendor=ollama / service_type=llm / `http://localhost:11434/v1`），走既有 OpenAI 兼容 `/chat/completions` 与 `fetch-models` 通道——**零新适配器代码**；无鉴权沿用占位 apiKey 路径。仅 LLM（embedding 维持本地 ONNX，多模态不立项）。
+- **红线收口（≤800 残余）**：5 个 M28 遗留 >800 前端文件 M28 式纯重构——`lib/api.ts`(975)→`lib/api/` 按域 7 文件 + `index.ts` re-export（导入面零改动）；`CanvasBoard.vue`(855)→722；`BrandSettings.vue`(1051)→776；`NovelBoard.vue`(1099)→611 + `NovelGraphView.vue`；`views/canvas/index.vue`(1172)→774 + `use-canvas-design`/`use-canvas-realtime` composables + `CanvasGuide`/`CanvasDesignModals` 子组件。**函数体/模板/样式逐字保留、props/emits 冻结、无重命名**；全仓 `scripts` + `web/src` 复扫 **>800 = 0**。
+- **H6 提交治理 / H7 在线可编程供应商**：spec 固化「提交前置门禁：双端 typecheck + 对应 probe 全绿方可 commit」成文规则（m18 偏差 #3 关闭，无代码）；H7 判定关闭（既有自定义 OpenAI 兼容 `base_url` 配置已等价覆盖「UI 配置任意端点」诉求），运行时可编程协议脚本（沙箱）永久排除。
+
+验证：`pnpm ci:check` 端到端 exit=0（双端 typecheck + 模板校验 14/101/0 错 + `probe:ci` **23 探针 / 2873 断言全绿**）；`vite build` 绿；`probe-m26`（五节 runner / probe-lib / split-audit / ollama-seed / stress）全绿，`split-audit` 门禁收口为「红线存量 `=== 0`」；浏览器抽查（画布三态 + 设计态连线/草案/保存 + 创作画布 + 品牌设置平台/项目两态）console 零 error 无回归。详见 `docs/superpowers/specs/2026-09-17-agencys-content-studio-m26-design.md`。
+
 
 ## 内置模板
 

@@ -1,0 +1,19 @@
+#!/bin/sh
+#
+# M26·H1 pre-push 轻量门禁（本地 Git 钩子，无外部 CI 平台）
+#
+# 启用（一次性，文档化 —— 不自动改写用户 git 配置）：
+#   git config core.hooksPath .githooks
+#
+# 定位：仅做「快速、离线、零计费」的推送前拦截 —— 双端类型检查 + 模板静态校验。
+# 全量探针（含实弹/网络面成本）交由手动 `pnpm probe:all` 或夜间 `pnpm ci:check` 覆盖，
+# 避免每次 push 阻塞开发者。任一失败即非零退出，阻断 push。
+set -e
+
+echo "▶ [pre-push] 双端 typecheck…"
+pnpm -r typecheck
+
+echo "▶ [pre-push] 模板静态校验…"
+pnpm --filter @acs/server validate:templates
+
+echo "✅ [pre-push] 轻量门禁通过"

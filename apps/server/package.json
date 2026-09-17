@@ -31,6 +31,11 @@
     "probe:m23": "tsx scripts/probe-m23.ts",
     "probe:m24": "tsx scripts/probe-m24.ts",
     "probe:m25": "tsx scripts/probe-m25.ts",
+    "probe:m26": "tsx scripts/probe-m26.ts",
+    "probe:all": "tsx scripts/run-probes.ts",
+    "probe:ci": "tsx scripts/run-probes.ts --fail-fast",
+    "validate:templates": "tsx scripts/validate-templates.ts",
+    "bench": "tsx scripts/bench-stress.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {

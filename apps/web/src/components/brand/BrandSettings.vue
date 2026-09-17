@@ -7,17 +7,14 @@
  * 全部操作不触发执行（提示「重新合成后生效」）；成功后 emit changed。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { brandAssetApi, composeApi, projectApi, settingsApi, uploadFiles } from '../../lib/api'
-import type {
-  Asset,
-  BrandConfig,
-  BrandMaterialSlot,
-  BrandSlotKey,
-  SubtitleStyleConfig,
-  WatermarkConfig,
-  WatermarkPosition,
-} from '../../lib/types'
+import { brandAssetApi, projectApi, uploadFiles } from '../../lib/api'
+import type { BrandConfig, BrandMaterialSlot, BrandSlotKey, WatermarkConfig } from '../../lib/types'
 import Icon from '../common/Icon.vue'
+import { SLOT_TEXT, WM_POSITIONS, fileOf, normBrand, pctStore } from './brand-form-helpers'
+import { useBrandForm } from './use-brand-form'
+import { useBrandAssets } from './use-brand-assets'
+import { useBrandRun } from './use-brand-run'
+import { useBrandPlatform } from './use-brand-platform'
 
 const props = defineProps<{ scope: 'platform' | 'project' | 'run'; projectId?: number; runId?: number }>()
 const emit = defineEmits<{ changed: []; preview: [data: { brand: BrandConfig; wmFile: string }] }>()
@@ -44,241 +41,80 @@ async function wrap(fn: () => Promise<void>, okMsg: string) {
   }
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
-function normBrand(v: unknown): BrandConfig {
-  return isObj(v) ? (v as BrandConfig) : {}
-}
+// ---------- 公共表单状态（水印参数 + 片头尾开关 + 字幕样式）——M26 拆分：./use-brand-form ----------
+const form = useBrandForm()
+const {
+  wmEnabled,
+  wmPosition,
+  wmOpacity,
+  wmWidth,
+  wmMargin,
+  introEnabled,
+  outroEnabled,
+  subOn,
+  subFont,
+  subSize,
+  subColor,
+  subOutlineColor,
+  subOutline,
+  subShadow,
+  subMarginV,
+  subAlign,
+  subBold,
+  subPersisted,
+  collectSub,
+  fillCommon,
+} = form
 
-// ---------- 公共表单状态（水印参数 + 片头尾开关 + 字幕样式） ----------
+// ---------- 项目素材资产（M26 拆分：./use-brand-assets） ----------
+const { imgAssets, vidAssets, assetName, assetFileUrl, refreshProjectAssets } = useBrandAssets(props)
 
-const WM_POSITIONS: Array<{ v: WatermarkPosition; t: string }> = [
-  { v: 'tl', t: '左上' },
-  { v: 'tc', t: '上中' },
-  { v: 'tr', t: '右上' },
-  { v: 'ml', t: '左中' },
-  { v: 'mc', t: '正中' },
-  { v: 'mr', t: '右中' },
-  { v: 'bl', t: '左下' },
-  { v: 'bc', t: '下中' },
-  { v: 'br', t: '右下' },
-]
-
-const wmEnabled = ref(true)
-const wmPosition = ref<WatermarkPosition>('br')
-const wmOpacity = ref(90) // 显示 %（存储 0.05–1）
-const wmWidth = ref(15) // 显示 %（存储 0.03–0.5）
-const wmMargin = ref(24)
-
-const introEnabled = ref(true)
-const outroEnabled = ref(true)
-
-/** 存储值 → 显示百分比（容忍脏数据） */
-function pctShow(v: unknown, fallback: number): number {
-  return typeof v === 'number' && Number.isFinite(v) ? +(v * 100).toFixed(3) : fallback
-}
-/** 显示百分比 → 存储值（前端温和 clamp，服务端硬 clamp 兜底） */
-function pctStore(v: number, lo: number, hi: number): number {
-  const c = Math.min(hi, Math.max(lo, Number(v) || 0))
-  return Number((c / 100).toFixed(5))
-}
-function posOf(v: unknown): WatermarkPosition {
-  return WM_POSITIONS.some((p) => p.v === v) ? (v as WatermarkPosition) : 'br'
-}
-function marginOf(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(200, Math.max(0, v))) : 24
-}
-
-/** 字幕样式表单（与服务端 buildSubtitleStyle 公式基线一致的展示默认值） */
-const SUB_DEFAULTS = {
-  font: 'Noto Sans CJK SC',
-  size: 1.8,
-  color: '#FFFFFF',
-  outlineColor: '#000000',
-  outline: 0.09,
-  shadow: 0,
-  marginV: 2,
-  alignment: 2 as 2 | 5 | 8,
-  bold: false,
-}
-const subOn = ref(false)
-const subFont = ref(SUB_DEFAULTS.font)
-const subSize = ref(SUB_DEFAULTS.size)
-const subColor = ref(SUB_DEFAULTS.color)
-const subOutlineColor = ref(SUB_DEFAULTS.outlineColor)
-const subOutline = ref(SUB_DEFAULTS.outline)
-const subShadow = ref(SUB_DEFAULTS.shadow)
-const subMarginV = ref(SUB_DEFAULTS.marginV)
-const subAlign = ref<2 | 5 | 8>(SUB_DEFAULTS.alignment)
-const subBold = ref(SUB_DEFAULTS.bold)
-const subPersisted = ref(false)
-
-function fillSubForm(s: SubtitleStyleConfig | null | undefined) {
-  const cfg = s && typeof s === 'object' ? s : undefined
-  subPersisted.value = !!cfg
-  subOn.value = !!cfg
-  subFont.value = typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
-  subSize.value = pctShow(cfg?.size_pct, SUB_DEFAULTS.size)
-  subColor.value = typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
-  subOutlineColor.value = typeof cfg?.outline_color === 'string' ? cfg.outline_color : SUB_DEFAULTS.outlineColor
-  subOutline.value = pctShow(cfg?.outline_pct, SUB_DEFAULTS.outline)
-  subShadow.value = typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow) ? cfg.shadow : SUB_DEFAULTS.shadow
-  subMarginV.value = pctShow(cfg?.margin_v_pct, SUB_DEFAULTS.marginV)
-  subAlign.value = cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
-  subBold.value = cfg?.bold === true
-}
-
-function collectSub(): SubtitleStyleConfig {
-  return {
-    font: subFont.value.trim() || undefined,
-    size_pct: pctStore(subSize.value, 0.8, 6),
-    color: subColor.value,
-    outline_color: subOutlineColor.value,
-    outline_pct: pctStore(subOutline.value, 0, 0.5),
-    shadow: Math.round(Math.min(8, Math.max(0, Number(subShadow.value) || 0))),
-    margin_v_pct: pctStore(subMarginV.value, 0, 10),
-    alignment: subAlign.value,
-    bold: subBold.value,
-  }
-}
-
-/** 从品牌配置回填公共表单（platform/project） */
-function fillCommon(b: BrandConfig) {
-  wmEnabled.value = b.watermark ? b.watermark.enabled !== false : true
-  wmPosition.value = posOf(b.watermark?.position)
-  wmOpacity.value = pctShow(b.watermark?.opacity, 90)
-  wmWidth.value = pctShow(b.watermark?.width_pct, 15)
-  wmMargin.value = marginOf(b.watermark?.margin_px)
-  introEnabled.value = b.intro ? b.intro.enabled !== false : true
-  outroEnabled.value = b.outro ? b.outro.enabled !== false : true
-  fillSubForm(b.subtitle && typeof b.subtitle === 'object' ? b.subtitle : undefined)
-}
-
-// ---------- platform scope 状态 ----------
-
-const platformBrand = ref<BrandConfig>({})
+// ---------- 平台文件路径（platform/project 预览 + 表单联动共用） ----------
 const wmFile = ref('')
 const introFile = ref('')
 const outroFile = ref('')
-const previewTs = ref<Record<BrandSlotKey, number>>({ watermark: 0, intro: 0, outro: 0 })
-const previewBroken = ref<Record<BrandSlotKey, boolean>>({ watermark: false, intro: false, outro: false })
 
-function fileOf(b: BrandConfig, slot: BrandSlotKey): string {
-  const f = b[slot]?.file
-  return typeof f === 'string' ? f : ''
-}
-
-function applyPlatformBrand(b: BrandConfig, refreshSlot?: BrandSlotKey) {
-  platformBrand.value = b
-  wmFile.value = fileOf(b, 'watermark')
-  introFile.value = fileOf(b, 'intro')
-  outroFile.value = fileOf(b, 'outro')
-  if (refreshSlot) {
-    previewTs.value[refreshSlot] = Date.now()
-    previewBroken.value[refreshSlot] = false
-  }
-}
-
-function onPreviewErr(slot: BrandSlotKey) {
-  previewBroken.value[slot] = true
-}
+// ---------- platform scope（M26 拆分：./use-brand-platform） ----------
+const {
+  platformBrand,
+  previewTs,
+  previewBroken,
+  applyPlatformBrand,
+  onPreviewErr,
+  loadPlatform,
+  savePlatformSlot,
+  savePlatformSubtitle,
+} = useBrandPlatform({ wrap, form, wmFile, introFile, outroFile })
 
 // ---------- project scope 状态 ----------
 
 const projectSettings = ref<Record<string, unknown>>({})
 const projectBrand = ref<BrandConfig>({})
-const imgAssets = ref<Asset[]>([])
-const vidAssets = ref<Asset[]>([])
 const wmAssetId = ref(0) // 0 = 不使用项目资产
 const introAssetId = ref(0)
 const outroAssetId = ref(0)
 
-const assetName = (id: number): string => {
-  const a = [...imgAssets.value, ...vidAssets.value].find((it) => it.id === id)
-  return a ? `#${a.id} ${a.name}` : `#${id}`
-}
-const assetFileUrl = (id: number): string => {
-  const a = [...imgAssets.value, ...vidAssets.value].find((it) => it.id === id)
-  return a?.urls.file ?? ''
-}
-
-async function refreshProjectAssets() {
-  const pid = props.projectId ?? 0
-  if (pid <= 0) return
-  const [imgs, vids] = await Promise.all([
-    projectApi.assets(pid, '?kind=image&limit=200'),
-    projectApi.assets(pid, '?kind=video&limit=200'),
-  ])
-  imgAssets.value = imgs.items
-  vidAssets.value = vids.items
-}
-
-// ---------- run scope 状态 ----------
-
-const runBrand = ref<BrandConfig>({})
-const inheritBrand = ref<BrandConfig>({})
-const wmMode = ref<'inherit' | 'off' | 'custom'>('inherit')
-const introMode = ref<'inherit' | 'off' | 'on'>('inherit')
-const outroMode = ref<'inherit' | 'off' | 'on'>('inherit')
-const wmAssetIdRun = ref(0) // 0 = 继承
-
-/** 前端镜像 mergeBrand：槽内字段级浅合并（展示用） */
-function mergeFront(...layers: unknown[]): BrandConfig {
-  const out: BrandConfig = {}
-  for (const layer of layers) {
-    if (!isObj(layer)) continue
-    const l = layer as BrandConfig
-    if (isObj(l.subtitle)) out.subtitle = { ...out.subtitle, ...l.subtitle }
-    if (isObj(l.watermark)) out.watermark = { ...out.watermark, ...l.watermark }
-    if (isObj(l.intro)) out.intro = { ...out.intro, ...l.intro }
-    if (isObj(l.outro)) out.outro = { ...out.outro, ...l.outro }
-  }
-  return out
-}
-
-/** 继承槽来源摘要（asset_id 优先 → file → 无；镜像服务端 resolveMaterialPath 语义） */
-function inheritSummary(slot: BrandSlotKey): string {
-  const cfg = inheritBrand.value[slot]
-  if (!cfg) return '继承：未配置（合成时跳过）'
-  if (cfg.enabled === false) return '继承：已禁用（合成时跳过）'
-  if (typeof cfg.asset_id === 'number' && cfg.asset_id > 0) return `继承：项目资产 ${assetName(cfg.asset_id)}`
-  if (cfg.file) return `继承：平台文件「${cfg.file}」`
-  return '继承：未配置来源（合成时跳过）'
-}
-
-/** 继承水印参数摘要（清洗 + 默认值同服务端 sanitizeWatermark） */
-function inheritWmParams(): string {
-  const wm = inheritBrand.value.watermark
-  const posText = WM_POSITIONS.find((p) => p.v === posOf(wm?.position))?.t ?? '右下'
-  return `参数：${posText} · 透明度 ${Math.round(pctShow(wm?.opacity, 90))}% · 宽度 ${Math.round(pctShow(wm?.width_pct, 15))}% · 边距 ${marginOf(wm?.margin_px)}px`
-}
-
-/** run 覆盖表单回填（来源优先级：run 覆盖值 → 继承值 → 默认） */
-function fillRunForms() {
-  const rw = runBrand.value.watermark
-  if (!rw) wmMode.value = 'inherit'
-  else if (rw.enabled === false) wmMode.value = 'off'
-  else wmMode.value = 'custom'
-  const src = { ...inheritBrand.value.watermark, ...rw } as WatermarkConfig
-  wmPosition.value = posOf(src.position)
-  wmOpacity.value = pctShow(src.opacity, 90)
-  wmWidth.value = pctShow(src.width_pct, 15)
-  wmMargin.value = marginOf(src.margin_px)
-  wmAssetIdRun.value = typeof rw?.asset_id === 'number' ? rw.asset_id : 0
-  const ri = runBrand.value.intro
-  introMode.value = !ri ? 'inherit' : ri.enabled === false ? 'off' : 'on'
-  const ro = runBrand.value.outro
-  outroMode.value = !ro ? 'inherit' : ro.enabled === false ? 'off' : 'on'
-}
+// ---------- run scope（M26 拆分：./use-brand-run） ----------
+const {
+  wmMode,
+  introMode,
+  outroMode,
+  wmAssetIdRun,
+  inheritSummary,
+  inheritWmParams,
+  loadRun,
+  saveRunWatermark,
+  saveRunClip,
+  runWmBtnText,
+  clipModeOf,
+  setClipMode,
+} = useBrandRun(
+  props,
+  { wmPosition, wmOpacity, wmWidth, wmMargin },
+  { wrap, imgAssets, assetName },
+)
 
 // ---------- 加载 ----------
-
-async function loadPlatform() {
-  const s = await settingsApi.list()
-  const raw = s.items.find((it) => it.key === 'brand')?.value
-  const b = normBrand(raw)
-  applyPlatformBrand(b)
-  fillCommon(b)
-}
 
 async function loadProject() {
   const pid = props.projectId ?? 0
@@ -296,23 +132,6 @@ async function loadProject() {
   outroFile.value = fileOf(b, 'outro')
   fillCommon(b)
   await refreshProjectAssets()
-}
-
-async function loadRun() {
-  const rid = props.runId ?? 0
-  const pid = props.projectId ?? 0
-  const [c, s, p, imgs] = await Promise.all([
-    composeApi.getConfig(rid),
-    settingsApi.list(),
-    pid > 0 ? projectApi.detail(pid) : Promise.resolve(null),
-    pid > 0 ? projectApi.assets(pid, '?kind=image&limit=200') : Promise.resolve(null),
-  ])
-  runBrand.value = normBrand(c.config.brand)
-  const plat = normBrand(s.items.find((it) => it.key === 'brand')?.value)
-  const proj = normBrand(p?.project.settings?.brand)
-  inheritBrand.value = mergeFront(plat, proj)
-  imgAssets.value = imgs?.items ?? []
-  fillRunForms()
 }
 
 onMounted(async () => {
@@ -364,8 +183,6 @@ async function onFilePicked(e: Event) {
   }
 }
 
-const SLOT_TEXT: Record<BrandSlotKey, string> = { watermark: '水印', intro: '片头', outro: '片尾' }
-
 function clearSlot(slot: BrandSlotKey) {
   void wrap(async () => {
     const r = await brandAssetApi.clear(slot)
@@ -374,50 +191,6 @@ function clearSlot(slot: BrandSlotKey) {
 }
 
 // ---------- 保存 ----------
-
-/** platform 槽保存（读-合并写 settings.brand 整体） */
-function savePlatformSlot(slot: 'watermark' | 'intro' | 'outro') {
-  void wrap(async () => {
-    const next = JSON.parse(JSON.stringify(platformBrand.value)) as BrandConfig
-    if (slot === 'watermark') {
-      const wm: WatermarkConfig = {
-        ...(next.watermark ?? {}),
-        position: wmPosition.value,
-        opacity: pctStore(wmOpacity.value, 5, 100),
-        width_pct: pctStore(wmWidth.value, 3, 50),
-        margin_px: Math.round(Math.min(200, Math.max(0, Number(wmMargin.value) || 0))),
-      }
-      if (wmEnabled.value) delete wm.enabled
-      else wm.enabled = false
-      next.watermark = wm
-    } else {
-      const s: BrandMaterialSlot = { ...(next[slot] ?? {}) }
-      const en = slot === 'intro' ? introEnabled.value : outroEnabled.value
-      if (en) delete s.enabled
-      else s.enabled = false
-      next[slot] = s
-    }
-    await settingsApi.put('brand', next)
-    platformBrand.value = next
-  }, `${SLOT_TEXT[slot]}设置已保存（重新合成后生效）`)
-}
-
-/** platform 字幕样式保存 / 清除 */
-function savePlatformSubtitle() {
-  const clearing = !subOn.value
-  void wrap(async () => {
-    const next = JSON.parse(JSON.stringify(platformBrand.value)) as BrandConfig
-    if (clearing) {
-      delete next.subtitle
-      subPersisted.value = false
-    } else {
-      next.subtitle = collectSub()
-      subPersisted.value = true
-    }
-    await settingsApi.put('brand', next)
-    platformBrand.value = next
-  }, clearing ? '平台字幕样式已清除（回落默认基线）' : '平台字幕样式已保存（重新合成后生效）')
-}
 
 /** project 槽保存（读-合并写 projects.settings.brand） */
 function saveProjectSlot(slot: 'watermark' | 'intro' | 'outro') {
@@ -474,49 +247,10 @@ function saveProjectSubtitle() {
   }, clearing ? '项目字幕样式已清除（回落平台/默认）' : '项目字幕样式已保存（重新合成后生效）')
 }
 
-/** run 水印覆盖保存（三态：继承=清除覆盖 / 禁用 / 自定义参数） */
-function saveRunWatermark() {
-  const mode = wmMode.value
-  void wrap(async () => {
-    const rid = props.runId ?? 0
-    let patch: WatermarkConfig | null
-    if (mode === 'inherit') {
-      patch = null
-    } else if (mode === 'off') {
-      patch = { enabled: false }
-    } else {
-      patch = {
-        position: wmPosition.value,
-        opacity: pctStore(wmOpacity.value, 5, 100),
-        width_pct: pctStore(wmWidth.value, 3, 50),
-        margin_px: Math.round(Math.min(200, Math.max(0, Number(wmMargin.value) || 0))),
-      }
-      if (wmAssetIdRun.value > 0) patch.asset_id = wmAssetIdRun.value
-    }
-    const r = await composeApi.updateConfig(rid, { brand: { watermark: patch } })
-    runBrand.value = normBrand(r.config.brand)
-    fillRunForms()
-  }, mode === 'inherit' ? '水印覆盖已清除（回落继承）' : '水印 run 级覆盖已保存（重新合成后生效）')
-}
-
-/** run 片头/片尾覆盖保存（三态：继承 / 禁用 / 强制启用） */
-function saveRunClip(slot: 'intro' | 'outro') {
-  const mode = slot === 'intro' ? introMode.value : outroMode.value
-  const patch: BrandMaterialSlot | null = mode === 'inherit' ? null : { enabled: mode === 'on' }
-  void wrap(async () => {
-    const rid = props.runId ?? 0
-    const r = await composeApi.updateConfig(rid, { brand: { [slot]: patch } })
-    runBrand.value = normBrand(r.config.brand)
-    fillRunForms()
-  }, mode === 'inherit' ? `${SLOT_TEXT[slot]}覆盖已清除（回落继承）` : `${SLOT_TEXT[slot]} run 级覆盖已保存（重新合成后生效）`)
-}
-
 // ---------- 派生 ----------
 
 /** run 模式：水印参数控件可编辑性（仅自定义模式） */
 const wmParamsDisabled = computed(() => busy.value || (props.scope === 'run' && wmMode.value !== 'custom'))
-/** 保存按钮文案（run 水印） */
-const runWmBtnText = computed(() => (wmMode.value === 'inherit' ? '清除覆盖（用继承）' : '保存覆盖'))
 
 // [M20] 表单 → 预览实时联动：监听所有表单字段，变化时 emit preview 供父组件 BrandPreview 即时渲染
 const formWatchSrc = computed(() => ({
@@ -562,15 +296,6 @@ watch(formWatchSrc, (v) => {
   if (v.outroAssetId > 0) brand.outro.asset_id = v.outroAssetId
   emit('preview', { brand, wmFile: v.wmFile })
 }, { deep: true })
-
-/** 片头/片尾覆盖模式读写（v-for 内 v-model 不能写三元表达式，改 checked + change） */
-function clipModeOf(slot: 'intro' | 'outro'): 'inherit' | 'off' | 'on' {
-  return slot === 'intro' ? introMode.value : outroMode.value
-}
-function setClipMode(slot: 'intro' | 'outro', mode: 'inherit' | 'off' | 'on') {
-  if (slot === 'intro') introMode.value = mode
-  else outroMode.value = mode
-}
 </script>
 
 <template>

@@ -32,6 +32,7 @@ export const VENDOR_SEEDS: VendorSeed[] = [
   { vendor: 'volcengine', name: '火山方舟' },
   { vendor: 'minimax', name: 'MiniMax' },
   { vendor: 'pollinations', name: 'Pollinations' },
+  { vendor: 'ollama', name: 'Ollama（本地）' },
 ]
 
 /**
@@ -52,6 +53,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'google_llm', name: 'Google（LLM）', serviceType: 'llm', vendor: 'google', description: 'Gemini 官方 OpenAI 兼容（v1beta/openai，模型可在线获取）', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', presetModels: JSON.stringify(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) },
   { key: 'aliyun_qwen_llm', name: '阿里千问（LLM）', serviceType: 'llm', vendor: 'aliyun', description: '千问官方 OpenAI 兼容（compatible-mode，模型可在线获取）', defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', presetModels: JSON.stringify(['qwen3.8-max', 'qwen3.7-plus', 'qwen3.8-flash']) },
   { key: 'volcengine_llm', name: '火山方舟（LLM）', serviceType: 'llm', vendor: 'volcengine', description: '豆包 Seed 系列（Ark OpenAI 兼容 /api/v3；模型 ID 需带版本号并在方舟控制台开通）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seed-2-1-pro-260628', 'doubao-seed-2-1-turbo-260628']), overwritePresetModels: true },
+  { key: 'ollama_llm', name: 'Ollama（LLM）', serviceType: 'llm', vendor: 'ollama', description: '本地 Ollama 服务（OpenAI 兼容 /v1；模型在线拉取 /v1/models；无需 API Key，密钥留空或任意占位符即可）', defaultUrl: 'http://localhost:11434/v1', presetModels: JSON.stringify(['qwen2.5', 'llama3.1']) },
   { key: 'volcengine_image', name: '火山方舟图像', serviceType: 'image', vendor: 'volcengine', description: '豆包 Seedream 系列文生图（Ark，同步直返或任务轮询）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedream-5-0-260128']) },
   { key: 'openai_image', name: 'OpenAI 图像', serviceType: 'image', vendor: 'openai', description: 'DALL·E / gpt-image 官方；/images/generations 兼容网关亦可指向' },
   { key: 'siliconflow_image', name: 'SiliconFlow 图像', serviceType: 'image', vendor: 'siliconflow', description: 'OpenAI Images 兼容（含 images[] 镜像响应，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Tongyi-MAI/Z-Image-Turbo']) },

@@ -11,8 +11,10 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import type { CanvasBoardNode, CanvasEdge } from '../../lib/types'
-import { fmtMs, stepStatus } from '../../lib/format'
+import { fmtMs } from '../../lib/format'
 import Icon from '../common/Icon.vue'
+import { NODE_H, NODE_W, PAD, useCanvasLayout, type EdgePath } from './use-canvas-layout'
+import { badgeClass, cardClass, hasChips, iconOf, statusText, taskText } from './canvas-card-helpers'
 
 const props = defineProps<{
   nodes: CanvasBoardNode[]
@@ -30,100 +32,14 @@ const emit = defineEmits<{
   delEdge: [from: string, to: string]
 }>()
 
-// ---- 常量（spec：节点卡 ~240×96、层距 300、行距 140）----
-const NODE_W = 240
-const NODE_H = 96
-const COL_GAP = 300
-const ROW_GAP = 140
-const PAD = 60
+// ---- 缩放区间常量（布局常量 NODE_W/NODE_H/COL_GAP/ROW_GAP/PAD 见 use-canvas-layout）----
 const ZOOM_MIN = 0.3
 const ZOOM_MAX = 2.5
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
 
-// ---- 布局：sched 边最长路径 ----
-const layout = computed(() => {
-  const nodes = props.nodes
-  const level = new Map<string, number>()
-  for (const n of nodes) level.set(n.key, 0)
-  const keySet = new Set(nodes.map((n) => n.key))
-  const sched = props.edges.filter((e) => e.type === 'sched' && keySet.has(e.from) && keySet.has(e.to))
-  for (let round = 0; round < nodes.length; round++) {
-    let changed = false
-    for (const e of sched) {
-      const nv = level.get(e.from)! + 1
-      if (nv > level.get(e.to)!) {
-        level.set(e.to, nv)
-        changed = true
-      }
-    }
-    if (!changed) break
-  }
-  const byLevel = new Map<number, CanvasBoardNode[]>()
-  for (const n of nodes) {
-    const l = level.get(n.key)!
-    if (!byLevel.has(l)) byLevel.set(l, [])
-    byLevel.get(l)!.push(n)
-  }
-  let maxLevel = 0
-  let maxRows = 1
-  for (const [l, arr] of byLevel) {
-    maxLevel = Math.max(maxLevel, l)
-    maxRows = Math.max(maxRows, arr.length)
-  }
-  const pos = new Map<string, { x: number; y: number }>()
-  for (const [l, arr] of byLevel) {
-    arr.sort((a, b) => a.seq - b.seq)
-    const off = ((maxRows - arr.length) * ROW_GAP) / 2
-    arr.forEach((n, i) => pos.set(n.key, { x: l * COL_GAP, y: off + i * ROW_GAP }))
-  }
-  return { pos, width: maxLevel * COL_GAP + NODE_W, height: (maxRows - 1) * ROW_GAP + NODE_H }
-})
-
-const worldW = computed(() => layout.value.width + PAD * 2)
-const worldH = computed(() => layout.value.height + PAD * 2)
-
-function nodeStyle(key: string): Record<string, string> {
-  const p = layout.value.pos.get(key)
-  if (!p) return { display: 'none' }
-  return { left: `${PAD + p.x}px`, top: `${PAD + p.y}px`, width: `${NODE_W}px`, minHeight: `${NODE_H}px` }
-}
-
-// ---- 边路径（锚点右中 → 左中）----
-interface EdgePath {
-  k: string
-  d: string
-  type: 'sched' | 'data'
-  flowing: boolean
-  /** [M23] 编辑态边选中/删除定位用 */
-  from: string
-  to: string
-}
-const edgePaths = computed<EdgePath[]>(() => {
-  const pos = layout.value.pos
-  const statusByKey = new Map(props.nodes.map((n) => [n.key, n.status]))
-  const out: EdgePath[] = []
-  for (const e of props.edges) {
-    const a = pos.get(e.from)
-    const b = pos.get(e.to)
-    if (!a || !b) continue
-    const x1 = PAD + a.x + NODE_W
-    const y1 = PAD + a.y + NODE_H / 2
-    const x2 = PAD + b.x
-    const y2 = PAD + b.y + NODE_H / 2
-    const dx = Math.max(48, Math.abs(x2 - x1) / 2)
-    out.push({
-      k: `${e.from}|${e.to}|${e.type}`,
-      d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
-      type: e.type,
-      flowing: props.mode === 'run' && e.type === 'sched' && statusByKey.get(e.to) === 'running',
-      from: e.from,
-      to: e.to,
-    })
-  }
-  // sched 在下、data 在上（同对混合双保留时数据边可见）
-  return out.sort((a, b) => (a.type === b.type ? 0 : a.type === 'sched' ? -1 : 1))
-})
+// ---- 布局 / 边路径（纯派生，逐字迁至 use-canvas-layout）----
+const { layout, worldW, worldH, nodeStyle, edgePaths } = useCanvasLayout(props)
 
 // ---- pan / zoom ----
 const viewport = ref<HTMLElement | null>(null)
@@ -299,56 +215,7 @@ watch(
   () => requestAnimationFrame(fitOnce),
 )
 
-// ---- 节点卡辅助 ----
-const ACTION_ICON: Record<string, string> = {
-  manual_ingest: 'inbox',
-  ai_text: 'pencil',
-  ai_image: 'photo',
-  ai_video: 'video',
-  tts: 'speaker-wave',
-  subtitle: 'doc',
-  ffmpeg_merge: 'film',
-  memory_write: 'sparkles',
-  memory_recall: 'search',
-  character_sync: 'users',
-  entity_sync: 'map',
-  text_split: 'copy',
-}
-function iconOf(key: string): string {
-  return ACTION_ICON[key] ?? 'doc'
-}
-function cardClass(n: CanvasBoardNode): string {
-  const st = n.status
-  if (st === 'running') return 'running'
-  if (st === 'waiting_input') return 'gate'
-  if (st === 'failed') return 'failed'
-  if (st === 'succeeded') return 'ok'
-  if (st === 'skipped') return 'skip'
-  if (st === 'cancelled') return 'cancel'
-  return 'idle'
-}
-/** 状态徽标类：skipped 复用 .badge.skip（全局样式仅有 .skip） */
-function badgeClass(n: CanvasBoardNode): string {
-  if (!n.status) return 'skip'
-  return n.status === 'skipped' ? 'skip' : n.status
-}
-function statusText(n: CanvasBoardNode): string {
-  return n.status ? stepStatus(n.status).text : ''
-}
-function taskText(n: CanvasBoardNode): string {
-  if (!n.tasks || !n.tasks.total) return ''
-  const bad = n.tasks.failed + n.tasks.cancelled
-  return bad > 0 ? `任务 ${n.tasks.succeeded}/${n.tasks.total} · 异常 ${bad}` : `任务 ${n.tasks.succeeded}/${n.tasks.total}`
-}
-function hasChips(n: CanvasBoardNode): boolean {
-  return !!(
-    taskText(n) ||
-    n.assetCount ||
-    n.skipText ||
-    (n.status === 'waiting_input' && n.gateMessage) ||
-    n.hasError
-  )
-}
+// 节点卡辅助（iconOf/cardClass/badgeClass/statusText/taskText/hasChips）逐字迁至 ./canvas-card-helpers
 </script>
 
 <template>

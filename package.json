@@ -13,6 +13,10 @@
     "dev:web": "pnpm --filter @acs/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "ci:check": "pnpm -r typecheck && pnpm --filter @acs/server validate:templates && pnpm --filter @acs/server probe:ci",
+    "probe:all": "pnpm --filter @acs/server probe:all",
+    "probe:ci": "pnpm --filter @acs/server probe:ci",
+    "validate:templates": "pnpm --filter @acs/server validate:templates",
     "db:generate": "pnpm --filter @acs/server db:generate",
     "db:push": "pnpm --filter @acs/server db:push"
   }

@@ -6,24 +6,25 @@
  * - 实时：run.step / run.gate / run.completed / run.failed / task.updated / [M23] batch.updated → 350ms 防抖全量对账（按当前 tab 分派）
  * - 操作：顶栏取消/续跑/启动运行；[M23] 模板态画布内编辑（本地草稿层：拖拽连线/删边/Del 键 + 导出草案/保存为新模板）；节点抽屉操作 → refresh 立即重拉（全部复用既有端点）
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CanvasBoard from '../../components/pipeline-canvas/CanvasBoard.vue'
 import CanvasDrawer from '../../components/pipeline-canvas/drawer/index.vue'
 import OverviewPanel from '../../components/pipeline-canvas/overview/index.vue'
 import Icon from '../../components/common/Icon.vue'
-import Modal from '../../components/common/Modal.vue'
 import RunFormModal from '../../components/run/RunFormModal.vue'
+import CanvasGuide from './CanvasGuide.vue'
+import CanvasDesignModals from './CanvasDesignModals.vue'
 import { canvasApi, projectApi, runApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { fmtTime, runStatus, skipReasonText } from '../../lib/format'
-import { getSocket, studioOff, studioOn } from '../../lib/socket'
-import type { StudioEventMap } from '../../lib/socket'
 import type {
   CanvasBoardNode, CanvasOverview, EditNodeState, Project, Run, RunCanvas, RunCanvasNode, StepOverride,
-  TemplateCanvas, TemplateCanvasNode, TemplateEdits, TemplateMeta, TemplateValidation,
+  TemplateCanvas, TemplateCanvasNode, TemplateMeta,
 } from '../../lib/types'
 import { useCanvasEdit } from './use-canvas-edit'
+import { useCanvasDesign } from './use-canvas-design'
+import { useCanvasRealtime } from './use-canvas-realtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -183,93 +184,8 @@ async function loadLists(): Promise<void> {
   }
 }
 
-// ===== 实时（350ms 防抖 + in-flight 合并；数据全量替换，视图状态独立）=====
-let refreshTimer: number | null = null
-let refreshing = false
-let refreshDirty = false
-
-function scheduleRefresh(): void {
-  if (refreshTimer != null) return
-  refreshTimer = window.setTimeout(() => {
-    refreshTimer = null
-    if (refreshing) {
-      refreshDirty = true
-      return
-    }
-    refreshing = true
-    const task = tab.value === 'overview' ? loadOverview(true) : loadRun(true)
-    void task.finally(() => {
-      refreshing = false
-      if (refreshDirty) {
-        refreshDirty = false
-        scheduleRefresh()
-      }
-    })
-  }, 350)
-}
-
-// ===== socket 房间（runId 可切换 → 手动 join/leave，不用 useStudio 单例）=====
-const socket = getSocket()
-let joinedRun: number | null = null
-
-function joinRunRoom(id: number): void {
-  if (joinedRun === id) return
-  if (joinedRun != null) socket.emit('leave', `run:${joinedRun}`)
-  socket.emit('join', `run:${id}`)
-  joinedRun = id
-}
-function leaveRunRoom(): void {
-  if (joinedRun != null) {
-    socket.emit('leave', `run:${joinedRun}`)
-    joinedRun = null
-  }
-}
-watch(runId, (id) => {
-  if (id != null) joinRunRoom(id)
-  else leaveRunRoom()
-})
-
-function onRunEvent(p: { runId: number }): void {
-  if (runId.value != null && p.runId === runId.value) scheduleRefresh()
-  else if (tab.value === 'overview') scheduleRefresh()
-}
-function onTaskEvent(p: StudioEventMap['task.updated']): void {
-  if (runId.value != null && (p.runId == null || p.runId === runId.value)) scheduleRefresh()
-  else if (tab.value === 'overview') scheduleRefresh()
-}
-/** [M23] 批次头变更（计数/状态）→ 全景对账 */
-function onBatchEvent(): void {
-  if (tab.value === 'overview') scheduleRefresh()
-}
-function onLogEvent(p: StudioEventMap['step.log']): void {
-  if (runId.value != null && p.runId === runId.value && drawerOpen.value) scheduleLogRefresh()
-}
-
-// ===== 日志（抽屉打开时按节流拉取；抽屉内再按 [stepKey] 过滤）=====
-const logText = ref('')
-let logTimer: number | null = null
-let logFetching = false
-
-async function loadLog(): Promise<void> {
-  const id = runId.value
-  if (id == null || logFetching) return
-  logFetching = true
-  try {
-    const r = await runApi.log(id, 800)
-    if (runId.value === id) logText.value = r.log
-  } catch {
-    // 宽容：日志不可读不阻塞抽屉
-  } finally {
-    logFetching = false
-  }
-}
-function scheduleLogRefresh(): void {
-  if (logTimer != null) return
-  logTimer = window.setTimeout(() => {
-    logTimer = null
-    void loadLog()
-  }, 1200)
-}
+// ===== 实时 / socket 房间 / 日志（M26 拆分：./use-canvas-realtime）=====
+const { logText, loadLog } = useCanvasRealtime({ tab, runId, drawerOpen, loadRun, loadOverview })
 
 // ===== Board 数据归一化（run / template 两态 → CanvasBoardNode）=====
 const boardNodes = computed<CanvasBoardNode[]>(() => {
@@ -372,126 +288,26 @@ async function resetEdits(): Promise<void> {
   edit.clearAll()
 }
 
-// ===== [M23] 轻提示（连线拒绝原因 / 落盘结果；2.8s 自动消退）=====
-const toastMsg = ref('')
-let toastTimer: number | null = null
-function showToast(msg: string): void {
-  toastMsg.value = msg
-  if (toastTimer != null) window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => {
-    toastTimer = null
-    toastMsg.value = ''
-  }, 2800)
-}
-
-// ===== [M23-E4] 设计态编排（拖拽连线 + 落盘通道：草案预览 / 保存为新模板）=====
-const boardEdit = computed(() => tab.value === 'template' && editMode.value)
-
-/** Board 拖拽连线：编辑层校验（仅前→后；已存在静默忽略），拒绝原因 toast */
-function onConnect(from: string, to: string): void {
-  if (!boardEdit.value) return
-  const reason = edit.connect(from, to)
-  if (reason) showToast(reason)
-}
-
-/** Board Del 删除调度边：when 隐含引用拒绝，其余物化移除 */
-function onDelEdge(from: string, to: string): void {
-  if (!boardEdit.value) return
-  const reason = edit.delEdge(from, to)
-  if (reason) showToast(reason)
-}
-
-/** 落盘前本地预检（空标题等）→ 不通过时 toast 并返回 null */
-function editsOrNotify(): TemplateEdits | null {
-  const errs = edit.validateLocal()
-  if (errs.length) {
-    showToast(errs[0]!)
-    return null
-  }
-  const edits = edit.buildEdits()
-  if (!edits) {
-    showToast('没有可保存的修改')
-    return null
-  }
-  return edits
-}
-
-// ---- 导出草案（edit-draft：不落盘，仅受控 edits 应用的 YAML 预览）----
-const showDraft = ref(false)
-const draftBusy = ref(false)
-const draftYaml = ref('')
-const draftValidation = ref<TemplateValidation | null>(null)
-
-async function openDraftModal(): Promise<void> {
-  const key = tplKey.value
-  if (!key) return
-  const edits = editsOrNotify()
-  if (!edits) return
-  draftBusy.value = true
-  try {
-    const res = await templateApi.editDraft(key, edits)
-    draftYaml.value = res.yaml
-    draftValidation.value = res.validation
-    showDraft.value = true
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : String(e))
-  } finally {
-    draftBusy.value = false
-  }
-}
-
-async function copyDraftYaml(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(draftYaml.value)
-    showToast('YAML 已复制到剪贴板')
-  } catch {
-    showToast('复制失败（剪贴板不可用，可手动全选复制）')
-  }
-}
-
-// ---- 保存为新模板（edit-save：落新文件，原模板零触碰）----
-const showSave = ref(false)
-const saveBusy = ref(false)
-const saveKey = ref('')
-const saveErr = ref('')
-
-function openSaveModal(): void {
-  const key = tplKey.value
-  if (!key) return
-  if (!editsOrNotify()) return
-  saveKey.value = `${key}-edit`
-  saveErr.value = ''
-  showSave.value = true
-}
-
-/** 草案 Modal → 保存 Modal（不重复预检） */
-function draftToSave(): void {
-  showDraft.value = false
-  openSaveModal()
-}
-
-async function doSave(): Promise<void> {
-  const key = tplKey.value
-  if (!key || saveBusy.value || !saveKey.value.trim()) return
-  const edits = edit.buildEdits()
-  if (!edits) {
-    showSave.value = false
-    return
-  }
-  saveBusy.value = true
-  saveErr.value = ''
-  try {
-    const res = await templateApi.editSave(key, edits, saveKey.value.trim() || undefined)
-    showSave.value = false
-    showToast(`已保存为新模板「${res.templateKey}」（原模板文件零改动）`)
-    edit.exit()
-    await loadLists()
-  } catch (e) {
-    saveErr.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    saveBusy.value = false
-  }
-}
+// ===== [M23] 轻提示 + [M23-E4] 设计态编排（连线/删边/落盘通道：草案预览 / 保存为新模板）——M26 拆分：./use-canvas-design =====
+const {
+  toastMsg,
+  boardEdit,
+  onConnect,
+  onDelEdge,
+  showDraft,
+  draftBusy,
+  draftYaml,
+  draftValidation,
+  openDraftModal,
+  copyDraftYaml,
+  showSave,
+  saveBusy,
+  saveKey,
+  saveErr,
+  openSaveModal,
+  draftToSave,
+  doSave,
+} = useCanvasDesign({ edit, tab, tplKey, onSaved: loadLists })
 
 function onSelect(key: string): void {
   if (!key) {
@@ -640,31 +456,10 @@ function onOpenCreationCanvas(canvasId: number): void {
   void router.push({ path: '/creation', query: { project: String(pid), canvas: String(canvasId) } })
 }
 
-// ===== 生命周期 =====
+// ===== 生命周期（socket 订阅与清理由 ./use-canvas-realtime 负责）=====
 onMounted(() => {
   void loadLists()
   syncFromQuery()
-  studioOn('run.step', onRunEvent)
-  studioOn('run.gate', onRunEvent)
-  studioOn('run.completed', onRunEvent)
-  studioOn('run.failed', onRunEvent)
-  studioOn('task.updated', onTaskEvent)
-  studioOn('step.log', onLogEvent)
-  studioOn('batch.updated', onBatchEvent)
-})
-
-onBeforeUnmount(() => {
-  studioOff('run.step', onRunEvent)
-  studioOff('run.gate', onRunEvent)
-  studioOff('run.completed', onRunEvent)
-  studioOff('run.failed', onRunEvent)
-  studioOff('task.updated', onTaskEvent)
-  studioOff('step.log', onLogEvent)
-  studioOff('batch.updated', onBatchEvent)
-  leaveRunRoom()
-  if (refreshTimer != null) window.clearTimeout(refreshTimer)
-  if (logTimer != null) window.clearTimeout(logTimer)
-  if (toastTimer != null) window.clearTimeout(toastTimer)
 })
 </script>
 
@@ -834,46 +629,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-else-if="empty" class="cv-guide">
-        <div class="gd-card panel">
-          <Icon name="flow" :size="30" />
-          <div class="gd-t">流水线画布</div>
-          <p class="muted gd-desc">
-            选择一条运行查看实时流水线（状态 / 闸门 / 任务 / 产物，可直接操作），
-            或选择一个模板预览编排设计（调度依赖 / 数据引用 / 条件与闸门）。
-          </p>
-          <div class="gd-sec">
-            <div class="gd-h">最近运行</div>
-            <div v-if="runs.length" class="chips">
-              <button
-                v-for="r in runs.slice(0, 8)"
-                :key="r.id"
-                type="button"
-                class="chip chipbtn"
-                @click="goRun(r.id)"
-              >
-                #{{ r.id }} · {{ r.templateKey }} · {{ runStatus(r.status).text }}
-              </button>
-            </div>
-            <div v-else class="muted">暂无运行记录（可从项目页启动一条）</div>
-          </div>
-          <div class="gd-sec">
-            <div class="gd-h">模板</div>
-            <div v-if="tplMetas.length" class="chips">
-              <button
-                v-for="t in tplMetas"
-                :key="t.key"
-                type="button"
-                class="chip chipbtn"
-                @click="goTemplate(t.key)"
-              >
-                {{ t.name }}
-              </button>
-            </div>
-            <div v-else class="muted">workspace/templates 下暂无模板</div>
-          </div>
-        </div>
-      </div>
+      <CanvasGuide v-else-if="empty" :runs="runs" :tpl-metas="tplMetas" @open-run="goRun" @open-template="goTemplate" />
 
       <CanvasBoard
         v-else
@@ -912,56 +668,22 @@ onBeforeUnmount(() => {
       @close="showStart = false"
     />
 
-    <!-- [M23] 编辑草案预览（edit-draft；不落盘，仅受控 edits 应用的 YAML） -->
-    <Modal v-if="showDraft" title="编辑草案（不落盘）" :width="760" @close="showDraft = false">
-      <div class="ed-body">
-        <div class="ed-meta">
-          <span v-if="draftValidation" class="badge" :class="draftValidation.ok ? 'succeeded' : 'failed'">
-            {{ draftValidation.ok ? '校验通过' : '校验未通过' }}
-          </span>
-          <span class="muted mini">
-            由当前草稿经受控 edits 应用生成（标题 / 输入文本 / 调度依赖）；落盘请用「保存为新模板」，原模板文件零改动。
-          </span>
-        </div>
-        <ul v-if="draftValidation && draftValidation.errors.length" class="prob">
-          <li v-for="(e2, i) in draftValidation.errors" :key="i">{{ e2 }}</li>
-        </ul>
-        <ul v-if="draftValidation && draftValidation.warnings.length" class="warnlist">
-          <li v-for="(w, i) in draftValidation.warnings" :key="i">{{ w }}</li>
-        </ul>
-        <pre class="yaml mono">{{ draftYaml }}</pre>
-      </div>
-      <template #footer>
-        <button type="button" class="btn" @click="showDraft = false">关闭</button>
-        <button type="button" class="btn" @click="copyDraftYaml">
-          <Icon name="copy" :size="12" /> 复制 YAML
-        </button>
-        <button type="button" class="btn primary" @click="draftToSave">
-          <Icon name="download" :size="12" /> 保存为新模板
-        </button>
-      </template>
-    </Modal>
-
-    <!-- [M23] 保存为新模板（edit-save；key 冲突自动后缀避让） -->
-    <Modal v-if="showSave" title="保存为新模板" :width="520" @close="showSave = false">
-      <label class="fld">
-        新模板 key（字母/数字/下划线/中划线；冲突自动加后缀）
-        <input v-model="saveKey" type="text" spellcheck="false" placeholder="xxx-edit" @keydown.enter="doSave" />
-      </label>
-      <div class="muted mini" style="margin-bottom: 8px">
-        保存内容 = 原模板 + 当前草稿（标题 / 输入文本 / 调度依赖）；原模板文件不会被修改。
-      </div>
-      <div v-if="saveErr" class="err-text">{{ saveErr }}</div>
-      <template #footer>
-        <button type="button" class="btn" @click="showSave = false">取消</button>
-        <button type="button" class="btn primary" :disabled="saveBusy || !saveKey.trim()" @click="doSave">
-          <Icon name="download" :size="12" /> {{ saveBusy ? '保存中…' : '保存' }}
-        </button>
-      </template>
-    </Modal>
-
-    <!-- [M23] 轻提示（连线拒绝 / 落盘结果） -->
-    <div v-if="toastMsg" class="toast-m23" role="status">{{ toastMsg }}</div>
+    <!-- [M23] 设计态落盘 Modal 组（草案预览 / 保存为新模板 / 轻提示）——M26 拆分：./CanvasDesignModals.vue -->
+    <CanvasDesignModals
+      v-model:save-key="saveKey"
+      :show-draft="showDraft"
+      :draft-validation="draftValidation"
+      :draft-yaml="draftYaml"
+      :show-save="showSave"
+      :save-err="saveErr"
+      :save-busy="saveBusy"
+      :toast-msg="toastMsg"
+      @close-draft="showDraft = false"
+      @copy="copyDraftYaml"
+      @save-from-draft="draftToSave"
+      @close-save="showSave = false"
+      @save="doSave"
+    />
   </div>
 </template>
 
@@ -1048,125 +770,5 @@ onBeforeUnmount(() => {
   color: var(--warn);
 }
 
-.cv-guide {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px;
-  overflow-y: auto;
-}
-
-.gd-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 640px;
-  padding: 26px 28px;
-}
-
-.gd-t {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.gd-desc {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.gd-sec {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 6px;
-}
-
-.gd-h {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.chipbtn {
-  cursor: pointer;
-  font: inherit;
-}
-
-.chipbtn:hover {
-  border-color: var(--accent);
-  color: #fff;
-}
-
-/* ===== [M23] 草案/保存 Modal 内体 + 轻提示 ===== */
-.ed-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ed-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mini {
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.prob {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: var(--bad);
-  line-height: 1.7;
-}
-
-.warnlist {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: var(--warn);
-  line-height: 1.7;
-}
-
-.yaml {
-  margin: 0;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 11.5px;
-  line-height: 1.6;
-  max-height: 52vh;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.toast-m23 {
-  position: fixed;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  z-index: 120;
-  max-width: min(560px, 86vw);
-  background: rgb(15 23 42 / 93%);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  padding: 8px 16px;
-  font-size: 12.5px;
-  color: var(--text);
-  box-shadow: 0 10px 26px rgb(0 0 0 / 40%);
-}
+/* [M23] 空态引导样式已随 CanvasGuide.vue 拆出；草案/保存 Modal 与轻提示样式已随 CanvasDesignModals.vue 拆出 */
 </style>
