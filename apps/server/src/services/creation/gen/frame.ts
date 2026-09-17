@@ -62,9 +62,12 @@ export function frameTimesOf(mode: FrameMode, time: number | null, count: number
   return Array.from({ length: n }, (_, i) => round(0.1 + (dur - 0.2) * (i / (n - 1))))
 }
 
-/** [M18] 抽帧 argv（全尺寸单帧 jpg；-ss 前置快速定位） */
-export function buildFrameExtractArgs(src: string, out: string, timeSec: number): string[] {
-  return ['-y', '-hide_banner', '-loglevel', 'error', '-ss', String(timeSec), '-i', src, '-frames:v', '1', '-q:v', '2', out]
+/** [M18] 抽帧 argv（全尺寸单帧 jpg；-ss 前置快速定位）；[M25·G9] 可选缩宽（视频解析帧控请求体，-2 保比例偶数宽；缺省不注入 = 现行为逐字不变） */
+export function buildFrameExtractArgs(src: string, out: string, timeSec: number, scaleWidth?: number): string[] {
+  const args = ['-y', '-hide_banner', '-loglevel', 'error', '-ss', String(timeSec), '-i', src, '-frames:v', '1', '-q:v', '2']
+  if (typeof scaleWidth === 'number' && scaleWidth > 0) args.push('-vf', `scale=${Math.round(scaleWidth)}:-2`)
+  args.push(out)
+  return args
 }
 
 /** [M18] 抽帧寻址降级梯度（秒）：请求时刻超出末帧 PTS（低帧率视频 dur−ε 越界）→ 逐级回退取最近可用帧 */
@@ -81,10 +84,10 @@ class FrameExtractError extends Error {
   }
 }
 
-/** [M18] 单次抽帧（tmp+rename 原子写；超时 30s 强杀） */
-async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: string, timeSec: number, attempt: number): Promise<void> {
+/** [M18] 单次抽帧（tmp+rename 原子写；超时 30s 强杀）；[M25·G9] scaleWidth 透传缩宽 */
+async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: string, timeSec: number, attempt: number, scaleWidth?: number): Promise<void> {
   const tmp = `${outAbs}.${process.pid}.${Date.now()}.${attempt}.tmp.jpg`
-  const args = buildFrameExtractArgs(srcAbs, tmp, timeSec)
+  const args = buildFrameExtractArgs(srcAbs, tmp, timeSec, scaleWidth)
   await new Promise<void>((resolve, reject) => {
     let settled = false
     let tail = ''
@@ -137,7 +140,7 @@ async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: strin
  * 寻址降级：请求时刻无帧可取（超出末帧 PTS）→ 按 FRAME_SEEK_BACKOFFS 回退重试
  * （ffmpeg 非零退出、或 exit=0 静默空输出〔[M23] 回归修复纳入〕均可降级）。
  */
-export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec: number): Promise<void> {
+export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec: number, scaleWidth?: number): Promise<void> {
   const ffmpeg = resolveFfmpeg()
   if (!ffmpeg) {
     throw new Error('未找到可用 ffmpeg：内置二进制与系统 PATH 均不可用；请先在仓库根 pnpm install（重新下载内置二进制），或在 .env 设 CSTUDIO_FFMPEG_PATH 指向 ffmpeg.exe')
@@ -147,7 +150,7 @@ export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec:
   let lastErr: Error | null = null
   for (let i = 0; i < targets.length; i += 1) {
     try {
-      await runFrameExtractOnce(ffmpeg, srcAbs, outAbs, targets[i]!, i)
+      await runFrameExtractOnce(ffmpeg, srcAbs, outAbs, targets[i]!, i, scaleWidth)
       if (i > 0) log.info(`抽帧寻址降级：请求 ${timeSec}s 无帧可取 → 实际取 ${targets[i]}s`)
       return
     } catch (err) {

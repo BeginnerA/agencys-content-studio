@@ -235,6 +235,7 @@ onBeforeUnmount(() => {
 }
 
 .pp-sub {
+  margin-left: 8px;
   font-size: 11px;
   color: var(--text-3);
 }

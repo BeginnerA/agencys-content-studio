@@ -10,7 +10,12 @@ export interface NovelManifestDoc {
   range?: string | null
   skipped_head_chars?: number
   reels?: string[]
-  chapters?: Array<{ index?: number; reel?: string | null; title?: string; name?: string; asset_id?: number; chars?: number }>
+  /** [M25·G6] 多部合并（per_source=true 时服务端附加） */
+  per_source?: boolean
+  books?: Array<{ name?: string; count?: number }>
+  /** [M25·G7] 增量连载批次记录 */
+  appended_at?: unknown[]
+  chapters?: Array<{ index?: number; reel?: string | null; title?: string; name?: string; asset_id?: number; chars?: number; source_book?: string }>
 }
 
 /** 章节行（服务端规范化 + 事件提取任务状态） */
@@ -23,6 +28,8 @@ export interface NovelBoardChapter {
   chars: number
   /** pending/processing/succeeded/failed/cancelled；无任务 → null */
   event_status: string | null
+  /** [M25·G6] 多部合并归属书名（非 per_source → null） */
+  source_book?: string | null
 }
 
 /** 事件图谱（event-graph.json，展示用字段宽松） */
@@ -48,13 +55,21 @@ export interface NovelBoardPlanDoc {
   }>
 }
 
+/** [M25·G3] 服务端确定性力导向布局（graph.layout；脏 doc → null 前端降级表视图） */
+export interface GraphLayout {
+  nodes: Array<{ id: string; kind: 'event' | 'character'; label: string; weight?: number; x: number; y: number; r: number }>
+  links: Array<{ source: string; target: string; kind: string }>
+  width: number
+  height: number
+}
+
 export interface NovelBoardData {
   run_id: number
   /** run 内存在 text_split 步骤 */
   found: boolean
   step: { key: string; status: string } | null
   split: { manifest: NovelManifestDoc; chapters: NovelBoardChapter[] } | null
-  graph: { asset_id: number; name: string; doc: NovelBoardGraphDoc | null } | null
+  graph: { asset_id: number; name: string; doc: NovelBoardGraphDoc | null; layout?: GraphLayout | null } | null
   plan: { asset_id: number; name: string; doc: NovelBoardPlanDoc | null } | null
   scripts: Array<{ asset_id: number; name: string; ep: number | null }>
   events: { total: number; done: number; failed: number } | null

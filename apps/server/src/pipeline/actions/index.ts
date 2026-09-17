@@ -3,6 +3,8 @@ import type { StepResult } from '../types'
 import { aiImage } from './ai-image'
 import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
+// [M25] 一致性回查 + 视频解析骨架（契约纯函数已实装，action 体分别随批 2/批 3 接线）
+import { adaptAudit } from './adapt-audit'
 import { characterSync } from './character-sync'
 // [M24] 摘要压缩 + 合规审核两 action 注册（与 loader.KNOWN_ACTIONS 同步）
 import { complianceCheck } from './compliance-check'
@@ -16,6 +18,7 @@ import { memoryWrite } from './memory-write'
 import { tts } from './tts'
 import { subtitle } from './subtitle'
 import { textSplit } from './text-split'
+import { videoAnalyze } from './video-analyze'
 
 export type { StepContext }
 export type { StepResult }
@@ -39,6 +42,8 @@ const registry: Record<string, ActionFn> = {
   character_sync: characterSync,
   entity_sync: entitySync,
   text_split: textSplit,
+  adapt_audit: adaptAudit,
+  video_analyze: videoAnalyze,
 }
 
 export function getAction(key: string): ActionFn {

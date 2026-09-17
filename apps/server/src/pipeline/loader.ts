@@ -25,6 +25,8 @@ export const KNOWN_ACTIONS = [
   'character_sync',
   'entity_sync',
   'text_split',
+  'adapt_audit', // [M25·G4] 一致性回查（批 2 接线）
+  'video_analyze', // [M25·G9] 视频解析含 ASR（批 3 接线）
 ] as const
 
 const cache = new Map<string, Template>()

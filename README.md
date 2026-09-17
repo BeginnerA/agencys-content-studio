@@ -358,6 +358,22 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 验证：`pnpm --filter @acs/server exec tsx scripts/probe-m24.ts`（五节 **116 项断言**，零网络零计费：summary 32 / eval 27 / translate 9 / bilingual 14 / compliance 34）；`probe:m2a ~ m23` 全量回归 **零适配全绿**（21 探针）；`tsc` + `vue-tsc` 双端全绿；三层实弹 HTTP 63 断言（真实 LLM 摘要/翻译/复审 + 真实出图对照评分 + 真实 TTS voice_map 命中 + 真实词库拦截/放行）+ 浏览器徽章双态 DOM 验证；详见 `docs/superpowers/specs/2026-09-16-agencys-content-studio-m24-review.md`。
 
+## M25 能力速览（输入源扩展：小说链深化 + 视频反推）
+
+纲领 G 组十项一次交付（三批）：**批 1** docx/epub 导入 + 章节可视化编辑器；**批 2** 事件图谱可视化 + 改编一致性回查 + 事件级编辑 + 多部合并 + 增量连载；**批 3** URL 抓取 + 视频长素材解析（含 ASR）+ 视频反推链。设计三原则：**零新表零新列**（doc_import / fetched / content_edits / analysis / audit 全落 `assets.params`）、**引擎/DAG 零改动**（append 只写资产不动状态机，事件链续跑走 M11 既有单步重跑）、**宽容降级**（ASR 端点缺失/非 2xx/超时 → null 不阻断主链；epub 不规范样本提取到字即成功）。
+
+- **docx/epub 导入（批 1）**：`doc-parse.ts`（mammoth docx 纯文本 + fflate epub 自解析 container.xml→OPF→spine 线性序→XHTML 去标签）；`importFiles` 入库单点转 md 文本资产（purpose=source，`params.doc_import={format,chars}`，原二进制不落盘 v1）；novel-adapt v2 `accept` 扩 [.txt,.md,.docx,.epub]（向后兼容纯扩展）
+- **章节/事件受控写（批 1/2）**：`PATCH /assets/:id/content`——kind=text + purpose 白名单 + JSON 契约校验（chapter-manifest/event/graph/plan/storyboard-json 复用 ai-text 校验）+ tmp/rename 原子写 + `params.content_edits` 计数；NovelBoard 章节编辑器 + 事件/图谱结构化表单（前端脏确认）
+- **事件图谱可视化（批 2）**：`computeGraphLayout` d3-force 确定性布局（forceLink/ManyBody/Center/Collide + tick 300，同 M23 手法）；`GET /runs/:id/novel-board` 响应附 `graph.layout`（服务端算、前端零计算，加法零破坏）；NovelBoard 表↔SVG 视图切换 + 节点点击高亮
+- **改编一致性回查（批 2）**：`adapt_audit` action（chapters+script → LLM 审计 `{faithful, divergences:[{kind,severity,desc,ref}]}` 契约 fail-fast → md 报告 purpose=audit_report）；`novel-audit` 正式模板（**不强制注入 novel-adapt 步链**，避免改变现行为）
+- **多部合并 + 增量连载（批 2）**：`text_split` `per_source:true` 逐 source 独立切分·index 跨书续编·manifest `books`（默认 false 现行为逐字不变回归锚）；`POST /projects/:id/novel/append`（新文件导入 → 章题+首行哈希幂等去重 → 续编落库 + manifest `appended_at`；不自动级联重跑）
+- **URL 抓取（批 3）**：`POST /projects/:id/fetch-source`——`assertSafeUrl` SSRF 守卫（仅 http/https，拒回环/RFC1918/链路本地/非 80·443）+ `extractReadableText` 确定性正文提取（零依赖）+ 15s/≤5MB/重定向≤3 逐跳复查 + 文本 <200 字符判反爬失败；FetchGuardError code → 502/400 映射；落 source 资产 `params.fetched`；素材页「从 URL 抓取」modal（版权免责内置：仅供个人素材整理）
+- **视频长素材解析（批 3）**：`video_analyze` action——ffprobe 时长 → 均匀抽帧（2–24 独立常量，不动画布 2–9）缩宽 768 临时不落库 → ffmpeg 抽轨 16k 单声道 → `asr.ts` 转写（audio 实例 OpenAI 兼容 `/audio/transcriptions`，缺省 SiliconFlow SenseVoice，`extra.asr_model` 覆盖；不可用降级 null）→ 多模态 LLM 时间轴 JSON（`{duration,scenes,transcript}` 契约）→ `video_analysis` json（前）+ 人读 md 报告（后）双资产（`params.analysis={scenes,hasTranscript,frames,duration,asr_provider?,asr_model?}`）
+- **视频反推链（批 3）**：`video-reverse` 正式模板（analyze → storyboard（ai_text `video-storyboard.md` → `storyboard-json` 复用既有校验 + required 审阅门控）→ copy（`video-copy.md` → 文案 md））；分镜产物直接满足 `ai_video`/`compose` 消费契约（`validateTextOutput` 直通）
+- **数据与兼容**：零新表零新列；白名单 +2 action（adapt_audit / video_analyze）/ 端点 +3（PATCH content / novel append / fetch-source）/ 提示词 +4 / 模板 +2（novel-audit / video-reverse）改 1（novel-adapt v2）/ 新依赖 +2（mammoth / fflate，沿 M23 d3-force 纯解析库例外原则）；引擎 / DAG / 模板加载签名零触碰；novel-board 响应扩展加法零破坏
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m25.ts`（八节 **141 项断言**，零网络零计费）；全量回归 22 探针 **21 零适配 + m9 一处 version 同步**（novel-adapt v2 主动升版）全绿；`tsc` + `vue-tsc` 双端全绿；三层实弹（P1 导入/编辑 22 + P2 图谱/审计/合并/增量 25（含真实 LLM 审计双链）+ P3 抓取/视频全链 ~30：真实公网 URL 抓取入库 + 真实 TTS 造口播样本 → 真实 ASR 命中（hasTranscript=true）+ 多模态时间轴 + storyboard-json 直通 8 镜）+ 浏览器章节编辑器/图谱 SVG/抓取 modal；详见 `docs/superpowers/specs/2026-09-17-agencys-content-studio-m25-review.md`。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -375,7 +391,9 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 | `platform-adapt` v2 | 平台适配（other） | 八平台（公众号 / 小红书 / 知乎 / 头条 / 抖音 / 快手 / 视频号 / B站）标题 / 正文 / 话题 / 封面文案规则 + 事实不变性铁律 + 风险处标注不静默删改；v2 新增 `target_lang`（缺省 zh 现状不变；en/ja/ko 等适配稿以目标语言产出） | 平台适配 + 翻译出海 |
 | `translate-export` v1 | 翻译出海（other） | 入库 → 全文翻译（`translate-text.md`，产物 `translated-{lang}.md`）→ 译文沉淀记忆（type=translation 供后续同系列复用）；M24 翻译链独立形态 | 翻译出海 |
 | `review-restock` v1 | 盘点复盘（other） | 数据解读（完播 / 互动 / 涨粉结构）+ 置信门禁（样本不足降级结论并标注）+ 回灌选题入记忆（供 `topic-radar` 调分闭环） | 盘点复盘 |
-| `novel-adapt` v1 | 小说改编·切分→图谱→剧本（plan） | 小说入库 → 章节切分（三级正则链 / 卷识别 / 范围过滤，可审阅）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量）；产物对齐 `script-ep` 格式，可接力短剧链 | 内容编排 + 剧本创作 |
+| `novel-adapt` v2 | 小说改编·切分→图谱→剧本（plan） | 小说入库 → 章节切分（三级正则链 / 卷识别 / 范围过滤，可审阅）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量）；产物对齐 `script-ep` 格式，可接力短剧链；**v2（M25·G1）**：accept 扩 [.txt,.md,.docx,.epub]（入库单点转 md，原二进制不落盘）；支持 `per_source` 多部合并与 `/novel/append` 增量连载 | 内容编排 + 剧本创作 |
+| `novel-audit` v1 | 改编一致性回查（plan） | 章节 + 剧本 → `adapt_audit` 批量 LLM 审计（omission/alteration/addition/order 差异 + severity）→ 差异报告 md（purpose=audit_report）；独立形态不侵入 novel-adapt 现链 | M25·G4 |
+| `video-reverse` v1 | 视频反推链（drama_short） | 视频入库 → `video_analyze`（抽帧≤24 + ASR 音轨转写含宽容降级 + 多模态时间轴 JSON）→ 分镜反推（storyboard-json，必审门控，直通 `ai_video` 消费契约）→ 文案包；M25·G9/G10 | M25·G10 |
 
 **典型工作流链**（`review-restock` 回灌记忆 → `topic-radar` 召回调分，构成「选题 → 生产 → 复盘 → 回灌」闭环；模板均可独立运行）：
 

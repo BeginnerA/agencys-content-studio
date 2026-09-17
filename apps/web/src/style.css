@@ -298,8 +298,13 @@ a:hover {
 
 /* ---------- 表单 ---------- */
 /* input:not([type]) = 未声明 type 的输入框（语义即 text），缺失会导致回落浏览器默认样式 */
+/* url/email/search/tel 同属文本类输入，显式补入以免回落浏览器默认白底 inset（对齐 URL 抓取框主题） */
 input:not([type]),
 input[type='text'],
+input[type='url'],
+input[type='email'],
+input[type='search'],
+input[type='tel'],
 input[type='number'],
 input[type='password'],
 input[type='date'],

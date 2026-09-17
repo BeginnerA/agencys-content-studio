@@ -19,6 +19,8 @@ export interface ChapterSlice {
   reel: string | null
   /** 章节正文（含章头行，到下一章头/卷头/文末） */
   content: string
+  /** [M25·G6] per_source=true 时归属源文件名（逐 source 独立切分；缺省不落盘字段） */
+  source_book?: string
 }
 
 /** 默认章头正则（对齐 Toonflow DEFAULT_CHAPTER_REGEX：组1=章号 组2=标题；^ 行首锚定防正文「第X章」引用误切） */
@@ -128,6 +130,8 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
   const outputPurpose =
     typeof params['output_purpose'] === 'string' && params['output_purpose'] ? params['output_purpose'] : 'chapters'
   const maxRegexChars = typeof params['regex_max_chars'] === 'number' ? params['regex_max_chars'] : 300
+  // [M25·G6] 多部合并：逐 source 独立切分、index 跨书续编（默认 false = 现行为逐字不变）
+  const perSource = params['per_source'] === true
 
   // —— 1. 源资产：按序拼接（非文本跳过；全非文本抛错） ——
   const srcIds = ctx.assetIdsOf('source')
@@ -148,7 +152,6 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
   if (textParts.length === 0) throw new Error('inputs.source 全部为非文本资产，无法切分')
   const fullText = textParts.join('\n\n')
   ctx.log(`小说文本就绪：${usedNames.join('、')}（合计 ${fullText.length} 字符）`)
-
   // —— 2. 三级正则：用户 > AI > 默认链 ——
   const userRaw = typeof ctx.input['chapter_regex'] === 'string' ? (ctx.input['chapter_regex'] as string) : ''
   const userPick = extractRegexCandidate(userRaw)
@@ -168,8 +171,28 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
   }
   ctx.log(`章节正则来源：${regexSource === 'default' ? '默认正则链' : regexSource === 'user' ? '用户自定义' : 'AI 生成'}`)
 
-  // —— 3. 切分 ——
-  const { chapters: all, skippedHeadChars } = splitChapters(fullText, regex)
+  // —— 3. 切分（per_source：逐源独立切 + index 跨书续编；默认：拼接全文单切，逐字现行为） ——
+  let all: ChapterSlice[] = []
+  let skippedHeadChars = 0
+  const books: Array<{ name: string; count: number }> = []
+  if (perSource) {
+    let offset = 0
+    for (let i = 0; i < textParts.length; i++) {
+      const r = splitChapters(textParts[i]!, regex)
+      for (const ch of r.chapters) {
+        ch.index = ++offset
+        ch.source_book = usedNames[i]!
+      }
+      books.push({ name: usedNames[i]!, count: r.chapters.length })
+      all.push(...r.chapters)
+      skippedHeadChars += r.skippedHeadChars
+    }
+    ctx.log(`逐源切分（per_source）：${books.map((b) => `${b.name}=${b.count}章`).join('，')}，合计 ${all.length} 章`)
+  } else {
+    const r = splitChapters(fullText, regex)
+    all = r.chapters
+    skippedHeadChars = r.skippedHeadChars
+  }
   if (skippedHeadChars > 0) ctx.log(`首个章头前 ${skippedHeadChars} 字符未纳入章节（前言/标题区）`)
 
   // —— 4. 范围过滤 + 下限校验 ——
@@ -202,7 +225,9 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
       stepId: ctx.step.id,
       runId: ctx.run.id,
       tags: ['chapter'],
-      params: { index: ch.index, reel: ch.reel, chars: ch.content.length },
+      params: perSource
+        ? { index: ch.index, reel: ch.reel, chars: ch.content.length, source_book: ch.source_book }
+        : { index: ch.index, reel: ch.reel, chars: ch.content.length },
     })
     written.push({ ch, assetId: asset.id, assetName: asset.name })
   }
@@ -216,6 +241,8 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
     range: rangeRaw || null,
     skipped_head_chars: skippedHeadChars,
     reels: [...new Set(all.map((c) => c.reel).filter((r): r is string => !!r))],
+    // [M25·G6] 仅 per_source 附加（默认路径 manifest 逐字不变）；下游逐章继承，图谱归并即「合并改编」
+    ...(perSource ? { per_source: true, books } : {}),
     chapters: written.map(({ ch, assetId, assetName }) => ({
       index: ch.index,
       reel: ch.reel,
@@ -223,6 +250,7 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
       name: assetName,
       asset_id: assetId,
       chars: ch.content.length,
+      ...(perSource ? { source_book: ch.source_book } : {}),
     })),
   }
   const manifestAsset = await writeTextAsset(ctx.run.projectId, {

@@ -6,8 +6,8 @@ import AssetPreviewer from './previewer/index.vue'
 import AssetThumb from './AssetThumb.vue'
 import Icon from '../common/Icon.vue'
 
-const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean; selectable?: boolean; checkedIds?: number[] }>()
-const emit = defineEmits<{ pick: [asset: Asset]; favorite: [asset: Asset]; changed: [asset: Asset]; toggleCheck: [asset: Asset] }>()
+const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean; selectable?: boolean; checkedIds?: number[]; removable?: boolean }>()
+const emit = defineEmits<{ pick: [asset: Asset]; favorite: [asset: Asset]; changed: [asset: Asset]; removed: [asset: Asset]; toggleCheck: [asset: Asset] }>()
 
 const previewIdx = ref<number | null>(null)
 
@@ -112,8 +112,10 @@ function qualityWarn(a: Asset): string | null {
       v-if="previewIdx !== null"
       :assets="assets"
       :index="previewIdx"
+      :removable="removable !== false"
       @close="previewIdx = null"
       @changed="(u) => emit('changed', u)"
+      @removed="(u) => emit('removed', u)"
     />
   </div>
 </template>

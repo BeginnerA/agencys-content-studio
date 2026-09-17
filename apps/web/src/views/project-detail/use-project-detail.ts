@@ -374,6 +374,14 @@ export function useProjectDetailPage() {
     if (i >= 0) assets.value[i] = u
   }
 
+  /** 资产删除（预览器 removed → 列表原地移除 + 通知；后端软删可回溯） */
+  function onAssetRemoved(a: Asset) {
+    const i = assets.value.findIndex((x) => x.id === a.id)
+    if (i >= 0) assets.value.splice(i, 1)
+    assetTotal.value = Math.max(0, assetTotal.value - 1)
+    assetNotice.value = `已删除资产「${a.name}」（软删除，回收空间前可回溯）`
+  }
+
   /** 项目级版本组批量清理（保留最新 / 收藏 / 在用；软删可回溯） */
   async function doCleanupVersions() {
     const ok = await confirmDialog({
@@ -501,6 +509,31 @@ export function useProjectDetailPage() {
       uploadErr.value = e instanceof Error ? e.message : String(e)
     } finally {
       uploading.value = false
+    }
+  }
+
+  // ===== [M25] G8 从 URL 抓取正文入库（source 资产；SSRF 守卫在后端） =====
+  const showFetch = ref(false)
+  const fetchUrl = ref('')
+  const fetching = ref(false)
+  const fetchErr = ref('')
+
+  async function doFetchSource() {
+    const u = fetchUrl.value.trim()
+    if (!u || fetching.value) return
+    fetching.value = true
+    fetchErr.value = ''
+    try {
+      await assetApi.fetchSource(projectId, u)
+      fetchUrl.value = ''
+      showFetch.value = false
+      assetNotice.value = '已从 URL 抓取正文并入库为素材资产'
+      await loadAssets({ silent: true })
+      await loadCore({ silent: true })
+    } catch (e) {
+      fetchErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      fetching.value = false
     }
   }
 
@@ -687,6 +720,7 @@ export function useProjectDetailPage() {
     assetBusy,
     onFavorite,
     onAssetChanged,
+    onAssetRemoved,
     doCleanupVersions,
     doGc,
     showUpload,
@@ -696,6 +730,11 @@ export function useProjectDetailPage() {
     uploadErr,
     onUploadChange,
     doUpload,
+    showFetch,
+    fetchUrl,
+    fetching,
+    fetchErr,
+    doFetchSource,
     showRunForm,
     showBatch,
     seriesRef,

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, genTasks, pipelineRuns, pipelineSteps, type Asset, type PipelineStep } from '../db/schema'
+import { layoutFromGraphDoc, type GraphLayout } from './graph-layout'
 import { readTextAsset } from './storage'
 
 /**
@@ -19,6 +20,8 @@ export interface NovelBoardChapter {
   chars: number
   /** 事件提取任务状态（pending/processing/succeeded/failed/cancelled；无任务 → null） */
   event_status: string | null
+  /** [M25·G6] 多部合并归属书名（非 per_source → null） */
+  source_book: string | null
 }
 
 export interface NovelBoard {
@@ -27,7 +30,7 @@ export interface NovelBoard {
   found: boolean
   step: { key: string; status: string } | null
   split: { manifest: unknown; chapters: NovelBoardChapter[] } | null
-  graph: { asset_id: number; name: string; doc: unknown } | null
+  graph: { asset_id: number; name: string; doc: unknown; layout: GraphLayout | null } | null
   plan: { asset_id: number; name: string; doc: unknown } | null
   scripts: Array<{ asset_id: number; name: string; ep: number | null }>
   events: { total: number; done: number; failed: number } | null
@@ -40,6 +43,7 @@ interface ManifestChapterDoc {
   name?: unknown
   asset_id?: unknown
   chars?: unknown
+  source_book?: unknown
 }
 
 export async function buildNovelBoard(runId: number): Promise<NovelBoard | null> {
@@ -84,7 +88,11 @@ export async function buildNovelBoard(runId: number): Promise<NovelBoard | null>
     const rows = await orderedAssetRows(s)
     const purpose = rows[0]?.purpose ?? null
     if (purpose === 'events' && !eventsStep) eventsStep = s
-    if (purpose === 'graph' && !board.graph) board.graph = await docOf(rows[0]!)
+    if (purpose === 'graph' && !board.graph) {
+      const g = await docOf(rows[0]!)
+      // [M25·G3] 服务端确定性力导向布局（加法零破坏；脏 doc → layout=null 前端降级表视图）
+      board.graph = { ...g, layout: layoutFromGraphDoc(g.doc) }
+    }
     if (purpose === 'plan' && !board.plan) board.plan = await docOf(rows[0]!)
     if (purpose === 'script') {
       adaptStep = s
@@ -122,6 +130,7 @@ export async function buildNovelBoard(runId: number): Promise<NovelBoard | null>
         asset_id: typeof ch.asset_id === 'number' ? ch.asset_id : 0,
         chars: typeof ch.chars === 'number' ? ch.chars : 0,
         event_status: eventStatusByItem.get(String(index)) ?? null,
+        source_book: typeof ch.source_book === 'string' ? ch.source_book : null,
       }
     })
     board.split = { manifest: manifestDoc, chapters }

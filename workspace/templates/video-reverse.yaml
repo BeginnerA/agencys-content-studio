@@ -1,0 +1,48 @@
+key: video-reverse
+version: 1
+name: 视频反推·时间轴→分镜→文案
+description: 适合：把一条参考长视频反推为可投产的分镜与文案包。流程：视频解析（均匀抽帧 + 音轨 ASR 转写〔不可用自动跳过〕→ 多模态时间轴 JSON）→ 分镜反推（storyboard-json，可直接进 ai_video/合成生产链）+ 文案包（标题/口播/话题标签）→ 分镜审阅。抽帧仅临时使用不入库；解析产物为机读 json + 人读报告双资产。
+genre: drama_short
+scene: plan
+inputs:
+  - key: video
+    label: 参考视频文件（单条 mp4/mov 等）
+    kind: files
+    required: true
+    accept: [.mp4, .mov, .mkv, .webm, .avi]
+defaults:
+  llm: { temperature: 0.4, max_tokens: 24000 }
+steps:
+  - key: analyze
+    action: video_analyze
+    title: 视频解析（抽帧 + ASR + 多模态时间轴）
+    inputs:
+      video: input.video
+    params:
+      frames: 8
+      transcribe: true
+  - key: storyboard
+    action: ai_text
+    title: 分镜反推（storyboard-json）
+    inputs:
+      timeline: steps.analyze.asset
+    params:
+      prompt_tpl: video-storyboard.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: 反推分镜.json
+    gate:
+      mode: required
+      message: 请审阅反推分镜（镜序/画面提示词/时长节奏）；认可通过后生成文案包；可驳回附修改意见重跑
+      skip_label: 分镜认可
+  - key: copy
+    action: ai_text
+    title: 文案包生成（标题/口播/话题标签）
+    after: [storyboard]
+    inputs:
+      timeline: steps.analyze.asset
+      storyboard: steps.storyboard.asset
+    params:
+      prompt_tpl: video-copy.md
+      output_purpose: text
+      name_tpl: 反推文案.md

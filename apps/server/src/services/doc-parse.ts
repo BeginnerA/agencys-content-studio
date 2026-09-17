@@ -10,6 +10,10 @@ import { unzipSync, strFromU8 } from 'fflate'
 import mammoth from 'mammoth'
 import { extractReadableText } from './fetch-source'
 
+// ⚠ fflate 字符串互转的第二参语义与直觉相反：true = latin1（中文乱码/截断），缺省/false = UTF-8。
+// 实测 fflate 0.8.3：strFromU8(utf8Bytes, true) → "ç¬¬ä¸€…"。一律用无参形态（UTF-8 默认）。
+const utf8 = (b: Uint8Array): string => strFromU8(b)
+
 export class DocParseError extends Error {
   constructor(readonly code: string, message: string) {
     super(message)
@@ -43,7 +47,7 @@ function resolveZipPath(baseDir: string, href: string): string {
 export function findOpfPath(files: Record<string, Uint8Array>): string {
   const container = files['META-INF/container.xml'] ?? files['meta-inf/container.xml']
   if (!container) throw new DocParseError('no_container', 'epub 缺 META-INF/container.xml（非合法 epub？）')
-  const m = /full-path\s*=\s*"([^"]+)"|full-path\s*=\s*'([^']+)'/.exec(strFromU8(container))
+  const m = /full-path\s*=\s*"([^"]+)"|full-path\s*=\s*'([^']+)'/.exec(utf8(container))
   const path = (m?.[1] ?? m?.[2] ?? '').trim()
   if (!path || !files[path]) throw new DocParseError('no_opf', `container.xml 指向的 OPF 不存在：${path || '(空)'}`)
   return path
@@ -68,10 +72,8 @@ export function parseEpubSpine(opfXml: string, opfPath: string): EpubSpineItem[]
     const id = /id\s*=\s*"([^"]+)"/.exec(tag)?.[1]
     const href = /href\s*=\s*"([^"]+)"/.exec(tag)?.[1]
     const mediaType = /media-type\s*=\s*"([^"]*)"/.exec(tag)?.[1] ?? ''
-    const properties = /properties\s*=\s*"([^"]*)"/.exec(tag)?.[1] ?? ''
     const title = /title\s*=\s*"([^"]*)"/.exec(tag)?.[1] ?? ''
     if (!id || !href) continue
-    if (mediaType && !/xml|html/.test(mediaType) && !properties.includes('cover-image') === false && !/xhtml|html/.test(mediaType)) continue
     if (mediaType && !/xhtml|html|xml/.test(mediaType)) continue // 图片/样式/字体跳过
     items.set(id, { path: resolveZipPath(baseDir, decodeURIComponent(href.split('#')[0]!)), title })
   }
@@ -94,12 +96,12 @@ export function epubToText(buf: Uint8Array): string {
     throw new DocParseError('bad_zip', 'epub 解包失败（非 zip / 已损坏 / DRM 加密？）')
   }
   const opfPath = findOpfPath(files)
-  const spine = parseEpubSpine(strFromU8(files[opfPath]!), opfPath)
+  const spine = parseEpubSpine(utf8(files[opfPath]!), opfPath)
   const parts: string[] = []
   for (const item of spine) {
     const data = files[item.path]
     if (!data) continue // spine 指向缺失文件 → 宽容跳过（epub 制作瑕疵常见）
-    const text = extractReadableText(strFromU8(data))
+    const text = extractReadableText(utf8(data))
     if (text) parts.push(text)
   }
   if (parts.length === 0) throw new DocParseError('no_text', 'epub 各章均未提取到正文')

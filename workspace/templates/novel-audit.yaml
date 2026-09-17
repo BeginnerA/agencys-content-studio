@@ -1,0 +1,50 @@
+key: novel-audit
+version: 1
+name: 小说改编·一致性回查
+description: 适合：已有小说原文与改编产物（剧本/分集大纲/事件稿），回查改编是否忠实于原作。流程：章节切分（复用改编链正则与识别）→ LLM 逐条对照审计（遗漏/改写/新增/顺序四类偏差）→ 回查报告（差异表 + 忠实度判定）审阅。txt/md/docx/epub 均可直接投喂；不改写原链产物，仅出报告。
+genre: drama_short
+scene: plan
+inputs:
+  - key: novel
+    label: 小说原文文件（txt/md/docx/epub，可多份）
+    kind: files
+    required: true
+    accept: [.txt, .md, .docx, .epub]
+  - key: script
+    label: 改编产物文件（剧本/大纲/事件稿，md/txt，可多份）
+    kind: files
+    required: true
+    accept: [.md, .txt]
+  - key: chapter_regex
+    label: 自定义章节正则（选填，同改编链）
+    kind: text
+    required: false
+  - key: chapter_range
+    label: 章节范围（选填，如 1-30）
+    kind: text
+    required: false
+steps:
+  - key: split_chapters
+    action: text_split
+    title: 章节切分（回查用）
+    inputs:
+      source: input.novel
+      chapter_regex: input.chapter_regex
+      chapter_range: input.chapter_range
+    params:
+      min_chapters: 1
+      output_purpose: chapters
+  - key: audit
+    action: adapt_audit
+    title: 一致性回查（LLM 审计）
+    after: [split_chapters]
+    inputs:
+      chapters: steps.split_chapters.assets
+      script: input.script
+    params:
+      prompt_tpl: adapt-audit.md
+      output_purpose: audit_report
+    gate:
+      mode: required
+      message: 请审阅回查报告（忠实度判定 + 差异表）；重大偏差请回到改编链修正后重查
+      skip_label: 报告已阅

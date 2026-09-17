@@ -7,14 +7,17 @@ import { assetApi } from '../../../lib/api'
 import type { Asset } from '../../../lib/types'
 import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetCompliance, parseAssetQuality, purposeText, qualityText } from '../../../lib/format'
 import { registerEscLayer } from '../../../lib/esc-layer'
+import { confirmDialog } from '../../../lib/confirm'
 
 // ---- 组件对外契约（自 AssetPreviewer.vue props/emit 定义迁移，字段与类型逐字）----
 export interface PreviewerProps {
   assets: Asset[]
   index?: number
+  /** 开放顶栏「删除」入口（默认关闭；宿主需监听 removed 刷新列表，画布/挑图等引用宿主勿开） */
+  removable?: boolean
 }
 
-export interface PreviewerEmits { close: []; changed: [asset: Asset] }
+export interface PreviewerEmits { close: []; changed: [asset: Asset]; removed: [asset: Asset] }
 
 /** emit 签名（与 defineEmits<PreviewerEmits>() 返回结构一致；供状态 composable 参数注入） */
 export type PreviewerEmitFn = {
@@ -116,7 +119,8 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     if ((a.fileSize ?? 0) > MAX_TEXT) return
     textLoading.value = true
     try {
-      const res = await fetch(a.urls.file)
+      // [M25] no-store：/file 响应带 max-age=3600 缓存，保存后重读必须绕过（编辑预填防陈旧/静默回滚）
+      const res = await fetch(a.urls.file, { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const raw = await res.text()
       text.value = raw
@@ -314,18 +318,119 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     void saveTags(curTags.value.filter((x) => x !== t))
   }
 
+  // ===== 资产删除（removable 宿主开放；软删可回溯；成功即关预览，列表刷新由宿主处理） =====
+  const removeBusy = ref(false)
+  const removeErr = ref('')
+
+  async function doRemove() {
+    const a = cur.value
+    if (!a || removeBusy.value) return
+    const ok = await confirmDialog({
+      title: '删除资产',
+      message: `将删除资产「${a.name}」：软删除（回收空间前可回溯；磁盘文件待 GC 回收）。确定删除？`,
+      confirmText: '确认删除',
+      danger: true,
+    })
+    if (!ok) return
+    removeBusy.value = true
+    removeErr.value = ''
+    try {
+      await assetApi.remove(a.id)
+      emit('removed', a)
+      emit('close')
+    } catch (e) {
+      removeErr.value = `删除失败：${e instanceof Error ? e.message : String(e)}`
+    } finally {
+      removeBusy.value = false
+    }
+  }
+
+  // ===== [M25] G2 文本内容编辑（白名单 purpose 的文本资产 → textarea + 分栏预览 → PATCH 覆写）=====
+  // 与服务端 asset-content.ts EDITABLE_PURPOSES 镜像；守卫终裁在后端，前端仅控制入口
+  const EDITABLE_PURPOSES = ['source', 'chapters', 'events', 'graph', 'plan', 'script', 'text', 'export', 'video_analysis']
+
+  const editing = ref(false)
+  const draft = ref('')
+  const editSaving = ref(false)
+  const editErr = ref('')
+  const editDirty = computed(() => editing.value && draft.value !== text.value)
+
+  const canEdit = computed(() => {
+    const a = cur.value
+    if (!a) return false
+    return a.kind === 'text' && !!a.purpose && EDITABLE_PURPOSES.includes(a.purpose) && isTextLike.value && !tooBig.value
+  })
+
+  function startEdit() {
+    if (!canEdit.value || textLoading.value || !!textErr.value) return
+    editErr.value = ''
+    draft.value = text.value
+    editing.value = true
+  }
+
+  /** 退出编辑态（有未保存改动时脏确认）；返回是否已退出 */
+  async function stopEdit(): Promise<boolean> {
+    if (editDirty.value) {
+      const ok = await confirmDialog({
+        title: '放弃编辑',
+        message: '有未保存的内容修改，确定放弃？',
+        confirmText: '放弃修改',
+        danger: true,
+      })
+      if (!ok) return false
+    }
+    editing.value = false
+    draft.value = ''
+    editErr.value = ''
+    return true
+  }
+
+  /** 保存（后端守卫拒绝时留在编辑态展示错误；成功同步预览文本 + 宿主刷新） */
+  async function saveEdit() {
+    const a = cur.value
+    if (!a || editSaving.value) return
+    editSaving.value = true
+    editErr.value = ''
+    try {
+      const r = await assetApi.updateContent(a.id, draft.value)
+      text.value = draft.value
+      if (vkind.value === 'json') buildJsonHtml(draft.value)
+      editing.value = false
+      draft.value = ''
+      emit('changed', r.asset)
+    } catch (e) {
+      editErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      editSaving.value = false
+    }
+  }
+
   // ===== 多资产切换 / 键盘 =====
   function prev() {
+    if (editing.value) return
     if (hasPrev.value) idx.value -= 1
   }
 
   function next() {
+    if (editing.value) return
     if (hasNext.value) idx.value += 1
+  }
+
+  /** 关闭入口统一经此：编辑态先退编辑（脏确认在内），否则直接关预览器 */
+  async function tryClose() {
+    if (editing.value) {
+      await stopEdit()
+      return
+    }
+    emit('close')
   }
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
-      if (escLayer.isTop()) emit('close')
+      if (editing.value) {
+        // 编辑态中 Esc 先退编辑（脏确认在内），不关预览器
+        void stopEdit()
+      } else if (escLayer.isTop()) emit('close')
       return
     }
     if (e.key === 'ArrowLeft') prev()
@@ -347,6 +452,10 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     checkMsg.value = ''
     tagDraft.value = ''
     tagErr.value = ''
+    removeErr.value = ''
+    editing.value = false
+    draft.value = ''
+    editErr.value = ''
     void loadText()
   })
 
@@ -412,6 +521,19 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     curTags,
     addTag,
     removeTag,
+    removeBusy,
+    removeErr,
+    doRemove,
+    editing,
+    draft,
+    editSaving,
+    editErr,
+    editDirty,
+    canEdit,
+    startEdit,
+    stopEdit,
+    saveEdit,
+    tryClose,
     prev,
     next,
     downloadHref,

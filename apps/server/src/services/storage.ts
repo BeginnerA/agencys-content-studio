@@ -5,6 +5,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, type Asset } from '../db/schema'
 import { PROJECTS_DIR } from '../env'
+import { docFormatByExt, parseDocBuffer } from './doc-parse'
 
 /** 按扩展名推断资产 kind */
 export function kindByExt(ext: string): Asset['kind'] {
@@ -55,6 +56,8 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'graph':
     case 'plan':
     case 'regex':
+    case 'video_analysis': // [M25·G9] 视频时间轴 json + 人读 md 报告
+    case 'audit_report': // [M25·G4] 改编一致性回查报告
       return 'texts'
     case 'export':
     case 'creation_svg': // [M22] 画布布局图 SVG 导出（与 export 同类归档）
@@ -99,7 +102,9 @@ export interface ImportedFile {
   data: Uint8Array
 }
 
-/** 批量导入素材文件 → 资产行 + 落盘（sha256 重复跳过） */
+/** 批量导入素材文件 → 资产行 + 落盘（sha256 重复跳过）。
+ *  [M25·G1] docx/epub 在入库单点转 md 文本资产（原二进制不落盘 v1）：转换后文本参与 sha256 去重，
+ *  name 去扩展 + .md，params.doc_import={format,chars}（供前端导入提示与召回判定）。 */
 export async function importFiles(
   projectId: number,
   files: ImportedFile[],
@@ -108,8 +113,17 @@ export async function importFiles(
   ensureProjectDirs(projectId)
   const created: Asset[] = []
   for (const f of files) {
-    const data = f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data)
-    const ext = extname(f.name)
+    let data = f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data)
+    let storeName = f.name
+    let docImport: { format: string; chars: number } | null = null
+    // [M25·G1] docx/epub → 解析为纯文本，重封为 .md 资产（解析失败向上抛 DocParseError，导入侧 400）
+    if (docFormatByExt(storeName)) {
+      const { text, format } = await parseDocBuffer(storeName, data)
+      docImport = { format, chars: text.length }
+      storeName = storeName.replace(/\.(docx|epub)$/i, '') + '.md'
+      data = new TextEncoder().encode(text)
+    }
+    const ext = extname(storeName)
     const hash = sha256Hex(data)
     const existed = await db
       .select()
@@ -122,7 +136,7 @@ export async function importFiles(
     }
     const kind = kindByExt(ext)
     const purpose = opts.purpose ?? 'source'
-    const fileName = `${Date.now()}-${sanitizeName(f.name)}`
+    const fileName = `${Date.now()}-${sanitizeName(storeName)}`
     const relPath = relPathOf(projectId, purpose, fileName)
     writeFileSync(absPathOf(relPath), data)
     const now = Date.now()
@@ -133,12 +147,13 @@ export async function importFiles(
         stepId: opts.stepId,
         kind,
         purpose,
-        name: f.name,
+        name: storeName,
         mime: mimeOfExt(ext),
         ext: ext.slice(1),
         fileSize: data.byteLength,
         sha256: hash,
         relPath,
+        params: docImport ? JSON.stringify({ doc_import: docImport }) : undefined,
         tags: '[]',
         createdAt: now,
         updatedAt: now,

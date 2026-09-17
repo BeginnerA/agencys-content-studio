@@ -1,16 +1,16 @@
 key: novel-adapt
-version: 1
+version: 2
 name: 小说改编·切分→图谱→剧本
-description: 适合：把小说文本（txt/md，可多份）改编为可投入短剧生产链的分集剧本。流程：小说入库 → 章节切分（识别失败可开 AI 正则兜底；可审阅范围）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量，可选审阅）。
+description: 适合：把小说文本（txt/md/docx/epub，可多份）改编为可投入短剧生产链的分集剧本。流程：小说入库 → 章节切分（识别失败可开 AI 正则兜底；可审阅范围）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量，可选审阅）。docx/epub 入库时自动转纯文本。
 genre: drama_short
 scene: plan
 next: [series-setup]
 inputs:
   - key: novel
-    label: 小说原文文件（txt/md，可多份按序拼接）
+    label: 小说原文文件（txt/md/docx/epub，可多份按序拼接）
     kind: files
     required: true
-    accept: [.txt, .md]
+    accept: [.txt, .md, .docx, .epub]
   - key: adapt_brief
     label: 改编要求（目标风格/受众/计划集数等；计划集数将决定分集数）
     kind: text

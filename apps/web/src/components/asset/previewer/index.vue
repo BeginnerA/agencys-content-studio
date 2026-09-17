@@ -8,16 +8,16 @@ import Icon from '../../common/Icon.vue'
 import MarkdownPreview from '../../common/MarkdownPreview.vue'
 import { useAssetPreviewer } from './use-asset-previewer'
 
-const props = defineProps<{ assets: Asset[]; index?: number }>()
-const emit = defineEmits<{ close: []; changed: [asset: Asset] }>()
+const props = defineProps<{ assets: Asset[]; index?: number; removable?: boolean }>()
+const emit = defineEmits<{ close: []; changed: [asset: Asset]; removed: [asset: Asset] }>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, prev, next, downloadHref } = useAssetPreviewer(props, emit)
+const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, removeBusy, removeErr, doRemove, editing, draft, editSaving, editErr, editDirty, canEdit, startEdit, saveEdit, tryClose, prev, next, downloadHref } = useAssetPreviewer(props, emit)
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="mask" @click.self="emit('close')">
+    <div class="mask" @click.self="tryClose">
       <div v-if="cur" class="viewer panel" role="dialog" aria-modal="true" :aria-label="`资产预览：${cur.name}`">
         <!-- 顶栏：身份 + 操作 -->
         <header class="head">
@@ -45,13 +45,40 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             >
               <Icon :name="copied ? 'check' : 'copy'" :size="12" /> {{ copied ? '已复制' : '复制' }}
             </button>
+            <!-- [M25] G2 文本内容编辑（白名单 purpose 入口；保存/取消收敛顶栏） -->
+            <button
+              v-if="canEdit && !editing"
+              class="btn sm"
+              :disabled="textLoading || !!textErr"
+              title="编辑内容（保存后覆盖此文本资产）"
+              @click="startEdit"
+            >
+              <Icon name="pencil" :size="12" /> 编辑
+            </button>
+            <template v-if="editing">
+              <button class="btn sm primary" :disabled="editSaving || !editDirty" @click="saveEdit">
+                <Icon name="check" :size="12" /> {{ editSaving ? '保存中…' : '保存' }}
+              </button>
+              <button class="btn sm" :disabled="editSaving" @click="tryClose()">
+                {{ editDirty ? '放弃修改' : '取消' }}
+              </button>
+            </template>
             <a class="btn sm" :href="downloadHref(cur)" :download="cur.name">
               <Icon name="download" :size="12" /> 下载
             </a>
             <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener" title="浏览器新标签打开原文">
               <Icon name="external" :size="12" /> 新标签
             </a>
-            <button class="icon-btn" aria-label="关闭预览" @click="emit('close')">
+            <button
+              v-if="removable"
+              class="btn sm danger"
+              :disabled="removeBusy"
+              title="软删除该资产（回收空间前可回溯）"
+              @click="doRemove"
+            >
+              <Icon name="trash" :size="12" /> {{ removeBusy ? '删除中…' : '删除' }}
+            </button>
+            <button class="icon-btn" aria-label="关闭预览" @click="tryClose">
               <Icon name="x" :size="15" :stroke-width="2" />
             </button>
           </div>
@@ -137,6 +164,19 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
                 <div class="err-text">{{ textErr }}</div>
                 <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener">新标签打开</a>
               </div>
+              <!-- [M25] 编辑态：textarea + markdown 分栏实时预览（对齐 GateDialog 编辑器先例） -->
+              <div v-else-if="editing" class="editwrap" :class="{ split: vkind === 'markdown' }">
+                <textarea
+                  v-model="draft"
+                  class="editbox mono"
+                  spellcheck="false"
+                  aria-label="编辑资产内容"
+                  :disabled="editSaving"
+                />
+                <div v-if="vkind === 'markdown'" class="editprev doc">
+                  <MarkdownPreview :source="draft" />
+                </div>
+              </div>
               <div v-else class="doc">
                 <MarkdownPreview v-if="vkind === 'markdown'" :source="text" />
                 <template v-else-if="vkind === 'json'">
@@ -159,10 +199,10 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             </div>
           </div>
 
-          <button v-if="hasPrev" class="nav prev" aria-label="上一个资产" @click="prev">
+          <button v-if="hasPrev && !editing" class="nav prev" aria-label="上一个资产" @click="prev">
             <Icon name="chevron-left" :size="18" />
           </button>
-          <button v-if="hasNext" class="nav next" aria-label="下一个资产" @click="next">
+          <button v-if="hasNext && !editing" class="nav next" aria-label="下一个资产" @click="next">
             <Icon name="chevron-right" :size="18" />
           </button>
         </div>
@@ -190,6 +230,8 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             <span v-if="tagErr" class="err-text">{{ tagErr }}</span>
           </div>
           <div v-if="checkMsg" class="chk" :class="{ bad: checkMsg.startsWith('检测失败') }">{{ checkMsg }}</div>
+          <div v-if="removeErr" class="chk bad">{{ removeErr }}</div>
+          <div v-if="editErr" class="chk bad">保存失败：{{ editErr }}</div>
           <details v-if="cur.prompt" class="prmt">
             <summary>提示词快照（可复制溯源）</summary>
             <pre class="prebox">{{ cur.prompt }}</pre>
@@ -531,6 +573,45 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
 
 .nav.next {
   right: 12px;
+}
+
+/* [M25] G2 编辑态：单栏 textarea；markdown 双栏（左编辑右预览） */
+.editwrap {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editwrap.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+.editbox {
+  width: 100%;
+  min-height: 340px;
+  background: var(--code-bg);
+  color: #c7d3e6;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.editbox:focus {
+  outline: none;
+  border-color: rgb(99 102 241 / 60%);
+}
+
+.editprev {
+  overflow-y: auto;
+  max-height: 62vh;
+  margin: 0;
 }
 
 /* ---------- 底栏 ---------- */

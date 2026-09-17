@@ -10,7 +10,7 @@
  *   batch     ai_text batch 纯函数：extractBatchItems / batchItemId / buildItemPrompt
  *   contracts validateTextOutput 三新契约：event-json / graph-json / plan-json（正例 + 负例消息）
  *   api       buildNovelBoard 聚合读 + GET /runs/:id/novel-board（app.request 内存 HTTP，零网络）
- *   template  novel-adapt v1 契约 + 5 提示词存在性 + validateTemplateText 正反例
+ *   template  novel-adapt 契约（version=2：M25·G1 扩 accept docx/epub 升版，余面逐字不变）+ 5 提示词存在性 + validateTemplateText 正反例
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -548,7 +548,7 @@ async function main(): Promise<void> {
 
     // —— 3. 完整 loader 路径（隔离目录，模板已在位） ——
     const t = loadTemplate('novel-adapt', true)
-    check(t.version === 1, `version=1（实际 ${t.version}）`)
+    check(t.version === 2, `version=2（实际 ${t.version}；M25·G1 扩 accept docx/epub 升版，步骤/输入面逐字不变）`) // [M25·P4 同步]
     check(t.steps.length === 7, `steps=7（实际 ${t.steps.length}）`)
     check(t.inputs.length === 8, `inputs=8（实际 ${t.inputs.length}）`)
     check(missingPromptsOf(t).length === 0, `5 个 prompt_tpl 文件齐备（缺：${missingPromptsOf(t).join(',') || '无'}）`)

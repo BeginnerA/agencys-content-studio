@@ -3,7 +3,7 @@ import AssetGrid from '../../components/asset/AssetGrid.vue'
 import { purposeText } from '../../lib/format'
 import type { ProjectDetailApi } from './use-project-detail'
 const props = defineProps<{ s: ProjectDetailApi }>()
-const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purposeFilter, purposes, tagFilter, allTags, tagSelectMode, checkedIds, bulkTagInput, bulkBusy, onToggleCheck, toggleTagSelect, applyBulkTag, filteredAssets, favOnly, assetNotice, assetBusy, onFavorite, onAssetChanged, doCleanupVersions, doGc } = props.s
+const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purposeFilter, purposes, tagFilter, allTags, tagSelectMode, checkedIds, bulkTagInput, bulkBusy, onToggleCheck, toggleTagSelect, applyBulkTag, filteredAssets, favOnly, assetNotice, assetBusy, onFavorite, onAssetChanged, onAssetRemoved, doCleanupVersions, doGc } = props.s
 </script>
 
 <template>
@@ -88,6 +88,7 @@ const { activeTab, assets, assetLoading, assetTotal, assetErr, loadAssets, purpo
             @toggle-check="onToggleCheck"
             @favorite="onFavorite"
             @changed="onAssetChanged"
+            @removed="onAssetRemoved"
           />
           <div v-if="assetTotal > assets.length" class="muted trunc">仅显示前 {{ assets.length }} 个资产（共 {{ assetTotal }} 个）</div>
         </div>

@@ -261,6 +261,12 @@ export const assetApi = {
   /** [M21] 标签编辑（PATCH 白名单 tags；覆盖式写入字符串数组） */
   updateTags: (id: number, tags: string[]) =>
     api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, { tags }),
+  /** [M25] G2 文本内容覆写（白名单 purpose 的文本资产；原子覆盖 + params.content_edits 留痕） */
+  updateContent: (id: number, content: string) =>
+    api.patch<{ asset: Asset }>(`/api/v1/assets/${id}/content`, { content }),
+  /** [M25] G8 URL 抓正文 → source 资产（服务端抓取 + SSRF 守卫/限额；错误面：400 守卫拒/过短，502 抓取失败） */
+  fetchSource: (projectId: number, url: string) =>
+    api.post<{ asset: Asset }>(`/api/v1/projects/${projectId}/fetch-source`, { url }),
   /** [M12] 图像有效性检测（同步；仅图片；结果写 params.quality） */
   check: (id: number) => api.post<{ asset: Asset }>(`/api/v1/assets/${id}/check`),
   /** [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯） */

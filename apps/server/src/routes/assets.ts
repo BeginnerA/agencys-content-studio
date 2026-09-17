@@ -5,7 +5,9 @@ import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
-import { absPathOf, importFiles, mimeOfExt, withUtf8Charset } from '../services/storage'
+import { absPathOf, importFiles, mimeOfExt, withUtf8Charset, writeTextAsset } from '../services/storage'
+import { FetchGuardError, fetchSourceText } from '../services/fetch-source'
+import { ContentEditError, updateAssetContent } from '../services/asset-content'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
 import { cleanupVersions, gcProject } from '../services/version-cleanup'
@@ -66,6 +68,35 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   // [M12] 写时图像有效性检测（仅图片；fire-and-forget 不阻断）
   for (const a of created) scheduleImageCheck(a)
   return c.json({ items: created.map(toAssetView), duplicated: created.length < files.length }, 201)
+}))
+
+// POST /projects/:id/fetch-source —— [M25·G8] URL 抓正文→ source 资产（spec §2.8：SSRF 守卫 + 限额；400 守卫/过短，502 抓取失败）
+assetsRoutes.post('/projects/:id/fetch-source', h(async (c) => {
+  const projectId = idParam(c)
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  if (typeof body['url'] !== 'string' || !body['url'].trim()) throw new HttpError(400, 'bad_url', 'url 需为非空字符串')
+  let fetched: { text: string; title: string; finalUrl: string }
+  try {
+    fetched = await fetchSourceText(body['url'].trim())
+  } catch (err) {
+    if (err instanceof FetchGuardError) {
+      // 错误面表口径：抓取失败/非 2xx → 502；守卫拒绝/内容过短 → 400
+      const status = err.code === 'fetch_failed' || err.code === 'bad_status' ? 502 : 400
+      throw new HttpError(status, err.code, err.message)
+    }
+    throw err
+  }
+  const host = (() => { try { return new URL(fetched.finalUrl).hostname } catch { return 'web' } })()
+  const rawName = (fetched.title || host).slice(0, 60).replace(/[\\/:*?"<>|\r\n]/g, ' ').trim() || host
+  const asset = await writeTextAsset(projectId, {
+    name: `${rawName}.md`,
+    content: fetched.text,
+    purpose: 'source',
+    params: { fetched: { url: fetched.finalUrl, chars: fetched.text.length, at: Date.now() } },
+    tags: ['url_fetch'],
+  })
+  // 文件名经 sanitizeName 可能与展示 name 不同，视图对齐展示名
+  return c.json({ asset: { ...toAssetView(asset), name: asset.name } }, 201)
 }))
 
 // GET /assets/:id —— 资产详情
@@ -154,6 +185,23 @@ assetsRoutes.patch('/assets/:id', h(async (c) => {
   }
   const rows = await db.update(assets).set(patch).where(eq(assets.id, a.id)).returning()
   return c.json({ asset: toAssetView(rows[0]!) })
+}))
+
+// PATCH /assets/:id/content —— [M25·G2] 文本资产内容覆写（spec §2.3：白名单 purpose + JSON 契约校验 + 原子覆盖）
+assetsRoutes.patch('/assets/:id/content', h(async (c) => {
+  const id = idParam(c)
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  if (typeof body['content'] !== 'string') throw new HttpError(400, 'bad_content', 'content 需为字符串')
+  try {
+    const updated = await updateAssetContent(id, body['content'])
+    return c.json({ asset: toAssetView(updated) })
+  } catch (err) {
+    if (err instanceof ContentEditError) {
+      const status = err.code === 'not_found' ? 404 : err.code === 'too_large' ? 413 : 400
+      throw new HttpError(status, err.code, err.message)
+    }
+    throw err
+  }
 }))
 
 // DELETE /assets/:id —— 逻辑删除（物理文件留待 GC）

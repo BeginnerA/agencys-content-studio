@@ -12,9 +12,10 @@ import AssetsPanel from './AssetsPanel.vue'
 import PubsPanel from './PubsPanel.vue'
 import BrandPanel from './BrandPanel.vue'
 import UploadModal from './UploadModal.vue'
+import FetchSourceModal from './FetchSourceModal.vue'
 
 const s = useProjectDetailPage()
-const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary, coreLoading, coreErr, runningCount, waitingRuns, assetCount, gotoRuns, cntOf, showUpload, showRunForm, showBatch, runFormTplKey, runFormPrefill, closeRunForm, onRunCreated, onBatchCreated, showPublish, editingPub, onPubSaved, showEdit, showDanger, tplName, defaultTplKey, onEdited, onDeleted } = s
+const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary, coreLoading, coreErr, runningCount, waitingRuns, assetCount, gotoRuns, cntOf, showUpload, showFetch, showRunForm, showBatch, runFormTplKey, runFormPrefill, closeRunForm, onRunCreated, onBatchCreated, showPublish, editingPub, onPubSaved, showEdit, showDanger, tplName, defaultTplKey, onEdited, onDeleted } = s
 </script>
 
 <template>
@@ -32,6 +33,10 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
         </button>
         <button class="btn" @click="showUpload = true">
           <Icon name="upload" :size="14" /> 上传素材
+        </button>
+        <!-- [M25] G8 URL 抓正文入库（服务端抓取 + SSRF 守卫） -->
+        <button class="btn" title="抓取网页正文存为素材资产（仅供个人素材整理）" @click="showFetch = true">
+          <Icon name="link" :size="14" /> 从 URL 抓取
         </button>
         <button class="btn" @click="showBatch = true">
           <Icon name="bolt" :size="14" /> 批量运行
@@ -130,6 +135,9 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
 
     <!-- 上传素材 -->
     <UploadModal :s="s" />
+
+    <!-- [M25] G8 从 URL 抓取 -->
+    <FetchSourceModal :s="s" />
 
     <!-- [M4] 批量创建 -->
     <BatchFormModal
