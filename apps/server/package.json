@@ -29,6 +29,7 @@
     "probe:m21": "tsx scripts/probe-m21.ts",
     "probe:m22": "tsx scripts/probe-m22.ts",
     "probe:m23": "tsx scripts/probe-m23.ts",
+    "probe:m24": "tsx scripts/probe-m24.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
     "hono": "^4.13.7",
+    "mammoth": "^1.12.3",
     "socket.io": "^4.8.3",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"

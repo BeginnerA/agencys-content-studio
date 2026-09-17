@@ -46,6 +46,42 @@ export function buildSegmentSrt(segs: SubtitleSegment[]): string | null {
   return renderSrt(cues)
 }
 
+/** [M24·F4] 双语字幕段（毫秒定时 + 原文/译文；id 对齐翻译结果） */
+export interface BilingualSeg {
+  id: string
+  startMs: number
+  endMs: number
+  text: string
+}
+
+/**
+ * [M24·F4] 双语 SRT 构造（纯函数，探针直测）：定时段 + id→译文映射 → 双语/纯目标语 SRT。
+ * - 双语 cue text = `原文\n译文`（无译文回退原文，回退判定在调用方 log）；
+ * - mode='both' → { bilingual, target }（双语 + 纯目标语两条）；'merged' → 仅双语（target=null）；
+ * - 复用 renderSrt cue 结构（ms → sec 三位小数）；空段列表 → 双 null。
+ */
+export function buildBilingualSrt(
+  segs: BilingualSeg[],
+  dstMap: Map<string, string>,
+  mode: 'both' | 'merged',
+): { bilingual: string | null; target: string | null } {
+  if (segs.length === 0) return { bilingual: null, target: null }
+  const ms2sec = (ms: number): number => round3(Math.max(0, ms) / 1000)
+  const bilingual: SrtCue[] = []
+  const target: SrtCue[] = []
+  for (const s of segs) {
+    const src = s.text.trim()
+    if (!src) continue
+    const dst = (dstMap.get(s.id) ?? '').trim() || src
+    const startSec = ms2sec(s.startMs)
+    const endSec = Math.max(startSec, ms2sec(s.endMs))
+    bilingual.push({ startSec, endSec, text: dst === src ? src : `${src}\n${dst}` })
+    if (mode === 'both') target.push({ startSec, endSec, text: dst })
+  }
+  if (bilingual.length === 0) return { bilingual: null, target: null }
+  return { bilingual: renderSrt(bilingual), target: mode === 'both' && target.length > 0 ? renderSrt(target) : null }
+}
+
 /** [M22] 轻量 SRT 解析（hh:mm:ss,mmm / . 兼容）→ cues（时间戳行起块，空行/下一时间戳终止；兼容紧凑序号行） */
 export function parseSrtCues(srt: string): SrtCue[] {
   const lines = srt.split(/\r?\n/)

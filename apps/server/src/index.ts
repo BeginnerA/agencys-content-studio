@@ -9,6 +9,7 @@ import { env } from './env'
 import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState, refreshGlobalConcurrency } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches, pumpStalledBatches } from './services/batch'
+import { registerAutoSummaryHook } from './services/memory-autosummary'
 import { startScheduler, stopScheduler } from './services/schedule'
 import { purgeExpiredCanvases } from './services/trash-sweep'
 import { recoverCanvasTasks } from './services/creation/gen'
@@ -72,6 +73,9 @@ async function main(): Promise<void> {
   onRunSettled((runId) => {
     void notifyRunSettled(runId).catch((err) => log.error(`settle→pump run ${runId} 失败`, err))
   })
+
+  // [M24·F1] 自动摘要钩子（settings memory.auto_summary 缺省关；内部门控，fire-and-forget 隔离）
+  registerAutoSummaryHook()
 
   // [M21 C6] 全局并发上限载入（startRun 同步闸门读缓存；先于恢复启动）
   await refreshGlobalConcurrency()

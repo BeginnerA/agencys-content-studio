@@ -20,6 +20,8 @@ export const KNOWN_ACTIONS = [
   'subtitle',
   'memory_write',
   'memory_recall',
+  'memory_summary',
+  'compliance_check',
   'character_sync',
   'entity_sync',
   'text_split',

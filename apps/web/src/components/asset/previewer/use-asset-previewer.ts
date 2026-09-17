@@ -5,7 +5,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { assetApi } from '../../../lib/api'
 import type { Asset } from '../../../lib/types'
-import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetQuality, purposeText, qualityText } from '../../../lib/format'
+import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetCompliance, parseAssetQuality, purposeText, qualityText } from '../../../lib/format'
 import { registerEscLayer } from '../../../lib/esc-layer'
 
 // ---- 组件对外契约（自 AssetPreviewer.vue props/emit 定义迁移，字段与类型逐字）----
@@ -68,6 +68,16 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     const a = cur.value
     if (!a) return ''
     return KIND_TEXT[a.kind] ?? a.kind
+  })
+
+  // [M24] 合规审核徽章（spec §2.6 前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
+  const compliance = computed(() => (cur.value ? parseAssetCompliance(cur.value) : null))
+  const COMPLIANCE_LABEL: Record<string, string> = { pass: '合规通过', warn: '合规风险', block: '合规拦截' }
+  const complianceLabel = computed(() => (compliance.value ? COMPLIANCE_LABEL[compliance.value.status] ?? compliance.value.status : ''))
+  const complianceTip = computed(() => {
+    const c = compliance.value
+    if (!c) return ''
+    return `合规审核 ${c.status} · 词库命中 ${c.hits} 处 · ${c.checkedAt ? new Date(c.checkedAt).toLocaleString() : '时间未知'}`
   })
 
   const metaLine = computed(() => {
@@ -368,6 +378,9 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     tooBig,
     TYPE_ICON,
     kindLabel,
+    compliance,
+    complianceLabel,
+    complianceTip,
     metaLine,
     text,
     textLoading,

@@ -59,13 +59,14 @@ export async function upsertMemory(p: {
   return { id: inserted.id, created: true }
 }
 
-/** 向量召回：scope 过滤 → 异模型行跳过 → cosine 排序 → limit/minScore 截断 */
+/** 向量召回：scope 过滤 → types 行内过滤（[M24] 如 ['summary'] 只召摘要；零 SQL 变更）→ 异模型行跳过 → cosine 排序 → limit/minScore 截断 */
 export async function recallMemories(p: {
   projectId: number | null
   query: string
   limit?: number
   minScore?: number
   scope?: 'project' | 'global' | 'both'
+  types?: string[]
 }): Promise<Array<{ id: number; type: string; name: string | null; content: string; updatedAt: number; score: number }>> {
   const limit = p.limit ?? 3
   const minScore = p.minScore ?? 0.25
@@ -87,6 +88,7 @@ export async function recallMemories(p: {
   let foreign = 0
   for (const r of rows) {
     if (!r.embedding) continue
+    if (p.types && p.types.length > 0 && !p.types.includes(r.type)) continue
     if (r.embeddingModel !== tag) {
       foreign += 1
       continue

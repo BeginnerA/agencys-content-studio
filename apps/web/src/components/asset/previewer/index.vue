@@ -12,7 +12,7 @@ const props = defineProps<{ assets: Asset[]; index?: number }>()
 const emit = defineEmits<{ close: []; changed: [asset: Asset] }>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, prev, next, downloadHref } = useAssetPreviewer(props, emit)
+const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, prev, next, downloadHref } = useAssetPreviewer(props, emit)
 </script>
 
 <template>
@@ -24,6 +24,8 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
           <Icon :name="TYPE_ICON[vkind]" :size="15" class="type-ic" />
           <span class="nm" :title="cur.name">{{ cur.name }}</span>
           <span class="badge">{{ kindLabel }}</span>
+          <!-- [M24] 合规审核徽章（params.compliance；悬停看命中数与时间） -->
+          <span v-if="compliance" class="badge" :class="`comp-${compliance.status}`" :title="complianceTip">{{ complianceLabel }}</span>
           <span v-if="assets.length > 1" class="count mono">{{ idx + 1 }} / {{ assets.length }}</span>
           <div class="ops">
             <button
@@ -267,6 +269,22 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
 .count {
   color: var(--text-3);
   font-size: 11.5px;
+}
+
+/* [M24] 合规徽章三态（配色对齐全局 badge 语义：ok/warn/bad） */
+.comp-pass {
+  background: var(--ok-weak);
+  color: var(--ok);
+}
+
+.comp-warn {
+  background: rgb(245 158 11 / 12%);
+  color: #d97706;
+}
+
+.comp-block {
+  background: var(--bad-weak);
+  color: var(--bad);
 }
 
 .ops {

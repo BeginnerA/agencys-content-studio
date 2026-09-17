@@ -1,7 +1,7 @@
 key: platform-adapt
-version: 1
+version: 2
 name: 多平台适配
-description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注）。流程：源稿入库 → 八平台规则改写（可审阅）→ 风险标注留痕。
+description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注），支持出海目标语言。流程：源稿入库 → 八平台规则改写（可审阅）→ 风险标注留痕。
 genre: other
 scene: operate
 next: [review-restock]
@@ -26,6 +26,11 @@ inputs:
     kind: bool
     required: false
     default: true
+  - key: target_lang
+    label: 目标语言（ISO 639-1；zh=中文现状，en/ja/ko/es 等=适配稿以目标语言产出）
+    kind: text
+    required: false
+    default: zh
 defaults:
   llm: { temperature: 0.7, max_tokens: 24000 }
 steps:
@@ -43,6 +48,7 @@ steps:
       platforms: input.platforms
       content_type: input.content_type
       protect_facts: input.protect_facts
+      target_lang: input.target_lang
       source: steps.ingest.assets
     params:
       prompt_tpl: adapt-text.md

@@ -202,3 +202,26 @@ export function parseAssetQuality(a: Asset): ImageQuality | null {
     reason: typeof rec['reason'] === 'string' ? rec['reason'] : 'unknown',
   }
 }
+
+// ===== [M24] 合规审核标记展示（spec §2.6 前端最小面：params.compliance → 状态徽章） =====
+
+export interface AssetCompliance {
+  status: 'pass' | 'warn' | 'block'
+  hits: number
+  checkedAt: number | null
+}
+
+const COMPLIANCE_STATUS = new Set(['pass', 'warn', 'block'])
+
+/** 取资产 params.compliance（[M24] compliance_check 写回；无/脏数据 → null） */
+export function parseAssetCompliance(a: Asset): AssetCompliance | null {
+  const raw = a.params?.['compliance']
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const rec = raw as Record<string, unknown>
+  if (typeof rec['status'] !== 'string' || !COMPLIANCE_STATUS.has(rec['status'])) return null
+  return {
+    status: rec['status'] as AssetCompliance['status'],
+    hits: Array.isArray(rec['hits']) ? rec['hits'].length : 0,
+    checkedAt: typeof rec['checkedAt'] === 'number' ? rec['checkedAt'] : null,
+  }
+}

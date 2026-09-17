@@ -1,0 +1,48 @@
+key: translate-export
+version: 1
+name: 出海翻译链
+description: 适合：把一篇源稿完整翻译成目标语言（结构逐字保留）。流程：源稿入库 → 全文翻译（可审阅）→ 译文导出 → 翻译经验沉淀。
+genre: other
+scene: operate
+next: [platform-adapt]
+inputs:
+  - key: source
+    label: 待翻译源稿（必填，md/txt）
+    kind: files
+    required: true
+    accept: [.md, .txt]
+  - key: target_lang
+    label: 目标语言（ISO 639-1，如 en/ja/ko/es；zh=中文润色方向）
+    kind: text
+    required: true
+defaults:
+  llm: { temperature: 0.4, max_tokens: 24000 }
+steps:
+  - key: ingest
+    action: manual_ingest
+    title: 源稿入库
+    inputs:
+      docs: input.source
+      brief: 出海翻译源稿
+  - key: translate
+    action: ai_text
+    title: 全文翻译
+    after: [ingest]
+    inputs:
+      target_lang: input.target_lang
+      source: steps.ingest.assets
+    params:
+      prompt_tpl: translate-text.md
+      output_purpose: export
+      name_tpl: "translated-{input.target_lang}.md"
+    gate:
+      mode: required
+      message: 请审阅译文（目标语言：{input.target_lang}），批准后沉淀翻译经验
+      skip_label: 认可译文
+  - key: remember
+    action: memory_write
+    title: 沉淀翻译经验
+    after: [translate]
+    inputs:
+      content: steps.translate.asset
+    params: { type: translation, scope: project }

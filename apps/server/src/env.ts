@@ -30,6 +30,9 @@ export const PROMPTS_DIR = join(WORKSPACE_DIR, 'prompts')
 export const PROJECTS_DIR = join(WORKSPACE_DIR, 'projects')
 export const RUN_LOGS_DIR = join(WORKSPACE_DIR, 'logs', 'runs')
 
+/** [M24] 合规词库目录（本地数据文件，零外部服务；words.txt 行格式 类别|词|级别） */
+export const COMPLIANCE_DIR = join(WORKSPACE_DIR, 'compliance')
+
 /** [M19] 平台品牌资材目录（水印/片头/片尾文件；品牌三层模型的平台级 file 键落点） */
 export const BRAND_DIR = join(WORKSPACE_DIR, 'brand')
 

@@ -4,11 +4,14 @@ import { aiImage } from './ai-image'
 import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
 import { characterSync } from './character-sync'
+// [M24] 摘要压缩 + 合规审核两 action 注册（与 loader.KNOWN_ACTIONS 同步）
+import { complianceCheck } from './compliance-check'
 import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { literal } from './literal'
 import { manualIngest } from './manual-ingest'
 import { memoryRecall } from './memory-recall'
+import { memorySummary } from './memory-summary'
 import { memoryWrite } from './memory-write'
 import { tts } from './tts'
 import { subtitle } from './subtitle'
@@ -31,6 +34,8 @@ const registry: Record<string, ActionFn> = {
   subtitle,
   memory_write: memoryWrite,
   memory_recall: memoryRecall,
+  memory_summary: memorySummary,
+  compliance_check: complianceCheck,
   character_sync: characterSync,
   entity_sync: entitySync,
   text_split: textSplit,

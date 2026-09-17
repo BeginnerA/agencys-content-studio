@@ -10,9 +10,11 @@ import { vendorRoutes } from './routes/vendor-credentials'
 import { assetsRoutes } from './routes/assets'
 import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
+import { complianceRoutes } from './routes/compliance'
 import { composeRoutes } from './routes/compose'
 import { creationRoutes } from './routes/creation'
 import { exportsRoutes } from './routes/exports'
+import { evalRoutes } from './routes/eval'
 import { memoriesRoutes } from './routes/memories'
 import { novelRoutes } from './routes/novel'
 import { projectsRoutes } from './routes/projects'
@@ -62,6 +64,8 @@ api.route('/', vendorRoutes)
 api.route('/', canvasRoutes)
 api.route('/', creationRoutes)
 api.route('/', searchRoutes)
+api.route('/', evalRoutes)
+api.route('/', complianceRoutes)
 
 app.route('/api/v1', api)
 

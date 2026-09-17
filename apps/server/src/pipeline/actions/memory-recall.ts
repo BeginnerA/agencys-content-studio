@@ -7,7 +7,7 @@ import { StepError, type StepResult } from '../types'
 /**
  * memory_recall：按语义相似度召回记忆（spec §4.2）。
  * 输入 query：ctx.input.query 字面文本或 text 资产（可多个 → 换行拼接）；
- * params：{ limit=3, min_score=0.25, scope='both' }。
+ * params：{ limit=3, min_score=0.25, scope='both', types?（[M24] 字符串数组如 ['summary']，按 type 过滤召回） }。
  * 产物：召回结果 markdown 资产（purpose=memory，name_tpl 默认 recall.md）；
  * 空结果 → 产出「（无相关记忆）」占位资产（始终有产物，下游引用稳定）；
  * embedding 不可用 → StepError 含 model:prepare 指引（不静默）。
@@ -17,11 +17,12 @@ export async function memoryRecall(ctx: StepContext): Promise<StepResult> {
   const limit = typeof params['limit'] === 'number' && params['limit'] > 0 ? Math.floor(params['limit']) : 3
   const minScore = typeof params['min_score'] === 'number' ? params['min_score'] : 0.25
   const scope = params['scope'] === 'project' || params['scope'] === 'global' ? params['scope'] : 'both'
+  const types = Array.isArray(params['types']) ? (params['types'] as unknown[]).filter((t): t is string => typeof t === 'string' && t.length > 0) : []
 
   const query = await collectQuery(ctx)
   if (!query) throw new StepError('记忆召回缺少 query（inputs.query 需为 text 资产或非空字面文本）')
 
-  const hits = await recallMemories({ projectId: ctx.run.projectId, query, limit, minScore, scope }).catch((err: Error) => {
+  const hits = await recallMemories({ projectId: ctx.run.projectId, query, limit, minScore, scope, types: types.length > 0 ? types : undefined }).catch((err: Error) => {
     throw new StepError(`记忆召回失败：${err.message}（若为模型缺失，先运行 pnpm --filter @acs/server model:prepare）`)
   })
 
@@ -39,7 +40,7 @@ export async function memoryRecall(ctx: StepContext): Promise<StepResult> {
     content: body,
     purpose: 'memory',
     stepId: ctx.step.id,
-    params: { query, limit, scope, count: hits.length, topScore },
+    params: { query, limit, scope, count: hits.length, topScore, ...(types.length > 0 ? { types } : {}) },
     tags: ['memory'],
   })
   ctx.log(`记忆召回 ${hits.length} 条（scope=${scope}, topScore=${topScore === null ? '—' : topScore.toFixed(3)}）→ asset#${asset.id}`)

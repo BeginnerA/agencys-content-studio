@@ -345,6 +345,19 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 验证：`pnpm --filter @acs/server probe:m22`（十一节 **169 项断言**，零网络零计费：spec-fields 9 / trash 12 / schema 2 / align 25 / refs 12 / group-nest 18 / snapshot-diff 18 / fit 4 / copy-to 23 / export-svg 23 / multi-frame 23）；`probe:m2a ~ m19 + m21` 全量回归 **零适配全绿**（18 探针）；`tsc` + `vue-tsc` 双端全绿；三层实弹（HTTP API 16 PASS〔真实库跨项目 P10→P14：9 复制 / 1 run 跳过 / 6 资产级联 / 0 警告〕/ 浏览器 e2e 8/8〔复制弹窗、SVG / PNG 双 toast、均匀抽帧 3 帧落板〕/ 修复复核 PASS）。
 
+## M24 能力速览（内容质量与国际化）
+
+纲领 F 组五项一次交付：**批 1** 三层记忆摘要（双形态）+ 图像角色一致性 A/B 评测；**批 2** 翻译链双形态 + 双语字幕/多语言配音；**批 3** 内容合规审核（词库 + LLM 双轨）。设计三原则：**零新表零新列**（摘要走 memories 开放 type；合规标记落 `assets.params.compliance` 对齐 params.quality 先例）、**宽容降级全链**（LLM 复审不可用 → `llm:null` 不阻断；评分坏行跳过；翻译缺失句回退原文）、**缺省零漂移**（自动钩子默认关；`target_lang` 缺省 zh 产物逐字不变；voice_map 不传旧行为不变）。
+
+- **三层记忆摘要（批 1）**：`memory_summary` action——scope 四级命名（project / series:{id} / episode:{id} / custom:{name}）+ 参数校验（SummaryParamError）+ merge 语义（既有+新料合并重摘要，具名 upsert 保 id）+ 900 字 guard；settings `memory.auto_summary` 自动钩子（默认关；run completed + 集关联触发，listener 隔离失败不阻断，模板已含显式步防双份计费）；`memory_recall` +`types` 过滤（`[summary]` 只召回摘要）
+- **一致性 A/B 评测（批 1）**：`POST /evals/run`（模板多组对照出图）+ `POST /evals/score`（2–6 组 × ≤24 图多模态评分矩阵：一致性/还原度/画质三维 0–10）；`parseEvalScores`（围栏/坏行/全坏降级 raw）+ `aggregate`（均值/排名/并列字典序稳定）+ md 表 + CSV 段报告落库（purpose=eval_report）；评分为参考信号非硬判定（spec §5）
+- **翻译链双形态（批 2）**：platform-adapt v2 +`target_lang`（缺省 zh 逐字回归；en 等适配稿以目标语言产出，风险清单「原文」列保留供对照）+ 独立 `translate-export` 模板链（入库 → ai_text 翻译 → memory 沉淀 type=translation；产物命名 `translated-{lang}.md`）
+- **双语字幕/配音（批 2）**：`buildBilingualSrt` 纯函数族（both 双语 cue = 原文\n译文 / merged 仅译文 / 缺失句回退原文 / ms→SRT 换算 / end<start 收敛）；subtitle 步 +`target_lang` + `bilingual` 参数（双产物 zh-en.srt + en.srt，`params.lang` 标注）；TTS `voice_map`（resolveVoiceChain 七级：line > voice_map > params > instance…；不传旧行为逐字不变；生效落 `params.voiceSource`）
+- **合规审核（批 3）**：`compliance_check` action——本地词库 `workspace/compliance/words.txt`（`类别|词|级别`，现读即用零缓存，全角归一）+ LLM 可选复审（`llm_review` 默认开，坏 JSON/非法 verdict → null 降级）双轨合成（block ∪ → block；warn 并集）；标记写回被检资产 `params.compliance {status,hits,llm,checkedAt}`（拦截仍写回）；`on_block` fail（默认，StepError 拦导出）/ mark 双语义；汇总报告 purpose=compliance_report；`GET /compliance/rules`（total/byCategory/source，词库缺失 missing 不 500）；前端资产预览顶栏徽章三态（合规通过/合规风险/合规拦截 + title 详情）；产物仅「标记/拦截」语义不构成法务意见
+- **数据与兼容**：零新表零新列；白名单 +2 action（memory_summary / compliance_check）/ 端点 +3（evals ×2 + compliance/rules）/ 提示词 +5 / 模板 +1（translate-export）改 1（platform-adapt v2）/ settings +1 key；引擎 / DAG / 模板加载签名零触碰
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m24.ts`（五节 **116 项断言**，零网络零计费：summary 32 / eval 27 / translate 9 / bilingual 14 / compliance 34）；`probe:m2a ~ m23` 全量回归 **零适配全绿**（21 探针）；`tsc` + `vue-tsc` 双端全绿；三层实弹 HTTP 63 断言（真实 LLM 摘要/翻译/复审 + 真实出图对照评分 + 真实 TTS voice_map 命中 + 真实词库拦截/放行）+ 浏览器徽章双态 DOM 验证；详见 `docs/superpowers/specs/2026-09-16-agencys-content-studio-m24-review.md`。
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。
@@ -359,7 +372,8 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 | `quick-video` v1 | 快速单片视频（talking_head） | 一句话创意极简输入 + 闸门默认关闭（`confirm` 开才审）+ 封面图兼成片背景单图成片；定位热点跟拍快出片 | 内容编排 + 文字创作 |
 | `note-clip` v2 | 图文笔记·单篇（T1） | 记忆召回 → 主稿（gate）→ 封面 + 可选内页配图 → 发布稿（原有）；v2 新增 `to_platforms` 多平台适配步骤（when） | 文字创作 + 平台适配 |
 | `article-clip` v1 | 深度长文（article） | 长文主稿（结构完整 / 逻辑论证 / 事实溯源）+ 可选内页配图 + 多平台适配 + 发布稿（标题定稿 + 封面文案 + 溯源检查；对齐 note-clip 模式） | 文字创作 + 平台适配 |
-| `platform-adapt` v1 | 平台适配（other） | 八平台（公众号 / 小红书 / 知乎 / 头条 / 抖音 / 快手 / 视频号 / B站）标题 / 正文 / 话题 / 封面文案规则 + 事实不变性铁律 + 风险处标注不静默删改 | 平台适配 |
+| `platform-adapt` v2 | 平台适配（other） | 八平台（公众号 / 小红书 / 知乎 / 头条 / 抖音 / 快手 / 视频号 / B站）标题 / 正文 / 话题 / 封面文案规则 + 事实不变性铁律 + 风险处标注不静默删改；v2 新增 `target_lang`（缺省 zh 现状不变；en/ja/ko 等适配稿以目标语言产出） | 平台适配 + 翻译出海 |
+| `translate-export` v1 | 翻译出海（other） | 入库 → 全文翻译（`translate-text.md`，产物 `translated-{lang}.md`）→ 译文沉淀记忆（type=translation 供后续同系列复用）；M24 翻译链独立形态 | 翻译出海 |
 | `review-restock` v1 | 盘点复盘（other） | 数据解读（完播 / 互动 / 涨粉结构）+ 置信门禁（样本不足降级结论并标注）+ 回灌选题入记忆（供 `topic-radar` 调分闭环） | 盘点复盘 |
 | `novel-adapt` v1 | 小说改编·切分→图谱→剧本（plan） | 小说入库 → 章节切分（三级正则链 / 卷识别 / 范围过滤，可审阅）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量）；产物对齐 `script-ep` 格式，可接力短剧链 | 内容编排 + 剧本创作 |
 

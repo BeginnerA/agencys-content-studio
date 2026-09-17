@@ -29,7 +29,7 @@ interface LineItem {
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
  * 抗抖重试（params.retry，默认 1 → 共 2 次尝试）：短剧长链（数十句）单句瞬时网络抖动不应拖垮整步，
  * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
- * 声线六级链（spec §6.2）：line.voice_hint → 角色库 voice → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
+ * 声线七级链（spec §6.2 + [M24] voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
  * 情绪：emotion_hint → 基调词（首个「——」前段）→ 实例声明 emotion_param 时透传（emotion_map 映射）。
  * [M19 P8] 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
@@ -41,6 +41,25 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const speed = typeof speedRaw === 'number' ? speedRaw : undefined
   const paramVoice = typeof params['voice'] === 'string' && params['voice'] ? params['voice'] : undefined
   const settingsVoice = typeof audCfg['voice'] === 'string' && audCfg['voice'] ? audCfg['voice'] : undefined
+  // [M24·F4] voice_map：语言→音色映射（params.voice_map { "en": "voice-x" }，当前语言 = run input.lang，spec §2.5 契约）；
+  // lang 缺失/map 未配 → langVoice undefined → 该级整级跳过，原行为逐字不变。
+  // lang 取数：ctx.input 是步骤 inputs 映射解析结果（模板显式接线 input.lang 时即有值），
+  // 未接线时回落 run.input.lang（契约本源，P2 实弹发现两处不一致后修正）
+  const voiceMap = (params['voice_map'] && typeof params['voice_map'] === 'object' && !Array.isArray(params['voice_map']))
+    ? (params['voice_map'] as Record<string, unknown>)
+    : null
+  let langRaw = ctx.input['lang']
+  if (typeof langRaw !== 'string' || !langRaw.trim()) {
+    try {
+      const runInput = JSON.parse(ctx.run.input ?? '{}') as Record<string, unknown>
+      if (typeof runInput['lang'] === 'string') langRaw = runInput['lang']
+    } catch {
+      /* run.input 非法 JSON → 视为无 lang，不影响主链 */
+    }
+  }
+  const lang = typeof langRaw === 'string' && langRaw.trim() ? langRaw.trim().toLowerCase() : ''
+  const langVoiceRaw = voiceMap && lang ? voiceMap[lang] : undefined
+  const langVoice = typeof langVoiceRaw === 'string' && langVoiceRaw.trim() ? langVoiceRaw.trim() : undefined
 
   const ep = await resolveAudioEndpoint(provider)
   // [M19 P8] 音色库整步载入一次（无克隆行 → 空索引，声线链行为逐字不变）；命中后按 provider 换端点（同 provider 复用缓存）
@@ -70,6 +89,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       const hit = resolveVoiceChain({
         lineVoice: line.voiceHint,
         charVoice,
+        langVoice,
         paramVoice,
         settingsVoice,
         instanceVoice: ep.voice,
@@ -205,7 +225,7 @@ function toLines(list: unknown[]): LineItem[] {
 }
 
 /**
- * 声线六级链（spec §6.2）：line.voice_hint → 角色库 → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
+ * 声线七级链（spec §6.2 + [M24·F4] voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
  * 各级仅接受「供应商 voice 令牌」（全 ASCII，如 Cherry / FunAudioLLM/CosyVoice2-0.5B:alex）；
  * 自然语言声线基准短语（如「成年女声、清爽亲和」——voice_hint/角色库 voice 的方法论形态）跳过并继续降级：
  * 语义短语不是供应商枚举值，直接下发会 400（M3 验收实测 DashScope Invalid voice）；
@@ -213,11 +233,13 @@ function toLines(list: unknown[]): LineItem[] {
  * [M19 P8] cloneIndex：写 `clone:{id}` 且索引命中 → 返回供应商真实 voiceId + clone 行（调用方据此换端点/模型）；
  * 旧调用签名兼容（不传 cloneIndex 时行为逐字不变），此时 clone 令牌无法解析 → 记入 cloneSkipped 并跳过该级继续降级。
  */
-export type VoiceChainSource = 'line' | 'character' | 'params' | 'settings' | 'instance' | 'default'
+export type VoiceChainSource = 'line' | 'character' | 'voice_map' | 'params' | 'settings' | 'instance' | 'default'
 
 export function resolveVoiceChain(p: {
   lineVoice?: string
   charVoice?: string
+  /** [M24] voice_map[当前 lang] 命中值（调用方解析；undefined → 该级跳过，旧调用逐字不变） */
+  langVoice?: string
   paramVoice?: string
   settingsVoice?: string
   instanceVoice?: string
@@ -232,6 +254,7 @@ export function resolveVoiceChain(p: {
   const levels: Array<[VoiceChainSource, string | undefined]> = [
     ['line', p.lineVoice],
     ['character', p.charVoice],
+    ['voice_map', p.langVoice],
     ['params', p.paramVoice],
     ['settings', p.settingsVoice],
     ['instance', p.instanceVoice],

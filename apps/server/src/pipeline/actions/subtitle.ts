@@ -3,6 +3,7 @@ import { probeMediaDuration } from '../../services/ffmpeg'
 import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { recordLlmUsage } from '../../services/usage'
+import { buildBilingualSrt } from '../../services/creation/gen/subtitle'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
@@ -19,6 +20,9 @@ export interface TimingLine {
  *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
  *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
  *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时。
+ * [M24·F4] 双语扩展：params.target_lang（ISO 639-1，非空启用）定时完成后台词逐句翻译（translate-lines.md），
+ *  params.bilingual='both'（缺省：双语 + 纯目标语两条）| 'merged'（仅双语）；缺失句回退原文 + log；
+ *  产物命名 subtitle.zh-{lang}.srt / subtitle.{lang}.srt，params.lang 标注；不传 target_lang 现行为逐字不变。
  * 输入（二选一，同时提供以 script 优先）：
  *  - script: 对白全文资产（口播文案 md/剧本）
  *  - lines:  台词 JSON 资产（{lines:[{id,text,est_ms?}]}，est_ms 作 LLM/回退参考时长）
@@ -104,6 +108,42 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   const srt = toSrt(timed)
   assertSrt(srt, timed)
 
+  // [M24·F4] 双语分支：target_lang 非空 → 台词逐句翻译 → 双语（+纯目标语）SRT 产物；否则走下方原文单产物现状
+  const targetLang = typeof params['target_lang'] === 'string' && params['target_lang'].trim() ? params['target_lang'].trim().toLowerCase() : ''
+  if (targetLang) {
+    const bilingualMode: 'both' | 'merged' = params['bilingual'] === 'merged' ? 'merged' : 'both'
+    const dstMap = await translateTimedLines(ctx, timed, targetLang)
+    const { bilingual, target } = buildBilingualSrt(
+      timed.map((l) => ({ id: l.id, startMs: l.start_ms, endMs: l.end_ms, text: l.text })),
+      dstMap,
+      bilingualMode,
+    )
+    if (!bilingual) throw new Error(`双语字幕无有效段（target_lang=${targetLang}）`)
+    const ts = Date.now()
+    const outIds: number[] = []
+    outIds.push(
+      (await registerSrtAsset(ctx, `${ts}-subtitle.zh-${targetLang}.srt`, bilingual, promptSnapshot, {
+        ...assetParams,
+        lang: `zh-${targetLang}`,
+        targetLang,
+        bilingual: bilingualMode,
+        translated: dstMap.size,
+      })).id,
+    )
+    if (target) {
+      outIds.push(
+        (await registerSrtAsset(ctx, `${ts}-subtitle.${targetLang}.srt`, target, promptSnapshot, {
+          ...assetParams,
+          lang: targetLang,
+          targetLang,
+          translated: dstMap.size,
+        })).id,
+      )
+    }
+    ctx.log(`双语字幕已生成（zh→${targetLang}，${dstMap.size}/${timed.length} 句译文，模式 ${bilingualMode}）→ asset#${outIds.join(', #')}`)
+    return { assetIds: outIds }
+  }
+
   const fileName = `${Date.now()}-subtitle.srt`
   const relPath = relPathOf(ctx.run.projectId, 'subtitle', fileName)
   ensureProjectDirs(ctx.run.projectId)
@@ -124,6 +164,91 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   })
   ctx.log(`字幕已生成 asset#${asset.id}（${timed.length} 条，末条结束 ${msToClock(timed[timed.length - 1]!.end_ms)}）`)
   return { assetIds: [asset.id] }
+}
+
+/** [M24] SRT 产物登记（双语分支专用，与原文路径同口径：purpose=subtitle，ext srt） */
+async function registerSrtAsset(
+  ctx: StepContext,
+  fileName: string,
+  content: string,
+  promptSnapshot: string,
+  assetParams: Record<string, unknown>,
+) {
+  const relPath = relPathOf(ctx.run.projectId, 'subtitle', fileName)
+  ensureProjectDirs(ctx.run.projectId)
+  writeFileSync(absPathOf(relPath), content, 'utf8')
+  return registerAsset(ctx.run.projectId, {
+    stepId: ctx.step.id,
+    runId: ctx.run.id,
+    kind: 'text',
+    purpose: 'subtitle',
+    relPath,
+    name: fileName,
+    mime: 'text/plain',
+    ext: 'srt',
+    fileSize: Buffer.byteLength(content, 'utf8'),
+    prompt: promptSnapshot.slice(0, 4000),
+    params: assetParams,
+    tags: ['subtitle'],
+  })
+}
+
+/** [M24·F4] 定时结果逐句翻译（translate-lines.md 契约）→ id→dst 映射；缺失/同原文不进 map（调用方回退原文已 log） */
+async function translateTimedLines(ctx: StepContext, timed: TimingLine[], targetLang: string): Promise<Map<string, string>> {
+  const templateText = loadPromptTemplate('translate-lines.md')
+  const linesPayload = timed.map((l) => ({ id: l.id, text: l.text }))
+  const userPrompt = `${templateText}\n\n===== lines =====\n${JSON.stringify(linesPayload, null, 2)}\n\n目标语言：${targetLang}`
+  const ep = await resolveLlmEndpoint()
+  ctx.log(`字幕翻译：调用 ${ep.model}（zh→${targetLang}，${timed.length} 句）`)
+  const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
+  const res = await chatCompleteDetailed(
+    [
+      { role: 'system', content: '你是字幕翻译引擎，只输出任务要求的合法 JSON 数组，不输出任何解释或 markdown 围栏。' },
+      { role: 'user', content: userPrompt },
+    ],
+    ep,
+    { temperature: 0.3, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000 },
+  )
+  await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
+  const parsed = parseLineTranslations(res.content)
+  const out = new Map<string, string>()
+  for (const l of timed) {
+    const dst = (parsed.get(l.id) ?? '').trim()
+    if (dst && dst !== l.text.trim()) out.set(l.id, dst)
+    else ctx.log(`句 ${l.id} 无有效译文 → 双语回退原文`)
+  }
+  return out
+}
+
+/**
+ * [M24·F4] 解析翻译契约 [{id,text,dst}]（纯函数，供探针直测）：
+ * 剥围栏；根数组或 {lines:[...]} 宽容；id 字符串化对齐；dst 非字符串/空 → 该条丢弃。
+ */
+export function parseLineTranslations(raw: string): Map<string, string> {
+  const noFence = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+  const start = noFence.indexOf('[') >= 0 && (noFence.indexOf('{') < 0 || noFence.indexOf('[') < noFence.indexOf('{'))
+    ? noFence.slice(noFence.indexOf('['))
+    : noFence.slice(noFence.indexOf('{'))
+  let obj: unknown
+  try {
+    obj = JSON.parse(start)
+  } catch {
+    return new Map()
+  }
+  const list = Array.isArray(obj)
+    ? obj
+    : ((obj as { lines?: unknown }).lines ?? [])
+  const out = new Map<string, string>()
+  if (!Array.isArray(list)) return out
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const rec = item as Record<string, unknown>
+    if (rec['id'] === undefined || rec['id'] === null) continue
+    const dst = typeof rec['dst'] === 'string' ? rec['dst'].trim() : ''
+    if (!dst) continue
+    out.set(String(rec['id']), dst)
+  }
+  return out
 }
 
 /** 汇集台词来源：script 全文优先；否则 lines JSON（est_ms 注入提示词作参考） */
