@@ -26,3 +26,6 @@ export type { AddNodeBody, CanvasNodePatch } from './canvas'
 export type { CanvasDocNode } from '../types'
 
 export { statsApi, exportApi, publicationApi, settingsApi, scheduleApi, budgetApi } from './insights'
+
+export { workflowApi } from './workflows'
+export type { WorkflowCreateBody, WorkflowPatchBody } from './workflows'

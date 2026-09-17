@@ -390,6 +390,22 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 验证：`pnpm ci:check` 端到端 exit=0（双端 typecheck + 模板校验 14/101/0 错 + `probe:ci` **23 探针 / 2873 断言全绿**）；`vite build` 绿；`probe-m26`（五节 runner / probe-lib / split-audit / ollama-seed / stress）全绿，`split-audit` 门禁收口为「红线存量 `=== 0`」；浏览器抽查（画布三态 + 设计态连线/草案/保存 + 创作画布 + 品牌设置平台/项目两态）console 零 error 无回归。详见 `docs/superpowers/specs/2026-09-17-agencys-content-studio-m26-design.md`。
 
 
+## M27 能力速览（自动编排 · 真 orchestrator）
+
+把 M5 以来「以场景入口 + 完成态接力缓解」的跨模板流转升级为**用户显式编排、系统自动级联**的编排链 orchestrator（纲领 §一 I 组战略收官）。设计三原则：**不碰引擎**（段序列引用既有模板，无 `run_template` 递归 action，`KNOWN_ACTIONS` 零增）、**复用既有基建**（M4 `onRunSettled` 钩子 + `createRunRow`/`engine.startRun` + M20 `checkBudget` + M5 `template.next`）、**计费安全默认关**（`autoAdvance` 缺省 0 + 每跳前预算闸门 + 失败暂停不重试）。
+
+- **I1 跨模板自动串链**：`workflows` 表存有序段序列（`segments` JSON `[{templateKey, inputSpec?}]`）+ 逐链 `autoAdvance` 开关 + 链级 `budgetCap`；`advanceWorkflow`（九步：落定守卫→失败/取消暂停→仅完成推进→autoAdvance 判定→末段 done→预算闸门→输入解析→段间产物映射→创建并启动下一段）经 `onRunSettled` 并列钩子驱动。`pipelineRuns` +2 可空列 `workflow_id`/`workflow_seq`（`ensureColumn` 幂等），链进度由关联 run 派生（无独立进度表）。
+- **段间输入映射**：`resolveSegmentInput` 纯函数按 `inputSpec` 逐字段取值——`$prev.assets:<purpose>`（上游产物 id 数组）/ `$prev.asset:<purpose>`（单 id）/ `$prev.text:<purpose>`（读取上游文本资产正文）/ 字面量常量；required 未满足且无 default → `blocked{reason:'input'}` 暂停不触发。双链路口径（`step.output.asset_ids` ∪ `assets.runId`）兼容 `manual_ingest` 与 `writeTextAsset` 两类产物登记。
+- **I2 模板嵌套（收窄为编排层引用）**：`clone` 复制段序列为新 draft 链（`autoAdvance` 复位 0 计费安全），复用既有模板不触引擎、无递归执行；运行时深度嵌套（step 内跑子模板 DAG）明确排除另议。
+- **I3 编排可视化**：扩展 `buildCanvasOverview`（`CanvasOverview.workflows`：链状态/autoAdvance + 段序列模板名/run 状态/成本派生，无链 → `[]` 旧前端超集兼容）；全景 tab 新增「编排链」区（横向节点序列 + 段状态/成本徽章 + autoAdvance 滑动开关 + 启动/暂停/续跑/克隆/删除）+ 链构建器 Modal（选模板成序、`template.next` 建议、段间输入映射）。
+- **状态机与断点恢复**：`draft|active|paused|done|cancelled`；`startWorkflow` 显式启动首段（仅 draft|paused 且链内无既有 run）、`pause`、`resumeWorkflow`（paused→active 后取链内最大 seq 已落定 run 重新驱动 advance，修复阻塞解除/事后开关联动后的续跑不断链）；events 新增 `workflow.advanced`/`segment_done`/`blocked`/`completed` 四变体。
+- **并发与幂等安全**：模块级 `advancing: Set<workflowId>` 互斥锁贯通 start/advance（防并发双启动重复计费 + 防 settle 重入）；`advanceWorkflowCore` 落库前状态复核（防 pause TOCTOU）+ 下游 `workflowSeq` 存在性守卫（防重放/并发双建下游）。
+
+端点：`GET /workflows`（?project_id=&status=）、`GET /workflows/:id`、`POST /projects/:id/workflows`（建 + 链校验 warnings）、`PATCH /workflows/:id`（active 改 segments 需先 pause）、`DELETE /workflows/:id`（仅 draft|done|cancelled）、`POST /workflows/:id/clone|start|pause|resume`。
+
+验证：`pnpm ci:check` 端到端 exit=0（双端 typecheck + 模板校验 14/101/0 错 0 警 + `probe:ci` **24 探针 / 2919 断言全绿**含 `probe-m27` 46 断言九节〔schema / workflow-crud / segment-input / auto-advance / budget-gate / breakpoint-pause / recovery-guard / nesting-clone / overview-workflows〕）；`vite build` 绿；HTTP 契约冒烟（建链 note-clip→platform-adapt / PATCH autoAdvance / 克隆 / overview 派生 / 删除清理）通过；`git diff` 确认 engine/dag/loader/refs 零 diff、schema 纯加法。CodeReview 复核「可收口」：resume 死锁 / pause TOCTOU / 双启动计费三项修复闭环。详见 `docs/superpowers/specs/2026-09-17-agencys-content-studio-m27-design.md`。
+
+
 ## 内置模板
 
 下表标注各模板的方法论来源（对应「内容创作者套件」技能）；模板可独立运行，亦可按「典型工作流链」串联。

@@ -14,6 +14,10 @@ export type StudioEvent =
       status: string; finished: number; total: number }
   | { type: 'canvas.changed'; canvasId: number; projectId: number; nodeId?: number }
   | { type: 'entity.ref_gen'; projectId: number; taskId: number; entityId: number; status: string; error?: string }
+  | { type: 'workflow.segment_done'; workflowId: number; projectId: number; runId: number; seq: number }
+  | { type: 'workflow.advanced'; workflowId: number; projectId: number; fromRunId: number; toRunId: number; seq: number }
+  | { type: 'workflow.blocked'; workflowId: number; projectId: number; runId: number | null; reason: 'failed' | 'budget' | 'input' }
+  | { type: 'workflow.completed'; workflowId: number; projectId: number }
 
 type Handler = (e: StudioEvent) => void
 

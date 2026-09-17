@@ -405,4 +405,44 @@ async function ensureSchemaColumns(): Promise<void> {
       log.warn(`ensureColumn failed: ${(err as Error).message}`)
     }
   }
+
+  // [M27] 自动编排链建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS workflows (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        name text NOT NULL,
+        status text DEFAULT 'draft' NOT NULL,
+        auto_advance integer DEFAULT 0 NOT NULL,
+        budget_cap real,
+        segments text DEFAULT '[]' NOT NULL,
+        note text,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_workflows_project ON workflows (project_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_workflows_status ON workflows (status)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // [M27] pipeline_runs +2 可空列（workflow_id / workflow_seq；存量行 NULL = 非编排 run）
+  if (!has.has('workflow_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN workflow_id integer')
+      log.info('ensureColumn: pipeline_runs.workflow_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  if (!has.has('workflow_seq')) {
+    try {
+      await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN workflow_seq integer')
+      log.info('ensureColumn: pipeline_runs.workflow_seq 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
 }

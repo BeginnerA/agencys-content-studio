@@ -32,6 +32,7 @@
     "probe:m24": "tsx scripts/probe-m24.ts",
     "probe:m25": "tsx scripts/probe-m25.ts",
     "probe:m26": "tsx scripts/probe-m26.ts",
+    "probe:m27": "tsx scripts/probe-m27.ts",
     "probe:all": "tsx scripts/run-probes.ts",
     "probe:ci": "tsx scripts/run-probes.ts --fail-fast",
     "validate:templates": "tsx scripts/validate-templates.ts",

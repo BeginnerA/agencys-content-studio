@@ -623,7 +623,7 @@ onMounted(() => {
     <div class="cv-stage">
       <!-- [M23] 全景（项目级聚合：跨批次/跨模板） -->
       <div v-if="tab === 'overview'" class="ov-wrap">
-        <OverviewPanel v-if="overview" :data="overview" @open-run="goRun" @open-batch="goBatch" />
+        <OverviewPanel v-if="overview" :data="overview" @open-run="goRun" @open-batch="goBatch" @reload="loadOverview()" />
         <div v-else class="ov-ph muted">
           {{ overviewLoading ? '加载中…' : projectId == null ? '暂无项目（先在项目页创建一个项目）' : '暂无全景数据' }}
         </div>

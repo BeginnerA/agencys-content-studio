@@ -9,6 +9,7 @@ import { env } from './env'
 import { createLogger } from './logger'
 import { engine, onRunSettled, recoverInterruptedState, refreshGlobalConcurrency } from './pipeline/engine'
 import { notifyRunSettled, reconcileBatches, pumpStalledBatches } from './services/batch'
+import { advanceWorkflow } from './services/workflow'
 import { registerAutoSummaryHook } from './services/memory-autosummary'
 import { startScheduler, stopScheduler } from './services/schedule'
 import { purgeExpiredCanvases } from './services/trash-sweep'
@@ -72,6 +73,11 @@ async function main(): Promise<void> {
   // [M4] 先注册终态监听（批 pump 钩子），再 recover——避免恢复期通知落空
   onRunSettled((runId) => {
     void notifyRunSettled(runId).catch((err) => log.error(`settle→pump run ${runId} 失败`, err))
+  })
+
+  // [M27] 编排链推进钩子（与批 pump 并列、互不影响；settle 异常隔离，不波及引擎主流程）
+  onRunSettled((runId) => {
+    void advanceWorkflow(runId).catch((err) => log.error(`settle→advance run ${runId} 失败`, err))
   })
 
   // [M24·F1] 自动摘要钩子（settings memory.auto_summary 缺省关；内部门控，fire-and-forget 隔离）

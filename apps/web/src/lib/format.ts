@@ -159,6 +159,27 @@ export function batchStatus(s: string): StatusMeta {
   return { text: BATCH_TEXT[s] ?? s, cls: s }
 }
 
+const WORKFLOW_TEXT: Record<string, string> = {
+  draft: '草稿',
+  active: '进行中',
+  paused: '已暂停',
+  done: '已完成',
+  cancelled: '已取消',
+}
+// 链态 badge 复用 run 状态色类（queued/running/waiting_input/completed/cancelled），避免新增样式
+const WORKFLOW_CLS: Record<string, string> = {
+  draft: 'queued',
+  active: 'running',
+  paused: 'waiting_input',
+  done: 'completed',
+  cancelled: 'cancelled',
+}
+
+/** [M27] 编排链状态展示（文字徽章 + 复用色类，非仅色编码） */
+export function workflowStatus(s: string): StatusMeta {
+  return { text: WORKFLOW_TEXT[s] ?? s, cls: WORKFLOW_CLS[s] ?? s }
+}
+
 /** 数量展示（≥1 万缩为「x.x 万」） */
 export function fmtQty(n: number): string {
   return n >= 10000 ? `${(n / 10000).toFixed(1)} 万` : String(Math.round(n))

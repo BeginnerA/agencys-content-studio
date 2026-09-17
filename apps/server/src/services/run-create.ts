@@ -55,6 +55,8 @@ export async function createRunRow(p: {
   input: Record<string, unknown>
   batchId?: number | null
   batchSeq?: number | null
+  workflowId?: number | null
+  workflowSeq?: number | null
 }): Promise<PipelineRun> {
   const template = loadTemplateOrThrow(p.templateKey)
   const norm = prepareRunInput(template, p.input)
@@ -70,6 +72,9 @@ export async function createRunRow(p: {
       templateSnapshot: JSON.stringify(template),
       batchId: p.batchId ?? null,
       batchSeq: p.batchSeq ?? null,
+      // [M27] 编排链归属（NULL = 非编排 run）
+      workflowId: p.workflowId ?? null,
+      workflowSeq: p.workflowSeq ?? null,
       createdAt: t,
       updatedAt: t,
     })

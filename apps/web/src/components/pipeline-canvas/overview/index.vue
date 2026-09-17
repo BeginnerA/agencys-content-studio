@@ -9,12 +9,13 @@
 import { computed } from 'vue'
 import Icon from '../../common/Icon.vue'
 import RunCard from './run-card.vue'
+import WorkflowsSection from './workflows-section.vue'
 import { batchStatus, fmtCost, fmtTime, runStatus } from '../../../lib/format'
 import type { CanvasOverview, CanvasOverviewBatch } from '../../../lib/types'
 import type { RunStatus } from '../../../lib/types'
 
 const props = defineProps<{ data: CanvasOverview }>()
-const emit = defineEmits<{ 'open-run': [id: number]; 'open-batch': [id: number] }>()
+const emit = defineEmits<{ 'open-run': [id: number]; 'open-batch': [id: number]; reload: [] }>()
 
 /** 常见状态固定顺序，未知状态追加在后 */
 const STATUS_ORDER: RunStatus[] = ['running', 'completed', 'failed', 'cancelled']
@@ -55,6 +56,14 @@ function batchProgress(b: CanvasOverviewBatch): number {
         <span class="cost mono">总成本 {{ fmtCost(data.stats.totalCost) }}</span>
       </div>
     </div>
+
+    <!-- [M27] 编排链区（独立于 run 数：链可在无任何运行前预先编排） -->
+    <WorkflowsSection
+      :project-id="data.project.id"
+      :workflows="data.workflows"
+      @changed="emit('reload')"
+      @open-run="emit('open-run', $event)"
+    />
 
     <!-- 空态 -->
     <div v-if="!data.stats.runCount" class="panel ov-empty">

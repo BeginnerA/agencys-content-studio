@@ -1,5 +1,6 @@
 import type { RunStatus, StepStatus } from './base'
 import type { Batch } from './batch'
+import type { WorkflowStatus } from './workflow'
 
 // ===== [M15] 流水线画布（GET /runs/:id/canvas · GET /templates/:key/canvas 契约） =====
 
@@ -182,6 +183,25 @@ export interface CanvasOverviewBatch extends Batch {
   runs: OverviewRunLite[]
 }
 
+/** [M27] 编排链段概览（每段取 workflowId+seq 最新 run；无 run → runId/runStatus/cost 均 null） */
+export interface WorkflowSegmentLite {
+  seq: number
+  templateKey: string
+  templateName: string
+  runId: number | null
+  runStatus: RunStatus | null
+  cost: number | null
+}
+
+/** [M27] 编排链概览（全景「编排链」区数据源） */
+export interface WorkflowOverviewLite {
+  id: number
+  name: string
+  status: WorkflowStatus
+  autoAdvance: number
+  segments: WorkflowSegmentLite[]
+}
+
 /** [M23] 全景读模型（项目内跨批次/跨模板聚合） */
 export interface CanvasOverview {
   project: { id: number; name: string }
@@ -190,6 +210,8 @@ export interface CanvasOverview {
   /** 无批次归属 runs（createdAt desc） */
   standaloneRuns: OverviewRunLite[]
   stats: { runCount: number; byStatus: Record<string, number>; totalCost: number }
+  /** [M27] 编排链（旧前端超集兼容；无链 → []） */
+  workflows: WorkflowOverviewLite[]
 }
 
 // ===== [M23] 模板画布内编辑（本地草稿层；不参与网络契约） =====

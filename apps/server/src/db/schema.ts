@@ -43,11 +43,14 @@ export const pipelineRuns = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
     batchId: integer('batch_id'), // [M4] 所属批次（NULL = 独立 run）
     batchSeq: integer('batch_seq'), // [M4] 批内序号（从 1 起）
+    workflowId: integer('workflow_id'), // [M27] 归属编排链（NULL = 非编排 run）
+    workflowSeq: integer('workflow_seq'), // [M27] 链内段序（从 0 起）
   },
   (t) => [
     index('idx_runs_project').on(t.projectId),
     index('idx_runs_status').on(t.status),
     index('idx_runs_batch').on(t.batchId),
+    index('idx_runs_workflow').on(t.workflowId),
   ],
 )
 
@@ -456,6 +459,25 @@ export const schedules = sqliteTable(
   ],
 )
 
+/** [M27] 自动编排链（跨模板串链 orchestrator；段序列引用既有模板，不碰引擎） */
+export const workflows = sqliteTable(
+  'workflows',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(), // 链挂项目级
+    name: text('name').notNull(),
+    // draft|active|paused|done|cancelled
+    status: text('status').notNull().default('draft'),
+    autoAdvance: integer('auto_advance').notNull().default(0), // 0=安全默认关；1=完成自动级联
+    budgetCap: real('budget_cap'), // 链级累计成本上限（元；NULL=不设链上限，仍受 project 预算约束）
+    segments: text('segments').notNull().default('[]'), // JSON：[{ templateKey, inputSpec? }] 有序
+    note: text('note'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_workflows_project').on(t.projectId), index('idx_workflows_status').on(t.status)],
+)
+
 /** [M19] 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
 export const voiceClones = sqliteTable('voice_clones', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -491,6 +513,7 @@ export type CanvasGroup = typeof canvasGroups.$inferSelect
 export type CanvasSnapshot = typeof canvasSnapshots.$inferSelect
 export type VoiceClone = typeof voiceClones.$inferSelect
 export type Schedule = typeof schedules.$inferSelect
+export type Workflow = typeof workflows.$inferSelect
 
 /** [M20] 预算告警记录（超阈告警留痕；24h 去抖） */
 export const budgetAlerts = sqliteTable('budget_alerts', {
