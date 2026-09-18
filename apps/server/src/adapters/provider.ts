@@ -1,4 +1,5 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
 import { AliyunQwenImageAdapter } from './aliyun-qwen-image'
 import { AliyunWanImageAdapter } from './aliyun-wan-image'
 import { GeminiImageAdapter } from './gemini-image'
@@ -42,7 +43,11 @@ export function getImageAdapter(providerKey: string): ImageAdapter {
   return adapter
 }
 
+export interface EndpointPin { configId: number; configHash?: string }
+
 export interface ResolvedEndpoint {
+  configId: number
+  configHash: string
   providerKey: string
   serviceType: string
   baseUrl: string
@@ -58,11 +63,13 @@ export interface ResolvedEndpoint {
  * 端点配置缺失或 key 未填时抛错并附配置指引。
  */
 export async function resolveEndpoint(
-  serviceType: 'image' | 'video' | 'audio',
+  serviceType: 'image' | 'video' | 'audio' | 'llm',
   providerKey?: string,
+  pin?: EndpointPin,
 ): Promise<ResolvedEndpoint> {
   const conds = [eq(apiConfigs.serviceType, serviceType), eq(apiConfigs.isActive, 1)]
   if (providerKey) conds.push(eq(apiConfigs.providerKey, providerKey))
+  if (pin) conds.push(eq(apiConfigs.id, pin.configId))
   const rows = await db
     .select()
     .from(apiConfigs)
@@ -79,6 +86,7 @@ export async function resolveEndpoint(
   // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
   let apiKey = ''
   let credBaseUrl = ''
+  let credentialRef: string | null = null
   if (cfg.credentialId != null) {
     const credRows = await db
       .select()
@@ -87,6 +95,7 @@ export async function resolveEndpoint(
       .limit(1)
     const cred = credRows[0]
     if (cred) {
+      credentialRef = cred.apiKeyRef
       apiKey = resolveApiKey(cred.apiKeyRef)
       credBaseUrl = cred.baseUrl?.trim() ?? ''
     }
@@ -115,7 +124,15 @@ export async function resolveEndpoint(
   } catch {
     extra = {}
   }
+  // 只返回指纹，不持久化 URL、extra 或密钥；默认标记/优先级变化不影响已锁定实例。
+  const configHash = createHash('sha256').update(JSON.stringify({
+    id: cfg.id, provider: cfg.providerKey, serviceType, baseUrl, model: cfg.model,
+    extra, pricing: cfg.pricing, credentialId: cfg.credentialId, credentialRef, keyRef: cfg.apiKeyRef,
+  })).digest('hex')
+  if (pin?.configHash && pin.configHash !== configHash) throw new Error('已确认的供应商实例配置发生变化，请重新规划并确认')
   return {
+    configId: cfg.id,
+    configHash,
     providerKey: cfg.providerKey,
     serviceType,
     baseUrl,
@@ -132,8 +149,9 @@ export async function buildImageRequest(params: {
   model?: string
   size?: string
   referenceImages?: string[]
+  pin?: EndpointPin
 }): Promise<{ adapter: ImageAdapter; request: ImageGenRequest }> {
-  const endpoint = await resolveEndpoint('image', params.provider)
+  const endpoint = await resolveEndpoint('image', params.provider, params.pin)
   const adapter = getImageAdapter(endpoint.providerKey)
   return {
     adapter,

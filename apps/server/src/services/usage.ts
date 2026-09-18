@@ -29,6 +29,8 @@ export interface UsageInput {
   quantity: number
   unit: UsageUnit
   meta?: Record<string, unknown>
+  /** 已批准实例价格快照；null 明确表示未计价。 */
+  unitPrice?: number | null
 }
 
 export interface UsageSummaryItem {
@@ -100,6 +102,7 @@ export function priceOf(
  * recordUsage（写入快照）与 run-preview（成本预估）共用，保证两条链路口径零漂移。
  */
 export async function resolveUnitPrice(q: {
+  configId?: number
   kind: UsageKind
   provider?: string | null
   model?: string | null
@@ -114,6 +117,7 @@ export async function resolveUnitPrice(q: {
       .where(and(
         eq(apiConfigs.providerKey, q.provider),
         eq(apiConfigs.isActive, 1),
+        ...(q.configId ? [eq(apiConfigs.id, q.configId)] : []),
         ...(q.model ? [eq(apiConfigs.model, q.model)] : []),
       ))
       .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
@@ -140,7 +144,7 @@ export async function resolveUnitPrice(q: {
 export async function recordUsage(input: UsageInput): Promise<void> {
   try {
     // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null（[M18] 抽取 resolveUnitPrice 与 run-preview 共用）
-    const unitPrice = await resolveUnitPrice({
+    const unitPrice = input.unitPrice !== undefined ? input.unitPrice : await resolveUnitPrice({
       kind: input.kind,
       provider: input.provider,
       model: input.model,

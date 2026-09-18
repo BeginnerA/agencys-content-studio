@@ -22,6 +22,7 @@ export async function resetShotForRegenerate(
 ): Promise<{ runId: number; taskId: number }> {
   if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'shot_id 非法')
   const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  if (run.templateKey === 'easy-video') throw new WorkbenchError('creation_confirmation_required', '额外镜头生成需复制需求并确认新方案；失败恢复请回轻松创作', 409)
 
   const tasks = await db
     .select()

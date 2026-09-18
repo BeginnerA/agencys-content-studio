@@ -85,56 +85,23 @@ export async function checkBudget(q: { projectId: number; estimatedCost?: number
   message: string
 } | null> {
   const cfg = await loadBudget()
-  const alertRatio = cfg.alertRatio ?? 0.8
-
-  // 项目级预算检查
-  const projBudget = cfg.projects?.[String(q.projectId)]
-  if (projBudget) {
-    if (projBudget.monthly !== undefined) {
-      const spent = await getSpent({ projectId: q.projectId, monthly: true })
-      const limit = projBudget.monthly
-      if (spent >= limit * alertRatio) {
-        const est = q.estimatedCost ?? 0
-        if (spent + est > limit) {
-          return {
-            code: 'budget_monthly_exceeded',
-            message: `项目月度预算 ${limit} 元已用 ${spent.toFixed(2)} 元（${Math.round(spent / limit * 100)}%），预估 ${est.toFixed(2)} 元将超限`,
-          }
-        }
-      }
-    }
-    if (projBudget.total !== undefined) {
-      const spent = await getSpent({ projectId: q.projectId, monthly: false })
-      const limit = projBudget.total
-      if (spent >= limit * alertRatio) {
-        const est = q.estimatedCost ?? 0
-        if (spent + est > limit) {
-          return {
-            code: 'budget_total_exceeded',
-            message: `项目总预算 ${limit} 元已用 ${spent.toFixed(2)} 元（${Math.round(spent / limit * 100)}%），预估 ${est.toFixed(2)} 元将超限`,
-          }
-        }
+  const est = Math.max(0, q.estimatedCost ?? 0)
+  const scopes = [
+    { projectId: q.projectId, budget: cfg.projects?.[String(q.projectId)], prefix: '', label: '项目' },
+    { projectId: undefined, budget: cfg.global, prefix: 'global_', label: '全局' },
+  ]
+  for (const scope of scopes) {
+    for (const kind of ['monthly', 'total'] as const) {
+      const limit = scope.budget?.[kind]
+      if (limit === undefined) continue
+      const spent = await getSpent({ projectId: scope.projectId, monthly: kind === 'monthly' })
+      // 预检独立于告警阈值；低用量的大任务同样可能超预算。
+      if (spent + est > limit) return {
+        code: `budget_${scope.prefix}${kind}_exceeded`,
+        message: `${scope.label}${kind === 'monthly' ? '月度' : '总'}预算 ${limit} 元，已用 ${spent.toFixed(2)} 元，本次已知预计 ${est.toFixed(2)} 元将超限`,
       }
     }
   }
-
-  // 全局预算检查
-  if (cfg.global) {
-    if (cfg.global.monthly !== undefined) {
-      const spent = await getSpent({ monthly: true })
-      const limit = cfg.global.monthly
-      if (spent >= limit * alertRatio) {
-        const est = q.estimatedCost ?? 0
-        if (spent + est > limit) {
-          return {
-            code: 'budget_global_monthly_exceeded',
-            message: `全局月度预算 ${limit} 元已用 ${spent.toFixed(2)} 元（${Math.round(spent / limit * 100)}%）`,
-          }
-        }
-      }
-    }
-  }
-
   return null
 }
 

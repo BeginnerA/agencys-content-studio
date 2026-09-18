@@ -6,6 +6,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { RUN_LOGS_DIR } from '../env'
 import { emitStudioEvent } from '../services/events'
 import { readRunParams } from '../services/run-params'
+import { frozenSettings } from '../services/creation-chat/recipe'
 import { absPathOf, readTextAsset } from '../services/storage'
 import type { Template, TemplateStepDef } from './types'
 
@@ -52,7 +53,7 @@ export async function createStepContext(opts: {
   const { run, step, template, def, input } = opts
   // [M14] 集级参数覆盖（run.input._params，启动时快照）：无键时合并结果与旧行为逐字等价
   const runParams = readRunParams(run.input)
-  const settings: RunSettings = {
+  const settings: RunSettings = await frozenSettings(run, def.action) ?? {
     llm: { ...((template.defaults?.llm as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.llm as Record<string, unknown>) ?? {}), ...(runParams.llm ?? {}) },
     image: { ...((template.defaults?.image as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.image as Record<string, unknown>) ?? {}), ...(runParams.image ?? {}) },
     video: { ...((template.defaults?.video as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.video as Record<string, unknown>) ?? {}), ...(runParams.video ?? {}) },

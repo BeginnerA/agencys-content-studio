@@ -11,6 +11,8 @@ import {
   canvases,
   characters,
   contentVersions,
+  creationMessages,
+  creationSessions,
   execInputs,
   execSnapshots,
   genTasks,
@@ -213,7 +215,12 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
   // 无外键约束：事务内按依赖顺序清理（steps → runs → 其余按 project_id → projects 最后）
   const purged = await db.transaction(async (tx) => {
     const cnt = async (rows: Promise<{ id: number }[]>) => (await rows).length
+    const active = await tx.select({ id: pipelineRuns.id }).from(pipelineRuns).where(and(eq(pipelineRuns.projectId, id), inArray(pipelineRuns.status, ['queued', 'running', 'waiting_input'])))
+    if (active.length) throw new HttpError(409, 'has_active_runs', '项目刚启动了制作，请先取消后再删除')
+    const sessions = tx.select({ id: creationSessions.id }).from(creationSessions).where(eq(creationSessions.projectId, id))
     return {
+      creationMessages: await cnt(tx.delete(creationMessages).where(inArray(creationMessages.sessionId, sessions)).returning({ id: creationMessages.id })),
+      creationSessions: await cnt(tx.delete(creationSessions).where(eq(creationSessions.projectId, id)).returning({ id: creationSessions.id })),
       steps: runIds.length
         ? await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
         : 0,

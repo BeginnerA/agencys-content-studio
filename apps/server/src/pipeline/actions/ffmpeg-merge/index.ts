@@ -21,6 +21,8 @@ import type { AlignPlan } from './align'
 import type { StepContext } from '../../context'
 import type { StepResult } from '../../types'
 import type { Asset } from '../../../db/schema'
+import { recipeOf } from '../../../services/creation-chat/recipe'
+import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } from './strict'
 
 /**
  * ffmpeg_merge：镜头序列 → 成片 + 封面（spec §5.4 三流合成）。
@@ -50,9 +52,12 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
+  const strict = params['strict_delivery'] === true
+  const recipe = strict ? recipeOf(ctx.run) : null
+  if (strict && !recipe) throw new Error('严格合成缺少批准方案')
   const vidCfg = (ctx.settings.video ?? {}) as Record<string, unknown>
   const fps = numParam(params['fps'] ?? vidCfg['fps'], 25)
-  const resolution =
+  const resolution = recipe ? ({ '9:16': '720x1280', '16:9': '1280x720', '1:1': '720x720' }[recipe.plan.aspectRatio]) :
     (typeof params['resolution'] === 'string' && params['resolution'])
     || (typeof vidCfg['resolution'] === 'string' && vidCfg['resolution'])
     || '1080x1920'
@@ -77,7 +82,9 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // [M7] shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
   const perShotDur = await loadPerShotDurations(ctx, shotsIds)
-  const { segments, skipped, warnings } = computeShotSegments(rows, mode, perShotDur, durationPerShot)
+  const { segments, skipped, warnings } = recipe
+    ? { segments: strictSegments(recipe.plan, rows, ctx.run.projectId), skipped: [] as number[], warnings: [] as string[] }
+    : computeShotSegments(rows, mode, perShotDur, durationPerShot)
   for (const w of warnings) ctx.log(w)
   if (skipped.length > 0) {
     for (const id of skipped) {
@@ -141,7 +148,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   let alignPlan: AlignPlan | null = null
   // 回退原因：motion_mode / no_voices / no_lineid / 计划 reason / mapping_incomplete（成功路径该值不参与 params）
   let alignReason = 'not_applicable'
-  if (mode !== 'images') {
+  if (recipe) {
+    alignPlan = strictVoicePlan(recipe.plan, await ctx.assetsOf(voiceIds), ctx.run.projectId)
+    if (!srtRelPath || subtitleIds.length !== 1) throw new Error('严格交付缺少字幕')
+    assertStrictSrt(absPathOf(srtRelPath), recipe.plan, alignPlan, await ctx.assetsOf(voiceIds))
+  } else if (mode !== 'images') {
     alignReason = 'motion_mode'
   } else if (voiceMetas.length === 0) {
     alignReason = 'no_voices'
@@ -248,7 +259,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
   // [M11] 转场计划（仅静态图 ≥2 镜生效；_compose 覆盖模板 params；禁用时 filter 与 M7 逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
-  const transitionReq = composeCfg.transition ?? (typeof params['transition'] === 'string' ? params['transition'] : 'none')
+  const transitionReq = strict ? 'none' : composeCfg.transition ?? (typeof params['transition'] === 'string' ? params['transition'] : 'none')
   const transitionDurReq = composeCfg.transition_duration ?? numParam(params['transition_duration'], 0.5)
   const transitionUsable = mode === 'images' && segments.length >= 2
   const xfadePlan = buildTransitionPlan(
@@ -266,7 +277,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // [M11] BGM（run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
   const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], 0.25), 0, 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
-  const bgmAsset = await loadBgmAsset(ctx.run.id)
+  const bgmAsset = strict ? null : await loadBgmAsset(ctx.run.id)
   let bgmPath: string | null = null
   if (bgmAsset) {
     if (bgmAsset.relPath && existsSync(absPathOf(bgmAsset.relPath))) bgmPath = absPathOf(bgmAsset.relPath)
@@ -283,7 +294,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   )
   if (voicePaths.length > 0) ctx.log(`混流 ${voicePaths.length} 句配音轨（连续拼接${needStretch ? '' : `，对齐总时长 ${total}s`}）`)
   // [M19] 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
-  const brand = await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
+  const brand = strict ? {} : await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
   // 字幕样式采用链：结构化优先（brand.subtitle 非空 → 接管）；否则旧链逐字节不变
   const legacyStyle = (typeof params['subtitle_style'] === 'string' && params['subtitle_style'])
     || (typeof vidCfg['subtitle_style'] === 'string' && vidCfg['subtitle_style'])
@@ -312,7 +323,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   if (outroArg) ctx.log(`片尾就绪：${round3(outroArg.durSec)}s（来源 ${brand.outro!.source}）`)
   // [M19] per-shot 音效解析（run 级直查；每镜 ≤1 条；起点 = Σ_{j<i} d_j + 片头位移；缺文件跳过 + log）
   const sfxVolume = clamp(composeCfg.sfx_volume ?? 1, 0, 2)
-  const sfxMap = await loadSfxAssets(ctx.run.id)
+  const sfxMap = strict ? new Map<string, Asset>() : await loadSfxAssets(ctx.run.id)
   let sfxList: ComposeSfxInput[] = []
   if (sfxMap.size > 0) {
     const { entries, missing } = planSfxStarts(
@@ -340,7 +351,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const outRel = relPathOf(ctx.run.projectId, 'final_video', outName)
   const outAbs = absPathOf(outRel)
   // [M19] 多画幅原生渲染目标（与主画幅同比例者剔除；派生件落 video/ 子目录 purpose=final_video_derived）
-  const multiAspect = readMultiAspect(composeCfg)
+  const multiAspect = strict ? null : readMultiAspect(composeCfg)
   const maTargets = multiAspect
     ? multiAspect.aspects
         .filter((a) => !isSameAspect(width, height, a))
@@ -357,7 +368,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const introShift = introArg ? round3(introArg.durSec) : 0
   let srtAbs: string | null = srtRelPath ? absPathOf(srtRelPath) : null
   let tempSrtAbs: string | null = null
-  if (srtRelPath && (alignPlan || introShift > 0)) {
+  if (!strict && srtRelPath && (alignPlan || introShift > 0)) {
     let shifts: number[] | null = null
     let alignMode = false
     if (alignPlan) {
@@ -408,6 +419,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 组装 filter_complex 与编码参数（[M19] 提炼 buildComposeArgs 纯函数；无水印/片头尾 → 与 M11 逐字节一致）
   const hasAudio = voicePaths.length > 0
   const { args, cwd, totalAll, derived } = buildComposeArgs({
+    strictDelivery: strict,
     segments,
     width,
     height,
@@ -454,6 +466,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       }
     }
   }
+  if (recipe) assertStrictOutput(outAbs, recipe.plan.duration)
   const size = statSync(outAbs).size
 
   const tags = ['final']
@@ -472,6 +485,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     height,
     duration: Math.round(totalAll),
     params: {
+      ...(strict ? { strict_delivery: true, delivery_checked: true } : {}),
       fps,
       resolution,
       images: segments.filter((s) => s.kind === 'image').length,

@@ -92,14 +92,6 @@ export interface StepResult {
 /** 步骤级错误：engine 捕获 → step failed + run failed */
 export class StepError extends Error {}
 
-/** action 未实现（ai_video 占位等） */
-export class ActionNotImplemented extends StepError {
-  constructor(actionKey: string) {
-    super(`action「${actionKey}」尚未实现（占位注册）`)
-    this.name = 'ActionNotImplemented'
-  }
-}
-
 /** 引用解析失败：错误含引用路径（spec §5.2） */
 export class RefResolveError extends StepError {
   constructor(ref: string, reason: string) {

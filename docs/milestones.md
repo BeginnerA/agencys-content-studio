@@ -351,3 +351,35 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 - **红线增量登记（2026-09-16 复扫，M23 收官后）**：新增破线 2——`views/canvas/index.vue`（1172；`68d46c1` 单提交自 722 增量）与 `components/pipeline-canvas/CanvasBoard.vue`（855；P3 编辑模式）→ 登记**「触发条件式待拆」**（拆分时机 = M26 工程批〔H2 残余〕或 canvas 域被实质触碰时〔可插 M28 式纯重构微批次〕；范式对齐 M28——thin `index.vue` + `use-*.ts` + 面板组件），本次仅登记不做即时重构；`lib/api.ts` 已增至 969（存量豁免内，随 api 域拆分）；探针脚本超限现为 5（m16–m19 / m22，归 M26-H5）；复扫口径同 M28（含注释与空行），脚本留档 `.qoder/tmp-m28-scan800.mjs`。**【后续收账（M26，2026-09-17）】**上述待拆已全部完成：5 前端 >800（含 2 豁免 + 2 新破线）与 5 探针均已拆分，全仓 `scripts` + `web/src` 复扫 **>800 = 0**（见 M26 能力速览一节）
 - **验证**：`tsc` + `vue-tsc` + `vite build` 全绿；17 探针（m2a–m19）「全部通过」零适配；实弹（设置 / 项目 / 镜头工作台 / 画布抽屉 / 素材预览）console 零 error
 - **备注**：M2–M19 速览中的文件名为当时历史记述，现行目录结构以本节为准
+
+## M29 能力速览（版本与追溯：内容/参考版本 · 执行真实输入快照 · 下游影响 · 锁版）
+
+把「编辑即静默改写下游、历史不可回看、执行输入不可追溯」的隐性黑洞收口为**可回看、可还原、可追溯、可锁版**的内容治理层（R02）。设计三原则：**零行为变更红线**（执行快照一律经 `safeRecordExecSnapshot` 接入——任何异常仅告警绝不影响实际生成；所有消费点不裸调底层）；**影响只报告不生成**（`downstreamImpact` 仅返回状态分类 `current / upstream_changed / no_history`，无任何自动返修/级联重跑入口，编辑不静默改写下游）；**三操作分离 + 历史不可变**（还原 / 锁版 / 选片互不混淆；版本文件写后永不覆写，落 `versions/` 独立目录、物理 GC 豁免）。
+
+- **追溯三表（schema）**：`content_versions`（对象版本：asset 不可变文件版本 / entity 字段 JSON 快照，`(obj_kind,obj_id,revision)` 唯一）+ `exec_snapshots`（一条 = 一次执行冻结）+ `exec_inputs`（执行实际输入依赖边：`used/skipped` + `version_id` 版本指针 + `shot_id`/`port` 镜头端口语义定位，含 snapshot 与 `(src_kind,src_id)` 反查索引）；`version_id` 为 NULL 标「历史不可恢复」不伪造。
+- **版本捕获（R02）**：文本资产首次编辑懒补 baseline（v1=原文）+ 记 edit（v2=新文），旧版本内容可回看、工作副本固定路径不覆写版本文件、编辑后清空 embedding（旧向量不冒充新正文）；实体全写入口（`upsertEntity` 等）统一留痕（新建 baseline / 改外观 edit）。
+- **还原 + 乐观并发**：`restoreAssetTextVersion` / `restoreEntityVersion` = 移动当前指针 + 生成新版本（`source=restore`，保留全部历史、不动下游）；`PATCH /assets/:id/content` +`expectedRevision`（缺省 last-write-wins 向后兼容；基线落后 → `conflict` 拒绝静默覆盖；详情响应附 `contentRevision` 供前端乐观锁）。
+- **执行真实输入快照**：`assetInput`（文本可编辑资产带 `versionId`，媒体资产 `versionId=null` 身份即 asset.id）/ `entityInput` 构造输入边；`ai_text` / `ai_image`（参考图 used/skipped + skipReason）/ `ffmpeg_merge`（compose 源/BGM/字幕/配音）/ `workflow`（段间 prev_text）四类消费点经 `safeRecordExecSnapshot` 冻结捕获时版本序号（非事后当前）。
+- **下游影响（只报告）**：`downstreamImpact({objKind,objId})` 反查消费它的执行清单——捕获版本=当前 → `current`（保留 shotId 局部命中不泛化）/ 上游再编辑 → `upstream_changed`（报告当前版本号）/ 媒体无版本指针 → `no_history`。
+- **锁版（spec.pin）**：`lockCanvasInput` / `unlockCanvasInput` / `listCanvasInputLocks`——gen 节点上游资产输入锁定到指定资产（落 `spec.pin`，加法字段不动既有；多上游共存互不覆盖；解锁回落最新/采纳）；校验拒绝非生成节点 / 跨项目资产。
+- **物理 GC 保护**：`version-cleanup.ts`——`versions/` 不可变历史文件不随工作副本物理删除；被执行实际消费（`used`）的老版本资产豁免清理（防在用/历史依赖被软删致追溯悬空）；三表支持按 `project_id` 级联过滤删除。
+- **前后端接线**：`VersionHistoryPanel.vue`（挂进实体面板 + 素材预览器「历史·影响」区）、`CanvasInputLockPanel.vue`（挂进 gen 节点 inspector）；`lib/api/versions.ts`（`assetVersionApi`/`entityVersionApi`/`canvasLockApi`）+ `lib/types/version.ts` 领域类型与响应对齐。
+- **数据与兼容**：新表 3（均 `ensureColumn`/建表兜底幂等）/ 新列 gen 节点 `spec.pin`（加法）/ `PATCH content` +`expectedRevision` + 详情 `contentRevision`（缺省兼容）/ 端点 +9（asset/entity versions·content·restore·impact + canvas input-lock 三式）；引擎 / DAG / 模板 / 适配器签名零触碰，快照接入零行为变更。
+
+端点：`GET /assets/:id/versions`、`GET /assets/:id/versions/:versionId/content`、`POST /assets/:id/versions/:versionId/restore`、`GET /assets/:id/impact`；entity 同构四枚；`GET /canvas/nodes/:id/input-locks`、`POST /canvas/nodes/:id/input-lock`、`DELETE /canvas/nodes/:id/input-lock`。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m29.ts`（八节 **46 项断言**，零网络零计费：schema 4 / version-capture 10 / restore 6 / concurrency 3 / input-snapshot 8 / impact 4 / lock 6 / gc-purge 5）；`probe-m29` 经 `run-probes.ts` 自动发现纳入 `probe:ci` 全量（25 探针）；双端 `tsc` + `vue-tsc` 全绿。不变式落测：执行冻结真实输入（used/skipped + 版本指针）、编辑不静默改写下游（影响只报告状态分类）、还原 / 锁版 / 选片三操作互不混淆。
+
+## M30 能力速览（对话式「一句话成片」轻松创作入口 · R07 新建单条视频子集）
+
+把「建项目 → 选模板 → 填输入 → 懂运行 → 会审阅」的专业门槛收敛为**一句话 → 方案 → 确认一次 → 自动成片**的傻瓜入口（`/create` 与 `/create/:id`），首版交付单条 30–60 秒中文旁白多镜头短视频（科普 / 故事 / 产品介绍）。设计四原则：**复用不新建**（沿用 project/asset/run/step/task 体系与 `tts`/`subtitle`/`ai_image`/`ai_video`/`ffmpeg_merge`，不建平行引擎、不建生产状态机——制作态从真实 run/step/task 投影）；**确认内容即执行内容**（Zod 校验脚本/台词/分镜结构契约，批准后冻结为通用文本资产直供模板，不再随机二次生成；非法/超长/截断计划不得进入可确认态）；**动态/图文明确标注**（动态=真实 AI 视频镜头不静默降级、图文=静态画面+字幕非动态，首版不混用）；**费用预检 + 固定工作量 + 有限调用**（规划费/预计制作费/未计价项分列，价格缺失不按零元处理、需同卡显式接受，不宣称外部账单硬封顶）。
+
+- **多镜头模板与严格合成（video-recipe）**：新增通用 `workspace/templates/easy-video.yaml`（6 步，不改 `mengbao-episode` 旧闸门）；`ffmpeg_merge` 增**显式启用的严格交付模式**（旧 run 默认原行为零变更）——配音后先逐镜核验时长、以批准分镜时长为基准裁切归零、允许 ≤0.5s 尾帧补齐超限即停（不无限定格掩盖缺镜）、复用台词—镜头映射组装音轨字幕（旁白不截断）、严格检查计划镜头全部存在可解码音视频字幕完整，缺镜/损坏/时长不足/错映射不得沿旧宽容路径跳过后仍报成功。
+- **会话与方案（chat-plan）**：新表 2 `creation_sessions` / `creation_messages`（Drizzle/SQLite 加法迁移 + 索引）；首次发送自动建普通项目 + 会话（标创作草稿，用量记入该项目携带 sessionId）；`services/creation-chat/`（`contract` 受约束 JSON + 服务端白名单编译、`planning` 有界上下文、`preflight`）；提示词外置 `workspace/prompts/creation-plan.md`（LLM 不生成可执行代码/任意 YAML/路径/工具调用）。
+- **确认与幂等（safe-execution）**：预检与执行同一套能力/参数解析；保存**不含密钥**的配置实例快照 + 有效参数快照（密钥仅 secrets 服务解析，不入对话/计划/日志；实例禁用或关键变更暂停不切默认实例）；确认携带 `planRevision + planHash + idempotencyKey`，DB 事务内比较版本 / 认领启动请求 / 建并关联 run（`run-create.ts` 最小扩展复用事务执行器，旧调用兼容），提交后才 `engine.startRun`——重复确认/双击/网络重发只得同一次 run；仅新模板已批准生产链自动执行，不批量批准旧 gate。
+- **状态与恢复**：控制态 `draft|planning|ready|starting|started`；复用 Socket.IO + `onRunSettled` + HTTP 重拉兜底（刷新/离开不中止后端制作）；重启对账已关联 run，受理状态不明的任务标「需核验」不自动重发付费请求；取消复用引擎语义（在途可能已计费明确告知）；重试显式操作、复用成功产物、返回新 runId 保留来源链。
+- **前端（creator-ui）**：`views/easy-create/`（`index.vue` 一句话首页 + `detail.vue` 工作区〔左对话右方案/进度/成片，窄屏堆叠〕+ `ConversationPanel`/`CreationPlanCard`/`CreationProgress`/`CreationResult` + `use-creation-chat.ts` 模块级单例状态机〔异步响应按会话 id 防旧覆盖新、确认幂等键按 planHash+revision 复用〕）；`lib/api/creation-chat.ts` + `lib/types/creation-chat.ts`；接线 `router.ts`（`/create`、`/create/:id`）、`lib/nav.ts` 首位「轻松创作」、`Icon` +chat/send、项目首页醒目 CTA 横幅；保留 `/` 与全部旧链接，专业入口（`/runs/:id` 精修、`/projects/:id`、`/settings` AI 配置）始终可达；沿用紫靛 token、原生 CSS，键盘可达/焦点可见/状态区可读屏/reduced-motion 适配。
+
+端点：`/api/v1/creation-sessions`——`GET /`（列表）、`POST /`（建 201 `{content,requestKey}`）、`GET /:id`、`POST /:id/messages`、`POST /:id/preflight`、`POST /:id/confirm`（202 Confirmation→`{runId}`）、`POST /:id/cancel`、`POST /:id/retry`（202 RetryBody→`{runId}`）；create/send/preflight/cancel 统一返回 `CreationDetail`。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m30.ts`（五节 **48 项断言**，零网络零计费：contract〔默认项补齐/追问/非法·超长·截断计划拒启动〕/ preflight〔缺模型·实例变更·无 ffmpeg·未知价·超预算态标准确〕/ confirm〔确认前不建媒体任务·修订后旧确认冲突·并发确认单 run〕/ media〔本地 ffmpeg 真实跑 subtitle→ffmpeg_merge 严格链，动态 + 图文两路产出可解码含音轨 MP4；缺镜/损坏/时长不足/错映射拦截；strict 关闭旧行为不变〕/ recovery〔刷新·断线·重启·取消·重试不重复启动·成功镜头不重提·跨项目引用拒绝·密钥脱敏〕）；`pnpm ci:check` 端到端 exit=0（双端 typecheck + 模板校验 **15 份 / 107 步 0 错 0 警** + `probe:ci` **26 探针 / 3013 断言全绿**含 `probe-m30`）；`pnpm --filter @acs/web build` 绿；浏览器验收：`/create` 首页（hero + 示例 + 我的创作空态）、`/` 项目首页「轻松创作 · 一句话成片」CTA、`/create/:id` 工作区壳（头部返回/项目/AI 配置 + 对话面板 + 方案/进度/成片占位 + 404 优雅降级），console 零 error。**真实动态/图文样片待另行取得明确模型/预算授权后验证**（离线全绿只证功能与契约，不代供应商可用性与成片质量验收）。

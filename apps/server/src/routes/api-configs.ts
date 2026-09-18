@@ -19,6 +19,23 @@ const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
 /** DashScope 原生协议行（万相文生图/视频、千问图像、千问 TTS）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
 const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_wan_image', 'aliyun_qwen_image', 'aliyun_wan_video', 'aliyun_qwen_tts'])
 
+/**
+ * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
+ * /api-providers 的 testable 能力位与下方 /:id/test 视频分支的探针路由共用，需两处同步维护。
+ */
+const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
+  'aliyun_wan_video',
+  'volcengine_video',
+  'siliconflow_video',
+  'pollinations_video',
+])
+
+/** 实例是否支持「测试连接」：llm/image/audio 恒可（走真实最小生成/合成 ping）；video 仅上表探针供应商。 */
+function isConfigTestable(serviceType: string, providerKey: string): boolean {
+  if (serviceType === 'video') return TESTABLE_VIDEO_PROVIDER_KEYS.has(providerKey)
+  return true
+}
+
 // GET /api-providers —— 供应商目录（预置 + 已建 config 关联态）
 apiRoutes.get('/api-providers', h(async (c) => {
   const providers = await db.select().from(apiProviders).orderBy(asc(apiProviders.serviceType), asc(apiProviders.key))
@@ -39,6 +56,7 @@ apiRoutes.get('/api-providers', h(async (c) => {
       defaultUrl: p.defaultUrl,
       presetModels: safeJson(p.presetModels, []),
       isActive: p.isActive === 1,
+      testable: isConfigTestable(p.serviceType, p.key),
       configs: (byProvider.get(p.key) ?? []).map((cfg) => ({
         id: cfg.id,
         name: cfg.name,

@@ -3,6 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/create', name: 'easy-create', component: () => import('./views/easy-create/index.vue') },
+    { path: '/create/:id(\\d+)', name: 'easy-create-detail', component: () => import('./views/easy-create/detail.vue') },
     { path: '/', name: 'projects', component: () => import('./views/projects/index.vue') },
     { path: '/projects/:id(\\d+)', name: 'project', component: () => import('./views/project-detail/index.vue') },
     { path: '/runs/:id(\\d+)', name: 'run', component: () => import('./views/run-detail/index.vue') },

@@ -12,6 +12,7 @@ export interface NavItem {
  * 从运行页「画布视图」/ 模板页「画布」进入——导航不再单列。
  */
 export const NAVS: NavItem[] = [
+  { to: '/create', icon: 'chat', label: '轻松创作' },
   { to: '/', icon: 'folder', label: '项目' },
   { to: '/creation', icon: 'wand', label: '画布' },
   { to: '/entities', icon: 'users', label: '素材' },

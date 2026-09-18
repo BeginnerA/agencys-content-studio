@@ -16,6 +16,7 @@ import { purgeExpiredCanvases } from './services/trash-sweep'
 import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
+import { notifyCreationSettled, reconcileCreationSessions } from './services/creation-chat/store'
 
 const log = createLogger('main')
 
@@ -36,6 +37,8 @@ async function projectIdOf(runId: number): Promise<number> {
 
 async function main(): Promise<void> {
   await initDb()
+  await reconcileCreationSessions()
+  onRunSettled((runId) => { void notifyCreationSettled(runId).catch(() => log.warn('创作会话时间更新失败，可通过 HTTP 重拉状态')) })
 
   const httpServer = serve(
     { fetch: app.fetch, port: env.port },

@@ -14,6 +14,7 @@ import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } f
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
+import { pinOf, recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
 
 interface ShotSpec {
   id: string
@@ -112,7 +113,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     ctx.log(`风格注入：${styleResolved.map((s) => s.name).join(' + ')}（预设 ${styleResolved.map((s) => `#${s.id}`).join(',')}）`)
   }
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
-  const refCap = await imageRefCapability(provider)
+  const refCap = pinOf(imgCfg) ? getImageAdapter(provider!).referenceImages ?? 'none' : await imageRefCapability(provider)
   const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
@@ -179,6 +180,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
       // failed 且有变化 → 归零重排队；succeeded 保持产物溯源不动
       const changed = existingTask.prompt !== promptText || existingTask.params !== paramsJson
       if (changed) {
+        if (recipeOf(ctx.run)) throw new Error('已批准图像任务参数发生变化，请重新规划')
         const requeue = existingTask.status === 'failed'
         await db
           .update(genTasks)
@@ -260,7 +262,9 @@ async function runOneTask(
     entityIds?: number[]
   }
   const shotId = parsed.shotId ?? '?'
-  const maxAttempts = cfg.maxRetry + 1
+  const recipe = recipeOf(ctx.run)
+  const maxAttempts = recipe ? 1 : cfg.maxRetry + 1
+  if (recipe && task.attempts > 0 && task.status !== 'succeeded') throw new Error('此前媒体提交状态需核验，不能自动重发')
   let attempts = task.attempts
   for (;;) {
     if (await runCancelled(ctx.run.id)) {
@@ -310,6 +314,7 @@ async function runOneTask(
         model: cfg.model,
         size: parsed.size,
         referenceImages: refs,
+        pin: pinOf(ctx.settings.image),
       })
       const img = await adapter.generate(request)
       const asset = await saveGeneratedMedia({
@@ -346,6 +351,7 @@ async function runOneTask(
         quantity: 1,
         provider: adapter.provider,
         model: request.model ?? cfg.model ?? null,
+        ...(recipe ? { unitPrice: recipe.endpoints.image!.unitPrice } : {}),
       })
       ctx.log(`shot ${shotId} 出图完成 → asset#${asset.id}`)
       // [M29·R02] 冻结本镜真实输入：分镜文本资产 + 参考图 used/skipped + 命中实体（版本指针），按 shotId 定位
@@ -366,7 +372,7 @@ async function runOneTask(
       }
       return null
     } catch (err) {
-      const msg = (err as Error).message
+      const msg = mediaFailure(err, !!recipe)
       if (attempts >= maxAttempts) {
         await db
           .update(genTasks)

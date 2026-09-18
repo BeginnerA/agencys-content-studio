@@ -116,6 +116,15 @@ function cardTo(p: Project) {
 
 <template>
   <div>
+    <RouterLink class="ec-cta" to="/create" aria-label="进入轻松创作">
+      <span class="ec-cta-ic"><Icon name="chat" :size="20" /></span>
+      <span class="ec-cta-tx">
+        <b>轻松创作 · 一句话成片</b>
+        <small>描述一个想法 → 看方案 → 确认一次 → 自动出片</small>
+      </span>
+      <span class="ec-cta-go">开始 <Icon name="chevron-right" :size="14" /></span>
+    </RouterLink>
+
     <div class="page-h">
       <h1>项目</h1>
       <div class="tabs" role="tablist" aria-label="项目筛选">
@@ -354,5 +363,48 @@ function cardTo(p: Project) {
   align-items: center;
   gap: 8px;
   font-size: 12px;
+}
+
+/* [M30] 轻松创作醒目入口（一句话成片 CTA 横幅） */
+.ec-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  border: 1px solid rgb(99 102 241 / 40%);
+  background: linear-gradient(135deg, rgb(139 92 246 / 16%), rgb(79 70 229 / 12%));
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.ec-cta:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.ec-cta-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--grad-brand);
+  color: #fff;
+  flex-shrink: 0;
+}
+.ec-cta-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ec-cta-tx b { font-size: 14.5px; color: #fff; }
+.ec-cta-tx small { font-size: 12px; color: var(--text-2); }
+.ec-cta-go {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--accent-h);
+  white-space: nowrap;
 }
 </style>

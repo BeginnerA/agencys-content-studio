@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSocket } from './lib/socket'
 import Icon from './components/common/Icon.vue'
@@ -8,10 +8,19 @@ import CommandPalette from './components/common/CommandPalette.vue'
 import { pending, refreshPending, startPendingWatcher } from './lib/pending'
 import { initNotify } from './lib/notify'
 import { bindHotkey, initHotkeys } from './lib/hotkeys'
-import { NAVS } from './lib/nav'
+import { NAVS, type NavItem } from './lib/nav'
 
 const route = useRoute()
 const router = useRouter()
+
+// [M30] 轻松创作页：专业导航收为单一「专业工作台」入口，AI 配置始终可达（降低新手认知负担）
+const isEasyCreate = computed(() => route.path === '/create' || route.path.startsWith('/create/'))
+const EASY_CREATE_NAVS: NavItem[] = [
+  { to: '/create', icon: 'chat', label: '轻松创作' },
+  { to: '/', icon: 'folder', label: '专业工作台' },
+  { to: '/settings', icon: 'sliders', label: 'AI 配置' },
+]
+const shownNavs = computed(() => (isEasyCreate.value ? EASY_CREATE_NAVS : NAVS))
 let stopPendingWatcher: (() => void) | null = null
 
 // [M21] 全局命令面板（Ctrl/Cmd+K 经 lib/hotkeys 单例注册；批 2 已迁移统一键盘流）
@@ -109,7 +118,7 @@ onBeforeUnmount(() => {
       </button>
       <nav id="side-nav" class="navs">
         <RouterLink
-          v-for="n in NAVS"
+          v-for="n in shownNavs"
           :key="n.to"
           class="nav"
           :to="n.to"

@@ -25,6 +25,9 @@ export { canvasApi, creationApi } from './canvas'
 export type { AddNodeBody, CanvasNodePatch } from './canvas'
 export type { CanvasDocNode } from '../types'
 
+// [M30] 对话式「一句话成片」
+export { creationChatApi, newRequestKey } from './creation-chat'
+
 export { statsApi, exportApi, publicationApi, settingsApi, scheduleApi, budgetApi } from './insights'
 
 export { workflowApi } from './workflows'

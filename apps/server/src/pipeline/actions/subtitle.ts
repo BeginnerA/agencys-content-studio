@@ -6,6 +6,8 @@ import { recordLlmUsage } from '../../services/usage'
 import { buildBilingualSrt } from '../../services/creation/gen/subtitle'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
+import { recipeOf } from '../../services/creation-chat/recipe'
+import { strictVoicePlan } from './ffmpeg-merge/strict'
 
 export interface TimingLine {
   id: string
@@ -33,6 +35,9 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = typeof params['prompt_tpl'] === 'string' && params['prompt_tpl'] ? params['prompt_tpl'] : 'lines-timing.md'
   const source = await collectSource(ctx)
+  const strict = params['strict_delivery'] === true
+  const recipe = strict ? recipeOf(ctx.run) : null
+  if (strict && !recipe) throw new Error('严格字幕缺少批准方案')
   ctx.log(`字幕切句输入：${source.lines.length} 句台词（${source.text.length} 字符）`)
 
   // mode 判定（spec §7.1）：提供 voices → measured 实测对齐；params.mode 可强制 estimated
@@ -40,6 +45,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   const modeParam = typeof params['mode'] === 'string' ? params['mode'] : undefined
   let mode: 'measured' | 'estimated' = voiceIds.length > 0 ? 'measured' : 'estimated'
   if (modeParam === 'estimated') mode = 'estimated'
+  if (strict && voiceIds.length === 0) throw new Error('严格字幕需要完整配音，不允许 LLM 估时')
   if (modeParam === 'measured' && voiceIds.length === 0) {
     mode = 'estimated'
     ctx.log('mode=measured 但未提供 voices 输入，已回退 estimated（LLM 估时）')
@@ -53,6 +59,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
       throw new Error(`measured 字幕：voices 数量(${voiceIds.length}) 与台词句数(${source.lines.length}) 不一致（防错位）`)
     }
     const voices = await ctx.assetsOf(voiceIds)
+    const aligned = recipe ? strictVoicePlan(recipe.plan, voices, ctx.run.projectId) : null
     const durationsMs: number[] = []
     let fallbackCount = 0
     for (let i = 0; i < voices.length; i++) {
@@ -60,6 +67,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
       const line = source.lines[i]!
       const sec = a.relPath ? probeMediaDuration(absPathOf(a.relPath)) : null
       const dMs = sec !== null ? Math.round(sec * 1000) : (line.estMs ?? line.text.length * 180)
+      if (strict && sec === null) throw new Error('严格字幕无法核验配音时长')
       if (sec === null) {
         fallbackCount += 1
         ctx.log(`句 ${line.id} 音频实测失败，回退估时 ${dMs}ms`)
@@ -67,13 +75,22 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
       durationsMs.push(dMs)
     }
     timed = planMeasuredSrt(source.lines, durationsMs)
+    if (aligned) {
+      timed = timed.map((cue) => {
+        const lineId = cue.id.slice(0, cue.id.lastIndexOf('.'))
+        const line = aligned.lines.find((l) => l.lineId === lineId)
+        if (!line) throw new Error('字幕台词 ID 不在批准方案中')
+        const shift = Math.round((line.timelineStart - line.speechStart) * 1000)
+        return { ...cue, start_ms: cue.start_ms + shift, end_ms: cue.end_ms + shift }
+      })
+    }
     const sumD = durationsMs.reduce((s, x) => s + x, 0)
     const lastEnd = timed[timed.length - 1]!.end_ms
     if (sumD > 0 && Math.abs(lastEnd - sumD) / sumD > 0.02) {
       ctx.log(`警告：字幕末行结束 ${lastEnd}ms 与实测累加 ${sumD}ms 偏差超 2%（防错位防线）`)
     }
     ctx.log(`字幕 measured：${voiceIds.length} 句实测累加 ${sumD}ms${fallbackCount ? `（${fallbackCount} 句回退估时）` : ''}`)
-    assetParams = { mode, lines: timed.length, durationMs: lastEnd, sentenceCount: source.lines.length, voiceCount: voiceIds.length }
+    assetParams = { mode, lines: timed.length, durationMs: lastEnd, sentenceCount: source.lines.length, voiceCount: voiceIds.length, ...(strict ? { timelineAligned: true } : {}) }
     promptSnapshot = `measured 实测对齐：voices=[${voiceIds.join(',')}] durations=[${durationsMs.join(',')}]ms`
   } else {
     ctx.log(`字幕 estimated：LLM 切句估时（提示词 ${tplFile}）`)

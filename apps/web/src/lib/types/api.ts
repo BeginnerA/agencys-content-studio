@@ -25,6 +25,8 @@ export interface ApiProvider {
   defaultUrl: string | null
   presetModels: string[]
   isActive: boolean
+  /** 是否支持「测试连接」：llm/image/audio 恒 true；video 仅具备连通探针的供应商为 true（其余需真实 run 验证） */
+  testable: boolean
   configs: ProviderConfigLite[]
 }
 

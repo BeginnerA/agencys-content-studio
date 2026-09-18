@@ -1,4 +1,5 @@
 import { writeFileSync } from 'node:fs'
+import { strictTts } from './strict-tts'
 import { loadCharacterIndex } from '../../services/character'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { cloneEndpoint, loadCloneIndex, parseCloneRef, validCloneRef } from '../../services/tts-clone'
@@ -34,6 +35,7 @@ interface LineItem {
  * [M19 P8] 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
+  if (ctx.def.params?.strict_delivery === true) return strictTts(ctx)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const audCfg = (ctx.settings.audio ?? {}) as Record<string, unknown>
   const provider = typeof audCfg['provider'] === 'string' ? audCfg['provider'] : undefined

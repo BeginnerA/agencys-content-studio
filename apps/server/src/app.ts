@@ -13,6 +13,7 @@ import { charactersRoutes } from './routes/characters'
 import { complianceRoutes } from './routes/compliance'
 import { composeRoutes } from './routes/compose'
 import { creationRoutes } from './routes/creation'
+import { creationChatRoutes } from './routes/creation-chat'
 import { exportsRoutes } from './routes/exports'
 import { evalRoutes } from './routes/eval'
 import { memoriesRoutes } from './routes/memories'
@@ -66,6 +67,7 @@ api.route('/', apiRoutes)
 api.route('/', vendorRoutes)
 api.route('/', canvasRoutes)
 api.route('/', creationRoutes)
+api.route('/', creationChatRoutes)
 api.route('/', searchRoutes)
 api.route('/', evalRoutes)
 api.route('/', complianceRoutes)

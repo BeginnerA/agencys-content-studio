@@ -25,6 +25,7 @@ export interface ComposeSfxInput {
 
 /** [M19] buildComposeArgs 输入（主链解析后的纯数据） */
 export interface ComposeArgsInput {
+  strictDelivery?: boolean
   segments: Segment[]
   width: number
   height: number
@@ -112,8 +113,11 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     } else {
       inputArgs.push('-i', seg.path)
     }
+    const strictTiming = input.strictDelivery
+      ? `${seg.kind === 'video' ? 'tpad=stop_mode=clone:stop_duration=0.5,' : ''}trim=duration=${seg.durSec},setpts=PTS-STARTPTS,`
+      : ''
     fcParts.push(
-      `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p${xfadePlan.enabled ? ',settb=AVTB' : ''}[v${i}]`,
+      `[${i}:v]${strictTiming}scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p${xfadePlan.enabled ? ',settb=AVTB' : ''}[v${i}]`,
     )
   })
   const segIn = segments.map((_, i) => `[v${i}]`).join('')
@@ -122,7 +126,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     voicePaths.forEach((p, i) => {
       inputArgs.push('-i', p)
       const srcIdx = segments.length + i
-      fcParts.push(`[${srcIdx}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
+      fcParts.push(`[${srcIdx}:a]${input.strictDelivery ? 'asetpts=PTS-STARTPTS,' : ''}aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
     })
     if (alignPlan) {
       // [M11] 对齐轨：按镜序 [句…, 镜尾静音(anullsrc)] concat（总长严格 = Σd；apad 兜底浮点）

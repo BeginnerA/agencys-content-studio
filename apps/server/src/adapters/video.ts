@@ -9,7 +9,7 @@ import { PollinationsVideoAdapter } from './pollinations-video'
 import { SiliconFlowVideoAdapter } from './siliconflow-video'
 import { VolcEngineVideoAdapter } from './volcengine-video'
 import type { VideoAdapter, VideoGenRequest } from './types'
-import { resolveEndpoint } from './provider'
+import { resolveEndpoint, type EndpointPin } from './provider'
 
 const videoAdapters: Record<string, VideoAdapter> = {
   volcengine_video: new VolcEngineVideoAdapter(),
@@ -48,8 +48,9 @@ export async function buildVideoRequest(params: {
   provider?: string
   model?: string
   extra?: Record<string, unknown>
+  pin?: EndpointPin
 }): Promise<{ adapter: VideoAdapter; request: VideoGenRequest }> {
-  const endpoint = await resolveEndpoint('video', params.provider)
+  const endpoint = await resolveEndpoint('video', params.provider, params.pin)
   const adapter = getVideoAdapter(endpoint.providerKey)
   return {
     adapter,

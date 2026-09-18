@@ -59,6 +59,7 @@ export async function resetStepForRerun(
   tasksReset: number
 }> {
   const { run, step } = await assertRepairable(runId, stepKey)
+  if (run.templateKey === 'easy-video') throw new WorkbenchError('creation_confirmation_required', '已批准制作链请在轻松创作中恢复；额外生成需新方案确认', 409)
   const tasks = await db
     .select({ id: genTasks.id, status: genTasks.status })
     .from(genTasks)

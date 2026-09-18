@@ -179,6 +179,7 @@ export async function writeTextAsset(
     params?: Record<string, unknown>
     tags?: string[]
   },
+  executor: Pick<typeof db, 'insert'> = db,
 ): Promise<Asset> {
   ensureProjectDirs(projectId)
   const data = new TextEncoder().encode(opts.content)
@@ -186,7 +187,7 @@ export async function writeTextAsset(
   const relPath = relPathOf(projectId, opts.purpose, fileName)
   writeFileSync(absPathOf(relPath), data)
   const now = Date.now()
-  const row = await db
+  const row = await executor
     .insert(assets)
     .values({
       projectId,

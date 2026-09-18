@@ -57,11 +57,14 @@ export async function createRunRow(p: {
   batchSeq?: number | null
   workflowId?: number | null
   workflowSeq?: number | null
-}): Promise<PipelineRun> {
+  /** 仅会话确认服务传入；普通 run/batch/workflow 不得启动批准模板。 */
+  creationSessionId?: number
+}, executor: Pick<typeof db, 'insert'> = db): Promise<PipelineRun> {
+  if (p.templateKey === 'easy-video' && !p.creationSessionId) throw new InvalidRunInputError('bad_input', '请从轻松创作确认方案后启动制作')
   const template = loadTemplateOrThrow(p.templateKey)
   const norm = prepareRunInput(template, p.input)
   const t = Date.now()
-  const row = await db
+  const row = await executor
     .insert(pipelineRuns)
     .values({
       projectId: p.projectId,

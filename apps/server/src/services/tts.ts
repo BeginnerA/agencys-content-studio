@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { resolveEndpoint } from '../adapters/provider'
+import { resolveEndpoint, type EndpointPin } from '../adapters/provider'
 import { db } from '../db'
 import { apiProviders } from '../db/schema'
 import { synthAliyunQwenSpeech } from './tts-aliyun'
@@ -44,8 +44,8 @@ export async function defaultTtsModel(providerKey: string): Promise<string> {
 }
 
 /** 解析 audio 端点：未配置实例时报错并附 Settings 指引 */
-export async function resolveAudioEndpoint(providerKey?: string): Promise<AudioEndpoint> {
-  const endpoint = await resolveEndpoint('audio', providerKey)
+export async function resolveAudioEndpoint(providerKey?: string, pin?: EndpointPin): Promise<AudioEndpoint> {
+  const endpoint = await resolveEndpoint('audio', providerKey, pin)
   return {
     providerKey: endpoint.providerKey,
     baseUrl: endpoint.baseUrl,

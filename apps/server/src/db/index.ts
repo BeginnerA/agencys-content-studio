@@ -507,4 +507,24 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // [M30] 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
+  await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_sessions (
+    id integer PRIMARY KEY AUTOINCREMENT, project_id integer NOT NULL,
+    request_key text NOT NULL, status text DEFAULT 'draft' NOT NULL,
+    plan text, approved_plan text, plan_revision integer DEFAULT 0 NOT NULL,
+    plan_hash text, preflight text, start_key text, run_id integer,
+    run_history text DEFAULT '[]' NOT NULL, error text,
+    created_at integer NOT NULL, updated_at integer NOT NULL
+  )`)
+  await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_creation_request ON creation_sessions (request_key)')
+  await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_project ON creation_sessions (project_id)')
+  await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_run ON creation_sessions (run_id)')
+  await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_messages (
+    id integer PRIMARY KEY AUTOINCREMENT, session_id integer NOT NULL,
+    role text NOT NULL, content text NOT NULL, payload text, request_key text,
+    created_at integer NOT NULL
+  )`)
+  await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_messages_session ON creation_messages (session_id)')
+  await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_creation_message_request ON creation_messages (session_id, request_key)')
 }

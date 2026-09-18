@@ -14,6 +14,7 @@ import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
+import { pinOf, recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
 
 interface ShotSpec {
   id: string
@@ -96,7 +97,11 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   // 首帧注入（M6）：gen_frames 产物按 params.shotId 建索引；能力判定入队前 resolve 一次
   const frameIds = ctx.assetIdsOf('first_frame')
   const frameIndex = await buildFirstFrameIndex(frameIds)
-  const frameCap = await videoFirstFrameCapability(provider)
+  const recipe = recipeOf(ctx.run)
+  const frameCap = recipe ? getVideoAdapter(provider!).firstFrame ?? 'none' : await videoFirstFrameCapability(provider)
+  if (recipe?.videoMode === 'i2v' && (frameCap === 'none' || shots.some((s) => !frameIndex.has(s.id)))) {
+    throw new Error('已批准图生视频方案首帧不可用，禁止降级文生视频')
+  }
   const uriCache = new Map<number, string>()
   if (frameIds.length > 0) {
     if (frameCap === 'none') {
@@ -110,7 +115,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   // [M13] 场景/道具参考图：实体索引 + 能力判定（入队前 resolve 一次；首帧优先决策在执行期）
   const sceneIndex = await loadEntityIndex(ctx.run.projectId, 'scene')
   const propIndex = await loadEntityIndex(ctx.run.projectId, 'prop')
-  const refCap = await videoReferenceCapability(provider)
+  const refCap = recipe ? getVideoAdapter(provider!).referenceImages ?? 'none' : await videoReferenceCapability(provider)
   if (refCap === 'none' && shots.some((s) => collectSetRefAssetIds(s, sceneIndex, propIndex).length > 0)) {
     ctx.log('当前视频供应商不支持参考图注入（场景/道具参考图降级跳过）')
   }
@@ -134,7 +139,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     const promptText = pickPromptText(shot as unknown as Record<string, unknown>, promptFields)
     const paramsJson = JSON.stringify({
       shotId: shot.id,
-      duration: shotDurationSec(shot) ?? fallbackDuration ?? null,
+      duration: recipe?.requestDurations[shot.id] ?? shotDurationSec(shot) ?? fallbackDuration ?? null,
       resolution: resolution ?? null,
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,
@@ -168,6 +173,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
       // （与 resume 迁移语义一致）；succeeded 保持产物溯源不动
       const changed = existingTask.prompt !== promptText || existingTask.params !== paramsJson
       if (changed) {
+        if (recipe) throw new Error('已批准视频任务参数发生变化，请重新规划')
         const requeue = existingTask.status === 'failed'
         await db
           .update(genTasks)
@@ -277,7 +283,9 @@ async function runOneTask(
     setRefAssetIds?: unknown
   }
   const shotId = parsed.shotId ?? '?'
-  const maxAttempts = cfg.maxRetry + 1
+  const recipe = recipeOf(ctx.run)
+  const maxAttempts = recipe ? 1 : cfg.maxRetry + 1
+  if (recipe && task.attempts > 0 && !task.taskId && task.status !== 'succeeded') throw new Error('此前视频提交状态需核验，不能自动重发')
   let attempts = task.attempts
   for (;;) {
     if (await runCancelled(ctx.run.id)) {
@@ -301,6 +309,7 @@ async function runOneTask(
           ffUri = await assetToDataUri(parsed.firstFrameAssetId, cfg.uriCache)
           ctx.log(`shot ${shotId} 首帧注入完成`)
         } catch (err) {
+          if (recipe) throw new Error('首帧读取失败，禁止降级文生视频')
           ctx.log(`shot ${shotId} 首帧图跳过（${(err as Error).message}）`)
         }
       }
@@ -327,9 +336,10 @@ async function runOneTask(
         resolution: parsed.resolution ?? undefined,
         aspectRatio: parsed.aspectRatio ?? undefined,
         firstFrameUrl: ffUri,
+        pin: pinOf(ctx.settings.video),
         ...(setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
       })
-      const gen = await adapter.generate(request)
+      const gen = recipe && task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
       let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
       let thirdPartyTaskId: string | null = gen.kind === 'poll' ? gen.taskId : null
       if (gen.kind === 'poll') {
@@ -388,11 +398,12 @@ async function runOneTask(
           quantity: secs,
           provider: adapter.provider,
           model: request.model ?? null,
+          ...(recipe ? { unitPrice: recipe.endpoints.video!.unitPrice } : {}),
         })
       ctx.log(`shot ${shotId} 视频生成完成 → asset#${asset.id}`)
       return null
     } catch (err) {
-      const msg = (err as Error).message
+      const msg = mediaFailure(err, !!recipe)
       if (attempts >= maxAttempts) {
         await db
           .update(genTasks)
@@ -430,7 +441,7 @@ async function pollVideoTask(
       res = await adapter.query(taskId, { baseUrl: request.baseUrl, apiKey: request.apiKey })
     } catch (err) {
       // 单次查询网络抖动：记日志继续轮询，累计超时兜底
-      ctx.log(`shot 轮询查询异常（继续等待）: ${(err as Error).message}`)
+      ctx.log(`shot 轮询查询异常（继续等待）: ${mediaFailure(err, ctx.run.templateKey === 'easy-video')}`)
       res = { status: 'processing' }
     }
     if (res.status === 'completed') return res.url ?? null

@@ -605,3 +605,42 @@ export const execInputs = sqliteTable(
 export type ContentVersion = typeof contentVersions.$inferSelect
 export type ExecSnapshot = typeof execSnapshots.$inferSelect
 export type ExecInput = typeof execInputs.$inferSelect
+
+/** [M30] 创作控制态；生产状态始终由关联 run 投影。 */
+export const creationSessions = sqliteTable('creation_sessions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull(),
+  requestKey: text('request_key').notNull(),
+  status: text('status').notNull().default('draft'),
+  plan: text('plan'),
+  approvedPlan: text('approved_plan'),
+  planRevision: integer('plan_revision').notNull().default(0),
+  planHash: text('plan_hash'),
+  preflight: text('preflight'),
+  startKey: text('start_key'),
+  runId: integer('run_id'),
+  runHistory: text('run_history').notNull().default('[]'),
+  error: text('error'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('idx_creation_request').on(t.requestKey),
+  index('idx_creation_project').on(t.projectId),
+  index('idx_creation_run').on(t.runId),
+])
+
+export const creationMessages = sqliteTable('creation_messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sessionId: integer('session_id').notNull(),
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  payload: text('payload'),
+  requestKey: text('request_key'),
+  createdAt: integer('created_at').notNull(),
+}, (t) => [
+  index('idx_creation_messages_session').on(t.sessionId),
+  uniqueIndex('idx_creation_message_request').on(t.sessionId, t.requestKey),
+])
+
+export type CreationSession = typeof creationSessions.$inferSelect
+export type CreationMessage = typeof creationMessages.$inferSelect

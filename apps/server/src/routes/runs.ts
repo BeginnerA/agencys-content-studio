@@ -143,6 +143,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
+  if (src.templateKey === 'easy-video') throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
   if (!['failed', 'cancelled'].includes(src.status)) {
     throw new HttpError(400, 'bad_status', `仅 failed/cancelled 可续跑（当前 ${src.status}）；如需重跑请直接新建 run`)
   }

@@ -53,7 +53,12 @@ const { testBusy, selectedProvider, openNew, openEdit, remove, test, msgOf, menu
                 </td>
                 <td>
                   <div class="ops">
-                    <button class="btn sm" :disabled="testBusy === cfg.id" @click="test(cfg)">
+                    <button
+                      class="btn sm"
+                      :disabled="testBusy === cfg.id || !selectedProvider.testable"
+                      :title="selectedProvider.testable ? '实测端点与鉴权（图像/视频/语音可能产生少量计费）' : '该供应商暂未提供连通探针，请用真实运行验证'"
+                      @click="test(cfg)"
+                    >
                       {{ testBusy === cfg.id ? '测试中…' : '测试' }}
                     </button>
                     <button class="btn sm" @click="openEdit(cfg)">编辑</button>
