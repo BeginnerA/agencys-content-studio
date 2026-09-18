@@ -11,6 +11,7 @@ const log = createLogger('loader')
 /** M3 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
 export const KNOWN_ACTIONS = [
   'manual_ingest',
+  'publication_ingest', // [整改] 复盘回灌：发布记录直接入库
   'literal',
   'ai_text',
   'ai_image',
@@ -74,8 +75,8 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       const ik = d['key']
       if (typeof ik !== 'string' || !ik) fail('inputs 存在缺 key 的项')
       const kind = d['kind']
-      if (!['text', 'files', 'int', 'bool'].includes(String(kind))) {
-        return fail(`输入 ${ik} 的 kind「${kind}」非法（支持 text/files/int/bool）`)
+      if (!['text', 'files', 'int', 'bool', 'publications'].includes(String(kind))) {
+        return fail(`输入 ${ik} 的 kind「${kind}」非法（支持 text/files/int/bool/publications）`)
       }
       if (d['required'] !== undefined && typeof d['required'] !== 'boolean') {
         return fail(`输入 ${ik} 的 required 需为布尔`)

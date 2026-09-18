@@ -12,6 +12,8 @@ import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { literal } from './literal'
 import { manualIngest } from './manual-ingest'
+// [整改] 复盘回灌专用：发布记录直接入库（取代导出 CSV 再上传）
+import { publicationIngest } from './publication-ingest'
 import { memoryRecall } from './memory-recall'
 import { memorySummary } from './memory-summary'
 import { memoryWrite } from './memory-write'
@@ -28,6 +30,7 @@ export type ActionFn = (ctx: StepContext) => Promise<StepResult>
 /** action 注册表（与 loader.KNOWN_ACTIONS 同步；新增 action 两处都加） */
 const registry: Record<string, ActionFn> = {
   manual_ingest: manualIngest,
+  publication_ingest: publicationIngest,
   literal,
   ai_text: aiText,
   ai_image: aiImage,

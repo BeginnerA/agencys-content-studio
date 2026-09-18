@@ -25,8 +25,8 @@ const u = useRunDetail({
   loadTplMetas: () => e.loadTplMetas(),
 })
 const e = useRunExtras({ runId: u.runId, detail: u.detail, run: u.run, steps: u.steps, err: u.err })
-const { router, runId, err, busy, gateStep, gateMessage, gateText, gateTextName, showLog, run, canCancel, canResume, hasTasks, active, gateSkipLabel, parallelHint, snapshot, snapshotTip, loadDetail, toggleLog, decide, cancelRun, resumeRun, previewAssets, previewOpen, previewStart, rerunStep, notice, onRerunDone } = u
-const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, showExport, showPublish, runAssets, publishCandidate, deriveOpen, onDerived, onExportDone, onPubSaved } = e
+const { router, runId, err, busy, gateStep, gateMessage, gateText, gateTextName, showLog, run, steps, canCancel, canResume, hasTasks, active, gateSkipLabel, parallelHint, snapshot, snapshotTip, loadDetail, toggleLog, decide, cancelRun, resumeRun, previewAssets, previewOpen, previewStart, rerunStep, notice, onRerunDone } = u
+const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, showExport, showPublish, runAssets, publishCandidate, showPubsPanel, deriveOpen, onDerived, onExportDone, onPubSaved } = e
 </script>
 
 <template>
@@ -99,13 +99,13 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
 
           <TaskPanel v-if="hasTasks" :run-id="runId" :active="active" class="tpanel-wrap" @changed="loadDetail()" />
 
-          <RunParamsPanel v-if="run" :run="run" @changed="loadDetail()" />
+          <RunParamsPanel v-if="run" :run="run" :action-keys="steps.map((s) => s.actionKey)" @changed="loadDetail()" />
 
           <RunCostPanel :e="e" />
 
           <RunExportsPanel :e="e" />
 
-          <RunPubsPanel :e="e" />
+          <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>
       </div>
     </template>

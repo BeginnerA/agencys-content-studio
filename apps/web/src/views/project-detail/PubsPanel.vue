@@ -12,9 +12,11 @@ const { activeTab, pubs, pubSummary, pubLoading, pubErr, assetNameOf, openPublis
           <div class="bh">
             <span class="bt">发布记录</span>
             <span class="muted">已发布 {{ pubs.length }} 条 · 播放 {{ pubSummary.views }} · 互动 {{ pubSummary.interactions }}</span>
-            <button class="btn sm" style="margin-left: auto" @click="openPublish(null)">
-              <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
-            </button>
+            <div class="bh-ops">
+              <button class="btn sm" @click="openPublish(null)">
+                <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
+              </button>
+            </div>
           </div>
           <div v-if="pubErr" class="err-text">{{ pubErr }}</div>
           <div v-if="pubLoading && !pubs.length" class="empty" style="padding: 16px 0">加载中…</div>
@@ -76,5 +78,10 @@ const { activeTab, pubs, pubSummary, pubLoading, pubErr, assetNameOf, openPublis
 .ops {
   display: flex;
   gap: 6px;
+}
+.bh-ops {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
 }
 </style>

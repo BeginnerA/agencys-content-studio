@@ -1,16 +1,15 @@
 key: review-restock
 version: 1
 name: 复盘回灌
-description: 适合：导入平台数据做复盘并把结论回灌为下一轮选题。流程：数据入库 → 记忆召回 → 数据复盘（可审阅）→ 回灌选题（可选）→ 复盘记忆沉淀。
+description: 适合：直接勾选本项目发布记录做复盘并把结论回灌为下一轮选题。流程：发布记录入库（含创作链路）→ 记忆召回 → 数据复盘（可审阅）→ 回灌选题（可选）→ 复盘记忆沉淀。
 genre: other
 scene: operate
 next: [topic-radar]
 inputs:
   - key: data
-    label: 平台数据导出（必填，md/txt/csv：标题/发布时间/曝光/点赞/评论等）
-    kind: files
+    label: 选择要复盘的发布记录（必填，可多选；系统自动汇总指标并带出创作链路）
+    kind: publications
     required: true
-    accept: [.md, .txt, .csv]
   - key: period
     label: 观察期说明（选填，如 2026-08 或 2026-08-01~2026-08-24）
     kind: text
@@ -24,11 +23,10 @@ defaults:
   llm: { temperature: 0.6, max_tokens: 24000 }
 steps:
   - key: ingest
-    action: manual_ingest
-    title: 数据入库
+    action: publication_ingest
+    title: 发布记录入库
     inputs:
-      docs: input.data
-      brief: 平台数据复盘
+      pubs: input.data
   - key: recall
     action: memory_recall
     title: 记忆召回（历史复盘结论）

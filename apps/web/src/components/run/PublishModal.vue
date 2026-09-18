@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import Modal from '../common/Modal.vue'
 import DatePicker from '../common/DatePicker.vue'
 import { publicationApi } from '../../lib/api'
@@ -24,6 +24,10 @@ const p = props.publication
 const platform = ref<string>(p?.platform ?? 'douyin')
 const url = ref(p?.url ?? '')
 const assetId = ref<number | ''>(p?.assetId ?? props.defaultAssetId ?? '')
+/** [整改] 发布标题（发布到平台时使用的实际标题，用于复盘标题模式分析）；M20 遗留未接 UI 的字段 */
+const title = ref(p?.title ?? '')
+/** 用户是否手动改过标题：未改时允许从所选资产名自动填充 */
+const titleTouched = ref(Boolean(p?.title))
 const publishedDate = ref(p?.publishedAt ? toDateInput(p.publishedAt) : '')
 const metric = ref<Record<string, string>>({
   views: str(p?.metrics?.views),
@@ -48,6 +52,17 @@ const METRICS = [
 function str(n: number | undefined): string {
   return n ? String(n) : ''
 }
+
+// [整改] 选定关联资产且用户未手改标题时，用资产名自动填充标题（避免复盘时标题全为空）
+watch(
+  assetId,
+  (id) => {
+    if (titleTouched.value) return
+    const a = props.assetOptions.find((x) => x.id === Number(id))
+    title.value = a ? a.name : ''
+  },
+  { immediate: true },
+)
 function toDateInput(ms: number): string {
   const d = new Date(ms)
   const pad = (x: number) => String(x).padStart(2, '0')
@@ -65,6 +80,8 @@ async function submit() {
       platform: platform.value,
       url: url.value.trim() || undefined,
       asset_id: assetId.value === '' ? undefined : assetId.value,
+      // [整改] 发布标题（供复盘标题模式分析；无来源时自动取关联资产名）
+      title: title.value.trim() || undefined,
       // 日期取当地中午避免时区边界
       published_at: publishedDate.value ? new Date(publishedDate.value + 'T12:00:00').getTime() : undefined,
       metrics,
@@ -101,6 +118,15 @@ async function submit() {
     <label class="fld">
       作品链接
       <input v-model="url" type="text" placeholder="https://…" />
+    </label>
+    <label class="fld">
+      发布标题
+      <input
+        v-model="title"
+        type="text"
+        placeholder="发布到平台时使用的标题（留空则取关联资产名）"
+        @input="titleTouched = true"
+      />
     </label>
     <label v-if="!p?.id" class="fld">
       关联资产（可选）

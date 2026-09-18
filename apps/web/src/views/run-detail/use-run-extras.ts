@@ -148,6 +148,18 @@ export function useRunExtras(deps: {
     return last ? last.id : null
   })
 
+  /**
+   * [整改] 发布记录面板可见性：只有产出可发布成品的模板才显示入口。
+   * plan（选题雷达/创作策划/立项/改编等）与 operate（复盘回灌/多平台适配/翻译等）
+   * 场景不产出发布物，隐藏「标记发布 / 发布记录」面板；produce 与场景未知（元数据未载/自定义模板）保留。
+   */
+  const showPubsPanel = computed(() => {
+    const key = run.value?.templateKey
+    if (!key) return true
+    const scene = tplMetas.value.find((t) => t.key === key)?.scene
+    return scene !== 'plan' && scene !== 'operate'
+  })
+
   // ===== [M19] 成片多画幅派生（A 路径：对最新 final_video 二次编码） =====
   const deriveOpen = ref(false)
   /** 有 final_video 产物才可派生 */
@@ -222,6 +234,7 @@ export function useRunExtras(deps: {
     refreshExtras,
     assetNameOf,
     publishCandidate,
+    showPubsPanel,
     deriveOpen,
     hasFinalVideo,
     onDerived,

@@ -8,7 +8,7 @@
 export interface TemplateInputDef {
   key: string
   label?: string
-  kind: 'text' | 'files' | 'int' | 'bool'
+  kind: 'text' | 'files' | 'int' | 'bool' | 'publications'
   required: boolean
   accept?: string[]
   /** [M2] 启动时用户未传则回填（落库前完成；UI 表单预填同源） */

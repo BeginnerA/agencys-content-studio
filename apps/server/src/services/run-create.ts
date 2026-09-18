@@ -103,6 +103,13 @@ function normalizeInput(defs: TemplateInputDef[], raw: Record<string, unknown>):
         throw new InvalidRunInputError('bad_input', `input.${def.key} 需为资产 id 数组`)
       }
       out[def.key] = ids
+    } else if (def.kind === 'publications') {
+      // [整改] 发布记录选择器：保持为正整数 publication id 数组（与 files 同处理，但不做资产归属校验）
+      const ids = Array.isArray(v) ? v.map(Number) : [Number(v)]
+      if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
+        throw new InvalidRunInputError('bad_input', `input.${def.key} 需为发布记录 id 数组`)
+      }
+      out[def.key] = ids
     } else {
       out[def.key] = typeof v === 'string' ? v : JSON.stringify(v)
     }

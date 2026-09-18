@@ -12,7 +12,7 @@ import { fmtTime } from '../../lib/format'
 import type { ParamChange, Run } from '../../lib/types'
 import Icon from '../../components/common/Icon.vue'
 
-const props = defineProps<{ run: Run }>()
+const props = defineProps<{ run: Run; actionKeys?: string[] }>()
 const emit = defineEmits<{ changed: [] }>()
 
 interface FieldDef {
@@ -67,6 +67,34 @@ const GROUPS: Array<{ key: string; label: string; fields: FieldDef[] }> = [
 
 const canEdit = computed(() => ['queued', 'running', 'waiting_input'].includes(props.run.status))
 
+/**
+ * [整改] 参数组可见性：只暴露「本 run 步骤实际会读取」的组。
+ * 服务端仅这些 action 读 ctx.settings.<group>，热调对其余步骤无意义（改了不生效），隐藏以免死字段误导：
+ * ai_image→image；ai_video/ffmpeg_merge→video；tts→audio；ai_text/subtitle→llm。
+ * 步骤未加载或该模板无上述动作时保守全显示，避免误隐藏。
+ */
+const ALL_GROUPS = ['image', 'video', 'audio', 'llm'] as const
+type GroupKey = (typeof ALL_GROUPS)[number]
+const ACTION_GROUP: Record<string, GroupKey> = {
+  ai_image: 'image',
+  ai_video: 'video',
+  ffmpeg_merge: 'video',
+  tts: 'audio',
+  ai_text: 'llm',
+  subtitle: 'llm',
+}
+const visibleGroupKeys = computed<GroupKey[]>(() => {
+  const keys = props.actionKeys ?? []
+  if (!keys.length) return [...ALL_GROUPS]
+  const used = new Set<GroupKey>()
+  for (const k of keys) {
+    const g = ACTION_GROUP[k]
+    if (g) used.add(g)
+  }
+  return used.size ? ALL_GROUPS.filter((g) => used.has(g)) : [...ALL_GROUPS]
+})
+const shownGroups = computed(() => GROUPS.filter((g) => (visibleGroupKeys.value as string[]).includes(g.key)))
+
 const curParams = computed<Record<string, Record<string, unknown>>>(() => {
   const raw = props.run.input?._params
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -109,7 +137,7 @@ let hintTimer: number | undefined
 
 function buildParams(): Record<string, Record<string, unknown>> | null {
   const out: Record<string, Record<string, unknown>> = {}
-  for (const g of GROUPS) {
+  for (const g of shownGroups.value) {
     for (const f of g.fields) {
       const raw = (form[fk(g.key, f.key)] ?? '').trim()
       if (!raw) continue
@@ -174,7 +202,7 @@ onBeforeUnmount(() => {
 
     <!-- 生效值 -->
     <div class="pp-cur">
-      <div v-for="g in GROUPS" :key="g.key" class="pp-row">
+      <div v-for="g in shownGroups" :key="g.key" class="pp-row">
         <span class="pp-gt">{{ g.label }}</span>
         <template v-if="curEntries(g.key).length">
           <span v-for="e in curEntries(g.key)" :key="e.k" class="pp-kv mono">{{ e.k }}: {{ e.v }}</span>
@@ -185,7 +213,7 @@ onBeforeUnmount(() => {
 
     <!-- 编辑（终态只读） -->
     <template v-if="canEdit">
-      <div v-for="g in GROUPS" :key="g.key" class="pp-grp">
+      <div v-for="g in shownGroups" :key="g.key" class="pp-grp">
         <div class="pp-gl">{{ g.label }}</div>
         <div class="pp-fields">
           <label v-for="f in g.fields" :key="f.key" class="pp-field">

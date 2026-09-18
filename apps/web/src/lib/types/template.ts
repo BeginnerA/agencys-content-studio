@@ -1,7 +1,7 @@
 export interface TemplateInputDef {
   key: string
   label: string
-  kind: 'text' | 'int' | 'bool' | 'files'
+  kind: 'text' | 'int' | 'bool' | 'files' | 'publications'
   required: boolean
   accept?: string[]
   default?: string | number | boolean

@@ -3,8 +3,8 @@ import { ref } from 'vue'
 import Modal from '../common/Modal.vue'
 import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
-import type { Asset, TemplateDetail, TemplateMeta } from '../../lib/types'
-import { projectApi, runApi, templateApi } from '../../lib/api'
+import type { Asset, Publication, TemplateDetail, TemplateMeta } from '../../lib/types'
+import { projectApi, publicationApi, runApi, templateApi } from '../../lib/api'
 
 const props = defineProps<{
   projectId: number
@@ -19,6 +19,8 @@ const templates = ref<TemplateMeta[]>([])
 const tplKey = ref('')
 const tpl = ref<TemplateDetail | null>(null)
 const assets = ref<Asset[]>([])
+/** [整改] 项目发布记录（publications 类输入的选择源，复盘回灌直接勾选） */
+const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
 /** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
 const adv = ref({ imageSize: '', resolution: '', duration: '', voice: '', temperature: '' })
@@ -44,6 +46,7 @@ async function selectTemplate(key: string) {
       if (inp.kind === 'int') form.value[inp.key] = d ?? ''
       else if (inp.kind === 'bool') form.value[inp.key] = d === true
       else if (inp.kind === 'files') form.value[inp.key] = []
+      else if (inp.kind === 'publications') form.value[inp.key] = []
       else form.value[inp.key] = d ?? ''
     }
     // [M14] 起作预填（如 episode_number）：覆盖模板默认值（仅模板声明的键）
@@ -81,6 +84,7 @@ async function submit() {
     if (inp.kind === 'int') input[inp.key] = Number(v)
     else if (inp.kind === 'bool') input[inp.key] = v === true
     else if (inp.kind === 'files') input[inp.key] = (v as number[]) ?? []
+    else if (inp.kind === 'publications') input[inp.key] = (v as number[]) ?? []
     else input[inp.key] = v ?? ''
   }
   // [M14] 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
@@ -112,9 +116,14 @@ async function submit() {
 async function init() {
   loading.value = true
   try {
-    const [tRes, aRes] = await Promise.all([templateApi.list(), projectApi.assets(props.projectId, '?limit=100')])
+    const [tRes, aRes, pubRes] = await Promise.all([
+      templateApi.list(),
+      projectApi.assets(props.projectId, '?limit=100'),
+      publicationApi.list(`?project_id=${props.projectId}`),
+    ])
     templates.value = tRes.items
     assets.value = aRes.items
+    publications.value = pubRes.items
     // 接力入口（initialTemplateKey 命中）直达表单；否则停在选卡段（不再自动选中字母序第一个）
     const initKey = props.initialTemplateKey
     if (initKey && tRes.items.some((t) => t.key === initKey)) await selectTemplate(initKey)
@@ -148,7 +157,7 @@ init()
         <div v-if="loadingDetail" class="empty">加载中…</div>
         <template v-else-if="tpl">
           <div class="desc muted" style="margin-bottom: 10px">{{ tpl.description }}</div>
-          <TemplateInputFields :tpl="tpl" :assets="assets" :values="form" @change="(k, v) => (form[k] = v)" />
+          <TemplateInputFields :tpl="tpl" :assets="assets" :publications="publications" :values="form" @change="(k, v) => (form[k] = v)" />
           <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认） -->
           <details class="adv">
             <summary>本集参数覆盖（可选）——仅本 run 生效，优先于项目设置</summary>
