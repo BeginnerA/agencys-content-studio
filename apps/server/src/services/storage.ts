@@ -92,7 +92,7 @@ export function relPathOf(projectId: number, purpose: string | null | undefined,
 }
 
 export function ensureProjectDirs(projectId: number): void {
-  for (const sub of ['source', 'texts', 'images', 'video', 'audio', 'thumbs', 'exports']) {
+  for (const sub of ['source', 'texts', 'images', 'video', 'audio', 'thumbs', 'exports', 'versions']) {
     mkdirSync(join(projectAbsDir(projectId), sub), { recursive: true })
   }
 }

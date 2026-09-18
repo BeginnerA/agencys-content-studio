@@ -528,3 +528,80 @@ export const budgetAlerts = sqliteTable('budget_alerts', {
 }, (t) => [index('idx_budget_alerts_scope').on(t.scope)])
 
 export type BudgetAlert = typeof budgetAlerts.$inferSelect
+
+// ---------- [M29·R02] 通用追溯层（内容/参考版本 + 执行真实输入快照；无短剧专属模型，加法迁移） ----------
+
+/** [M29] 内容/参考对象版本（asset 不可变文件版本 / entity 字段快照；写后永不覆写） */
+export const contentVersions = sqliteTable(
+  'content_versions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    objKind: text('obj_kind').notNull(), // asset|entity
+    objId: integer('obj_id').notNull(),
+    revision: integer('revision').notNull(), // 对象内递增（1 起）
+    payloadKind: text('payload_kind').notNull().default('file'), // file=asset 不可变文件｜json=entity 字段快照
+    relPath: text('rel_path'), // payloadKind=file：不可变版本文件相对路径（versions/ 下）
+    sha256: text('sha256'),
+    doc: text('doc'), // payloadKind=json：实体 tracked 字段快照 JSON
+    label: text('label'),
+    source: text('source').notNull().default('edit'), // baseline|edit|import|generate|ref-upload|ref-gen|polish|restore
+    meta: text('meta').notNull().default('{}'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_cv_obj_rev').on(t.objKind, t.objId, t.revision),
+    index('idx_cv_project').on(t.projectId),
+  ],
+)
+
+/** [M29] 执行快照：每次生成/合成冻结其真实输入集合（一条 = 一次执行） */
+export const execSnapshots = sqliteTable(
+  'exec_snapshots',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    execKind: text('exec_kind').notNull(), // pipeline_step|canvas_task|shot_task
+    runId: integer('run_id'),
+    stepId: integer('step_id'),
+    taskId: integer('task_id'),
+    templateKey: text('template_key'),
+    model: text('model'),
+    inputHash: text('input_hash'),
+    frozenAt: integer('frozen_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_es_project').on(t.projectId),
+    index('idx_es_task').on(t.taskId),
+    index('idx_es_step').on(t.stepId),
+  ],
+)
+
+/** [M29] 执行实际输入依赖边：used/skipped + 版本指针 + 镜头/端口语义定位（下游影响反查用） */
+export const execInputs = sqliteTable(
+  'exec_inputs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    snapshotId: integer('snapshot_id').notNull(),
+    projectId: integer('project_id').notNull(),
+    role: text('role').notNull(), // text|reference|first_frame|last_frame|source|mask|subtitle|bgm|sfx|prev_text|voice
+    srcKind: text('src_kind').notNull(), // asset|entity
+    srcId: integer('src_id').notNull(),
+    versionId: integer('version_id'), // → content_versions.id（NULL=旧数据无版本，影响分析标「历史不可恢复」）
+    used: integer('used').notNull().default(1), // 1=最终采用 0=计划但跳过
+    skipReason: text('skip_reason'),
+    shotId: text('shot_id'), // 镜头定位（分镜/合成；NULL=非镜头级）
+    port: text('port'), // 画布端口语义定位
+    ordinal: integer('ordinal').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_ei_snapshot').on(t.snapshotId),
+    index('idx_ei_source').on(t.srcKind, t.srcId),
+  ],
+)
+
+export type ContentVersion = typeof contentVersions.$inferSelect
+export type ExecSnapshot = typeof execSnapshots.$inferSelect
+export type ExecInput = typeof execInputs.$inferSelect

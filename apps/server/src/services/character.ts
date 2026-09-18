@@ -1,6 +1,7 @@
 import { and, eq, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { characters, type CharacterRow } from '../db/schema'
+import { recordEntityVersion, type VersionSource } from './provenance'
 
 /**
  * M3 角色库服务（M8 泛化为实体素材库：kind 多态 character|scene|prop）。
@@ -76,6 +77,10 @@ export async function upsertEntity(p: {
     }
     if (p.meta) patch['meta'] = JSON.stringify(p.meta)
     await db.update(characters).set(patch).where(eq(characters.id, hit.id))
+    // [M29] 仅当有实质字段变更时记版本（避免空 upsert 污染版本链）
+    if (Object.keys(patch).length > 1) {
+      await recordEntityVersion({ entityId: hit.id, projectId: p.projectId, source: 'edit', label: p.name })
+    }
     return { id: hit.id, created: false }
   }
   const inserted = (
@@ -98,11 +103,20 @@ export async function upsertEntity(p: {
       })
       .returning()
   )[0]!
+  // [M29] 新建实体登记初始版本（baseline）
+  await recordEntityVersion({ entityId: inserted.id, projectId: p.projectId, source: 'baseline', label: p.name })
   return { id: inserted.id, created: true }
 }
 
-/** 参考图挂接（kind 限定）：与已有 refAssetIds 并集去重后更新，返回新增数量（未命中实体 / 无新增 → 0） */
-export async function attachRefAssets(projectId: number, name: string, assetIds: number[], kind: EntityKind = 'character'): Promise<number> {
+/** 参考图挂接（kind 限定）：与已有 refAssetIds 并集去重后更新，返回新增数量（未命中实体 / 无新增 → 0）。
+ *  [M29] 有新增时记实体版本（source 由调用上下文区分上传/生成）。 */
+export async function attachRefAssets(
+  projectId: number,
+  name: string,
+  assetIds: number[],
+  kind: EntityKind = 'character',
+  source: VersionSource = 'edit',
+): Promise<number> {
   const row = await findEntity(projectId, name, kind)
   if (!row || assetIds.length === 0) return 0
   const existing = safeArrNum(row.refAssetIds)
@@ -110,6 +124,7 @@ export async function attachRefAssets(projectId: number, name: string, assetIds:
   const added = merged.length - existing.length
   if (added > 0) {
     await db.update(characters).set({ refAssetIds: JSON.stringify(merged), updatedAt: Date.now() }).where(eq(characters.id, row.id))
+    await recordEntityVersion({ entityId: row.id, projectId, source, label: `参考图挂接 +${added}` })
   }
   return added
 }

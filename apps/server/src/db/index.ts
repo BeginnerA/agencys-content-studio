@@ -445,4 +445,66 @@ async function ensureSchemaColumns(): Promise<void> {
       log.warn(`ensureColumn failed: ${(err as Error).message}`)
     }
   }
+
+  // [M29·R02] 通用追溯层三表建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS content_versions (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        obj_kind text NOT NULL,
+        obj_id integer NOT NULL,
+        revision integer NOT NULL,
+        payload_kind text DEFAULT 'file' NOT NULL,
+        rel_path text,
+        sha256 text,
+        doc text,
+        label text,
+        source text DEFAULT 'edit' NOT NULL,
+        meta text DEFAULT '{}' NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_cv_obj_rev ON content_versions (obj_kind, obj_id, revision)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_cv_project ON content_versions (project_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS exec_snapshots (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        project_id integer NOT NULL,
+        exec_kind text NOT NULL,
+        run_id integer,
+        step_id integer,
+        task_id integer,
+        template_key text,
+        model text,
+        input_hash text,
+        frozen_at integer NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_es_project ON exec_snapshots (project_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_es_task ON exec_snapshots (task_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_es_step ON exec_snapshots (step_id)')
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS exec_inputs (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        snapshot_id integer NOT NULL,
+        project_id integer NOT NULL,
+        role text NOT NULL,
+        src_kind text NOT NULL,
+        src_id integer NOT NULL,
+        version_id integer,
+        used integer DEFAULT 1 NOT NULL,
+        skip_reason text,
+        shot_id text,
+        port text,
+        ordinal integer DEFAULT 0 NOT NULL,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_ei_snapshot ON exec_inputs (snapshot_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_ei_source ON exec_inputs (src_kind, src_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

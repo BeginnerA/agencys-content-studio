@@ -29,3 +29,5 @@ export { statsApi, exportApi, publicationApi, settingsApi, scheduleApi, budgetAp
 
 export { workflowApi } from './workflows'
 export type { WorkflowCreateBody, WorkflowPatchBody } from './workflows'
+
+export { assetVersionApi, entityVersionApi, canvasLockApi } from './versions'

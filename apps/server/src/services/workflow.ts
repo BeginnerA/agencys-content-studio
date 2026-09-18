@@ -16,6 +16,7 @@ import { checkBudget } from './budget'
 import { emitStudioEvent } from './events'
 import { createRunRow } from './run-create'
 import { readTextAsset } from './storage'
+import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from './provenance'
 
 const log = createLogger('workflow')
 
@@ -176,6 +177,8 @@ export interface SegmentInputResult {
   inputs: Record<string, unknown>
   /** 模板 required 且未提供且无 default 的输入键（非空 → input 阻塞） */
   missingRequired: string[]
+  /** [M29·R02] 本次经 $prev.* 令牌命中的上游产物资产 id（含 $prev.text 字符串来料），供跨段版本溯源 */
+  prevSources: number[]
 }
 
 /** 取上一段 run 指定 purpose 的产物资产行（升序；无 run → []）
@@ -209,21 +212,26 @@ async function prevAssetIdsByPurpose(prevRunId: number | null, purpose: string):
   return (await prevAssetsByPurpose(prevRunId, purpose)).map((a) => a.id)
 }
 
-/** 解析单个 inputSpec token（$prev.* 取上游产物；否则字面量）；不可解析 → undefined */
-async function resolveToken(token: string, prevRunId: number | null): Promise<unknown> {
+/** 解析单个 inputSpec token（$prev.* 取上游产物；否则字面量）；不可解析 → undefined。
+ *  [M29·R02] sink 收集本次命中的上游资产 id（含 $prev.text 字符串来料），不改返回值语义。 */
+async function resolveToken(token: string, prevRunId: number | null, sink: number[]): Promise<unknown> {
   if (typeof token !== 'string') return token
   if (token.startsWith('$prev.assets:')) {
     const ids = await prevAssetIdsByPurpose(prevRunId, token.slice('$prev.assets:'.length))
+    if (ids.length) sink.push(...ids)
     return ids.length ? ids : undefined
   }
   if (token.startsWith('$prev.asset:')) {
     const ids = await prevAssetIdsByPurpose(prevRunId, token.slice('$prev.asset:'.length))
-    return ids[0]
+    const one = ids[0]
+    if (one !== undefined) sink.push(one)
+    return one
   }
   if (token.startsWith('$prev.text:')) {
     const purpose = token.slice('$prev.text:'.length)
     const ids = await prevAssetIdsByPurpose(prevRunId, purpose)
     if (!ids.length) return undefined
+    sink.push(ids[0]!)
     try {
       return await readTextAsset(ids[0]!)
     } catch {
@@ -246,17 +254,18 @@ export async function resolveSegmentInput(p: {
   const spec = p.inputSpec ?? {}
   const inputs: Record<string, unknown> = {}
   const missingRequired: string[] = []
+  const prevSources: number[] = []
   for (const def of p.template.inputs) {
     const token = spec[def.key]
     if (token !== undefined) {
-      const val = await resolveToken(token, p.prevRunId)
+      const val = await resolveToken(token, p.prevRunId, prevSources)
       if (val !== undefined && val !== null) inputs[def.key] = val
     }
     if (def.required && inputs[def.key] === undefined && def.default === undefined) {
       missingRequired.push(def.key)
     }
   }
-  return { inputs, missingRequired }
+  return { inputs, missingRequired, prevSources }
 }
 
 // ========== 链累计成本（budgetCap 核算用）==========
@@ -428,7 +437,7 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
     emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
     return
   }
-  const { inputs, missingRequired } = await resolveSegmentInput({ template, prevRunId: runId, inputSpec: next.inputSpec })
+  const { inputs, missingRequired, prevSources } = await resolveSegmentInput({ template, prevRunId: runId, inputSpec: next.inputSpec })
   if (missingRequired.length) {
     await setWorkflowStatus(workflowId, 'paused')
     emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
@@ -457,6 +466,18 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
   engine.startRun(newRun.id)
   emitStudioEvent({ type: 'workflow.advanced', workflowId, projectId: wf.projectId, fromRunId: runId, toRunId: newRun.id, seq: seq + 1 })
   log.info(`workflow ${workflowId} 推进段 ${seq}→${seq + 1}（run ${runId}→${newRun.id}）`)
+  // [M29·R02] 跨段版本溯源：将本段经 $prev.*（尤其 $prev.text 字符串）命中的上游资产版本随新 run 带出（旁路，不改推进/预算/幂等语义）
+  if (prevSources.length > 0) {
+    const inputs: ExecInputSpec[] = []
+    for (const aid of new Set(prevSources)) inputs.push(await assetInput('prev_text', aid))
+    await safeRecordExecSnapshot({
+      projectId: freshWf.projectId,
+      execKind: 'pipeline_step',
+      runId: newRun.id,
+      templateKey: next.templateKey,
+      inputs,
+    })
+  }
 }
 
 // ========== 视图投影 ==========

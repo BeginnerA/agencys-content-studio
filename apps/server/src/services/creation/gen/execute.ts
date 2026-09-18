@@ -17,6 +17,7 @@ import { scheduleImageCheck } from '../../image-check'
 import { saveGeneratedMedia } from '../../net'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, writeTextAsset } from '../../storage'
 import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../style-preset'
+import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../provenance'
 import { resolveAudioEndpoint, synthSpeech } from '../../tts'
 import { cloneEndpoint, loadCloneIndex } from '../../tts-clone'
 import { recordLlmUsage, recordUsage } from '../../usage'
@@ -42,6 +43,8 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
   if (spec.genKind === 'compose') return executeComposeOnce(taskId, canvas, node, spec, plan)
   if (spec.genKind === 'llm') return executeLlmOnce(taskId, canvas, node, spec, plan)
   const uriCache = new Map<number, string>()
+  // [M29·R02] 执行真实输入快照：记录本次实际消费的资产/实体版本 + used/skipped（零行为变更，仅旁路采集）
+  const execInputs: ExecInputSpec[] = []
 
   const styleSnippet =
     spec.genKind === 'image' && spec.useStylePreset !== false
@@ -59,10 +62,12 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     // 编辑通道：source → baseImage；mask（inpaint/erase）；adapter.edit（能力声明制）
     const sourceUri = plan.sourceAssetId != null ? await assetToDataUri(plan.sourceAssetId, uriCache) : null
     if (!sourceUri) throw new Error('编辑节点缺少源图产物')
+    if (plan.sourceAssetId != null) execInputs.push(await assetInput('source', plan.sourceAssetId, { port: 'source' }))
     let maskUri: string | undefined
     if (spec.edit.mode === 'inpaint' || spec.edit.mode === 'erase') {
       maskUri = spec.edit.maskAssetId != null ? await assetToDataUri(spec.edit.maskAssetId, uriCache) : undefined
       if (!maskUri) throw new Error('缺少蒙版资产')
+      if (spec.edit.maskAssetId != null) execInputs.push(await assetInput('mask', spec.edit.maskAssetId))
     }
     const endpoint = await resolveEndpoint('image', spec.provider)
     const adapter = getImageAdapter(endpoint.providerKey)
@@ -87,11 +92,14 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
   } else if (spec.genKind === 'image') {
     finalPrompt = styleSnippet ? appendStyleSnippet(finalPrompt, styleSnippet) : finalPrompt
     const refUris: string[] = []
+    let ordinal = 0
     for (const id of plan.referenceAssetIds) {
       try {
         refUris.push(await assetToDataUri(id, uriCache))
+        execInputs.push(await assetInput('reference', id, { port: 'reference', ordinal: ordinal++ }))
       } catch (err) {
         log.warn(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
+        execInputs.push(await assetInput('reference', id, { used: false, skipReason: (err as Error).message, port: 'reference', ordinal: ordinal++ }))
       }
     }
     const { adapter, request } = await buildImageRequest({
@@ -110,27 +118,34 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
   } else {
     // 视频通道：首帧优先（规避帧/参考互斥，镜像 ai_video planVideoRefs 语义）
     const refUris: string[] = []
+    let ordinal = 0
     for (const id of plan.referenceAssetIds) {
       try {
         refUris.push(await assetToDataUri(id, uriCache))
+        execInputs.push(await assetInput('reference', id, { port: 'reference', ordinal: ordinal++ }))
       } catch (err) {
         log.warn(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
+        execInputs.push(await assetInput('reference', id, { used: false, skipReason: (err as Error).message, port: 'reference', ordinal: ordinal++ }))
       }
     }
     let firstFrameUri: string | undefined
     if (plan.firstFrameAssetId != null) {
       try {
         firstFrameUri = await assetToDataUri(plan.firstFrameAssetId, uriCache)
+        execInputs.push(await assetInput('first_frame', plan.firstFrameAssetId, { port: 'first_frame' }))
       } catch (err) {
         log.warn(`首帧 asset#${plan.firstFrameAssetId} 跳过（${(err as Error).message}）`)
+        execInputs.push(await assetInput('first_frame', plan.firstFrameAssetId, { used: false, skipReason: (err as Error).message, port: 'first_frame' }))
       }
     }
     let lastFrameUri: string | undefined
     if (plan.lastFrameAssetId != null) {
       try {
         lastFrameUri = await assetToDataUri(plan.lastFrameAssetId, uriCache)
+        execInputs.push(await assetInput('last_frame', plan.lastFrameAssetId, { port: 'last_frame' }))
       } catch (err) {
         log.warn(`尾帧 asset#${plan.lastFrameAssetId} 跳过（${(err as Error).message}）`)
+        execInputs.push(await assetInput('last_frame', plan.lastFrameAssetId, { used: false, skipReason: (err as Error).message, port: 'last_frame' }))
       }
     }
     const { adapter, request } = await buildVideoRequest({
@@ -222,6 +237,17 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
       model: usedModel,
     })
   }
+  // [M29·R02] 补齐 prompt/实体来源，冻结本次执行真实输入快照（旁路，失败不影响生成）
+  if (plan.promptSource?.assetId != null) execInputs.push(await assetInput('text', plan.promptSource.assetId, { port: 'prompt' }))
+  for (const eid of plan.entitySources) execInputs.push(await entityInput('reference', eid))
+  await safeRecordExecSnapshot({
+    projectId: canvas.projectId,
+    execKind: 'canvas_task',
+    runId: null,
+    taskId,
+    model: usedModel ?? spec.model ?? null,
+    inputs: execInputs,
+  })
   log.info(`canvas node #${node.id} 生成完成 → asset#${asset.id}`)
 }
 
@@ -374,6 +400,17 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
     .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
   emitCanvasChanged(canvas, node.id)
+  // [M29·R02] audio 执行真实输入快照：prompt 端口来源文本资产（版本指针）
+  if (plan.promptSource?.assetId != null) {
+    await safeRecordExecSnapshot({
+      projectId: canvas.projectId,
+      execKind: 'canvas_task',
+      runId: null,
+      taskId,
+      model: ep.model,
+      inputs: [await assetInput('text', plan.promptSource.assetId, { port: 'prompt' })],
+    })
+  }
   await recordUsage({
     projectId: canvas.projectId,
     runId: null,
@@ -398,12 +435,19 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
   if (!instruction) throw new Error('LLM 指令为空（请在 prompt 填写指令或连线文本节点）')
   const uriCache = new Map<number, string>()
   const imageParts: ChatContentPart[] = []
+  // [M29·R02] llm 执行真实输入快照（参考图 used/skipped + 文本素材版本指针）
+  const execInputs: ExecInputSpec[] = []
   for (const id of plan.referenceAssetIds) {
     try {
       imageParts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, uriCache) } })
+      execInputs.push(await assetInput('reference', id, { port: 'reference' }))
     } catch (err) {
       log.warn(`LLM 参考图 asset#${id} 跳过（${(err as Error).message}）`)
+      execInputs.push(await assetInput('reference', id, { used: false, skipReason: (err as Error).message, port: 'reference' }))
     }
+  }
+  for (const src of plan.textSources) {
+    if (src.assetId != null) execInputs.push(await assetInput('text', src.assetId, { port: 'text' }))
   }
   let body = instruction
   if (plan.textInputs.length > 0) {
@@ -455,6 +499,14 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
     .where(eq(genTasks.id, taskId))
   emitCanvasChanged(canvas, node.id)
   await recordLlmUsage({ projectId: canvas.projectId, runId: null, provider: res.provider, model: res.model, usage: res.usage })
+  await safeRecordExecSnapshot({
+    projectId: canvas.projectId,
+    execKind: 'canvas_task',
+    runId: null,
+    taskId,
+    model: res.model,
+    inputs: execInputs,
+  })
   log.info(`canvas node #${node.id} LLM 完成 → asset#${asset.id}（${text.length} 字符）`)
 }
 
@@ -615,5 +667,15 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
     .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
   emitCanvasChanged(canvas, node.id)
+  // [M29·R02] compose 执行真实输入快照：镜头视频/配音/字幕/BGM 均入边（媒体资产 versionId=null，身份即资产 id）
+  {
+    const execInputs: ExecInputSpec[] = []
+    for (let i = 0; i < plan.videoAssetIds.length; i++) execInputs.push(await assetInput('source', plan.videoAssetIds[i]!, { port: 'video', ordinal: i }))
+    for (let i = 0; i < plan.audioAssetIds.length; i++) execInputs.push(await assetInput('voice', plan.audioAssetIds[i]!, { port: 'audio', ordinal: i }))
+    if (spec.bgmAssetId != null) execInputs.push(await assetInput('bgm', spec.bgmAssetId))
+    if (subtitleAssetId != null) execInputs.push(await assetInput('subtitle', subtitleAssetId))
+    else if (spec.subtitle === 'asset' && spec.subtitleAssetId != null) execInputs.push(await assetInput('subtitle', spec.subtitleAssetId))
+    await safeRecordExecSnapshot({ projectId: canvas.projectId, execKind: 'canvas_task', runId: null, taskId, inputs: execInputs })
+  }
   log.info(`canvas node #${node.id} 合成完成 → asset#${asset.id}（${Math.round(stat.size / 1024)} KB${duration ? `, ${Math.round(duration * 10) / 10}s` : ''}）`)
 }

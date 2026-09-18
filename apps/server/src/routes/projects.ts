@@ -10,6 +10,9 @@ import {
   canvasNodes,
   canvases,
   characters,
+  contentVersions,
+  execInputs,
+  execSnapshots,
   genTasks,
   memories,
   pipelineRuns,
@@ -229,6 +232,10 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
         ? await cnt(tx.delete(canvasNodes).where(inArray(canvasNodes.canvasId, canvasIds)).returning({ id: canvasNodes.id }))
         : 0,
       canvases: await cnt(tx.delete(canvases).where(eq(canvases.projectId, id)).returning({ id: canvases.id })),
+      // [M29·R02] 追溯三表级联删（无外键，按依赖序：exec_inputs → exec_snapshots → content_versions）
+      execInputs: await cnt(tx.delete(execInputs).where(eq(execInputs.projectId, id)).returning({ id: execInputs.id })),
+      execSnapshots: await cnt(tx.delete(execSnapshots).where(eq(execSnapshots.projectId, id)).returning({ id: execSnapshots.id })),
+      contentVersions: await cnt(tx.delete(contentVersions).where(eq(contentVersions.projectId, id)).returning({ id: contentVersions.id })),
       projects: await cnt(tx.delete(projects).where(eq(projects.id, id)).returning({ id: projects.id })),
     }
   })

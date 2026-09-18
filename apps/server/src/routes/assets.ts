@@ -7,7 +7,8 @@ import { db } from '../db'
 import { assets } from '../db/schema'
 import { absPathOf, importFiles, mimeOfExt, withUtf8Charset, writeTextAsset } from '../services/storage'
 import { FetchGuardError, fetchSourceText } from '../services/fetch-source'
-import { ContentEditError, updateAssetContent } from '../services/asset-content'
+import { ContentEditError, updateAssetContent, EDITABLE_PURPOSES } from '../services/asset-content'
+import { currentRevision } from '../services/provenance'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
 import { cleanupVersions, gcProject } from '../services/version-cleanup'
@@ -99,11 +100,15 @@ assetsRoutes.post('/projects/:id/fetch-source', h(async (c) => {
   return c.json({ asset: { ...toAssetView(asset), name: asset.name } }, 201)
 }))
 
-// GET /assets/:id —— 资产详情
+// GET /assets/:id —— 资产详情（可编辑文本资产附 contentRevision，供前端乐观锁）
 assetsRoutes.get('/assets/:id', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
-  return c.json({ asset: toAssetView(a) })
+  const view = toAssetView(a)
+  if (a.kind === 'text' && a.purpose && (EDITABLE_PURPOSES as readonly string[]).includes(a.purpose)) {
+    view.contentRevision = await currentRevision('asset', a.id)
+  }
+  return c.json({ asset: view })
 }))
 
 // GET /assets/:id/file —— 文件流（支持 Range，?download=1 触发附件）
@@ -117,10 +122,12 @@ assetsRoutes.get('/assets/:id/file', h(async (c) => {
 
   const mime = withUtf8Charset(a.mime ?? mimeOfExt(`.${a.ext ?? ''}`))
   const download = c.req.query('download') === '1'
+  // [M29·R02] 可编辑文本资产内容会变（同 relPath 覆写）：no-store 规避 max-age=3600 陈旧缓存，正文保存后立即可见
+  const editableText = a.kind === 'text' && !!a.purpose && (EDITABLE_PURPOSES as readonly string[]).includes(a.purpose)
   const headers: Record<string, string> = {
     'Content-Type': mime,
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'private, max-age=3600',
+    'Cache-Control': editableText ? 'private, no-store' : 'private, max-age=3600',
   }
   if (download) headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(a.name)}`
 
@@ -187,17 +194,20 @@ assetsRoutes.patch('/assets/:id', h(async (c) => {
   return c.json({ asset: toAssetView(rows[0]!) })
 }))
 
-// PATCH /assets/:id/content —— [M25·G2] 文本资产内容覆写（spec §2.3：白名单 purpose + JSON 契约校验 + 原子覆盖）
+// PATCH /assets/:id/content —— [M25·G2] 文本资产内容覆写 + [M29·R02] 版本链/乐观并发
 assetsRoutes.patch('/assets/:id/content', h(async (c) => {
   const id = idParam(c)
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   if (typeof body['content'] !== 'string') throw new HttpError(400, 'bad_content', 'content 需为字符串')
+  const expectedRevision = typeof body['expectedRevision'] === 'number' ? body['expectedRevision'] : undefined
   try {
-    const updated = await updateAssetContent(id, body['content'])
-    return c.json({ asset: toAssetView(updated) })
+    const updated = await updateAssetContent(id, body['content'], { expectedRevision })
+    const revision = await currentRevision('asset', id)
+    return c.json({ asset: toAssetView(updated), revision })
   } catch (err) {
     if (err instanceof ContentEditError) {
-      const status = err.code === 'not_found' ? 404 : err.code === 'too_large' ? 413 : 400
+      const status =
+        err.code === 'not_found' ? 404 : err.code === 'too_large' ? 413 : err.code === 'conflict' ? 409 : 400
       throw new HttpError(status, err.code, err.message)
     }
     throw err

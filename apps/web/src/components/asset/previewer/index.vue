@@ -6,13 +6,14 @@ import type { Asset } from '../../../lib/types'
 import { fmtDur, fmtSize } from '../../../lib/format'
 import Icon from '../../common/Icon.vue'
 import MarkdownPreview from '../../common/MarkdownPreview.vue'
+import VersionHistoryPanel from '../../version/VersionHistoryPanel.vue'
 import { useAssetPreviewer } from './use-asset-previewer'
 
 const props = defineProps<{ assets: Asset[]; index?: number; removable?: boolean }>()
 const emit = defineEmits<{ close: []; changed: [asset: Asset]; removed: [asset: Asset] }>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, removeBusy, removeErr, doRemove, editing, draft, editSaving, editErr, editDirty, canEdit, startEdit, saveEdit, tryClose, prev, next, downloadHref } = useAssetPreviewer(props, emit)
+const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, removeBusy, removeErr, doRemove, editing, draft, editSaving, editErr, editDirty, canEdit, startEdit, saveEdit, showVersions, onVersionRestored, tryClose, prev, next, downloadHref } = useAssetPreviewer(props, emit)
 </script>
 
 <template>
@@ -54,6 +55,16 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               @click="startEdit"
             >
               <Icon name="pencil" :size="12" /> 编辑
+            </button>
+            <!-- [M29·R02] 历史·影响面板入口（可编辑文本资产；只读 + 显式还原 + 影响仅报告） -->
+            <button
+              v-if="canEdit && !editing"
+              class="btn sm"
+              :class="{ primary: showVersions }"
+              title="查看版本历史与下游影响"
+              @click="showVersions = !showVersions"
+            >
+              <Icon name="clock" :size="12" /> 历史·影响
             </button>
             <template v-if="editing">
               <button class="btn sm primary" :disabled="editSaving || !editDirty" @click="saveEdit">
@@ -237,6 +248,19 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             <pre class="prebox">{{ cur.prompt }}</pre>
           </details>
         </footer>
+
+        <!-- [M29·R02] 右侧「历史 · 影响」抽屉（可编辑文本资产；覆盖舞台右缘） -->
+        <div v-if="showVersions && cur" class="vdraw" role="complementary" aria-label="版本历史与影响">
+          <div class="vdraw-head">
+            <span>历史 · 影响</span>
+            <button class="icon-btn" aria-label="关闭历史面板" @click="showVersions = false">
+              <Icon name="x" :size="14" :stroke-width="2" />
+            </button>
+          </div>
+          <div class="vdraw-body">
+            <VersionHistoryPanel kind="asset" :obj-id="cur.id" @restored="onVersionRestored" />
+          </div>
+        </div>
       </div>
     </div>
   </Teleport>
@@ -261,6 +285,7 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
   animation: pop-in 0.18s ease-out;
 }
 
@@ -707,5 +732,39 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
   max-height: 140px;
   overflow-y: auto;
   font-size: 11.5px;
+}
+
+/* [M29·R02] 右侧「历史 · 影响」抽屉（覆盖舞台右缘，不阻断主预览） */
+.vdraw {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  width: min(400px, 62%);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, rgb(10 14 24 / 96%));
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -14px 0 30px rgb(0 0 0 / 34%);
+  z-index: 3;
+}
+
+.vdraw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  flex: none;
+}
+
+.vdraw-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
 }
 </style>

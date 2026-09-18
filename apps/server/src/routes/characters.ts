@@ -5,6 +5,7 @@ import { db } from '../db'
 import { assets, characters, type CharacterRow } from '../db/schema'
 import { assertProjectAssets } from '../pipeline/refs'
 import { attachRefAssets, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
+import { recordEntityVersion } from '../services/provenance'
 import { cancelEntityRefTask, listEntityRefTasks, startEntityRefGen } from '../services/entity-refgen'
 import { polishAppearance } from '../services/entity-polish'
 import { importFiles, kindByExt } from '../services/storage'
@@ -131,6 +132,8 @@ const polishEntities = h(async (c) => {
         continue
       }
       await db.update(characters).set({ appearance, updatedAt: Date.now() }).where(eq(characters.id, id))
+      // [M29] 润色改变外观锚定文本 → 记实体版本
+      await recordEntityVersion({ entityId: id, projectId: row.projectId, source: 'polish', label: 'LLM 润色外观' })
       if (row.projectId !== null) {
         await recordLlmUsage({ projectId: row.projectId, runId: null, provider: r.provider, model: r.model, usage: r.usage })
       }
@@ -205,6 +208,10 @@ const updateEntity = h(async (c) => {
     }
   }
   const rows = await db.update(characters).set(patch).where(eq(characters.id, id)).returning()
+  // [M29] 实质字段变更时记版本
+  if (Object.keys(patch).length > 1) {
+    await recordEntityVersion({ entityId: id, projectId: cur.projectId, source: 'edit', label: '手工编辑' })
+  }
   const byId = await refAssetsOf([rows[0]!])
   return c.json({ entity: toEntityView(rows[0]!, byId) })
 })
@@ -235,7 +242,7 @@ const uploadEntityRefImage = h(async (c) => {
   const buf = new Uint8Array(await file.arrayBuffer())
   if (buf.byteLength === 0) throw new HttpError(400, 'no_file', '文件内容为空')
   const [asset] = await importFiles(cur.projectId, [{ name: file.name || `ref-${cur.kind}-${Date.now()}`, data: buf }], { purpose: `reference_${cur.kind}` })
-  await attachRefAssets(cur.projectId, cur.name, [asset!.id], cur.kind as EntityKind)
+  await attachRefAssets(cur.projectId, cur.name, [asset!.id], cur.kind as EntityKind, 'ref-upload')
   const fresh = await findEntityRow(id)
   const byId = await refAssetsOf([fresh!])
   return c.json({ entity: toEntityView(fresh!, byId), asset: toAssetView(asset!) }, 201)

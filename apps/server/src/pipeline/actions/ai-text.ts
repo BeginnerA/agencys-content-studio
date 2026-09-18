@@ -4,6 +4,7 @@ import { genTasks, pipelineRuns, type GenTask } from '../../db/schema'
 import { emitStudioEvent } from '../../services/events'
 import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
 import { isJsonTextFormat, readTextAsset, writeTextAsset } from '../../services/storage'
+import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../services/provenance'
 import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { interpolate } from '../refs'
@@ -36,6 +37,8 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
 
   const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
   const sections: string[] = []
+  // [M29·R02] 冻结本步实际消费的输入资产（文本携版本指针）
+  const execInputs: ExecInputSpec[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
     if (k.startsWith('_')) continue // _review 等内部键不注入
     const ids = asAssetIds(v)
@@ -45,8 +48,10 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
         if (a.kind === 'text') {
           const content = await readTextAsset(a.id)
           sections.push(`--- ${k} / ${a.name} ---\n${clipContent(content, maxInputChars)}`)
+          execInputs.push(await assetInput('text', a.id))
         } else {
           sections.push(`--- ${k} / ${a.name}（${a.kind} 资产：文本模型无法读取，路径 ${a.relPath ?? '?'}）---`)
+          execInputs.push(await assetInput('text', a.id, { used: false, skipReason: `${a.kind} 非文本` }))
         }
       }
     } else if (typeof v === 'string') {
@@ -136,6 +141,16 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     tags: [tag],
   })
   ctx.log(`已写资产 asset#${asset.id} → ${asset.relPath}`)
+  // [M29·R02] 记录执行真实输入快照（旁路，失败不影响流水线）
+  await safeRecordExecSnapshot({
+    projectId: ctx.run.projectId,
+    execKind: 'pipeline_step',
+    runId: ctx.run.id,
+    stepId: ctx.step.id,
+    templateKey: ctx.def.key,
+    model: ep.model,
+    inputs: execInputs,
+  })
   return { assetIds: [asset.id] }
 }
 
@@ -417,6 +432,8 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
   }
 
   // 入队 / 同步：逐项构造 prompt（快照）+ name
+  // [M29·R02] batch 实际输入快照：列表资产（source）+ 逐项章节文本资产（携版本指针）
+  const batchInputs: ExecInputSpec[] = [await assetInput('source', ids[0]!)]
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!
     const itemId = itemIds[i]!
@@ -425,7 +442,10 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
     if (typeof assetIdRaw === 'number' && Number.isInteger(assetIdRaw) && assetIdRaw > 0) {
       const rows = await ctx.assetsOf([assetIdRaw])
       const a = rows[0]
-      if (a && a.kind === 'text') itemAssetSection = `--- 章节原文 / ${a.name} ---\n${await ctx.readText(a.id)}`
+      if (a && a.kind === 'text') {
+        itemAssetSection = `--- 章节原文 / ${a.name} ---\n${await ctx.readText(a.id)}`
+        batchInputs.push(await assetInput('text', a.id, { shotId: itemId }))
+      }
     }
     const prompt = buildItemPrompt({
       templateText,
@@ -522,6 +542,16 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
     throw new Error(`产物与列表数不符（${assetIds.length}/${items.length}），请重试`)
   }
   ctx.log(`按列表生成完成：${assetIds.length} 份 → ${assetIds.join(', ')}`)
+  // [M29·R02] 记录 batch 执行真实输入快照（旁路，失败不影响流水线）
+  await safeRecordExecSnapshot({
+    projectId: ctx.run.projectId,
+    execKind: 'pipeline_step',
+    runId: ctx.run.id,
+    stepId: ctx.step.id,
+    templateKey: ctx.def.key,
+    model: epHint?.model ?? null,
+    inputs: batchInputs,
+  })
   return { assetIds }
 }
 

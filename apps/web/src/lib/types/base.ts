@@ -110,6 +110,8 @@ export interface Asset {
   createdAt: number
   updatedAt: number
   urls: AssetUrls
+  /** [M29·R02] 可编辑文本资产的当前内容版本号（详情接口附带；供乐观锁与前端缓存串 ?v=） */
+  contentRevision?: number
 }
 
 export interface TaskResultAsset {

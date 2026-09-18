@@ -26,6 +26,7 @@ import EntityPanel from './EntityPanel.vue'
 import EntityLinkPanel from './EntityLinkPanel.vue'
 import RunPanel from './RunPanel.vue'
 import TasksPanel from './TasksPanel.vue'
+import CanvasInputLockPanel from '../../version/CanvasInputLockPanel.vue'
 
 const props = defineProps<{
   node: CanvasDocNode | null
@@ -270,6 +271,15 @@ function onPreviewChanged(updated: Asset): void {
           </div>
         </div>
       </section>
+
+      <!-- [M29·R02] 锁定下次执行输入（gen 节点上游资产 pin；三操作分离之锁版） -->
+      <CanvasInputLockPanel
+        v-if="node.kind === 'gen'"
+        :node="node"
+        :nodes="nodes"
+        :edges="edges"
+        @notice="(m: string) => emit('notice', m)"
+      />
 
       <EntityLinkPanel
         v-if="node.assetId != null"

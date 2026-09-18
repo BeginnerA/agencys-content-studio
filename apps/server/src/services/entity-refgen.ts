@@ -387,7 +387,7 @@ async function executeOnce(
     .set({ status: 'succeeded', resultAssetId: asset.id, prompt, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
   // 自动挂接：并集去重追加至实体 ref_asset_ids
-  const added = await attachRefAssets(task.projectId, entity.name, [asset.id], entity.kind as EntityKind)
+  const added = await attachRefAssets(task.projectId, entity.name, [asset.id], entity.kind as EntityKind, 'ref-gen')
   await recordUsage({
     projectId: task.projectId,
     runId: null,

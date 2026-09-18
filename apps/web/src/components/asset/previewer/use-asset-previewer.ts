@@ -405,6 +405,15 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     }
   }
 
+  // ===== [M29·R02] 版本历史 / 下游影响面板（仅可编辑文本资产；还原后重读工作副本） =====
+  const showVersions = ref(false)
+
+  /** 面板还原成功回调：宿主同步新资产 + 重读预览文本（no-store 绕过缓存） */
+  async function onVersionRestored(asset?: Asset) {
+    if (asset) emit('changed', asset)
+    await loadText()
+  }
+
   // ===== 多资产切换 / 键盘 =====
   function prev() {
     if (editing.value) return
@@ -456,6 +465,7 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     editing.value = false
     draft.value = ''
     editErr.value = ''
+    showVersions.value = false
     void loadText()
   })
 
@@ -533,6 +543,8 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     startEdit,
     stopEdit,
     saveEdit,
+    showVersions,
+    onVersionRestored,
     tryClose,
     prev,
     next,

@@ -38,6 +38,9 @@ export function planNodeInputs(
     videoAssetIds: [],
     audioAssetIds: [],
     textInputs: [],
+    promptSource: null,
+    textSources: [],
+    entitySources: [],
     problems: [],
     notes: [],
   }
@@ -69,6 +72,8 @@ export function planNodeInputs(
           plan.referenceAssetIds.push(rid)
         }
         if (truncated > 0) plan.notes.push(`实体参考图超上限 ${cap} 张，已截断 ${truncated} 张`)
+        // [M29] 实体溯源：记录贡献参考图的实体 id（去重）
+        if (up.entityId != null && !plan.entitySources.includes(up.entityId)) plan.entitySources.push(up.entityId)
         continue
       }
       if (plan.referenceAssetIds.length >= cap) {
@@ -112,12 +117,15 @@ export function planNodeInputs(
         continue
       }
       if (plan.promptText != null) continue
-      const t = upstream.get(e.from)?.text ?? null
+      const upP = upstream.get(e.from)
+      const t = upP?.text ?? null
       if (t == null || !t.trim()) {
         plan.problems.push(`提示词来源 #${e.from} 暂无文本或为空`)
         continue
       }
       plan.promptText = t.trim()
+      // [M29] prompt 来源溯源（背后资产 id；内联 text 节点 assetId=null）
+      plan.promptSource = { nodeId: e.from, assetId: upP?.assetId ?? null }
       continue
     }
     if (e.port === 'text') {
@@ -130,12 +138,15 @@ export function planNodeInputs(
         plan.problems.push(`文本素材超过上限 ${LLM_TEXT_CAP} 段（已忽略多余连线）`)
         continue
       }
-      const t = upstream.get(e.from)?.text ?? null
+      const upT = upstream.get(e.from)
+      const t = upT?.text ?? null
       if (t == null || !t.trim()) {
         plan.problems.push(`文本素材来源 #${e.from} 暂无文本或为空`)
         continue
       }
       plan.textInputs.push(t.trim())
+      // [M29] text 素材来源溯源（与 textInputs 同序）
+      plan.textSources.push({ nodeId: e.from, assetId: upT?.assetId ?? null })
       continue
     }
     if (e.port === 'video') {
@@ -238,6 +249,7 @@ export async function loadInputPlan(
     }
     // entity 上游：characters 批查（参考图集）
     const entityRefs = new Map<number, number[]>()
+    const entityIdByNode = new Map<number, number>()
     if (entityRows.length) {
       const eids = entityRows.map((r) => safeParseEntitySpec(r.spec).spec?.entityId).filter((x): x is number => x != null)
       const ents = eids.length ? await db.select().from(characters).where(inArray(characters.id, eids)) : []
@@ -246,6 +258,7 @@ export async function loadInputPlan(
         const eid = safeParseEntitySpec(r.spec).spec?.entityId
         const ent = eid != null ? entById.get(eid) : undefined
         entityRefs.set(r.id, ent ? parseRefIds(ent.refAssetIds) : [])
+        if (eid != null && ent) entityIdByNode.set(r.id, eid)
       }
     }
     // 资产：asset 上游 + gen 显示产物（采纳优先）
@@ -258,14 +271,28 @@ export async function loadInputPlan(
         displayAssetByNode.set(r.id, disp.resultAssetId)
       }
     }
+    // [M29] 锁版：预载 pin 指向的资产（可能非当前显示产物），供上游节点覆盖解析
+    const pinMap = spec.pin ?? {}
+    for (const v of Object.values(pinMap)) {
+      if (Number.isInteger(v) && v > 0) assetIds.add(v)
+    }
     const assetRows = assetIds.size ? await db.select().from(assets).where(inArray(assets.id, [...assetIds])) : []
     const assetById = new Map(assetRows.map((a) => [a.id, a]))
+    // [M29] 锁版生效判定：pin 指向的资产须存在且属本项目，否则忽略该 pin（回落最新/采纳）
+    const pinnedAssetId = (nodeId: number): number | null => {
+      const raw = pinMap[String(nodeId)]
+      if (raw == null) return null
+      const a = assetById.get(raw)
+      return a && a.deletedAt == null ? raw : null
+    }
     for (const r of rows) {
       if (r.kind === 'asset') {
-        const a = r.assetId != null ? assetById.get(r.assetId) : undefined
+        const pinned = pinnedAssetId(r.id)
+        const a = pinned != null ? assetById.get(pinned) : r.assetId != null ? assetById.get(r.assetId) : undefined
         upstream.set(r.id, { assetId: a?.id ?? null, mediaKind: a?.kind ?? null })
       } else if (r.kind === 'gen') {
-        const rid = displayAssetByNode.get(r.id)
+        const pinned = pinnedAssetId(r.id)
+        const rid = pinned ?? displayAssetByNode.get(r.id)
         const a = rid != null ? assetById.get(rid) : undefined
         const up: UpstreamInfo = { assetId: a?.id ?? null, mediaKind: a?.kind ?? null }
         // [M18] llm 产物文本装载：prompt/text 端口源侧取正文（文件缺失 → text 留空，planNodeInputs 报「暂无文本」）
@@ -281,7 +308,7 @@ export async function loadInputPlan(
         const ts = safeParseTextSpec(r.spec)
         upstream.set(r.id, { assetId: null, mediaKind: null, text: ts.spec?.text ?? null })
       } else if (r.kind === 'entity') {
-        upstream.set(r.id, { assetId: null, mediaKind: null, refAssetIds: entityRefs.get(r.id) ?? [] })
+        upstream.set(r.id, { assetId: null, mediaKind: null, refAssetIds: entityRefs.get(r.id) ?? [], entityId: entityIdByNode.get(r.id) ?? null })
       } else {
         upstream.set(r.id, { assetId: null, mediaKind: null })
       }

@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
 import { loadBgmAsset, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
+import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
 import { emitStudioEvent } from '../../../services/events'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
@@ -19,6 +20,7 @@ import type { Segment } from './segments'
 import type { AlignPlan } from './align'
 import type { StepContext } from '../../context'
 import type { StepResult } from '../../types'
+import type { Asset } from '../../../db/schema'
 
 /**
  * ffmpeg_merge：镜头序列 → 成片 + 封面（spec §5.4 三流合成）。
@@ -564,7 +566,60 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       ctx.log(`派生画幅 ${d.aspect} 落资产失败（不影响成片）：${(err as Error).message}`)
     }
   }
+  // [M29·R02] 合成执行真实输入快照：镜头媒体/配音/字幕/BGM + 分镜 JSON 文本（版本指针），按 shotId 定位
+  await recordMergeProvenance(ctx, {
+    rows,
+    usedSegments: segments,
+    skipped,
+    voiceIds: voiceMetas.map((v) => v.assetId),
+    subtitleIds,
+    bgmAssetId: bgmAsset?.id ?? null,
+    shotsAssetId: shotsIds[0] ?? null,
+  })
   return { assetIds }
+}
+
+/**
+ * [M29·R02] 合成输入旁路快照（失败仅告警，不触碰 buildComposeArgs 零漂移红线与成片产物）。
+ * 媒体资产不可变→ versionId=null（身份即资产 id）；分镜 JSON 为可编辑文本→携版本指针（编辑分镜→下游成片可报）。
+ */
+async function recordMergeProvenance(
+  ctx: StepContext,
+  p: {
+    rows: Asset[]
+    usedSegments: Array<{ id: number }>
+    skipped: number[]
+    voiceIds: number[]
+    subtitleIds: number[]
+    bgmAssetId: number | null
+    shotsAssetId: number | null
+  },
+): Promise<void> {
+  try {
+    const inputs: ExecInputSpec[] = []
+    const byId = new Map(p.rows.map((a) => [a.id, a]))
+    let ordinal = 0
+    for (const seg of p.usedSegments) {
+      const a = byId.get(seg.id)
+      const shotId = a ? shotIdOfAsset(a) : null
+      inputs.push(await assetInput('source', seg.id, { shotId, port: 'images', ordinal: ordinal++ }))
+    }
+    for (const id of p.skipped) inputs.push(await assetInput('source', id, { used: false, skipReason: '缺文件或类型不符', port: 'images' }))
+    for (let i = 0; i < p.voiceIds.length; i++) inputs.push(await assetInput('voice', p.voiceIds[i]!, { ordinal: i }))
+    for (const id of p.subtitleIds.slice(0, 1)) inputs.push(await assetInput('subtitle', id))
+    if (p.bgmAssetId != null) inputs.push(await assetInput('bgm', p.bgmAssetId))
+    if (p.shotsAssetId != null) inputs.push(await assetInput('text', p.shotsAssetId))
+    await safeRecordExecSnapshot({
+      projectId: ctx.run.projectId,
+      execKind: 'pipeline_step',
+      runId: ctx.run.id,
+      stepId: ctx.step.id,
+      templateKey: ctx.def.key,
+      inputs,
+    })
+  } catch (err) {
+    ctx.log(`执行快照记录失败（已忽略，不影响合成）：${(err as Error).message}`)
+  }
 }
 
 /** ffmpeg 执行：stderr 逐行 → step.log 事件；非零退出抛错（含尾部输出） */

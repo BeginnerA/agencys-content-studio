@@ -10,6 +10,7 @@ import { scheduleImageCheck } from '../../services/image-check'
 import { emitStudioEvent } from '../../services/events'
 import { shotDurationSec } from '../../services/shot'
 import { recordUsage } from '../../services/usage'
+import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../services/provenance'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
@@ -149,6 +150,8 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
       output_purpose: purpose,
       stylePresetId: styleResolved[0]?.id ?? null,
       stylePresetIds: styleResolved.map((s) => s.id),
+      // [M29·R02] 本镜命中实体 id（快照记录用；succeeded 任务不回写，不影响既有溯源）
+      entityIds: matchedEntityIds(shot, indexes),
     })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
@@ -211,7 +214,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 
   const failures: Array<{ shotId: string; error: string }> = []
   await runPool(queue, concurrency, async (task) => {
-    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, refCap, useRefs, uriCache })
+    const fail = await runOneTask(ctx, task, { provider, model, maxRetry, refCap, useRefs, uriCache, sbAssetId: sbIds[0]! })
     if (fail) failures.push(fail)
   })
 
@@ -245,9 +248,17 @@ async function runOneTask(
     refCap: 'none' | 'base64'
     useRefs: boolean
     uriCache: Map<number, string>
+    /** [M29·R02] 分镜 JSON 文本资产 id（本步所有镜共用的文本来料，携版本指针） */
+    sbAssetId?: number
   },
 ): Promise<{ shotId: string; error: string } | null> {
-  const parsed = JSON.parse(task.params) as { size?: string; shotId?: string; refAssetIds?: number[]; output_purpose?: string }
+  const parsed = JSON.parse(task.params) as {
+    size?: string
+    shotId?: string
+    refAssetIds?: number[]
+    output_purpose?: string
+    entityIds?: number[]
+  }
   const shotId = parsed.shotId ?? '?'
   const maxAttempts = cfg.maxRetry + 1
   let attempts = task.attempts
@@ -268,18 +279,29 @@ async function runOneTask(
     try {
       // 参考图注入：能力支持且未关闭 → 逐 id 转 data URI（单图失败跳过该图 + 记日志，不使任务失败）
       let refs: string[] | undefined
+      // [M29·R02] 本镜实际参考图 used/skipped（以 assetToDataUri 构建后最终集合为准）
+      const refInputs: ExecInputSpec[] = []
       if (cfg.useRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
         const uris: string[] = []
+        let ordinal = 0
         for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
           try {
             uris.push(await assetToDataUri(id, cfg.uriCache))
+            refInputs.push(await assetInput('reference', id, { shotId, port: 'reference', ordinal: ordinal++ }))
           } catch (err) {
             ctx.log(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
+            refInputs.push(await assetInput('reference', id, { used: false, skipReason: (err as Error).message, shotId, port: 'reference', ordinal: ordinal++ }))
           }
         }
         if (uris.length > 0) {
           refs = uris
           ctx.log(`shot ${shotId} 注入参考图 ${uris.length} 张`)
+        }
+      } else if (parsed.refAssetIds?.length) {
+        // 能力不支持/已关闭参考注入：计划参考图未实际消费 → 记 skipped（区分「计划」与「实际」）
+        let ordinal = 0
+        for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
+          refInputs.push(await assetInput('reference', id, { used: false, skipReason: cfg.useRefs ? '供应商不支持参考图' : '参考注入已关闭', shotId, port: 'reference', ordinal: ordinal++ }))
         }
       }
       const { adapter, request } = await buildImageRequest({
@@ -326,6 +348,22 @@ async function runOneTask(
         model: request.model ?? cfg.model ?? null,
       })
       ctx.log(`shot ${shotId} 出图完成 → asset#${asset.id}`)
+      // [M29·R02] 冻结本镜真实输入：分镜文本资产 + 参考图 used/skipped + 命中实体（版本指针），按 shotId 定位
+      {
+        const execInputs: ExecInputSpec[] = [...refInputs]
+        if (cfg.sbAssetId != null) execInputs.push(await assetInput('text', cfg.sbAssetId, { shotId }))
+        for (const eid of parsed.entityIds ?? []) execInputs.push(await entityInput('reference', eid, { shotId }))
+        await safeRecordExecSnapshot({
+          projectId: ctx.run.projectId,
+          execKind: 'pipeline_step',
+          runId: ctx.run.id,
+          stepId: ctx.step.id,
+          taskId: task.id,
+          templateKey: ctx.def.key,
+          model: request.model ?? cfg.model ?? null,
+          inputs: execInputs,
+        })
+      }
       return null
     } catch (err) {
       const msg = (err as Error).message
@@ -612,6 +650,31 @@ export function collectRefAssetIds(
     }
   }
   return ids.slice(0, MAX_REFS_PER_SHOT)
+}
+
+/**
+ * [M29·R02] 本镜命中实体 id（不改纯函数派生）：characters 命中 + location 命中 + props 命中 → characters.id 集（去重）。
+ * 供快照记录实体版本指针（编辑角色/场景/道具外观 → 下游命中的镜可报）。
+ */
+function matchedEntityIds(
+  shot: ShotSpec,
+  indexes: { characters: Map<string, CharacterRow>; scenes: Map<string, CharacterRow>; props: Map<string, CharacterRow> },
+): number[] {
+  const ids: number[] = []
+  const add = (row: CharacterRow | undefined): void => {
+    if (row && !ids.includes(row.id)) ids.push(row.id)
+  }
+  for (const raw of shot.characters ?? []) {
+    if (typeof raw !== 'string' || !raw.trim()) continue
+    add(lookupCharacter(indexes.characters, raw.trim()))
+  }
+  const loc = typeof shot.location === 'string' ? shot.location.trim() : ''
+  if (loc) add(lookupCharacter(indexes.scenes, loc))
+  for (const raw of shot.props ?? []) {
+    if (typeof raw !== 'string' || !raw.trim()) continue
+    add(lookupCharacter(indexes.props, raw.trim()))
+  }
+  return ids
 }
 
 /**

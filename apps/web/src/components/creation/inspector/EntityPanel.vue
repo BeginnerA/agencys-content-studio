@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CanvasDocNode } from '../../../lib/types'
 import { KIND_TEXT } from '../../../lib/format'
+import VersionHistoryPanel from '../../version/VersionHistoryPanel.vue'
 import { assetThumb, entKindText } from './internals'
 
 const props = defineProps<{
@@ -30,7 +31,12 @@ const props = defineProps<{
               <div class="kv"><span class="k">类型</span><span class="v">{{ entKindText(node.entity.kind) }}</span></div>
               <div class="kv"><span class="k">参考图</span><span class="v mono">{{ node.entity.refCount }} 张</span></div>
             </div>
-            <div class="muted mini">下游节点执行时按实体参考图注入（受实体截断策略约束）。</div>
+          <div class="muted mini">下游节点执行时按实体参考图注入（受实体截断策略约束）。</div>
+           <!-- [M29·R02] 实体档案「历史 · 影响」（版本快照可还原；影响仅报告不生成） -->
+           <details class="verbox">
+             <summary>历史 · 影响</summary>
+             <VersionHistoryPanel kind="entity" :obj-id="node.entity.id" />
+           </details>
           </template>
           <div v-else class="err-text">实体数据缺失（可能已被删除）</div>
         </section>
@@ -105,4 +111,34 @@ const props = defineProps<{
   word-break: break-all;
 }
 
+/* [M29·R02] 实体版本面板（折叠，避免撑高默认视图） */
+.verbox {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.verbox > summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  list-style: none;
+}
+
+.verbox > summary::-webkit-details-marker {
+  display: none;
+}
+
+.verbox > summary::before {
+  content: '▸ ';
+  color: var(--text-3);
+}
+
+.verbox[open] > summary::before {
+  content: '▾ ';
+}
+
+.verbox[open] > summary {
+  margin-bottom: 8px;
+}
 </style>

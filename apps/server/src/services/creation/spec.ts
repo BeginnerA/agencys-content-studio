@@ -80,6 +80,11 @@ export interface NodeSpec {
   maxTokens?: number
   useStylePreset?: boolean
   edit?: NodeSpecEdit
+  /**
+   * [M29·R02] 锁版：上游节点 id（字符串键）→ 锁定的输入资产 id（下次执行强制用该资产，无视采纳/最新切换）。
+   * 语义独立于 adoptedTaskId（选片）；缺省（无键）走最新/采纳。加法字段，旧 spec 无此键行为不变。
+   */
+  pin?: Record<string, number>
 }
 
 /** [M17] kind=text：提示词/文案节点 */
@@ -148,6 +153,8 @@ export interface UpstreamInfo {
   text?: string | null
   /** [M17] entity 节点：参考资产 id 集（执行时按 REF_CAP 截断展开） */
   refAssetIds?: number[] | null
+  /** [M29] entity 节点：背后实体 id（供参考图实体版本溯源） */
+  entityId?: number | null
 }
 
 export interface InputPlan {
@@ -163,6 +170,12 @@ export interface InputPlan {
   audioAssetIds: number[]
   /** [M18] text 端口（llm 素材文本，边创建序 ≤4） */
   textInputs: string[]
+  /** [M29] prompt 端口来源（节点 id + 背后资产 id；内联 text 节点 assetId=null） */
+  promptSource: { nodeId: number; assetId: number | null } | null
+  /** [M29] text 端口素材来源（与 textInputs 同序；节点 id + 背后资产 id） */
+  textSources: Array<{ nodeId: number; assetId: number | null }>
+  /** [M29] 参考图来源实体 id（entity 节点展开去重；供实体版本溯源） */
+  entitySources: number[]
   problems: string[]
   /** [M17] 宽容提示（实体截断等；不阻断执行） */
   notes: string[]
@@ -402,6 +415,17 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
       edit.expand = expand
     }
     spec.edit = edit
+  }
+  // [M29] pin（锁版）：{ [上游节点id字符串]: 资产id 正整数 }；空对象/缺省 → 不设置
+  if (o['pin'] !== undefined && o['pin'] !== null) {
+    const pn = o['pin']
+    if (typeof pn !== 'object' || Array.isArray(pn)) throw new Error('spec.pin 需为对象（节点id→资产id）')
+    const pin: Record<string, number> = {}
+    for (const [k, v] of Object.entries(pn as Record<string, unknown>)) {
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) throw new Error(`spec.pin[${k}] 需为正整数资产 id`)
+      pin[k] = v
+    }
+    if (Object.keys(pin).length > 0) spec.pin = pin
   }
   return spec
 }

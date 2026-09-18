@@ -32,6 +32,7 @@ import { voiceCloneRoutes } from './routes/voice-clones'
 import { schedulesRoutes } from './routes/schedules'
 import { workflowsRoutes } from './routes/workflows'
 import { searchRoutes } from './routes/search'
+import { versionsRoutes } from './routes/versions'
 
 const log = createLogger('app')
 
@@ -68,6 +69,7 @@ api.route('/', creationRoutes)
 api.route('/', searchRoutes)
 api.route('/', evalRoutes)
 api.route('/', complianceRoutes)
+api.route('/', versionsRoutes)
 
 app.route('/api/v1', api)
 

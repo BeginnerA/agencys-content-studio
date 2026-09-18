@@ -1,7 +1,7 @@
 import { statSync, unlinkSync } from 'node:fs'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { db } from '../db'
-import { assets, pipelineRuns, pipelineSteps, type Asset } from '../db/schema'
+import { assets, execInputs, pipelineRuns, pipelineSteps, type Asset } from '../db/schema'
 import { createLogger } from '../logger'
 import { absPathOf } from './storage'
 import { thumbAbsPath } from './thumb'
@@ -124,11 +124,17 @@ function shotIdOf(a: Asset): string | null {
   }
 }
 
-/** 项目全量引用集：所有步骤 output.asset_ids 并集（保守豁免在用产物） */
+/** 项目全量引用集：所有步骤 output.asset_ids 并集 ∪ [M29·R02] 执行快照实际消费过的资产（保守豁免在用/历史依赖产物，防物理 GC 造成追溯悬空） */
 async function referencedAssetIds(projectId: number): Promise<Set<number>> {
   const runRows = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, projectId))
   const runIds = runRows.map((r) => r.id)
   const set = new Set<number>()
+  // [M29·R02] 追溯依赖：曾被任一次执行快照消费的资产行不物理删（否则历史影响指向空文件）
+  const consumed = await db
+    .select({ srcId: execInputs.srcId })
+    .from(execInputs)
+    .where(and(eq(execInputs.projectId, projectId), eq(execInputs.srcKind, 'asset')))
+  for (const r of consumed) set.add(r.srcId)
   if (runIds.length === 0) return set
   const stepRows = await db
     .select({ output: pipelineSteps.output })
