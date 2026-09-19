@@ -11,9 +11,9 @@ const sb = props.sb
 </script>
 
 <template>
-  <div v-if="sb.compose" class="wb-sb.compose">
-    <Icon name="film" :size="12" />
-    <span class="muted">转场</span>
+  <!-- [M11→redesign] 转场设置段：作为工作台控制条（.wb-strip）左段呈现；合成设置按钮已归入右侧工具簇 -->
+  <div v-if="sb.compose" class="wb-grp">
+    <span class="wb-lb"><Icon name="film" :size="12" /> 转场</span>
     <select
       v-model="sb.cfgTransition"
       class="wb-sel"
@@ -39,40 +39,82 @@ const sb = props.sb
     />
     <span class="muted">s</span>
     <button
-      class="btn sm"
-      :class="{ primary: sb.cfgDirty }"
+      class="wb-ab pri"
+      :class="{ on: sb.cfgDirty }"
       :disabled="!sb.canOperate || sb.cfgBusy || !sb.cfgDirty"
       @click="saveTransition"
     >
       保存设置
     </button>
-    <button
-      class="btn sm push"
-      :disabled="!sb.canOperate"
-      :title="
-        sb.bgm
-          ? `合成设置（当前配乐：${sb.bgm.name}）`
-          : '合成设置：配乐 / 音效 / 字幕样式 / 水印与片头尾 / 多画幅'
-      "
-      @click="sb.composeSettingsOpen = true"
-    >
-      <Icon name="sliders" :size="12" /> 合成设置
-    </button>
   </div>
 </template>
 
 <style scoped>
-/* [M11] 合成设置行（转场 / 配乐） */
-.wb-compose {
-  display: flex;
+/* 转场段：与宿主 .wb-strip 弹性对齐（根元素同时受父级 scoped 样式约束） */
+.wb-grp {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 6px;
 }
 
-.wb-compose .push {
-  margin-left: auto;
+.wb-lb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* 与 board/index.vue 的 .wb-ab 同一套动作按钮视觉（scoped 各自持有，避免全局污染） */
+.wb-ab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.wb-ab .ic {
+  flex: none;
+}
+
+.wb-ab:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.wb-ab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wb-ab:focus-visible {
+  outline: 2px solid var(--accent-h);
+  outline-offset: 1px;
+}
+
+.wb-ab.pri.on {
+  background: var(--grad-brand);
+  border-color: rgb(99 102 241 / 65%);
+  color: #fff;
+}
+
+.wb-ab.pri.on:hover:not(:disabled) {
+  filter: brightness(1.08);
+  color: #fff;
+  border-color: rgb(99 102 241 / 65%);
 }
 
 .wb-sel {
@@ -90,7 +132,7 @@ const sb = props.sb
 
 .wb-num {
   width: 64px;
-  background: var(--code-bg);
+  background: var(--bg); /* 同宿主控制条 strip：比 --code-bg 更深一档保证输入框可辨 */
   border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 6px;

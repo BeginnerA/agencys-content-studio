@@ -70,7 +70,7 @@ export function parseSrtCues(srt: string): AssCue[] {
 
 /**
  * SRT → 完整 ASS 文档（PlayRes=输出尺寸；Default Style 带左右边距；事件文本按宽度 \N 预换行）。
- * fontSize / marginV 与 subtitle-style 基线公式同源（height×0.018 / height×0.02），
+ * fontSize / marginV 与 subtitle-style 基线公式同源（height×0.04 / height×0.02），
  * 但此处为真实像素（PlayResY=height，不再被二次放大）。marginL=marginR=width×0.05。
  * opts.fontSize 可传入 force_style 实际生效字号（自定义品牌放大时据此预算换行，防大字号仍溢出）。
  */
@@ -79,7 +79,7 @@ export function srtToAss(
   opts: { width: number; height: number; fontSize?: number },
 ): string {
   const { width, height } = opts
-  const fontSize = Math.max(16, Math.round(opts.fontSize ?? height * 0.018))
+  const fontSize = Math.max(16, Math.round(opts.fontSize ?? height * 0.04))
   const marginL = Math.round(width * 0.05)
   const marginV = Math.round(height * 0.02)
   const maxChars = estimateMaxCharsPerLine(width, fontSize)

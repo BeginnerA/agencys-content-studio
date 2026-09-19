@@ -40,7 +40,7 @@ export interface WatermarkConfig extends BrandMaterialSlot {
 /** 字幕样式结构化配置（字段缺省 = 现公式基线；consumption 见 buildSubtitleStyle） */
 export interface SubtitleStyleConfig {
   font?: string // FontName（默认 'Noto Sans CJK SC'）
-  size_pct?: number // FontSize = round(H × size_pct)（默认 0.018；clamp 0.008–0.06）
+  size_pct?: number // FontSize = round(H × size_pct)（默认 0.04；clamp 0.008–0.06）
   color?: string // '#RRGGBB'（默认 #FFFFFF）
   outline_color?: string // '#RRGGBB'（默认 #000000）
   outline_pct?: number // Outline = max(1, round(H × pct))（默认 0.0009；clamp 0–0.005）

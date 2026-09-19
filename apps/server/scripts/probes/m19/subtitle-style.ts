@@ -40,13 +40,13 @@ export async function run(ctx: M19Ctx): Promise<void> {
     // ---- [P2] 字段覆盖 ----
     const custom = buildSubtitleStyle(1000, { color: '#FF0000' })
     check(
-      custom.includes('PrimaryColour=&H000000FF') && custom.includes('FontSize=18') && custom.includes('FontName=Noto Sans CJK SC'),
-      'color 覆盖仅改主色（其余基线保留）',
+      custom.includes('PrimaryColour=&H000000FF') && custom.includes('FontSize=40') && custom.includes('FontName=Noto Sans CJK SC'),
+      'color 覆盖仅改主色（其余基线保留，默认字号 1000×0.04=40）',
     )
     const f2 = buildSubtitleStyle(1000, { size_pct: 0.03, margin_v_pct: 0.05, outline_pct: 0.002, shadow: 2 })
     check(f2.includes('FontSize=30') && f2.includes('MarginV=50') && f2.includes('Outline=2') && f2.includes('Shadow=2'), 'size/margin_v/outline/shadow 数值覆盖')
     const f3 = buildSubtitleStyle(1000, { alignment: 8, bold: true })
-    check(f3.endsWith(',Alignment=8,Bold=1') && f3.startsWith('FontName=Noto Sans CJK SC,FontSize=18'), 'alignment/bold 末尾追加（不影响基线字段序）')
+    check(f3.endsWith(',Alignment=8,Bold=1') && f3.startsWith('FontName=Noto Sans CJK SC,FontSize=40'), 'alignment/bold 末尾追加（不影响基线字段序）')
     const snap = buildSubtitleStyle(1920, { font: 'Source Han Sans', size_pct: 0.018, color: '#FFFFFF', outline_color: '#000000', outline_pct: 0.0009, shadow: 0, margin_v_pct: 0.02 })
     check(
       snap === 'FontName=Source Han Sans,FontSize=35,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=38',
@@ -80,6 +80,9 @@ export async function run(ctx: M19Ctx): Promise<void> {
     // 预算（ASS PlayRes 语境：字号=真实像素）：竖屏 720×1280 / FontSize=23 → 单行字数预算，预算行必能装进可用宽（含 5% 边距）
     const budget720 = estimateMaxCharsPerLine(720, 23)
     check(budget720 >= 1 && budget720 * 23 <= 720, `estimateMaxCharsPerLine(720,23)=${budget720}：预算行（≥1em/字）必不溢出画面宽度`)
+    // 默认字号（0.04×1280=51）：系数 1.0 后预算从 9 → 12 字（长句不再被过早拆行），且预算字宽（12×51=612）仍 ≤ 扣边距后的可用宽 648
+    const budget51 = estimateMaxCharsPerLine(720, 51)
+    check(budget51 === 12 && budget51 * 51 <= 720 * 0.9, `estimateMaxCharsPerLine(720,51)=${budget51}：预算=可用宽/1em，不溢出且容 12 字单行`)
     // 越宽预算越大；字号越大预算越小（单调）
     check(estimateMaxCharsPerLine(1280, 23) > estimateMaxCharsPerLine(720, 23), '宽度越大单行预算越大')
     check(estimateMaxCharsPerLine(720, 40) < estimateMaxCharsPerLine(720, 23), '字号越大单行预算越小')
@@ -101,7 +104,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(lines.filter((l) => /^\d+$/.test(l)).length === 2, 'wrapSrtText 保留 cue 序号行')
     check((wrapped.match(/-->\s*\d{2}:\d{2}:\d{2}/g) ?? []).length === 2, 'wrapSrtText 保留时间戳行（未被换行破坏）')
     const textLines = lines.filter((l) => l.trim() !== '' && !/^\d+$/.test(l) && !l.includes('-->'))
-    // 预算内硬切；行尾若为标点则吸收（避免孤立标点行）——故最多 预算+1（预算已含 40% 宽余量，+1 字仍不溢出）
+    // 预算内硬切；行尾若为标点则吸收（避免孤立标点行）——故最多 预算+1（多出的 1 个全角标点落在每侧 5% 边距余量内，仍不溢出）
     check(textLines.every((l) => Array.from(l).length <= 11), 'wrapSrtText 每条文本行 ≤ 预算+1（行尾标点吸收容差）')
     check(textLines.join('').includes('四个月大的小小杨') && textLines.join('').includes('遇见月亮'), 'wrapSrtText 文本内容完整保留')
     // 幂等：再包一次不变
@@ -116,7 +119,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(ass.includes('[Script Info]') && ass.includes('PlayResX: 720') && ass.includes('PlayResY: 1280'), 'srtToAss 头部声明 PlayResX/Y = 输出尺寸（修复二次放大）')
     check(ass.includes('ScaledBorderAndShadow: yes') && ass.includes('WrapStyle: 0'), 'srtToAss 关键 Script Info（缩放边框阴影 / 换行样式）')
     check(ass.includes('[V4+ Styles]') && ass.includes('Style: Default,Noto Sans CJK SC,'), 'srtToAss 输出 Default Style（字体基线与 force_style 同源）')
-    // Style 行含左右边距（width×0.05=36）与底部边距（height×0.02=26）、字号（1280×0.018≈23）
+    // Style 行含左右边距（width×0.05=36）与底部边距（height×0.02=26）、字号（1280×0.04≈51）
     const styleLine = ass.split('\n').find((l) => l.startsWith('Style: Default,')) ?? ''
     check(styleLine.includes(',2,36,36,26,1'), `srtToAss Style 边距 Alignment=2/MarginL=R=36/MarginV=26（真实像素）`)
     // 时间戳：SRT 00:00:02,241 → ASS 0:00:02.24（厘秒）

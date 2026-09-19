@@ -71,27 +71,32 @@ const sb = props.sb
         ><Icon :name="sb.isVideoStep ? 'play' : 'photo'" :size="22"
       /></span>
       <span
-        v-if="lineIdsOf(shot).length"
-        class="wb-lines"
-        :title="`台词 ${lineIdsOf(shot).length} 句：${lineIdsOf(shot).join('、')}`"
+        v-if="lineIdsOf(shot).length || selectedQualityWarn(shot)"
+        class="wb-chips"
       >
-        台词 {{ lineIdsOf(shot).length }} 句
+        <span
+          v-if="lineIdsOf(shot).length"
+          class="wb-cico"
+          :title="`台词 ${lineIdsOf(shot).length} 句：${lineIdsOf(shot).join('、')}`"
+        >
+          <Icon name="chat" :size="11" /> {{ lineIdsOf(shot).length }}
+        </span>
+        <span
+          v-if="selectedQualityWarn(shot)"
+          class="wb-cico q"
+          :title="`当前选中版本检测异常：${selectedQualityWarn(shot)}（仍按选中合成；可换版或重生成）`"
+        >
+          <Icon name="alert" :size="11" />
+        </span>
       </span>
-      <span
-        v-if="selectedQualityWarn(shot)"
-        class="wb-qwarn"
-        :title="`当前选中版本检测异常：${selectedQualityWarn(shot)}（仍按选中合成；可换版或重生成）`"
-      >
-        <Icon name="alert" :size="10" /> 图异常
-      </span>
-      <span v-if="shot.versions.length > 1" class="wb-vcount"
-        >{{ shot.versions.length }} 版</span
-      >
       <span
         v-if="sb.draftSelected[shot.shotId] !== undefined"
         class="wb-dot"
         title="已切换版本（待应用）"
       />
+      <span v-if="shot.versions.length > 1" class="wb-vcount"
+        >{{ shot.versions.length }} 版</span
+      >
     </div>
 
     <div class="wb-meta">
@@ -138,7 +143,8 @@ const sb = props.sb
       </button>
     </div>
 
-    <div class="wb-row">
+    <div class="wb-dur">
+      <Icon name="clock" :size="12" class="wb-dur-ic" />
       <span class="muted wb-lb">时长</span>
       <input
         type="number"
@@ -154,41 +160,56 @@ const sb = props.sb
         @keyup.enter="commitDuration(shot)"
       />
       <span class="muted">s</span>
-      <span class="grow" />
+    </div>
+
+    <!-- [UI-B] 图标动作行：改词 / 重生成 / 上传替换 / 版本 / 音效（逻辑不变，仅呈现层） -->
+    <div class="wb-icons">
       <button
-        class="wb-mini"
+        class="wb-ib"
+        :class="{ on: sb.promptShotId === shot.shotId }"
         :disabled="!sb.canOperate"
+        aria-label="改提示词"
+        :title="sb.promptShotId === shot.shotId ? '收起改词' : '改提示词'"
         @click="togglePrompt(shot)"
       >
-        {{ sb.promptShotId === shot.shotId ? '收起' : '改词' }}
+        <Icon name="pencil" :size="14" />
       </button>
       <button
-        class="wb-mini"
+        class="wb-ib"
         :disabled="!sb.canOperate || !shot.task"
+        aria-label="重生成该镜"
         :title="shot.task ? '重生成该镜（重新计费）' : '该镜无生成任务'"
         @click="doRegenerate(shot)"
       >
-        重生成
+        <Icon name="refresh" :size="14" />
       </button>
       <button
-        class="wb-mini"
+        class="wb-ib"
         :disabled="!sb.canOperate || sb.uploadBusy"
+        aria-label="上传替换产物"
         :title="`上传本地${sb.isVideoStep ? '视频' : '图片'}替换该镜产物（重新合成后生效）`"
         @click="pickUpload(shot)"
       >
-        上传替换
+        <Icon name="upload" :size="14" />
       </button>
       <button
-        class="wb-mini"
+        class="wb-ib"
+        :class="{ on: sb.galleryShotId === shot.shotId }"
         :disabled="!shot.versions.length"
+        aria-label="版本画廊"
+        :title="`版本 ${shot.versions.length}（展开选择）`"
         @click="toggleGallery(shot)"
       >
-        版本 {{ shot.versions.length }}
+        <Icon name="copy" :size="14" />
+        <span v-if="shot.versions.length" class="wb-ibn">{{
+          shot.versions.length
+        }}</span>
       </button>
       <button
-        class="wb-mini"
+        class="wb-ib wb-ib-sfx"
         :class="{ on: !!sb.sfxMap[shot.shotId] }"
         :disabled="!sb.canOperate"
+        aria-label="绑定音效"
         :title="
           sb.sfxMap[shot.shotId]
             ? `音效：${sb.sfxMap[shot.shotId]!.name}（重新合成后生效）`
@@ -196,7 +217,7 @@ const sb = props.sb
         "
         @click="openSfx(shot)"
       >
-        音效{{ sb.sfxMap[shot.shotId] ? ' · 1' : '' }}
+        <Icon name="speaker-wave" :size="14" />
       </button>
     </div>
 
@@ -248,78 +269,24 @@ const sb = props.sb
 </template>
 
 <style scoped>
-.wb-ck {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-  flex: none;
-}
-
-.wb-ck input {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-/* [M10] 拖拽把手（2×3 点阵） */
-.wb-grip {
-  flex: none;
-  width: 12px;
-  height: 16px;
-  cursor: grab;
-  background-image: radial-gradient(
-    circle,
-    var(--text-3) 1px,
-    transparent 1.1px
-  );
-  background-size: 5px 5px;
-  background-position: 1px 1px;
-  opacity: 0.75;
-}
-
-.wb-grip:hover {
-  opacity: 1;
-}
-
-.wb-grip:active {
-  cursor: grabbing;
-}
-
-.wb-grip.disabled {
-  cursor: not-allowed;
-  opacity: 0.3;
-}
-
-.wb-num {
-  width: 64px;
-  background: var(--code-bg);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 2px 6px;
-  font-size: 12px;
-  font-family: inherit;
-}
-
-.wb-num:disabled {
-  opacity: 0.5;
-}
-
+/* ---------- 卡片容器 ---------- */
 .wb-card {
   border: 1px solid var(--border);
   background: var(--panel-2);
-  border-radius: 10px;
+  border-radius: 11px;
   overflow: hidden;
   min-width: 0;
+  box-shadow: var(--shadow);
   transition:
     border-color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s,
     opacity 0.2s;
 }
 
 .wb-card:hover {
   border-color: var(--border-strong);
+  transform: translateY(-2px);
 }
 
 /* 停用：半透明 + 缩略图去饱和 */
@@ -335,7 +302,7 @@ const sb = props.sb
   border-color: rgb(248 113 113 / 34%);
 }
 
-/* [M10] 拖拽重排态：源半透明 / 目标左右插入线 */
+/* 拖拽重排态：源半透明 / 目标左右插入线 */
 .wb-card.dragging {
   opacity: 0.45;
 }
@@ -348,6 +315,7 @@ const sb = props.sb
   box-shadow: inset -3px 0 0 var(--accent);
 }
 
+/* ---------- 缩略图 ---------- */
 .wb-thumb {
   position: relative;
   display: block;
@@ -375,53 +343,108 @@ const sb = props.sb
     var(--img-ph);
 }
 
-.wb-ph.sm {
-  position: static;
-  width: 100%;
-  height: 100%;
+/* 角标：左上图标簇（台词 / 图异常）+ 右上待应用点 + 右下版数 */
+.wb-chips {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.wb-cico {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  color: #fff;
+  background: rgb(10 14 24 / 62%);
+  backdrop-filter: blur(4px);
+}
+
+.wb-cico.q {
+  background: rgb(248 113 113 / 85%);
 }
 
 .wb-vcount {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
+  right: 6px;
+  bottom: 6px;
   font-size: 10.5px;
   color: #fff;
   background: rgb(10 14 24 / 62%);
   backdrop-filter: blur(4px);
   border-radius: 999px;
   padding: 0 7px;
-}
-
-/* [M11] 台词角标（raw.lines 非空） */
-.wb-lines {
-  position: absolute;
-  left: 5px;
-  top: 5px;
-  font-size: 10.5px;
-  color: var(--accent-h);
-  background: rgb(10 14 24 / 62%);
-  backdrop-filter: blur(4px);
-  border-radius: 999px;
-  padding: 0 7px;
+  z-index: 2;
 }
 
 .wb-dot {
   position: absolute;
-  left: 5px;
-  top: 5px;
+  right: 6px;
+  top: 6px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--accent-h);
   box-shadow: 0 0 0 3px rgb(139 92 246 / 25%);
+  z-index: 2;
 }
 
+/* ---------- 元信息行 ---------- */
 .wb-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 7px 0;
+  padding: 6px 7px 0;
+}
+
+.wb-ck {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  flex: none;
+}
+
+.wb-ck input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 拖拽把手（2×3 点阵） */
+.wb-grip {
+  flex: none;
+  width: 12px;
+  height: 16px;
+  cursor: grab;
+  background-image: radial-gradient(
+    circle,
+    var(--text-3) 1px,
+    transparent 1.1px
+  );
+  background-size: 5px 5px;
+  background-position: 1px 1px;
+  opacity: 0.75;
+}
+
+.wb-grip:hover {
+  opacity: 1;
+}
+
+.wb-grip:active {
+  cursor: grabbing;
+}
+
+.wb-grip.disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
 }
 
 .wb-id {
@@ -459,42 +482,95 @@ const sb = props.sb
   cursor: not-allowed;
 }
 
-.wb-row {
+/* ---------- 时长行 ---------- */
+.wb-dur {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 7px;
+  padding: 7px 7px 0;
   font-size: 12px;
-  flex-wrap: wrap;
+}
+
+.wb-dur-ic {
+  color: var(--text-3);
+  flex: none;
 }
 
 .wb-lb {
   font-size: 11.5px;
 }
 
-.wb-mini {
-  border: none;
-  background: none;
-  color: var(--text-3);
-  font-size: 11px;
-  cursor: pointer;
-  padding: 0 2px;
-  transition: color 0.15s;
-  flex: none;
-}
-
-.wb-mini:hover {
+.wb-num {
+  width: 52px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-strong);
   color: var(--text);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: var(--mono);
 }
 
-.wb-mini:disabled {
+.wb-num:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- 图标动作行 ---------- */
+.wb-icons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 7px 7px 8px;
+}
+
+.wb-ib {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    color 0.14s,
+    border-color 0.14s,
+    background 0.14s;
+}
+
+.wb-ib:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.wb-ib.on {
+  color: var(--accent-h);
+  border-color: rgb(99 102 241 / 45%);
+}
+
+/* 音效已绑定：成功绿（与改词 / 版本展开的靛色 on 态区分） */
+.wb-ib-sfx.on {
+  color: var(--ok);
+  border-color: rgb(34 197 94 / 40%);
+}
+
+.wb-ib:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* [M19] 音效按钮：已绑定高亮 */
-.wb-mini.on {
-  color: var(--ok);
+.wb-ibn {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 8.5px;
+  line-height: 1;
+  color: var(--text-3);
 }
 
 /* ---------- 改词区 ---------- */
@@ -521,6 +597,7 @@ const sb = props.sb
   margin-top: 5px;
 }
 
+/* 报错：2 行换行不再截断 */
 .wb-err {
   margin: 0 7px 7px;
   font-size: 11px;
@@ -528,30 +605,23 @@ const sb = props.sb
   background: var(--bad-weak);
   border-radius: 6px;
   padding: 4px 7px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* [M12] 质量异常角标（不阻断合成，提示换版 / 重生成） */
-.wb-qwarn {
-  position: absolute;
-  right: 5px;
-  top: 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10.5px;
-  color: #fff;
-  background: rgb(248 113 113 / 82%);
-  backdrop-filter: blur(4px);
-  border-radius: 999px;
-  padding: 0 7px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wb-card,
-  .wb-mini {
+  .wb-card {
+    transition: none;
+  }
+
+  .wb-card:hover {
+    transform: none;
+  }
+
+  .wb-ib {
     transition: none;
   }
 }

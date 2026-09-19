@@ -11,10 +11,11 @@
 
 /**
  * CJK 全角字宽经验系数：单字像素宽 ≈ FontSize × 该系数。
- * ASS 已声明 PlayResY=输出高 → FontSize 即真实像素，CJK 全角字宽 ≈ 1 em（≈ FontSize）；
- * 取 1.4 留安全余量（回退字体 advance 可能略宽）。宁可预算偏小（多切一行）也不冒溢出风险。
+ * ASS 已声明 PlayResY=输出高 → FontSize 即真实像素，CJK 全角/全角标点的 advance 恰为 1 em（= FontSize），
+ * 故取 1.0（诚实值）。安全余量不再靠放大系数，而由每侧 5% 边距（SIDE_MARGIN_FRAC）提供：预算 =
+ * (width − 2×边距) / 字宽，字满也仅贴到边距内侧、绝不冲出画面。旧值 1.4 过度预留 → 长句被过早拆成两行。
  */
-export const CJK_WIDTH_FACTOR = 1.4
+export const CJK_WIDTH_FACTOR = 1.0
 
 /** 每侧安全边距（占输出宽度比）：预留左右留白，避免文字贴边 */
 export const SIDE_MARGIN_FRAC = 0.05
@@ -57,7 +58,7 @@ export function wrapSingleLine(text: string, maxChars: number): string[] {
     }
     const end = cut > i ? cut : windowEnd
     // 硬切后若行首将落在标点上（如句末「。」被甩到下一行），把该标点吸收进行内，避免孤立标点行；
-    // 预算已含安全余量（系数 2.4 > 实测 2.16），多带 1 个标点仍不超框。
+    // 多带的 1 个全角标点（≈1em）落在每侧 5% 边距预留的余量内（2×5%×width ≥ 51px），仍不冲出画面。
     let lineEnd = end
     while (lineEnd < chars.length && lineEnd - i <= max && BREAK_AFTER.has(chars[lineEnd]!)) lineEnd++
     out.push(chars.slice(i, lineEnd).join(''))

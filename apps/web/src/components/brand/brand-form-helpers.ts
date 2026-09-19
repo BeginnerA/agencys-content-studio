@@ -50,7 +50,7 @@ export function marginOf(v: unknown): number {
 /** 字幕样式表单（与服务端 buildSubtitleStyle 公式基线一致的展示默认值） */
 export const SUB_DEFAULTS = {
   font: 'Noto Sans CJK SC',
-  size: 1.8,
+  size: 4,
   color: '#FFFFFF',
   outlineColor: '#000000',
   outline: 0.09,

@@ -428,17 +428,19 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // [M32] SRT → ASS 转换：内置 ffmpeg 的 libass 不支持 CJK 换行 + force_style 吃 SRT 时按默认小
   // PlayResY 二次放大字号 → 长句横向冲出画面。改为生成显式 PlayResX/Y=输出尺寸的 ASS 喂 subtitles
   // 滤镜（force_style 仍生效、args 结构不变）：字号回归真实像素、左右边距由 ASS Style 提供、超长行 \\N 预换行。
-  // 多画幅各路 PlayRes 不同 → 主 + 每派生路各生成一份 ASS。strict 交付不动其 SRT 校验链。
+  // 多画幅各路 PlayRes 不同 → 主 + 每派生路各生成一份 ASS。
+  // [M32b] 严格交付同样溢出 → 一并启用：仅生成烧录用 ASS 副本喂滤镜，不改原 SRT 资产；
+  // assertStrictSrt 校验的是原始 SRT（本块之前已跑），\N 换行只拆行不减字，成片时长/音轨不变（assertStrictOutput 不受影响）。
   const assTempAbs: string[] = []
   let subtitlePaths: string[] | undefined
-  if (!strict && srtAbs && srtRelPath) {
+  if (srtAbs && srtRelPath) {
     try {
       const fsFromStyle = (s: string, fb: number): number => {
         const m = /FontSize=([\d.]+)/.exec(s)
         return m ? Number(m[1]) : fb
       }
       const rawSrt = readFileSync(srtAbs, 'utf8')
-      const mainFontSize = fsFromStyle(style, Math.max(16, Math.round(height * 0.018)))
+      const mainFontSize = fsFromStyle(style, Math.max(16, Math.round(height * 0.04)))
       const assDir = dirname(srtAbs)
       const stamp = Date.now()
       const writeAss = (w: number, h: number, fontSize: number, tag: string): string => {
@@ -452,7 +454,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       for (const t of maTargets) {
         const { w, h } = resolveAspectSize(width, height, t.aspect)
         const fs = brand.subtitle
-          ? fsFromStyle(buildSubtitleStyle(h, brand.subtitle), Math.max(16, Math.round(h * (brand.subtitle.size_pct ?? 0.018))))
+          ? fsFromStyle(buildSubtitleStyle(h, brand.subtitle), Math.max(16, Math.round(h * (brand.subtitle.size_pct ?? 0.04))))
           : mainFontSize
         paths.push(writeAss(w, h, fs, `-${paths.length}`))
       }

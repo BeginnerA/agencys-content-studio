@@ -29,7 +29,14 @@ export async function creationDetail(id: number) {
   const steps = run ? await db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, run.id)).orderBy(asc(pipelineSteps.seq)) : []
   const tasks = run ? await db.select().from(genTasks).where(eq(genTasks.runId, run.id)) : []
   const media = run ? await db.select().from(assets).where(and(eq(assets.runId, run.id), isNull(assets.deletedAt))) : []
-  const result = media.find((a) => a.purpose === 'final_video' && parseJson<Record<string, unknown>>(a.params, {}).delivery_checked === true)
+  // [M32] 结果取「最新」通过交付检查的成片：每次重新合成会新增一条 final_video 资产（旧的不删），
+  // 而 media 无排序、find 会命中最旧的一条 → 轻松创作永远显示首次合成。按 id 最大取最新，封面同理。
+  let result: (typeof media)[number] | undefined
+  let cover: (typeof media)[number] | undefined
+  for (const a of media) {
+    if (a.purpose === 'final_video' && parseJson<Record<string, unknown>>(a.params, {}).delivery_checked === true && (!result || a.id > result.id)) result = a
+    if (a.purpose === 'thumbnail' && (!cover || a.id > cover.id)) cover = a
+  }
   const uncertain = tasks.filter((t) => t.attempts > 0 && t.status !== 'succeeded')
   const usages = await db.select().from(usageRecords).where(eq(usageRecords.projectId, session.projectId))
   const planning = usages.filter((u) => u.kind === 'llm' && parseJson<Record<string, unknown>>(u.meta, {}).sessionId === id)
@@ -50,7 +57,7 @@ export async function creationDetail(id: number) {
       completedShots: tasks.filter((t) => t.status === 'succeeded' && t.kind === (parseJson<{ mode?: string }>(session.plan, {}).mode === 'dynamic' ? 'video' : 'image')).length,
       steps: steps.map((s) => ({ key: s.stepKey, title: s.title, status: s.status, error: s.error })),
     } : null,
-    result: run?.status === 'completed' && result ? { videoId: result.id, coverId: media.find((a) => a.purpose === 'thumbnail')?.id ?? null, duration: result.duration } : null,
+    result: run?.status === 'completed' && result ? { videoId: result.id, coverId: cover?.id ?? null, duration: result.duration } : null,
   }
 }
 

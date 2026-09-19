@@ -1,8 +1,11 @@
 import type { SubtitleStyleConfig } from '../../../services/brand-config'
 
-/** 字幕 ASS 风格缺省（字号/边距按输出高度自适应；模板可用 defaults.video.subtitle_style 整体覆盖） */
+/** 字幕 ASS 风格缺省（字号/边距按输出高度自适应；模板可用 defaults.video.subtitle_style 整体覆盖）。
+ * [M32] size_pct 由 0.018 提到 0.04：修复前 subtitles 吃 SRT 时 FontSize 被 libass 按默认小 PlayResY
+ * 二次放大（≈×3），0.018 实得 ≈0.055 观感；改显式 PlayRes 的 ASS 后 FontSize 即真实像素，需按真实
+ * 比例取竖屏短视频通用字号（≈4% 高，1280→51px），否则字幕过小。clamp 区间 0.008–0.06 不变。 */
 export function defaultSubtitleStyle(height: number): string {
-  const fontSize = Math.max(16, Math.round(height * 0.018))
+  const fontSize = Math.max(16, Math.round(height * 0.04))
   const marginV = Math.round(height * 0.02)
   const outline = Math.max(1, Math.round(height * 0.0009))
   return (
@@ -23,7 +26,7 @@ export function toAssColor(hex: string): string {
  */
 export function buildSubtitleStyle(height: number, cfg: SubtitleStyleConfig = {}): string {
   const font = cfg.font ?? 'Noto Sans CJK SC'
-  const fontSize = Math.max(16, Math.round(height * (cfg.size_pct ?? 0.018)))
+  const fontSize = Math.max(16, Math.round(height * (cfg.size_pct ?? 0.04)))
   const primary = cfg.color ? toAssColor(cfg.color) : '&H00FFFFFF'
   const outlineColor = cfg.outline_color ? toAssColor(cfg.outline_color) : '&H00000000'
   const outline = Math.max(1, Math.round(height * (cfg.outline_pct ?? 0.0009)))

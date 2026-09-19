@@ -24,7 +24,7 @@ export interface WatermarkConfig extends BrandMaterialSlot {
   margin_px?: number
 }
 
-/** [M19] 字幕样式结构化配置（字段缺省 = 公式基线：字号 1.8% 高 / 底边距 2%） */
+/** [M19] 字幕样式结构化配置（字段缺省 = 公式基线：字号 4% 高 / 底边距 2%） */
 export interface SubtitleStyleConfig {
   font?: string
   /** FontSize = round(H × size_pct)（服务端 clamp 0.008–0.06） */
