@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel } from '../../lib/types'
+import { memoryApi } from '../../lib/api'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -16,10 +17,69 @@ const EXAMPLES = [
   '介绍一款保温杯的卖点，30 秒，图文配音即可。',
 ]
 
+// ===== 「试试」智能推荐：读「选题雷达」沉淀的选题库（memory type=topics），零新端点零计费 =====
+// 无选题沉淀 / 接口失败 / 解析为空 → 静默回退静态 EXAMPLES（不编造原则）。
+const topicPool = ref<string[]>([])
+const hasTopics = ref(false)
+const chips = ref<string[]>([...EXAMPLES])
+const rollSeq = ref(0)
+
+/** 解析选题清单标题行：契约格式「## T01｜{选题方向}（{content_format}…，{type}）」（见 prompts/topic-radar.md） */
+function parseTopicLines(md: string): { title: string; format: string }[] {
+  const out: { title: string; format: string }[] = []
+  const re = /^##\s*T\d+\s*[｜|]\s*(.+?)\s*（([^（）]+?)，/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(md))) {
+    const title = (m[1] ?? '').trim()
+    const format = (m[2] ?? '').split('·')[0]!.trim().toLowerCase()
+    if (title) out.push({ title, format })
+  }
+  return out
+}
+
+/** 选题 → 轻松创作一句话：按内容形态给贴合的句式（视频/短剧/口播/图文长文） */
+function topicSentence(t: { title: string; format: string }): string {
+  const title = t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title
+  const f = t.format
+  if (f.startsWith('drama') || f.startsWith('anime')) return `用 45 秒把「${title}」拍成有故事感的短剧视频，竖屏。`
+  if (f.startsWith('talking')) return `口播一条 30 秒的短视频：「${title}」，轻松一点。`
+  if (f === 'article' || f === 'note') return `把「${title}」做成 30 秒短视频，图文配音即可。`
+  return `做一条 30 秒的短视频：「${title}」，竖屏，轻松一点。`
+}
+
+/** 从候选池随机取 3 条（不足全取）；池为空则回退静态示例 */
+function rollChips(): void {
+  const pool = topicPool.value
+  if (!pool.length) { chips.value = [...EXAMPLES]; return }
+  const idx = pool.map((_, i) => i).sort(() => Math.random() - 0.5)
+  chips.value = idx.slice(0, Math.min(3, pool.length)).map((i) => pool[i]!)
+  rollSeq.value++
+}
+
+async function loadTopicChips(): Promise<void> {
+  try {
+    const res = await memoryApi.list('?type=topics&limit=3')
+    const sentences: string[] = []
+    for (const mem of res.items ?? []) {
+      for (const t of parseTopicLines(mem.content ?? '')) {
+        const sent = topicSentence(t)
+        if (!sentences.includes(sent)) sentences.push(sent)
+        if (sentences.length >= 12) break
+      }
+      if (sentences.length >= 12) break
+    }
+    if (sentences.length) {
+      topicPool.value = sentences
+      hasTopics.value = true
+      rollChips()
+    }
+  } catch { /* 静默：保留静态示例 */ }
+}
+
 // 一句话成片的流程步骤（视觉化「流程感」，非可点击导航）
 const STEPS = ['一句话', '方案', '确认', '成片']
 
-onMounted(() => void s.loadSessions())
+onMounted(() => { void s.loadSessions(); void loadTopicChips() })
 
 async function go(): Promise<void> {
   const text = idea.value.trim()
@@ -71,8 +131,18 @@ const STATUS_TONE: Record<string, string> = {
       </div>
 
       <div class="ex">
-        <span class="ex-l muted"><Icon name="chat" :size="13" /> 试试：</span>
-        <button v-for="e in EXAMPLES" :key="e" class="chip q" type="button" @click="idea = e">{{ e }}</button>
+        <span class="ex-l muted"><Icon :name="hasTopics ? 'sparkles' : 'chat'" :size="13" /> {{ hasTopics ? '选题库推荐：' : '试试：' }}</span>
+        <button
+          v-for="(e, i) in chips"
+          :key="`${rollSeq}-${i}`"
+          class="chip q"
+          type="button"
+          :title="hasTopics ? '来自「选题雷达」沉淀的选题库，点击填入' : '点击填入'"
+          @click="idea = e"
+        >{{ e }}</button>
+        <button v-if="hasTopics" class="chip q roll" type="button" title="从选题库再随机换一批" @click="rollChips">
+          <Icon name="refresh" :size="12" /> 换一批
+        </button>
       </div>
 
       <div v-if="s.state.error" class="err-text">{{ s.state.error }}</div>
@@ -97,6 +167,10 @@ const STATUS_TONE: Record<string, string> = {
         <Icon name="inbox" :size="26" />
         <p>还没有创作记录</p>
         <span class="muted">从上方写下你的一句话，开始第一条成片。</span>
+        <RouterLink v-if="!hasTopics" class="guide" :to="{ path: '/canvas', query: { template: 'topic-radar' } }">
+          <Icon name="sparkles" :size="13" /> 还没跑过选题雷达？先跑一次，让「试试」推荐你自己的选题
+          <Icon name="arrow-left" :size="13" class="flip" />
+        </RouterLink>
       </div>
       <div v-else class="grid">
         <RouterLink v-for="c in s.state.sessions" :key="c.id" class="item panel" :to="`/create/${c.id}`">
@@ -162,6 +236,7 @@ const STATUS_TONE: Record<string, string> = {
 .ex-l .ic { color: var(--text-3); }
 .chip.q { cursor: pointer; border: 1px solid var(--border-strong); background: var(--raised); color: var(--text-2); padding: 5px 12px; border-radius: 999px; font-size: 12px; transition: border-color 0.15s, color 0.15s, background 0.15s; }
 .chip.q:hover { border-color: var(--accent); color: #fff; background: var(--accent-weak); }
+.chip.q.roll { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-h); border-color: rgb(99 102 241 / 40%); }
 
 .pfoot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 2px; }
 .hint { display: inline-flex; gap: 6px; align-items: center; flex: 1; min-width: 240px; line-height: 1.5; }
@@ -190,6 +265,14 @@ const STATUS_TONE: Record<string, string> = {
 .empty-card .ic { color: var(--text-3); margin-bottom: 6px; }
 .empty-card p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
 .empty-card span { font-size: 12.5px; }
+.guide {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+  font-size: 12.5px; color: var(--accent-h); text-decoration: none;
+  border: 1px solid rgb(99 102 241 / 35%); background: var(--accent-weak);
+  padding: 6px 14px; border-radius: 999px; transition: border-color 0.15s, color 0.15s;
+}
+.guide:hover { border-color: var(--accent); color: #fff; text-decoration: none; }
+.guide .flip { transform: rotate(180deg); }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .item {

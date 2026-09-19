@@ -58,6 +58,8 @@ const boardRef = ref<InstanceType<typeof CanvasBoard> | null>(null)
 const runs = ref<Run[]>([])
 const tplMetas = ref<TemplateMeta[]>([])
 const projects = ref<Project[]>([])
+/** 项目列表首次加载完成标志（空态引导链接用，防加载期闪现） */
+const projectsLoaded = ref(false)
 const listErr = ref('')
 const projectId = ref<number | null>(null)
 const showStart = ref(false)
@@ -175,6 +177,7 @@ async function loadLists(): Promise<void> {
     runs.value = r.items
     tplMetas.value = t.items
     projects.value = p.items
+    projectsLoaded.value = true
     if (projectId.value == null) projectId.value = projects.value[0]?.id ?? null
     // [M23] 深链进入（?overview=1）：项目就绪后补首载
     if (tab.value === 'overview' && overview.value == null) void loadOverview()
@@ -543,6 +546,10 @@ onMounted(() => {
           <option value="" disabled>选择项目…</option>
           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
         </select>
+        <!-- 空态出路：无项目时「启动运行」永远灰着，给出新建项目入口 -->
+        <RouterLink v-if="projectsLoaded && !projects.length" class="sel-link" to="/" title="运行需要先有一个项目，点击去创建">
+          <Icon name="plus" :size="12" /> 还没有项目？先创建一个
+        </RouterLink>
         <button
           type="button"
           class="btn sm primary"
@@ -708,6 +715,27 @@ onMounted(() => {
   max-width: 320px;
   padding: 5px 8px;
   font-size: 12px;
+}
+
+/* 空态出路链接：与下拉同高同字号，胶囊描边区分于控件 */
+.sel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--accent-h);
+  text-decoration: none;
+  border: 1px dashed rgb(99 102 241 / 45%);
+  border-radius: 999px;
+  background: var(--accent-weak);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.sel-link:hover {
+  border-color: var(--accent);
+  color: #fff;
+  text-decoration: none;
 }
 
 .sp {
