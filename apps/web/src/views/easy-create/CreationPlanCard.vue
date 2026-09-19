@@ -147,7 +147,13 @@ async function onConfirm(): Promise<void> {
       <ul>
         <li v-for="(b, i) in blockers" :key="i">{{ b.message }}</li>
       </ul>
-      <RouterLink class="btn sm" to="/settings"><Icon name="sliders" :size="13" /> 前往 AI 配置</RouterLink>
+      <div class="bx-actions">
+        <RouterLink class="btn sm" to="/settings"><Icon name="sliders" :size="13" /> 前往 AI 配置</RouterLink>
+        <button class="btn sm" type="button" :disabled="s.state.busyAction" @click="s.refreshPreflight()">
+          <Icon name="refresh" :size="13" /> {{ s.state.busyAction ? '预检中…' : '重新预检' }}
+        </button>
+      </div>
+      <span class="bx-tip">改好 AI 配置（如视频能力声明）后点「重新预检」刷新——仅重算，不计费、不启动制作</span>
     </div>
 
     <footer v-else-if="!confirmed" class="cf">
@@ -214,6 +220,8 @@ async function onConfirm(): Promise<void> {
 .blockers { border: 1px solid rgb(248 113 113 / 32%); background: var(--bad-weak); border-radius: 11px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
 .bt { color: var(--bad); font-size: 13px; font-weight: 600; }
 .blockers ul { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 12.5px; line-height: 1.75; }
+.bx-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bx-tip { font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
 .cf { display: flex; flex-direction: column; gap: 11px; border-top: 1px solid var(--border); padding-top: 13px; }
 .acc { font-size: 12.5px; color: var(--warn); display: flex; gap: 7px; align-items: center; line-height: 1.5; }
 .big { align-self: stretch; justify-content: center; padding: 11px 20px; font-size: 14.5px; font-weight: 600; }

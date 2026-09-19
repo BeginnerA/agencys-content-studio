@@ -16,6 +16,20 @@ export interface ProviderConfigLite {
   pricing?: Record<string, number> | null
 }
 
+/**
+ * [M31+] 视频实例「轻松创作能力声明」（存于 extra.creationCapabilities）。
+ * 与服务端 preflight 的 videoCapabilitiesSchema 严格对齐：verified 恒为 true（勾选即声明已核实），
+ * 字段缺一不可，且 model 必须与实例所选模型一字不差，否则预检拒绝执行（不猜测、不静默降级）。
+ */
+export interface VideoCreationCapabilities {
+  model: string
+  verified: true
+  modes: Array<'i2v' | 't2v'>
+  durations: number[]
+  aspectRatios: Array<'9:16' | '16:9' | '1:1'>
+  resolution: '480p' | '720p' | '1080p' | '768P' | '2K'
+}
+
 export interface ApiProvider {
   key: string
   name: string
