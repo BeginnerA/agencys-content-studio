@@ -22,22 +22,27 @@ export interface ContentBounds {
   height: number
 }
 
-export function useBoardViewport(opts: {
-  /** 缩放区间（默认 [0.2, 2.5]） */
-  min?: number
-  max?: number
-  /** 初始视口（画布持久化值；null → 默认 {40,40,1}） */
-  initial?: ViewportState | null
-  /** pan/zoom 稳定后回调（防抖 500ms；与基线相同则跳过） */
-  onSettled?: (v: ViewportState) => void
-} = {}) {
+export function useBoardViewport(
+  opts: {
+    /** 缩放区间（默认 [0.2, 2.5]） */
+    min?: number
+    max?: number
+    /** 初始视口（画布持久化值；null → 默认 {40,40,1}） */
+    initial?: ViewportState | null
+    /** pan/zoom 稳定后回调（防抖 500ms；与基线相同则跳过） */
+    onSettled?: (v: ViewportState) => void
+  } = {},
+) {
   const ZOOM_MIN = opts.min ?? 0.2
   const ZOOM_MAX = opts.max ?? 2.5
-  const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+  const clamp = (v: number, lo: number, hi: number): number =>
+    Math.min(hi, Math.max(lo, v))
 
   const viewportEl = ref<HTMLElement | null>(null)
   const pan = ref({ x: opts.initial?.x ?? 40, y: opts.initial?.y ?? 40 })
-  const zoom = ref(opts.initial ? clamp(opts.initial.zoom, ZOOM_MIN, ZOOM_MAX) : 1)
+  const zoom = ref(
+    opts.initial ? clamp(opts.initial.zoom, ZOOM_MIN, ZOOM_MAX) : 1,
+  )
 
   // ---- [M23] 视口尺寸（虚拟化可见区；未实测 0 → 全量渲染兜底）----
   const viewW = ref(0)
@@ -68,12 +73,20 @@ export function useBoardViewport(opts: {
   })
 
   // 基线：相等 → 不回写（挂载 / setViewport 程序化应用不触发 PATCH）
-  let baseJson = JSON.stringify({ x: pan.value.x, y: pan.value.y, zoom: zoom.value })
+  let baseJson = JSON.stringify({
+    x: pan.value.x,
+    y: pan.value.y,
+    zoom: zoom.value,
+  })
   let settleTimer: number | null = null
 
   watch([pan, zoom], () => {
     if (!opts.onSettled) return
-    const json = JSON.stringify({ x: pan.value.x, y: pan.value.y, zoom: zoom.value })
+    const json = JSON.stringify({
+      x: pan.value.x,
+      y: pan.value.y,
+      zoom: zoom.value,
+    })
     if (json === baseJson) return
     if (settleTimer != null) window.clearTimeout(settleTimer)
     settleTimer = window.setTimeout(() => {
@@ -88,7 +101,11 @@ export function useBoardViewport(opts: {
   function setViewport(v: ViewportState): void {
     pan.value = { x: v.x, y: v.y }
     zoom.value = clamp(v.zoom, ZOOM_MIN, ZOOM_MAX)
-    baseJson = JSON.stringify({ x: pan.value.x, y: pan.value.y, zoom: zoom.value })
+    baseJson = JSON.stringify({
+      x: pan.value.x,
+      y: pan.value.y,
+      zoom: zoom.value,
+    })
   }
 
   function currentViewport(): ViewportState {
@@ -118,7 +135,10 @@ export function useBoardViewport(opts: {
     const z = clamp(nz, ZOOM_MIN, ZOOM_MAX)
     if (Math.abs(z - zoom.value) < 1e-4) return
     const k = z / zoom.value
-    pan.value = { x: cx - (cx - pan.value.x) * k, y: cy - (cy - pan.value.y) * k }
+    pan.value = {
+      x: cx - (cx - pan.value.x) * k,
+      y: cy - (cy - pan.value.y) * k,
+    }
     zoom.value = z
   }
   function onWheel(ev: WheelEvent): void {
@@ -126,7 +146,11 @@ export function useBoardViewport(opts: {
     const el = viewportEl.value
     if (!el) return
     const rect = el.getBoundingClientRect()
-    applyZoom(zoom.value * Math.exp(-ev.deltaY * 0.0012), ev.clientX - rect.left, ev.clientY - rect.top)
+    applyZoom(
+      zoom.value * Math.exp(-ev.deltaY * 0.0012),
+      ev.clientX - rect.left,
+      ev.clientY - rect.top,
+    )
   }
   function zoomBy(f: number): void {
     const el = viewportEl.value
@@ -152,7 +176,10 @@ export function useBoardViewport(opts: {
   }
 
   /** 屏幕（client）坐标 → 世界坐标（drop / 双击落点） */
-  function screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
+  function screenToWorld(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number } {
     const el = viewportEl.value
     if (!el) return { x: 0, y: 0 }
     const rect = el.getBoundingClientRect()

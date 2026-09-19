@@ -1,16 +1,52 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { configApi, settingsApi, statsApi, vendorApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { ApiConfig, ApiProvider, ProviderConfigLite, UsageItem, VendorCredential } from '../../lib/types'
+import type {
+  ApiConfig,
+  ApiProvider,
+  ProviderConfigLite,
+  UsageItem,
+  VendorCredential,
+} from '../../lib/types'
 
 export function useSettingsPage() {
   // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）+ [M19] 品牌（平台品牌资产）/ 音色库（声音克隆）
   const TABS = [
-    { key: 'text', label: '文本生成', icon: 'pencil', types: ['llm'], hint: '剧本 / 文案 / 结构化输出（LLM）' },
-    { key: 'image', label: '图片生成', icon: 'photo', types: ['image'], hint: '分镜 / 角色 / 封面出图' },
-    { key: 'video', label: '视频生成', icon: 'video', types: ['video'], hint: '镜头动效 / AI 视频生成' },
-    { key: 'audio', label: '语音合成', icon: 'speaker-wave', types: ['audio'], hint: '配音 / TTS（OpenAI 兼容 /audio/speech）' },
-    { key: 'voices', label: '音色库', icon: 'wand', types: [], hint: '声音克隆（角色声线以 clone:{id} 引用）' },
+    {
+      key: 'text',
+      label: '文本生成',
+      icon: 'pencil',
+      types: ['llm'],
+      hint: '剧本 / 文案 / 结构化输出（LLM）',
+    },
+    {
+      key: 'image',
+      label: '图片生成',
+      icon: 'photo',
+      types: ['image'],
+      hint: '分镜 / 角色 / 封面出图',
+    },
+    {
+      key: 'video',
+      label: '视频生成',
+      icon: 'video',
+      types: ['video'],
+      hint: '镜头动效 / AI 视频生成',
+    },
+    {
+      key: 'audio',
+      label: '语音合成',
+      icon: 'speaker-wave',
+      types: ['audio'],
+      hint: '配音 / TTS（OpenAI 兼容 /audio/speech）',
+    },
+    {
+      key: 'voices',
+      label: '音色库',
+      icon: 'wand',
+      types: [],
+      hint: '声音克隆（角色声线以 clone:{id} 引用）',
+    },
   ] as const
   type TabKey = (typeof TABS)[number]['key']
 
@@ -22,7 +58,10 @@ export function useSettingsPage() {
   const loading = ref(true)
 
   // 编辑/新建弹窗状态：provider + 待编辑 config（列表精简态，含 baseUrl / apiKeyMasked / extra 回显字段）
-  const editing = ref<{ provider: ApiProvider; config: ProviderConfigLite | null } | null>(null)
+  const editing = ref<{
+    provider: ApiProvider
+    config: ProviderConfigLite | null
+  } | null>(null)
   // 供应商凭证编辑弹窗
   const editingCred = ref<VendorCredential | null>(null)
   const showCredForm = ref(false)
@@ -49,7 +88,10 @@ export function useSettingsPage() {
   // ===== 主从布局：左供应商列表 / 右供应商详情 =====
   const selectedKey = ref('')
   const selectedProvider = computed(
-    () => visible.value.find((p) => p.key === selectedKey.value) ?? visible.value[0] ?? null,
+    () =>
+      visible.value.find((p) => p.key === selectedKey.value) ??
+      visible.value[0] ??
+      null,
   )
 
   /** 切换 tab / 数据刷新后收敛选择：沿用有效选择，否则优先落在已配置供应商 */
@@ -59,7 +101,9 @@ export function useSettingsPage() {
       return
     }
     if (visible.value.some((p) => p.key === selectedKey.value)) return
-    selectedKey.value = (visible.value.find((p) => p.configs.length) ?? visible.value[0]!).key
+    selectedKey.value = (
+      visible.value.find((p) => p.configs.length) ?? visible.value[0]!
+    ).key
   }
   watch(visible, pickSelected)
 
@@ -69,8 +113,13 @@ export function useSettingsPage() {
     const active = configs.filter((c) => c.isActive).length
     const def = configs.find((c) => c.isDefault)
     const unconf = visible.value.filter((p) => !p.configs.length).length
-    if (!configs.length) return { tone: 'warn', text: '未配置实例——流水线调用该能力将失败' }
-    if (!active) return { tone: 'warn', text: `${configs.length} 个实例均已停用——调用将失败` }
+    if (!configs.length)
+      return { tone: 'warn', text: '未配置实例——流水线调用该能力将失败' }
+    if (!active)
+      return {
+        tone: 'warn',
+        text: `${configs.length} 个实例均已停用——调用将失败`,
+      }
     const parts = [`${active} 个启用实例`]
     if (def) parts.push(`默认：${def.name}`)
     if (unconf) parts.push(`${unconf} 家供应商未配置`)
@@ -81,7 +130,8 @@ export function useSettingsPage() {
   function railStatus(p: ApiProvider) {
     const active = p.configs.filter((c) => c.isActive).length
     if (!p.configs.length) return { cls: 'off', text: '未配置' }
-    if (!active) return { cls: 'warn', text: `${p.configs.length} 实例均已停用` }
+    if (!active)
+      return { cls: 'warn', text: `${p.configs.length} 实例均已停用` }
     return { cls: 'ok', text: `${p.configs.length} 实例 · ${active} 启用` }
   }
 
@@ -89,7 +139,11 @@ export function useSettingsPage() {
     loading.value = true
     err.value = ''
     try {
-      const [p, c, v] = await Promise.all([configApi.providers(), configApi.list(), vendorApi.list()])
+      const [p, c, v] = await Promise.all([
+        configApi.providers(),
+        configApi.list(),
+        vendorApi.list(),
+      ])
       providers.value = p.items
       credentials.value = v.items
       const byKey = new Map<string, ApiConfig[]>()
@@ -137,16 +191,26 @@ export function useSettingsPage() {
 
   async function setDefault(cfgId: number, providerKey: string) {
     try {
-      await configApi.update(cfgId, { provider_key: providerKey, is_default: true })
+      await configApi.update(cfgId, {
+        provider_key: providerKey,
+        is_default: true,
+      })
       await load()
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
     }
   }
 
-  async function toggleActive(cfgId: number, providerKey: string, current: boolean) {
+  async function toggleActive(
+    cfgId: number,
+    providerKey: string,
+    current: boolean,
+  ) {
     try {
-      await configApi.update(cfgId, { provider_key: providerKey, is_active: !current })
+      await configApi.update(cfgId, {
+        provider_key: providerKey,
+        is_active: !current,
+      })
       await load()
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
@@ -204,7 +268,9 @@ export function useSettingsPage() {
     menuAnchor.value = btn
     menuFor.value = cfg.id
     // 注：v-for 内 template ref 会被收集为数组（直接 focus 会抛错），改从触发按钮父容器取菜单节点
-    void nextTick(() => btn.parentElement?.querySelector<HTMLElement>('[role="menu"]')?.focus())
+    void nextTick(() =>
+      btn.parentElement?.querySelector<HTMLElement>('[role="menu"]')?.focus(),
+    )
   }
   function closeMenu(restoreFocus = false) {
     if (menuFor.value === null) return
@@ -232,8 +298,12 @@ export function useSettingsPage() {
     if ((e.target as Element | null)?.closest?.('[data-menu-root]')) return
     closeMenu()
   }
-  onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
-  onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+  onMounted(() =>
+    document.addEventListener('pointerdown', onDocPointerDown, true),
+  )
+  onBeforeUnmount(() =>
+    document.removeEventListener('pointerdown', onDocPointerDown, true),
+  )
 
   // ===== [M4] 用量计费（settings.pricing 编辑器 + 实例 key 选择 + 未计价引导） =====
   interface PriceRow {
@@ -292,7 +362,9 @@ export function useSettingsPage() {
         if (!kv || typeof kv !== 'object' || Array.isArray(kv)) continue
         for (const [key, uv] of Object.entries(kv as Record<string, unknown>)) {
           if (!uv || typeof uv !== 'object' || Array.isArray(uv)) continue
-          for (const [unit, price] of Object.entries(uv as Record<string, unknown>)) {
+          for (const [unit, price] of Object.entries(
+            uv as Record<string, unknown>,
+          )) {
             out.push({ kind, key, unit, price: String(price ?? '') })
           }
         }
@@ -302,7 +374,10 @@ export function useSettingsPage() {
   }
 
   /** 行数组 → settings.pricing（key 为空/单价非法/负数的行跳过） */
-  function pricingFromRows(): Record<string, Record<string, Record<string, number>>> {
+  function pricingFromRows(): Record<
+    string,
+    Record<string, Record<string, number>>
+  > {
     const out: Record<string, Record<string, Record<string, number>>> = {}
     for (const r of priceRows.value) {
       const key = r.key.trim()
@@ -319,9 +394,13 @@ export function useSettingsPage() {
     try {
       const [s, u] = await Promise.all([
         settingsApi.list(),
-        statsApi.usage(`?group_by=provider_model&from=${Date.now() - 30 * 86_400_000}`),
+        statsApi.usage(
+          `?group_by=provider_model&from=${Date.now() - 30 * 86_400_000}`,
+        ),
       ])
-      priceRows.value = rowsFromPricing(s.items.find((it) => it.key === 'pricing')?.value)
+      priceRows.value = rowsFromPricing(
+        s.items.find((it) => it.key === 'pricing')?.value,
+      )
       unpricedRows.value = u.items.filter((it) => it.unpriced > 0)
     } catch {
       // 定价/用量为辅助信息，失败静默（本页主体不受影响）
@@ -336,7 +415,12 @@ export function useSettingsPage() {
   function kindOfKey(key: string): string {
     const prov = key.split(':')[0] ?? ''
     const p = providers.value.find((pp) => pp.key === prov)
-    if (p) return { llm: 'llm', image: 'image', video: 'video', audio: 'tts' }[p.serviceType] ?? 'llm'
+    if (p)
+      return (
+        { llm: 'llm', image: 'image', video: 'video', audio: 'tts' }[
+          p.serviceType
+        ] ?? 'llm'
+      )
     if (prov.endsWith('_image')) return 'image'
     if (prov.endsWith('_video')) return 'video'
     if (prov.endsWith('_audio') || prov.endsWith('_tts')) return 'tts'
@@ -346,7 +430,8 @@ export function useSettingsPage() {
   /** 「补价」按 key 实际类型预填：llm 输入/输出两行；图片/视频/语音一行 */
   function addFromUnpriced(key: string) {
     const kind = kindOfKey(key)
-    for (const unit of unitOptionsOf(kind)) priceRows.value.push({ kind, key, unit, price: '' })
+    for (const unit of unitOptionsOf(kind))
+      priceRows.value.push({ kind, key, unit, price: '' })
   }
 
   async function savePricing() {

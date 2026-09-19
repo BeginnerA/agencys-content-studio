@@ -3,39 +3,82 @@ import Icon from '../../components/common/Icon.vue'
 import type { EntityItem } from '../../lib/types'
 import type { EntitiesApi } from './use-entities'
 const props = defineProps<{ s: EntitiesApi; c: EntityItem }>()
-const { cfg, busy, selected, voiceLabel, openEdit, removeItem, toggleSel, photoOf, ratioCls } = props.s
+const {
+  cfg,
+  busy,
+  selected,
+  voiceLabel,
+  openEdit,
+  removeItem,
+  toggleSel,
+  photoOf,
+  ratioCls,
+} = props.s
 </script>
 
 <template>
-      <div class="card panel" :class="{ picked: selected.has(c.id) }">
-        <div class="photo" :class="ratioCls">
-          <label class="pick" :title="selected.has(c.id) ? '取消选择' : '加入批量选择'">
-            <input type="checkbox" :checked="selected.has(c.id)" @change="toggleSel(c.id)" />
-          </label>
-          <img v-if="photoOf(c)" :src="photoOf(c)!" :alt="`${c.name} 参考图`" loading="lazy" />
-          <div v-else class="ph"><Icon :name="cfg.icon" :size="30" /></div>
-        </div>
-        <div class="body">
-          <div class="top">
-            <span class="nm">{{ c.name }}</span>
-            <span class="badge" :class="{ skip: c.scope === 'global' }">{{ c.scope === 'global' ? '全局' : `项目#${c.projectId}` }}</span>
-          </div>
-          <div v-if="c.aliases.length" class="aliases muted">别名：{{ c.aliases.join('、') }}</div>
-          <div class="summary">{{ c.appearance || c.summary || '—' }}</div>
-          <div v-if="c.states.length" class="states">
-            <span v-for="s in c.states.slice(0, 2)" :key="s" class="chip state" :title="s">{{ s }}</span>
-            <span v-if="c.states.length > 2" class="chip">+{{ c.states.length - 2 }}</span>
-          </div>
-          <div class="meta muted">
-            <span v-if="c.voice"><Icon name="speaker-wave" :size="12" /> {{ voiceLabel(c.voice) }}</span>
-            <span v-if="c.refAssetIds.length" class="chip">{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span>
-          </div>
-          <div class="ops">
-            <button class="btn tiny" @click="openEdit(c)"><Icon name="pencil" :size="12" /> 编辑</button>
-            <button class="btn tiny danger" :disabled="busy" @click="removeItem(c)"><Icon name="trash" :size="12" /> 删除</button>
-          </div>
-        </div>
+  <div class="card panel" :class="{ picked: selected.has(c.id) }">
+    <div class="photo" :class="ratioCls">
+      <label
+        class="pick"
+        :title="selected.has(c.id) ? '取消选择' : '加入批量选择'"
+      >
+        <input
+          type="checkbox"
+          :checked="selected.has(c.id)"
+          @change="toggleSel(c.id)"
+        />
+      </label>
+      <img
+        v-if="photoOf(c)"
+        :src="photoOf(c)!"
+        :alt="`${c.name} 参考图`"
+        loading="lazy"
+      />
+      <div v-else class="ph"><Icon :name="cfg.icon" :size="30" /></div>
+    </div>
+    <div class="body">
+      <div class="top">
+        <span class="nm">{{ c.name }}</span>
+        <span class="badge" :class="{ skip: c.scope === 'global' }">{{
+          c.scope === 'global' ? '全局' : `项目#${c.projectId}`
+        }}</span>
       </div>
+      <div v-if="c.aliases.length" class="aliases muted">
+        别名：{{ c.aliases.join('、') }}
+      </div>
+      <div class="summary">{{ c.appearance || c.summary || '—' }}</div>
+      <div v-if="c.states.length" class="states">
+        <span
+          v-for="s in c.states.slice(0, 2)"
+          :key="s"
+          class="chip state"
+          :title="s"
+          >{{ s }}</span
+        >
+        <span v-if="c.states.length > 2" class="chip"
+          >+{{ c.states.length - 2 }}</span
+        >
+      </div>
+      <div class="meta muted">
+        <span v-if="c.voice"
+          ><Icon name="speaker-wave" :size="12" />
+          {{ voiceLabel(c.voice) }}</span
+        >
+        <span v-if="c.refAssetIds.length" class="chip"
+          >{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span
+        >
+      </div>
+      <div class="ops">
+        <button class="btn tiny" @click="openEdit(c)">
+          <Icon name="pencil" :size="12" /> 编辑
+        </button>
+        <button class="btn tiny danger" :disabled="busy" @click="removeItem(c)">
+          <Icon name="trash" :size="12" /> 删除
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>

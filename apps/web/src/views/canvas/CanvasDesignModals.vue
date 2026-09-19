@@ -29,48 +29,86 @@ const emit = defineEmits<{
 
 <template>
   <!-- [M23] 编辑草案预览（edit-draft；不落盘，仅受控 edits 应用的 YAML） -->
-  <Modal v-if="showDraft" title="编辑草案（不落盘）" :width="760" @close="emit('close-draft')">
+  <Modal
+    v-if="showDraft"
+    title="编辑草案（不落盘）"
+    :width="760"
+    @close="emit('close-draft')"
+  >
     <div class="ed-body">
       <div class="ed-meta">
-        <span v-if="draftValidation" class="badge" :class="draftValidation.ok ? 'succeeded' : 'failed'">
+        <span
+          v-if="draftValidation"
+          class="badge"
+          :class="draftValidation.ok ? 'succeeded' : 'failed'"
+        >
           {{ draftValidation.ok ? '校验通过' : '校验未通过' }}
         </span>
         <span class="muted mini">
-          由当前草稿经受控 edits 应用生成（标题 / 输入文本 / 调度依赖）；落盘请用「保存为新模板」，原模板文件零改动。
+          由当前草稿经受控 edits 应用生成（标题 / 输入文本 /
+          调度依赖）；落盘请用「保存为新模板」，原模板文件零改动。
         </span>
       </div>
       <ul v-if="draftValidation && draftValidation.errors.length" class="prob">
         <li v-for="(e2, i) in draftValidation.errors" :key="i">{{ e2 }}</li>
       </ul>
-      <ul v-if="draftValidation && draftValidation.warnings.length" class="warnlist">
+      <ul
+        v-if="draftValidation && draftValidation.warnings.length"
+        class="warnlist"
+      >
         <li v-for="(w, i) in draftValidation.warnings" :key="i">{{ w }}</li>
       </ul>
       <pre class="yaml mono">{{ draftYaml }}</pre>
     </div>
     <template #footer>
-      <button type="button" class="btn" @click="emit('close-draft')">关闭</button>
+      <button type="button" class="btn" @click="emit('close-draft')">
+        关闭
+      </button>
       <button type="button" class="btn" @click="emit('copy')">
         <Icon name="copy" :size="12" /> 复制 YAML
       </button>
-      <button type="button" class="btn primary" @click="emit('save-from-draft')">
+      <button
+        type="button"
+        class="btn primary"
+        @click="emit('save-from-draft')"
+      >
         <Icon name="download" :size="12" /> 保存为新模板
       </button>
     </template>
   </Modal>
 
   <!-- [M23] 保存为新模板（edit-save；key 冲突自动后缀避让） -->
-  <Modal v-if="showSave" title="保存为新模板" :width="520" @close="emit('close-save')">
+  <Modal
+    v-if="showSave"
+    title="保存为新模板"
+    :width="520"
+    @close="emit('close-save')"
+  >
     <label class="fld">
       新模板 key（字母/数字/下划线/中划线；冲突自动加后缀）
-      <input v-model="saveKey" type="text" spellcheck="false" placeholder="xxx-edit" @keydown.enter="emit('save')" />
+      <input
+        v-model="saveKey"
+        type="text"
+        spellcheck="false"
+        placeholder="xxx-edit"
+        @keydown.enter="emit('save')"
+      />
     </label>
     <div class="muted mini" style="margin-bottom: 8px">
-      保存内容 = 原模板 + 当前草稿（标题 / 输入文本 / 调度依赖）；原模板文件不会被修改。
+      保存内容 = 原模板 + 当前草稿（标题 / 输入文本 /
+      调度依赖）；原模板文件不会被修改。
     </div>
     <div v-if="saveErr" class="err-text">{{ saveErr }}</div>
     <template #footer>
-      <button type="button" class="btn" @click="emit('close-save')">取消</button>
-      <button type="button" class="btn primary" :disabled="saveBusy || !saveKey.trim()" @click="emit('save')">
+      <button type="button" class="btn" @click="emit('close-save')">
+        取消
+      </button>
+      <button
+        type="button"
+        class="btn primary"
+        :disabled="saveBusy || !saveKey.trim()"
+        @click="emit('save')"
+      >
         <Icon name="download" :size="12" /> {{ saveBusy ? '保存中…' : '保存' }}
       </button>
     </template>

@@ -7,14 +7,31 @@
  * - 幂等复用：同画幅 + 同策略 + 同源成片 → 服务端直接返回既有资产（notice 明示未重复编码）
  */
 import { computed, onMounted, ref } from 'vue'
-import { ASPECT_OPTIONS, ASPECT_STRATEGY_OPTIONS, aspectLabel, aspectOfSlug, isKnownAspect, isSameAspect, resolveAspectSize } from '../../lib/aspect'
+import {
+  ASPECT_OPTIONS,
+  ASPECT_STRATEGY_OPTIONS,
+  aspectLabel,
+  aspectOfSlug,
+  isKnownAspect,
+  isSameAspect,
+  resolveAspectSize,
+} from '../../lib/aspect'
 import { composeApi, projectApi } from '../../lib/api'
 import { fmtSize, fmtTime } from '../../lib/format'
-import type { Asset, AspectStrategy, AspectValue, RunAssetLite } from '../../lib/types'
+import type {
+  Asset,
+  AspectStrategy,
+  AspectValue,
+  RunAssetLite,
+} from '../../lib/types'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 
-const props = defineProps<{ runId: number; projectId: number; runAssets: RunAssetLite[] }>()
+const props = defineProps<{
+  runId: number
+  projectId: number
+  runAssets: RunAssetLite[]
+}>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 
 const loading = ref(true)
@@ -39,11 +56,26 @@ const srcSize = computed<{ w: number; h: number } | null>(() => {
 })
 
 const target = computed<{ w: number; h: number } | null>(() =>
-  srcSize.value ? resolveAspectSize(srcSize.value.w, srcSize.value.h, aspect.value) : null,
+  srcSize.value
+    ? resolveAspectSize(srcSize.value.w, srcSize.value.h, aspect.value)
+    : null,
 )
 
 function sameAspect(v: AspectValue): boolean {
-  return srcSize.value ? isSameAspect(srcSize.value.w, srcSize.value.h, v) : false
+  return srcSize.value
+    ? isSameAspect(srcSize.value.w, srcSize.value.h, v)
+    : false
+}
+
+// 多语句 handler 抽为单函数：prettier 在 semi:false 下会删模板属性里的分隔分号，产生非法 JS
+function pickAspect(v: AspectValue) {
+  aspect.value = v
+  notice.value = ''
+}
+
+function pickStrategy(v: AspectStrategy) {
+  strategy.value = v
+  notice.value = ''
 }
 
 // 默认选中首个与源不同比例的画幅（同比例派生 = 无意义重编码）；源尺寸未知则保留缺省 9:16
@@ -51,7 +83,9 @@ const firstDiff = ASPECT_OPTIONS.find((o) => !sameAspect(o.value))
 if (firstDiff) aspect.value = firstDiff.value
 
 function paramsOf(a: Asset): Record<string, unknown> {
-  return a.params && typeof a.params === 'object' ? (a.params as Record<string, unknown>) : {}
+  return a.params && typeof a.params === 'object'
+    ? (a.params as Record<string, unknown>)
+    : {}
 }
 
 /** 派生件画幅（params.aspect 优先，回退 tags slug 反解） */
@@ -74,20 +108,30 @@ function isNative(a: Asset): boolean {
 function belongsToRun(a: Asset): boolean {
   if (props.runAssets.some((r) => r.id === a.id)) return true
   const sid = paramsOf(a)['source_asset_id']
-  return typeof sid === 'number' && props.runAssets.some((r) => r.purpose === 'final_video' && r.id === sid)
+  return (
+    typeof sid === 'number' &&
+    props.runAssets.some((r) => r.purpose === 'final_video' && r.id === sid)
+  )
 }
 
 /** 同画幅 + 同策略的既有派生件（生成会命中服务端幂等复用） */
 function existingOf(v: AspectValue, s: AspectStrategy): Asset | null {
-  return derived.value.find((a) => aspectOf(a) === v && strategyOf(a) === s) ?? null
+  return (
+    derived.value.find((a) => aspectOf(a) === v && strategyOf(a) === s) ?? null
+  )
 }
 
-const existing = computed<Asset | null>(() => existingOf(aspect.value, strategy.value))
+const existing = computed<Asset | null>(() =>
+  existingOf(aspect.value, strategy.value),
+)
 
 onMounted(async () => {
   try {
     if (props.projectId > 0) {
-      const r = await projectApi.assets(props.projectId, '?kind=video&purpose=final_video_derived&limit=200')
+      const r = await projectApi.assets(
+        props.projectId,
+        '?kind=video&purpose=final_video_derived&limit=200',
+      )
       derived.value = r.items.filter(belongsToRun)
     }
   } catch (e) {
@@ -103,9 +147,17 @@ async function generate() {
   err.value = ''
   notice.value = ''
   try {
-    const r = await composeApi.deriveAspect(props.runId, aspect.value, strategy.value)
-    if (!derived.value.some((a) => a.id === r.asset.id)) derived.value = [r.asset, ...derived.value]
-    const size = r.asset.width && r.asset.height ? `${r.asset.width}x${r.asset.height}` : ''
+    const r = await composeApi.deriveAspect(
+      props.runId,
+      aspect.value,
+      strategy.value,
+    )
+    if (!derived.value.some((a) => a.id === r.asset.id))
+      derived.value = [r.asset, ...derived.value]
+    const size =
+      r.asset.width && r.asset.height
+        ? `${r.asset.width}x${r.asset.height}`
+        : ''
     notice.value = r.reused
       ? `已复用既有派生画幅 ${aspect.value}${size ? `（${size}）` : ''}——同画幅 + 同策略 + 同源成片，未重复编码`
       : `派生画幅 ${aspect.value} 已生成${size ? `（${size}）` : ''}，已入库为项目资产（资产 #${r.asset.id}）`
@@ -129,12 +181,24 @@ async function generate() {
           <div v-if="source" class="ax-row">
             <Icon name="video" :size="13" />
             <span class="ax-nm" :title="source.name">{{ source.name }}</span>
-            <span class="muted mono">{{ source.width && source.height ? `${source.width}x${source.height}` : '尺寸未知' }}</span>
+            <span class="muted mono">{{
+              source.width && source.height
+                ? `${source.width}x${source.height}`
+                : '尺寸未知'
+            }}</span>
             <span class="muted mono">{{ fmtSize(source.fileSize) }}</span>
             <span class="grow" />
-            <a class="ax-mini" :href="`/api/v1/assets/${source.id}/file`" target="_blank" rel="noopener">打开</a>
+            <a
+              class="ax-mini"
+              :href="`/api/v1/assets/${source.id}/file`"
+              target="_blank"
+              rel="noopener"
+              >打开</a
+            >
           </div>
-          <div v-else class="muted ax-none">该 run 尚无成片——请先在镜头工作台「重新合成」，再回来派生其他画幅</div>
+          <div v-else class="muted ax-none">
+            该 run 尚无成片——请先在镜头工作台「重新合成」，再回来派生其他画幅
+          </div>
         </div>
 
         <!-- ===== 画幅选择 ===== -->
@@ -148,16 +212,25 @@ async function generate() {
               class="ax-chip"
               :class="{ on: aspect === o.value }"
               :disabled="!source || busy || sameAspect(o.value)"
-              :title="sameAspect(o.value) ? '与源成片同比例，无需派生' : o.label"
-              @click="aspect = o.value; notice = ''"
+              :title="
+                sameAspect(o.value) ? '与源成片同比例，无需派生' : o.label
+              "
+              @click="pickAspect(o.value)"
             >
               {{ o.short }}
-              <span v-if="existingOf(o.value, strategy)" class="ax-dot" title="该画幅 + 当前策略已派生过">·</span>
+              <span
+                v-if="existingOf(o.value, strategy)"
+                class="ax-dot"
+                title="该画幅 + 当前策略已派生过"
+                >·</span
+              >
             </button>
           </div>
           <div class="muted ax-hint">
             {{ ASPECT_OPTIONS.find((o) => o.value === aspect)?.label }}
-            <template v-if="target"> · 目标 {{ target.w }}x{{ target.h }}（不放大，向下取偶）</template>
+            <template v-if="target">
+              · 目标 {{ target.w }}x{{ target.h }}（不放大，向下取偶）</template
+            >
           </div>
         </div>
 
@@ -173,18 +246,27 @@ async function generate() {
               :class="{ on: strategy === o.value }"
               :disabled="!source || busy"
               :title="o.hint"
-              @click="strategy = o.value; notice = ''"
+              @click="pickStrategy(o.value)"
             >
               {{ o.label }}
             </button>
           </div>
-          <div class="muted ax-hint">{{ ASPECT_STRATEGY_OPTIONS.find((o) => o.value === strategy)?.hint }}</div>
+          <div class="muted ax-hint">
+            {{
+              ASPECT_STRATEGY_OPTIONS.find((o) => o.value === strategy)?.hint
+            }}
+          </div>
         </div>
 
         <!-- ===== 生成 ===== -->
         <div class="ax-row">
-          <button class="btn sm primary" :disabled="!source || busy || sameAspect(aspect)" @click="generate">
-            <Icon name="download" :size="12" /> {{ busy ? '派生中（本地重编码，请稍候）…' : '生成该画幅' }}
+          <button
+            class="btn sm primary"
+            :disabled="!source || busy || sameAspect(aspect)"
+            @click="generate"
+          >
+            <Icon name="download" :size="12" />
+            {{ busy ? '派生中（本地重编码，请稍候）…' : '生成该画幅' }}
           </button>
           <span v-if="existing && !busy" class="muted ax-hint">
             已存在资产 #{{ existing.id }}——点击将复用（不重复编码）
@@ -193,31 +275,60 @@ async function generate() {
 
         <!-- ===== 已派生 ===== -->
         <div class="ax-sec">
-          <div class="ax-lb"><Icon name="photo" :size="12" /> 本 run 派生产物（{{ derived.length }}）</div>
+          <div class="ax-lb">
+            <Icon name="photo" :size="12" /> 本 run 派生产物（{{
+              derived.length
+            }}）
+          </div>
           <div v-if="derived.length" class="ax-list">
             <div v-for="a in derived" :key="a.id" class="ax-row">
               <Icon name="video" :size="13" />
-              <span class="ax-tag" :title="aspectLabel(aspectOf(a) ?? '')">{{ aspectOf(a) ?? '—' }}</span>
-              <span class="muted">{{ strategyOf(a) === 'pad' ? '补边' : '裁切' }}</span>
-              <span class="muted mono">{{ a.width && a.height ? `${a.width}x${a.height}` : '—' }}</span>
+              <span class="ax-tag" :title="aspectLabel(aspectOf(a) ?? '')">{{
+                aspectOf(a) ?? '—'
+              }}</span>
+              <span class="muted">{{
+                strategyOf(a) === 'pad' ? '补边' : '裁切'
+              }}</span>
+              <span class="muted mono">{{
+                a.width && a.height ? `${a.width}x${a.height}` : '—'
+              }}</span>
               <span class="muted mono">{{ fmtSize(a.fileSize) }}</span>
-              <span v-if="isNative(a)" class="badge" title="合成时一并多路原生渲染（B 路径）">原生多路</span>
+              <span
+                v-if="isNative(a)"
+                class="badge"
+                title="合成时一并多路原生渲染（B 路径）"
+                >原生多路</span
+              >
               <span class="ax-nm" :title="a.name">{{ a.name }}</span>
               <span class="grow" />
               <span class="muted mono">{{ fmtTime(a.updatedAt) }}</span>
-              <a class="ax-mini" :href="a.urls.file" target="_blank" rel="noopener">打开</a>
+              <a
+                class="ax-mini"
+                :href="a.urls.file"
+                target="_blank"
+                rel="noopener"
+                >打开</a
+              >
             </div>
           </div>
-          <div v-else class="muted ax-none">还没有派生产物——选好画幅与策略后点「生成该画幅」</div>
+          <div v-else class="muted ax-none">
+            还没有派生产物——选好画幅与策略后点「生成该画幅」
+          </div>
         </div>
 
         <div v-if="err" class="err-text">{{ err }}</div>
-        <div v-if="notice" class="ax-notice"><Icon name="check" :size="12" /> {{ notice }}</div>
+        <div v-if="notice" class="ax-notice">
+          <Icon name="check" :size="12" /> {{ notice }}
+        </div>
       </template>
     </div>
 
     <template #footer>
-      <span class="muted ax-tip">A 路径对成片二次编码；若需各画幅独立构图（字幕/水印按比例重算），请在「合成设置 · 多画幅原生渲染」勾选后重新合成</span>
+      <span class="muted ax-tip"
+        >A
+        路径对成片二次编码；若需各画幅独立构图（字幕/水印按比例重算），请在「合成设置
+        · 多画幅原生渲染」勾选后重新合成</span
+      >
       <button class="btn" @click="emit('close')">关闭</button>
     </template>
   </Modal>
@@ -281,7 +392,10 @@ async function generate() {
   border: 1px solid var(--border);
   border-radius: 999px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 
 .ax-chip:hover:not(:disabled) {

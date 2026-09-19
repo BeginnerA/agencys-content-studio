@@ -45,7 +45,12 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
     asset: n.kind === 'asset',
     gen: n.kind === 'gen',
     sel: props.selectedIds.includes(n.id),
-    busy: n.status === 'processing' || n.status === 'pending' || runSt === 'running' || runSt === 'queued' || runSt === 'waiting_input',
+    busy:
+      n.status === 'processing' ||
+      n.status === 'pending' ||
+      runSt === 'running' ||
+      runSt === 'queued' ||
+      runSt === 'waiting_input',
     bad: n.status === 'failed' || runSt === 'failed',
     ok: n.status === 'succeeded' || runSt === 'completed',
   }
@@ -53,125 +58,162 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
 </script>
 
 <template>
+  <div
+    v-for="n in renderNodes"
+    :key="n.id"
+    :ref="(el) => setNodeEl(n.id, el)"
+    class="cnode"
+    :class="cardCls(n)"
+    :style="nodeStyle(n)"
+    :title="n.title"
+    @pointerdown="emit('node-pointerdown', $event, n)"
+    @dblclick.stop
+  >
+    <span
+      v-for="(p, i) in inputPortsOf(n)"
+      :key="p"
+      class="port in"
+      :class="{ hot: hotPort === `${n.id}:${p}` }"
+      :data-in-port="p"
+      :data-node-id="n.id"
+      :data-port="p"
+      :style="{ top: `${46 + i * 22}px` }"
+      :title="`输入：${PORT_TEXT[p] ?? p}`"
+      @pointerdown.stop
+      @dblclick.stop
+    />
+    <span
+      v-if="hasOutPort(n)"
+      class="port out"
+      :title="'拖拽到目标节点的输入端口以连线'"
+      @pointerdown="emit('out-pointerdown', $event, n)"
+      @dblclick.stop
+    />
 
-      <div
-        v-for="n in renderNodes"
-        :key="n.id"
-        :ref="(el) => setNodeEl(n.id, el)"
-        class="cnode"
-        :class="cardCls(n)"
-        :style="nodeStyle(n)"
-        :title="n.title"
-        @pointerdown="emit('node-pointerdown', $event, n)"
-        @dblclick.stop
-      >
-        <span
-          v-for="(p, i) in inputPortsOf(n)"
-          :key="p"
-          class="port in"
-          :class="{ hot: hotPort === `${n.id}:${p}` }"
-          :data-in-port="p"
-          :data-node-id="n.id"
-          :data-port="p"
-          :style="{ top: `${46 + i * 22}px` }"
-          :title="`输入：${PORT_TEXT[p] ?? p}`"
-          @pointerdown.stop
-          @dblclick.stop
+    <template v-if="n.kind === 'asset'">
+      <div class="cn-media">
+        <img
+          v-if="thumbOf(n)"
+          :src="thumbOf(n)!"
+          draggable="false"
+          alt=""
+          loading="lazy"
         />
-        <span
-          v-if="hasOutPort(n)"
-          class="port out"
-          :title="'拖拽到目标节点的输入端口以连线'"
-          @pointerdown="emit('out-pointerdown', $event, n)"
-          @dblclick.stop
-        />
-
-        <template v-if="n.kind === 'asset'">
-          <div class="cn-media">
-            <img v-if="thumbOf(n)" :src="thumbOf(n)!" draggable="false" alt="" loading="lazy" />
-            <span v-else class="cn-ph">
-              <Icon :name="n.asset?.kind === 'video' ? 'video' : 'photo'" :size="20" />
-              <em>{{ n.asset ? n.asset.name : '资产缺失' }}</em>
-            </span>
-          </div>
-          <div class="cn-foot">
-            <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
-            <Icon name="photo" :size="11" />
-            <span class="cn-title">{{ n.title }}</span>
-          </div>
-        </template>
-
-        <template v-else-if="n.kind === 'text'">
-          <div class="cn-head">
-            <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
-            <Icon name="doc" :size="13" />
-            <span class="cn-title">{{ n.title }}</span>
-          </div>
-          <div class="cn-prompt">{{ textBody(n) }}</div>
-          <div v-if="n.readiness && !n.readiness.ready" class="cn-warn" :title="n.readiness.problems.join('；')">
-            <Icon name="alert" :size="11" /> {{ n.readiness.problems.length }} 项未就绪
-          </div>
-        </template>
-
-        <template v-else-if="n.kind === 'entity'">
-          <div class="cn-head">
-            <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
-            <Icon name="users" :size="13" />
-            <span class="cn-title">{{ n.title }}</span>
-            <span v-if="n.entity" class="cn-kind">{{ kindText(n.entity.kind) }}</span>
-          </div>
-          <div v-if="entityThumb(n)" class="cn-media">
-            <img :src="entityThumb(n)!" draggable="false" alt="" loading="lazy" />
-          </div>
-          <div class="cn-meta">参考图 {{ n.entity?.refCount ?? 0 }} 张</div>
-          <div v-if="n.readiness && !n.readiness.ready" class="cn-warn" :title="n.readiness.problems.join('；')">
-            <Icon name="alert" :size="11" /> {{ n.readiness.problems.length }} 项未就绪
-          </div>
-        </template>
-
-        <template v-else-if="n.kind === 'run'">
-          <div class="cn-head">
-            <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
-            <Icon name="play_circle" :size="13" />
-            <span class="cn-title">{{ n.title }}</span>
-            <span v-if="runText(n)" class="badge" :class="runCls(n)">{{ runText(n) }}</span>
-          </div>
-          <div class="cn-meta mono">{{ n.run?.templateKey ?? '运行缺失' }}</div>
-          <div v-if="n.run" class="cn-meta mono">步骤 {{ n.run.steps.succeeded }}/{{ n.run.steps.total }}</div>
-        </template>
-
-        <template v-else>
-          <div class="cn-head">
-            <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
-            <Icon :name="genIcon(n)" :size="13" />
-            <span class="cn-title">{{ n.title }}</span>
-            <span v-if="stText(n)" class="badge" :class="stCls(n)">{{ stText(n) }}</span>
-          </div>
-          <div class="cn-prompt" :title="promptTitle(n)">{{ specLine(n) }}</div>
-          <div v-if="thumbOf(n)" class="cn-media">
-            <img :src="thumbOf(n)!" draggable="false" alt="" loading="lazy" />
-          </div>
-          <div v-else-if="isAudio(n)" class="cn-media cn-audio">
-            <Icon name="speaker-wave" :size="18" />
-            <em>音频</em>
-          </div>
-          <div v-else-if="isTextAsset(n) || (isLlm(n) && n.status === 'succeeded')" class="cn-media cn-audio">
-            <Icon name="doc" :size="18" />
-            <em>文本产物</em>
-          </div>
-          <div v-if="n.readiness && !n.readiness.ready" class="cn-warn" :title="n.readiness.problems.join('；')">
-            <Icon name="alert" :size="11" /> {{ n.readiness.problems.length }} 项未就绪
-          </div>
-          <div v-else-if="metaText(n)" class="cn-meta mono">{{ metaText(n) }}</div>
-          <div v-if="n.latestTask?.errorMsg" class="cn-err" :title="n.latestTask.errorMsg">
-            {{ n.latestTask.errorMsg }}
-          </div>
-        </template>
+        <span v-else class="cn-ph">
+          <Icon
+            :name="n.asset?.kind === 'video' ? 'video' : 'photo'"
+            :size="20"
+          />
+          <em>{{ n.asset ? n.asset.name : '资产缺失' }}</em>
+        </span>
       </div>
+      <div class="cn-foot">
+        <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
+        <Icon name="photo" :size="11" />
+        <span class="cn-title">{{ n.title }}</span>
+      </div>
+    </template>
+
+    <template v-else-if="n.kind === 'text'">
+      <div class="cn-head">
+        <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
+        <Icon name="doc" :size="13" />
+        <span class="cn-title">{{ n.title }}</span>
+      </div>
+      <div class="cn-prompt">{{ textBody(n) }}</div>
+      <div
+        v-if="n.readiness && !n.readiness.ready"
+        class="cn-warn"
+        :title="n.readiness.problems.join('；')"
+      >
+        <Icon name="alert" :size="11" />
+        {{ n.readiness.problems.length }} 项未就绪
+      </div>
+    </template>
+
+    <template v-else-if="n.kind === 'entity'">
+      <div class="cn-head">
+        <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
+        <Icon name="users" :size="13" />
+        <span class="cn-title">{{ n.title }}</span>
+        <span v-if="n.entity" class="cn-kind">{{
+          kindText(n.entity.kind)
+        }}</span>
+      </div>
+      <div v-if="entityThumb(n)" class="cn-media">
+        <img :src="entityThumb(n)!" draggable="false" alt="" loading="lazy" />
+      </div>
+      <div class="cn-meta">参考图 {{ n.entity?.refCount ?? 0 }} 张</div>
+      <div
+        v-if="n.readiness && !n.readiness.ready"
+        class="cn-warn"
+        :title="n.readiness.problems.join('；')"
+      >
+        <Icon name="alert" :size="11" />
+        {{ n.readiness.problems.length }} 项未就绪
+      </div>
+    </template>
+
+    <template v-else-if="n.kind === 'run'">
+      <div class="cn-head">
+        <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
+        <Icon name="play_circle" :size="13" />
+        <span class="cn-title">{{ n.title }}</span>
+        <span v-if="runText(n)" class="badge" :class="runCls(n)">{{
+          runText(n)
+        }}</span>
+      </div>
+      <div class="cn-meta mono">{{ n.run?.templateKey ?? '运行缺失' }}</div>
+      <div v-if="n.run" class="cn-meta mono">
+        步骤 {{ n.run.steps.succeeded }}/{{ n.run.steps.total }}
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="cn-head">
+        <span v-if="n.seq != null" class="cn-seq">#{{ n.seq }}</span>
+        <Icon :name="genIcon(n)" :size="13" />
+        <span class="cn-title">{{ n.title }}</span>
+        <span v-if="stText(n)" class="badge" :class="stCls(n)">{{
+          stText(n)
+        }}</span>
+      </div>
+      <div class="cn-prompt" :title="promptTitle(n)">{{ specLine(n) }}</div>
+      <div v-if="thumbOf(n)" class="cn-media">
+        <img :src="thumbOf(n)!" draggable="false" alt="" loading="lazy" />
+      </div>
+      <div v-else-if="isAudio(n)" class="cn-media cn-audio">
+        <Icon name="speaker-wave" :size="18" />
+        <em>音频</em>
+      </div>
+      <div
+        v-else-if="isTextAsset(n) || (isLlm(n) && n.status === 'succeeded')"
+        class="cn-media cn-audio"
+      >
+        <Icon name="doc" :size="18" />
+        <em>文本产物</em>
+      </div>
+      <div
+        v-if="n.readiness && !n.readiness.ready"
+        class="cn-warn"
+        :title="n.readiness.problems.join('；')"
+      >
+        <Icon name="alert" :size="11" />
+        {{ n.readiness.problems.length }} 项未就绪
+      </div>
+      <div v-else-if="metaText(n)" class="cn-meta mono">{{ metaText(n) }}</div>
+      <div
+        v-if="n.latestTask?.errorMsg"
+        class="cn-err"
+        :title="n.latestTask.errorMsg"
+      >
+        {{ n.latestTask.errorMsg }}
+      </div>
+    </template>
+  </div>
 </template>
 
 <style scoped>
-
 /* ---- 节点卡 ---- */
 .cnode {
   position: absolute;
@@ -185,7 +227,9 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
   background: var(--panel);
   color: var(--text);
   cursor: grab;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   touch-action: none;
 }
 

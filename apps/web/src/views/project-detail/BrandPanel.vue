@@ -3,18 +3,44 @@ import BrandSettings from '../../components/brand/BrandSettings.vue'
 import BrandPreview from '../../components/brand/BrandPreview.vue'
 import type { ProjectDetailApi } from './use-project-detail'
 const props = defineProps<{ s: ProjectDetailApi }>()
-const { projectId, activeTab, projBrandSnap, projWmFileSnap, projIntroFileSnap, projOutroFileSnap, projWmPreviewTs, onProjectPreview, loadCore } = props.s
+const {
+  projectId,
+  activeTab,
+  projBrandSnap,
+  projWmFileSnap,
+  projIntroFileSnap,
+  projOutroFileSnap,
+  projWmPreviewTs,
+  onProjectPreview,
+  loadCore,
+} = props.s
 </script>
 
 <template>
-      <section v-show="activeTab === 'brand'" role="tabpanel" aria-labelledby="ptab-brand" class="proj-brand">
-        <div class="proj-brand-form">
-          <BrandSettings scope="project" :project-id="projectId" @changed="loadCore({ silent: true })" @preview="onProjectPreview" />
-        </div>
-        <aside class="proj-brand-preview">
-          <BrandPreview :brand="projBrandSnap" :wm-file="projWmFileSnap" :wm-preview-ts="projWmPreviewTs" :intro-file="projIntroFileSnap" :outro-file="projOutroFileSnap" />
-        </aside>
-      </section>
+  <section
+    v-show="activeTab === 'brand'"
+    role="tabpanel"
+    aria-labelledby="ptab-brand"
+    class="proj-brand"
+  >
+    <div class="proj-brand-form">
+      <BrandSettings
+        scope="project"
+        :project-id="projectId"
+        @changed="loadCore({ silent: true })"
+        @preview="onProjectPreview"
+      />
+    </div>
+    <aside class="proj-brand-preview">
+      <BrandPreview
+        :brand="projBrandSnap"
+        :wm-file="projWmFileSnap"
+        :wm-preview-ts="projWmPreviewTs"
+        :intro-file="projIntroFileSnap"
+        :outro-file="projOutroFileSnap"
+      />
+    </aside>
+  </section>
 </template>
 
 <style scoped>

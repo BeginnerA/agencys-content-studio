@@ -1,20 +1,57 @@
 /** [M28] 创作画布：CanvasCommands；依赖显式注入，原函数体保持不变。 */
-import { creationApi, uploadFiles, type AddNodeBody, type CanvasNodePatch } from '../../lib/api'
-import type { CanvasDocNode, CanvasViewport, CreationNodeSpec, EntityNodeSpec, RunNodeSpec, TextNodeSpec } from '../../lib/types'
+import {
+  creationApi,
+  uploadFiles,
+  type AddNodeBody,
+  type CanvasNodePatch,
+} from '../../lib/api'
+import type {
+  CanvasDocNode,
+  CanvasViewport,
+  CreationNodeSpec,
+  EntityNodeSpec,
+  RunNodeSpec,
+  TextNodeSpec,
+} from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'doc' | 'canvasId' | 'nodes' | 'history' | 'toast' | 'selectedIds' | 'selectedEdgeId' | 'projectId' | 'edges'>
-  & Pick<CanvasDocument, 'loadDoc'>
-  & Pick<CanvasTarget, 'loadPalette'>
+type Dependencies = Pick<
+  CanvasState,
+  | 'doc'
+  | 'canvasId'
+  | 'nodes'
+  | 'history'
+  | 'toast'
+  | 'selectedIds'
+  | 'selectedEdgeId'
+  | 'projectId'
+  | 'edges'
+> &
+  Pick<CanvasDocument, 'loadDoc'> &
+  Pick<CanvasTarget, 'loadPalette'>
 
 export function useCanvasCommands(deps: Dependencies) {
-  const { doc, canvasId, nodes, history, toast, loadDoc, selectedIds, selectedEdgeId, projectId, loadPalette, edges } = deps
+  const {
+    doc,
+    canvasId,
+    nodes,
+    history,
+    toast,
+    loadDoc,
+    selectedIds,
+    selectedEdgeId,
+    projectId,
+    loadPalette,
+    edges,
+  } = deps
 
   // ===== 写操作辅助（乐观更新 / 命令栈）=====
   /** 批量移动乐观更新（本地先落点；失败由调用方重拉对账） */
-  function optimisticMove(moves: Array<{ id: number; x: number; y: number }>): void {
+  function optimisticMove(
+    moves: Array<{ id: number; x: number; y: number }>,
+  ): void {
     if (!doc.value) return
     const by = new Map(moves.map((m) => [m.id, m]))
     doc.value = {
@@ -27,7 +64,10 @@ export function useCanvasCommands(deps: Dependencies) {
   }
 
   /** 批量移动提交（拖动组 / 方向键微移）→ nodes/batch + 入撤销栈一条 */
-  async function commitMoves(moves: Array<{ id: number; x: number; y: number }>, label: string): Promise<void> {
+  async function commitMoves(
+    moves: Array<{ id: number; x: number; y: number }>,
+    label: string,
+  ): Promise<void> {
     const cid = canvasId.value
     if (cid == null || !moves.length) return
     const before = moves.map((m) => {
@@ -36,7 +76,10 @@ export function useCanvasCommands(deps: Dependencies) {
     })
     optimisticMove(moves)
     try {
-      await creationApi.batchNodes(cid, moves.map((m) => ({ id: m.id, x: m.x, y: m.y })))
+      await creationApi.batchNodes(
+        cid,
+        moves.map((m) => ({ id: m.id, x: m.x, y: m.y })),
+      )
       history.push({
         label,
         undo: async () => {
@@ -54,15 +97,24 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
   function onMoved(moves: Array<{ id: number; x: number; y: number }>): void {
-    void commitMoves(moves, moves.length > 1 ? `移动 ${moves.length} 个节点` : '移动节点')
+    void commitMoves(
+      moves,
+      moves.length > 1 ? `移动 ${moves.length} 个节点` : '移动节点',
+    )
   }
   function onNudge(moves: Array<{ id: number; x: number; y: number }>): void {
     void commitMoves(moves, '微移节点')
   }
 
   /** 新建节点批 → 入撤销栈（undo 批量删除 / redo 重建；id 为可变引用） */
-  async function addNodesCommand(cid: number, bodies: AddNodeBody[], label: string): Promise<number[]> {
-    const created = await Promise.all(bodies.map((b) => creationApi.addNode(cid, b)))
+  async function addNodesCommand(
+    cid: number,
+    bodies: AddNodeBody[],
+    label: string,
+  ): Promise<number[]> {
+    const created = await Promise.all(
+      bodies.map((b) => creationApi.addNode(cid, b)),
+    )
     let ids = created.map((r) => r.node.id)
     history.push({
       label,
@@ -73,7 +125,9 @@ export function useCanvasCommands(deps: Dependencies) {
         await loadDoc(true)
       },
       redo: async () => {
-        const again = await Promise.all(bodies.map((b) => creationApi.addNode(cid, b)))
+        const again = await Promise.all(
+          bodies.map((b) => creationApi.addNode(cid, b)),
+        )
         ids = again.map((r) => r.node.id)
         selectedIds.value = ids
         await loadDoc(true)
@@ -91,22 +145,37 @@ export function useCanvasCommands(deps: Dependencies) {
       return { kind: 'gen', spec: spec as CreationNodeSpec, ...pos }
     }
     if (n.kind === 'text') {
-      if (!spec || !('text' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
-      return { kind: 'text', spec: { text: (spec as TextNodeSpec).text }, ...pos }
+      if (!spec || !('text' in spec))
+        throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+      return {
+        kind: 'text',
+        spec: { text: (spec as TextNodeSpec).text },
+        ...pos,
+      }
     }
     if (n.kind === 'entity') {
-      if (!spec || !('entityId' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
-      return { kind: 'entity', entityId: (spec as EntityNodeSpec).entityId, ...pos }
+      if (!spec || !('entityId' in spec))
+        throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+      return {
+        kind: 'entity',
+        entityId: (spec as EntityNodeSpec).entityId,
+        ...pos,
+      }
     }
     if (n.kind === 'run') {
-      if (!spec || !('runId' in spec)) throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
+      if (!spec || !('runId' in spec))
+        throw new Error(`节点 #${n.id} spec 缺失，无法重建`)
       return { kind: 'run', runId: (spec as RunNodeSpec).runId, ...pos }
     }
     return { kind: 'asset', assetId: n.assetId ?? 0, ...pos }
   }
 
   // ===== 画布交互 → 写操作 =====
-  async function onConnect(p: { from: number; to: number; port: string }): Promise<void> {
+  async function onConnect(p: {
+    from: number
+    to: number
+    port: string
+  }): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
     try {
@@ -135,7 +204,12 @@ export function useCanvasCommands(deps: Dependencies) {
     const cid = canvasId.value
     if (cid == null) return
     try {
-      const body: AddNodeBody = { kind: 'gen', spec: { genKind: 'image', prompt: '' }, x: p.x, y: p.y }
+      const body: AddNodeBody = {
+        kind: 'gen',
+        spec: { genKind: 'image', prompt: '' },
+        x: p.x,
+        y: p.y,
+      }
       const ids = await addNodesCommand(cid, [body], '新建节点')
       await loadDoc(true)
       selectedIds.value = ids
@@ -146,7 +220,11 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  async function onDropFiles(p: { files: File[]; x: number; y: number }): Promise<void> {
+  async function onDropFiles(p: {
+    files: File[]
+    x: number
+    y: number
+  }): Promise<void> {
     const pid = projectId.value
     const cid = canvasId.value
     if (pid == null || cid == null) return
@@ -156,7 +234,12 @@ export function useCanvasCommands(deps: Dependencies) {
       for (let i = 0; i < assets.length; i++) {
         const a = assets[i]
         if (!a) continue
-        bodies.push({ kind: 'asset', assetId: a.id, x: p.x + (i % 3) * 36, y: p.y + (i % 3) * 36 })
+        bodies.push({
+          kind: 'asset',
+          assetId: a.id,
+          x: p.x + (i % 3) * 36,
+          y: p.y + (i % 3) * 36,
+        })
       }
       await addNodesCommand(cid, bodies, `新建 ${bodies.length} 个素材节点`)
       toast(`已上传 ${assets.length} 个文件并建为素材节点`)
@@ -167,11 +250,19 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  async function onDropAsset(p: { assetId: number; x: number; y: number }): Promise<void> {
+  async function onDropAsset(p: {
+    assetId: number
+    x: number
+    y: number
+  }): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
     try {
-      await addNodesCommand(cid, [{ kind: 'asset', assetId: p.assetId, x: p.x, y: p.y }], '新建素材节点')
+      await addNodesCommand(
+        cid,
+        [{ kind: 'asset', assetId: p.assetId, x: p.x, y: p.y }],
+        '新建素材节点',
+      )
       toast('已加入素材节点')
       void loadDoc(true)
     } catch (e) {
@@ -199,7 +290,14 @@ export function useCanvasCommands(deps: Dependencies) {
       for (const id of ids) {
         const n = nodes.value.find((x) => x.id === id)
         if (!n) continue
-        snap.push({ oldId: id, curId: id, body: nodeCreateBody(n), title: n.title, seq: n.seq ?? null, adoptedTaskId: n.adoptedTaskId ?? null })
+        snap.push({
+          oldId: id,
+          curId: id,
+          body: nodeCreateBody(n),
+          title: n.title,
+          seq: n.seq ?? null,
+          adoptedTaskId: n.adoptedTaskId ?? null,
+        })
       }
     } catch (e) {
       if (rethrow) throw e
@@ -209,7 +307,8 @@ export function useCanvasCommands(deps: Dependencies) {
     // 关联边快照（含悬挂到保留节点的边；内部边 from/to 均在删除集内）
     const relEdges: Array<{ from: number; to: number; port: string }> = []
     for (const e of edges.value) {
-      if (idSet.has(e.from) || idSet.has(e.to)) relEdges.push({ from: e.from, to: e.to, port: e.port })
+      if (idSet.has(e.from) || idSet.has(e.to))
+        relEdges.push({ from: e.from, to: e.to, port: e.port })
     }
     let curIds = ids
     try {
@@ -233,7 +332,9 @@ export function useCanvasCommands(deps: Dependencies) {
           // [M17] gen 节点重建附带认领任务历史（源=curId：任务实际所在的一代 id；否则 adoptedTaskId 恢复必失败）
           const r = await creationApi.addNode(
             cid,
-            s.body.kind === 'gen' ? { ...s.body, restoreFromNodeId: s.curId } : s.body,
+            s.body.kind === 'gen'
+              ? { ...s.body, restoreFromNodeId: s.curId }
+              : s.body,
           )
           s.curId = r.node.id
           idMap.set(s.oldId, r.node.id)
@@ -242,7 +343,8 @@ export function useCanvasCommands(deps: Dependencies) {
           if (s.title != null) patch.title = s.title
           if (s.seq != null) patch.seq = s.seq
           if (s.adoptedTaskId != null) patch.adoptedTaskId = s.adoptedTaskId
-          if (Object.keys(patch).length) await creationApi.updateNode(r.node.id, patch)
+          if (Object.keys(patch).length)
+            await creationApi.updateNode(r.node.id, patch)
         }
         for (const e of relEdges) {
           await creationApi.addEdge(cid, {
@@ -303,7 +405,9 @@ export function useCanvasCommands(deps: Dependencies) {
       await history.undo()
       if (label) toast(`已撤销：${label}`)
     } catch (e) {
-      toast(`撤销失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`)
+      toast(
+        `撤销失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`,
+      )
       void loadDoc(true)
     }
   }
@@ -313,14 +417,19 @@ export function useCanvasCommands(deps: Dependencies) {
       await history.redo()
       if (label) toast(`已重做：${label}`)
     } catch (e) {
-      toast(`重做失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`)
+      toast(
+        `重做失败：${e instanceof Error ? e.message : String(e)}（撤销栈已清空）`,
+      )
       void loadDoc(true)
     }
   }
 
   // ===== [M17] Inspector 写命令接线（props 回调；写操作入撤销栈，await 返回即已落库） =====
   /** 取单节点 patch 覆盖字段的当前值（表单变化判定 + 撤销逆操作源） */
-  function patchCurrent(n: CanvasDocNode, patch: CanvasNodePatch): CanvasNodePatch {
+  function patchCurrent(
+    n: CanvasDocNode,
+    patch: CanvasNodePatch,
+  ): CanvasNodePatch {
     const cur: CanvasNodePatch = {}
     if ('x' in patch) cur.x = n.x
     if ('y' in patch) cur.y = n.y
@@ -332,7 +441,11 @@ export function useCanvasCommands(deps: Dependencies) {
   }
 
   /** PATCH 单节点（改名/spec/文本/采纳）→ nodes/batch + 入撤销栈（逆操作 = 覆盖字段旧值回写） */
-  async function applyNodePatch(p: { id: number; patch: CanvasNodePatch; label: string }): Promise<void> {
+  async function applyNodePatch(p: {
+    id: number
+    patch: CanvasNodePatch
+    label: string
+  }): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
     const n = nodes.value.find((x) => x.id === p.id)
@@ -353,14 +466,22 @@ export function useCanvasCommands(deps: Dependencies) {
   }
 
   /** 执行节点（表单有变化先落库并入栈；执行本身不入栈） */
-  async function applyNodeRun(p: { id: number; variants: number; savePatch?: CanvasNodePatch }): Promise<void> {
+  async function applyNodeRun(p: {
+    id: number
+    variants: number
+    savePatch?: CanvasNodePatch
+  }): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
     const n = nodes.value.find((x) => x.id === p.id)
     if (p.savePatch && n) {
       const cur = patchCurrent(n, p.savePatch)
       if (JSON.stringify(cur) !== JSON.stringify(p.savePatch)) {
-        await applyNodePatch({ id: p.id, patch: p.savePatch, label: '保存参数' })
+        await applyNodePatch({
+          id: p.id,
+          patch: p.savePatch,
+          label: '保存参数',
+        })
       }
     }
     await creationApi.run(p.id, p.variants > 1 ? p.variants : undefined)
@@ -405,7 +526,11 @@ export function useCanvasCommands(deps: Dependencies) {
       history.push({
         label: '断开连线',
         undo: async () => {
-          const r = await creationApi.addEdge(cid, { from: e.from, to: e.to, port: e.port })
+          const r = await creationApi.addEdge(cid, {
+            from: e.from,
+            to: e.to,
+            port: e.port,
+          })
           curId = r.edge.id
           await loadDoc(true)
         },

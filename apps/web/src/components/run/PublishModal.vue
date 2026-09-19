@@ -83,7 +83,9 @@ async function submit() {
       // [整改] 发布标题（供复盘标题模式分析；无来源时自动取关联资产名）
       title: title.value.trim() || undefined,
       // 日期取当地中午避免时区边界
-      published_at: publishedDate.value ? new Date(publishedDate.value + 'T12:00:00').getTime() : undefined,
+      published_at: publishedDate.value
+        ? new Date(publishedDate.value + 'T12:00:00').getTime()
+        : undefined,
       metrics,
       note: note.value.trim() || undefined,
     }
@@ -102,12 +104,18 @@ async function submit() {
 </script>
 
 <template>
-  <Modal :title="p?.id ? '编辑发布记录' : '标记发布'" :width="520" @close="emit('close')">
+  <Modal
+    :title="p?.id ? '编辑发布记录' : '标记发布'"
+    :width="520"
+    @close="emit('close')"
+  >
     <div class="grid2">
       <label class="fld">
         平台 <span class="req">*</span>
         <select v-model="platform" aria-label="发布平台">
-          <option v-for="k in PLATFORMS" :key="k" :value="k">{{ PLATFORM_TEXT[k] }}</option>
+          <option v-for="k in PLATFORMS" :key="k" :value="k">
+            {{ PLATFORM_TEXT[k] }}
+          </option>
         </select>
       </label>
       <label class="fld">
@@ -132,7 +140,9 @@ async function submit() {
       关联资产（可选）
       <select v-model="assetId">
         <option value="">不关联</option>
-        <option v-for="a in assetOptions" :key="a.id" :value="a.id">#{{ a.id }} {{ a.name }}</option>
+        <option v-for="a in assetOptions" :key="a.id" :value="a.id">
+          #{{ a.id }} {{ a.name }}
+        </option>
       </select>
     </label>
     <div class="fld">
@@ -151,7 +161,9 @@ async function submit() {
     <div v-if="err" class="err-text">{{ err }}</div>
     <template #footer>
       <button class="btn" @click="emit('close')">取消</button>
-      <button class="btn primary" :disabled="busy" @click="submit">{{ busy ? '保存中…' : '保存' }}</button>
+      <button class="btn primary" :disabled="busy" @click="submit">
+        {{ busy ? '保存中…' : '保存' }}
+      </button>
     </template>
   </Modal>
 </template>

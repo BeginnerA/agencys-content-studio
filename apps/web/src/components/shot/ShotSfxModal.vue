@@ -11,7 +11,12 @@ import type { Asset } from '../../lib/types'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 
-const props = defineProps<{ runId: number; projectId: number; shotId: string; bound: Asset | null }>()
+const props = defineProps<{
+  runId: number
+  projectId: number
+  shotId: string
+  bound: Asset | null
+}>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 
 const candidates = ref<Asset[]>([])
@@ -109,27 +114,42 @@ function fmtDur(sec: number | null): string {
       <template v-else>
         <!-- ===== 当前绑定 ===== -->
         <div class="bg-sec">
-          <div class="bg-lb"><Icon name="speaker-wave" :size="12" /> 当前绑定</div>
+          <div class="bg-lb">
+            <Icon name="speaker-wave" :size="12" /> 当前绑定
+          </div>
           <div v-if="current" class="bg-cur">
             <div class="bg-row">
               <Icon name="speaker-wave" :size="13" />
-              <span class="bg-nm" :title="current.name">{{ current.name }}</span>
+              <span class="bg-nm" :title="current.name">{{
+                current.name
+              }}</span>
               <span class="muted mono">{{ fmtDur(current.duration) }}</span>
               <span class="grow" />
               <button class="btn sm danger" :disabled="busy" @click="remove">
                 <Icon name="trash" :size="12" /> 移除
               </button>
             </div>
-            <audio class="bg-audio" controls preload="none" :src="current.urls.file" />
+            <audio
+              class="bg-audio"
+              controls
+              preload="none"
+              :src="current.urls.file"
+            />
           </div>
-          <div v-else class="muted bg-none">未绑定——从下方候选选择或上传新文件</div>
+          <div v-else class="muted bg-none">
+            未绑定——从下方候选选择或上传新文件
+          </div>
         </div>
 
         <div class="bg-sep" />
 
         <!-- ===== 候选与上传 ===== -->
         <div class="bg-sec">
-          <div class="bg-lb">项目音频素材<span class="muted bg-lb-tip">点击「绑定」使用（复制行，不动源资产）</span></div>
+          <div class="bg-lb">
+            项目音频素材<span class="muted bg-lb-tip"
+              >点击「绑定」使用（复制行，不动源资产）</span
+            >
+          </div>
           <div v-if="candidates.length" class="bg-list">
             <div v-for="a in candidates" :key="a.id" class="bg-item">
               <div class="bg-row">
@@ -137,7 +157,11 @@ function fmtDur(sec: number | null): string {
                 <span class="bg-nm" :title="a.name">{{ a.name }}</span>
                 <span class="muted mono">{{ fmtDur(a.duration) }}</span>
                 <span class="grow" />
-                <button class="bg-mini" :disabled="busy" @click="togglePreview(a)">
+                <button
+                  class="bg-mini"
+                  :disabled="busy"
+                  @click="togglePreview(a)"
+                >
                   {{ previewId === a.id ? '收起' : '试听' }}
                 </button>
                 <button
@@ -149,16 +173,26 @@ function fmtDur(sec: number | null): string {
                   {{ isBound(a) ? '已绑定' : '绑定' }}
                 </button>
               </div>
-              <audio v-if="previewId === a.id" class="bg-audio" controls preload="none" :src="a.urls.file" />
+              <audio
+                v-if="previewId === a.id"
+                class="bg-audio"
+                controls
+                preload="none"
+                :src="a.urls.file"
+              />
             </div>
           </div>
-          <div v-else class="muted bg-none">项目内暂无音频素材——可在「素材」页导入后回来绑定</div>
+          <div v-else class="muted bg-none">
+            项目内暂无音频素材——可在「素材」页导入后回来绑定
+          </div>
 
           <div class="bg-row">
             <button class="btn sm" :disabled="busy" @click="pickUpload">
               <Icon name="upload" :size="12" /> 上传音频并绑定
             </button>
-            <span class="muted bg-lb-tip">mp3 / wav / aac / m4a / flac，≤200MB</span>
+            <span class="muted bg-lb-tip"
+              >mp3 / wav / aac / m4a / flac，≤200MB</span
+            >
           </div>
           <input
             ref="uploadInput"
@@ -170,12 +204,17 @@ function fmtDur(sec: number | null): string {
         </div>
 
         <div v-if="err" class="err-text">{{ err }}</div>
-        <div v-if="notice" class="bg-notice"><Icon name="check" :size="12" /> {{ notice }}</div>
+        <div v-if="notice" class="bg-notice">
+          <Icon name="check" :size="12" /> {{ notice }}
+        </div>
       </template>
     </div>
 
     <template #footer>
-      <span class="muted bg-tip">音效从该镜起点播放，叠加在配音 / 配乐之上；需「重新合成」后进入成片</span>
+      <span class="muted bg-tip"
+        >音效从该镜起点播放，叠加在配音 /
+        配乐之上；需「重新合成」后进入成片</span
+      >
       <button class="btn" @click="emit('close')">关闭</button>
     </template>
   </Modal>

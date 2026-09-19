@@ -76,7 +76,7 @@ async function save(startAfter: boolean) {
     }
     const warn = warnings?.length ? `\n提示：${warnings.join('；')}` : ''
     if (!err.value) emit('created', workflow.id)
-    if (warn) err.value = (err.value ? err.value + warn : warn.trim())
+    if (warn) err.value = err.value ? err.value + warn : warn.trim()
   } catch (e) {
     err.value = (e as Error).message
   } finally {
@@ -90,25 +90,48 @@ async function save(startAfter: boolean) {
     <div class="cb">
       <label class="fld">
         链名称
-        <input v-model="name" type="text" placeholder="例如：单集流水线（入库 → 剧本 → 分镜）" />
+        <input
+          v-model="name"
+          type="text"
+          placeholder="例如：单集流水线（入库 → 剧本 → 分镜）"
+        />
       </label>
 
       <div class="fld">
         模板段序列（按执行顺序）
         <div class="seglist">
-          <div v-if="!segKeys.length" class="muted mini">尚未添加模板段。用下方选择器添加，或点击建议模板快速追加。</div>
+          <div v-if="!segKeys.length" class="muted mini">
+            尚未添加模板段。用下方选择器添加，或点击建议模板快速追加。
+          </div>
           <div v-for="(k, i) in segKeys" :key="`${k}-${i}`" class="seg">
             <span class="seq mono">{{ i + 1 }}</span>
             <span class="sname" :title="k">{{ nameOf(k) }}</span>
             <span class="skey mono muted">{{ k }}</span>
             <span class="sp" />
-            <button type="button" class="mini-btn" :disabled="i === 0" aria-label="上移" @click="move(i, -1)">
+            <button
+              type="button"
+              class="mini-btn"
+              :disabled="i === 0"
+              aria-label="上移"
+              @click="move(i, -1)"
+            >
               <Icon name="chevron-down" :size="12" class="up" />
             </button>
-            <button type="button" class="mini-btn" :disabled="i === segKeys.length - 1" aria-label="下移" @click="move(i, 1)">
+            <button
+              type="button"
+              class="mini-btn"
+              :disabled="i === segKeys.length - 1"
+              aria-label="下移"
+              @click="move(i, 1)"
+            >
               <Icon name="chevron-down" :size="12" />
             </button>
-            <button type="button" class="mini-btn del" aria-label="移除该段" @click="removeAt(i)">
+            <button
+              type="button"
+              class="mini-btn del"
+              aria-label="移除该段"
+              @click="removeAt(i)"
+            >
               <Icon name="x" :size="12" />
             </button>
           </div>
@@ -116,12 +139,20 @@ async function save(startAfter: boolean) {
 
         <select v-model="pick" class="picker" aria-label="选择模板添加为段">
           <option value="">＋ 选择模板追加为段…</option>
-          <option v-for="t in templates" :key="t.key" :value="t.key">{{ t.name }}（{{ t.key }}）</option>
+          <option v-for="t in templates" :key="t.key" :value="t.key">
+            {{ t.name }}（{{ t.key }}）
+          </option>
         </select>
 
         <div v-if="suggestions.length" class="suggest">
           <span class="muted mini">下一段建议：</span>
-          <button v-for="s in suggestions" :key="s" type="button" class="chip" @click="addSeg(s)">
+          <button
+            v-for="s in suggestions"
+            :key="s"
+            type="button"
+            class="chip"
+            @click="addSeg(s)"
+          >
             {{ nameOf(s) }} ＋
           </button>
         </div>
@@ -129,12 +160,23 @@ async function save(startAfter: boolean) {
 
       <div class="row2">
         <label class="sw">
-          <input v-model="autoAdvance" type="checkbox" :true-value="1" :false-value="0" />
+          <input
+            v-model="autoAdvance"
+            type="checkbox"
+            :true-value="1"
+            :false-value="0"
+          />
           <span>自动级联（autoAdvance）</span>
         </label>
         <label class="fld cap">
           链预算上限（元，留空=不设）
-          <input v-model="budgetCap" type="number" min="0" step="0.01" placeholder="不限" />
+          <input
+            v-model="budgetCap"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="不限"
+          />
         </label>
       </div>
       <div class="muted mini">
@@ -145,9 +187,22 @@ async function save(startAfter: boolean) {
     </div>
     <template #footer>
       <button type="button" class="btn" @click="emit('close')">取消</button>
-      <button type="button" class="btn" :disabled="busy || !segKeys.length" @click="save(false)">仅保存</button>
-      <button type="button" class="btn primary" :disabled="busy || !segKeys.length" @click="save(true)">
-        <Icon name="play" :size="12" /> {{ busy ? '提交中…' : '保存并启动首段' }}
+      <button
+        type="button"
+        class="btn"
+        :disabled="busy || !segKeys.length"
+        @click="save(false)"
+      >
+        仅保存
+      </button>
+      <button
+        type="button"
+        class="btn primary"
+        :disabled="busy || !segKeys.length"
+        @click="save(true)"
+      >
+        <Icon name="play" :size="12" />
+        {{ busy ? '提交中…' : '保存并启动首段' }}
       </button>
     </template>
   </Modal>

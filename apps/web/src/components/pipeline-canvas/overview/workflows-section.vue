@@ -10,9 +10,16 @@ import Icon from '../../common/Icon.vue'
 import ChainBuilder from './chain-builder.vue'
 import { templateApi, workflowApi } from '../../../lib/api'
 import { fmtCost, runStatus, workflowStatus } from '../../../lib/format'
-import type { TemplateMeta, WorkflowOverviewLite, WorkflowSegmentLite } from '../../../lib/types'
+import type {
+  TemplateMeta,
+  WorkflowOverviewLite,
+  WorkflowSegmentLite,
+} from '../../../lib/types'
 
-const props = defineProps<{ projectId: number; workflows: WorkflowOverviewLite[] }>()
+const props = defineProps<{
+  projectId: number
+  workflows: WorkflowOverviewLite[]
+}>()
 const emit = defineEmits<{ changed: []; 'open-run': [id: number] }>()
 
 const templates = ref<TemplateMeta[]>([])
@@ -50,13 +57,20 @@ async function act(id: number, fn: () => Promise<unknown>, okMsg = '') {
 }
 
 const toggleAuto = (w: WorkflowOverviewLite) =>
-  act(w.id, () => workflowApi.update(w.id, { autoAdvance: w.autoAdvance === 1 ? 0 : 1 }))
-const start = (w: WorkflowOverviewLite) => act(w.id, () => workflowApi.start(w.id))
-const pause = (w: WorkflowOverviewLite) => act(w.id, () => workflowApi.pause(w.id))
-const resume = (w: WorkflowOverviewLite) => act(w.id, () => workflowApi.resume(w.id))
-const clone = (w: WorkflowOverviewLite) => act(w.id, () => workflowApi.clone(w.id))
+  act(w.id, () =>
+    workflowApi.update(w.id, { autoAdvance: w.autoAdvance === 1 ? 0 : 1 }),
+  )
+const start = (w: WorkflowOverviewLite) =>
+  act(w.id, () => workflowApi.start(w.id))
+const pause = (w: WorkflowOverviewLite) =>
+  act(w.id, () => workflowApi.pause(w.id))
+const resume = (w: WorkflowOverviewLite) =>
+  act(w.id, () => workflowApi.resume(w.id))
+const clone = (w: WorkflowOverviewLite) =>
+  act(w.id, () => workflowApi.clone(w.id))
 const remove = (w: WorkflowOverviewLite) => {
-  if (!window.confirm(`删除编排链「${w.name}」？（仅草稿/完成/已取消链可删）`)) return
+  if (!window.confirm(`删除编排链「${w.name}」？（仅草稿/完成/已取消链可删）`))
+    return
   act(w.id, () => workflowApi.remove(w.id))
 }
 
@@ -89,8 +103,13 @@ function onCreated() {
         <!-- 链头 -->
         <div class="wfbar">
           <span class="wfname">{{ w.name }}</span>
-          <span class="badge" :class="workflowStatus(w.status).cls">{{ workflowStatus(w.status).text }}</span>
-          <label class="switch" :title="w.autoAdvance === 1 ? '自动级联已开启' : '自动级联已关闭'">
+          <span class="badge" :class="workflowStatus(w.status).cls">{{
+            workflowStatus(w.status).text
+          }}</span>
+          <label
+            class="switch"
+            :title="w.autoAdvance === 1 ? '自动级联已开启' : '自动级联已关闭'"
+          >
             <input
               type="checkbox"
               :checked="w.autoAdvance === 1"
@@ -103,20 +122,48 @@ function onCreated() {
           </label>
           <span class="sp" />
           <div class="wfacts">
-            <button v-if="w.status === 'draft'" type="button" class="btn sm primary" :disabled="!!busy[w.id]" @click="start(w)">
+            <button
+              v-if="w.status === 'draft'"
+              type="button"
+              class="btn sm primary"
+              :disabled="!!busy[w.id]"
+              @click="start(w)"
+            >
               <Icon name="play" :size="11" /> 启动
             </button>
-            <button v-else-if="w.status === 'active'" type="button" class="btn sm" :disabled="!!busy[w.id]" @click="pause(w)">
+            <button
+              v-else-if="w.status === 'active'"
+              type="button"
+              class="btn sm"
+              :disabled="!!busy[w.id]"
+              @click="pause(w)"
+            >
               <Icon name="stop" :size="11" /> 暂停
             </button>
-            <button v-else-if="w.status === 'paused'" type="button" class="btn sm primary" :disabled="!!busy[w.id]" @click="resume(w)">
+            <button
+              v-else-if="w.status === 'paused'"
+              type="button"
+              class="btn sm primary"
+              :disabled="!!busy[w.id]"
+              @click="resume(w)"
+            >
               <Icon name="play" :size="11" /> 续跑
             </button>
-            <button type="button" class="btn sm" :disabled="!!busy[w.id]" title="克隆为草稿链" @click="clone(w)">
+            <button
+              type="button"
+              class="btn sm"
+              :disabled="!!busy[w.id]"
+              title="克隆为草稿链"
+              @click="clone(w)"
+            >
               <Icon name="copy" :size="11" /> 克隆
             </button>
             <button
-              v-if="w.status === 'draft' || w.status === 'done' || w.status === 'cancelled'"
+              v-if="
+                w.status === 'draft' ||
+                w.status === 'done' ||
+                w.status === 'cancelled'
+              "
               type="button"
               class="btn sm danger"
               :disabled="!!busy[w.id]"
@@ -140,11 +187,21 @@ function onCreated() {
               @click="s.runId && emit('open-run', s.runId)"
             >
               <span class="nseq mono">{{ i + 1 }}</span>
-              <span class="nname" :title="s.templateKey">{{ s.templateName }}</span>
-              <span class="badge nst" :class="segBadge(s).cls">{{ segBadge(s).text }}</span>
-              <span v-if="s.cost != null" class="ncost mono">{{ fmtCost(s.cost) }}</span>
+              <span class="nname" :title="s.templateKey">{{
+                s.templateName
+              }}</span>
+              <span class="badge nst" :class="segBadge(s).cls">{{
+                segBadge(s).text
+              }}</span>
+              <span v-if="s.cost != null" class="ncost mono">{{
+                fmtCost(s.cost)
+              }}</span>
             </button>
-            <span v-if="i < w.segments.length - 1" class="arrow" aria-hidden="true">
+            <span
+              v-if="i < w.segments.length - 1"
+              class="arrow"
+              aria-hidden="true"
+            >
               <Icon name="chevron-right" :size="14" />
             </span>
           </template>
@@ -152,7 +209,13 @@ function onCreated() {
       </div>
     </div>
 
-    <ChainBuilder v-if="showBuilder" :project-id="projectId" :templates="templates" @close="showBuilder = false" @created="onCreated" />
+    <ChainBuilder
+      v-if="showBuilder"
+      :project-id="projectId"
+      :templates="templates"
+      @close="showBuilder = false"
+      @created="onCreated"
+    />
   </section>
 </template>
 
@@ -263,7 +326,9 @@ function onCreated() {
   height: 12px;
   border-radius: 50%;
   background: var(--text-3);
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .switch input:checked + .sl {

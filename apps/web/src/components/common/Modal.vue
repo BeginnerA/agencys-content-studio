@@ -24,7 +24,11 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="mask" :style="zIndex !== undefined ? { zIndex } : undefined" @click.self="emit('close')">
+    <div
+      class="mask"
+      :style="zIndex !== undefined ? { zIndex } : undefined"
+      @click.self="emit('close')"
+    >
       <div class="dlg panel" :style="width ? { width: width + 'px' } : {}">
         <div class="head">
           <span class="t">{{ title }}</span>

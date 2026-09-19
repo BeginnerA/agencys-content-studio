@@ -11,11 +11,15 @@ export function useBrandAssets(props: { projectId?: number }) {
   const vidAssets = ref<Asset[]>([])
 
   const assetName = (id: number): string => {
-    const a = [...imgAssets.value, ...vidAssets.value].find((it) => it.id === id)
+    const a = [...imgAssets.value, ...vidAssets.value].find(
+      (it) => it.id === id,
+    )
     return a ? `#${a.id} ${a.name}` : `#${id}`
   }
   const assetFileUrl = (id: number): string => {
-    const a = [...imgAssets.value, ...vidAssets.value].find((it) => it.id === id)
+    const a = [...imgAssets.value, ...vidAssets.value].find(
+      (it) => it.id === id,
+    )
     return a?.urls.file ?? ''
   }
 

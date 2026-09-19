@@ -28,7 +28,9 @@ type TabKey = (typeof TABS)[number]['key']
 const route = useRoute()
 function initTab(): TabKey {
   const t = route.query.tab
-  return typeof t === 'string' && TABS.some((x) => x.key === t) ? (t as TabKey) : 'overview'
+  return typeof t === 'string' && TABS.some((x) => x.key === t)
+    ? (t as TabKey)
+    : 'overview'
 }
 const activeTab = ref<TabKey>(initTab())
 watch(
@@ -58,7 +60,14 @@ const STATUS_TEXT: Record<string, string> = {
   failed: '失败',
   cancelled: '已取消',
 }
-const STATUS_ORDER = ['running', 'waiting_input', 'queued', 'completed', 'failed', 'cancelled']
+const STATUS_ORDER = [
+  'running',
+  'waiting_input',
+  'queued',
+  'completed',
+  'failed',
+  'cancelled',
+]
 
 /** 查询串（跳过空值） */
 function qs(obj: Record<string, string | number | undefined>): string {
@@ -109,14 +118,27 @@ watch([projectId, days, usageGroup], () => void load())
 
 /** 项目对比表：逐项目调 overview（N 项目 N 请求；本地单机规模可控，非阻塞） */
 const projRows = ref<
-  Array<{ id: number; name: string; genre: string; runs: number; rate: number; cost: number; assets: number; pubs: number }>
+  Array<{
+    id: number
+    name: string
+    genre: string
+    runs: number
+    rate: number
+    cost: number
+    assets: number
+    pubs: number
+  }>
 >([])
 async function loadProjects() {
   const list = projects.value
   projRows.value = []
   if (!list.length) return
   try {
-    const results = await Promise.all(list.map((p) => statsApi.overview(qs({ project_id: p.id, days: days.value }))))
+    const results = await Promise.all(
+      list.map((p) =>
+        statsApi.overview(qs({ project_id: p.id, days: days.value })),
+      ),
+    )
     projRows.value = list.map((p, i) => {
       const r = results[i]
       return {
@@ -149,14 +171,18 @@ const chart = computed(() => {
     return { ...a, x, bw: Math.round(bw * 100) / 100, h, y: 100 - h }
   })
 })
-const peak = computed(() => Math.max(0, ...(ov.value?.activity ?? []).map((a) => a.runs)))
+const peak = computed(() =>
+  Math.max(0, ...(ov.value?.activity ?? []).map((a) => a.runs)),
+)
 
 /** 状态分布行（固定顺序在前，未知状态垫后；全时间口径） */
 const statusRows = computed(() => {
   const bs = ov.value?.runs.byStatus ?? {}
   const total = Math.max(1, ov.value?.runs.total ?? 0)
   const known = STATUS_ORDER.filter((k) => (bs[k] ?? 0) > 0)
-  const rest = Object.keys(bs).filter((k) => !STATUS_ORDER.includes(k) && (bs[k] ?? 0) > 0)
+  const rest = Object.keys(bs).filter(
+    (k) => !STATUS_ORDER.includes(k) && (bs[k] ?? 0) > 0,
+  )
   return [...known, ...rest].map((k) => ({
     key: k,
     text: STATUS_TEXT[k] ?? k,
@@ -178,17 +204,31 @@ function pct(n: number): string {
       <div class="ctl">
         <!-- [M20] Tab 切换 -->
         <div class="seg" role="tablist">
-          <button v-for="t in TABS" :key="t.key" :class="{ on: activeTab === t.key }" role="tab" :aria-selected="activeTab === t.key" @click="activeTab = t.key">
+          <button
+            v-for="t in TABS"
+            :key="t.key"
+            :class="{ on: activeTab === t.key }"
+            role="tab"
+            :aria-selected="activeTab === t.key"
+            @click="activeTab = t.key"
+          >
             <Icon :name="t.icon" :size="13" /> {{ t.label }}
           </button>
         </div>
         <template v-if="activeTab === 'overview'">
           <select v-model="projectId" aria-label="按项目筛选">
             <option value="">全部项目</option>
-            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">
+              {{ p.name }}
+            </option>
           </select>
           <div class="seg" role="group" aria-label="时间窗口">
-            <button v-for="d in DAY_OPTIONS" :key="d" :class="{ on: days === d }" @click="days = d">
+            <button
+              v-for="d in DAY_OPTIONS"
+              :key="d"
+              :class="{ on: days === d }"
+              @click="days = d"
+            >
               {{ d }} 天
             </button>
           </div>
@@ -214,7 +254,13 @@ function pct(n: number): string {
     <!-- [M20] 成本 Tab -->
     <div v-show="activeTab === 'cost'" role="tabpanel">
       <CostPanel />
-      <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border)" />
+      <hr
+        style="
+          margin: 20px 0;
+          border: none;
+          border-top: 1px solid var(--border);
+        "
+      />
       <PlatformPresets />
     </div>
 
@@ -225,145 +271,208 @@ function pct(n: number): string {
 
     <!-- 概览 Tab（原有内容） -->
     <div v-show="activeTab === 'overview'">
+      <div v-if="err" class="err-text">{{ err }}</div>
+      <div v-if="loading && !ov" class="empty">加载中…</div>
 
-    <div v-if="err" class="err-text">{{ err }}</div>
-    <div v-if="loading && !ov" class="empty">加载中…</div>
-
-    <template v-if="ov">
-      <div class="kpis">
-        <div class="kpi panel">
-          <div class="kl">运行总数</div>
-          <div class="kv mono">{{ ov.runs.total }}</div>
-          <div class="ks muted">成功率 {{ pct(ov.runs.successRate) }}（终态口径）</div>
-        </div>
-        <div class="kpi panel">
-          <div class="kl">总成本</div>
-          <div class="kv mono">{{ fmtCost(ov.cost.total) }}</div>
-          <div class="ks muted">近 30 天 {{ fmtCost(ov.cost.last30d) }}</div>
-        </div>
-        <div class="kpi panel">
-          <div class="kl">资产</div>
-          <div class="kv mono">{{ ov.assets.total }}</div>
-          <div class="ks chips">
-            <span v-for="(n, k) in ov.assets.byKind" :key="k" class="chip">{{ KIND_TEXT[k] ?? k }} {{ n }}</span>
-          </div>
-        </div>
-        <div class="kpi panel">
-          <div class="kl">发布登记</div>
-          <div class="kv mono">{{ ov.publications.total }}</div>
-          <div class="ks muted">播放 {{ fmtQty(ov.publications.views) }} · 互动 {{ fmtQty(ov.publications.interactions) }}</div>
-        </div>
-      </div>
-
-      <div class="panel block">
-        <div class="bh">
-          <span class="bt">运行活跃度</span>
-          <span class="muted">{{ ov.activeDays }}/{{ days }} 天有运行 · 单日峰值 {{ peak }}</span>
-        </div>
-        <svg class="bars" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="每日运行次数柱状图">
-          <rect v-for="(b, i) in chart" :key="i" :x="b.x" :y="b.y" :width="b.bw" :height="b.h" rx="0.4">
-            <title>{{ b.day }} · {{ b.runs }} 次 · {{ fmtCost(b.cost) }}</title>
-          </rect>
-        </svg>
-        <div class="axis muted">
-          <span>{{ chart[0]?.day ?? '—' }}</span>
-          <span>悬停柱体查看当日运行数与成本</span>
-          <span>{{ chart[chart.length - 1]?.day ?? '—' }}</span>
-        </div>
-      </div>
-
-      <div class="two">
-        <div class="panel block">
-          <div class="bh">
-            <span class="bt">成本构成</span>
-            <span class="muted">合计 {{ fmtCost(usage?.totals.cost ?? 0) }} · 近 {{ days }} 天</span>
-            <div class="seg sm" style="margin-left: auto" role="group" aria-label="分组切换">
-              <button :class="{ on: usageGroup === 'provider_model' }" @click="usageGroup = 'provider_model'">按模型</button>
-              <button :class="{ on: usageGroup === 'kind' }" @click="usageGroup = 'kind'">按类型</button>
+      <template v-if="ov">
+        <div class="kpis">
+          <div class="kpi panel">
+            <div class="kl">运行总数</div>
+            <div class="kv mono">{{ ov.runs.total }}</div>
+            <div class="ks muted">
+              成功率 {{ pct(ov.runs.successRate) }}（终态口径）
             </div>
           </div>
-          <div v-if="usage?.totals.unpriced" class="unpriced">
-            <span>{{ usage.totals.unpriced }} 条用量未计价（缺定价配置）</span>
-            <RouterLink class="btn sm" to="/settings">去配置定价</RouterLink>
+          <div class="kpi panel">
+            <div class="kl">总成本</div>
+            <div class="kv mono">{{ fmtCost(ov.cost.total) }}</div>
+            <div class="ks muted">近 30 天 {{ fmtCost(ov.cost.last30d) }}</div>
+          </div>
+          <div class="kpi panel">
+            <div class="kl">资产</div>
+            <div class="kv mono">{{ ov.assets.total }}</div>
+            <div class="ks chips">
+              <span v-for="(n, k) in ov.assets.byKind" :key="k" class="chip"
+                >{{ KIND_TEXT[k] ?? k }} {{ n }}</span
+              >
+            </div>
+          </div>
+          <div class="kpi panel">
+            <div class="kl">发布登记</div>
+            <div class="kv mono">{{ ov.publications.total }}</div>
+            <div class="ks muted">
+              播放 {{ fmtQty(ov.publications.views) }} · 互动
+              {{ fmtQty(ov.publications.interactions) }}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel block">
+          <div class="bh">
+            <span class="bt">运行活跃度</span>
+            <span class="muted"
+              >{{ ov.activeDays }}/{{ days }} 天有运行 · 单日峰值
+              {{ peak }}</span
+            >
+          </div>
+          <svg
+            class="bars"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="每日运行次数柱状图"
+          >
+            <rect
+              v-for="(b, i) in chart"
+              :key="i"
+              :x="b.x"
+              :y="b.y"
+              :width="b.bw"
+              :height="b.h"
+              rx="0.4"
+            >
+              <title>
+                {{ b.day }} · {{ b.runs }} 次 · {{ fmtCost(b.cost) }}
+              </title>
+            </rect>
+          </svg>
+          <div class="axis muted">
+            <span>{{ chart[0]?.day ?? '—' }}</span>
+            <span>悬停柱体查看当日运行数与成本</span>
+            <span>{{ chart[chart.length - 1]?.day ?? '—' }}</span>
+          </div>
+        </div>
+
+        <div class="two">
+          <div class="panel block">
+            <div class="bh">
+              <span class="bt">成本构成</span>
+              <span class="muted"
+                >合计 {{ fmtCost(usage?.totals.cost ?? 0) }} · 近
+                {{ days }} 天</span
+              >
+              <div
+                class="seg sm"
+                style="margin-left: auto"
+                role="group"
+                aria-label="分组切换"
+              >
+                <button
+                  :class="{ on: usageGroup === 'provider_model' }"
+                  @click="usageGroup = 'provider_model'"
+                >
+                  按模型
+                </button>
+                <button
+                  :class="{ on: usageGroup === 'kind' }"
+                  @click="usageGroup = 'kind'"
+                >
+                  按类型
+                </button>
+              </div>
+            </div>
+            <div v-if="usage?.totals.unpriced" class="unpriced">
+              <span
+                >{{ usage.totals.unpriced }} 条用量未计价（缺定价配置）</span
+              >
+              <RouterLink class="btn sm" to="/settings">去配置定价</RouterLink>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>
+                    {{
+                      usageGroup === 'provider_model'
+                        ? 'provider:model'
+                        : 'kind'
+                    }}
+                  </th>
+                  <th>调用</th>
+                  <th>用量</th>
+                  <th>成本</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="it in usage?.items ?? []" :key="it.key">
+                  <td class="mono key">{{ it.key }}</td>
+                  <td class="mono">{{ it.count }}</td>
+                  <td class="mono">{{ fmtQty(it.quantity) }}</td>
+                  <td class="mono">
+                    {{ fmtCost(it.cost) }}
+                    <span v-if="it.unpriced" class="unp"
+                      >未计价 {{ it.unpriced }}</span
+                    >
+                  </td>
+                </tr>
+                <tr v-if="!usage?.items.length">
+                  <td colspan="4">
+                    <div class="empty" style="padding: 18px 0">
+                      窗口内无用量记录
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="panel block">
+            <div class="bh">
+              <span class="bt">运行状态分布</span>
+              <span class="muted">全时间</span>
+            </div>
+            <div v-if="statusRows.length" class="rows">
+              <div v-for="s in statusRows" :key="s.key" class="row">
+                <span class="badge" :class="s.key">{{ s.text }}</span>
+                <div class="track">
+                  <div class="fill" :class="s.key" :style="{ width: s.w }" />
+                </div>
+                <span class="mono n">{{ s.n }}</span>
+              </div>
+            </div>
+            <div v-else class="empty" style="padding: 18px 0">暂无运行记录</div>
+          </div>
+        </div>
+
+        <div class="panel block">
+          <div class="bh">
+            <span class="bt">项目对比</span>
+            <span class="muted">{{ projRows.length }} 个项目 · 全时间</span>
           </div>
           <table class="tbl">
             <thead>
               <tr>
-                <th>{{ usageGroup === 'provider_model' ? 'provider:model' : 'kind' }}</th>
-                <th>调用</th>
-                <th>用量</th>
+                <th>项目</th>
+                <th>体裁</th>
+                <th>运行</th>
+                <th>成功率</th>
                 <th>成本</th>
+                <th>资产</th>
+                <th>发布</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="it in usage?.items ?? []" :key="it.key">
-                <td class="mono key">{{ it.key }}</td>
-                <td class="mono">{{ it.count }}</td>
-                <td class="mono">{{ fmtQty(it.quantity) }}</td>
-                <td class="mono">
-                  {{ fmtCost(it.cost) }}
-                  <span v-if="it.unpriced" class="unp">未计价 {{ it.unpriced }}</span>
+              <tr v-for="p in projRows" :key="p.id">
+                <td>{{ p.name }}</td>
+                <td class="muted">{{ projectGenreText(p.genre) }}</td>
+                <td class="mono">{{ p.runs }}</td>
+                <td class="mono">{{ pct(p.rate) }}</td>
+                <td class="mono">{{ fmtCost(p.cost) }}</td>
+                <td class="mono">{{ p.assets }}</td>
+                <td class="mono">{{ p.pubs }}</td>
+                <td>
+                  <RouterLink :to="`/projects/${p.id}`">查看 →</RouterLink>
                 </td>
               </tr>
-              <tr v-if="!usage?.items.length">
-                <td colspan="4"><div class="empty" style="padding: 18px 0">窗口内无用量记录</div></td>
+              <tr v-if="!projRows.length">
+                <td colspan="8">
+                  <div class="empty" style="padding: 18px 0">暂无项目</div>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
-
-        <div class="panel block">
-          <div class="bh">
-            <span class="bt">运行状态分布</span>
-            <span class="muted">全时间</span>
-          </div>
-          <div v-if="statusRows.length" class="rows">
-            <div v-for="s in statusRows" :key="s.key" class="row">
-              <span class="badge" :class="s.key">{{ s.text }}</span>
-              <div class="track"><div class="fill" :class="s.key" :style="{ width: s.w }" /></div>
-              <span class="mono n">{{ s.n }}</span>
-            </div>
-          </div>
-          <div v-else class="empty" style="padding: 18px 0">暂无运行记录</div>
-        </div>
-      </div>
-
-      <div class="panel block">
-        <div class="bh">
-          <span class="bt">项目对比</span>
-          <span class="muted">{{ projRows.length }} 个项目 · 全时间</span>
-        </div>
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>项目</th>
-              <th>体裁</th>
-              <th>运行</th>
-              <th>成功率</th>
-              <th>成本</th>
-              <th>资产</th>
-              <th>发布</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="p in projRows" :key="p.id">
-              <td>{{ p.name }}</td>
-              <td class="muted">{{ projectGenreText(p.genre) }}</td>
-              <td class="mono">{{ p.runs }}</td>
-              <td class="mono">{{ pct(p.rate) }}</td>
-              <td class="mono">{{ fmtCost(p.cost) }}</td>
-              <td class="mono">{{ p.assets }}</td>
-              <td class="mono">{{ p.pubs }}</td>
-              <td><RouterLink :to="`/projects/${p.id}`">查看 →</RouterLink></td>
-            </tr>
-            <tr v-if="!projRows.length">
-              <td colspan="8"><div class="empty" style="padding: 18px 0">暂无项目</div></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
+      </template>
     </div>
   </div>
 </template>

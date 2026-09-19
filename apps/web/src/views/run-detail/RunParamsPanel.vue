@@ -65,7 +65,9 @@ const GROUPS: Array<{ key: string; label: string; fields: FieldDef[] }> = [
   },
 ]
 
-const canEdit = computed(() => ['queued', 'running', 'waiting_input'].includes(props.run.status))
+const canEdit = computed(() =>
+  ['queued', 'running', 'waiting_input'].includes(props.run.status),
+)
 
 /**
  * [整改] 参数组可见性：只暴露「本 run 步骤实际会读取」的组。
@@ -93,7 +95,9 @@ const visibleGroupKeys = computed<GroupKey[]>(() => {
   }
   return used.size ? ALL_GROUPS.filter((g) => used.has(g)) : [...ALL_GROUPS]
 })
-const shownGroups = computed(() => GROUPS.filter((g) => (visibleGroupKeys.value as string[]).includes(g.key)))
+const shownGroups = computed(() =>
+  GROUPS.filter((g) => (visibleGroupKeys.value as string[]).includes(g.key)),
+)
 
 const curParams = computed<Record<string, Record<string, unknown>>>(() => {
   const raw = props.run.input?._params
@@ -170,7 +174,10 @@ async function save(): Promise<void> {
   try {
     const res = await runApi.updateParams(props.run.id, params)
     const n = res.applied.length
-    hint.value = n === 0 ? '无变化（未产生留痕）' : `已生效 ${n} 项（后续未执行步骤读取新值）`
+    hint.value =
+      n === 0
+        ? '无变化（未产生留痕）'
+        : `已生效 ${n} 项（后续未执行步骤读取新值）`
     emit('changed')
   } catch (e) {
     errMsg.value = e instanceof Error && e.message ? e.message : '提交失败'
@@ -197,7 +204,9 @@ onBeforeUnmount(() => {
   <div class="panel pp-card">
     <div class="pp-head">
       <h3><Icon name="sliders" :size="13" /> 参数热调</h3>
-      <span class="pp-sub">run 覆盖 &gt; 项目设置 &gt; 模板默认；仅未执行步骤读取新值</span>
+      <span class="pp-sub"
+        >run 覆盖 &gt; 项目设置 &gt; 模板默认；仅未执行步骤读取新值</span
+      >
     </div>
 
     <!-- 生效值 -->
@@ -205,7 +214,9 @@ onBeforeUnmount(() => {
       <div v-for="g in shownGroups" :key="g.key" class="pp-row">
         <span class="pp-gt">{{ g.label }}</span>
         <template v-if="curEntries(g.key).length">
-          <span v-for="e in curEntries(g.key)" :key="e.k" class="pp-kv mono">{{ e.k }}: {{ e.v }}</span>
+          <span v-for="e in curEntries(g.key)" :key="e.k" class="pp-kv mono"
+            >{{ e.k }}: {{ e.v }}</span
+          >
         </template>
         <span v-else class="pp-none">未覆盖</span>
       </div>
@@ -218,12 +229,22 @@ onBeforeUnmount(() => {
         <div class="pp-fields">
           <label v-for="f in g.fields" :key="f.key" class="pp-field">
             <span class="pp-fl mono">{{ f.key }}</span>
-            <input v-model="form[fk(g.key, f.key)]" type="text" :placeholder="f.ph" :aria-label="`${g.label} ${f.key}`" />
+            <input
+              v-model="form[fk(g.key, f.key)]"
+              type="text"
+              :placeholder="f.ph"
+              :aria-label="`${g.label} ${f.key}`"
+            />
           </label>
         </div>
       </div>
       <div class="pp-actions">
-        <button class="btn primary" type="button" :disabled="saving" @click="save">
+        <button
+          class="btn primary"
+          type="button"
+          :disabled="saving"
+          @click="save"
+        >
           {{ saving ? '提交中…' : '应用热调' }}
         </button>
         <span v-if="errMsg" class="pp-hint err">{{ errMsg }}</span>
@@ -238,7 +259,10 @@ onBeforeUnmount(() => {
       <div v-for="(it, i) in paramLog" :key="i" class="pp-logrow">
         <span class="pp-lt mono">{{ fmtTime(it.at) }}</span>
         <span class="pp-lc">
-          <span v-for="(c, j) in it.changes" :key="j" class="pp-chg mono">{{ c.group }}.{{ c.key }}: {{ fmtVal(c.from) }} → {{ fmtVal(c.to) }}</span>
+          <span v-for="(c, j) in it.changes" :key="j" class="pp-chg mono"
+            >{{ c.group }}.{{ c.key }}: {{ fmtVal(c.from) }} →
+            {{ fmtVal(c.to) }}</span
+          >
         </span>
       </div>
     </div>

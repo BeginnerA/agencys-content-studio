@@ -3,7 +3,12 @@ import { computed, ref } from 'vue'
 import Modal from '../common/Modal.vue'
 import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
-import type { Asset, Publication, TemplateDetail, TemplateMeta } from '../../lib/types'
+import type {
+  Asset,
+  Publication,
+  TemplateDetail,
+  TemplateMeta,
+} from '../../lib/types'
 import { projectApi, publicationApi, runApi, templateApi } from '../../lib/api'
 
 const props = defineProps<{
@@ -23,7 +28,13 @@ const assets = ref<Asset[]>([])
 const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
 /** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
-const adv = ref({ imageSize: '', resolution: '', duration: '', voice: '', temperature: '' })
+const adv = ref({
+  imageSize: '',
+  resolution: '',
+  duration: '',
+  voice: '',
+  temperature: '',
+})
 
 /** action → 可覆盖参数分组：仅当模板实际用到对应生成环节时才显示相应字段 */
 const ACTION_GROUP: Record<string, 'image' | 'video' | 'audio' | 'llm'> = {
@@ -49,7 +60,13 @@ const showLlm = computed(() => activeGroups.value.has('llm'))
 const hasOverride = computed(() => activeGroups.value.size > 0)
 
 function resetAdv(): void {
-  adv.value = { imageSize: '', resolution: '', duration: '', voice: '', temperature: '' }
+  adv.value = {
+    imageSize: '',
+    resolution: '',
+    duration: '',
+    voice: '',
+    temperature: '',
+  }
 }
 const err = ref('')
 const busy = ref(false)
@@ -106,7 +123,10 @@ async function submit() {
   const input: Record<string, unknown> = {}
   for (const inp of tpl.value.inputs) {
     const v = form.value[inp.key]
-    if (inp.required && (v === '' || v === undefined || (Array.isArray(v) && v.length === 0))) {
+    if (
+      inp.required &&
+      (v === '' || v === undefined || (Array.isArray(v) && v.length === 0))
+    ) {
       err.value = `请填写必填项「${inp.label}」`
       return
     }
@@ -119,26 +139,37 @@ async function submit() {
   // [M14] 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
   // 仅提交当前模板实际涉及的分组，隐藏字段一律忽略（双保险，防残留值误提交）
   const p: Record<string, Record<string, unknown>> = {}
-  if (showImage.value && adv.value.imageSize.trim()) p.image = { size: adv.value.imageSize.trim() }
+  if (showImage.value && adv.value.imageSize.trim())
+    p.image = { size: adv.value.imageSize.trim() }
   if (showVideo.value) {
     const resolution = adv.value.resolution
-    const duration = adv.value.duration.trim() ? Number(adv.value.duration) : undefined
+    const duration = adv.value.duration.trim()
+      ? Number(adv.value.duration)
+      : undefined
     if (resolution || (duration !== undefined && Number.isFinite(duration))) {
       p.video = {}
       if (resolution) p.video.resolution = resolution
-      if (duration !== undefined && Number.isFinite(duration)) p.video.duration = duration
+      if (duration !== undefined && Number.isFinite(duration))
+        p.video.duration = duration
     }
   }
-  if (showAudio.value && adv.value.voice.trim()) p.audio = { voice: adv.value.voice.trim() }
+  if (showAudio.value && adv.value.voice.trim())
+    p.audio = { voice: adv.value.voice.trim() }
   if (showLlm.value) {
-    const temperature = adv.value.temperature.trim() ? Number(adv.value.temperature) : undefined
-    if (temperature !== undefined && Number.isFinite(temperature)) p.llm = { temperature }
+    const temperature = adv.value.temperature.trim()
+      ? Number(adv.value.temperature)
+      : undefined
+    if (temperature !== undefined && Number.isFinite(temperature))
+      p.llm = { temperature }
   }
   if (Object.keys(p).length > 0) input['_params'] = p
   busy.value = true
   err.value = ''
   try {
-    const res = await runApi.start(props.projectId, { template_key: tpl.value.key, input })
+    const res = await runApi.start(props.projectId, {
+      template_key: tpl.value.key,
+      input,
+    })
     emit('done', res.run.id)
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -160,7 +191,8 @@ async function init() {
     publications.value = pubRes.items
     // 接力入口（initialTemplateKey 命中）直达表单；否则停在选卡段（不再自动选中字母序第一个）
     const initKey = props.initialTemplateKey
-    if (initKey && tRes.items.some((t) => t.key === initKey)) await selectTemplate(initKey)
+    if (initKey && tRes.items.some((t) => t.key === initKey))
+      await selectTemplate(initKey)
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -178,28 +210,51 @@ init()
       <template v-if="!tplKey">
         <div class="lead muted">
           选择要做什么——产出类模板直接出成品；选题、策划、适配、复盘等辅助模板按需单独使用。
-          <template v-if="defaultTemplateKey">带「默认」标记的是本项目常用模板。</template>
+          <template v-if="defaultTemplateKey"
+            >带「默认」标记的是本项目常用模板。</template
+          >
         </div>
-        <TemplatePicker :templates="templates" :default-key="defaultTemplateKey" @select="selectTemplate" />
+        <TemplatePicker
+          :templates="templates"
+          :default-key="defaultTemplateKey"
+          @select="selectTemplate"
+        />
       </template>
       <!-- 第二步：输入表单 -->
       <template v-else>
         <div class="sel-h">
-          <button type="button" class="lnk" @click="backToPicker">← 重选模板</button>
+          <button type="button" class="lnk" @click="backToPicker">
+            ← 重选模板
+          </button>
           <span class="sel-nm">{{ tpl?.name ?? tplKey }}</span>
         </div>
         <div v-if="loadingDetail" class="empty">加载中…</div>
         <template v-else-if="tpl">
-          <div class="desc muted" style="margin-bottom: 10px">{{ tpl.description }}</div>
-          <TemplateInputFields :tpl="tpl" :assets="assets" :publications="publications" :values="form" @change="(k, v) => (form[k] = v)" />
+          <div class="desc muted" style="margin-bottom: 10px">
+            {{ tpl.description }}
+          </div>
+          <TemplateInputFields
+            :tpl="tpl"
+            :assets="assets"
+            :publications="publications"
+            :values="form"
+            @change="(k, v) => (form[k] = v)"
+          />
           <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
           <details v-if="hasOverride" class="adv">
-            <summary>本集参数覆盖（可选）——仅本 run 生效，优先于项目设置</summary>
+            <summary>
+              本集参数覆盖（可选）——仅本 run 生效，优先于项目设置
+            </summary>
             <div class="adv-grid">
-              <label v-if="showImage" class="fld">出图尺寸
-                <input v-model="adv.imageSize" placeholder="宽x高，如 832x1248（默认用项目设置）" />
+              <label v-if="showImage" class="fld"
+                >出图尺寸
+                <input
+                  v-model="adv.imageSize"
+                  placeholder="宽x高，如 832x1248（默认用项目设置）"
+                />
               </label>
-              <label v-if="showVideo" class="fld">视频清晰度
+              <label v-if="showVideo" class="fld"
+                >视频清晰度
                 <select v-model="adv.resolution">
                   <option value="">默认</option>
                   <option value="480p">480p</option>
@@ -207,14 +262,33 @@ init()
                   <option value="1080p">1080p</option>
                 </select>
               </label>
-              <label v-if="showVideo" class="fld">单镜时长（秒）
-                <input v-model="adv.duration" type="number" min="1" max="30" placeholder="1–30（默认用项目设置）" />
+              <label v-if="showVideo" class="fld"
+                >单镜时长（秒）
+                <input
+                  v-model="adv.duration"
+                  type="number"
+                  min="1"
+                  max="30"
+                  placeholder="1–30（默认用项目设置）"
+                />
               </label>
-              <label v-if="showAudio" class="fld">配音音色
-                <input v-model="adv.voice" placeholder="如 Cherry（默认用项目设置）" />
+              <label v-if="showAudio" class="fld"
+                >配音音色
+                <input
+                  v-model="adv.voice"
+                  placeholder="如 Cherry（默认用项目设置）"
+                />
               </label>
-              <label v-if="showLlm" class="fld">LLM 温度
-                <input v-model="adv.temperature" type="number" min="0" max="2" step="0.1" placeholder="0–2（默认用项目设置）" />
+              <label v-if="showLlm" class="fld"
+                >LLM 温度
+                <input
+                  v-model="adv.temperature"
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  placeholder="0–2（默认用项目设置）"
+                />
               </label>
             </div>
           </details>
@@ -226,7 +300,11 @@ init()
 
     <template #footer>
       <button class="btn" @click="emit('close')">取消</button>
-      <button class="btn primary" :disabled="busy || !tpl || !tplKey" @click="submit">
+      <button
+        class="btn primary"
+        :disabled="busy || !tpl || !tplKey"
+        @click="submit"
+      >
         {{ busy ? '启动中…' : '启动' }}
       </button>
     </template>

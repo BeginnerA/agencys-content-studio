@@ -5,7 +5,14 @@ import { assetApi, runApi, shotApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { useStudio } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
-import type { Asset, RerunResult, RunDetail, RunStep, ShotBoardCompose, TemplateDetail } from '../../lib/types'
+import type {
+  Asset,
+  RerunResult,
+  RunDetail,
+  RunStep,
+  ShotBoardCompose,
+  TemplateDetail,
+} from '../../lib/types'
 
 export function useRunDetail(deps: {
   loadBadges: () => Promise<void>
@@ -46,8 +53,12 @@ export function useRunDetail(deps: {
     const s = run.value?.status
     return s === 'failed' || s === 'cancelled'
   })
-  const hasTasks = computed(() => steps.value.some((s) => s.actionKey === 'ai_image'))
-  const active = computed(() => run.value?.status === 'running' || run.value?.status === 'queued')
+  const hasTasks = computed(() =>
+    steps.value.some((s) => s.actionKey === 'ai_image'),
+  )
+  const active = computed(
+    () => run.value?.status === 'running' || run.value?.status === 'queued',
+  )
 
   // [M2] 当前闸门的免审按钮文案（模板 gate.skip_label）；模板不可达时隐藏
   const gateSkipLabel = computed(() => {
@@ -59,7 +70,9 @@ export function useRunDetail(deps: {
 
   // [M2] 并行执行提示：同一时刻 ≥2 步骤处于执行/待审状态（引擎就绪集并发 ≤2）
   const parallelHint = computed(() => {
-    const actives = steps.value.filter((s) => s.status === 'running' || s.status === 'waiting_input')
+    const actives = steps.value.filter(
+      (s) => s.status === 'running' || s.status === 'waiting_input',
+    )
     return actives.length >= 2 ? `并行执行中：${actives.length} 步并发推进` : ''
   })
 
@@ -85,7 +98,8 @@ export function useRunDetail(deps: {
 
   function snapshotTip(s: NonNullable<typeof snapshot.value>): string {
     const parts = [`运行使用启动时快照 v${s.rv}，运行中不受模板编辑影响`]
-    if (s.curV !== undefined && s.curV !== s.rv) parts.push(`当前文件版本 v${s.curV}`)
+    if (s.curV !== undefined && s.curV !== s.rv)
+      parts.push(`当前文件版本 v${s.curV}`)
     if (s.added.length) parts.push(`文件新增步骤：${s.added.join('、')}`)
     if (s.removed.length) parts.push(`快照含步骤：${s.removed.join('、')}`)
     return parts.join('；')
@@ -93,7 +107,9 @@ export function useRunDetail(deps: {
 
   /** 模板 gate message 的 {input.x} 插值（离线回填场景） */
   function interpolate(msg: string, input: Record<string, unknown>): string {
-    return msg.replace(/\{input\.([\w-]+)\}/g, (_, k: string) => String(input[k] ?? ''))
+    return msg.replace(/\{input\.([\w-]+)\}/g, (_, k: string) =>
+      String(input[k] ?? ''),
+    )
   }
 
   async function loadGate() {
@@ -103,13 +119,20 @@ export function useRunDetail(deps: {
     if (!step || !run.value) return
     // 消息优先取模板定义（服务端事件已解析；此处静态插值）
     const stepDef = tpl.value?.steps.find((d) => d.key === step.stepKey)
-    gateMessage.value = interpolate(stepDef?.gate?.message ?? `请审阅「${step.title}」的产物`, run.value.input)
+    gateMessage.value = interpolate(
+      stepDef?.gate?.message ?? `请审阅「${step.title}」的产物`,
+      run.value.input,
+    )
     const assetId = (step.output?.asset_ids as number[] | undefined)?.[0]
     if (!assetId) return
     gateStep.value = step
     try {
       const { asset: a } = await assetApi.detail(assetId)
-      if (a.kind === 'text' || a.purpose === 'script' || a.purpose === 'storyboard') {
+      if (
+        a.kind === 'text' ||
+        a.purpose === 'script' ||
+        a.purpose === 'storyboard'
+      ) {
         gateTextName.value = a.name
         const res = await fetch(a.urls.file)
         if (res.ok) gateText.value = await res.text()
@@ -182,7 +205,8 @@ export function useRunDetail(deps: {
     try {
       const res = await runApi.log(runId, 400)
       logText.value = res.log
-      if (autoScroll.value && logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
+      if (autoScroll.value && logEl.value)
+        logEl.value.scrollTop = logEl.value.scrollHeight
     } catch {
       // 日志缺失不打扰
     }
@@ -210,7 +234,10 @@ export function useRunDetail(deps: {
     busy.value = true
     err.value = ''
     try {
-      const body: Record<string, unknown> = { step_key: gateStep.value.stepKey, decision: action }
+      const body: Record<string, unknown> = {
+        step_key: gateStep.value.stepKey,
+        decision: action,
+      }
       if (payload.note) body.note = payload.note
       if (payload.textOverride) body.text_override = payload.textOverride
       const res = await runApi.gate(runId, body)
@@ -268,7 +295,11 @@ export function useRunDetail(deps: {
     if (local && p.step.status) {
       local.status = p.step.status as RunStep['status']
       // [M4] server run.step 不含 attempts（删除旧 p.step.attempts 行）；详细状态由 loadDetail 兜底
-      if (p.step.status === 'waiting_input' || p.step.status === 'succeeded' || p.step.status === 'skipped') {
+      if (
+        p.step.status === 'waiting_input' ||
+        p.step.status === 'succeeded' ||
+        p.step.status === 'skipped'
+      ) {
         scheduleDetailRefresh()
       }
     }
@@ -307,7 +338,6 @@ export function useRunDetail(deps: {
     if (detailRefreshTimer) window.clearTimeout(detailRefreshTimer)
   })
 
-
   // ===== 产物预览（统一 AssetPreviewer：批量拉详情后内联查看，不再新开标签） =====
   const previewAssets = ref<Asset[]>([])
   const previewOpen = ref(false)
@@ -319,7 +349,9 @@ export function useRunDetail(deps: {
     previewBusy.value = firstId
     err.value = ''
     try {
-      const list = await Promise.all(ids.map((id) => assetApi.detail(id).then((r) => r.asset)))
+      const list = await Promise.all(
+        ids.map((id) => assetApi.detail(id).then((r) => r.asset)),
+      )
       previewAssets.value = list
       previewStart.value = Math.max(0, ids.indexOf(firstId))
       previewOpen.value = true
@@ -344,7 +376,8 @@ export function useRunDetail(deps: {
   async function recomposeStep(s: RunStep) {
     const ok = await confirmDialog({
       title: '重新合成',
-      message: '将重新执行合成（镜头选择 / 分镜 / 时长的最新值生效）；已成功的镜头步骤全部跳过。',
+      message:
+        '将重新执行合成（镜头选择 / 分镜 / 时长的最新值生效）；已成功的镜头步骤全部跳过。',
       confirmText: '重新合成',
     })
     if (!ok) return

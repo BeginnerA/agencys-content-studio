@@ -25,16 +25,67 @@ const emit = defineEmits<ShotBoardEmits>()
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   sb,
-  loading, err, notice, shots, compose, repairable, canOperate, summary, draftCount, allPicked,
-  previewOpen, previewAssets, previewIndex, editorOpen, composeSettingsOpen, sfxShotId, sfxMap,
-  uploadInput, isVideoStep, bulkDuration, bulkPicked,
-  openEditor, doRecompose, applySelection, toggleAll, applyBulkDuration, doCleanupVersions, resetSelection,
-  onUploadPicked, onPreviewAssetChanged, loadComposeCfg, onSfxChanged, onEditorSaved, saveTransition,
-  isEnabled, openPreview, thumbUrl, markThumbFailed, lineIdsOf, selectedQualityWarn,
-  onCardDragOver, onCardDragLeave, onCardDrop, onGripDragStart, clearDrag,
-  togglePick, toggleEnable, durationValue, onDurationInput, commitDuration,
-  togglePrompt, doRegenerate, pickUpload, toggleGallery, openSfx, savePrompt,
-  effSelected, verQualityWarn, toggleVersionFavorite, markVerThumbFailed, pickVersion,
+  loading,
+  err,
+  notice,
+  shots,
+  compose,
+  repairable,
+  canOperate,
+  summary,
+  draftCount,
+  allPicked,
+  previewOpen,
+  previewAssets,
+  previewIndex,
+  editorOpen,
+  composeSettingsOpen,
+  sfxShotId,
+  sfxMap,
+  uploadInput,
+  isVideoStep,
+  bulkDuration,
+  bulkPicked,
+  openEditor,
+  doRecompose,
+  applySelection,
+  toggleAll,
+  applyBulkDuration,
+  doCleanupVersions,
+  resetSelection,
+  onUploadPicked,
+  onPreviewAssetChanged,
+  loadComposeCfg,
+  onSfxChanged,
+  onEditorSaved,
+  saveTransition,
+  isEnabled,
+  openPreview,
+  thumbUrl,
+  markThumbFailed,
+  lineIdsOf,
+  selectedQualityWarn,
+  onCardDragOver,
+  onCardDragLeave,
+  onCardDrop,
+  onGripDragStart,
+  clearDrag,
+  togglePick,
+  toggleEnable,
+  durationValue,
+  onDurationInput,
+  commitDuration,
+  togglePrompt,
+  doRegenerate,
+  pickUpload,
+  toggleGallery,
+  openSfx,
+  savePrompt,
+  effSelected,
+  verQualityWarn,
+  toggleVersionFavorite,
+  markVerThumbFailed,
+  pickVersion,
 } = useShotBoard(props, emit)
 </script>
 
@@ -42,7 +93,9 @@ const {
   <div class="wb">
     <!-- 头条：汇总 + stale 徽标 + 合成 / 应用选择 -->
     <div class="wb-head">
-      <span class="wb-title"><Icon name="sliders" :size="13" /> 镜头工作台</span>
+      <span class="wb-title"
+        ><Icon name="sliders" :size="13" /> 镜头工作台</span
+      >
       <span class="muted wb-sum">{{ summary }}</span>
       <span
         v-if="compose?.stale === true"
@@ -51,16 +104,33 @@ const {
       >
         <Icon name="alert" :size="11" /> 待重新合成
       </span>
-      <span v-else-if="compose?.stale === false" class="wb-tag ok" title="成片与当前选择一致">合成已最新</span>
+      <span
+        v-else-if="compose?.stale === false"
+        class="wb-tag ok"
+        title="成片与当前选择一致"
+        >合成已最新</span
+      >
       <span class="grow" />
       <button class="btn sm" :disabled="!canOperate" @click="openEditor">
         <Icon name="pencil" :size="12" /> 编辑分镜
       </button>
-      <button v-if="compose" class="btn sm" :disabled="!canOperate" @click="doRecompose">
+      <button
+        v-if="compose"
+        class="btn sm"
+        :disabled="!canOperate"
+        @click="doRecompose"
+      >
         <Icon name="film" :size="12" /> 重新合成
       </button>
-      <button class="btn sm" :class="{ primary: draftCount > 0 }" :disabled="!canOperate || draftCount === 0" @click="applySelection">
-        <Icon name="check" :size="12" /> 应用选择{{ draftCount ? ` (${draftCount})` : '' }}
+      <button
+        class="btn sm"
+        :class="{ primary: draftCount > 0 }"
+        :disabled="!canOperate || draftCount === 0"
+        @click="applySelection"
+      >
+        <Icon name="check" :size="12" /> 应用选择{{
+          draftCount ? ` (${draftCount})` : ''
+        }}
       </button>
     </div>
 
@@ -71,16 +141,25 @@ const {
       <Icon name="alert" :size="12" /> {{ repairable.reason }}
     </div>
     <div v-else-if="props.active" class="wb-lock muted">
-      <Icon name="clock" :size="12" /> run 执行中，返修操作暂不可用（完成后自动刷新）
+      <Icon name="clock" :size="12" /> run
+      执行中，返修操作暂不可用（完成后自动刷新）
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
-    <div v-if="notice" class="wb-notice"><Icon name="check" :size="12" /> {{ notice }}</div>
+    <div v-if="notice" class="wb-notice">
+      <Icon name="check" :size="12" /> {{ notice }}
+    </div>
 
     <!-- 批量工具行 -->
     <div class="wb-tools">
       <label class="wb-ck" title="全选：批量时长应用目标">
-        <input type="checkbox" :checked="allPicked" :disabled="!shots.length" @change="toggleAll" /> 全选
+        <input
+          type="checkbox"
+          :checked="allPicked"
+          :disabled="!shots.length"
+          @change="toggleAll"
+        />
+        全选
       </label>
       <span class="muted">批量时长</span>
       <input
@@ -93,8 +172,16 @@ const {
         class="wb-num"
         :disabled="!canOperate"
       />
-      <button class="btn sm" :disabled="!canOperate || !bulkPicked.length" @click="applyBulkDuration">应用</button>
-      <span v-if="bulkPicked.length" class="muted">已勾选 {{ bulkPicked.length }} 镜</span>
+      <button
+        class="btn sm"
+        :disabled="!canOperate || !bulkPicked.length"
+        @click="applyBulkDuration"
+      >
+        应用
+      </button>
+      <span v-if="bulkPicked.length" class="muted"
+        >已勾选 {{ bulkPicked.length }} 镜</span
+      >
       <span class="grow" />
       <button
         class="btn sm"
@@ -104,7 +191,9 @@ const {
       >
         <Icon name="trash" :size="12" /> 清理旧版本
       </button>
-      <button class="btn sm" :disabled="!canOperate" @click="resetSelection">恢复全量默认</button>
+      <button class="btn sm" :disabled="!canOperate" @click="resetSelection">
+        恢复全量默认
+      </button>
     </div>
 
     <!-- 镜头网格 -->
@@ -143,7 +232,9 @@ const {
         :thumb-url="thumbUrl"
       />
 
-      <div v-if="!shots.length && !loading" class="empty wb-empty">无镜头数据（分镜为空或解析失败）</div>
+      <div v-if="!shots.length && !loading" class="empty wb-empty">
+        无镜头数据（分镜为空或解析失败）
+      </div>
     </div>
 
     <input

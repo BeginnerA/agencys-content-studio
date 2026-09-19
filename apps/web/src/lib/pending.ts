@@ -28,7 +28,8 @@ export function refreshPending(): Promise<void> {
     try {
       const { items } = await runApi.list('?status=waiting_input')
       const byProject: Record<number, number> = {}
-      for (const r of items) byProject[r.projectId] = (byProject[r.projectId] ?? 0) + 1
+      for (const r of items)
+        byProject[r.projectId] = (byProject[r.projectId] ?? 0) + 1
       pending.byProject = byProject
       pending.total = items.length
       pending.loaded = true
@@ -71,7 +72,8 @@ export function startPendingWatcher(): () => void {
     running = false
     if (pollTimer) window.clearInterval(pollTimer)
     pollTimer = undefined
-    if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler)
+    if (visibilityHandler)
+      document.removeEventListener('visibilitychange', visibilityHandler)
     visibilityHandler = undefined
   }
 }

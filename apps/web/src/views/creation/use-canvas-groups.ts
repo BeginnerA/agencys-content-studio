@@ -3,8 +3,8 @@ import { creationApi } from '../../lib/api'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'selectedIds' | 'toast'>
-  & Pick<CanvasDocument, 'loadDoc'>
+type Dependencies = Pick<CanvasState, 'canvasId' | 'selectedIds' | 'toast'> &
+  Pick<CanvasDocument, 'loadDoc'>
 
 export function useCanvasGroups(deps: Dependencies) {
   const { canvasId, selectedIds, loadDoc, toast } = deps
@@ -27,7 +27,12 @@ export function useCanvasGroups(deps: Dependencies) {
   /** 组条改组（title / color / collapsed / parentId 局部）；重拉对账 */
   async function onGroupPatch(
     gid: number,
-    patch: { title?: string; color?: string | null; collapsed?: boolean; parentId?: number | null },
+    patch: {
+      title?: string
+      color?: string | null
+      collapsed?: boolean
+      parentId?: number | null
+    },
   ): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
@@ -40,11 +45,17 @@ export function useCanvasGroups(deps: Dependencies) {
   }
 
   /** [M22] 组条拖拽：后代组（含自身）锚点批量平移（节点平移走 moved 通道；失败重拉对账） */
-  async function onGroupsMoved(moves: Array<{ id: number; x: number; y: number }>): Promise<void> {
+  async function onGroupsMoved(
+    moves: Array<{ id: number; x: number; y: number }>,
+  ): Promise<void> {
     const cid = canvasId.value
     if (cid == null || !moves.length) return
     try {
-      await Promise.all(moves.map((m) => creationApi.updateGroup(cid, m.id, { x: m.x, y: m.y })))
+      await Promise.all(
+        moves.map((m) =>
+          creationApi.updateGroup(cid, m.id, { x: m.x, y: m.y }),
+        ),
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
       await loadDoc(true)

@@ -11,35 +11,54 @@ const sb = props.sb
 </script>
 
 <template>
-    <div v-if="sb.compose" class="wb-sb.compose">
-      <Icon name="film" :size="12" />
-      <span class="muted">转场</span>
-      <select v-model="sb.cfgTransition" class="wb-sel" :disabled="!sb.canOperate || sb.cfgBusy">
-        <option v-for="t in TRANSITIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
-      </select>
-      <input
-        v-model.number="sb.cfgDur"
-        type="number"
-        class="wb-num"
-        min="0.1"
-        max="2"
-        step="0.1"
-        :disabled="!sb.canOperate || sb.cfgBusy || sb.cfgTransition === 'none'"
-        :title="sb.cfgTransition === 'none' ? '当前为硬切，无需转场时长' : '转场时长（0.1–2 秒）'"
-      />
-      <span class="muted">s</span>
-      <button class="btn sm" :class="{ primary: sb.cfgDirty }" :disabled="!sb.canOperate || sb.cfgBusy || !sb.cfgDirty" @click="saveTransition">
-        保存设置
-      </button>
-      <button
-        class="btn sm push"
-        :disabled="!sb.canOperate"
-        :title="sb.bgm ? `合成设置（当前配乐：${sb.bgm.name}）` : '合成设置：配乐 / 音效 / 字幕样式 / 水印与片头尾 / 多画幅'"
-        @click="sb.composeSettingsOpen = true"
-      >
-        <Icon name="sliders" :size="12" /> 合成设置
-      </button>
-    </div>
+  <div v-if="sb.compose" class="wb-sb.compose">
+    <Icon name="film" :size="12" />
+    <span class="muted">转场</span>
+    <select
+      v-model="sb.cfgTransition"
+      class="wb-sel"
+      :disabled="!sb.canOperate || sb.cfgBusy"
+    >
+      <option v-for="t in TRANSITIONS" :key="t.value" :value="t.value">
+        {{ t.label }}
+      </option>
+    </select>
+    <input
+      v-model.number="sb.cfgDur"
+      type="number"
+      class="wb-num"
+      min="0.1"
+      max="2"
+      step="0.1"
+      :disabled="!sb.canOperate || sb.cfgBusy || sb.cfgTransition === 'none'"
+      :title="
+        sb.cfgTransition === 'none'
+          ? '当前为硬切，无需转场时长'
+          : '转场时长（0.1–2 秒）'
+      "
+    />
+    <span class="muted">s</span>
+    <button
+      class="btn sm"
+      :class="{ primary: sb.cfgDirty }"
+      :disabled="!sb.canOperate || sb.cfgBusy || !sb.cfgDirty"
+      @click="saveTransition"
+    >
+      保存设置
+    </button>
+    <button
+      class="btn sm push"
+      :disabled="!sb.canOperate"
+      :title="
+        sb.bgm
+          ? `合成设置（当前配乐：${sb.bgm.name}）`
+          : '合成设置：配乐 / 音效 / 字幕样式 / 水印与片头尾 / 多画幅'
+      "
+      @click="sb.composeSettingsOpen = true"
+    >
+      <Icon name="sliders" :size="12" /> 合成设置
+    </button>
+  </div>
 </template>
 
 <style scoped>

@@ -4,42 +4,48 @@ import { fmtTime } from '../../lib/format'
 import type { TemplatesApi } from './use-templates'
 
 const props = defineProps<{ t: TemplatesApi }>()
-const { metas, metasLoading, listErr, selected, openTemplate, openNew } = props.t
+const { metas, metasLoading, listErr, selected, openTemplate, openNew } =
+  props.t
 </script>
 
 <template>
-      <aside class="panel list" aria-label="模板文件列表">
-        <div class="lhead">
-          <span>模板文件（{{ metas.length }}）</span>
-          <button class="btn sm" @click="openNew"><Icon name="plus" :size="12" :stroke-width="2.2" /> 新建</button>
-        </div>
-        <div v-if="listErr" class="err-text">{{ listErr }}</div>
-        <div v-if="metasLoading" class="empty">加载中…</div>
-        <div v-else-if="!metas.length" class="empty">workspace/templates 下暂无模板</div>
-        <button
-          v-for="m in metas"
-          :key="m.key"
-          class="item"
-          :class="{ active: selected === m.key }"
-          @click="openTemplate(m.key)"
+  <aside class="panel list" aria-label="模板文件列表">
+    <div class="lhead">
+      <span>模板文件（{{ metas.length }}）</span>
+      <button class="btn sm" @click="openNew">
+        <Icon name="plus" :size="12" :stroke-width="2.2" /> 新建
+      </button>
+    </div>
+    <div v-if="listErr" class="err-text">{{ listErr }}</div>
+    <div v-if="metasLoading" class="empty">加载中…</div>
+    <div v-else-if="!metas.length" class="empty">
+      workspace/templates 下暂无模板
+    </div>
+    <button
+      v-for="m in metas"
+      :key="m.key"
+      class="item"
+      :class="{ active: selected === m.key }"
+      @click="openTemplate(m.key)"
+    >
+      <div class="r1">
+        <span class="k mono">{{ m.key }}</span>
+        <span
+          v-if="m.promptsDirty"
+          class="badge skip"
+          title="params.prompt_tpl 引用的提示词文件缺失"
+          >引用缺失</span
         >
-          <div class="r1">
-            <span class="k mono">{{ m.key }}</span>
-            <span
-              v-if="m.promptsDirty"
-              class="badge skip"
-              title="params.prompt_tpl 引用的提示词文件缺失"
-            >引用缺失</span>
-          </div>
-          <div class="nm">{{ m.name }}</div>
-          <div class="r2">
-            <span class="chip">{{ m.genre }}</span>
-            <span class="chip">v{{ m.version }}</span>
-            <span class="chip">{{ m.stepCount }} 步</span>
-          </div>
-          <div class="r3 muted">{{ fmtTime(m.updatedAt) }}</div>
-        </button>
-      </aside>
+      </div>
+      <div class="nm">{{ m.name }}</div>
+      <div class="r2">
+        <span class="chip">{{ m.genre }}</span>
+        <span class="chip">v{{ m.version }}</span>
+        <span class="chip">{{ m.stepCount }} 步</span>
+      </div>
+      <div class="r3 muted">{{ fmtTime(m.updatedAt) }}</div>
+    </button>
+  </aside>
 </template>
 
 <style scoped>
@@ -74,7 +80,9 @@ const { metas, metasLoading, listErr, selected, openTemplate, openNew } = props.
   border-radius: 10px;
   padding: 8px 10px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .item:hover {
@@ -121,5 +129,4 @@ const { metas, metasLoading, listErr, selected, openTemplate, openNew } = props.
   margin-top: 5px;
   font-size: 11px;
 }
-
 </style>

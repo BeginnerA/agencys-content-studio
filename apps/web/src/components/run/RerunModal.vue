@@ -24,7 +24,9 @@ const succeeded = ref(0)
 
 const noTasks = computed(() => !loading.value && total.value === 0)
 /** 复用模式预计执行数（非 succeeded 数；含 failed/cancelled/pending/processing） */
-const willRun = computed(() => (mode.value === 'all' ? total.value : total.value - succeeded.value))
+const willRun = computed(() =>
+  mode.value === 'all' ? total.value : total.value - succeeded.value,
+)
 
 onMounted(async () => {
   try {
@@ -44,7 +46,9 @@ async function submit() {
   busy.value = true
   err.value = ''
   try {
-    const res = await stepApi.rerun(props.runId, props.step.stepKey, { reset_tasks: mode.value === 'all' })
+    const res = await stepApi.rerun(props.runId, props.step.stepKey, {
+      reset_tasks: mode.value === 'all',
+    })
     emit('done', res)
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -67,22 +71,41 @@ async function submit() {
       <template v-else>
         <div v-if="noTasks" class="rr-note">
           <Icon name="alert" :size="12" />
-          <span>该步骤为整体执行型（无子任务），重跑将重新执行整个步骤；下游产物不变，如需生效请重跑下游或重新合成。</span>
+          <span
+            >该步骤为整体执行型（无子任务），重跑将重新执行整个步骤；下游产物不变，如需生效请重跑下游或重新合成。</span
+          >
         </div>
 
         <label class="rr-opt" :class="{ disabled: noTasks }">
-          <input v-model="mode" type="radio" value="reuse" :disabled="noTasks || busy" />
+          <input
+            v-model="mode"
+            type="radio"
+            value="reuse"
+            :disabled="noTasks || busy"
+          />
           <span class="rr-opt-main">
-            <span class="tt">复用成功子任务<em v-if="!noTasks">（默认）</em></span>
-            <span class="muted">已成功的子任务不重跑（0 调用）；失败 / 未完成的子任务重新执行。</span>
+            <span class="tt"
+              >复用成功子任务<em v-if="!noTasks">（默认）</em></span
+            >
+            <span class="muted"
+              >已成功的子任务不重跑（0 调用）；失败 /
+              未完成的子任务重新执行。</span
+            >
           </span>
         </label>
 
         <label class="rr-opt" :class="{ disabled: noTasks }">
-          <input v-model="mode" type="radio" value="all" :disabled="noTasks || busy" />
+          <input
+            v-model="mode"
+            type="radio"
+            value="all"
+            :disabled="noTasks || busy"
+          />
           <span class="rr-opt-main">
             <span class="tt">全部重跑</span>
-            <span class="muted">该步骤全部子任务归零并重新执行（可能产生生成费用）。</span>
+            <span class="muted"
+              >该步骤全部子任务归零并重新执行（可能产生生成费用）。</span
+            >
           </span>
         </label>
 
@@ -99,10 +122,15 @@ async function submit() {
 
         <div v-if="mode === 'all' && !noTasks" class="rr-warn">
           <Icon name="alert" :size="12" />
-          <span>全量重跑会重新调用生成服务（图像 / 视频 / 语音均可能计费），历史产物版本保留。</span>
+          <span
+            >全量重跑会重新调用生成服务（图像 / 视频 /
+            语音均可能计费），历史产物版本保留。</span
+          >
         </div>
 
-        <div class="muted rr-tip">重跑后 run 重新入队；已成功的其他步骤照常跳过。</div>
+        <div class="muted rr-tip">
+          重跑后 run 重新入队；已成功的其他步骤照常跳过。
+        </div>
       </template>
 
       <div v-if="err" class="err-text">{{ err }}</div>

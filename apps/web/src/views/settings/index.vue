@@ -10,7 +10,26 @@ import PricingPanel from './PricingPanel.vue'
 import { useSettingsPage } from './use-settings'
 
 const s = useSettingsPage()
-const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCredForm, tabOf, cntOf, readiness, load } = s
+const {
+  TABS,
+  activeTab,
+  credentials,
+  err,
+  loading,
+  editing,
+  editingCred,
+  showCredForm,
+  tabOf,
+  cntOf,
+  readiness,
+  load,
+} = s
+
+// 多语句 handler 抽为单函数：prettier 在 semi:false 下会删模板属性里的分隔分号，产生非法 JS
+async function onCredSaved() {
+  await load()
+  showCredForm.value = false
+}
 </script>
 
 <template>
@@ -42,23 +61,23 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
       <VoiceLibrary v-if="activeTab === 'voices'" />
 
       <template v-else>
-      <!-- 就绪摘要（当前能力） -->
-      <div class="ready" :class="readiness.tone">
-        <span class="r-dot" />
-        <span>{{ readiness.text }}</span>
-        <span class="r-hint">{{ tabOf(activeTab).hint }}</span>
-      </div>
+        <!-- 就绪摘要（当前能力） -->
+        <div class="ready" :class="readiness.tone">
+          <span class="r-dot" />
+          <span>{{ readiness.text }}</span>
+          <span class="r-hint">{{ tabOf(activeTab).hint }}</span>
+        </div>
 
-      <CredsPanel :s="s" />
+        <CredsPanel :s="s" />
 
-      <!-- 主从布局：左供应商列表 / 右供应商详情 -->
-      <div :key="activeTab" class="split">
-        <ProviderRail :s="s" />
+        <!-- 主从布局：左供应商列表 / 右供应商详情 -->
+        <div :key="activeTab" class="split">
+          <ProviderRail :s="s" />
 
-        <ProviderDetail :s="s" />
-      </div>
+          <ProviderDetail :s="s" />
+        </div>
 
-      <PricingPanel :s="s" />
+        <PricingPanel :s="s" />
       </template>
     </template>
 
@@ -74,7 +93,7 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
     <VendorCredentialForm
       v-if="showCredForm && editingCred"
       :credential="editingCred"
-      @saved="load(); showCredForm = false"
+      @saved="onCredSaved()"
       @close="showCredForm = false"
     />
   </div>
@@ -117,7 +136,9 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
   padding: 5px 13px;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tab:hover {
@@ -126,7 +147,11 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
 }
 
 .tab.on {
-  background: linear-gradient(135deg, rgb(139 92 246 / 26%), rgb(79 70 229 / 22%));
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 26%),
+    rgb(79 70 229 / 22%)
+  );
   color: #fff;
 }
 

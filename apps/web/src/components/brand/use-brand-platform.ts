@@ -5,7 +5,12 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import { settingsApi } from '../../lib/api'
-import type { BrandConfig, BrandMaterialSlot, BrandSlotKey, WatermarkConfig } from '../../lib/types'
+import type {
+  BrandConfig,
+  BrandMaterialSlot,
+  BrandSlotKey,
+  WatermarkConfig,
+} from '../../lib/types'
 import { SLOT_TEXT, fileOf, normBrand, pctStore } from './brand-form-helpers'
 import type { useBrandForm } from './use-brand-form'
 
@@ -34,8 +39,16 @@ export function useBrandPlatform(deps: {
   } = form
 
   const platformBrand = ref<BrandConfig>({})
-  const previewTs = ref<Record<BrandSlotKey, number>>({ watermark: 0, intro: 0, outro: 0 })
-  const previewBroken = ref<Record<BrandSlotKey, boolean>>({ watermark: false, intro: false, outro: false })
+  const previewTs = ref<Record<BrandSlotKey, number>>({
+    watermark: 0,
+    intro: 0,
+    outro: 0,
+  })
+  const previewBroken = ref<Record<BrandSlotKey, boolean>>({
+    watermark: false,
+    intro: false,
+    outro: false,
+  })
 
   function applyPlatformBrand(b: BrandConfig, refreshSlot?: BrandSlotKey) {
     platformBrand.value = b
@@ -63,14 +76,18 @@ export function useBrandPlatform(deps: {
   /** platform 槽保存（读-合并写 settings.brand 整体） */
   function savePlatformSlot(slot: 'watermark' | 'intro' | 'outro') {
     void wrap(async () => {
-      const next = JSON.parse(JSON.stringify(platformBrand.value)) as BrandConfig
+      const next = JSON.parse(
+        JSON.stringify(platformBrand.value),
+      ) as BrandConfig
       if (slot === 'watermark') {
         const wm: WatermarkConfig = {
           ...(next.watermark ?? {}),
           position: wmPosition.value,
           opacity: pctStore(wmOpacity.value, 5, 100),
           width_pct: pctStore(wmWidth.value, 3, 50),
-          margin_px: Math.round(Math.min(200, Math.max(0, Number(wmMargin.value) || 0))),
+          margin_px: Math.round(
+            Math.min(200, Math.max(0, Number(wmMargin.value) || 0)),
+          ),
         }
         if (wmEnabled.value) delete wm.enabled
         else wm.enabled = false
@@ -90,18 +107,25 @@ export function useBrandPlatform(deps: {
   /** platform 字幕样式保存 / 清除 */
   function savePlatformSubtitle() {
     const clearing = !subOn.value
-    void wrap(async () => {
-      const next = JSON.parse(JSON.stringify(platformBrand.value)) as BrandConfig
-      if (clearing) {
-        delete next.subtitle
-        subPersisted.value = false
-      } else {
-        next.subtitle = collectSub()
-        subPersisted.value = true
-      }
-      await settingsApi.put('brand', next)
-      platformBrand.value = next
-    }, clearing ? '平台字幕样式已清除（回落默认基线）' : '平台字幕样式已保存（重新合成后生效）')
+    void wrap(
+      async () => {
+        const next = JSON.parse(
+          JSON.stringify(platformBrand.value),
+        ) as BrandConfig
+        if (clearing) {
+          delete next.subtitle
+          subPersisted.value = false
+        } else {
+          next.subtitle = collectSub()
+          subPersisted.value = true
+        }
+        await settingsApi.put('brand', next)
+        platformBrand.value = next
+      },
+      clearing
+        ? '平台字幕样式已清除（回落默认基线）'
+        : '平台字幕样式已保存（重新合成后生效）',
+    )
   }
 
   return {

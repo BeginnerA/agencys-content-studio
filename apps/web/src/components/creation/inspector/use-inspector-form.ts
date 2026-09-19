@@ -23,7 +23,12 @@ import type {
 } from '../../../lib/types'
 import { creationApi, entityApi, runApi, taskApi } from '../../../lib/api'
 import { confirmDialog } from '../../../lib/confirm'
-import { EDIT_MODE_TEXT, RUN_TERMINAL, asGenSpec, asTextSpec } from './internals'
+import {
+  EDIT_MODE_TEXT,
+  RUN_TERMINAL,
+  asGenSpec,
+  asTextSpec,
+} from './internals'
 import type { InspectorEmitFn, InspectorProps } from './internals'
 
 export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
@@ -33,14 +38,18 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const opBusy = ref(false)
 
   /** [M17] gen 规范视图（模板/守卫通用；非 gen 节点为 null） */
-  const genSpec = computed<CreationNodeSpec | null>(() => asGenSpec(props.node?.spec))
+  const genSpec = computed<CreationNodeSpec | null>(() =>
+    asGenSpec(props.node?.spec),
+  )
   /** [M17] run 节点可取消（有 run 且非终态） */
   const canCancelRun = computed<boolean>(() => {
     const r = props.node?.run
     return !!r && !RUN_TERMINAL.has(r.status)
   })
   /** [M17] 就绪度 notes（实体截断/降级提示） */
-  const readinessNotes = computed<string[]>(() => props.node?.readiness?.notes ?? [])
+  const readinessNotes = computed<string[]>(
+    () => props.node?.readiness?.notes ?? [],
+  )
 
   // ===== gen 节点：spec 表单 =====
   const fGenKind = ref<GenKind>('image')
@@ -88,13 +97,34 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
 
   function formSnapshot(): string {
     return JSON.stringify({
-      g: fGenKind.value, p: fPrompt.value, s: fSize.value, d: fDuration.value, r: fResolution.value,
-      ar: fAspectRatio.value, vo: fVoice.value, sp: fSpeed.value, fp: fFps.value,
-      pr: fProvider.value, m: fModel.value, st: fStyle.value, em: fEditMode.value,
-      a: fAngle.value, xs: fXScale.value, ys: fYScale.value,
-      tr: fTransition.value, td: fTransitionDuration.value, bg: fBgmAssetId.value, bv: fBgmVolume.value, bf: fBgmFade.value,
-      al: fAlign.value, sb: fSubtitle.value, sa: fSubtitleAssetId.value, bs: fBurnSubtitles.value, ft: fFit.value,
-      tm: fTemperature.value, mt: fMaxTokens.value,
+      g: fGenKind.value,
+      p: fPrompt.value,
+      s: fSize.value,
+      d: fDuration.value,
+      r: fResolution.value,
+      ar: fAspectRatio.value,
+      vo: fVoice.value,
+      sp: fSpeed.value,
+      fp: fFps.value,
+      pr: fProvider.value,
+      m: fModel.value,
+      st: fStyle.value,
+      em: fEditMode.value,
+      a: fAngle.value,
+      xs: fXScale.value,
+      ys: fYScale.value,
+      tr: fTransition.value,
+      td: fTransitionDuration.value,
+      bg: fBgmAssetId.value,
+      bv: fBgmVolume.value,
+      bf: fBgmFade.value,
+      al: fAlign.value,
+      sb: fSubtitle.value,
+      sa: fSubtitleAssetId.value,
+      bs: fBurnSubtitles.value,
+      ft: fFit.value,
+      tm: fTemperature.value,
+      mt: fMaxTokens.value,
     })
   }
   let formBase = ''
@@ -117,17 +147,22 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     fModel.value = s?.model ?? ''
     fStyle.value = s?.useStylePreset !== false
     fEditMode.value = s?.edit?.mode ?? ''
-    fAngle.value = s?.edit?.expand?.angle != null ? String(s.edit.expand.angle) : ''
-    fXScale.value = s?.edit?.expand?.xScale != null ? String(s.edit.expand.xScale) : ''
-    fYScale.value = s?.edit?.expand?.yScale != null ? String(s.edit.expand.yScale) : ''
+    fAngle.value =
+      s?.edit?.expand?.angle != null ? String(s.edit.expand.angle) : ''
+    fXScale.value =
+      s?.edit?.expand?.xScale != null ? String(s.edit.expand.xScale) : ''
+    fYScale.value =
+      s?.edit?.expand?.yScale != null ? String(s.edit.expand.yScale) : ''
     fTransition.value = s?.transition ?? 'none'
-    fTransitionDuration.value = s?.transitionDuration != null ? String(s.transitionDuration) : ''
+    fTransitionDuration.value =
+      s?.transitionDuration != null ? String(s.transitionDuration) : ''
     fBgmAssetId.value = s?.bgmAssetId != null ? String(s.bgmAssetId) : ''
     fBgmVolume.value = s?.bgmVolume != null ? String(s.bgmVolume) : ''
     fBgmFade.value = s?.bgmFade !== false
     fAlign.value = s?.align === true
     fSubtitle.value = s?.subtitle ?? 'none'
-    fSubtitleAssetId.value = s?.subtitleAssetId != null ? String(s.subtitleAssetId) : ''
+    fSubtitleAssetId.value =
+      s?.subtitleAssetId != null ? String(s.subtitleAssetId) : ''
     fBurnSubtitles.value = s?.burnSubtitles === true
     fFit.value = s?.fit ?? 'pad'
     fTemperature.value = s?.temperature != null ? String(s.temperature) : ''
@@ -146,31 +181,85 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     },
     { immediate: true },
   )
-  watch([fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle, fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade, fAlign, fSubtitle, fSubtitleAssetId, fBurnSubtitles, fFit, fTemperature, fMaxTokens], () => {
-    formTouched.value = formSnapshot() !== formBase
-  })
+  watch(
+    [
+      fGenKind,
+      fPrompt,
+      fSize,
+      fDuration,
+      fResolution,
+      fAspectRatio,
+      fVoice,
+      fSpeed,
+      fFps,
+      fProvider,
+      fModel,
+      fStyle,
+      fEditMode,
+      fAngle,
+      fXScale,
+      fYScale,
+      fTransition,
+      fTransitionDuration,
+      fBgmAssetId,
+      fBgmVolume,
+      fBgmFade,
+      fAlign,
+      fSubtitle,
+      fSubtitleAssetId,
+      fBurnSubtitles,
+      fFit,
+      fTemperature,
+      fMaxTokens,
+    ],
+    () => {
+      formTouched.value = formSnapshot() !== formBase
+    },
+  )
 
   /** 组装 spec（over.maskAssetId 供蒙版保存直填；表单为空的可选项不落库） */
   function buildSpec(over?: { maskAssetId?: number }): CreationNodeSpec {
     const gk = fGenKind.value
-    const spec: CreationNodeSpec = { genKind: gk, prompt: gk === 'compose' ? '' : fPrompt.value.trim() }
+    const spec: CreationNodeSpec = {
+      genKind: gk,
+      prompt: gk === 'compose' ? '' : fPrompt.value.trim(),
+    }
     if (gk === 'image') {
       const size = fSize.value.trim()
       if (size) spec.size = size
     } else if (gk === 'video') {
       const duration = Number(fDuration.value)
-      if (fDuration.value.trim() && Number.isFinite(duration) && duration > 0) spec.duration = duration
+      if (fDuration.value.trim() && Number.isFinite(duration) && duration > 0)
+        spec.duration = duration
     } else if (gk === 'audio') {
       const voice = fVoice.value.trim()
       if (voice) spec.voice = voice
       const speed = Number(fSpeed.value)
-      if (fSpeed.value.trim() && Number.isFinite(speed) && speed >= 0.25 && speed <= 4) spec.speed = speed
+      if (
+        fSpeed.value.trim() &&
+        Number.isFinite(speed) &&
+        speed >= 0.25 &&
+        speed <= 4
+      )
+        spec.speed = speed
     } else if (gk === 'llm') {
       // [M18] LLM：温度 0-2（默认 0.7）、maxTokens 1-32000（默认 2048），为空不落库走服务端默认
       const tm = Number(fTemperature.value)
-      if (fTemperature.value.trim() && Number.isFinite(tm) && tm >= 0 && tm <= 2) spec.temperature = tm
+      if (
+        fTemperature.value.trim() &&
+        Number.isFinite(tm) &&
+        tm >= 0 &&
+        tm <= 2
+      )
+        spec.temperature = tm
       const mt = Number(fMaxTokens.value)
-      if (fMaxTokens.value.trim() && Number.isInteger(mt) && mt >= 1 && mt <= 32000) spec.maxTokens = mt
+      if (
+        fMaxTokens.value.trim() &&
+        Number.isInteger(mt) &&
+        mt >= 1 &&
+        mt <= 32000
+      )
+        spec.maxTokens = mt
     } else {
       const fps = Number(fFps.value)
       if (fFps.value.trim() && Number.isFinite(fps) && fps > 0) spec.fps = fps
@@ -178,14 +267,26 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
       if (fTransition.value !== 'none') {
         spec.transition = fTransition.value
         const td = Number(fTransitionDuration.value)
-        if (fTransitionDuration.value.trim() && Number.isFinite(td) && td >= 0.1 && td <= 2) spec.transitionDuration = td
+        if (
+          fTransitionDuration.value.trim() &&
+          Number.isFinite(td) &&
+          td >= 0.1 &&
+          td <= 2
+        )
+          spec.transitionDuration = td
       }
       // [M18] BGM（未选省略；音量/淡出仅 BGM 启用时落库，缺省走服务端）
       const ba = Number(fBgmAssetId.value)
       if (fBgmAssetId.value && Number.isInteger(ba) && ba > 0) {
         spec.bgmAssetId = ba
         const bv = Number(fBgmVolume.value)
-        if (fBgmVolume.value.trim() && Number.isFinite(bv) && bv >= 0 && bv <= 1) spec.bgmVolume = bv
+        if (
+          fBgmVolume.value.trim() &&
+          Number.isFinite(bv) &&
+          bv >= 0 &&
+          bv <= 1
+        )
+          spec.bgmVolume = bv
         if (!fBgmFade.value) spec.bgmFade = false
       }
       // [M22] 音字对齐（仅 true 落库）
@@ -195,7 +296,8 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
         spec.subtitle = fSubtitle.value
         if (fSubtitle.value === 'asset') {
           const sa = Number(fSubtitleAssetId.value)
-          if (fSubtitleAssetId.value && Number.isInteger(sa) && sa > 0) spec.subtitleAssetId = sa
+          if (fSubtitleAssetId.value && Number.isInteger(sa) && sa > 0)
+            spec.subtitleAssetId = sa
         }
         if (fBurnSubtitles.value) spec.burnSubtitles = true
       }
@@ -227,7 +329,8 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
         if (fYScale.value.trim() && Number.isFinite(ys)) expand.yScale = ys
         if (Object.keys(expand).length) edit.expand = expand
       } else {
-        const mid = over?.maskAssetId ?? asGenSpec(props.node?.spec)?.edit?.maskAssetId
+        const mid =
+          over?.maskAssetId ?? asGenSpec(props.node?.spec)?.edit?.maskAssetId
         if (mid) edit.maskAssetId = mid
       }
       spec.edit = edit
@@ -247,7 +350,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opBusy.value = true
     opErr.value = ''
     try {
-      await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+      await props.applyPatch({
+        id: n.id,
+        patch: { spec: buildSpec() },
+        label: '保存参数',
+      })
       markFormSaved()
       emit('notice', 'spec 已保存')
     } catch (e) {
@@ -266,8 +373,12 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     if (!e) return null
     return props.nodes.find((x) => x.id === e.from) ?? null
   })
-  const sourceAsset = computed<CanvasAssetLite | null>(() => sourceNode.value?.asset ?? null)
-  const currentMaskId = computed<number | null>(() => asGenSpec(props.node?.spec)?.edit?.maskAssetId ?? null)
+  const sourceAsset = computed<CanvasAssetLite | null>(
+    () => sourceNode.value?.asset ?? null,
+  )
+  const currentMaskId = computed<number | null>(
+    () => asGenSpec(props.node?.spec)?.edit?.maskAssetId ?? null,
+  )
 
   function openBrush(): void {
     if (!sourceAsset.value) return
@@ -280,7 +391,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opBusy.value = true
     opErr.value = ''
     try {
-      await props.applyPatch({ id: n.id, patch: { spec: buildSpec({ maskAssetId: assetId }) }, label: '应用蒙版' })
+      await props.applyPatch({
+        id: n.id,
+        patch: { spec: buildSpec({ maskAssetId: assetId }) },
+        label: '应用蒙版',
+      })
       emit('notice', `蒙版已保存并应用（资产 #${assetId}）`)
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -296,7 +411,9 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     if (!s?.edit || !cap) return null
     const mode = s.edit.mode
     const ok = mode === 'outpaint' ? cap.outpaint : cap.inpaint
-    return ok ? null : `当前图像端点未声明「${EDIT_MODE_TEXT[mode]}」能力，执行将失败（可在高级选项指定支持编辑的端点）`
+    return ok
+      ? null
+      : `当前图像端点未声明「${EDIT_MODE_TEXT[mode]}」能力，执行将失败（可在高级选项指定支持编辑的端点）`
   })
 
   // ===== [M17] 表单持久化辅助（AI 扩写 / extract 前落库） =====
@@ -307,10 +424,18 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     if (n.kind === 'text') {
       const ts = asTextSpec(n.spec)
       if (!ts || ts.text !== fText.value) {
-        await props.applyPatch({ id: n.id, patch: { spec: { text: fText.value } }, label: '编辑文本' })
+        await props.applyPatch({
+          id: n.id,
+          patch: { spec: { text: fText.value } },
+          label: '编辑文本',
+        })
       }
     } else if (n.kind === 'gen' && formTouched.value) {
-      await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+      await props.applyPatch({
+        id: n.id,
+        patch: { spec: buildSpec() },
+        label: '保存参数',
+      })
       markFormSaved()
     }
   }
@@ -324,7 +449,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opBusy.value = true
     opErr.value = ''
     try {
-      await props.applyPatch({ id: n.id, patch: { spec: { text: fText.value } }, label: '编辑文本' })
+      await props.applyPatch({
+        id: n.id,
+        patch: { spec: { text: fText.value } },
+        label: '编辑文本',
+      })
       emit('notice', '文本已保存')
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -341,9 +470,12 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const expandDraft = ref('')
   const expandInstruction = ref('')
   /** 节点切换 / 取消选中时关闭扩写弹窗（结果归属原节点，避免误应用） */
-  watch(() => props.node?.id ?? null, () => {
-    expandOpen.value = false
-  })
+  watch(
+    () => props.node?.id ?? null,
+    () => {
+      expandOpen.value = false
+    },
+  )
 
   async function openExpand(): Promise<void> {
     const n = props.node
@@ -374,7 +506,10 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     expandBusy.value = true
     expandErr.value = ''
     try {
-      const r = await creationApi.promptExpand(n.id, expandInstruction.value.trim() || undefined)
+      const r = await creationApi.promptExpand(
+        n.id,
+        expandInstruction.value.trim() || undefined,
+      )
       expandDraft.value = r.prompt
     } catch (e) {
       expandErr.value = e instanceof Error ? e.message : String(e)
@@ -391,10 +526,18 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     try {
       if (n.kind === 'text') {
         fText.value = expandDraft.value
-        await props.applyPatch({ id: n.id, patch: { spec: { text: expandDraft.value } }, label: '应用扩写' })
+        await props.applyPatch({
+          id: n.id,
+          patch: { spec: { text: expandDraft.value } },
+          label: '应用扩写',
+        })
       } else {
         fPrompt.value = expandDraft.value
-        await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '应用扩写' })
+        await props.applyPatch({
+          id: n.id,
+          patch: { spec: buildSpec() },
+          label: '应用扩写',
+        })
       }
       expandOpen.value = false
       emit('notice', '扩写已应用')
@@ -426,17 +569,22 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const bgmOptions = computed<Array<{ id: number; name: string }>>(() => {
     const out: Array<{ id: number; name: string }> = []
     const seen = new Set<number>()
-    const push = (id: number | null | undefined, name: string | null | undefined): void => {
+    const push = (
+      id: number | null | undefined,
+      name: string | null | undefined,
+    ): void => {
       if (id == null || seen.has(id)) return
       seen.add(id)
       out.push({ id, name: name ?? `资产 #${id}` })
     }
     for (const n of props.nodes) {
-      if (n.kind === 'asset' && n.asset?.kind === 'audio') push(n.assetId, n.asset.name)
+      if (n.kind === 'asset' && n.asset?.kind === 'audio')
+        push(n.assetId, n.asset.name)
     }
     for (const n of props.nodes) {
       if (n.kind !== 'gen' || asGenSpec(n.spec)?.genKind !== 'audio') continue
-      if (n.displayTask?.asset?.kind === 'audio') push(n.displayTask.resultAssetId, n.displayTask.asset.name)
+      if (n.displayTask?.asset?.kind === 'audio')
+        push(n.displayTask.resultAssetId, n.displayTask.asset.name)
     }
     const cur = asGenSpec(props.node?.spec)?.bgmAssetId
     if (cur != null) push(cur, `资产 #${cur}（画布外引用）`)
@@ -447,18 +595,25 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const subtitleOptions = computed<Array<{ id: number; name: string }>>(() => {
     const out: Array<{ id: number; name: string }> = []
     const seen = new Set<number>()
-    const push = (id: number | null | undefined, name: string | null | undefined): void => {
+    const push = (
+      id: number | null | undefined,
+      name: string | null | undefined,
+    ): void => {
       if (id == null || seen.has(id)) return
       seen.add(id)
       out.push({ id, name: name ?? `资产 #${id}` })
     }
-    const isSub = (a: CanvasAssetLite | null): boolean => !!a && a.kind === 'text' && (a.purpose === 'creation_subtitle' || a.name.endsWith('.srt'))
+    const isSub = (a: CanvasAssetLite | null): boolean =>
+      !!a &&
+      a.kind === 'text' &&
+      (a.purpose === 'creation_subtitle' || a.name.endsWith('.srt'))
     for (const n of props.nodes) {
       if (n.kind === 'asset' && isSub(n.asset)) push(n.assetId, n.asset?.name)
     }
     for (const n of props.nodes) {
       if (n.kind !== 'gen' || asGenSpec(n.spec)?.genKind !== 'compose') continue
-      if (isSub(n.displayTask?.asset ?? null)) push(n.displayTask?.resultAssetId, n.displayTask?.asset?.name)
+      if (isSub(n.displayTask?.asset ?? null))
+        push(n.displayTask?.resultAssetId, n.displayTask?.asset?.name)
     }
     const cur = asGenSpec(props.node?.spec)?.subtitleAssetId
     if (cur != null) push(cur, `资产 #${cur}（画布外引用）`)
@@ -471,7 +626,10 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     if (!n) return false
     if (n.kind === 'asset') return n.asset?.kind === 'video'
     if (n.kind !== 'gen') return false
-    return asGenSpec(n.spec)?.genKind === 'video' && (n.assetId != null || n.displayTask?.resultAssetId != null)
+    return (
+      asGenSpec(n.spec)?.genKind === 'video' &&
+      (n.assetId != null || n.displayTask?.resultAssetId != null)
+    )
   })
 
   async function doExtractFrame(): Promise<void> {
@@ -485,18 +643,29 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opErr.value = ''
     try {
       if (n.kind === 'gen' && formTouched.value) {
-        await props.applyPatch({ id: n.id, patch: { spec: buildSpec() }, label: '保存参数' })
+        await props.applyPatch({
+          id: n.id,
+          patch: { spec: buildSpec() },
+          label: '保存参数',
+        })
         markFormSaved()
       }
       const r = await creationApi.extractFrame(n.id, {
         mode: frameMode.value,
-        time: frameMode.value === 'custom' ? Number(frameTime.value) : undefined,
+        time:
+          frameMode.value === 'custom' ? Number(frameTime.value) : undefined,
         count: frameMode.value === 'uniform' ? uniformCount.value : undefined,
       })
       if (r.nodes && r.nodes.length > 1) {
-        emit('notice', `已均匀抽取 ${r.nodes.length} 帧（节点 #${r.nodes.map((x) => x.id).join('、#')}）`)
+        emit(
+          'notice',
+          `已均匀抽取 ${r.nodes.length} 帧（节点 #${r.nodes.map((x) => x.id).join('、#')}）`,
+        )
       } else {
-        emit('notice', `已抽取帧素材（节点 #${r.node.id} · 资产 #${r.asset.id}）`)
+        emit(
+          'notice',
+          `已抽取帧素材（节点 #${r.node.id} · 资产 #${r.asset.id}）`,
+        )
       }
       emit('refresh')
     } catch (e) {
@@ -514,7 +683,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opBusy.value = true
     opErr.value = ''
     try {
-      await props.applyPatch({ id: n.id, patch: { adoptedTaskId: next }, label: next == null ? '取消采纳' : '采纳产物' })
+      await props.applyPatch({
+        id: n.id,
+        patch: { adoptedTaskId: next },
+        label: next == null ? '取消采纳' : '采纳产物',
+      })
       emit('notice', next == null ? '已取消采纳' : `已采纳任务 #${item.taskId}`)
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
@@ -550,7 +723,8 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const runTitle = computed(() => {
     const n = props.node
     if (!n) return ''
-    if (n.status === 'pending' || n.status === 'processing') return '节点正在执行中'
+    if (n.status === 'pending' || n.status === 'processing')
+      return '节点正在执行中'
     if (n.canRun === true) return '执行该节点（当前表单会先自动保存）'
     return n.readiness?.problems.join('；') || '节点未就绪'
   })
@@ -561,9 +735,16 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     opBusy.value = true
     opErr.value = ''
     try {
-      await props.applyRun({ id: n.id, variants: fVariants.value, savePatch: { spec: buildSpec() } })
+      await props.applyRun({
+        id: n.id,
+        variants: fVariants.value,
+        savePatch: { spec: buildSpec() },
+      })
       markFormSaved()
-      emit('notice', `节点「${n.title}」已入队执行${fVariants.value > 1 ? ` ×${fVariants.value}` : ''}`)
+      emit(
+        'notice',
+        `节点「${n.title}」已入队执行${fVariants.value > 1 ? ` ×${fVariants.value}` : ''}`,
+      )
     } catch (e) {
       opErr.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -635,11 +816,11 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   })
   const edgeFrom = computed<CanvasDocNode | null>(() => {
     const e = props.edge
-    return e ? props.nodes.find((n) => n.id === e.from) ?? null : null
+    return e ? (props.nodes.find((n) => n.id === e.from) ?? null) : null
   })
   const edgeTo = computed<CanvasDocNode | null>(() => {
     const e = props.edge
-    return e ? props.nodes.find((n) => n.id === e.to) ?? null : null
+    return e ? (props.nodes.find((n) => n.id === e.to) ?? null) : null
   })
 
   async function dropEdge(id: number): Promise<void> {
@@ -666,7 +847,10 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     entLoading.value = true
     entErr.value = ''
     try {
-      const r = await entityApi.list(entKind.value, `&project_id=${props.projectId}`)
+      const r = await entityApi.list(
+        entKind.value,
+        `&project_id=${props.projectId}`,
+      )
       entList.value = r.items
     } catch (e) {
       entErr.value = e instanceof Error ? e.message : String(e)
@@ -701,27 +885,104 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   // ---- 模板状态总线（M28 装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
   const form = reactive({
     // 表单字段
-    fGenKind, fPrompt, fSize, fDuration, fResolution, fAspectRatio, fVoice, fSpeed, fFps, fProvider, fModel, fStyle,
-    fEditMode, fAngle, fXScale, fYScale, fTransition, fTransitionDuration, fBgmAssetId, fBgmVolume, fBgmFade,
-    fAlign, fSubtitle, fSubtitleAssetId, fBurnSubtitles, fFit,
-    fTemperature, fMaxTokens, fText,
+    fGenKind,
+    fPrompt,
+    fSize,
+    fDuration,
+    fResolution,
+    fAspectRatio,
+    fVoice,
+    fSpeed,
+    fFps,
+    fProvider,
+    fModel,
+    fStyle,
+    fEditMode,
+    fAngle,
+    fXScale,
+    fYScale,
+    fTransition,
+    fTransitionDuration,
+    fBgmAssetId,
+    fBgmVolume,
+    fBgmFade,
+    fAlign,
+    fSubtitle,
+    fSubtitleAssetId,
+    fBurnSubtitles,
+    fFit,
+    fTemperature,
+    fMaxTokens,
+    fText,
     // 交互状态
-    opErr, opBusy, formTouched, expandBusy,
-    entOpen, entKind, entList, entLoading, entBusy, entErr,
+    opErr,
+    opBusy,
+    formTouched,
+    expandBusy,
+    entOpen,
+    entKind,
+    entList,
+    entLoading,
+    entBusy,
+    entErr,
     // 派生视图
-    genSpec, canCancelRun, readinessNotes, sourceNode, sourceAsset, currentMaskId, capHint, bgmOptions, subtitleOptions, canExtractFrame,
+    genSpec,
+    canCancelRun,
+    readinessNotes,
+    sourceNode,
+    sourceAsset,
+    currentMaskId,
+    capHint,
+    bgmOptions,
+    subtitleOptions,
+    canExtractFrame,
   })
 
   return {
     form,
     // —— 视图层（index 解构直用；函数下传面板子组件）——
-    genSpec, opErr, opBusy, formTouched, frameBusy, canExtractFrame, fVariants, frameMode, frameTime, uniformCount, runTitle,
-    incoming, outgoing, edgeFrom, edgeTo,
-    doRun, doCancel, doExtractFrame, removeNode, dropEdge,
-    saveSpec, openExpand, doExpand, applyExpand, doExtract, saveText,
-    openBrush, onMaskSaved, showBrush, sourceAsset,
-    expandOpen, expandBusy, expandErr, expandDraft, expandInstruction, expandSrc,
-    cancelTaskRow, adoptResult, toggleEntities, attachTo, openRunDetail, cancelRun,
+    genSpec,
+    opErr,
+    opBusy,
+    formTouched,
+    frameBusy,
+    canExtractFrame,
+    fVariants,
+    frameMode,
+    frameTime,
+    uniformCount,
+    runTitle,
+    incoming,
+    outgoing,
+    edgeFrom,
+    edgeTo,
+    doRun,
+    doCancel,
+    doExtractFrame,
+    removeNode,
+    dropEdge,
+    saveSpec,
+    openExpand,
+    doExpand,
+    applyExpand,
+    doExtract,
+    saveText,
+    openBrush,
+    onMaskSaved,
+    showBrush,
+    sourceAsset,
+    expandOpen,
+    expandBusy,
+    expandErr,
+    expandDraft,
+    expandInstruction,
+    expandSrc,
+    cancelTaskRow,
+    adoptResult,
+    toggleEntities,
+    attachTo,
+    openRunDetail,
+    cancelRun,
   }
 }
 

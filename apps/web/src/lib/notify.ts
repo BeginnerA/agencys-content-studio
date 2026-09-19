@@ -20,7 +20,12 @@ export interface NotifyPrefs {
 }
 
 /** 缺省全开（settings 无 'notify' 键或读取失败时的回落） */
-export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { enabled: true, run_terminal: true, gate: true, batch: true }
+export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
+  enabled: true,
+  run_terminal: true,
+  gate: true,
+  batch: true,
+}
 
 /** 惰性一次性缓存（读取失败默认全开）；设置页保存后调 invalidateNotifyPrefs 失效 */
 let prefs: NotifyPrefs | null = null
@@ -30,7 +35,10 @@ async function readPrefs(): Promise<NotifyPrefs> {
   try {
     const r = await settingsApi.list()
     const raw = r.items.find((it) => it.key === 'notify')?.value
-    prefs = { ...DEFAULT_NOTIFY_PREFS, ...(raw && typeof raw === 'object' ? (raw as Partial<NotifyPrefs>) : {}) }
+    prefs = {
+      ...DEFAULT_NOTIFY_PREFS,
+      ...(raw && typeof raw === 'object' ? (raw as Partial<NotifyPrefs>) : {}),
+    }
   } catch {
     prefs = { ...DEFAULT_NOTIFY_PREFS }
   }
@@ -43,7 +51,8 @@ export function invalidateNotifyPrefs(): void {
 }
 
 /** 当前权限状态（设置页展示用） */
-export function notifyPermission(): 'granted' | 'default' | 'denied' | 'unsupported' {
+export function notifyPermission():
+  'granted' | 'default' | 'denied' | 'unsupported' {
   if (typeof Notification === 'undefined') return 'unsupported'
   return Notification.permission
 }
@@ -59,7 +68,11 @@ export async function requestNotifyPermission(): Promise<string> {
 }
 
 function canPush(): boolean {
-  return typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden
+  return (
+    typeof Notification !== 'undefined' &&
+    Notification.permission === 'granted' &&
+    document.hidden
+  )
 }
 
 function clip(s: string, n: number): string {
@@ -103,7 +116,14 @@ export function initNotify(router: Router): void {
   if (inited) return
   inited = true
   studioOn('run.completed', (p) => {
-    void maybePush(router, (n) => n.run_terminal, `运行 #${p.runId} 已完成`, '', `run-${p.runId}`, `/runs/${p.runId}`)
+    void maybePush(
+      router,
+      (n) => n.run_terminal,
+      `运行 #${p.runId} 已完成`,
+      '',
+      `run-${p.runId}`,
+      `/runs/${p.runId}`,
+    )
   })
   studioOn('run.failed', (p) => {
     void maybePush(

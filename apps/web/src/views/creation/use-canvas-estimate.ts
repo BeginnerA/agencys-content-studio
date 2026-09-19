@@ -14,8 +14,20 @@ export function useCanvasEstimate(deps: Dependencies) {
   const estimateBusy = ref(false)
   const estimateResult = ref<PreviewCanvasResult | null>(null)
   /** [M18] 预估单位 / 生成类型文案（对齐 usage.ts UsageUnit 与 GEN_KINDS） */
-  const UNIT_TEXT: Record<string, string> = { tokens_in: '输入 tokens', tokens_out: '输出 tokens', image: '张', second: '秒', char: '字符' }
-  const GEN_KIND_TEXT: Record<string, string> = { image: '图片生成', video: '视频生成', audio: '音频生成', compose: '音视频合成', llm: '文本生成' }
+  const UNIT_TEXT: Record<string, string> = {
+    tokens_in: '输入 tokens',
+    tokens_out: '输出 tokens',
+    image: '张',
+    second: '秒',
+    char: '字符',
+  }
+  const GEN_KIND_TEXT: Record<string, string> = {
+    image: '图片生成',
+    video: '视频生成',
+    audio: '音频生成',
+    compose: '音视频合成',
+    llm: '文本生成',
+  }
 
   async function openEstimate(): Promise<void> {
     const cid = canvasId.value

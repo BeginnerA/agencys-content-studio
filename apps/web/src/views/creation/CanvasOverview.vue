@@ -2,46 +2,61 @@
 import Icon from '../../components/common/Icon.vue'
 import type { CanvasViewState } from './use-canvas-view'
 
-const props = defineProps<{ cv: Pick<CanvasViewState,
-  | 'showOverview'
-  | 'canvasId'
-  | 'nodes'
-  | 'overviewRows'
-  | 'selectedIds'
-  | 'focusNode'
-> }>()
+const props = defineProps<{
+  cv: Pick<
+    CanvasViewState,
+    | 'showOverview'
+    | 'canvasId'
+    | 'nodes'
+    | 'overviewRows'
+    | 'selectedIds'
+    | 'focusNode'
+  >
+}>()
 const cv = props.cv
 </script>
 
 <template>
-      <!-- [M17] 全局状态总览抽屉（doc 派生；点击定位） -->
-      <aside v-if="cv.showOverview && cv.canvasId != null" class="ov-drawer panel" aria-label="全局状态总览">
-        <div class="ov-h">
-          <span>总览</span>
-          <span class="muted mini">{{ cv.nodes.length }} 节点</span>
-          <button type="button" class="iconbtn" title="收起" @click="cv.showOverview = false">
-            <Icon name="x" :size="12" />
-          </button>
-        </div>
-        <div class="muted mini ov-legend">按严重度排序：失败 › 未就绪 › 运行中 › 就绪 › 完成 / 空闲；点击行定位到节点。</div>
-        <div v-if="!cv.overviewRows.length" class="muted mini">画布暂无节点</div>
-        <div v-else class="ov-list">
-          <button
-            v-for="r in cv.overviewRows"
-            :key="r.id"
-            type="button"
-            class="ov-row"
-            :class="{ active: cv.selectedIds.includes(r.id) }"
-            :title="r.summary"
-            @click="cv.focusNode(r.id)"
-          >
-            <span class="ov-dot" :class="r.dot" />
-            <span class="ov-title">{{ r.title }}</span>
-            <span class="ov-kind muted mini">{{ r.kind }}</span>
-            <span class="ov-sum">{{ r.summary }}</span>
-          </button>
-        </div>
-      </aside>
+  <!-- [M17] 全局状态总览抽屉（doc 派生；点击定位） -->
+  <aside
+    v-if="cv.showOverview && cv.canvasId != null"
+    class="ov-drawer panel"
+    aria-label="全局状态总览"
+  >
+    <div class="ov-h">
+      <span>总览</span>
+      <span class="muted mini">{{ cv.nodes.length }} 节点</span>
+      <button
+        type="button"
+        class="iconbtn"
+        title="收起"
+        @click="cv.showOverview = false"
+      >
+        <Icon name="x" :size="12" />
+      </button>
+    </div>
+    <div class="muted mini ov-legend">
+      按严重度排序：失败 › 未就绪 › 运行中 › 就绪 › 完成 /
+      空闲；点击行定位到节点。
+    </div>
+    <div v-if="!cv.overviewRows.length" class="muted mini">画布暂无节点</div>
+    <div v-else class="ov-list">
+      <button
+        v-for="r in cv.overviewRows"
+        :key="r.id"
+        type="button"
+        class="ov-row"
+        :class="{ active: cv.selectedIds.includes(r.id) }"
+        :title="r.summary"
+        @click="cv.focusNode(r.id)"
+      >
+        <span class="ov-dot" :class="r.dot" />
+        <span class="ov-title">{{ r.title }}</span>
+        <span class="ov-kind muted mini">{{ r.kind }}</span>
+        <span class="ov-sum">{{ r.summary }}</span>
+      </button>
+    </div>
+  </aside>
 </template>
 
 <style scoped>
@@ -173,5 +188,4 @@ const cv = props.cv
   white-space: nowrap;
   color: var(--text-3);
 }
-
 </style>

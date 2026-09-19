@@ -2,102 +2,145 @@
 import Icon from '../../components/common/Icon.vue'
 import type { SettingsApi } from './use-settings'
 const props = defineProps<{ s: SettingsApi }>()
-const { testBusy, selectedProvider, openNew, openEdit, remove, test, msgOf, menuFor, menuUp, toggleMenu, closeMenu, menuAct, menuSetDefault, menuToggle } = props.s
+const {
+  testBusy,
+  selectedProvider,
+  openNew,
+  openEdit,
+  remove,
+  test,
+  msgOf,
+  menuFor,
+  menuUp,
+  toggleMenu,
+  closeMenu,
+  menuAct,
+  menuSetDefault,
+  menuToggle,
+} = props.s
 </script>
 
 <template>
-        <section v-if="selectedProvider" class="panel detail">
-          <div class="dhead">
-            <div class="dtl">
-              <span class="pname">{{ selectedProvider.name }}</span>
-              <span class="pk mono" :title="`供应商 key：${selectedProvider.key}`">{{ selectedProvider.key }}</span>
+  <section v-if="selectedProvider" class="panel detail">
+    <div class="dhead">
+      <div class="dtl">
+        <span class="pname">{{ selectedProvider.name }}</span>
+        <span class="pk mono" :title="`供应商 key：${selectedProvider.key}`">{{
+          selectedProvider.key
+        }}</span>
+      </div>
+      <button class="btn sm primary" @click="openNew">
+        <Icon name="plus" :size="13" :stroke-width="2.2" /> 新建实例
+      </button>
+    </div>
+    <div class="pdesc muted">{{ selectedProvider.description }}</div>
+
+    <div v-if="!selectedProvider.configs.length" class="dempty">
+      <span class="muted">未配置实例——流水线调用该能力将失败</span>
+      <button class="btn sm" @click="openNew">立即配置</button>
+    </div>
+
+    <table v-else class="tbl">
+      <thead>
+        <tr>
+          <th>实例</th>
+          <th>模型</th>
+          <th style="width: 90px">状态</th>
+          <th style="width: 176px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="cfg in selectedProvider.configs" :key="cfg.id">
+          <td>
+            <div class="inst">
+              <span class="iname">
+                {{ cfg.name }}
+                <span v-if="cfg.isDefault" class="tag-default">默认</span>
+              </span>
+              <span
+                v-if="msgOf(cfg.id)"
+                class="tmsg"
+                :class="{ bad: msgOf(cfg.id).startsWith('✗') }"
+              >
+                {{ msgOf(cfg.id) }}
+              </span>
             </div>
-            <button class="btn sm primary" @click="openNew">
-              <Icon name="plus" :size="13" :stroke-width="2.2" /> 新建实例
-            </button>
-          </div>
-          <div class="pdesc muted">{{ selectedProvider.description }}</div>
-
-          <div v-if="!selectedProvider.configs.length" class="dempty">
-            <span class="muted">未配置实例——流水线调用该能力将失败</span>
-            <button class="btn sm" @click="openNew">立即配置</button>
-          </div>
-
-          <table v-else class="tbl">
-            <thead>
-              <tr>
-                <th>实例</th>
-                <th>模型</th>
-                <th style="width: 90px">状态</th>
-                <th style="width: 176px">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="cfg in selectedProvider.configs" :key="cfg.id">
-                <td>
-                  <div class="inst">
-                    <span class="iname">
-                      {{ cfg.name }}
-                      <span v-if="cfg.isDefault" class="tag-default">默认</span>
-                    </span>
-                    <span v-if="msgOf(cfg.id)" class="tmsg" :class="{ bad: msgOf(cfg.id).startsWith('✗') }">
-                      {{ msgOf(cfg.id) }}
-                    </span>
-                  </div>
-                </td>
-                <td class="mono" style="font-size: 12px">{{ cfg.model || '—' }}</td>
-                <td>
-                  <span class="badge" :class="cfg.isActive ? 'succeeded' : 'cancelled'">
-                    {{ cfg.isActive ? '启用' : '停用' }}
-                  </span>
-                </td>
-                <td>
-                  <div class="ops">
-                    <button
-                      class="btn sm"
-                      :disabled="testBusy === cfg.id || !selectedProvider.testable"
-                      :title="selectedProvider.testable ? '实测端点与鉴权（图像/视频/语音可能产生少量计费）' : '该供应商暂未提供连通探针，请用真实运行验证'"
-                      @click="test(cfg)"
-                    >
-                      {{ testBusy === cfg.id ? '测试中…' : '测试' }}
-                    </button>
-                    <button class="btn sm" @click="openEdit(cfg)">编辑</button>
-                    <div class="mwrap" data-menu-root>
-                      <button
-                        class="btn sm mbtn"
-                        aria-haspopup="menu"
-                        aria-label="更多操作"
-                        :aria-expanded="menuFor === cfg.id"
-                        title="更多操作"
-                        @click="toggleMenu(cfg, $event)"
-                      >
-                        <Icon name="more" :size="14" />
-                      </button>
-                      <div
-                        v-if="menuFor === cfg.id"
-                        class="menu"
-                        :class="{ up: menuUp }"
-                        role="menu"
-                        aria-label="实例操作"
-                        tabindex="-1"
-                        @keydown.esc.stop="closeMenu(true)"
-                      >
-                        <button v-if="!cfg.isDefault" class="mi" role="menuitem" @click="menuAct(() => menuSetDefault(cfg))">
-                          设为默认
-                        </button>
-                        <button class="mi" role="menuitem" @click="menuAct(() => menuToggle(cfg))">
-                          {{ cfg.isActive ? '停用' : '启用' }}
-                        </button>
-                        <div class="msep" />
-                        <button class="mi bad" role="menuitem" @click="menuAct(() => remove(cfg))">删除</button>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+          </td>
+          <td class="mono" style="font-size: 12px">{{ cfg.model || '—' }}</td>
+          <td>
+            <span
+              class="badge"
+              :class="cfg.isActive ? 'succeeded' : 'cancelled'"
+            >
+              {{ cfg.isActive ? '启用' : '停用' }}
+            </span>
+          </td>
+          <td>
+            <div class="ops">
+              <button
+                class="btn sm"
+                :disabled="testBusy === cfg.id || !selectedProvider.testable"
+                :title="
+                  selectedProvider.testable
+                    ? '实测端点与鉴权（图像/视频/语音可能产生少量计费）'
+                    : '该供应商暂未提供连通探针，请用真实运行验证'
+                "
+                @click="test(cfg)"
+              >
+                {{ testBusy === cfg.id ? '测试中…' : '测试' }}
+              </button>
+              <button class="btn sm" @click="openEdit(cfg)">编辑</button>
+              <div class="mwrap" data-menu-root>
+                <button
+                  class="btn sm mbtn"
+                  aria-haspopup="menu"
+                  aria-label="更多操作"
+                  :aria-expanded="menuFor === cfg.id"
+                  title="更多操作"
+                  @click="toggleMenu(cfg, $event)"
+                >
+                  <Icon name="more" :size="14" />
+                </button>
+                <div
+                  v-if="menuFor === cfg.id"
+                  class="menu"
+                  :class="{ up: menuUp }"
+                  role="menu"
+                  aria-label="实例操作"
+                  tabindex="-1"
+                  @keydown.esc.stop="closeMenu(true)"
+                >
+                  <button
+                    v-if="!cfg.isDefault"
+                    class="mi"
+                    role="menuitem"
+                    @click="menuAct(() => menuSetDefault(cfg))"
+                  >
+                    设为默认
+                  </button>
+                  <button
+                    class="mi"
+                    role="menuitem"
+                    @click="menuAct(() => menuToggle(cfg))"
+                  >
+                    {{ cfg.isActive ? '停用' : '启用' }}
+                  </button>
+                  <div class="msep" />
+                  <button
+                    class="mi bad"
+                    role="menuitem"
+                    @click="menuAct(() => remove(cfg))"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
 </template>
 
 <style scoped>

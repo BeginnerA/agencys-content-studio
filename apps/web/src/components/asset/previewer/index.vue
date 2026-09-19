@@ -9,25 +9,110 @@ import MarkdownPreview from '../../common/MarkdownPreview.vue'
 import VersionHistoryPanel from '../../version/VersionHistoryPanel.vue'
 import { useAssetPreviewer } from './use-asset-previewer'
 
-const props = defineProps<{ assets: Asset[]; index?: number; removable?: boolean }>()
-const emit = defineEmits<{ close: []; changed: [asset: Asset]; removed: [asset: Asset] }>()
+const props = defineProps<{
+  assets: Asset[]
+  index?: number
+  removable?: boolean
+}>()
+const emit = defineEmits<{
+  close: []
+  changed: [asset: Asset]
+  removed: [asset: Asset]
+}>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, tooBig, TYPE_ICON, kindLabel, compliance, complianceLabel, complianceTip, metaLine, text, textLoading, textErr, jsonHtml, jsonBad, copied, copyText, scale, tx, ty, dragging, imgErr, stageEl, onImgLoad, resetImage, onWheel, zoomBy, toggleDouble, onPointerDown, onPointerMove, onPointerUp, checkBusy, checkMsg, doCheck, tagDraft, tagBusy, tagErr, curTags, addTag, removeTag, removeBusy, removeErr, doRemove, editing, draft, editSaving, editErr, editDirty, canEdit, startEdit, saveEdit, showVersions, onVersionRestored, tryClose, prev, next, downloadHref } = useAssetPreviewer(props, emit)
+const {
+  MIN_SCALE,
+  MAX_SCALE,
+  idx,
+  cur,
+  hasPrev,
+  hasNext,
+  vkind,
+  isTextLike,
+  tooBig,
+  TYPE_ICON,
+  kindLabel,
+  compliance,
+  complianceLabel,
+  complianceTip,
+  metaLine,
+  text,
+  textLoading,
+  textErr,
+  jsonHtml,
+  jsonBad,
+  copied,
+  copyText,
+  scale,
+  tx,
+  ty,
+  dragging,
+  imgErr,
+  stageEl,
+  onImgLoad,
+  resetImage,
+  onWheel,
+  zoomBy,
+  toggleDouble,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  checkBusy,
+  checkMsg,
+  doCheck,
+  tagDraft,
+  tagBusy,
+  tagErr,
+  curTags,
+  addTag,
+  removeTag,
+  removeBusy,
+  removeErr,
+  doRemove,
+  editing,
+  draft,
+  editSaving,
+  editErr,
+  editDirty,
+  canEdit,
+  startEdit,
+  saveEdit,
+  showVersions,
+  onVersionRestored,
+  tryClose,
+  prev,
+  next,
+  downloadHref,
+} = useAssetPreviewer(props, emit)
 </script>
 
 <template>
   <Teleport to="body">
     <div class="mask" @click.self="tryClose">
-      <div v-if="cur" class="viewer panel" role="dialog" aria-modal="true" :aria-label="`资产预览：${cur.name}`">
+      <div
+        v-if="cur"
+        class="viewer panel"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="`资产预览：${cur.name}`"
+      >
         <!-- 顶栏：身份 + 操作 -->
         <header class="head">
           <Icon :name="TYPE_ICON[vkind]" :size="15" class="type-ic" />
           <span class="nm" :title="cur.name">{{ cur.name }}</span>
           <span class="badge">{{ kindLabel }}</span>
           <!-- [M24] 合规审核徽章（params.compliance；悬停看命中数与时间） -->
-          <span v-if="compliance" class="badge" :class="`comp-${compliance.status}`" :title="complianceTip">{{ complianceLabel }}</span>
-          <span v-if="assets.length > 1" class="count mono">{{ idx + 1 }} / {{ assets.length }}</span>
+          <span
+            v-if="compliance"
+            class="badge"
+            :class="`comp-${compliance.status}`"
+            :title="complianceTip"
+            >{{ complianceLabel }}</span
+          >
+          <span v-if="assets.length > 1" class="count mono"
+            >{{ idx + 1 }} / {{ assets.length }}</span
+          >
           <div class="ops">
             <button
               v-if="cur.kind === 'image'"
@@ -36,7 +121,8 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               title="重新检测图片有效性（黑图 / 纯色空白 / 损坏；结果写入资产元数据）"
               @click="doCheck"
             >
-              <Icon name="refresh" :size="12" /> {{ checkBusy ? '检测中…' : '重新检测' }}
+              <Icon name="refresh" :size="12" />
+              {{ checkBusy ? '检测中…' : '重新检测' }}
             </button>
             <button
               v-if="isTextLike && !tooBig"
@@ -44,7 +130,8 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               :disabled="textLoading || !!textErr || !text"
               @click="copyText"
             >
-              <Icon :name="copied ? 'check' : 'copy'" :size="12" /> {{ copied ? '已复制' : '复制' }}
+              <Icon :name="copied ? 'check' : 'copy'" :size="12" />
+              {{ copied ? '已复制' : '复制' }}
             </button>
             <!-- [M25] G2 文本内容编辑（白名单 purpose 入口；保存/取消收敛顶栏） -->
             <button
@@ -67,8 +154,13 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               <Icon name="clock" :size="12" /> 历史·影响
             </button>
             <template v-if="editing">
-              <button class="btn sm primary" :disabled="editSaving || !editDirty" @click="saveEdit">
-                <Icon name="check" :size="12" /> {{ editSaving ? '保存中…' : '保存' }}
+              <button
+                class="btn sm primary"
+                :disabled="editSaving || !editDirty"
+                @click="saveEdit"
+              >
+                <Icon name="check" :size="12" />
+                {{ editSaving ? '保存中…' : '保存' }}
               </button>
               <button class="btn sm" :disabled="editSaving" @click="tryClose()">
                 {{ editDirty ? '放弃修改' : '取消' }}
@@ -77,7 +169,13 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             <a class="btn sm" :href="downloadHref(cur)" :download="cur.name">
               <Icon name="download" :size="12" /> 下载
             </a>
-            <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener" title="浏览器新标签打开原文">
+            <a
+              class="btn sm"
+              :href="cur.urls.file"
+              target="_blank"
+              rel="noopener"
+              title="浏览器新标签打开原文"
+            >
               <Icon name="external" :size="12" /> 新标签
             </a>
             <button
@@ -87,7 +185,8 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               title="软删除该资产（回收空间前可回溯）"
               @click="doRemove"
             >
-              <Icon name="trash" :size="12" /> {{ removeBusy ? '删除中…' : '删除' }}
+              <Icon name="trash" :size="12" />
+              {{ removeBusy ? '删除中…' : '删除' }}
             </button>
             <button class="icon-btn" aria-label="关闭预览" @click="tryClose">
               <Icon name="x" :size="15" :stroke-width="2" />
@@ -106,7 +205,9 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
                 :alt="cur.name"
                 class="imgbox"
                 :class="{ grab: scale > 1, grabbing: dragging }"
-                :style="{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }"
+                :style="{
+                  transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+                }"
                 draggable="false"
                 @error="imgErr = true"
                 @load="onImgLoad"
@@ -120,14 +221,30 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               <div v-else class="midwrap">
                 <Icon name="photo" :size="38" class="big-ic" />
                 <div>图片加载失败</div>
-                <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener">新标签重试</a>
+                <a
+                  class="btn sm"
+                  :href="cur.urls.file"
+                  target="_blank"
+                  rel="noopener"
+                  >新标签重试</a
+                >
               </div>
               <div v-if="!imgErr" class="zoombar">
-                <button class="icon-btn" aria-label="缩小" :disabled="scale <= MIN_SCALE" @click="zoomBy(1 / 1.25)">
+                <button
+                  class="icon-btn"
+                  aria-label="缩小"
+                  :disabled="scale <= MIN_SCALE"
+                  @click="zoomBy(1 / 1.25)"
+                >
                   <Icon name="zoom-out" :size="14" />
                 </button>
                 <span class="zval mono">{{ Math.round(scale * 100) }}%</span>
-                <button class="icon-btn" aria-label="放大" :disabled="scale >= MAX_SCALE" @click="zoomBy(1.25)">
+                <button
+                  class="icon-btn"
+                  aria-label="放大"
+                  :disabled="scale >= MAX_SCALE"
+                  @click="zoomBy(1.25)"
+                >
                   <Icon name="zoom-in" :size="14" />
                 </button>
                 <button
@@ -165,7 +282,12 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               <div v-if="tooBig" class="midwrap">
                 <Icon name="doc" :size="38" class="big-ic" />
                 <div>文件较大（{{ fmtSize(cur.fileSize) }}），不内联预览</div>
-                <a class="btn primary" :href="downloadHref(cur)" :download="cur.name">下载查看</a>
+                <a
+                  class="btn primary"
+                  :href="downloadHref(cur)"
+                  :download="cur.name"
+                  >下载查看</a
+                >
               </div>
               <div v-else-if="textLoading" class="midwrap">
                 <div class="spin" aria-hidden="true" />
@@ -173,10 +295,20 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               </div>
               <div v-else-if="textErr" class="midwrap">
                 <div class="err-text">{{ textErr }}</div>
-                <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener">新标签打开</a>
+                <a
+                  class="btn sm"
+                  :href="cur.urls.file"
+                  target="_blank"
+                  rel="noopener"
+                  >新标签打开</a
+                >
               </div>
               <!-- [M25] 编辑态：textarea + markdown 分栏实时预览（对齐 GateDialog 编辑器先例） -->
-              <div v-else-if="editing" class="editwrap" :class="{ split: vkind === 'markdown' }">
+              <div
+                v-else-if="editing"
+                class="editwrap"
+                :class="{ split: vkind === 'markdown' }"
+              >
                 <textarea
                   v-model="draft"
                   class="editbox mono"
@@ -191,7 +323,9 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               <div v-else class="doc">
                 <MarkdownPreview v-if="vkind === 'markdown'" :source="text" />
                 <template v-else-if="vkind === 'json'">
-                  <div v-if="jsonBad" class="jsonhint">JSON 解析失败，按原文展示</div>
+                  <div v-if="jsonBad" class="jsonhint">
+                    JSON 解析失败，按原文展示
+                  </div>
                   <pre class="prebox json" v-html="jsonHtml" />
                 </template>
                 <pre v-else class="prebox">{{ text }}</pre>
@@ -204,16 +338,37 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
               <div class="fname">{{ cur.name }}</div>
               <div class="muted">该格式暂不支持内联预览</div>
               <div class="fbtns">
-                <a class="btn primary" :href="downloadHref(cur)" :download="cur.name">下载文件</a>
-                <a class="btn" :href="cur.urls.file" target="_blank" rel="noopener">新标签打开</a>
+                <a
+                  class="btn primary"
+                  :href="downloadHref(cur)"
+                  :download="cur.name"
+                  >下载文件</a
+                >
+                <a
+                  class="btn"
+                  :href="cur.urls.file"
+                  target="_blank"
+                  rel="noopener"
+                  >新标签打开</a
+                >
               </div>
             </div>
           </div>
 
-          <button v-if="hasPrev && !editing" class="nav prev" aria-label="上一个资产" @click="prev">
+          <button
+            v-if="hasPrev && !editing"
+            class="nav prev"
+            aria-label="上一个资产"
+            @click="prev"
+          >
             <Icon name="chevron-left" :size="18" />
           </button>
-          <button v-if="hasNext && !editing" class="nav next" aria-label="下一个资产" @click="next">
+          <button
+            v-if="hasNext && !editing"
+            class="nav next"
+            aria-label="下一个资产"
+            @click="next"
+          >
             <Icon name="chevron-right" :size="18" />
           </button>
         </div>
@@ -225,7 +380,13 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             <span class="tglb">标签</span>
             <span v-for="t in curTags" :key="t" class="tgchip">
               {{ t }}
-              <button class="tgx" type="button" :disabled="tagBusy" :aria-label="`删除标签 ${t}`" @click="removeTag(t)">
+              <button
+                class="tgx"
+                type="button"
+                :disabled="tagBusy"
+                :aria-label="`删除标签 ${t}`"
+                @click="removeTag(t)"
+              >
                 <Icon name="x" :size="10" :stroke-width="2.6" />
               </button>
             </span>
@@ -240,7 +401,13 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
             />
             <span v-if="tagErr" class="err-text">{{ tagErr }}</span>
           </div>
-          <div v-if="checkMsg" class="chk" :class="{ bad: checkMsg.startsWith('检测失败') }">{{ checkMsg }}</div>
+          <div
+            v-if="checkMsg"
+            class="chk"
+            :class="{ bad: checkMsg.startsWith('检测失败') }"
+          >
+            {{ checkMsg }}
+          </div>
           <div v-if="removeErr" class="chk bad">{{ removeErr }}</div>
           <div v-if="editErr" class="chk bad">保存失败：{{ editErr }}</div>
           <details v-if="cur.prompt" class="prmt">
@@ -250,15 +417,28 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
         </footer>
 
         <!-- [M29·R02] 右侧「历史 · 影响」抽屉（可编辑文本资产；覆盖舞台右缘） -->
-        <div v-if="showVersions && cur" class="vdraw" role="complementary" aria-label="版本历史与影响">
+        <div
+          v-if="showVersions && cur"
+          class="vdraw"
+          role="complementary"
+          aria-label="版本历史与影响"
+        >
           <div class="vdraw-head">
             <span>历史 · 影响</span>
-            <button class="icon-btn" aria-label="关闭历史面板" @click="showVersions = false">
+            <button
+              class="icon-btn"
+              aria-label="关闭历史面板"
+              @click="showVersions = false"
+            >
               <Icon name="x" :size="14" :stroke-width="2" />
             </button>
           </div>
           <div class="vdraw-body">
-            <VersionHistoryPanel kind="asset" :obj-id="cur.id" @restored="onVersionRestored" />
+            <VersionHistoryPanel
+              kind="asset"
+              :obj-id="cur.id"
+              @restored="onVersionRestored"
+            />
           </div>
         </div>
       </div>
@@ -408,7 +588,11 @@ const { MIN_SCALE, MAX_SCALE, idx, cur, hasPrev, hasNext, vkind, isTextLike, too
   justify-content: center;
   overflow: hidden;
   background:
-    radial-gradient(900px 420px at 50% -10%, rgb(139 92 246 / 5%), transparent 60%),
+    radial-gradient(
+      900px 420px at 50% -10%,
+      rgb(139 92 246 / 5%),
+      transparent 60%
+    ),
     var(--code-bg);
 }
 

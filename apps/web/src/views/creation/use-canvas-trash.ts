@@ -6,8 +6,8 @@ import type { CanvasListItem } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'projectId' | 'toast'>
-  & Pick<CanvasTarget, 'loadCanvases'>
+type Dependencies = Pick<CanvasState, 'projectId' | 'toast'> &
+  Pick<CanvasTarget, 'loadCanvases'>
 
 export function useCanvasTrash(deps: Dependencies) {
   const { projectId, toast, loadCanvases } = deps

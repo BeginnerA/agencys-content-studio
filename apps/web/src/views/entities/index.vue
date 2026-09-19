@@ -7,7 +7,25 @@ import RefGenModal from './RefGenModal.vue'
 import { useEntitiesPage } from './use-entities'
 
 const s = useEntitiesPage()
-const { KINDS, kind, cfg, items, projects, loading, err, projectFilter, selected, polishing, notice, switchKind, onFilterChange, openNew, polishSelected, REFGEN_MAX_ITEMS, openRefGen } = s
+const {
+  KINDS,
+  kind,
+  cfg,
+  items,
+  projects,
+  loading,
+  err,
+  projectFilter,
+  selected,
+  polishing,
+  notice,
+  switchKind,
+  onFilterChange,
+  openNew,
+  polishSelected,
+  REFGEN_MAX_ITEMS,
+  openRefGen,
+} = s
 </script>
 
 <template>
@@ -28,16 +46,27 @@ const { KINDS, kind, cfg, items, projects, loading, err, projectFilter, selected
         </button>
       </div>
       <span class="sub">{{ items.length }} 项</span>
-      <select v-model="projectFilter" style="width: 180px" aria-label="按归属筛选" @change="onFilterChange">
+      <select
+        v-model="projectFilter"
+        style="width: 180px"
+        aria-label="按归属筛选"
+        @change="onFilterChange"
+      >
         <option value="">全部归属</option>
         <option value="global">仅全局</option>
-        <option v-for="p in projects" :key="p.id" :value="String(p.id)">项目#{{ p.id }} {{ p.name }}</option>
+        <option v-for="p in projects" :key="p.id" :value="String(p.id)">
+          项目#{{ p.id }} {{ p.name }}
+        </option>
       </select>
       <button
         class="btn"
         style="margin-left: auto"
         :disabled="polishing || !selected.size"
-        :title="selected.size ? `已选素材批量出参考图（≤${REFGEN_MAX_ITEMS} 项，完成后自动挂接）` : '先勾选素材卡片'"
+        :title="
+          selected.size
+            ? `已选素材批量出参考图（≤${REFGEN_MAX_ITEMS} 项，完成后自动挂接）`
+            : '先勾选素材卡片'
+        "
         @click="openRefGen"
       >
         <Icon name="imageplus" :size="14" /> 生成参考图（{{ selected.size }}）
@@ -45,10 +74,15 @@ const { KINDS, kind, cfg, items, projects, loading, err, projectFilter, selected
       <button
         class="btn"
         :disabled="polishing || !selected.size"
-        :title="selected.size ? `对已选 ${selected.size} 项润色 appearance（≤10 项/次）` : '先勾选素材卡片'"
+        :title="
+          selected.size
+            ? `对已选 ${selected.size} 项润色 appearance（≤10 项/次）`
+            : '先勾选素材卡片'
+        "
         @click="polishSelected"
       >
-        <Icon name="sparkles" :size="14" /> {{ polishing ? '润色中…' : `批量润色（${selected.size}）` }}
+        <Icon name="sparkles" :size="14" />
+        {{ polishing ? '润色中…' : `批量润色（${selected.size}）` }}
       </button>
       <button class="btn primary" @click="openNew">
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建{{ cfg.label }}

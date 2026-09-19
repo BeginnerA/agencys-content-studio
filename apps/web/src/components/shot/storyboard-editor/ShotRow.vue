@@ -1,56 +1,72 @@
 <script setup lang="ts">
 import Icon from '../../common/Icon.vue'
 import type { EditorApi, DraftShot } from './use-storyboard-editor'
-const props = defineProps<{ s: EditorApi; d: DraftShot; i: number; canOperate: boolean }>()
-const { activeUid, selectDraft, promptPreview, dragUid, dropUid, onDragStart, onItemDragOver, onItemDragLeave, clearDrag, onDrop, toggleDeleted } = props.s
+const props = defineProps<{
+  s: EditorApi
+  d: DraftShot
+  i: number
+  canOperate: boolean
+}>()
+const {
+  activeUid,
+  selectDraft,
+  promptPreview,
+  dragUid,
+  dropUid,
+  onDragStart,
+  onItemDragOver,
+  onItemDragLeave,
+  clearDrag,
+  onDrop,
+  toggleDeleted,
+} = props.s
 </script>
 
 <template>
-          <div
-            class="se-item"
-            :class="{
-              active: d.uid === activeUid,
-              dead: d.deleted,
-              dragging: dragUid === d.uid,
-              'drop-before': dropUid?.uid === d.uid && dropUid.side === 'before',
-              'drop-after': dropUid?.uid === d.uid && dropUid.side === 'after',
-            }"
-            @click="selectDraft(d)"
-            @dragover="onItemDragOver(d, $event)"
-            @dragleave="onItemDragLeave(d, $event)"
-            @drop.prevent="onDrop(d, $event)"
-          >
-            <span
-              class="se-grip"
-              :class="{ disabled: !canOperate }"
-              :draggable="canOperate"
-              title="拖拽调整顺序"
-              @dragstart="onDragStart(d, $event)"
-              @dragend="clearDrag"
-            />
-            <span class="se-seq mono">{{ i + 1 }}</span>
-            <div class="se-item-main">
-              <div class="se-item-top">
-                <span class="se-item-id mono">{{ d.id || '（未命名）' }}</span>
-                <span v-if="d.isNew" class="se-badge new">新增</span>
-                <span v-if="d.deleted" class="se-badge dead">待删除</span>
-              </div>
-              <div class="se-item-sub">{{ promptPreview(d) }}</div>
-            </div>
-            <button
-              class="se-item-del"
-              :class="{ undo: d.deleted }"
-              :disabled="!canOperate"
-              :title="d.deleted ? '撤销删除' : '标记删除（保存后移除）'"
-              @click.stop="toggleDeleted(d)"
-            >
-              <Icon :name="d.deleted ? 'arrow-path' : 'trash'" :size="12" />
-            </button>
-          </div>
+  <div
+    class="se-item"
+    :class="{
+      active: d.uid === activeUid,
+      dead: d.deleted,
+      dragging: dragUid === d.uid,
+      'drop-before': dropUid?.uid === d.uid && dropUid.side === 'before',
+      'drop-after': dropUid?.uid === d.uid && dropUid.side === 'after',
+    }"
+    @click="selectDraft(d)"
+    @dragover="onItemDragOver(d, $event)"
+    @dragleave="onItemDragLeave(d, $event)"
+    @drop.prevent="onDrop(d, $event)"
+  >
+    <span
+      class="se-grip"
+      :class="{ disabled: !canOperate }"
+      :draggable="canOperate"
+      title="拖拽调整顺序"
+      @dragstart="onDragStart(d, $event)"
+      @dragend="clearDrag"
+    />
+    <span class="se-seq mono">{{ i + 1 }}</span>
+    <div class="se-item-main">
+      <div class="se-item-top">
+        <span class="se-item-id mono">{{ d.id || '（未命名）' }}</span>
+        <span v-if="d.isNew" class="se-badge new">新增</span>
+        <span v-if="d.deleted" class="se-badge dead">待删除</span>
+      </div>
+      <div class="se-item-sub">{{ promptPreview(d) }}</div>
+    </div>
+    <button
+      class="se-item-del"
+      :class="{ undo: d.deleted }"
+      :disabled="!canOperate"
+      :title="d.deleted ? '撤销删除' : '标记删除（保存后移除）'"
+      @click.stop="toggleDeleted(d)"
+    >
+      <Icon :name="d.deleted ? 'arrow-path' : 'trash'" :size="12" />
+    </button>
+  </div>
 </template>
 
 <style scoped>
-
 .se-item {
   display: flex;
   align-items: center;
@@ -60,7 +76,9 @@ const { activeUid, selectDraft, promptPreview, dragUid, dropUid, onDragStart, on
   border-radius: 8px;
   background: var(--panel);
   cursor: pointer;
-  transition: border-color 0.15s, opacity 0.2s;
+  transition:
+    border-color 0.15s,
+    opacity 0.2s;
 }
 
 .se-item:hover {
@@ -98,7 +116,11 @@ const { activeUid, selectDraft, promptPreview, dragUid, dropUid, onDragStart, on
   width: 13px;
   height: 18px;
   cursor: grab;
-  background-image: radial-gradient(circle, var(--text-3) 1px, transparent 1.1px);
+  background-image: radial-gradient(
+    circle,
+    var(--text-3) 1px,
+    transparent 1.1px
+  );
   background-size: 5px 5px;
   background-position: 1px 1px;
   opacity: 0.75;
@@ -194,5 +216,4 @@ const { activeUid, selectDraft, promptPreview, dragUid, dropUid, onDragStart, on
   opacity: 0.35;
   cursor: not-allowed;
 }
-
 </style>

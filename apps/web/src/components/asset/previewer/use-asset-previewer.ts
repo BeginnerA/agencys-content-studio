@@ -5,7 +5,16 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { assetApi } from '../../../lib/api'
 import type { Asset } from '../../../lib/types'
-import { KIND_TEXT, fmtDur, fmtSize, fmtTime, parseAssetCompliance, parseAssetQuality, purposeText, qualityText } from '../../../lib/format'
+import {
+  KIND_TEXT,
+  fmtDur,
+  fmtSize,
+  fmtTime,
+  parseAssetCompliance,
+  parseAssetQuality,
+  purposeText,
+  qualityText,
+} from '../../../lib/format'
 import { registerEscLayer } from '../../../lib/esc-layer'
 import { confirmDialog } from '../../../lib/confirm'
 
@@ -17,14 +26,21 @@ export interface PreviewerProps {
   removable?: boolean
 }
 
-export interface PreviewerEmits { close: []; changed: [asset: Asset]; removed: [asset: Asset] }
+export interface PreviewerEmits {
+  close: []
+  changed: [asset: Asset]
+  removed: [asset: Asset]
+}
 
 /** emit 签名（与 defineEmits<PreviewerEmits>() 返回结构一致；供状态 composable 参数注入） */
 export type PreviewerEmitFn = {
   <K extends keyof PreviewerEmits>(event: K, ...args: PreviewerEmits[K]): void
 }
 
-export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) {
+export function useAssetPreviewer(
+  props: PreviewerProps,
+  emit: PreviewerEmitFn,
+) {
   // 嵌套覆盖层（如弹窗上开预览器）时仅最顶层响应 Esc：Esc 只关预览器，不误关下层弹窗
   const escLayer = registerEscLayer()
 
@@ -33,19 +49,26 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
   const MIN_SCALE = 1
   const MAX_SCALE = 8
 
-  const idx = ref(Math.min(Math.max(props.index ?? 0, 0), Math.max(props.assets.length - 1, 0)))
+  const idx = ref(
+    Math.min(
+      Math.max(props.index ?? 0, 0),
+      Math.max(props.assets.length - 1, 0),
+    ),
+  )
   const cur = computed<Asset | null>(() => props.assets[idx.value] ?? null)
   const hasPrev = computed(() => idx.value > 0)
   const hasNext = computed(() => idx.value < props.assets.length - 1)
 
   // ===== 类型分派：ext 优先判文本子类型，其次按 kind =====
-  type ViewKind = 'image' | 'video' | 'audio' | 'markdown' | 'json' | 'text' | 'file'
+  type ViewKind =
+    'image' | 'video' | 'audio' | 'markdown' | 'json' | 'text' | 'file'
 
   function viewKindOf(a: Asset): ViewKind {
     const ext = (a.ext ?? '').toLowerCase()
     if (ext === 'md' || ext === 'markdown') return 'markdown'
     if (ext === 'json') return 'json'
-    if (['txt', 'yaml', 'yml', 'csv', 'log', 'ini', 'toml'].includes(ext)) return 'text'
+    if (['txt', 'yaml', 'yml', 'csv', 'log', 'ini', 'toml'].includes(ext))
+      return 'text'
     if (a.kind === 'image') return 'image'
     if (a.kind === 'video') return 'video'
     if (a.kind === 'audio') return 'audio'
@@ -53,8 +76,12 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     return 'file'
   }
 
-  const vkind = computed<ViewKind>(() => (cur.value ? viewKindOf(cur.value) : 'file'))
-  const isTextLike = computed(() => ['markdown', 'json', 'text'].includes(vkind.value))
+  const vkind = computed<ViewKind>(() =>
+    cur.value ? viewKindOf(cur.value) : 'file',
+  )
+  const isTextLike = computed(() =>
+    ['markdown', 'json', 'text'].includes(vkind.value),
+  )
   const tooBig = computed(() => (cur.value?.fileSize ?? 0) > MAX_TEXT)
 
   const TYPE_ICON: Record<ViewKind, string> = {
@@ -74,9 +101,19 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
   })
 
   // [M24] 合规审核徽章（spec §2.6 前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
-  const compliance = computed(() => (cur.value ? parseAssetCompliance(cur.value) : null))
-  const COMPLIANCE_LABEL: Record<string, string> = { pass: '合规通过', warn: '合规风险', block: '合规拦截' }
-  const complianceLabel = computed(() => (compliance.value ? COMPLIANCE_LABEL[compliance.value.status] ?? compliance.value.status : ''))
+  const compliance = computed(() =>
+    cur.value ? parseAssetCompliance(cur.value) : null,
+  )
+  const COMPLIANCE_LABEL: Record<string, string> = {
+    pass: '合规通过',
+    warn: '合规风险',
+    block: '合规拦截',
+  }
+  const complianceLabel = computed(() =>
+    compliance.value
+      ? (COMPLIANCE_LABEL[compliance.value.status] ?? compliance.value.status)
+      : '',
+  )
   const complianceTip = computed(() => {
     const c = compliance.value
     if (!c) return ''
@@ -91,11 +128,12 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
     if (a.ext) parts.push(a.ext.toUpperCase())
     parts.push(fmtSize(a.fileSize))
     // 尺寸优先取资产元数据；缺失时用图片实测值补显
-    const dims = a.width && a.height
-      ? `${a.width}×${a.height}`
-      : naturalSize.value
-        ? `${naturalSize.value.w}×${naturalSize.value.h}`
-        : null
+    const dims =
+      a.width && a.height
+        ? `${a.width}×${a.height}`
+        : naturalSize.value
+          ? `${naturalSize.value.w}×${naturalSize.value.h}`
+          : null
     if (dims) parts.push(dims)
     if (a.duration) parts.push(fmtDur(a.duration))
     parts.push(fmtTime(a.createdAt))
@@ -155,7 +193,9 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
       /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
       (m: string, str: string | undefined, colon: string | undefined) => {
         if (str !== undefined) {
-          return colon ? `<span class="jk">${str}</span><span class="jp">${colon}</span>` : `<span class="js">${str}</span>`
+          return colon
+            ? `<span class="jk">${str}</span><span class="jp">${colon}</span>`
+            : `<span class="js">${str}</span>`
         }
         if (m === 'true' || m === 'false') return `<span class="jb">${m}</span>`
         if (m === 'null') return `<span class="jn">${m}</span>`
@@ -191,7 +231,8 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
 
   function onImgLoad(e: Event) {
     const img = e.target as HTMLImageElement
-    if (img.naturalWidth && img.naturalHeight) naturalSize.value = { w: img.naturalWidth, h: img.naturalHeight }
+    if (img.naturalWidth && img.naturalHeight)
+      naturalSize.value = { w: img.naturalWidth, h: img.naturalHeight }
   }
 
   function resetImage() {
@@ -347,7 +388,17 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
 
   // ===== [M25] G2 文本内容编辑（白名单 purpose 的文本资产 → textarea + 分栏预览 → PATCH 覆写）=====
   // 与服务端 asset-content.ts EDITABLE_PURPOSES 镜像；守卫终裁在后端，前端仅控制入口
-  const EDITABLE_PURPOSES = ['source', 'chapters', 'events', 'graph', 'plan', 'script', 'text', 'export', 'video_analysis']
+  const EDITABLE_PURPOSES = [
+    'source',
+    'chapters',
+    'events',
+    'graph',
+    'plan',
+    'script',
+    'text',
+    'export',
+    'video_analysis',
+  ]
 
   const editing = ref(false)
   const draft = ref('')
@@ -358,7 +409,13 @@ export function useAssetPreviewer(props: PreviewerProps, emit: PreviewerEmitFn) 
   const canEdit = computed(() => {
     const a = cur.value
     if (!a) return false
-    return a.kind === 'text' && !!a.purpose && EDITABLE_PURPOSES.includes(a.purpose) && isTextLike.value && !tooBig.value
+    return (
+      a.kind === 'text' &&
+      !!a.purpose &&
+      EDITABLE_PURPOSES.includes(a.purpose) &&
+      isTextLike.value &&
+      !tooBig.value
+    )
   })
 
   function startEdit() {

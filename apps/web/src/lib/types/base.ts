@@ -1,8 +1,17 @@
 // ===== 与后端 routes 响应对齐的领域类型（camelCase）=====
 
-export type RunStatus = 'queued' | 'running' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
-export type StepStatus = 'pending' | 'running' | 'waiting_input' | 'succeeded' | 'skipped' | 'failed' | 'cancelled'
-export type TaskStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
+export type RunStatus =
+  'queued' | 'running' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
+export type StepStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting_input'
+  | 'succeeded'
+  | 'skipped'
+  | 'failed'
+  | 'cancelled'
+export type TaskStatus =
+  'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
 
 export interface RecentRun {
   id: number

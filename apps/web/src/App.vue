@@ -110,10 +110,31 @@ onBeforeUnmount(() => {
               </linearGradient>
             </defs>
             <rect width="84" height="84" rx="19" fill="url(#mkbg)" />
-            <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#0d1730" />
+            <rect
+              x="22"
+              y="33"
+              width="13"
+              height="24"
+              rx="3.5"
+              fill="#0d1730"
+            />
             <rect x="22" y="33" width="6.5" height="24" rx="3" fill="#16224a" />
-            <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#mkg)" />
-            <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#mkg)" />
+            <rect
+              x="41.5"
+              y="28.5"
+              width="25"
+              height="33"
+              rx="8.5"
+              fill="url(#mkg)"
+            />
+            <rect
+              x="34.5"
+              y="38"
+              width="7"
+              height="14"
+              rx="2.4"
+              fill="url(#mkg)"
+            />
           </svg>
         </span>
         <span class="lt">
@@ -147,7 +168,8 @@ onBeforeUnmount(() => {
             class="nbadge"
             :title="`${pending.total} 项待审阅`"
             :aria-label="`${pending.total} 项待审阅`"
-          >{{ pending.total }}</span>
+            >{{ pending.total }}</span
+          >
         </RouterLink>
       </nav>
       <button

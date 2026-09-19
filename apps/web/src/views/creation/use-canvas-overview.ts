@@ -4,11 +4,21 @@ import type { CanvasDocNode } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasRuns } from './use-canvas-runs'
 
-type Dependencies = Pick<CanvasState, 'nodes' | 'selectedIds' | 'selectedEdgeId' | 'boardRef'>
-  & Pick<CanvasRuns, 'RUN_TERMINAL' | 'RUN_TEXT'>
+type Dependencies = Pick<
+  CanvasState,
+  'nodes' | 'selectedIds' | 'selectedEdgeId' | 'boardRef'
+> &
+  Pick<CanvasRuns, 'RUN_TERMINAL' | 'RUN_TEXT'>
 
 export function useCanvasOverview(deps: Dependencies) {
-  const { nodes, RUN_TERMINAL, RUN_TEXT, selectedIds, selectedEdgeId, boardRef } = deps
+  const {
+    nodes,
+    RUN_TERMINAL,
+    RUN_TEXT,
+    selectedIds,
+    selectedEdgeId,
+    boardRef,
+  } = deps
 
   // ===== [M17] 全局状态总览（doc 派生，零端点） =====
   const showOverview = ref(false)
@@ -20,7 +30,12 @@ export function useCanvasOverview(deps: Dependencies) {
     summary: string
     rank: number
   }
-  const KIND_SHORT: Record<string, string> = { asset: '素材', text: '文本', entity: '实体', run: '运行' }
+  const KIND_SHORT: Record<string, string> = {
+    asset: '素材',
+    text: '文本',
+    entity: '实体',
+    run: '运行',
+  }
 
   function genKindShort(n: CanvasDocNode): string {
     const s = n.spec
@@ -38,7 +53,8 @@ export function useCanvasOverview(deps: Dependencies) {
       let rank = 4
       let dot = 'idle'
       let summary = ''
-      const kindText = n.kind === 'gen' ? genKindShort(n) : (KIND_SHORT[n.kind] ?? n.kind)
+      const kindText =
+        n.kind === 'gen' ? genKindShort(n) : (KIND_SHORT[n.kind] ?? n.kind)
       if (n.kind === 'gen') {
         if (n.status === 'failed') {
           rank = 0
@@ -103,7 +119,14 @@ export function useCanvasOverview(deps: Dependencies) {
         dot = 'warn'
         summary = '资产缺失'
       }
-      rows.push({ id: n.id, title: n.title, kind: kindText, dot, summary, rank })
+      rows.push({
+        id: n.id,
+        title: n.title,
+        kind: kindText,
+        dot,
+        summary,
+        rank,
+      })
     }
     return rows.sort((a, b) => a.rank - b.rank)
   })

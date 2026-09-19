@@ -9,7 +9,15 @@
  */
 import type { DrawerSel } from './use-canvas-drawer'
 import { useCanvasDrawer } from './use-canvas-drawer'
-import { fmtMs, fmtTime, KIND_TEXT, purposeText, skipReasonText, stepStatus, taskStatus } from '../../../lib/format'
+import {
+  fmtMs,
+  fmtTime,
+  KIND_TEXT,
+  purposeText,
+  skipReasonText,
+  stepStatus,
+  taskStatus,
+} from '../../../lib/format'
 import type { EditNodeState, StepOverride } from '../../../lib/types'
 import AssetPreviewer from '../../asset/previewer/index.vue'
 import CanvasTargetModal from '../../creation/CanvasTargetModal.vue'
@@ -34,16 +42,59 @@ const emit = defineEmits<{
 }>()
 
 // ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
-const { rn, tn, notice, opErr, gateBusy, gateErr, gateText, gateTextName, gateVisible, gateSkipLabel, onGateDecided, showRerun, recomposeBusy, rerunStep, onRerunDone, doRecompose, tasks, tasksLoading, taskBusy, taskErr, retryTask, cancelTask, assets, assetsLoading, previewIdx, onAssetChanged, REF_KIND_TEXT, refs, inputJson, depText, condText, batchText, logEl, logLines, logText, showSend, sendItems, onSendDone } = useCanvasDrawer(props, emit)
+const {
+  rn,
+  tn,
+  notice,
+  opErr,
+  gateBusy,
+  gateErr,
+  gateText,
+  gateTextName,
+  gateVisible,
+  gateSkipLabel,
+  onGateDecided,
+  showRerun,
+  recomposeBusy,
+  rerunStep,
+  onRerunDone,
+  doRecompose,
+  tasks,
+  tasksLoading,
+  taskBusy,
+  taskErr,
+  retryTask,
+  cancelTask,
+  assets,
+  assetsLoading,
+  previewIdx,
+  onAssetChanged,
+  REF_KIND_TEXT,
+  refs,
+  inputJson,
+  depText,
+  condText,
+  batchText,
+  logEl,
+  logLines,
+  logText,
+  showSend,
+  sendItems,
+  onSendDone,
+} = useCanvasDrawer(props, emit)
 
 // ---- [M23] 编辑区输入转交（受控：值经父级 useCanvasEdit overlay 回流） ----
 function onEditTitle(e: Event): void {
   if (!props.editNode) return
-  emit('edit', props.editNode.key, { title: (e.target as HTMLInputElement).value })
+  emit('edit', props.editNode.key, {
+    title: (e.target as HTMLInputElement).value,
+  })
 }
 function onEditText(fieldKey: string, e: Event): void {
   if (!props.editNode) return
-  emit('edit', props.editNode.key, { texts: { [fieldKey]: (e.target as HTMLInputElement).value } })
+  emit('edit', props.editNode.key, {
+    texts: { [fieldKey]: (e.target as HTMLInputElement).value },
+  })
 }
 </script>
 
@@ -52,22 +103,37 @@ function onEditText(fieldKey: string, e: Event): void {
     <div class="dr-head">
       <div class="tt-wrap">
         <div class="tt" :title="sel.node.title">{{ sel.node.title }}</div>
-        <div class="sub mono">#{{ sel.node.seq + 1 }} · {{ sel.node.key }} · {{ sel.node.action }}</div>
+        <div class="sub mono">
+          #{{ sel.node.seq + 1 }} · {{ sel.node.key }} · {{ sel.node.action }}
+        </div>
       </div>
-      <button type="button" class="x" title="关闭（保持节点选中）" @click="emit('close')">
+      <button
+        type="button"
+        class="x"
+        title="关闭（保持节点选中）"
+        @click="emit('close')"
+      >
         <Icon name="x" :size="14" />
       </button>
     </div>
 
     <!-- ===== run 态：状态行 ===== -->
     <div v-if="rn" class="dr-status">
-      <span class="badge" :class="rn.status === 'skipped' ? 'skip' : rn.status">{{ stepStatus(rn.status).text }}</span>
-      <span v-if="rn.durationMs != null" class="muted">耗时 {{ fmtMs(rn.durationMs) }}</span>
+      <span
+        class="badge"
+        :class="rn.status === 'skipped' ? 'skip' : rn.status"
+        >{{ stepStatus(rn.status).text }}</span
+      >
+      <span v-if="rn.durationMs != null" class="muted"
+        >耗时 {{ fmtMs(rn.durationMs) }}</span
+      >
       <span v-if="rn.attempts > 0" class="muted">尝试 {{ rn.attempts }}</span>
       <span v-if="rn.startedAt" class="muted">{{ fmtTime(rn.startedAt) }}</span>
     </div>
     <div v-if="rn && rn.error" class="err-text">{{ rn.error }}</div>
-    <div v-if="rn && rn.skippedReason" class="muted sk">跳过原因：{{ skipReasonText(rn.skippedReason) }}</div>
+    <div v-if="rn && rn.skippedReason" class="muted sk">
+      跳过原因：{{ skipReasonText(rn.skippedReason) }}
+    </div>
     <div v-if="rn && rn.gateTrace" class="muted sk">
       上轮闸门：{{ rn.gateTrace.decision === 'approve' ? '批准' : '驳回' }}
       <template v-if="rn.gateTrace.note">（{{ rn.gateTrace.note }}）</template>
@@ -81,7 +147,7 @@ function onEditText(fieldKey: string, e: Event): void {
       <GateDialog
         v-if="gateVisible"
         :step-title="sel.node.title"
-        :message="rn ? rn.gate?.message ?? '' : ''"
+        :message="rn ? (rn.gate?.message ?? '') : ''"
         :artifact-text="gateText || undefined"
         :artifact-name="gateTextName || undefined"
         :skip-label="gateSkipLabel"
@@ -96,7 +162,11 @@ function onEditText(fieldKey: string, e: Event): void {
           type="button"
           class="btn sm"
           :disabled="!rn.actions.rerun.allowed || rerunStep === null"
-          :title="rn.actions.rerun.allowed ? '重跑该步骤（可复用成功子任务）' : rn.actions.rerun.reason ?? ''"
+          :title="
+            rn.actions.rerun.allowed
+              ? '重跑该步骤（可复用成功子任务）'
+              : (rn.actions.rerun.reason ?? '')
+          "
           @click="showRerun = true"
         >
           <Icon name="refresh" :size="12" /> 单步重跑…
@@ -106,21 +176,38 @@ function onEditText(fieldKey: string, e: Event): void {
           type="button"
           class="btn sm"
           :disabled="!rn.actions.recompose.allowed || recomposeBusy"
-          :title="rn.actions.recompose.allowed ? '重置合成并重新执行（本地 ffmpeg）' : rn.actions.recompose.reason ?? ''"
+          :title="
+            rn.actions.recompose.allowed
+              ? '重置合成并重新执行（本地 ffmpeg）'
+              : (rn.actions.recompose.reason ?? '')
+          "
           @click="doRecompose"
         >
-          <Icon name="film" :size="12" /> {{ recomposeBusy ? '提交中…' : '重新合成' }}
+          <Icon name="film" :size="12" />
+          {{ recomposeBusy ? '提交中…' : '重新合成' }}
         </button>
-        <span v-if="!rn.actions.rerun && !rn.actions.recompose" class="muted">当前状态无可用操作</span>
+        <span v-if="!rn.actions.rerun && !rn.actions.recompose" class="muted"
+          >当前状态无可用操作</span
+        >
       </div>
       <div
-        v-if="!gateVisible && rn.actions.rerun && !rn.actions.rerun.allowed && rn.actions.rerun.reason"
+        v-if="
+          !gateVisible &&
+          rn.actions.rerun &&
+          !rn.actions.rerun.allowed &&
+          rn.actions.rerun.reason
+        "
         class="muted reason"
       >
         {{ rn.actions.rerun.reason }}
       </div>
       <div
-        v-if="!gateVisible && rn.actions.recompose && !rn.actions.recompose.allowed && rn.actions.recompose.reason"
+        v-if="
+          !gateVisible &&
+          rn.actions.recompose &&
+          !rn.actions.recompose.allowed &&
+          rn.actions.recompose.reason
+        "
         class="muted reason"
       >
         {{ rn.actions.recompose.reason }}
@@ -134,16 +221,25 @@ function onEditText(fieldKey: string, e: Event): void {
     <section v-if="rn && rn.stepId != null" class="sec">
       <div class="sec-h">子任务（{{ tasks.length }}）</div>
       <div v-if="tasksLoading" class="muted">加载中…</div>
-      <div v-else-if="!tasks.length" class="muted">该步骤为整体执行型（无子任务）</div>
+      <div v-else-if="!tasks.length" class="muted">
+        该步骤为整体执行型（无子任务）
+      </div>
       <div v-else class="tlist">
         <div v-for="t in tasks" :key="t.id" class="trow">
           <span class="mono tid">#{{ t.id }}</span>
-          <span class="badge" :class="taskStatus(t.status).cls">{{ taskStatus(t.status).text }}</span>
+          <span class="badge" :class="taskStatus(t.status).cls">{{
+            taskStatus(t.status).text
+          }}</span>
           <span class="muted tkind mono">{{ t.kind }}</span>
-          <span v-if="t.errorMsg" class="t-err" :title="t.errorMsg">{{ t.errorMsg }}</span>
+          <span v-if="t.errorMsg" class="t-err" :title="t.errorMsg">{{
+            t.errorMsg
+          }}</span>
           <span class="sp" />
           <button
-            v-if="(t.status === 'failed' || t.status === 'cancelled') && rn.actions.taskRetry"
+            v-if="
+              (t.status === 'failed' || t.status === 'cancelled') &&
+              rn.actions.taskRetry
+            "
             type="button"
             class="btn sm"
             :disabled="taskBusy === t.id"
@@ -187,7 +283,9 @@ function onEditText(fieldKey: string, e: Event): void {
           placeholder="标题不能为空"
           @input="onEditTitle"
         />
-        <div v-if="editNode.title.trim() === ''" class="err-text eerr">标题不能为空</div>
+        <div v-if="editNode.title.trim() === ''" class="err-text eerr">
+          标题不能为空
+        </div>
       </div>
       <div class="efld">
         <div class="efl">输入字段</div>
@@ -212,7 +310,9 @@ function onEditText(fieldKey: string, e: Event): void {
         </div>
         <div v-else class="muted">该步骤无输入字段</div>
       </div>
-      <div class="muted hint">编辑为本地草稿，不改动原模板文件；重置与退出编辑在顶栏操作。</div>
+      <div class="muted hint">
+        编辑为本地草稿，不改动原模板文件；重置与退出编辑在顶栏操作。
+      </div>
     </section>
 
     <!-- ===== template 态：设计信息 ===== -->
@@ -221,15 +321,31 @@ function onEditText(fieldKey: string, e: Event): void {
       <div class="kv">
         <span class="k">闸门</span>
         <span v-if="tn.gate" class="v">
-          {{ tn.gate.mode }} · {{ tn.gate.message }}<em v-if="tn.gate.skipLabel">（免审放行：{{ tn.gate.skipLabel }}）</em>
+          {{ tn.gate.mode }} · {{ tn.gate.message
+          }}<em v-if="tn.gate.skipLabel"
+            >（免审放行：{{ tn.gate.skipLabel }}）</em
+          >
         </span>
         <span v-else class="v muted">无</span>
       </div>
-      <div class="kv"><span class="k">依赖</span><span class="v mono">{{ depText }}</span></div>
-      <div class="kv"><span class="k">条件</span><span class="v mono">{{ condText }}</span></div>
-      <div class="kv"><span class="k">批量</span><span class="v">{{ batchText }}</span></div>
-      <div class="kv"><span class="k">产物</span><span class="v">{{ tn.output ? purposeText(tn.output.purpose) : '—' }}</span></div>
-      <div class="muted hint">模板画布为设计态预览；运行状态与操作请切换到运行画布。</div>
+      <div class="kv">
+        <span class="k">依赖</span><span class="v mono">{{ depText }}</span>
+      </div>
+      <div class="kv">
+        <span class="k">条件</span><span class="v mono">{{ condText }}</span>
+      </div>
+      <div class="kv">
+        <span class="k">批量</span><span class="v">{{ batchText }}</span>
+      </div>
+      <div class="kv">
+        <span class="k">产物</span
+        ><span class="v">{{
+          tn.output ? purposeText(tn.output.purpose) : '—'
+        }}</span>
+      </div>
+      <div class="muted hint">
+        模板画布为设计态预览；运行状态与操作请切换到运行画布。
+      </div>
     </section>
 
     <!-- ===== 输入引用（两态共用） ===== -->
@@ -238,7 +354,9 @@ function onEditText(fieldKey: string, e: Event): void {
       <div v-if="refs.length" class="refs">
         <div v-for="(r, i) in refs" :key="i" class="refrow">
           <span class="rfield mono">{{ r.field }}</span>
-          <span class="rkind" :data-k="r.kind">{{ REF_KIND_TEXT[r.kind] }}</span>
+          <span class="rkind" :data-k="r.kind">{{
+            REF_KIND_TEXT[r.kind]
+          }}</span>
           <span class="rref mono" :title="r.ref">{{ r.ref }}</span>
         </div>
       </div>
@@ -268,9 +386,23 @@ function onEditText(fieldKey: string, e: Event): void {
       <div v-else-if="!rn.assetIds.length" class="muted">此步骤暂无产物</div>
       <template v-else>
         <div class="thumbs">
-          <button v-for="(a, i) in assets" :key="a.id" type="button" class="thumb" :title="a.name" @click="previewIdx = i">
-            <img v-if="a.urls.thumb || a.kind === 'image'" :src="a.urls.thumb ?? a.urls.file" loading="lazy" alt="" />
-            <span v-else class="tkindbox">{{ KIND_TEXT[a.kind] ?? a.kind }}</span>
+          <button
+            v-for="(a, i) in assets"
+            :key="a.id"
+            type="button"
+            class="thumb"
+            :title="a.name"
+            @click="previewIdx = i"
+          >
+            <img
+              v-if="a.urls.thumb || a.kind === 'image'"
+              :src="a.urls.thumb ?? a.urls.file"
+              loading="lazy"
+              alt=""
+            />
+            <span v-else class="tkindbox">{{
+              KIND_TEXT[a.kind] ?? a.kind
+            }}</span>
             <span class="tname">{{ a.name }}</span>
           </button>
         </div>
@@ -282,7 +414,9 @@ function onEditText(fieldKey: string, e: Event): void {
 
     <!-- ===== run 态：日志（按 [stepKey] 过滤） ===== -->
     <section v-if="rn" class="sec">
-      <div class="sec-h">日志（{{ logLines.length }} 行 · 按 [{{ sel.node.key }}] 过滤）</div>
+      <div class="sec-h">
+        日志（{{ logLines.length }} 行 · 按 [{{ sel.node.key }}] 过滤）
+      </div>
       <pre ref="logEl" class="log mono">{{ logText || '暂无该步骤日志' }}</pre>
     </section>
 

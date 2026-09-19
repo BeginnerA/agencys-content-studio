@@ -2,7 +2,8 @@ import type { RunStatus } from './base'
 
 // ===== [M4] 批次 / 用量 / 统计 / 导出 / 发布 =====
 
-export type BatchStatus = 'running' | 'completed' | 'partial_failed' | 'failed' | 'cancelled'
+export type BatchStatus =
+  'running' | 'completed' | 'partial_failed' | 'failed' | 'cancelled'
 
 export interface Batch {
   id: number

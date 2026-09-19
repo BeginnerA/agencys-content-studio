@@ -13,25 +13,44 @@ const form = props.form
 </script>
 
 <template>
-      <!-- ===== [M17] text 节点：文本内容 ===== -->
-      <template v-if="node.kind === 'text'">
-        <section class="sec">
-          <div class="sec-h">文本内容</div>
-          <div class="frow">
-            <textarea v-model="form.fText" rows="7" placeholder="输入文本…（连到生成节点的「提示词」端口即可作为其提示词）" @blur="saveText" />
-          </div>
-          <div class="frow-ops">
-            <button type="button" class="btn sm" :disabled="form.opBusy || form.expandBusy" title="AI 扩写文本" @click="openExpand">
-              <Icon name="sparkles" :size="12" /> AI 扩写
-            </button>
-            <button type="button" class="btn sm" :disabled="form.opBusy" title="立即保存文本" @click="saveText">
-              <Icon name="check" :size="12" /> 保存文本
-            </button>
-          </div>
-          <div class="muted mini">失焦自动保存；提取自生成节点的文本也会落到这里的独立节点。</div>
-          <div v-if="node.specError" class="err-text">{{ node.specError }}</div>
-        </section>
-      </template>
+  <!-- ===== [M17] text 节点：文本内容 ===== -->
+  <template v-if="node.kind === 'text'">
+    <section class="sec">
+      <div class="sec-h">文本内容</div>
+      <div class="frow">
+        <textarea
+          v-model="form.fText"
+          rows="7"
+          placeholder="输入文本…（连到生成节点的「提示词」端口即可作为其提示词）"
+          @blur="saveText"
+        />
+      </div>
+      <div class="frow-ops">
+        <button
+          type="button"
+          class="btn sm"
+          :disabled="form.opBusy || form.expandBusy"
+          title="AI 扩写文本"
+          @click="openExpand"
+        >
+          <Icon name="sparkles" :size="12" /> AI 扩写
+        </button>
+        <button
+          type="button"
+          class="btn sm"
+          :disabled="form.opBusy"
+          title="立即保存文本"
+          @click="saveText"
+        >
+          <Icon name="check" :size="12" /> 保存文本
+        </button>
+      </div>
+      <div class="muted mini">
+        失焦自动保存；提取自生成节点的文本也会落到这里的独立节点。
+      </div>
+      <div v-if="node.specError" class="err-text">{{ node.specError }}</div>
+    </section>
+  </template>
 </template>
 
 <style scoped>
@@ -78,5 +97,4 @@ const form = props.form
   gap: 6px;
   flex-wrap: wrap;
 }
-
 </style>

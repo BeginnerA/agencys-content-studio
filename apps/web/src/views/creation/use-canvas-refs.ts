@@ -4,7 +4,10 @@ import { creationApi, entityApi } from '../../lib/api'
 import type { EntityItem } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 
-type Dependencies = Pick<CanvasState, 'nodes' | 'selectedIds' | 'projectId' | 'toast'>
+type Dependencies = Pick<
+  CanvasState,
+  'nodes' | 'selectedIds' | 'projectId' | 'toast'
+>
 
 export function useCanvasRefs(deps: Dependencies) {
   const { nodes, selectedIds, projectId, toast } = deps
@@ -23,7 +26,12 @@ export function useCanvasRefs(deps: Dependencies) {
     let contributing = 0
     for (const n of nodes.value) {
       if (!selectedIds.value.includes(n.id)) continue
-      const aid = n.kind === 'gen' ? (n.displayTask?.resultAssetId ?? n.assetId) : n.kind === 'asset' ? n.assetId : null
+      const aid =
+        n.kind === 'gen'
+          ? (n.displayTask?.resultAssetId ?? n.assetId)
+          : n.kind === 'asset'
+            ? n.assetId
+            : null
       if (aid == null) continue
       contributing += 1
       if (!seen.has(aid)) {
@@ -66,9 +74,11 @@ export function useCanvasRefs(deps: Dependencies) {
     try {
       const r = await creationApi.attachRefAssets(e.id, assetIds)
       showRefPick.value = false
-      toast(skipped > 0
-        ? `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张，跳过 ${skipped} 个无产物节点）`
-        : `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张）`)
+      toast(
+        skipped > 0
+          ? `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张，跳过 ${skipped} 个无产物节点）`
+          : `已挂接「${e.name}」参考图（新增 ${r.added ?? 0} 张）`,
+      )
     } catch (err) {
       refPickErr.value = err instanceof Error ? err.message : String(err)
     } finally {

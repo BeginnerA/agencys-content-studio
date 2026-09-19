@@ -68,34 +68,60 @@ function openPreview(id: number) {
     <template v-for="inp in tpl?.inputs ?? []" :key="inp.key">
       <label v-if="inp.kind === 'text'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <textarea v-if="!dense" :value="textOf(inp.key)" rows="3" @input="onText(inp.key, $event)" />
-        <input v-else type="text" :value="textOf(inp.key)" @input="onText(inp.key, $event)" />
+        <textarea
+          v-if="!dense"
+          :value="textOf(inp.key)"
+          rows="3"
+          @input="onText(inp.key, $event)"
+        />
+        <input
+          v-else
+          type="text"
+          :value="textOf(inp.key)"
+          @input="onText(inp.key, $event)"
+        />
       </label>
 
       <label v-else-if="inp.kind === 'int'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <input type="number" :value="numOf(inp.key)" @input="onNum(inp.key, $event)" />
+        <input
+          type="number"
+          :value="numOf(inp.key)"
+          @input="onNum(inp.key, $event)"
+        />
       </label>
 
       <label v-else-if="inp.kind === 'bool'" class="fld row">
         <input
           type="checkbox"
           :checked="values[inp.key] === true"
-          @change="emit('change', inp.key, ($event.target as HTMLInputElement).checked)"
+          @change="
+            emit('change', inp.key, ($event.target as HTMLInputElement).checked)
+          "
         />
         <span>{{ inp.label }}</span>
-        <em v-if="inp.default === true" class="muted" style="font-size: 11px">默认开启</em>
+        <em v-if="inp.default === true" class="muted" style="font-size: 11px"
+          >默认开启</em
+        >
       </label>
 
       <div v-else-if="inp.kind === 'files'" class="fld">
         <template v-if="dense">
-          <button type="button" class="btn sm" @click="openKey = openKey === inp.key ? '' : inp.key">
+          <button
+            type="button"
+            class="btn sm"
+            @click="openKey = openKey === inp.key ? '' : inp.key"
+          >
             {{ inp.label }}（{{ picked(inp.key).length }}）
             <span class="caret">{{ openKey === inp.key ? '▴' : '▾' }}</span>
           </button>
           <div v-if="openKey === inp.key" class="picklist">
             <label v-for="a in assets" :key="a.id" class="opt">
-              <input type="checkbox" :checked="picked(inp.key).includes(a.id)" @change="toggleAsset(inp.key, a.id)" />
+              <input
+                type="checkbox"
+                :checked="picked(inp.key).includes(a.id)"
+                @change="toggleAsset(inp.key, a.id)"
+              />
               <span>#{{ a.id }}</span> {{ a.name }}
               <span class="opt-tail">
                 <em>{{ purposeText(a.purpose) }}</em>
@@ -116,14 +142,24 @@ function openPreview(id: number) {
         <template v-else>
           <div class="tlabel">
             {{ inp.label }}
-            <span class="req-badge" :class="inp.required ? 'must' : 'opt'">{{ inp.required ? '必填' : '选填' }}</span>
-            <em v-if="inp.accept?.length" class="acc-hint">仅 {{ inp.accept.join(' / ') }}</em>
+            <span class="req-badge" :class="inp.required ? 'must' : 'opt'">{{
+              inp.required ? '必填' : '选填'
+            }}</span>
+            <em v-if="inp.accept?.length" class="acc-hint"
+              >仅 {{ inp.accept.join(' / ') }}</em
+            >
             <span class="muted">（选 {{ picked(inp.key).length }} 项）</span>
           </div>
-          <p v-if="!inp.required" class="tif-hint muted">可留空；不必全选，只勾选与本次创作相关的文件即可（多选会一并作为参考叠加，选多无关项会稀释重点）。</p>
+          <p v-if="!inp.required" class="tif-hint muted">
+            可留空；不必全选，只勾选与本次创作相关的文件即可（多选会一并作为参考叠加，选多无关项会稀释重点）。
+          </p>
           <div v-if="assets.length" class="picklist">
             <label v-for="a in assets" :key="a.id" class="opt">
-              <input type="checkbox" :checked="picked(inp.key).includes(a.id)" @change="toggleAsset(inp.key, a.id)" />
+              <input
+                type="checkbox"
+                :checked="picked(inp.key).includes(a.id)"
+                @change="toggleAsset(inp.key, a.id)"
+              />
               <span>#{{ a.id }}</span> {{ a.name }}
               <span class="opt-tail">
                 <em>{{ purposeText(a.purpose) }}</em>
@@ -146,13 +182,22 @@ function openPreview(id: number) {
       <div v-else-if="inp.kind === 'publications'" class="fld">
         <div class="tlabel">
           {{ inp.label }}
-          <span class="req-badge" :class="inp.required ? 'must' : 'opt'">{{ inp.required ? '必填' : '选填' }}</span>
+          <span class="req-badge" :class="inp.required ? 'must' : 'opt'">{{
+            inp.required ? '必填' : '选填'
+          }}</span>
           <span class="muted">（选 {{ picked(inp.key).length }} 项）</span>
         </div>
-        <p class="tif-hint muted">直接勾选要复盘的发布记录即可，无需再导出/上传 CSV；勾选后系统自动汇总各项指标，并带出每条发布对应的创作来源链路。</p>
+        <p class="tif-hint muted">
+          直接勾选要复盘的发布记录即可，无需再导出/上传
+          CSV；勾选后系统自动汇总各项指标，并带出每条发布对应的创作来源链路。
+        </p>
         <div v-if="publications?.length" class="picklist">
           <label v-for="p in publications" :key="p.id" class="opt">
-            <input type="checkbox" :checked="picked(inp.key).includes(p.id)" @change="toggleAsset(inp.key, p.id)" />
+            <input
+              type="checkbox"
+              :checked="picked(inp.key).includes(p.id)"
+              @change="toggleAsset(inp.key, p.id)"
+            />
             <span class="pub-title">{{ pubLabel(p) }}</span>
             <span class="opt-tail">
               <em>{{ PLATFORM_TEXT[p.platform] ?? p.platform }}</em>
@@ -161,12 +206,19 @@ function openPreview(id: number) {
             </span>
           </label>
         </div>
-        <div v-else class="muted">本项目暂无发布记录——请先在「图文笔记」等成品运行后点「标记发布」登记。</div>
+        <div v-else class="muted">
+          本项目暂无发布记录——请先在「图文笔记」等成品运行后点「标记发布」登记。
+        </div>
       </div>
     </template>
 
     <!-- 预览：点击候选项的预览入口打开统一查看器（←/→ 翻看候选；Esc 关闭） -->
-    <AssetPreviewer v-if="previewIdx !== null" :assets="assets" :index="previewIdx" @close="previewIdx = null" />
+    <AssetPreviewer
+      v-if="previewIdx !== null"
+      :assets="assets"
+      :index="previewIdx"
+      @close="previewIdx = null"
+    />
   </div>
 </template>
 

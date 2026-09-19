@@ -6,7 +6,12 @@ const { showFetch, fetchUrl, fetching, fetchErr, doFetchSource } = props.s
 </script>
 
 <template>
-  <Modal v-if="showFetch" title="从 URL 抓取正文（入库为素材资产）" :width="520" @close="showFetch = false">
+  <Modal
+    v-if="showFetch"
+    title="从 URL 抓取正文（入库为素材资产）"
+    :width="520"
+    @close="showFetch = false"
+  >
     <label class="fld">
       网页地址
       <input
@@ -18,15 +23,23 @@ const { showFetch, fetchUrl, fetching, fetchErr, doFetchSource } = props.s
       />
     </label>
     <div class="muted hint">
-      服务端抓取正文（超时 15s / ≤5MB / 内网地址已拦截）；提取不足 200 字符视为反爬页失败，请改用文件导入。
+      服务端抓取正文（超时 15s / ≤5MB / 内网地址已拦截）；提取不足 200
+      字符视为反爬页失败，请改用文件导入。
     </div>
     <div class="disclaimer">
-      ⚠ 版权提示：抓取内容仅供个人素材整理，请遵守目标站点服务条款与版权规定，由抓取者承担相应责任。
+      ⚠
+      版权提示：抓取内容仅供个人素材整理，请遵守目标站点服务条款与版权规定，由抓取者承担相应责任。
     </div>
     <div v-if="fetchErr" class="err-text">{{ fetchErr }}</div>
     <template #footer>
-      <button class="btn" :disabled="fetching" @click="showFetch = false">取消</button>
-      <button class="btn primary" :disabled="fetching || !fetchUrl.trim()" @click="doFetchSource">
+      <button class="btn" :disabled="fetching" @click="showFetch = false">
+        取消
+      </button>
+      <button
+        class="btn primary"
+        :disabled="fetching || !fetchUrl.trim()"
+        @click="doFetchSource"
+      >
         {{ fetching ? '抓取中…' : '抓取入库' }}
       </button>
     </template>

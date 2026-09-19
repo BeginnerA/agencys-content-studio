@@ -10,7 +10,10 @@ import type { CanvasListItem } from '../../lib/types'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 
-const props = defineProps<{ projectId: number; assets: Array<{ id: number; name: string }> }>()
+const props = defineProps<{
+  projectId: number
+  assets: Array<{ id: number; name: string }>
+}>()
 const emit = defineEmits<{ done: [canvasId: number]; close: [] }>()
 
 const list = ref<CanvasListItem[]>([])
@@ -20,7 +23,9 @@ const loading = ref(false)
 const busy = ref(false)
 const err = ref('')
 
-const selName = computed(() => list.value.find((c) => c.id === selId.value)?.name ?? '')
+const selName = computed(
+  () => list.value.find((c) => c.id === selId.value)?.name ?? '',
+)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -30,7 +35,8 @@ async function load(): Promise<void> {
     list.value = r.items
     const first = r.items[0]
     if (selId.value == null && first) selId.value = first.id
-    if (selId.value != null && !r.items.some((c) => c.id === selId.value)) selId.value = first?.id ?? null
+    if (selId.value != null && !r.items.some((c) => c.id === selId.value))
+      selId.value = first?.id ?? null
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -43,7 +49,10 @@ async function createNew(): Promise<void> {
   busy.value = true
   err.value = ''
   try {
-    const r = await creationApi.create(props.projectId, newName.value.trim() || undefined)
+    const r = await creationApi.create(
+      props.projectId,
+      newName.value.trim() || undefined,
+    )
     newName.value = ''
     await load()
     selId.value = r.canvas.id
@@ -83,11 +92,15 @@ async function submit(): Promise<void> {
   <Modal title="送入创作画布" :width="540" @close="emit('close')">
     <div class="ct-body">
       <div class="muted mini">
-        将 {{ assets.length }} 项产物作为素材节点放入目标画布（可在创作画布中继续引用 / 编辑 / 生成）：
+        将
+        {{ assets.length }}
+        项产物作为素材节点放入目标画布（可在创作画布中继续引用 / 编辑 / 生成）：
       </div>
 
       <div v-if="loading" class="muted">画布列表加载中…</div>
-      <div v-else-if="!list.length" class="muted">该项目暂无画布，先新建一个：</div>
+      <div v-else-if="!list.length" class="muted">
+        该项目暂无画布，先新建一个：
+      </div>
       <div v-else class="ct-list">
         <button
           v-for="c in list"
@@ -104,8 +117,18 @@ async function submit(): Promise<void> {
       </div>
 
       <div class="ct-new">
-        <input v-model="newName" type="text" placeholder="新画布名称（留空 = 未命名画布）" @keydown.enter="createNew" />
-        <button type="button" class="btn sm" :disabled="busy" @click="createNew">
+        <input
+          v-model="newName"
+          type="text"
+          placeholder="新画布名称（留空 = 未命名画布）"
+          @keydown.enter="createNew"
+        />
+        <button
+          type="button"
+          class="btn sm"
+          :disabled="busy"
+          @click="createNew"
+        >
           <Icon name="plus" :size="12" /> 新建
         </button>
       </div>
@@ -114,9 +137,17 @@ async function submit(): Promise<void> {
     </div>
 
     <template #footer>
-      <button type="button" class="btn" :disabled="busy" @click="emit('close')">取消</button>
-      <button type="button" class="btn primary" :disabled="busy || selId == null || !assets.length" @click="submit">
-        <Icon name="wand" :size="12" /> {{ busy ? '送入中…' : `送入「${selName || '…'}」` }}
+      <button type="button" class="btn" :disabled="busy" @click="emit('close')">
+        取消
+      </button>
+      <button
+        type="button"
+        class="btn primary"
+        :disabled="busy || selId == null || !assets.length"
+        @click="submit"
+      >
+        <Icon name="wand" :size="12" />
+        {{ busy ? '送入中…' : `送入「${selName || '…'}」` }}
       </button>
     </template>
   </Modal>

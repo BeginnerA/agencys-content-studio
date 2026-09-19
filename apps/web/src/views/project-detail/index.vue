@@ -15,18 +15,60 @@ import UploadModal from './UploadModal.vue'
 import FetchSourceModal from './FetchSourceModal.vue'
 
 const s = useProjectDetailPage()
-const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary, coreLoading, coreErr, runningCount, waitingRuns, assetCount, gotoRuns, cntOf, showUpload, showFetch, showRunForm, showBatch, runFormTplKey, runFormPrefill, closeRunForm, onRunCreated, onBatchCreated, showPublish, editingPub, onPubSaved, showEdit, showDanger, tplName, defaultTplKey, onEdited, onDeleted } = s
+const {
+  projectId,
+  TABS,
+  activeTab,
+  switchTab,
+  project,
+  assets,
+  pubs,
+  pubSummary,
+  coreLoading,
+  coreErr,
+  runningCount,
+  waitingRuns,
+  assetCount,
+  gotoRuns,
+  cntOf,
+  showUpload,
+  showFetch,
+  showRunForm,
+  showBatch,
+  runFormTplKey,
+  runFormPrefill,
+  closeRunForm,
+  onRunCreated,
+  onBatchCreated,
+  showPublish,
+  editingPub,
+  onPubSaved,
+  showEdit,
+  showDanger,
+  tplName,
+  defaultTplKey,
+  onEdited,
+  onDeleted,
+} = s
 </script>
 
 <template>
   <div>
     <div class="page-h">
-      <RouterLink to="/" class="back"><Icon name="arrow-left" :size="14" /> 项目</RouterLink>
+      <RouterLink to="/" class="back"
+        ><Icon name="arrow-left" :size="14" /> 项目</RouterLink
+      >
       <h1>{{ project?.name ?? `项目 #${projectId}` }}</h1>
-      <span v-if="project" class="badge" :class="project.status === 'active' ? 'completed' : 'cancelled'">
+      <span
+        v-if="project"
+        class="badge"
+        :class="project.status === 'active' ? 'completed' : 'cancelled'"
+      >
         {{ project.status === 'active' ? '进行中' : '已归档' }}
       </span>
-      <span v-if="project?.templateKey" class="sub">默认模板：{{ tplName(project.templateKey) }}</span>
+      <span v-if="project?.templateKey" class="sub"
+        >默认模板：{{ tplName(project.templateKey) }}</span
+      >
       <div style="margin-left: auto; display: flex; gap: 8px">
         <button class="btn" :disabled="!project" @click="showEdit = true">
           <Icon name="pencil" :size="14" /> 编辑
@@ -35,7 +77,11 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
           <Icon name="upload" :size="14" /> 上传素材
         </button>
         <!-- [M25] G8 URL 抓正文入库（服务端抓取 + SSRF 守卫） -->
-        <button class="btn" title="抓取网页正文存为素材资产（仅供个人素材整理）" @click="showFetch = true">
+        <button
+          class="btn"
+          title="抓取网页正文存为素材资产（仅供个人素材整理）"
+          @click="showFetch = true"
+        >
           <Icon name="link" :size="14" /> 从 URL 抓取
         </button>
         <button class="btn" @click="showBatch = true">
@@ -64,7 +110,12 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
 
       <!-- KPI 指标条：状态快照，点击直达对应筛选 / 分区 -->
       <div class="stat-strip">
-        <button class="stat panel" type="button" title="按「进行中」查看运行" @click="gotoRuns('active')">
+        <button
+          class="stat panel"
+          type="button"
+          title="按「进行中」查看运行"
+          @click="gotoRuns('active')"
+        >
           <span class="v">{{ runningCount }}</span>
           <span class="k">运行中</span>
         </button>
@@ -78,15 +129,29 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
           <span class="v">{{ waitingRuns.length }}</span>
           <span class="k">待审阅</span>
         </button>
-        <button class="stat panel" type="button" title="查看资产" @click="switchTab('assets')">
+        <button
+          class="stat panel"
+          type="button"
+          title="查看资产"
+          @click="switchTab('assets')"
+        >
           <span class="v">{{ assetCount }}</span>
           <span class="k">资产</span>
         </button>
-        <button class="stat panel" type="button" title="查看发布记录" @click="switchTab('pubs')">
+        <button
+          class="stat panel"
+          type="button"
+          title="查看发布记录"
+          @click="switchTab('pubs')"
+        >
           <span class="v">{{ pubs.length }}</span>
           <span class="k">已发布</span>
-          <span v-if="pubSummary.views || pubSummary.interactions" class="extra">
-            播放 {{ fmtQty(pubSummary.views) }} · 互动 {{ fmtQty(pubSummary.interactions) }}
+          <span
+            v-if="pubSummary.views || pubSummary.interactions"
+            class="extra"
+          >
+            播放 {{ fmtQty(pubSummary.views) }} · 互动
+            {{ fmtQty(pubSummary.interactions) }}
           </span>
         </button>
       </div>
@@ -149,7 +214,12 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
     />
 
     <!-- [优化] 编辑项目 -->
-    <ProjectFormModal v-if="showEdit && project" :project="project" @done="onEdited" @close="showEdit = false" />
+    <ProjectFormModal
+      v-if="showEdit && project"
+      :project="project"
+      @done="onEdited"
+      @close="showEdit = false"
+    />
 
     <!-- 危险操作：归档 / 彻底删除 -->
     <ProjectDangerModal
@@ -195,7 +265,9 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.12s;
+  transition:
+    border-color 0.15s,
+    transform 0.12s;
 }
 
 .stat:hover {
@@ -224,7 +296,8 @@ const { projectId, TABS, activeTab, switchTab, project, assets, pubs, pubSummary
 
 .stat.attention {
   border-color: rgb(245 158 11 / 45%);
-  background: linear-gradient(180deg, var(--warn-weak), transparent 78%), var(--panel);
+  background:
+    linear-gradient(180deg, var(--warn-weak), transparent 78%), var(--panel);
 }
 
 .stat.attention .v {

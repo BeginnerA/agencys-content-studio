@@ -23,13 +23,24 @@ function errOf(s: string): string {
 </script>
 
 <template>
-  <button type="button" class="rcard" :class="{ haserr: !!run.error }" @click="emit('open', run.id)">
+  <button
+    type="button"
+    class="rcard"
+    :class="{ haserr: !!run.error }"
+    @click="emit('open', run.id)"
+  >
     <div class="r1">
       <span class="rid mono">#{{ run.id }}</span>
-      <span class="badge" :class="runStatus(run.status).cls">{{ runStatus(run.status).text }}</span>
-      <span v-if="showSeq && run.batchSeq != null" class="seq mono">批内 #{{ run.batchSeq }}</span>
+      <span class="badge" :class="runStatus(run.status).cls">{{
+        runStatus(run.status).text
+      }}</span>
+      <span v-if="showSeq && run.batchSeq != null" class="seq mono"
+        >批内 #{{ run.batchSeq }}</span
+      >
       <span class="sp" />
-      <span v-if="run.templateVersion != null" class="ver mono">v{{ run.templateVersion }}</span>
+      <span v-if="run.templateVersion != null" class="ver mono"
+        >v{{ run.templateVersion }}</span
+      >
     </div>
     <div class="tkey mono" :title="run.templateKey">{{ run.templateKey }}</div>
     <div class="r3 muted">
@@ -37,7 +48,9 @@ function errOf(s: string): string {
       <span>耗时 {{ durOf() }}</span>
       <span class="cost">{{ fmtCost(run.cost) }}</span>
     </div>
-    <div v-if="run.error" class="rerr" :title="run.error">{{ errOf(run.error) }}</div>
+    <div v-if="run.error" class="rerr" :title="run.error">
+      {{ errOf(run.error) }}
+    </div>
   </button>
 </template>
 

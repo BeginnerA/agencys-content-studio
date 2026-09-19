@@ -18,49 +18,65 @@ const sb = props.sb
 </script>
 
 <template>
-        <div v-if="sb.galleryShotId === shot.shotId" class="wb-gallery">
-          <div
-            v-for="v in shot.versions"
-            :key="v.id"
-            class="wb-ver"
-            :class="{ sel: effSelected(shot) === v.id }"
-          >
-            <div class="wb-vthumb" :title="`预览 ${v.name}`" @click="openPreview(shot, v.id)">
-              <img
-                v-if="v.urls.thumb && !sb.verThumbFailed.includes(v.id)"
-                :src="v.urls.thumb"
-                :alt="v.name"
-                loading="lazy"
-                @error="markVerThumbFailed(v.id)"
-              />
-              <span v-else class="wb-ph sm"><Icon :name="sb.isVideoStep ? 'play' : 'photo'" :size="14" /></span>
-              <span v-if="v.source === 'upload'" class="wb-vtag" title="本地上传入库">上传</span>
-              <span
-                v-if="verQualityWarn(v)"
-                class="wb-qbadge"
-                :title="`检测异常：${verQualityWarn(v)}（仍可选用；建议换版或重生成）`"
-              >
-                <Icon name="alert" :size="10" />
-              </span>
-            </div>
-            <div class="wb-vmeta">
-              <button
-                class="wb-heart"
-                :class="{ on: v.isFavorite === 1 }"
-                :disabled="sb.opBusy"
-                :title="v.isFavorite === 1 ? '取消收藏（收藏版本清理时保留）' : '收藏（清理时保留该版本）'"
-                @click="toggleVersionFavorite(v)"
-              >
-                <Icon name="heart" :size="11" />
-              </button>
-              <span class="muted mono wb-vtime">{{ fmtTime(v.createdAt) }}</span>
-              <button class="wb-mini" :disabled="!sb.canOperate" @click="pickVersion(shot, v.id)">
-                {{ effSelected(shot) === v.id ? '当前' : '选用' }}
-              </button>
-            </div>
-          </div>
-          <div v-if="!shot.versions.length" class="muted wb-tip">暂无历史版本</div>
-        </div>
+  <div v-if="sb.galleryShotId === shot.shotId" class="wb-gallery">
+    <div
+      v-for="v in shot.versions"
+      :key="v.id"
+      class="wb-ver"
+      :class="{ sel: effSelected(shot) === v.id }"
+    >
+      <div
+        class="wb-vthumb"
+        :title="`预览 ${v.name}`"
+        @click="openPreview(shot, v.id)"
+      >
+        <img
+          v-if="v.urls.thumb && !sb.verThumbFailed.includes(v.id)"
+          :src="v.urls.thumb"
+          :alt="v.name"
+          loading="lazy"
+          @error="markVerThumbFailed(v.id)"
+        />
+        <span v-else class="wb-ph sm"
+          ><Icon :name="sb.isVideoStep ? 'play' : 'photo'" :size="14"
+        /></span>
+        <span v-if="v.source === 'upload'" class="wb-vtag" title="本地上传入库"
+          >上传</span
+        >
+        <span
+          v-if="verQualityWarn(v)"
+          class="wb-qbadge"
+          :title="`检测异常：${verQualityWarn(v)}（仍可选用；建议换版或重生成）`"
+        >
+          <Icon name="alert" :size="10" />
+        </span>
+      </div>
+      <div class="wb-vmeta">
+        <button
+          class="wb-heart"
+          :class="{ on: v.isFavorite === 1 }"
+          :disabled="sb.opBusy"
+          :title="
+            v.isFavorite === 1
+              ? '取消收藏（收藏版本清理时保留）'
+              : '收藏（清理时保留该版本）'
+          "
+          @click="toggleVersionFavorite(v)"
+        >
+          <Icon name="heart" :size="11" />
+        </button>
+        <span class="muted mono wb-vtime">{{ fmtTime(v.createdAt) }}</span>
+        <button
+          class="wb-mini"
+          :disabled="!sb.canOperate"
+          @click="pickVersion(shot, v.id)"
+        >
+          {{ effSelected(shot) === v.id ? '当前' : '选用' }}
+        </button>
+      </div>
+    </div>
+    <div v-if="!shot.versions.length" class="muted wb-tip">暂无历史版本</div>
+  </div>
 </template>
 
 <style scoped>

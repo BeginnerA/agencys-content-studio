@@ -12,9 +12,15 @@ const emit = defineEmits<{ close: [] }>()
 <template>
   <Modal title="模板配置速查（字段说明）" :width="720" @close="emit('close')">
     <p class="lead muted">
-      模板是一份 YAML 说明书：启动时问使用者什么、流水线按什么步骤做什么。下面每个字段都可以组合使用——不需要全部用到。
+      模板是一份 YAML
+      说明书：启动时问使用者什么、流水线按什么步骤做什么。下面每个字段都可以组合使用——不需要全部用到。
     </p>
-    <section v-for="g in HELP_GROUPS" :key="g.title" class="grp" :aria-label="g.title">
+    <section
+      v-for="g in HELP_GROUPS"
+      :key="g.title"
+      class="grp"
+      :aria-label="g.title"
+    >
       <h3 class="grp-t">{{ g.title }}</h3>
       <p v-if="g.note" class="grp-note">{{ g.note }}</p>
       <ul class="items">

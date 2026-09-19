@@ -5,7 +5,8 @@ import type { CanvasAdviceResult } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasOverview } from './use-canvas-overview'
 
-type Dependencies = Pick<CanvasState, 'canvasId'> & Pick<CanvasOverview, 'focusNode'>
+type Dependencies = Pick<CanvasState, 'canvasId'> &
+  Pick<CanvasOverview, 'focusNode'>
 
 export function useCanvasAdvice(deps: Dependencies) {
   const { canvasId, focusNode } = deps
@@ -28,7 +29,8 @@ export function useCanvasAdvice(deps: Dependencies) {
       adviceResult.value = null
       // llm_unavailable：引导去设置页配置供应商（其余错误原样透出）
       if (e instanceof ApiError && e.code === 'llm_unavailable') {
-        adviceError.value = '未配置可用的 LLM 供应商：请到「设置 → 供应商」添加并启用后重试'
+        adviceError.value =
+          '未配置可用的 LLM 供应商：请到「设置 → 供应商」添加并启用后重试'
       } else {
         adviceError.value = e instanceof Error ? e.message : String(e)
       }
@@ -43,7 +45,14 @@ export function useCanvasAdvice(deps: Dependencies) {
     focusNode(nodeId)
   }
 
-  return { showAdvice, adviceBusy, adviceError, adviceResult, openAdvice, locateAdvice }
+  return {
+    showAdvice,
+    adviceBusy,
+    adviceError,
+    adviceResult,
+    openAdvice,
+    locateAdvice,
+  }
 }
 
 export type CanvasAdvice = ReturnType<typeof useCanvasAdvice>

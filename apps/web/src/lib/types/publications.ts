@@ -46,8 +46,16 @@ export interface CostTotals {
 /** [M20] 趋势对比基线响应（当前周期 vs 上一周期） */
 export interface CompareResult {
   days: number
-  current: { runs: { total: number; successRate: number }; cost: { total: number }; publications: { total: number; views: number; interactions: number } }
-  previous: { runs: { total: number; successRate: number }; cost: { total: number }; publications: { total: number; views: number; interactions: number } }
+  current: {
+    runs: { total: number; successRate: number }
+    cost: { total: number }
+    publications: { total: number; views: number; interactions: number }
+  }
+  previous: {
+    runs: { total: number; successRate: number }
+    cost: { total: number }
+    publications: { total: number; views: number; interactions: number }
+  }
   delta: { runsTotal: number; costTotal: number; successRate: number }
 }
 

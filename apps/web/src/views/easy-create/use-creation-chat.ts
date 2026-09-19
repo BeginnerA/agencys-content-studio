@@ -3,16 +3,28 @@ import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { studioOff, studioOn } from '../../lib/socket'
 import {
-  REF_DEFAULT_ROLE, REF_MAX_COUNT, REF_MAX_PER_KIND, refKindByExt,
+  REF_DEFAULT_ROLE,
+  REF_MAX_COUNT,
+  REF_MAX_PER_KIND,
+  refKindByExt,
 } from '../../lib/types'
 import type {
-  CreationDetail, CreationSessionListItem, CreationMode,
-  CreationRefKind, CreationRefRole,
+  CreationDetail,
+  CreationSessionListItem,
+  CreationMode,
+  CreationRefKind,
+  CreationRefRole,
 } from '../../lib/types'
 
 // ===== [M30] 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
 
-const RUNNING = new Set(['queued', 'running', 'pending', 'processing', 'waiting_input'])
+const RUNNING = new Set([
+  'queued',
+  'running',
+  'pending',
+  'processing',
+  'waiting_input',
+])
 
 /** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl） */
 export interface AttachmentItem {
@@ -30,7 +42,9 @@ export interface AttachmentItem {
 
 function isPollable(d: CreationDetail | null): boolean {
   if (!d) return false
-  const runActive = !!d.progress && (RUNNING.has(d.progress.status) || d.progress.status === 'processing')
+  const runActive =
+    !!d.progress &&
+    (RUNNING.has(d.progress.status) || d.progress.status === 'processing')
   const starting = d.session.status === 'starting'
   return (runActive || starting) && !d.result
 }
@@ -65,11 +79,19 @@ function commit(id: number, detail: CreationDetail): void {
 }
 
 // 确认幂等键：同一 planHash+revision 复用，重试点击不新起 run；方案变化后重置
-const confirmKey = reactive<{ hash: string; revision: number; key: string }>({ hash: '', revision: 0, key: '' })
+const confirmKey = reactive<{ hash: string; revision: number; key: string }>({
+  hash: '',
+  revision: 0,
+  key: '',
+})
 function syncConfirmKey(): void {
   const s = state.detail?.session
   const hash = s?.planHash ?? ''
-  if (confirmKey.hash === hash && confirmKey.revision === (s?.planRevision ?? 0)) return
+  if (
+    confirmKey.hash === hash &&
+    confirmKey.revision === (s?.planRevision ?? 0)
+  )
+    return
   confirmKey.hash = hash
   confirmKey.revision = s?.planRevision ?? 0
   confirmKey.key = hash ? newRequestKey('cfm') : ''
@@ -101,7 +123,8 @@ function tickPoll(): void {
 
 /** 运行中：Socket 事件即时重拉 + 定时兜底（断线/漏事件仍能收敛，刷新页面不中止后端制作） */
 function ensurePolling(): void {
-  if (isPollable(state.detail) && !pollTimer) pollTimer = setInterval(tickPoll, 4000)
+  if (isPollable(state.detail) && !pollTimer)
+    pollTimer = setInterval(tickPoll, 4000)
   if (!isPollable(state.detail)) stopPolling()
 }
 
@@ -179,11 +202,19 @@ async function send(content: string): Promise<void> {
   state.busySend = true
   state.error = ''
   // [M31] 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
-  const sentAssetIds = state.attachments.filter((a) => a.assetId && !a.error).map((a) => a.assetId!)
+  const sentAssetIds = state.attachments
+    .filter((a) => a.assetId && !a.error)
+    .map((a) => a.assetId!)
   try {
-    const detail = await creationChatApi.send(id, content, newRequestKey('msg'), sentAssetIds)
+    const detail = await creationChatApi.send(
+      id,
+      content,
+      newRequestKey('msg'),
+      sentAssetIds,
+    )
     commit(id, detail)
-    if (id === state.currentId) state.attachments = state.attachments.filter((a) => !a.assetId || a.error)
+    if (id === state.currentId)
+      state.attachments = state.attachments.filter((a) => !a.assetId || a.error)
     ensurePolling()
   } catch (e) {
     if (id === state.currentId) state.error = errText(e)
@@ -209,8 +240,14 @@ async function refreshPreflight(): Promise<void> {
 async function confirm(acceptUnpriced: boolean): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
-  if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction) return null
-  if (!confirmKey.key || confirmKey.hash !== s.planHash || confirmKey.revision !== s.planRevision) syncConfirmKey()
+  if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction)
+    return null
+  if (
+    !confirmKey.key ||
+    confirmKey.hash !== s.planHash ||
+    confirmKey.revision !== s.planRevision
+  )
+    syncConfirmKey()
   state.busyAction = true
   state.error = ''
   try {
@@ -283,15 +320,23 @@ function leave(): void {
 let attSeq = 0
 async function uploadItem(item: AttachmentItem): Promise<void> {
   const id = state.currentId
-  if (!id) { item.error = '请先发送一句话创建会话后再上传参考'; item.uploading = false; return }
+  if (!id) {
+    item.error = '请先发送一句话创建会话后再上传参考'
+    item.uploading = false
+    return
+  }
   item.uploading = true
   item.error = undefined
   try {
     const res = await creationChatApi.uploadAttachment(id, item.file, item.role)
     // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
     if (state.currentId === id && state.attachments.includes(item)) {
-      item.assetId = res.assetId; item.hash = res.hash; item.thumbUrl = res.thumbUrl
-      item.name = res.name; item.kind = res.kind; item.role = res.role
+      item.assetId = res.assetId
+      item.hash = res.hash
+      item.thumbUrl = res.thumbUrl
+      item.name = res.name
+      item.kind = res.kind
+      item.role = res.role
     }
   } catch (e) {
     if (state.attachments.includes(item)) item.error = errText(e)
@@ -303,26 +348,50 @@ async function uploadItem(item: AttachmentItem): Promise<void> {
 /** 选择文件：预校验类型/大小/数量 → 按 kind 默认用途上传 */
 async function addAttachment(file: File): Promise<void> {
   const kind = refKindByExt(file.name)
-  if (!kind) { state.error = `参考仅支持图片 / 视频 / 音频：${file.name}`; return }
-  if (file.size === 0) { state.error = `参考文件为空：${file.name}`; return }
+  if (!kind) {
+    state.error = `参考仅支持图片 / 视频 / 音频：${file.name}`
+    return
+  }
+  if (file.size === 0) {
+    state.error = `参考文件为空：${file.name}`
+    return
+  }
   if (file.size > REF_MAX_PER_KIND[kind]) {
     const label = kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频'
     state.error = `${label}参考超过 ${Math.floor(REF_MAX_PER_KIND[kind] / 1024 / 1024)}MB 上限：${file.name}`
     return
   }
-  if (state.attachments.length >= REF_MAX_COUNT) { state.error = `参考素材最多 ${REF_MAX_COUNT} 个`; return }
-  const item: AttachmentItem = { clientId: `att${++attSeq}_${Date.now()}`, file, name: file.name, kind, role: REF_DEFAULT_ROLE[kind], uploading: false }
+  if (state.attachments.length >= REF_MAX_COUNT) {
+    state.error = `参考素材最多 ${REF_MAX_COUNT} 个`
+    return
+  }
+  const item: AttachmentItem = {
+    clientId: `att${++attSeq}_${Date.now()}`,
+    file,
+    name: file.name,
+    kind,
+    role: REF_DEFAULT_ROLE[kind],
+    uploading: false,
+  }
   state.attachments.push(item)
   // 必须通过响应式代理回填上传态（push 后读回数组元素为 reactive 代理；直接改 push 前的 raw 引用不触发 set 陷阱，UI 会永久停在「上传中」）
   await uploadItem(state.attachments[state.attachments.length - 1]!)
 }
 
 /** 更改用途：已上传项按新 role 重传（同内容服务端按 sha256 去重，仅更新登记 role） */
-async function changeAttachmentRole(clientId: string, role: CreationRefRole): Promise<void> {
+async function changeAttachmentRole(
+  clientId: string,
+  role: CreationRefRole,
+): Promise<void> {
   const item = state.attachments.find((a) => a.clientId === clientId)
   if (!item || item.role === role) return
   item.role = role
-  if (item.assetId) { item.assetId = undefined; item.hash = undefined; item.thumbUrl = null; await uploadItem(item) }
+  if (item.assetId) {
+    item.assetId = undefined
+    item.hash = undefined
+    item.thumbUrl = null
+    await uploadItem(item)
+  }
 }
 
 function removeAttachment(clientId: string): void {
@@ -335,18 +404,31 @@ function retryAttachment(clientId: string): void {
   if (item) void uploadItem(item)
 }
 
-const uploadingAttachments = computed(() => state.attachments.some((a) => a.uploading))
-const readyAttachmentCount = computed(() => state.attachments.filter((a) => a.assetId && !a.error).length)
+const uploadingAttachments = computed(() =>
+  state.attachments.some((a) => a.uploading),
+)
+const readyAttachmentCount = computed(
+  () => state.attachments.filter((a) => a.assetId && !a.error).length,
+)
 
-const modeLabel = computed<CreationMode | null>(() => state.detail?.session.plan?.mode ?? null)
+const modeLabel = computed<CreationMode | null>(
+  () => state.detail?.session.plan?.mode ?? null,
+)
 
 export function useEasyCreate() {
   return {
     state,
     confirmKey,
     modeLabel,
-    canConfirm: computed(() => state.detail?.session.status === 'ready' && !!state.detail?.session.preflight?.execution),
-    hasUnpriced: computed(() => (state.detail?.session.preflight?.estimate.unpriced.length ?? 0) > 0),
+    canConfirm: computed(
+      () =>
+        state.detail?.session.status === 'ready' &&
+        !!state.detail?.session.preflight?.execution,
+    ),
+    hasUnpriced: computed(
+      () =>
+        (state.detail?.session.preflight?.estimate.unpriced.length ?? 0) > 0,
+    ),
     loadSessions,
     open,
     startIdea,

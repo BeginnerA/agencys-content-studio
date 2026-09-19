@@ -5,7 +5,15 @@
 // - creatable：输入不在候选内的值可直接提交（列表顶部出现「使用「xxx」」行）
 // - 超大目录保护：仅渲染前 maxRender 条并提示继续输入
 // - 失焦收尾：精确匹配则提交，否则回退到已提交值（防半截输入误提交）
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useId,
+  watch,
+} from 'vue'
 import Icon from './Icon.vue'
 
 const props = withDefaults(
@@ -22,7 +30,13 @@ const props = withDefaults(
     maxRender?: number
     ariaLabel?: string
   }>(),
-  { placeholder: '搜索…', blankLabel: '', creatable: true, maxRender: 300, ariaLabel: '' },
+  {
+    placeholder: '搜索…',
+    blankLabel: '',
+    creatable: true,
+    maxRender: 300,
+    ariaLabel: '',
+  },
 )
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
@@ -72,11 +86,23 @@ const matched = computed(() => {
 const rows = computed<Row[]>(() => {
   const out: Row[] = []
   if (!q.value && props.blankLabel) {
-    out.push({ key: '__blank__', label: props.blankLabel, value: '', kind: 'blank' })
+    out.push({
+      key: '__blank__',
+      label: props.blankLabel,
+      value: '',
+      kind: 'blank',
+    })
   }
-  const hasExact = pool.value.some((o) => o.toLowerCase() === q.value.toLowerCase())
+  const hasExact = pool.value.some(
+    (o) => o.toLowerCase() === q.value.toLowerCase(),
+  )
   if (props.creatable && filtering.value && !hasExact) {
-    out.push({ key: '__custom__', label: q.value, value: q.value, kind: 'custom' })
+    out.push({
+      key: '__custom__',
+      label: q.value,
+      value: q.value,
+      kind: 'custom',
+    })
   }
   for (const m of matched.value.slice(0, props.maxRender)) {
     out.push({ key: `m:${m}`, label: m, value: m, kind: 'option' })
@@ -84,7 +110,9 @@ const rows = computed<Row[]>(() => {
   return out
 })
 
-const hiddenCount = computed(() => Math.max(0, matched.value.length - props.maxRender))
+const hiddenCount = computed(() =>
+  Math.max(0, matched.value.length - props.maxRender),
+)
 
 // 父组件更新值（如编辑回填 / 重置）时同步草稿
 watch(
@@ -111,7 +139,9 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
 
 function scrollHi() {
   void nextTick(() => {
-    dropEl.value?.querySelector<HTMLElement>(`[data-idx="${hi.value}"]`)?.scrollIntoView({ block: 'nearest' })
+    dropEl.value
+      ?.querySelector<HTMLElement>(`[data-idx="${hi.value}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
   })
 }
 
@@ -119,7 +149,9 @@ function openList() {
   open.value = true
   dirty.value = false
   query.value = props.modelValue
-  const i = rows.value.findIndex((r) => r.kind === 'option' && r.value === props.modelValue)
+  const i = rows.value.findIndex(
+    (r) => r.kind === 'option' && r.value === props.modelValue,
+  )
   hi.value = i >= 0 ? i : rows.value.length ? 0 : -1
   void nextTick(() => {
     const box = inputEl.value?.getBoundingClientRect()
@@ -156,7 +188,9 @@ function commit(v: string) {
 
 /** 失焦收尾：精确匹配提交，否则回退（防半截输入误提交） */
 function settle() {
-  const exact = pool.value.find((o) => o.toLowerCase() === q.value.toLowerCase())
+  const exact = pool.value.find(
+    (o) => o.toLowerCase() === q.value.toLowerCase(),
+  )
   if (exact !== undefined && exact !== props.modelValue) commit(exact)
   else cancel()
 }
@@ -166,10 +200,21 @@ function onInput(e: Event) {
   dirty.value = true
   if (!open.value) open.value = true
   const blankIdx = rows.value.findIndex((r) => r.kind === 'blank')
-  const exact = rows.value.findIndex((r) => r.kind === 'option' && r.value.toLowerCase() === q.value.toLowerCase())
+  const exact = rows.value.findIndex(
+    (r) =>
+      r.kind === 'option' && r.value.toLowerCase() === q.value.toLowerCase(),
+  )
   const first = rows.value.findIndex((r) => r.kind === 'option')
   hi.value =
-    q.value === '' && blankIdx >= 0 ? blankIdx : exact >= 0 ? exact : first >= 0 ? first : rows.value.length ? 0 : -1
+    q.value === '' && blankIdx >= 0
+      ? blankIdx
+      : exact >= 0
+        ? exact
+        : first >= 0
+          ? first
+          : rows.value.length
+            ? 0
+            : -1
   scrollHi()
 }
 
@@ -190,7 +235,12 @@ function onKeydown(e: KeyboardEvent) {
     if (row) {
       e.preventDefault()
       commit(row.value)
-    } else if (!open.value && props.creatable && q.value && q.value !== props.modelValue) {
+    } else if (
+      !open.value &&
+      props.creatable &&
+      q.value &&
+      q.value !== props.modelValue
+    ) {
       e.preventDefault()
       commit(q.value)
     }
@@ -209,8 +259,12 @@ function onDocPointerDown(e: PointerEvent) {
   if (rootEl.value && !rootEl.value.contains(e.target as Node)) settle()
 }
 
-onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+onMounted(() =>
+  document.addEventListener('pointerdown', onDocPointerDown, true),
+)
+onBeforeUnmount(() =>
+  document.removeEventListener('pointerdown', onDocPointerDown, true),
+)
 </script>
 
 <template>
@@ -238,7 +292,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
       />
       <Icon name="chevron-down" :size="14" class="caret" />
     </div>
-    <div v-if="open" ref="dropEl" class="drop" :class="{ up }" :style="{ maxHeight: dropMax + 'px' }">
+    <div
+      v-if="open"
+      ref="dropEl"
+      class="drop"
+      :class="{ up }"
+      :style="{ maxHeight: dropMax + 'px' }"
+    >
       <div :id="listId" role="listbox" :aria-label="ariaLabel || '候选列表'">
         <div
           v-for="(r, i) in rows"
@@ -260,24 +320,34 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
         >
           <span class="ck">
             <Icon
-              v-if="(r.kind === 'option' && r.value === modelValue) || (r.kind === 'blank' && modelValue === '')"
+              v-if="
+                (r.kind === 'option' && r.value === modelValue) ||
+                (r.kind === 'blank' && modelValue === '')
+              "
               name="check"
               :size="12"
               :stroke-width="2.2"
             />
           </span>
           <span class="lb">
-            <template v-if="r.kind === 'custom'">使用「<b>{{ r.value }}</b>」</template>
+            <template v-if="r.kind === 'custom'"
+              >使用「<b>{{ r.value }}</b
+              >」</template
+            >
             <template v-else-if="r.kind === 'blank'">{{ r.label }}</template>
             <template v-else
-              >{{ r.value }}<span v-if="r.value === modelValue" class="sfx">（当前）</span></template
+              >{{ r.value
+              }}<span v-if="r.value === modelValue" class="sfx"
+                >（当前）</span
+              ></template
             >
           </span>
         </div>
       </div>
       <div v-if="!rows.length" class="hint">无匹配模型，可直接输入模型 ID</div>
       <div v-if="hiddenCount > 0" class="hint">
-        共 {{ matched.length }} 个匹配，仅显示前 {{ maxRender }} 个 — 继续输入以缩小范围
+        共 {{ matched.length }} 个匹配，仅显示前 {{ maxRender }} 个 —
+        继续输入以缩小范围
       </div>
     </div>
   </div>
@@ -311,7 +381,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   right: 10px;
   color: var(--text-3);
   pointer-events: none;
-  transition: transform 0.16s ease, color 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    color 0.16s ease;
 }
 
 .ss.open .caret {

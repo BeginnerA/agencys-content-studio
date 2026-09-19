@@ -50,7 +50,9 @@ export function normalizeGenre(g: string): string {
 /** 项目体裁展示：归一 → 项目字典 → 模板字典 → 原值兜底 */
 export function projectGenreText(g: string): string {
   const k = normalizeGenre(g)
-  return PROJECT_GENRES.find((x) => x.value === k)?.label ?? GENRE_LABELS[k] ?? g
+  return (
+    PROJECT_GENRES.find((x) => x.value === k)?.label ?? GENRE_LABELS[k] ?? g
+  )
 }
 
 /** 体裁 → 默认模板弱关联（仅预选，不校验；命中模板列表才换） */

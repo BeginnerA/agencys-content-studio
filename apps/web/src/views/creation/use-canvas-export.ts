@@ -6,9 +6,12 @@ import type { CanvasState } from './use-canvas-state'
 import type { CanvasCommands } from './use-canvas-commands'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'doc' | 'toast' | 'boardRef'>
-  & Pick<CanvasCommands, 'addNodesCommand'>
-  & Pick<CanvasDocument, 'loadDoc'>
+type Dependencies = Pick<
+  CanvasState,
+  'canvasId' | 'doc' | 'toast' | 'boardRef'
+> &
+  Pick<CanvasCommands, 'addNodesCommand'> &
+  Pick<CanvasDocument, 'loadDoc'>
 
 export function useCanvasExport(deps: Dependencies) {
   const { canvasId, doc, toast, boardRef, addNodesCommand, loadDoc } = deps
@@ -49,7 +52,9 @@ export function useCanvasExport(deps: Dependencies) {
 
   /** SVG 文本 → PNG Blob（浏览器原生 Image + canvas 2x 光栅化） */
   async function svgToPngBlob(svgText: string, scale = 2): Promise<Blob> {
-    const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }))
+    const url = URL.createObjectURL(
+      new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }),
+    )
     try {
       const img = new Image()
       await new Promise<void>((resolve, reject) => {
@@ -66,7 +71,10 @@ export function useCanvasExport(deps: Dependencies) {
       if (!ctx) throw new Error('canvas 2d 上下文不可用')
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
       return await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 编码失败'))), 'image/png')
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('PNG 编码失败'))),
+          'image/png',
+        )
       })
     } finally {
       URL.revokeObjectURL(url)
@@ -86,7 +94,10 @@ export function useCanvasExport(deps: Dependencies) {
     try {
       const r = await creationApi.exportImage(cid)
       const name = canvasFileName(cid)
-      downloadBlob(new Blob([r.svg], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`)
+      downloadBlob(
+        new Blob([r.svg], { type: 'image/svg+xml;charset=utf-8' }),
+        `${name}.svg`,
+      )
       toast(`已导出 SVG（资产 #${r.assetId}）：${name}.svg`)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
@@ -155,12 +166,20 @@ export function useCanvasExport(deps: Dependencies) {
       const r = await creationApi.templateTry(cid)
       const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
       try {
-        await addNodesCommand(cid, [{ kind: 'run', runId: r.runId, x: at.x, y: at.y }], '试跑新建运行节点')
+        await addNodesCommand(
+          cid,
+          [{ kind: 'run', runId: r.runId, x: at.x, y: at.y }],
+          '试跑新建运行节点',
+        )
         await loadDoc(true)
       } catch (e) {
-        toast(`run 已建但节点创建失败：${e instanceof Error ? e.message : String(e)}`)
+        toast(
+          `run 已建但节点创建失败：${e instanceof Error ? e.message : String(e)}`,
+        )
       }
-      toast(`已试跑→ 模板「${r.templateKey}」· run #${r.runId}（queued）${r.lossy.length ? ` · ${r.lossy.length} 项降级` : ''}`)
+      toast(
+        `已试跑→ 模板「${r.templateKey}」· run #${r.runId}（queued）${r.lossy.length ? ` · ${r.lossy.length} 项降级` : ''}`,
+      )
       showDraft.value = false
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))

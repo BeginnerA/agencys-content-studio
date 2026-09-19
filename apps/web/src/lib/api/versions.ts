@@ -12,29 +12,50 @@ const V = '/api/v1'
 
 /** 文本资产版本 / 内容 / 还原 / 影响 */
 export const assetVersionApi = {
-  list: (assetId: number) => api.get<VersionListResult>(`${V}/assets/${assetId}/versions`),
+  list: (assetId: number) =>
+    api.get<VersionListResult>(`${V}/assets/${assetId}/versions`),
   contentText: (assetId: number, versionId: number) =>
-    api.get<{ content: string }>(`${V}/assets/${assetId}/versions/${versionId}/content`),
+    api.get<{ content: string }>(
+      `${V}/assets/${assetId}/versions/${versionId}/content`,
+    ),
   restore: (assetId: number, versionId: number) =>
-    api.post<RestoreAssetResult>(`${V}/assets/${assetId}/versions/${versionId}/restore`),
-  impact: (assetId: number) => api.get<ImpactResult>(`${V}/assets/${assetId}/impact`),
+    api.post<RestoreAssetResult>(
+      `${V}/assets/${assetId}/versions/${versionId}/restore`,
+    ),
+  impact: (assetId: number) =>
+    api.get<ImpactResult>(`${V}/assets/${assetId}/impact`),
 }
 
 /** 实体档案版本 / 快照 / 还原 / 影响 */
 export const entityVersionApi = {
-  list: (entityId: number) => api.get<VersionListResult>(`${V}/entities/${entityId}/versions`),
+  list: (entityId: number) =>
+    api.get<VersionListResult>(`${V}/entities/${entityId}/versions`),
   contentDoc: (entityId: number, versionId: number) =>
-    api.get<{ doc: Record<string, unknown> }>(`${V}/entities/${entityId}/versions/${versionId}/content`),
+    api.get<{ doc: Record<string, unknown> }>(
+      `${V}/entities/${entityId}/versions/${versionId}/content`,
+    ),
   restore: (entityId: number, versionId: number) =>
-    api.post<{ ok: boolean; revision: number }>(`${V}/entities/${entityId}/versions/${versionId}/restore`),
-  impact: (entityId: number) => api.get<ImpactResult>(`${V}/entities/${entityId}/impact`),
+    api.post<{ ok: boolean; revision: number }>(
+      `${V}/entities/${entityId}/versions/${versionId}/restore`,
+    ),
+  impact: (entityId: number) =>
+    api.get<ImpactResult>(`${V}/entities/${entityId}/impact`),
 }
 
 /** 画布生成节点：锁定 / 解锁下次执行输入（三操作分离之锁版，不影响选片与内容版本） */
 export const canvasLockApi = {
-  list: (nodeId: number) => api.get<{ items: InputLockView[] }>(`${V}/canvas/nodes/${nodeId}/input-locks`),
+  list: (nodeId: number) =>
+    api.get<{ items: InputLockView[] }>(
+      `${V}/canvas/nodes/${nodeId}/input-locks`,
+    ),
   lock: (nodeId: number, upstreamNodeId: number, assetId: number) =>
-    api.post<{ items: InputLockView[] }>(`${V}/canvas/nodes/${nodeId}/input-lock`, { upstreamNodeId, assetId }),
+    api.post<{ items: InputLockView[] }>(
+      `${V}/canvas/nodes/${nodeId}/input-lock`,
+      { upstreamNodeId, assetId },
+    ),
   unlock: (nodeId: number, upstreamNodeId: number) =>
-    api.del<{ items: InputLockView[] }>(`${V}/canvas/nodes/${nodeId}/input-lock`, { upstreamNodeId }),
+    api.del<{ items: InputLockView[] }>(
+      `${V}/canvas/nodes/${nodeId}/input-lock`,
+      { upstreamNodeId },
+    ),
 }

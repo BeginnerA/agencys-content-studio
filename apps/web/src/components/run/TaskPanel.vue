@@ -28,7 +28,9 @@ async function load() {
   }
 }
 
-const doneCount = computed(() => tasks.value.filter((t) => t.status === 'succeeded').length)
+const doneCount = computed(
+  () => tasks.value.filter((t) => t.status === 'succeeded').length,
+)
 const sum = computed(() => ({
   total: tasks.value.length,
   done: doneCount.value,
@@ -77,6 +79,14 @@ function statusText(t: GenTask): string {
   return taskStatus(t.status).text
 }
 
+// 泛型断言从插值抽到脚本：prettier 的 HTML 词法器会把模板里的 < 误判为标签
+function shotLabel(t: GenTask): string | number {
+  return (
+    ((t.params as Record<string, unknown> | null)?.['shotId'] as
+      string | number | undefined) ?? '#' + t.id
+  )
+}
+
 let emitTimer: number | undefined
 
 /** task.updated 高频（每任务 ≥2 事件）→ 防抖通知父级（400ms 尾沿合并） */
@@ -100,7 +110,8 @@ onMounted(() => {
   load()
   studioOn('task.updated', onTaskUpdated)
   timer = window.setInterval(() => {
-    if (props.active || tasks.value.some((t) => t.status === 'processing')) load()
+    if (props.active || tasks.value.some((t) => t.status === 'processing'))
+      load()
   }, 3000)
 })
 
@@ -121,14 +132,17 @@ onBeforeUnmount(() => {
     <div class="thead">
       <div class="t">生成任务</div>
       <div class="stat muted" v-if="sum.total">
-        共 {{ sum.total }} · 成功 {{ sum.done }} · 失败 {{ sum.failed }} · 处理中 {{ sum.processing }}
+        共 {{ sum.total }} · 成功 {{ sum.done }} · 失败 {{ sum.failed }} ·
+        处理中 {{ sum.processing }}
       </div>
       <button class="btn sm" :disabled="loading" @click="load">刷新</button>
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="loading && !tasks.length" class="empty">加载中…</div>
-    <div v-else-if="!tasks.length" class="empty">该运行没有任务（文本类步骤同步执行，不产生 task）</div>
+    <div v-else-if="!tasks.length" class="empty">
+      该运行没有任务（文本类步骤同步执行，不产生 task）
+    </div>
 
     <div v-else class="list">
       <div v-for="t in tasks" :key="t.id" class="row">
@@ -136,28 +150,51 @@ onBeforeUnmount(() => {
           <span v-if="isVideoPoll(t)" class="spin" aria-hidden="true"></span>
           {{ statusText(t) }}
         </span>
-        <span class="shot mono">{{ (t.params as Record<string, unknown> | null)?.['shotId'] ?? ('#' + t.id) }}</span>
+        <span class="shot mono">{{ shotLabel(t) }}</span>
         <span class="pr" :title="t.prompt">{{ t.prompt }}</span>
-        <span v-if="t.errorMsg" class="em mono" :title="t.errorMsg">{{ t.errorMsg }}</span>
-        <span v-else-if="t.resultAsset" class="ok-txt">→ {{ t.resultAsset.name }}</span>
-        <span class="at muted">{{ fmtTime(t.completedAt ?? t.updatedAt) }} · 尝试 {{ t.attempts }}</span>
+        <span v-if="t.errorMsg" class="em mono" :title="t.errorMsg">{{
+          t.errorMsg
+        }}</span>
+        <span v-else-if="t.resultAsset" class="ok-txt"
+          >→ {{ t.resultAsset.name }}</span
+        >
+        <span class="at muted"
+          >{{ fmtTime(t.completedAt ?? t.updatedAt) }} · 尝试
+          {{ t.attempts }}</span
+        >
         <span class="ops">
           <button
             v-if="t.resultAsset"
             class="mini"
             :disabled="previewBusyId !== null"
-            :title="previewBusyId === t.resultAsset.id ? '正在载入资产…' : '内联预览结果资产'"
+            :title="
+              previewBusyId === t.resultAsset.id
+                ? '正在载入资产…'
+                : '内联预览结果资产'
+            "
             @click="openPreview(t)"
           >
             {{ previewBusyId === t.resultAsset.id ? '载入中…' : '查看' }}
           </button>
-          <button v-if="t.status === 'failed'" class="btn sm" @click="retry(t)">重试</button>
-          <button v-if="t.status === 'processing'" class="btn sm" @click="cancel(t)">取消</button>
+          <button v-if="t.status === 'failed'" class="btn sm" @click="retry(t)">
+            重试
+          </button>
+          <button
+            v-if="t.status === 'processing'"
+            class="btn sm"
+            @click="cancel(t)"
+          >
+            取消
+          </button>
         </span>
       </div>
     </div>
 
-    <AssetPreviewer v-if="previewAsset" :assets="[previewAsset]" @close="previewAsset = null" />
+    <AssetPreviewer
+      v-if="previewAsset"
+      :assets="[previewAsset]"
+      @close="previewAsset = null"
+    />
   </div>
 </template>
 

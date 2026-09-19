@@ -26,7 +26,9 @@ export interface CanvasHistory {
   redoLabel: Ref<string | null>
 }
 
-export function createCanvasHistory(opts: { limit?: number } = {}): CanvasHistory {
+export function createCanvasHistory(
+  opts: { limit?: number } = {},
+): CanvasHistory {
   const limit = opts.limit ?? 100
   const undoStack: CanvasCommand[] = []
   const redoStack: CanvasCommand[] = []

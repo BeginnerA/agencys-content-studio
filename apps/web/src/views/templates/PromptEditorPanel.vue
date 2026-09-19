@@ -3,41 +3,51 @@ import Icon from '../../components/common/Icon.vue'
 import type { PromptsApi } from './use-prompts'
 
 const props = defineProps<{ p: PromptsApi }>()
-const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } = props.p
+const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
+  props.p
 </script>
 
 <template>
-      <section class="panel editor">
-        <div v-if="!pSelected" class="empty" style="padding: 80px 0">左侧选择一个提示词开始编辑</div>
-        <template v-else>
-          <div class="ehead">
-            <span class="tt mono">{{ pSelected }}</span>
-            <span class="badge" :class="pDirty ? 'queued' : 'succeeded'">{{ pDirty ? '未保存' : '已同步' }}</span>
-            <div class="acts">
-              <button class="btn sm danger" @click="removePrompt(pSelected)">
-                <Icon name="trash" :size="12" /> 删除
-              </button>
-            </div>
-          </div>
-          <div v-if="pErr" class="err-text">{{ pErr }}</div>
-          <div class="edit">
-            <div class="ed">
-              <textarea
-                v-model="pText"
-                class="yaml"
-                spellcheck="false"
-                :aria-label="`${pSelected} 提示词编辑器`"
-              ></textarea>
-            </div>
-          </div>
-          <div class="ebar">
-            <span class="muted">Markdown 文本 · 保存后模板引用即时指向新内容</span>
-            <button class="btn primary" :disabled="!pDirty || pSaving" @click="savePrompt">
-              <Icon name="check" :size="13" :stroke-width="2.2" /> {{ pSaving ? '保存中…' : '保存' }}
-            </button>
-          </div>
-        </template>
-      </section>
+  <section class="panel editor">
+    <div v-if="!pSelected" class="empty" style="padding: 80px 0">
+      左侧选择一个提示词开始编辑
+    </div>
+    <template v-else>
+      <div class="ehead">
+        <span class="tt mono">{{ pSelected }}</span>
+        <span class="badge" :class="pDirty ? 'queued' : 'succeeded'">{{
+          pDirty ? '未保存' : '已同步'
+        }}</span>
+        <div class="acts">
+          <button class="btn sm danger" @click="removePrompt(pSelected)">
+            <Icon name="trash" :size="12" /> 删除
+          </button>
+        </div>
+      </div>
+      <div v-if="pErr" class="err-text">{{ pErr }}</div>
+      <div class="edit">
+        <div class="ed">
+          <textarea
+            v-model="pText"
+            class="yaml"
+            spellcheck="false"
+            :aria-label="`${pSelected} 提示词编辑器`"
+          ></textarea>
+        </div>
+      </div>
+      <div class="ebar">
+        <span class="muted">Markdown 文本 · 保存后模板引用即时指向新内容</span>
+        <button
+          class="btn primary"
+          :disabled="!pDirty || pSaving"
+          @click="savePrompt"
+        >
+          <Icon name="check" :size="13" :stroke-width="2.2" />
+          {{ pSaving ? '保存中…' : '保存' }}
+        </button>
+      </div>
+    </template>
+  </section>
 </template>
 
 <style scoped>
@@ -96,5 +106,4 @@ textarea.yaml {
   gap: 12px;
   margin-top: 12px;
 }
-
 </style>

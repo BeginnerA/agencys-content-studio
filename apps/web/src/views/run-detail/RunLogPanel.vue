@@ -5,13 +5,15 @@ const { showLog, logText, autoScroll, logEl } = props.u
 </script>
 
 <template>
-          <div v-if="showLog" class="panel logbox">
-            <div class="lhead">
-              <span class="lt">运行日志</span>
-              <label class="autosc"><input v-model="autoScroll" type="checkbox" /> 自动滚动</label>
-            </div>
-            <pre ref="logEl" class="log mono">{{ logText || '（暂无日志）' }}</pre>
-          </div>
+  <div v-if="showLog" class="panel logbox">
+    <div class="lhead">
+      <span class="lt">运行日志</span>
+      <label class="autosc"
+        ><input v-model="autoScroll" type="checkbox" /> 自动滚动</label
+      >
+    </div>
+    <pre ref="logEl" class="log mono">{{ logText || '（暂无日志）' }}</pre>
+  </div>
 </template>
 
 <style scoped>
@@ -53,5 +55,4 @@ const { showLog, logText, autoScroll, logEl } = props.u
   white-space: pre-wrap;
   word-break: break-all;
 }
-
 </style>

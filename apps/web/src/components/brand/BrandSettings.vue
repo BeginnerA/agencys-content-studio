@@ -8,16 +8,34 @@
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { brandAssetApi, projectApi, uploadFiles } from '../../lib/api'
-import type { BrandConfig, BrandMaterialSlot, BrandSlotKey, WatermarkConfig } from '../../lib/types'
+import type {
+  BrandConfig,
+  BrandMaterialSlot,
+  BrandSlotKey,
+  WatermarkConfig,
+} from '../../lib/types'
 import Icon from '../common/Icon.vue'
-import { SLOT_TEXT, WM_POSITIONS, fileOf, normBrand, pctStore } from './brand-form-helpers'
+import {
+  SLOT_TEXT,
+  WM_POSITIONS,
+  fileOf,
+  normBrand,
+  pctStore,
+} from './brand-form-helpers'
 import { useBrandForm } from './use-brand-form'
 import { useBrandAssets } from './use-brand-assets'
 import { useBrandRun } from './use-brand-run'
 import { useBrandPlatform } from './use-brand-platform'
 
-const props = defineProps<{ scope: 'platform' | 'project' | 'run'; projectId?: number; runId?: number }>()
-const emit = defineEmits<{ changed: []; preview: [data: { brand: BrandConfig; wmFile: string }] }>()
+const props = defineProps<{
+  scope: 'platform' | 'project' | 'run'
+  projectId?: number
+  runId?: number
+}>()
+const emit = defineEmits<{
+  changed: []
+  preview: [data: { brand: BrandConfig; wmFile: string }]
+}>()
 
 const loading = ref(true)
 const busy = ref(false)
@@ -67,7 +85,8 @@ const {
 } = form
 
 // ---------- 项目素材资产（M26 拆分：./use-brand-assets） ----------
-const { imgAssets, vidAssets, assetName, assetFileUrl, refreshProjectAssets } = useBrandAssets(props)
+const { imgAssets, vidAssets, assetName, assetFileUrl, refreshProjectAssets } =
+  useBrandAssets(props)
 
 // ---------- 平台文件路径（platform/project 预览 + 表单联动共用） ----------
 const wmFile = ref('')
@@ -123,9 +142,12 @@ async function loadProject() {
   projectSettings.value = settings
   const b = normBrand(settings.brand)
   projectBrand.value = b
-  wmAssetId.value = typeof b.watermark?.asset_id === 'number' ? b.watermark.asset_id : 0
-  introAssetId.value = typeof b.intro?.asset_id === 'number' ? b.intro.asset_id : 0
-  outroAssetId.value = typeof b.outro?.asset_id === 'number' ? b.outro.asset_id : 0
+  wmAssetId.value =
+    typeof b.watermark?.asset_id === 'number' ? b.watermark.asset_id : 0
+  introAssetId.value =
+    typeof b.intro?.asset_id === 'number' ? b.intro.asset_id : 0
+  outroAssetId.value =
+    typeof b.outro?.asset_id === 'number' ? b.outro.asset_id : 0
   // [M20 fix] project scope 也需设置文件路径，否则预览 wmFile/introFile/outroFile 永远为空
   wmFile.value = fileOf(b, 'watermark')
   introFile.value = fileOf(b, 'intro')
@@ -174,7 +196,10 @@ async function onFilePicked(e: Event) {
       const [a] = await uploadFiles(pid, 'source', [f])
       if (!a) throw new Error('上传失败：未返回资产')
       const want = slot === 'watermark' ? 'image' : 'video'
-      if (a.kind !== want) throw new Error(`${label}需${want === 'image' ? '图片' : '视频'}文件（得到 ${a.kind}）`)
+      if (a.kind !== want)
+        throw new Error(
+          `${label}需${want === 'image' ? '图片' : '视频'}文件（得到 ${a.kind}）`,
+        )
       await refreshProjectAssets()
       if (slot === 'watermark') wmAssetId.value = a.id
       else if (slot === 'intro') introAssetId.value = a.id
@@ -203,7 +228,9 @@ function saveProjectSlot(slot: 'watermark' | 'intro' | 'outro') {
         position: wmPosition.value,
         opacity: pctStore(wmOpacity.value, 5, 100),
         width_pct: pctStore(wmWidth.value, 3, 50),
-        margin_px: Math.round(Math.min(200, Math.max(0, Number(wmMargin.value) || 0))),
+        margin_px: Math.round(
+          Math.min(200, Math.max(0, Number(wmMargin.value) || 0)),
+        ),
       }
       if (wmAssetId.value > 0) wm.asset_id = wmAssetId.value
       else delete wm.asset_id
@@ -230,32 +257,56 @@ function saveProjectSlot(slot: 'watermark' | 'intro' | 'outro') {
 /** project 字幕样式保存 / 清除 */
 function saveProjectSubtitle() {
   const clearing = !subOn.value
-  void wrap(async () => {
-    const pid = props.projectId ?? 0
-    const next = JSON.parse(JSON.stringify(projectBrand.value)) as BrandConfig
-    if (clearing) {
-      delete next.subtitle
-      subPersisted.value = false
-    } else {
-      next.subtitle = collectSub()
-      subPersisted.value = true
-    }
-    const settings = { ...projectSettings.value, brand: next }
-    await projectApi.update(pid, { settings })
-    projectSettings.value = settings
-    projectBrand.value = next
-  }, clearing ? '项目字幕样式已清除（回落平台/默认）' : '项目字幕样式已保存（重新合成后生效）')
+  void wrap(
+    async () => {
+      const pid = props.projectId ?? 0
+      const next = JSON.parse(JSON.stringify(projectBrand.value)) as BrandConfig
+      if (clearing) {
+        delete next.subtitle
+        subPersisted.value = false
+      } else {
+        next.subtitle = collectSub()
+        subPersisted.value = true
+      }
+      const settings = { ...projectSettings.value, brand: next }
+      await projectApi.update(pid, { settings })
+      projectSettings.value = settings
+      projectBrand.value = next
+    },
+    clearing
+      ? '项目字幕样式已清除（回落平台/默认）'
+      : '项目字幕样式已保存（重新合成后生效）',
+  )
 }
 
 // ---------- 派生 ----------
 
 /** run 模式：水印参数控件可编辑性（仅自定义模式） */
-const wmParamsDisabled = computed(() => busy.value || (props.scope === 'run' && wmMode.value !== 'custom'))
+const wmParamsDisabled = computed(
+  () => busy.value || (props.scope === 'run' && wmMode.value !== 'custom'),
+)
 
 // [M20] 表单 → 预览实时联动：监听所有表单字段，变化时 emit preview 供父组件 BrandPreview 即时渲染
 const formWatchSrc = computed(() => ({
-  sub: { on: subOn.value, font: subFont.value, size: subSize.value, color: subColor.value, outlineColor: subOutlineColor.value, outline: subOutline.value, shadow: subShadow.value, marginV: subMarginV.value, align: subAlign.value, bold: subBold.value },
-  wm: { enabled: wmEnabled.value, position: wmPosition.value, opacity: wmOpacity.value, width: wmWidth.value, margin: wmMargin.value },
+  sub: {
+    on: subOn.value,
+    font: subFont.value,
+    size: subSize.value,
+    color: subColor.value,
+    outlineColor: subOutlineColor.value,
+    outline: subOutline.value,
+    shadow: subShadow.value,
+    marginV: subMarginV.value,
+    align: subAlign.value,
+    bold: subBold.value,
+  },
+  wm: {
+    enabled: wmEnabled.value,
+    position: wmPosition.value,
+    opacity: wmOpacity.value,
+    width: wmWidth.value,
+    margin: wmMargin.value,
+  },
   intro: introEnabled.value,
   outro: outroEnabled.value,
   wmFile: wmFile.value,
@@ -266,36 +317,42 @@ const formWatchSrc = computed(() => ({
   introAssetId: introAssetId.value,
   outroAssetId: outroAssetId.value,
 }))
-watch(formWatchSrc, (v) => {
-  const brand: BrandConfig = {}
-  if (v.sub.on) {
-    brand.subtitle = {
-      font: v.sub.font || undefined,
-      size_pct: pctStore(v.sub.size, 0.8, 6),
-      color: v.sub.color,
-      outline_color: v.sub.outlineColor,
-      outline_pct: pctStore(v.sub.outline, 0, 0.5),
-      shadow: Math.round(Math.min(8, Math.max(0, Number(v.sub.shadow) || 0))),
-      margin_v_pct: pctStore(v.sub.marginV, 0, 10),
-      alignment: v.sub.align,
-      bold: v.sub.bold,
+watch(
+  formWatchSrc,
+  (v) => {
+    const brand: BrandConfig = {}
+    if (v.sub.on) {
+      brand.subtitle = {
+        font: v.sub.font || undefined,
+        size_pct: pctStore(v.sub.size, 0.8, 6),
+        color: v.sub.color,
+        outline_color: v.sub.outlineColor,
+        outline_pct: pctStore(v.sub.outline, 0, 0.5),
+        shadow: Math.round(Math.min(8, Math.max(0, Number(v.sub.shadow) || 0))),
+        margin_v_pct: pctStore(v.sub.marginV, 0, 10),
+        alignment: v.sub.align,
+        bold: v.sub.bold,
+      }
     }
-  }
-  brand.watermark = {
-    position: v.wm.position,
-    opacity: pctStore(v.wm.opacity, 5, 100),
-    width_pct: pctStore(v.wm.width, 3, 50),
-    margin_px: Math.round(Math.min(200, Math.max(0, Number(v.wm.margin) || 0))),
-  }
-  // [M20 fix2] 项目资产来源：asset_id 优先于 file（镜像服务端 resolveMaterialPath 语义）
-  if (v.wmAssetId > 0) brand.watermark.asset_id = v.wmAssetId
-  if (!v.wm.enabled) brand.watermark.enabled = false
-  brand.intro = { enabled: v.intro, file: v.introFile || undefined }
-  if (v.introAssetId > 0) brand.intro.asset_id = v.introAssetId
-  brand.outro = { enabled: v.outro, file: v.outroFile || undefined }
-  if (v.outroAssetId > 0) brand.outro.asset_id = v.outroAssetId
-  emit('preview', { brand, wmFile: v.wmFile })
-}, { deep: true })
+    brand.watermark = {
+      position: v.wm.position,
+      opacity: pctStore(v.wm.opacity, 5, 100),
+      width_pct: pctStore(v.wm.width, 3, 50),
+      margin_px: Math.round(
+        Math.min(200, Math.max(0, Number(v.wm.margin) || 0)),
+      ),
+    }
+    // [M20 fix2] 项目资产来源：asset_id 优先于 file（镜像服务端 resolveMaterialPath 语义）
+    if (v.wmAssetId > 0) brand.watermark.asset_id = v.wmAssetId
+    if (!v.wm.enabled) brand.watermark.enabled = false
+    brand.intro = { enabled: v.intro, file: v.introFile || undefined }
+    if (v.introAssetId > 0) brand.intro.asset_id = v.introAssetId
+    brand.outro = { enabled: v.outro, file: v.outroFile || undefined }
+    if (v.outroAssetId > 0) brand.outro.asset_id = v.outroAssetId
+    emit('preview', { brand, wmFile: v.wmFile })
+  },
+  { deep: true },
+)
 </script>
 
 <template>
@@ -307,7 +364,13 @@ watch(formWatchSrc, (v) => {
         <div class="bs-h">
           <Icon name="pencil" :size="12" />
           <span>字幕样式</span>
-          <span class="muted bs-tip">{{ scope === 'platform' ? '平台默认（项目与 run 可覆盖）' : '项目覆盖（run 可覆盖）' }}；未配置时用默认基线（字号 1.8% 高 / 底边距 2%）</span>
+          <span class="muted bs-tip"
+            >{{
+              scope === 'platform'
+                ? '平台默认（项目与 run 可覆盖）'
+                : '项目覆盖（run 可覆盖）'
+            }}；未配置时用默认基线（字号 1.8% 高 / 底边距 2%）</span
+          >
         </div>
         <label class="bs-ck">
           <input v-model="subOn" type="checkbox" :disabled="busy" />
@@ -316,38 +379,96 @@ watch(formWatchSrc, (v) => {
         <div class="st-grid" :class="{ off: !subOn }">
           <div class="bs-row">
             <span class="bs-lb">字体</span>
-            <input v-model="subFont" type="text" class="bs-txt grow" spellcheck="false" placeholder="Noto Sans CJK SC" :disabled="busy || !subOn" />
+            <input
+              v-model="subFont"
+              type="text"
+              class="bs-txt grow"
+              spellcheck="false"
+              placeholder="Noto Sans CJK SC"
+              :disabled="busy || !subOn"
+            />
           </div>
           <div class="bs-row">
             <span class="bs-lb">字号</span>
-            <input v-model.number="subSize" type="number" class="bs-num" min="0.8" max="6" step="0.1" :disabled="busy || !subOn" />
+            <input
+              v-model.number="subSize"
+              type="number"
+              class="bs-num"
+              min="0.8"
+              max="6"
+              step="0.1"
+              :disabled="busy || !subOn"
+            />
             <span class="muted">%</span>
             <span class="bs-lb bs-lb-2">描边</span>
-            <input v-model.number="subOutline" type="number" class="bs-num" min="0" max="0.5" step="0.01" :disabled="busy || !subOn" />
+            <input
+              v-model.number="subOutline"
+              type="number"
+              class="bs-num"
+              min="0"
+              max="0.5"
+              step="0.01"
+              :disabled="busy || !subOn"
+            />
             <span class="muted">%</span>
             <span class="bs-lb bs-lb-2">阴影</span>
-            <input v-model.number="subShadow" type="number" class="bs-num" min="0" max="8" step="1" :disabled="busy || !subOn" />
+            <input
+              v-model.number="subShadow"
+              type="number"
+              class="bs-num"
+              min="0"
+              max="8"
+              step="1"
+              :disabled="busy || !subOn"
+            />
           </div>
           <div class="bs-row">
             <span class="bs-lb">字色</span>
-            <input v-model="subColor" type="color" class="bs-color" :disabled="busy || !subOn" />
+            <input
+              v-model="subColor"
+              type="color"
+              class="bs-color"
+              :disabled="busy || !subOn"
+            />
             <span class="muted mono">{{ subColor.toUpperCase() }}</span>
             <span class="bs-lb bs-lb-2">描边色</span>
-            <input v-model="subOutlineColor" type="color" class="bs-color" :disabled="busy || !subOn" />
+            <input
+              v-model="subOutlineColor"
+              type="color"
+              class="bs-color"
+              :disabled="busy || !subOn"
+            />
             <span class="muted mono">{{ subOutlineColor.toUpperCase() }}</span>
           </div>
           <div class="bs-row">
             <span class="bs-lb">底边距</span>
-            <input v-model.number="subMarginV" type="number" class="bs-num" min="0" max="10" step="0.5" :disabled="busy || !subOn" />
+            <input
+              v-model.number="subMarginV"
+              type="number"
+              class="bs-num"
+              min="0"
+              max="10"
+              step="0.5"
+              :disabled="busy || !subOn"
+            />
             <span class="muted">%</span>
             <span class="bs-lb bs-lb-2">对齐</span>
-            <select v-model.number="subAlign" class="bs-sel" :disabled="busy || !subOn">
+            <select
+              v-model.number="subAlign"
+              class="bs-sel"
+              :disabled="busy || !subOn"
+            >
               <option :value="2">底部居中</option>
               <option :value="5">中部居中</option>
               <option :value="8">顶部居中</option>
             </select>
             <label class="bs-ck bs-ck-in">
-              <input v-model="subBold" type="checkbox" :disabled="busy || !subOn" /> <span class="muted">加粗</span>
+              <input
+                v-model="subBold"
+                type="checkbox"
+                :disabled="busy || !subOn"
+              />
+              <span class="muted">加粗</span>
             </label>
           </div>
         </div>
@@ -356,9 +477,14 @@ watch(formWatchSrc, (v) => {
             class="btn sm"
             :class="{ primary: subOn }"
             :disabled="busy || (!subOn && !subPersisted)"
-            @click="scope === 'platform' ? savePlatformSubtitle() : saveProjectSubtitle()"
+            @click="
+              scope === 'platform'
+                ? savePlatformSubtitle()
+                : saveProjectSubtitle()
+            "
           >
-            <Icon name="check" :size="12" /> {{ subOn ? '保存样式' : '清除样式（用默认/继承）' }}
+            <Icon name="check" :size="12" />
+            {{ subOn ? '保存样式' : '清除样式（用默认/继承）' }}
           </button>
           <span class="muted bs-tip">保存后重新合成生效</span>
         </div>
@@ -370,7 +496,13 @@ watch(formWatchSrc, (v) => {
           <Icon name="imageplus" :size="12" />
           <span>水印</span>
           <span class="muted bs-tip">
-            {{ scope === 'platform' ? '平台水印（推荐 PNG 透明底；项目/run 可覆盖来源）' : scope === 'project' ? '项目水印（从项目图片资产选择，覆盖平台来源）' : 'run 级覆盖（叠加于字幕之上，呈现最顶层）' }}
+            {{
+              scope === 'platform'
+                ? '平台水印（推荐 PNG 透明底；项目/run 可覆盖来源）'
+                : scope === 'project'
+                  ? '项目水印（从项目图片资产选择，覆盖平台来源）'
+                  : 'run 级覆盖（叠加于字幕之上，呈现最顶层）'
+            }}
           </span>
         </div>
 
@@ -385,13 +517,25 @@ watch(formWatchSrc, (v) => {
               @error="onPreviewErr('watermark')"
               @load="previewBroken.watermark = false"
             />
-            <span v-if="wmFile" class="muted bs-file" :title="wmFile">{{ wmFile }}</span>
+            <span v-if="wmFile" class="muted bs-file" :title="wmFile">{{
+              wmFile
+            }}</span>
             <span v-else class="muted">未上传水印图片</span>
             <span class="grow" />
-            <button class="btn sm" :disabled="busy" @click="pickFile('watermark')">
-              <Icon name="upload" :size="12" /> {{ wmFile ? '替换' : '上传图片' }}
+            <button
+              class="btn sm"
+              :disabled="busy"
+              @click="pickFile('watermark')"
+            >
+              <Icon name="upload" :size="12" />
+              {{ wmFile ? '替换' : '上传图片' }}
             </button>
-            <button v-if="wmFile" class="btn sm danger" :disabled="busy" @click="clearSlot('watermark')">
+            <button
+              v-if="wmFile"
+              class="btn sm danger"
+              :disabled="busy"
+              @click="clearSlot('watermark')"
+            >
               <Icon name="trash" :size="12" /> 清除
             </button>
           </div>
@@ -400,13 +544,30 @@ watch(formWatchSrc, (v) => {
         <!-- 来源：项目资产 -->
         <template v-else-if="scope === 'project'">
           <div class="bs-row">
-            <img v-if="wmAssetId > 0 && !previewBroken.watermark" class="bs-wm" :src="assetFileUrl(wmAssetId)" alt="水印预览" @error="onPreviewErr('watermark')" @load="previewBroken.watermark = false" />
+            <img
+              v-if="wmAssetId > 0 && !previewBroken.watermark"
+              class="bs-wm"
+              :src="assetFileUrl(wmAssetId)"
+              alt="水印预览"
+              @error="onPreviewErr('watermark')"
+              @load="previewBroken.watermark = false"
+            />
             <span class="bs-lb">素材</span>
-            <select v-model.number="wmAssetId" class="bs-sel grow" :disabled="busy">
+            <select
+              v-model.number="wmAssetId"
+              class="bs-sel grow"
+              :disabled="busy"
+            >
               <option :value="0">不使用项目资产（回落平台文件）</option>
-              <option v-for="a in imgAssets" :key="a.id" :value="a.id">#{{ a.id }} {{ a.name }}</option>
+              <option v-for="a in imgAssets" :key="a.id" :value="a.id">
+                #{{ a.id }} {{ a.name }}
+              </option>
             </select>
-            <button class="btn sm" :disabled="busy" @click="pickFile('watermark')">
+            <button
+              class="btn sm"
+              :disabled="busy"
+              @click="pickFile('watermark')"
+            >
               <Icon name="upload" :size="12" /> 上传图片
             </button>
           </div>
@@ -414,36 +575,103 @@ watch(formWatchSrc, (v) => {
 
         <!-- 来源：run 三态覆盖 -->
         <template v-else>
-          <div class="bs-row bs-radios" role="radiogroup" aria-label="水印覆盖模式">
-            <label class="bs-radio"><input v-model="wmMode" type="radio" value="inherit" :disabled="busy" /> 继承</label>
-            <label class="bs-radio"><input v-model="wmMode" type="radio" value="off" :disabled="busy" /> 禁用</label>
-            <label class="bs-radio"><input v-model="wmMode" type="radio" value="custom" :disabled="busy" /> 自定义</label>
+          <div
+            class="bs-row bs-radios"
+            role="radiogroup"
+            aria-label="水印覆盖模式"
+          >
+            <label class="bs-radio"
+              ><input
+                v-model="wmMode"
+                type="radio"
+                value="inherit"
+                :disabled="busy"
+              />
+              继承</label
+            >
+            <label class="bs-radio"
+              ><input
+                v-model="wmMode"
+                type="radio"
+                value="off"
+                :disabled="busy"
+              />
+              禁用</label
+            >
+            <label class="bs-radio"
+              ><input
+                v-model="wmMode"
+                type="radio"
+                value="custom"
+                :disabled="busy"
+              />
+              自定义</label
+            >
           </div>
           <div class="muted bs-tip">{{ inheritSummary('watermark') }}</div>
           <div class="muted bs-tip">{{ inheritWmParams() }}</div>
           <div v-if="wmMode === 'custom'" class="bs-row">
             <span class="bs-lb">素材</span>
-            <select v-model.number="wmAssetIdRun" class="bs-sel grow" :disabled="busy">
+            <select
+              v-model.number="wmAssetIdRun"
+              class="bs-sel grow"
+              :disabled="busy"
+            >
               <option :value="0">继承项目/平台素材</option>
-              <option v-for="a in imgAssets" :key="a.id" :value="a.id">#{{ a.id }} {{ a.name }}</option>
+              <option v-for="a in imgAssets" :key="a.id" :value="a.id">
+                #{{ a.id }} {{ a.name }}
+              </option>
             </select>
           </div>
         </template>
 
         <!-- 参数（三 scope 共用；run 仅自定义时可编辑） -->
-        <div class="bs-row" :class="{ dim: scope === 'run' && wmMode !== 'custom' }">
+        <div
+          class="bs-row"
+          :class="{ dim: scope === 'run' && wmMode !== 'custom' }"
+        >
           <span class="bs-lb">位置</span>
-          <select v-model="wmPosition" class="bs-sel" :disabled="wmParamsDisabled">
-            <option v-for="p in WM_POSITIONS" :key="p.v" :value="p.v">{{ p.t }}</option>
+          <select
+            v-model="wmPosition"
+            class="bs-sel"
+            :disabled="wmParamsDisabled"
+          >
+            <option v-for="p in WM_POSITIONS" :key="p.v" :value="p.v">
+              {{ p.t }}
+            </option>
           </select>
           <span class="bs-lb bs-lb-2">透明度</span>
-          <input v-model.number="wmOpacity" type="number" class="bs-num" min="5" max="100" step="5" :disabled="wmParamsDisabled" />
+          <input
+            v-model.number="wmOpacity"
+            type="number"
+            class="bs-num"
+            min="5"
+            max="100"
+            step="5"
+            :disabled="wmParamsDisabled"
+          />
           <span class="muted">%</span>
           <span class="bs-lb bs-lb-2">宽度</span>
-          <input v-model.number="wmWidth" type="number" class="bs-num" min="3" max="50" step="1" :disabled="wmParamsDisabled" />
+          <input
+            v-model.number="wmWidth"
+            type="number"
+            class="bs-num"
+            min="3"
+            max="50"
+            step="1"
+            :disabled="wmParamsDisabled"
+          />
           <span class="muted">%</span>
           <span class="bs-lb bs-lb-2">边距</span>
-          <input v-model.number="wmMargin" type="number" class="bs-num" min="0" max="200" step="4" :disabled="wmParamsDisabled" />
+          <input
+            v-model.number="wmMargin"
+            type="number"
+            class="bs-num"
+            min="0"
+            max="200"
+            step="4"
+            :disabled="wmParamsDisabled"
+          />
           <span class="muted">px</span>
         </div>
 
@@ -482,12 +710,22 @@ watch(formWatchSrc, (v) => {
       </section>
 
       <!-- ===== 片头 / 片尾（结构同构，逐槽渲染） ===== -->
-      <section v-for="slot in (['intro', 'outro'] as const)" :key="slot" class="bs-sec">
+      <section
+        v-for="slot in ['intro', 'outro'] as const"
+        :key="slot"
+        class="bs-sec"
+      >
         <div class="bs-h">
           <Icon :name="slot === 'intro' ? 'film' : 'flag'" :size="12" />
           <span>{{ slot === 'intro' ? '片头' : '片尾' }}</span>
           <span class="muted bs-tip">
-            {{ scope === 'platform' ? '平台视频（拼接于正片前后；时长 ffprobe，音轨丢弃）' : scope === 'project' ? '项目视频资产（覆盖平台来源）' : 'run 级覆盖（继承 / 禁用 / 强制启用）' }}
+            {{
+              scope === 'platform'
+                ? '平台视频（拼接于正片前后；时长 ffprobe，音轨丢弃）'
+                : scope === 'project'
+                  ? '项目视频资产（覆盖平台来源）'
+                  : 'run 级覆盖（继承 / 禁用 / 强制启用）'
+            }}
           </span>
         </div>
 
@@ -495,22 +733,39 @@ watch(formWatchSrc, (v) => {
         <template v-if="scope === 'platform'">
           <div class="bs-row">
             <video
-              v-if="(slot === 'intro' ? introFile : outroFile) && !previewBroken[slot]"
+              v-if="
+                (slot === 'intro' ? introFile : outroFile) &&
+                !previewBroken[slot]
+              "
               class="bs-video"
               :src="brandAssetApi.fileUrl(slot, previewTs[slot])"
               controls
               preload="metadata"
               @error="onPreviewErr(slot)"
             />
-            <span v-if="slot === 'intro' ? introFile : outroFile" class="muted bs-file" :title="introFile || outroFile">
+            <span
+              v-if="slot === 'intro' ? introFile : outroFile"
+              class="muted bs-file"
+              :title="introFile || outroFile"
+            >
               {{ slot === 'intro' ? introFile : outroFile }}
             </span>
-            <span v-else class="muted">未上传{{ slot === 'intro' ? '片头' : '片尾' }}视频</span>
+            <span v-else class="muted"
+              >未上传{{ slot === 'intro' ? '片头' : '片尾' }}视频</span
+            >
             <span class="grow" />
             <button class="btn sm" :disabled="busy" @click="pickFile(slot)">
-              <Icon name="upload" :size="12" /> {{ (slot === 'intro' ? introFile : outroFile) ? '替换' : '上传视频' }}
+              <Icon name="upload" :size="12" />
+              {{
+                (slot === 'intro' ? introFile : outroFile) ? '替换' : '上传视频'
+              }}
             </button>
-            <button v-if="slot === 'intro' ? introFile : outroFile" class="btn sm danger" :disabled="busy" @click="clearSlot(slot)">
+            <button
+              v-if="slot === 'intro' ? introFile : outroFile"
+              class="btn sm danger"
+              :disabled="busy"
+              @click="clearSlot(slot)"
+            >
               <Icon name="trash" :size="12" /> 清除
             </button>
           </div>
@@ -520,13 +775,27 @@ watch(formWatchSrc, (v) => {
         <template v-else-if="scope === 'project'">
           <div class="bs-row">
             <span class="bs-lb">素材</span>
-            <select v-if="slot === 'intro'" v-model.number="introAssetId" class="bs-sel grow" :disabled="busy">
+            <select
+              v-if="slot === 'intro'"
+              v-model.number="introAssetId"
+              class="bs-sel grow"
+              :disabled="busy"
+            >
               <option :value="0">不使用项目资产（回落平台文件）</option>
-              <option v-for="a in vidAssets" :key="a.id" :value="a.id">#{{ a.id }} {{ a.name }}</option>
+              <option v-for="a in vidAssets" :key="a.id" :value="a.id">
+                #{{ a.id }} {{ a.name }}
+              </option>
             </select>
-            <select v-else v-model.number="outroAssetId" class="bs-sel grow" :disabled="busy">
+            <select
+              v-else
+              v-model.number="outroAssetId"
+              class="bs-sel grow"
+              :disabled="busy"
+            >
               <option :value="0">不使用项目资产（回落平台文件）</option>
-              <option v-for="a in vidAssets" :key="a.id" :value="a.id">#{{ a.id }} {{ a.name }}</option>
+              <option v-for="a in vidAssets" :key="a.id" :value="a.id">
+                #{{ a.id }} {{ a.name }}
+              </option>
             </select>
             <button class="btn sm" :disabled="busy" @click="pickFile(slot)">
               <Icon name="upload" :size="12" /> 上传视频
@@ -536,10 +805,38 @@ watch(formWatchSrc, (v) => {
 
         <!-- 来源：run 三态覆盖 -->
         <template v-else>
-          <div class="bs-row bs-radios" role="radiogroup" :aria-label="`${slot === 'intro' ? '片头' : '片尾'}覆盖模式`">
-            <label class="bs-radio"><input type="radio" :checked="clipModeOf(slot) === 'inherit'" :disabled="busy" @change="setClipMode(slot, 'inherit')" /> 继承</label>
-            <label class="bs-radio"><input type="radio" :checked="clipModeOf(slot) === 'off'" :disabled="busy" @change="setClipMode(slot, 'off')" /> 禁用</label>
-            <label class="bs-radio"><input type="radio" :checked="clipModeOf(slot) === 'on'" :disabled="busy" @change="setClipMode(slot, 'on')" /> 强制启用</label>
+          <div
+            class="bs-row bs-radios"
+            role="radiogroup"
+            :aria-label="`${slot === 'intro' ? '片头' : '片尾'}覆盖模式`"
+          >
+            <label class="bs-radio"
+              ><input
+                type="radio"
+                :checked="clipModeOf(slot) === 'inherit'"
+                :disabled="busy"
+                @change="setClipMode(slot, 'inherit')"
+              />
+              继承</label
+            >
+            <label class="bs-radio"
+              ><input
+                type="radio"
+                :checked="clipModeOf(slot) === 'off'"
+                :disabled="busy"
+                @change="setClipMode(slot, 'off')"
+              />
+              禁用</label
+            >
+            <label class="bs-radio"
+              ><input
+                type="radio"
+                :checked="clipModeOf(slot) === 'on'"
+                :disabled="busy"
+                @change="setClipMode(slot, 'on')"
+              />
+              强制启用</label
+            >
           </div>
           <div class="muted bs-tip">{{ inheritSummary(slot) }}</div>
         </template>
@@ -552,7 +849,12 @@ watch(formWatchSrc, (v) => {
               type="checkbox"
               :disabled="busy"
             />
-            <input v-else v-model="outroEnabled" type="checkbox" :disabled="busy" />
+            <input
+              v-else
+              v-model="outroEnabled"
+              type="checkbox"
+              :disabled="busy"
+            />
             <span class="muted">启用（需有素材来源才生效）</span>
           </label>
           <span class="grow" />
@@ -562,7 +864,9 @@ watch(formWatchSrc, (v) => {
             :disabled="busy"
             @click="savePlatformSlot(slot)"
           >
-            <Icon name="check" :size="12" /> 保存{{ slot === 'intro' ? '片头' : '片尾' }}设置
+            <Icon name="check" :size="12" /> 保存{{
+              slot === 'intro' ? '片头' : '片尾'
+            }}设置
           </button>
           <button
             v-else-if="scope === 'project'"
@@ -570,17 +874,25 @@ watch(formWatchSrc, (v) => {
             :disabled="busy"
             @click="saveProjectSlot(slot)"
           >
-            <Icon name="check" :size="12" /> 保存项目{{ slot === 'intro' ? '片头' : '片尾' }}
+            <Icon name="check" :size="12" /> 保存项目{{
+              slot === 'intro' ? '片头' : '片尾'
+            }}
           </button>
           <button
             v-else
             class="btn sm"
-            :class="{ primary: (slot === 'intro' ? introMode : outroMode) !== 'inherit' }"
+            :class="{
+              primary: (slot === 'intro' ? introMode : outroMode) !== 'inherit',
+            }"
             :disabled="busy"
             @click="saveRunClip(slot)"
           >
             <Icon name="check" :size="12" />
-            {{ (slot === 'intro' ? introMode : outroMode) === 'inherit' ? '清除覆盖（用继承）' : '保存覆盖' }}
+            {{
+              (slot === 'intro' ? introMode : outroMode) === 'inherit'
+                ? '清除覆盖（用继承）'
+                : '保存覆盖'
+            }}
           </button>
         </div>
       </section>
@@ -594,7 +906,9 @@ watch(formWatchSrc, (v) => {
       />
 
       <div v-if="err" class="err-text">{{ err }}</div>
-      <div v-if="notice" class="bs-notice"><Icon name="check" :size="12" /> {{ notice }}</div>
+      <div v-if="notice" class="bs-notice">
+        <Icon name="check" :size="12" /> {{ notice }}
+      </div>
     </template>
   </div>
 </template>
@@ -692,7 +1006,11 @@ watch(formWatchSrc, (v) => {
   object-fit: contain;
   border: 1px solid var(--border);
   border-radius: 5px;
-  background: repeating-conic-gradient(rgb(148 163 184 / 18%) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+  background: repeating-conic-gradient(
+      rgb(148 163 184 / 18%) 0% 25%,
+      transparent 0% 50%
+    )
+    0 0 / 10px 10px;
   flex: none;
 }
 

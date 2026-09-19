@@ -3,11 +3,30 @@ import { creationApi } from '../../lib/api'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'loading' | 'err' | 'doc' | 'projectId' | 'selectedIds' | 'selectedEdgeId'>
-  & Pick<CanvasTarget, 'loadCanvases' | 'loadPalette'>
+type Dependencies = Pick<
+  CanvasState,
+  | 'canvasId'
+  | 'loading'
+  | 'err'
+  | 'doc'
+  | 'projectId'
+  | 'selectedIds'
+  | 'selectedEdgeId'
+> &
+  Pick<CanvasTarget, 'loadCanvases' | 'loadPalette'>
 
 export function useCanvasDoc(deps: Dependencies) {
-  const { canvasId, loading, err, doc, projectId, loadCanvases, loadPalette, selectedIds, selectedEdgeId } = deps
+  const {
+    canvasId,
+    loading,
+    err,
+    doc,
+    projectId,
+    loadCanvases,
+    loadPalette,
+    selectedIds,
+    selectedEdgeId,
+  } = deps
 
   // 文档拉取序列守卫（须先于下方 URL watch 声明：其 immediate 回调会同步触发 loadDoc）
   let docSeq = 0
@@ -33,7 +52,11 @@ export function useCanvasDoc(deps: Dependencies) {
       }
       const nodeIdSet = new Set(d.nodes.map((n) => n.id))
       selectedIds.value = selectedIds.value.filter((id) => nodeIdSet.has(id))
-      if (selectedEdgeId.value != null && !d.edges.some((e) => e.id === selectedEdgeId.value)) selectedEdgeId.value = null
+      if (
+        selectedEdgeId.value != null &&
+        !d.edges.some((e) => e.id === selectedEdgeId.value)
+      )
+        selectedEdgeId.value = null
     } catch (e) {
       if (!silent) err.value = e instanceof Error ? e.message : String(e)
     } finally {

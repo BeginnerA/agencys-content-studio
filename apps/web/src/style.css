@@ -48,7 +48,9 @@
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 40%), 0 24px 60px -24px rgb(0 0 0 / 75%);
   --radius: 12px;
   --radius-sm: 8px;
-  --mono: 'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, 'SF Mono', monospace;
+  --mono:
+    'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, 'SF Mono',
+    monospace;
 }
 
 * {
@@ -63,12 +65,18 @@ body,
 }
 
 body {
-  font-family: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+  font-family:
+    'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', 'Segoe UI',
+    system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgb(139 92 246 / 8%), transparent 60%),
+    radial-gradient(
+      1200px 600px at 85% -10%,
+      rgb(139 92 246 / 8%),
+      transparent 60%
+    ),
     var(--bg);
   -webkit-font-smoothing: antialiased;
 }
@@ -228,7 +236,12 @@ a:hover {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s,
+    transform 0.1s;
   line-height: 1.4;
   user-select: none;
 }
@@ -319,7 +332,9 @@ select {
   color: var(--text);
   outline: none;
   width: 100%;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 input::placeholder,
@@ -407,8 +422,7 @@ label.fld .req {
   width: 208px;
   flex: none;
   background:
-    linear-gradient(180deg, rgb(139 92 246 / 7%), transparent 30%),
-    #080b14;
+    linear-gradient(180deg, rgb(139 92 246 / 7%), transparent 30%), #080b14;
   color: #9aa8c0;
   display: flex;
   flex-direction: column;
@@ -472,7 +486,10 @@ label.fld .req {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .side .search-btn:hover {
@@ -508,7 +525,9 @@ label.fld .req {
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .side a.nav .ic {
@@ -522,7 +541,11 @@ label.fld .req {
 }
 
 .side a.nav.router-link-active {
-  background: linear-gradient(90deg, rgb(99 102 241 / 24%), rgb(99 102 241 / 6%));
+  background: linear-gradient(
+    90deg,
+    rgb(99 102 241 / 24%),
+    rgb(99 102 241 / 6%)
+  );
   color: #fff;
 }
 
@@ -594,7 +617,10 @@ label.fld .req {
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .side .collapse:hover {
@@ -748,7 +774,9 @@ label.fld .req {
   padding: 5px 13px;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tab:hover {
@@ -757,7 +785,11 @@ label.fld .req {
 }
 
 .tab.on {
-  background: linear-gradient(135deg, rgb(139 92 246 / 26%), rgb(79 70 229 / 22%));
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 26%),
+    rgb(79 70 229 / 22%)
+  );
   color: #fff;
 }
 

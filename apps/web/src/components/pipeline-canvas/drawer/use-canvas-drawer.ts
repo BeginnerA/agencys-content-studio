@@ -3,7 +3,14 @@
  * —— 装配约定：函数体逐字保留；props/emit 经参数注入；包裹层缩进 +2（机械转换）
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import type { Asset, GenTask, RerunResult, RunCanvasNode, RunStep, TemplateCanvasNode } from '../../../lib/types'
+import type {
+  Asset,
+  GenTask,
+  RerunResult,
+  RunCanvasNode,
+  RunStep,
+  TemplateCanvasNode,
+} from '../../../lib/types'
 import { assetApi, runApi, shotApi, taskApi } from '../../../lib/api'
 import { confirmDialog } from '../../../lib/confirm'
 
@@ -18,7 +25,11 @@ export interface DrawerProps {
   projectId: number | null
 }
 
-export interface DrawerEmits { close: []; refresh: []; 'open-canvas': [canvasId: number] }
+export interface DrawerEmits {
+  close: []
+  refresh: []
+  'open-canvas': [canvasId: number]
+}
 
 /** emit 签名（与 defineEmits<DrawerEmits>() 返回结构一致；供状态 composable 参数注入） */
 export type DrawerEmitFn = {
@@ -27,8 +38,12 @@ export type DrawerEmitFn = {
 
 export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
   /** run / template 两态视图（互斥非空） */
-  const rn = computed<RunCanvasNode | null>(() => (props.sel.mode === 'run' ? props.sel.node : null))
-  const tn = computed<TemplateCanvasNode | null>(() => (props.sel.mode === 'template' ? props.sel.node : null))
+  const rn = computed<RunCanvasNode | null>(() =>
+    props.sel.mode === 'run' ? props.sel.node : null,
+  )
+  const tn = computed<TemplateCanvasNode | null>(() =>
+    props.sel.mode === 'template' ? props.sel.node : null,
+  )
 
   const notice = ref('')
   const opErr = ref('')
@@ -41,11 +56,19 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
 
   const gateVisible = computed(() => {
     const n = rn.value
-    return !!n && n.status === 'waiting_input' && !!n.gate && !!n.actions.gate && (n.actions.gate.approve || n.actions.gate.reject)
+    return (
+      !!n &&
+      n.status === 'waiting_input' &&
+      !!n.gate &&
+      !!n.actions.gate &&
+      (n.actions.gate.approve || n.actions.gate.reject)
+    )
   })
   const gateSkipLabel = computed(() => {
     const n = rn.value
-    return n && n.actions.gate?.skip ? (n.gate?.skipLabel ?? undefined) : undefined
+    return n && n.actions.gate?.skip
+      ? (n.gate?.skipLabel ?? undefined)
+      : undefined
   })
 
   async function loadGateArtifact(): Promise<void> {
@@ -57,7 +80,11 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     if (!assetId) return
     try {
       const { asset: a } = await assetApi.detail(assetId)
-      if (a.kind === 'text' || a.purpose === 'script' || a.purpose === 'storyboard') {
+      if (
+        a.kind === 'text' ||
+        a.purpose === 'script' ||
+        a.purpose === 'storyboard'
+      ) {
         gateTextName.value = a.name
         const res = await fetch(a.urls.file)
         if (res.ok) gateText.value = await res.text()
@@ -76,7 +103,10 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     gateBusy.value = true
     gateErr.value = ''
     try {
-      const body: Record<string, unknown> = { step_key: n.key, decision: action }
+      const body: Record<string, unknown> = {
+        step_key: n.key,
+        decision: action,
+      }
       if (payload.note) body.note = payload.note
       if (payload.textOverride) body.text_override = payload.textOverride
       await runApi.gate(props.runId, body)
@@ -105,7 +135,10 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
       title: n.title,
       status: n.status,
       attempts: n.attempts,
-      input: n.input && typeof n.input === 'object' && !Array.isArray(n.input) ? (n.input as Record<string, unknown>) : null,
+      input:
+        n.input && typeof n.input === 'object' && !Array.isArray(n.input)
+          ? (n.input as Record<string, unknown>)
+          : null,
       output: null,
       error: n.error,
       startedAt: n.startedAt,
@@ -213,10 +246,14 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     assetsLoading.value = true
     try {
       const settled = await Promise.allSettled(
-        n.assetIds.slice(0, ASSET_CAP).map((id) => assetApi.detail(id).then((r) => r.asset)),
+        n.assetIds
+          .slice(0, ASSET_CAP)
+          .map((id) => assetApi.detail(id).then((r) => r.asset)),
       )
       assets.value = settled
-        .filter((r): r is PromiseFulfilledResult<Asset> => r.status === 'fulfilled')
+        .filter(
+          (r): r is PromiseFulfilledResult<Asset> => r.status === 'fulfilled',
+        )
         .map((r) => r.value)
     } finally {
       assetsLoading.value = false
@@ -285,7 +322,10 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
       const el = logEl.value
       if (!el) return
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-      if (nearBottom) void nextTick(() => { el.scrollTop = el.scrollHeight })
+      if (nearBottom)
+        void nextTick(() => {
+          el.scrollTop = el.scrollHeight
+        })
     },
   )
 
@@ -295,7 +335,10 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     const n = rn.value
     if (!n) return []
     const byId = new Map(assets.value.map((a) => [a.id, a]))
-    return n.assetIds.map((id) => ({ id, name: byId.get(id)?.name ?? `产物 #${id}` }))
+    return n.assetIds.map((id) => ({
+      id,
+      name: byId.get(id)?.name ?? `产物 #${id}`,
+    }))
   })
   function onSendDone(canvasId: number): void {
     showSend.value = false
@@ -318,7 +361,9 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
   watch(
     () => {
       const n = rn.value
-      return n ? `${n.status}|${n.tasks.total}|${n.tasks.succeeded}|${n.tasks.failed}|${n.tasks.cancelled}` : ''
+      return n
+        ? `${n.status}|${n.tasks.total}|${n.tasks.succeeded}|${n.tasks.failed}|${n.tasks.cancelled}`
+        : ''
     },
     () => {
       void loadGateArtifact()

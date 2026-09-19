@@ -3,9 +3,14 @@
  * 无响应式依赖：类型守卫 / 百分比换算 / 位置规范化 / 常量表 / 品牌浅合并 / 槽文件路径。
  * 供 use-brand-form / use-brand-run 与 BrandSettings.vue 共用。
  */
-import type { BrandConfig, BrandSlotKey, WatermarkPosition } from '../../lib/types'
+import type {
+  BrandConfig,
+  BrandSlotKey,
+  WatermarkPosition,
+} from '../../lib/types'
 
-export const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+export const isObj = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v)
 export function normBrand(v: unknown): BrandConfig {
   return isObj(v) ? (v as BrandConfig) : {}
 }
@@ -24,7 +29,9 @@ export const WM_POSITIONS: Array<{ v: WatermarkPosition; t: string }> = [
 
 /** 存储值 → 显示百分比（容忍脏数据） */
 export function pctShow(v: unknown, fallback: number): number {
-  return typeof v === 'number' && Number.isFinite(v) ? +(v * 100).toFixed(3) : fallback
+  return typeof v === 'number' && Number.isFinite(v)
+    ? +(v * 100).toFixed(3)
+    : fallback
 }
 /** 显示百分比 → 存储值（前端温和 clamp，服务端硬 clamp 兜底） */
 export function pctStore(v: number, lo: number, hi: number): number {
@@ -35,7 +42,9 @@ export function posOf(v: unknown): WatermarkPosition {
   return WM_POSITIONS.some((p) => p.v === v) ? (v as WatermarkPosition) : 'br'
 }
 export function marginOf(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(200, Math.max(0, v))) : 24
+  return typeof v === 'number' && Number.isFinite(v)
+    ? Math.round(Math.min(200, Math.max(0, v)))
+    : 24
 }
 
 /** 字幕样式表单（与服务端 buildSubtitleStyle 公式基线一致的展示默认值） */
@@ -70,4 +79,8 @@ export function fileOf(b: BrandConfig, slot: BrandSlotKey): string {
   return typeof f === 'string' ? f : ''
 }
 
-export const SLOT_TEXT: Record<BrandSlotKey, string> = { watermark: '水印', intro: '片头', outro: '片尾' }
+export const SLOT_TEXT: Record<BrandSlotKey, string> = {
+  watermark: '水印',
+  intro: '片头',
+  outro: '片尾',
+}

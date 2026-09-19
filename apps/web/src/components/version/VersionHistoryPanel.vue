@@ -21,23 +21,51 @@ type Tab = 'history' | 'impact'
 const tab = ref<Tab>('history')
 
 const SOURCE_TEXT: Record<string, string> = {
-  baseline: '基线', edit: '编辑', import: '导入', generate: '生成',
-  'ref-upload': '参考上传', 'ref-gen': '参考生成', polish: '润色', restore: '还原',
+  baseline: '基线',
+  edit: '编辑',
+  import: '导入',
+  generate: '生成',
+  'ref-upload': '参考上传',
+  'ref-gen': '参考生成',
+  polish: '润色',
+  restore: '还原',
 }
 const EXEC_TEXT: Record<string, string> = {
-  pipeline_step: 'Pipeline 步骤', canvas_task: '画布任务', shot_task: '单镜任务', unknown: '历史执行',
+  pipeline_step: 'Pipeline 步骤',
+  canvas_task: '画布任务',
+  shot_task: '单镜任务',
+  unknown: '历史执行',
 }
 const ROLE_TEXT: Record<string, string> = {
-  text: '文本', reference: '参考图', first_frame: '首帧', last_frame: '尾帧', source: '源素材',
-  mask: '蒙版', subtitle: '字幕', bgm: '背景乐', sfx: '音效', prev_text: '前文', voice: '配音',
+  text: '文本',
+  reference: '参考图',
+  first_frame: '首帧',
+  last_frame: '尾帧',
+  source: '源素材',
+  mask: '蒙版',
+  subtitle: '字幕',
+  bgm: '背景乐',
+  sfx: '音效',
+  prev_text: '前文',
+  voice: '配音',
 }
 const STATUS_TEXT: Record<string, string> = {
-  upstream_changed: '上游已变更', current: '与当前一致', no_history: '历史不可恢复',
+  upstream_changed: '上游已变更',
+  current: '与当前一致',
+  no_history: '历史不可恢复',
 }
-function sourceText(s: string): string { return SOURCE_TEXT[s] ?? s }
-function execText(k: string): string { return EXEC_TEXT[k] ?? k }
-function roleText(r: string): string { return ROLE_TEXT[r] ?? r }
-function statusText(s: string): string { return STATUS_TEXT[s] ?? s }
+function sourceText(s: string): string {
+  return SOURCE_TEXT[s] ?? s
+}
+function execText(k: string): string {
+  return EXEC_TEXT[k] ?? k
+}
+function roleText(r: string): string {
+  return ROLE_TEXT[r] ?? r
+}
+function statusText(s: string): string {
+  return STATUS_TEXT[s] ?? s
+}
 
 // ---- 版本列表 ----
 const versions = ref<ContentVersionView[]>([])
@@ -50,9 +78,10 @@ async function loadVersions() {
   listLoading.value = true
   listErr.value = ''
   try {
-    const r = props.kind === 'asset'
-      ? await assetVersionApi.list(props.objId)
-      : await entityVersionApi.list(props.objId)
+    const r =
+      props.kind === 'asset'
+        ? await assetVersionApi.list(props.objId)
+        : await entityVersionApi.list(props.objId)
     versions.value = r.items
     currentRevision.value = r.currentRevision
   } catch (e) {
@@ -136,9 +165,10 @@ async function loadImpact() {
   impactLoading.value = true
   impactErr.value = ''
   try {
-    const r = props.kind === 'asset'
-      ? await assetVersionApi.impact(props.objId)
-      : await entityVersionApi.impact(props.objId)
+    const r =
+      props.kind === 'asset'
+        ? await assetVersionApi.impact(props.objId)
+        : await entityVersionApi.impact(props.objId)
     impacts.value = r.items
     impactLoaded.value = true
   } catch (e) {
@@ -153,7 +183,9 @@ function selectTab(t: Tab) {
   if (t === 'impact') void loadImpact()
 }
 
-const changedCount = computed(() => impacts.value.filter((r) => r.status === 'upstream_changed').length)
+const changedCount = computed(
+  () => impacts.value.filter((r) => r.status === 'upstream_changed').length,
+)
 
 watch(
   () => [props.kind, props.objId] as const,
@@ -175,12 +207,26 @@ watch(
 <template>
   <div class="vh">
     <div class="tabs" role="tablist">
-      <button type="button" role="tab" :aria-selected="tab === 'history'" :class="{ on: tab === 'history' }" @click="selectTab('history')">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'history'"
+        :class="{ on: tab === 'history' }"
+        @click="selectTab('history')"
+      >
         <Icon name="clock" :size="12" /> 历史
       </button>
-      <button type="button" role="tab" :aria-selected="tab === 'impact'" :class="{ on: tab === 'impact' }" @click="selectTab('impact')">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'impact'"
+        :class="{ on: tab === 'impact' }"
+        @click="selectTab('impact')"
+      >
         <Icon name="link" :size="12" /> 影响
-        <span v-if="impactLoaded && changedCount > 0" class="dot">{{ changedCount }}</span>
+        <span v-if="impactLoaded && changedCount > 0" class="dot">{{
+          changedCount
+        }}</span>
       </button>
     </div>
 
@@ -188,16 +234,34 @@ watch(
     <div v-if="tab === 'history'" class="pane">
       <div v-if="listLoading" class="muted pad">加载中…</div>
       <div v-else-if="listErr" class="err-text pad">{{ listErr }}</div>
-      <div v-else-if="!versions.length" class="muted pad">暂无历史版本（编辑或导入后生成）。</div>
+      <div v-else-if="!versions.length" class="muted pad">
+        暂无历史版本（编辑或导入后生成）。
+      </div>
       <ul v-else class="vlist">
-        <li v-for="v in versions" :key="v.id" class="vrow" :class="{ cur: v.isCurrent }">
+        <li
+          v-for="v in versions"
+          :key="v.id"
+          class="vrow"
+          :class="{ cur: v.isCurrent }"
+        >
           <div class="vmain">
-            <button type="button" class="vhead" :aria-expanded="activeVersionId === v.id" @click="openVersion(v)">
+            <button
+              type="button"
+              class="vhead"
+              :aria-expanded="activeVersionId === v.id"
+              @click="openVersion(v)"
+            >
               <span class="rev mono">#{{ v.revision }}</span>
               <span class="src">{{ sourceText(v.source) }}</span>
               <span v-if="v.isCurrent" class="tag-cur">当前</span>
               <span class="when mono">{{ fmtTime(v.createdAt) }}</span>
-              <Icon :name="activeVersionId === v.id ? 'chevron-down' : 'chevron-right'" :size="11" class="caret" />
+              <Icon
+                :name="
+                  activeVersionId === v.id ? 'chevron-down' : 'chevron-right'
+                "
+                :size="11"
+                class="caret"
+              />
             </button>
             <span v-if="v.label" class="label">{{ v.label }}</span>
           </div>
@@ -209,12 +273,15 @@ watch(
             title="还原到此版本（生成新版本，保留历史，不动下游）"
             @click="doRestore(v)"
           >
-            <Icon name="undo" :size="12" /> {{ restoringId === v.id ? '还原中…' : '还原' }}
+            <Icon name="undo" :size="12" />
+            {{ restoringId === v.id ? '还原中…' : '还原' }}
           </button>
           <span v-else class="ph" />
         </li>
       </ul>
-      <div v-if="restoreErr" class="err-text pad">还原失败：{{ restoreErr }}</div>
+      <div v-if="restoreErr" class="err-text pad">
+        还原失败：{{ restoreErr }}
+      </div>
       <div v-if="activeVersionId !== null" class="preview">
         <div v-if="previewLoading" class="muted pad">读取版本内容…</div>
         <div v-else-if="previewErr" class="err-text pad">{{ previewErr }}</div>
@@ -225,28 +292,48 @@ watch(
     <!-- ===== 影响（只报告） ===== -->
     <div v-else class="pane">
       <p class="hint">
-        以下为消费本{{ kind === 'asset' ? '资产' : '实体' }}的执行清单。修改内容<strong>不会自动生成或返修</strong>下游，
+        以下为消费本{{
+          kind === 'asset' ? '资产' : '实体'
+        }}的执行清单。修改内容<strong>不会自动生成或返修</strong>下游，
         请据此自行决定重跑范围。
       </p>
       <div v-if="impactLoading" class="muted pad">加载中…</div>
       <div v-else-if="impactErr" class="err-text pad">{{ impactErr }}</div>
-      <div v-else-if="!impacts.length" class="muted pad">暂无下游消费记录。</div>
+      <div v-else-if="!impacts.length" class="muted pad">
+        暂无下游消费记录。
+      </div>
       <ul v-else class="ilist">
-        <li v-for="r in impacts" :key="r.snapshotId + ':' + r.role + ':' + (r.shotId ?? '')" class="irow" :class="`st-${r.status}`">
+        <li
+          v-for="r in impacts"
+          :key="r.snapshotId + ':' + r.role + ':' + (r.shotId ?? '')"
+          class="irow"
+          :class="`st-${r.status}`"
+        >
           <div class="iline">
             <span class="istat">{{ statusText(r.status) }}</span>
             <span class="iexec">{{ execText(r.execKind) }}</span>
             <span class="imono mono">
               <template v-if="r.runId != null">run#{{ r.runId }}</template>
-              <template v-else-if="r.taskId != null">task#{{ r.taskId }}</template>
-              <template v-else-if="r.stepId != null">step#{{ r.stepId }}</template>
+              <template v-else-if="r.taskId != null"
+                >task#{{ r.taskId }}</template
+              >
+              <template v-else-if="r.stepId != null"
+                >step#{{ r.stepId }}</template
+              >
             </span>
             <span v-if="r.shotId" class="ishot mono">镜头 {{ r.shotId }}</span>
           </div>
           <div class="iline sub">
-            <span>输入：{{ roleText(r.role) }} · {{ r.used ? '已使用' : '已跳过' }}</span>
+            <span
+              >输入：{{ roleText(r.role) }} ·
+              {{ r.used ? '已使用' : '已跳过' }}</span
+            >
             <span v-if="r.status === 'no_history'">版本指针缺失（旧数据）</span>
-            <span v-else>捕获 #{{ r.versionRevision ?? '—' }} / 当前 #{{ r.currentRevision }}</span>
+            <span v-else
+              >捕获 #{{ r.versionRevision ?? '—' }} / 当前 #{{
+                r.currentRevision
+              }}</span
+            >
             <span class="mono">{{ fmtTime(r.frozenAt) }}</span>
           </div>
         </li>

@@ -3,8 +3,18 @@
  * 水印参数 + 片头尾开关 + 字幕样式的响应式表单；fill/collect 逻辑供三 scope 复用。
  */
 import { ref } from 'vue'
-import type { BrandConfig, SubtitleStyleConfig, WatermarkPosition } from '../../lib/types'
-import { SUB_DEFAULTS, marginOf, pctShow, pctStore, posOf } from './brand-form-helpers'
+import type {
+  BrandConfig,
+  SubtitleStyleConfig,
+  WatermarkPosition,
+} from '../../lib/types'
+import {
+  SUB_DEFAULTS,
+  marginOf,
+  pctShow,
+  pctStore,
+  posOf,
+} from './brand-form-helpers'
 
 export function useBrandForm() {
   const wmEnabled = ref(true)
@@ -32,14 +42,23 @@ export function useBrandForm() {
     const cfg = s && typeof s === 'object' ? s : undefined
     subPersisted.value = !!cfg
     subOn.value = !!cfg
-    subFont.value = typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
+    subFont.value =
+      typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
     subSize.value = pctShow(cfg?.size_pct, SUB_DEFAULTS.size)
-    subColor.value = typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
-    subOutlineColor.value = typeof cfg?.outline_color === 'string' ? cfg.outline_color : SUB_DEFAULTS.outlineColor
+    subColor.value =
+      typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
+    subOutlineColor.value =
+      typeof cfg?.outline_color === 'string'
+        ? cfg.outline_color
+        : SUB_DEFAULTS.outlineColor
     subOutline.value = pctShow(cfg?.outline_pct, SUB_DEFAULTS.outline)
-    subShadow.value = typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow) ? cfg.shadow : SUB_DEFAULTS.shadow
+    subShadow.value =
+      typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow)
+        ? cfg.shadow
+        : SUB_DEFAULTS.shadow
     subMarginV.value = pctShow(cfg?.margin_v_pct, SUB_DEFAULTS.marginV)
-    subAlign.value = cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
+    subAlign.value =
+      cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
     subBold.value = cfg?.bold === true
   }
 
@@ -50,7 +69,9 @@ export function useBrandForm() {
       color: subColor.value,
       outline_color: subOutlineColor.value,
       outline_pct: pctStore(subOutline.value, 0, 0.5),
-      shadow: Math.round(Math.min(8, Math.max(0, Number(subShadow.value) || 0))),
+      shadow: Math.round(
+        Math.min(8, Math.max(0, Number(subShadow.value) || 0)),
+      ),
       margin_v_pct: pctStore(subMarginV.value, 0, 10),
       alignment: subAlign.value,
       bold: subBold.value,
@@ -66,7 +87,9 @@ export function useBrandForm() {
     wmMargin.value = marginOf(b.watermark?.margin_px)
     introEnabled.value = b.intro ? b.intro.enabled !== false : true
     outroEnabled.value = b.outro ? b.outro.enabled !== false : true
-    fillSubForm(b.subtitle && typeof b.subtitle === 'object' ? b.subtitle : undefined)
+    fillSubForm(
+      b.subtitle && typeof b.subtitle === 'object' ? b.subtitle : undefined,
+    )
   }
 
   return {

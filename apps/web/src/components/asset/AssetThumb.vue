@@ -34,8 +34,10 @@ type Media = 'image' | 'video' | 'audio' | 'doc' | 'file'
 
 const media = computed<Media>(() => {
   const a = props.asset
-  if (a.kind === 'image' || a.kind === 'video' || a.kind === 'audio') return a.kind
-  if (a.kind === 'text' || DOC_EXTS.has((a.ext || '').toLowerCase())) return 'doc'
+  if (a.kind === 'image' || a.kind === 'video' || a.kind === 'audio')
+    return a.kind
+  if (a.kind === 'text' || DOC_EXTS.has((a.ext || '').toLowerCase()))
+    return 'doc'
   return 'file'
 })
 
@@ -47,11 +49,17 @@ const PH_ICON: Record<Media, string> = {
   file: 'doc',
 }
 
-const extLabel = computed(() => (props.asset.ext || 'FILE').toUpperCase().slice(0, 4))
+const extLabel = computed(() =>
+  (props.asset.ext || 'FILE').toUpperCase().slice(0, 4),
+)
 const phIcon = computed(() => PH_ICON[media.value])
 
 // ===== 图片：thumb 优先，回退原图；失败即占位 =====
-const imgSrc = computed(() => (media.value === 'image' ? props.asset.urls.thumb || props.asset.urls.file : ''))
+const imgSrc = computed(() =>
+  media.value === 'image'
+    ? props.asset.urls.thumb || props.asset.urls.file
+    : '',
+)
 const imgFailed = ref(false)
 watch(imgSrc, () => {
   imgFailed.value = false
@@ -64,7 +72,10 @@ watch(videoThumbSrc, () => {
   videoThumbFailed.value = false
 })
 
-const needFrame = computed(() => media.value === 'video' && (!videoThumbSrc.value || videoThumbFailed.value))
+const needFrame = computed(
+  () =>
+    media.value === 'video' && (!videoThumbSrc.value || videoThumbFailed.value),
+)
 const videoSrc = computed(() => props.asset.urls.file)
 const inView = ref(false)
 const frameReady = ref(false)
@@ -144,8 +155,10 @@ onBeforeUnmount(() => {
 /** 右下角浮层：影音显示时长，图片显示像素尺寸 */
 const corner = computed(() => {
   const a = props.asset
-  if (a.kind === 'video' || a.kind === 'audio') return a.duration ? fmtDur(a.duration) : ''
-  if (media.value === 'image' && a.width && a.height) return `${a.width}×${a.height}`
+  if (a.kind === 'video' || a.kind === 'audio')
+    return a.duration ? fmtDur(a.duration) : ''
+  if (media.value === 'image' && a.width && a.height)
+    return `${a.width}×${a.height}`
   return ''
 })
 </script>
@@ -215,11 +228,18 @@ const corner = computed(() => {
     </span>
 
     <!-- 左上：用途 -->
-    <span v-if="asset.purpose" class="bd bd-purpose">{{ purposeText(asset.purpose) }}</span>
+    <span v-if="asset.purpose" class="bd bd-purpose">{{
+      purposeText(asset.purpose)
+    }}</span>
 
     <!-- 右下：时长 / 像素尺寸 -->
     <span v-if="corner" class="bd bd-corner">
-      <Icon v-if="asset.kind === 'video'" name="play" :size="9" :stroke-width="2.6" />
+      <Icon
+        v-if="asset.kind === 'video'"
+        name="play"
+        :size="9"
+        :stroke-width="2.6"
+      />
       {{ corner }}
     </span>
 

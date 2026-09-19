@@ -17,28 +17,53 @@ const BASE = '/api/v1/creation-sessions'
 export function newRequestKey(prefix = 'req'): string {
   const bytes = new Uint8Array(12)
   crypto.getRandomValues(bytes)
-  const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, '0').slice(-2)).join('')
-  return `${prefix.replace(/[^a-zA-Z0-9_-]/g, '')}_${Date.now().toString(36)}${rand}`.slice(0, 120)
+  const rand = Array.from(bytes, (b) =>
+    b.toString(36).padStart(2, '0').slice(-2),
+  ).join('')
+  return `${prefix.replace(/[^a-zA-Z0-9_-]/g, '')}_${Date.now().toString(36)}${rand}`.slice(
+    0,
+    120,
+  )
 }
 
 export const creationChatApi = {
   list: () => api.get<Items<CreationSessionListItem>>(BASE),
-  create: (content: string, requestKey: string) => api.post<CreationDetail>(BASE, { content, requestKey }),
+  create: (content: string, requestKey: string) =>
+    api.post<CreationDetail>(BASE, { content, requestKey }),
   detail: (id: number) => api.get<CreationDetail>(`${BASE}/${id}`),
-  send: (id: number, content: string, requestKey: string, attachments?: number[]) =>
-    api.post<CreationDetail>(`${BASE}/${id}/messages`, { content, requestKey, ...(attachments && attachments.length ? { attachments } : {}) }),
-  preflight: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/preflight`),
-  confirm: (id: number, body: CreationConfirmBody) => api.post<{ runId: number }>(`${BASE}/${id}/confirm`, body),
+  send: (
+    id: number,
+    content: string,
+    requestKey: string,
+    attachments?: number[],
+  ) =>
+    api.post<CreationDetail>(`${BASE}/${id}/messages`, {
+      content,
+      requestKey,
+      ...(attachments && attachments.length ? { attachments } : {}),
+    }),
+  preflight: (id: number) =>
+    api.post<CreationDetail>(`${BASE}/${id}/preflight`),
+  confirm: (id: number, body: CreationConfirmBody) =>
+    api.post<{ runId: number }>(`${BASE}/${id}/confirm`, body),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
-  retry: (id: number, body: CreationRetryBody) => api.post<{ runId: number }>(`${BASE}/${id}/retry`, body),
+  retry: (id: number, body: CreationRetryBody) =>
+    api.post<{ runId: number }>(`${BASE}/${id}/retry`, body),
   /** [M31] 上传参考素材（multipart file+role）：落会话项目、不计费、不触发规划 */
-  uploadAttachment: async (id: number, file: File, role?: CreationRefRole): Promise<CreationAttachmentResult> => {
+  uploadAttachment: async (
+    id: number,
+    file: File,
+    role?: CreationRefRole,
+  ): Promise<CreationAttachmentResult> => {
     const form = new FormData()
     form.append('file', file, file.name)
     if (role) form.append('role', role)
     let res: Response
     try {
-      res = await fetch(`${BASE}/${id}/attachments`, { method: 'POST', body: form })
+      res = await fetch(`${BASE}/${id}/attachments`, {
+        method: 'POST',
+        body: form,
+      })
     } catch {
       throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
     }

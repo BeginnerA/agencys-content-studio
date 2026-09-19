@@ -47,7 +47,8 @@ function makeRow(): Record<string, unknown> {
 
 function cloneRow(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(row)) out[k] = Array.isArray(v) ? [...v] : v
+  for (const [k, v] of Object.entries(row))
+    out[k] = Array.isArray(v) ? [...v] : v
   return out
 }
 
@@ -56,7 +57,11 @@ function addRow() {
   const last = rows.value[rows.value.length - 1] ?? makeRow()
   const row = cloneRow(last)
   for (const inp of tpl.value?.inputs ?? []) {
-    if (inp.kind === 'int' && inp.key.toLowerCase().includes('episode') && typeof row[inp.key] === 'number') {
+    if (
+      inp.kind === 'int' &&
+      inp.key.toLowerCase().includes('episode') &&
+      typeof row[inp.key] === 'number'
+    ) {
       row[inp.key] = (row[inp.key] as number) + 1
     }
   }
@@ -77,7 +82,10 @@ function applyPaste() {
   try {
     const arr = JSON.parse(pasteText.value) as unknown
     if (!Array.isArray(arr) || !arr.length) throw new Error('需为非空数组')
-    rows.value = arr.map((o) => ({ ...makeRow(), ...(o as Record<string, unknown>) }))
+    rows.value = arr.map((o) => ({
+      ...makeRow(),
+      ...(o as Record<string, unknown>),
+    }))
     err.value = ''
     showPaste.value = false
     pasteText.value = ''
@@ -89,9 +97,17 @@ function applyPaste() {
 /** 行头摘要（前 3 键） */
 function summaryOf(row: Record<string, unknown>): string {
   const s = Object.entries(row)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length))
+    .filter(
+      ([, v]) =>
+        v !== null &&
+        v !== undefined &&
+        v !== '' &&
+        !(Array.isArray(v) && !v.length),
+    )
     .slice(0, 3)
-    .map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join(',')}]` : String(v)}`)
+    .map(
+      ([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join(',')}]` : String(v)}`,
+    )
     .join(' · ')
   return s.length > 72 ? s.slice(0, 72) + '…' : s
 }
@@ -116,12 +132,18 @@ watch(tplKey, async (key) => {
 async function init() {
   loading.value = true
   try {
-    const [tRes, aRes] = await Promise.all([templateApi.list(), projectApi.assets(props.projectId, '?limit=200')])
+    const [tRes, aRes] = await Promise.all([
+      templateApi.list(),
+      projectApi.assets(props.projectId, '?limit=200'),
+    ])
     templates.value = tRes.items
     assets.value = aRes.items
     // [优化] 预选项目默认模板（命中且在列）；否则回退列表第一个
     const initKey = props.defaultTemplateKey
-    tplKey.value = initKey && tRes.items.some((t) => t.key === initKey) ? initKey : (tRes.items[0]?.key ?? '')
+    tplKey.value =
+      initKey && tRes.items.some((t) => t.key === initKey)
+        ? initKey
+        : (tRes.items[0]?.key ?? '')
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -141,7 +163,10 @@ async function submit() {
     const input: Record<string, unknown> = {}
     for (const inp of tpl.value.inputs) {
       const v = row[inp.key]
-      if (inp.required && (v === '' || v === undefined || (Array.isArray(v) && v.length === 0))) {
+      if (
+        inp.required &&
+        (v === '' || v === undefined || (Array.isArray(v) && v.length === 0))
+      ) {
         err.value = `第 ${i + 1} 组「${inp.label}」未填`
         return
       }
@@ -187,14 +212,24 @@ async function submit() {
         </label>
         <label class="fld">
           批次名（留空自动）
-          <input v-model="name" type="text" :placeholder="tpl ? `${tpl.name} × ${count}` : ''" />
+          <input
+            v-model="name"
+            type="text"
+            :placeholder="tpl ? `${tpl.name} × ${count}` : ''"
+          />
         </label>
       </div>
 
       <div class="fld">
         调度
         <div class="seg">
-          <button type="button" v-for="c in [1, 2, 3]" :key="c" :class="{ on: maxc === c }" @click="maxc = c">
+          <button
+            type="button"
+            v-for="c in [1, 2, 3]"
+            :key="c"
+            :class="{ on: maxc === c }"
+            @click="maxc = c"
+          >
             {{ c === 1 ? '串行（推荐）' : `并发 ${c}` }}
           </button>
         </div>
@@ -205,7 +240,9 @@ async function submit() {
         <div class="rows-h">
           <span class="bt">输入组（{{ count }} 组 → {{ count }} 个 run）</span>
           <div style="margin-left: auto; display: flex; gap: 6px">
-            <button class="btn sm" @click="showPaste = !showPaste">批量粘贴 JSON</button>
+            <button class="btn sm" @click="showPaste = !showPaste">
+              批量粘贴 JSON
+            </button>
             <button class="btn sm primary" @click="addRow">
               <Icon name="plus" :size="12" :stroke-width="2.2" /> 添加行
             </button>
@@ -228,10 +265,22 @@ async function submit() {
               <span class="muted">{{ summaryOf(row) }}</span>
               <div class="rops">
                 <button class="btn sm" @click="copyRow(i)">复制</button>
-                <button class="btn sm danger" :disabled="count <= 1" @click="removeRow(i)">删除</button>
+                <button
+                  class="btn sm danger"
+                  :disabled="count <= 1"
+                  @click="removeRow(i)"
+                >
+                  删除
+                </button>
               </div>
             </div>
-            <TemplateInputFields :tpl="tpl" :assets="assets" :values="row" dense @change="(k, v) => (row[k] = v)" />
+            <TemplateInputFields
+              :tpl="tpl"
+              :assets="assets"
+              :values="row"
+              dense
+              @change="(k, v) => (row[k] = v)"
+            />
           </div>
         </div>
       </template>

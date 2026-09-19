@@ -6,12 +6,16 @@ import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'projectId' | 'selectedIds' | 'toast'>
-  & Pick<CanvasDocument, 'loadDoc'>
-  & Pick<CanvasTarget, 'loadCanvases'>
+type Dependencies = Pick<
+  CanvasState,
+  'canvasId' | 'projectId' | 'selectedIds' | 'toast'
+> &
+  Pick<CanvasDocument, 'loadDoc'> &
+  Pick<CanvasTarget, 'loadCanvases'>
 
 export function useCanvasCopyTo(deps: Dependencies) {
-  const { canvasId, projectId, selectedIds, toast, loadDoc, loadCanvases } = deps
+  const { canvasId, projectId, selectedIds, toast, loadDoc, loadCanvases } =
+    deps
 
   const showCopyTo = ref(false)
   /** 打开弹窗时的选中节点快照（复制期间选择变化不影响） */
@@ -53,7 +57,9 @@ export function useCanvasCopyTo(deps: Dependencies) {
     copyToErr.value = ''
     try {
       const r = await creationApi.list(pid)
-      copyToTargets.value = r.items.filter((c) => !(pid === projectId.value && c.id === canvasId.value))
+      copyToTargets.value = r.items.filter(
+        (c) => !(pid === projectId.value && c.id === canvasId.value),
+      )
     } catch (e) {
       copyToErr.value = e instanceof Error ? e.message : String(e)
       copyToTargets.value = []
@@ -70,12 +76,17 @@ export function useCanvasCopyTo(deps: Dependencies) {
     copyToBusy.value = true
     copyToErr.value = ''
     try {
-      const r = await creationApi.copyTo(cid, { targetCanvasId: tid, ids: copyToIds.value })
+      const r = await creationApi.copyTo(cid, {
+        targetCanvasId: tid,
+        ids: copyToIds.value,
+      })
       const target = copyToTargets.value.find((c) => c.id === tid)
       let msg = `已复制 ${r.nodes.length} 个节点到「${target?.name ?? `#${tid}`}」`
       if (r.assetsCopied > 0) msg += `（含资产拷贝 ${r.assetsCopied} 个）`
-      if (r.skipped.length > 0) msg += `；跳过 ${r.skipped.length} 项（运行节点等不支持跨项目）`
-      if (r.warnings.length > 0) msg += `；警告：${r.warnings[0]}${r.warnings.length > 1 ? ` 等 ${r.warnings.length} 条` : ''}`
+      if (r.skipped.length > 0)
+        msg += `；跳过 ${r.skipped.length} 项（运行节点等不支持跨项目）`
+      if (r.warnings.length > 0)
+        msg += `；警告：${r.warnings[0]}${r.warnings.length > 1 ? ` 等 ${r.warnings.length} 条` : ''}`
       showCopyTo.value = false
       toast(msg)
       await loadDoc(true)

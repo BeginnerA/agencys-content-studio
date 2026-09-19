@@ -53,7 +53,13 @@ export interface ShotBoardCompose {
 }
 
 export interface ShotBoardData {
-  step: { id: number; key: string; title: string | null; action: string; status: StepStatus }
+  step: {
+    id: number
+    key: string
+    title: string | null
+    action: string
+    status: StepStatus
+  }
   shots: ShotBoardShot[]
   compose: ShotBoardCompose | null
   /** 返修可用性（不抛错判定：活跃 run / 其他 failed 步骤等） */

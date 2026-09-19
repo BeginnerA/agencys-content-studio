@@ -29,9 +29,13 @@ const groups = computed(() => {
   return [...map.entries()].map(([purpose, items]) => ({ purpose, items }))
 })
 
-const allChecked = computed(() => assets.value.length > 0 && selected.value.size === assets.value.length)
+const allChecked = computed(
+  () => assets.value.length > 0 && selected.value.size === assets.value.length,
+)
 const totalSize = computed(() =>
-  assets.value.filter((a) => selected.value.has(a.id)).reduce((n, a) => n + (a.fileSize ?? 0), 0),
+  assets.value
+    .filter((a) => selected.value.has(a.id))
+    .reduce((n, a) => n + (a.fileSize ?? 0), 0),
 )
 
 function toggle(id: number) {
@@ -52,7 +56,9 @@ function toggleGroup(items: RunAssetLite[]) {
 }
 
 function toggleAll() {
-  selected.value = allChecked.value ? new Set() : new Set(assets.value.map((a) => a.id))
+  selected.value = allChecked.value
+    ? new Set()
+    : new Set(assets.value.map((a) => a.id))
 }
 
 async function submit() {
@@ -95,7 +101,9 @@ init()
     <div v-if="loading" class="empty">加载中…</div>
 
     <template v-else-if="!result">
-      <div v-if="!assets.length" class="empty">该 run 暂无产物——执行步骤产出资产后可导出</div>
+      <div v-if="!assets.length" class="empty">
+        该 run 暂无产物——执行步骤产出资产后可导出
+      </div>
       <template v-else>
         <div class="bar">
           <label class="all">
@@ -119,11 +127,19 @@ init()
               <span class="muted">{{ g.items.length }} 项</span>
             </div>
             <label v-for="a in g.items" :key="a.id" class="item">
-              <input type="checkbox" :checked="selected.has(a.id)" @change="toggle(a.id)" />
+              <input
+                type="checkbox"
+                :checked="selected.has(a.id)"
+                @change="toggle(a.id)"
+              />
               <span class="nm">{{ a.name }}</span>
               <span class="chip">{{ KIND_TEXT[a.kind] ?? a.kind }}</span>
-              <span v-if="a.width && a.height" class="chip">{{ a.width }}×{{ a.height }}</span>
-              <span v-if="a.duration" class="chip">{{ a.duration.toFixed(1) }}s</span>
+              <span v-if="a.width && a.height" class="chip"
+                >{{ a.width }}×{{ a.height }}</span
+              >
+              <span v-if="a.duration" class="chip"
+                >{{ a.duration.toFixed(1) }}s</span
+              >
               <span class="muted sz">{{ fmtSize(a.fileSize) }}</span>
             </label>
           </div>
@@ -131,9 +147,15 @@ init()
 
         <label class="fld">
           包名（留空自动：项目_模板_runID）
-          <input v-model="name" type="text" placeholder="如：萌宝镖客_第5集_发布包" />
+          <input
+            v-model="name"
+            type="text"
+            placeholder="如：萌宝镖客_第5集_发布包"
+          />
         </label>
-        <div class="muted tip">包内结构：manifest.json + video/cover/text/other 分目录；store 不压缩</div>
+        <div class="muted tip">
+          包内结构：manifest.json + video/cover/text/other 分目录；store 不压缩
+        </div>
       </template>
     </template>
 
@@ -142,7 +164,9 @@ init()
         <Icon name="check" :size="28" />
         <div>
           <div class="dt">发布包已生成</div>
-          <div class="muted">{{ result.name }} · {{ fmtSize(result.fileSize) }}</div>
+          <div class="muted">
+            {{ result.name }} · {{ fmtSize(result.fileSize) }}
+          </div>
         </div>
       </div>
     </template>
@@ -152,13 +176,19 @@ init()
     <template #footer>
       <template v-if="!result">
         <button class="btn" @click="emit('close')">取消</button>
-        <button class="btn primary" :disabled="busy || !selected.size" @click="submit">
+        <button
+          class="btn primary"
+          :disabled="busy || !selected.size"
+          @click="submit"
+        >
           {{ busy ? '打包中…' : `生成发布包（${selected.size} 项）` }}
         </button>
       </template>
       <template v-else>
         <button class="btn" @click="emit('done', result.id)">关闭</button>
-        <a class="btn primary" :href="exportApi.fileUrl(result.id, true)"><Icon name="download" :size="14" /> 下载</a>
+        <a class="btn primary" :href="exportApi.fileUrl(result.id, true)"
+          ><Icon name="download" :size="14" /> 下载</a
+        >
       </template>
     </template>
   </Modal>

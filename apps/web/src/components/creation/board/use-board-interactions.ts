@@ -26,13 +26,33 @@ interface BoardInteractionsDeps {
   openGroupMenu: Ref<number | null>
 }
 
-export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps: BoardInteractionsDeps) {
-  const { vp, viewportEl, nodeById, nodeXY, nodeH, descNodeIds, descGroupIds, editingGroupId, openGroupMenu } = deps
+export function useBoardInteractions(
+  props: BoardProps,
+  emit: BoardEmitFn,
+  deps: BoardInteractionsDeps,
+) {
+  const {
+    vp,
+    viewportEl,
+    nodeById,
+    nodeXY,
+    nodeH,
+    descNodeIds,
+    descGroupIds,
+    editingGroupId,
+    openGroupMenu,
+  } = deps
   const { pan, zoom } = vp
 
   /** 拖拽中的整组本地即时偏移（优先于渲染）；抬起 emit 后由父级乐观更新替换
    *  [M22] gids：组条拖拽时的「自身+后代组」锚点平移集（空组包围盒跟随） */
-  const dragGroup = ref<{ ids: number[]; dx: number; dy: number; moved: boolean; gids?: number[] } | null>(null)
+  const dragGroup = ref<{
+    ids: number[]
+    dx: number
+    dy: number
+    moved: boolean
+    gids?: number[]
+  } | null>(null)
 
   function onGroupBarPointerDown(ev: PointerEvent, g: CanvasGroup): void {
     if (ev.button !== 0 || spaceDown.value) return
@@ -49,7 +69,6 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     viewportEl.value?.setPointerCapture(ev.pointerId)
   }
 
-
   // ---- 连线中（临时贝塞尔跟随光标；世界坐标）----
   const linkFrom = ref<number | null>(null)
   const linkCur = ref<{ x: number; y: number } | null>(null)
@@ -60,7 +79,12 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     const n = nodeById.value.get(linkFrom.value)
     if (!n) return null
     const p = nodeXY(n)
-    return bezier(p.x + NODE_W, p.y + nodeH(n) / 2, linkCur.value.x, linkCur.value.y)
+    return bezier(
+      p.x + NODE_W,
+      p.y + nodeH(n) / 2,
+      linkCur.value.x,
+      linkCur.value.y,
+    )
   })
   function cancelLink(): void {
     linkFrom.value = null
@@ -77,7 +101,12 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
   let dragPx: { cx: number; cy: number } | null = null
   let boxStart: { x: number; y: number } | null = null
   let boxMoved = false
-  const boxRect = ref<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const boxRect = ref<{
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+  } | null>(null)
 
   function onViewportPointerDown(ev: PointerEvent): void {
     if (ev.button === 1 || (ev.button === 0 && spaceDown.value)) {
@@ -109,7 +138,10 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
       emit('select', [...cur, n.id])
       drag = { ids: [n.id] } // 加选并单拖新节点
     } else if (ev.shiftKey && inSel) {
-      emit('select', cur.filter((id) => id !== n.id)) // 减选
+      emit(
+        'select',
+        cur.filter((id) => id !== n.id),
+      ) // 减选
       drag = { ids: cur.filter((id) => id !== n.id) }
     } else if (inSel) {
       drag = { ids: [...cur] } // 多拖：拖动任一选中 = 整组
@@ -139,10 +171,18 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
       const px = ev.clientX - dragPx.cx
       const py = ev.clientY - dragPx.cy
       if (!dragGroup.value?.moved && Math.abs(px) + Math.abs(py) < 4) return
-      dragGroup.value = { ids: drag.ids, dx: px / zoom.value, dy: py / zoom.value, moved: true }
+      dragGroup.value = {
+        ids: drag.ids,
+        dx: px / zoom.value,
+        dy: py / zoom.value,
+        moved: true,
+      }
     } else if (mode.value === 'link') {
       linkCur.value = vp.screenToWorld(ev.clientX, ev.clientY)
-      const t = (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-in-port]') as HTMLElement | null) ?? null
+      const t =
+        (document
+          .elementFromPoint(ev.clientX, ev.clientY)
+          ?.closest('[data-in-port]') as HTMLElement | null) ?? null
       hotPort.value = t ? `${t.dataset.nodeId}:${t.dataset.port}` : null
     } else if (mode.value === 'box' && boxStart) {
       const el = viewportEl.value
@@ -150,7 +190,8 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
       const rect = el.getBoundingClientRect()
       const x = ev.clientX - rect.left
       const y = ev.clientY - rect.top
-      if (!boxMoved && Math.abs(x - boxStart.x) + Math.abs(y - boxStart.y) < 4) return
+      if (!boxMoved && Math.abs(x - boxStart.x) + Math.abs(y - boxStart.y) < 4)
+        return
       boxMoved = true
       boxRect.value = { x1: boxStart.x, y1: boxStart.y, x2: x, y2: y }
     }
@@ -158,14 +199,19 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
 
   function onViewportPointerUp(ev: PointerEvent): void {
     const el = ev.currentTarget as HTMLElement
-    if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId)
+    if (el.hasPointerCapture(ev.pointerId))
+      el.releasePointerCapture(ev.pointerId)
     if (mode.value === 'link') {
-      const t = (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-in-port]') as HTMLElement | null) ?? null
+      const t =
+        (document
+          .elementFromPoint(ev.clientX, ev.clientY)
+          ?.closest('[data-in-port]') as HTMLElement | null) ?? null
       const from = linkFrom.value
       if (t && from != null) {
         const to = Number(t.dataset.nodeId)
         const port = t.dataset.port ?? ''
-        if (Number.isInteger(to) && to !== from && port) emit('connect', { from, to, port })
+        if (Number.isInteger(to) && to !== from && port)
+          emit('connect', { from, to, port })
       }
       cancelLink()
     } else if (mode.value === 'node' && drag) {
@@ -174,14 +220,22 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
         const sel = new Set(d.ids)
         const moves = props.nodes
           .filter((n) => sel.has(n.id))
-          .map((n) => ({ id: n.id, x: Math.round(n.x + d.dx), y: Math.round(n.y + d.dy) }))
+          .map((n) => ({
+            id: n.id,
+            x: Math.round(n.x + d.dx),
+            y: Math.round(n.y + d.dy),
+          }))
         if (moves.length) emit('moved', moves)
         // [M22] 组条拖拽：后代组锚点跟随平移（空组包围盒用锚点）
         if (d.gids?.length) {
           const gsel = new Set(d.gids)
           const gmoves = props.groups
             .filter((g) => gsel.has(g.id))
-            .map((g) => ({ id: g.id, x: Math.round(g.x + d.dx), y: Math.round(g.y + d.dy) }))
+            .map((g) => ({
+              id: g.id,
+              x: Math.round(g.x + d.dx),
+              y: Math.round(g.y + d.dy),
+            }))
           if (gmoves.length) emit('groups-moved', gmoves)
         }
       }
@@ -199,15 +253,29 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
         const br = boxRect.value
         if (el2) {
           const rect = el2.getBoundingClientRect()
-          const w1 = vp.screenToWorld(rect.left + Math.min(br.x1, br.x2), rect.top + Math.min(br.y1, br.y2))
-          const w2 = vp.screenToWorld(rect.left + Math.max(br.x1, br.x2), rect.top + Math.max(br.y1, br.y2))
+          const w1 = vp.screenToWorld(
+            rect.left + Math.min(br.x1, br.x2),
+            rect.top + Math.min(br.y1, br.y2),
+          )
+          const w2 = vp.screenToWorld(
+            rect.left + Math.max(br.x1, br.x2),
+            rect.top + Math.max(br.y1, br.y2),
+          )
           const hits = props.nodes
             .filter((n) => {
               const p = nodeXY(n)
-              return p.x >= w1.x && p.y >= w1.y && p.x + NODE_W <= w2.x && p.y + nodeH(n) <= w2.y
+              return (
+                p.x >= w1.x &&
+                p.y >= w1.y &&
+                p.x + NODE_W <= w2.x &&
+                p.y + nodeH(n) <= w2.y
+              )
             })
             .map((n) => n.id)
-          emit('select', ev.shiftKey ? [...new Set([...props.selectedIds, ...hits])] : hits)
+          emit(
+            'select',
+            ev.shiftKey ? [...new Set([...props.selectedIds, ...hits])] : hits,
+          )
         }
       } else {
         emit('select', [])
@@ -230,7 +298,6 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
       height: `${Math.abs(b.y2 - b.y1)}px`,
     }
   })
-
 
   // ---- 键盘（快捷键全集；输入框聚焦时除 Esc 全部让行）----
   function onKeyDown(ev: KeyboardEvent): void {
@@ -280,7 +347,10 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     }
     if (mod && key === 'a') {
       ev.preventDefault()
-      emit('select', props.nodes.map((n) => n.id))
+      emit(
+        'select',
+        props.nodes.map((n) => n.id),
+      )
       return
     }
     if (ev.key === 'Delete' || ev.key === 'Backspace') {
@@ -301,7 +371,11 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
       const sel = new Set(props.selectedIds)
       const moves = props.nodes
         .filter((n) => sel.has(n.id))
-        .map((n) => ({ id: n.id, x: n.x + dir[0] * step, y: n.y + dir[1] * step }))
+        .map((n) => ({
+          id: n.id,
+          x: n.x + dir[0] * step,
+          y: n.y + dir[1] * step,
+        }))
       if (moves.length) emit('nudge', moves)
     }
   }
@@ -317,12 +391,14 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     window.removeEventListener('keyup', onKeyUp)
   })
 
-
   // ---- 双击空白建生成节点 / drop 文件 ----
   function onDblClick(ev: MouseEvent): void {
     if (spaceDown.value) return
     const p = vp.screenToWorld(ev.clientX, ev.clientY)
-    emit('create-node', { x: Math.round(p.x - NODE_W / 2), y: Math.round(p.y - 60) })
+    emit('create-node', {
+      x: Math.round(p.x - NODE_W / 2),
+      y: Math.round(p.y - 60),
+    })
   }
   function onDragOver(ev: DragEvent): void {
     ev.preventDefault()
@@ -336,13 +412,15 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     const assetRaw = ev.dataTransfer?.getData('text/acs-asset-id')
     if (assetRaw) {
       const assetId = Number(assetRaw)
-      if (Number.isInteger(assetId) && assetId > 0) emit('drop-asset', { assetId, x, y })
+      if (Number.isInteger(assetId) && assetId > 0)
+        emit('drop-asset', { assetId, x, y })
       return
     }
     const entityRaw = ev.dataTransfer?.getData('text/acs-entity-id')
     if (entityRaw) {
       const entityId = Number(entityRaw)
-      if (Number.isInteger(entityId) && entityId > 0) emit('drop-entity', { entityId, x, y })
+      if (Number.isInteger(entityId) && entityId > 0)
+        emit('drop-entity', { entityId, x, y })
       return
     }
     const files = Array.from(ev.dataTransfer?.files ?? [])
@@ -374,21 +452,42 @@ export function useBoardInteractions(props: BoardProps, emit: BoardEmitFn, deps:
     const el = viewportEl.value
     if (!el) return { x: 200, y: 160 }
     const rect = el.getBoundingClientRect()
-    const p = vp.screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    const p = vp.screenToWorld(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    )
     return { x: Math.round(p.x - NODE_W / 2), y: Math.round(p.y - 60) }
   }
   /** [M17] 使世界坐标 (x,y) 居中（总览聚焦 / 定位；不改缩放） */
   function centerOn(x: number, y: number): void {
     const el = viewportEl.value
     if (!el) return
-    pan.value = { x: el.clientWidth / 2 - x * zoom.value, y: el.clientHeight / 2 - y * zoom.value }
+    pan.value = {
+      x: el.clientWidth / 2 - x * zoom.value,
+      y: el.clientHeight / 2 - y * zoom.value,
+    }
   }
 
   return {
-    mode, spaceDown, dragGroup, boxRect, boxStyle,
-    linkFrom, hotPort, linkPath,
-    onViewportPointerDown, onNodePointerDown, onOutPortPointerDown, onViewportPointerMove, onViewportPointerUp,
-    onGroupBarPointerDown, onDblClick, onDragOver, onDrop,
-    fitView, centerWorld, centerOn,
+    mode,
+    spaceDown,
+    dragGroup,
+    boxRect,
+    boxStyle,
+    linkFrom,
+    hotPort,
+    linkPath,
+    onViewportPointerDown,
+    onNodePointerDown,
+    onOutPortPointerDown,
+    onViewportPointerMove,
+    onViewportPointerUp,
+    onGroupBarPointerDown,
+    onDblClick,
+    onDragOver,
+    onDrop,
+    fitView,
+    centerWorld,
+    centerOn,
   }
 }

@@ -73,6 +73,12 @@ async function loadStatus() {
   }
 }
 
+// 多语句 handler 抽为单函数：prettier 在 semi:false 下会删模板属性里的分隔分号，产生非法 JS
+function clearSearch() {
+  q.value = ''
+  void load()
+}
+
 onMounted(() => {
   void load()
   void loadStatus()
@@ -87,8 +93,16 @@ function openNew() {
   form.content = ''
   form.type = 'note'
   form.name = ''
-  form.scope = projectFilter.value && projectFilter.value !== 'global' ? 'project' : projectFilter.value === 'global' ? 'global' : 'project'
-  form.projectId = projectFilter.value && projectFilter.value !== 'global' ? Number(projectFilter.value) : (projects.value[0]?.id ?? 0)
+  form.scope =
+    projectFilter.value && projectFilter.value !== 'global'
+      ? 'project'
+      : projectFilter.value === 'global'
+        ? 'global'
+        : 'project'
+  form.projectId =
+    projectFilter.value && projectFilter.value !== 'global'
+      ? Number(projectFilter.value)
+      : (projects.value[0]?.id ?? 0)
   formErr.value = ''
   showForm.value = true
 }
@@ -200,11 +214,15 @@ function scopeText(it: MemoryItem): string {
         <span class="sep">·</span> 维度 {{ status.dims ?? '—' }}
         <span class="sep">·</span> 共 {{ status.count }} 条
         <span class="sep">·</span> 无索引
-        <b :class="status.missingEmbedding > 0 ? 'miss' : ''">{{ status.missingEmbedding }}</b>
+        <b :class="status.missingEmbedding > 0 ? 'miss' : ''">{{
+          status.missingEmbedding
+        }}</b>
       </template>
       <template v-else>
         <span class="dot bad" />
-        embedding 模型未就绪：请将模型置于 <code class="mono">{{ status.modelDir }}</code>，或运行
+        embedding 模型未就绪：请将模型置于
+        <code class="mono">{{ status.modelDir }}</code
+        >，或运行
         <code class="mono">pnpm --filter @acs/server model:prepare</code>
       </template>
     </div>
@@ -214,49 +232,104 @@ function scopeText(it: MemoryItem): string {
       <select v-model="projectFilter" aria-label="按归属筛选" @change="load()">
         <option value="">全部归属</option>
         <option value="global">仅全局</option>
-        <option v-for="p in projects" :key="p.id" :value="String(p.id)">项目#{{ p.id }} {{ p.name }}</option>
+        <option v-for="p in projects" :key="p.id" :value="String(p.id)">
+          项目#{{ p.id }} {{ p.name }}
+        </option>
       </select>
-      <input v-model="typeFilter" type="text" placeholder="type 过滤" style="width: 130px" aria-label="按 type 过滤" @keydown.enter="load()" />
+      <input
+        v-model="typeFilter"
+        type="text"
+        placeholder="type 过滤"
+        style="width: 130px"
+        aria-label="按 type 过滤"
+        @keydown.enter="load()"
+      />
       <div class="searchbox">
         <Icon name="search" :size="14" class="sic" />
-        <input v-model="q" type="text" placeholder="语义检索（回车）" aria-label="语义检索" @keydown.enter="load()" />
-        <button v-if="searching" class="clr" aria-label="清空检索" @click="q = ''; load()">
+        <input
+          v-model="q"
+          type="text"
+          placeholder="语义检索（回车）"
+          aria-label="语义检索"
+          @keydown.enter="load()"
+        />
+        <button
+          v-if="searching"
+          class="clr"
+          aria-label="清空检索"
+          @click="clearSearch()"
+        >
           <Icon name="x" :size="12" :stroke-width="2.2" />
         </button>
       </div>
-      <span v-if="searching" class="sub muted">按相似度排序 · score 为余弦相似度</span>
+      <span v-if="searching" class="sub muted"
+        >按相似度排序 · score 为余弦相似度</span
+      >
     </div>
 
     <div v-if="hint" class="hint-text">{{ hint }}</div>
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!items.length" class="empty">
-      {{ searching ? '未检索到相关记忆' : '还没有记忆。运行记忆类模板或在运行页产物中沉淀，也可以手动新建。' }}
+      {{
+        searching
+          ? '未检索到相关记忆'
+          : '还没有记忆。运行记忆类模板或在运行页产物中沉淀，也可以手动新建。'
+      }}
     </div>
 
     <div v-else class="list">
       <div v-for="it in items" :key="it.id" class="row panel">
         <div class="rhead">
           <span class="muted mono">#{{ it.id }}</span>
-          <span class="badge" :class="{ skip: it.scope === 'global' }">{{ scopeText(it) }}</span>
+          <span class="badge" :class="{ skip: it.scope === 'global' }">{{
+            scopeText(it)
+          }}</span>
           <span class="chip">{{ it.type }}</span>
           <span v-if="it.name" class="mono nm">{{ it.name }}</span>
-          <span v-if="!it.hasEmbedding" class="badge waiting_input" title="embedding 缺失，语义检索不会命中">无索引</span>
-          <span v-if="it.score !== undefined" class="badge running" title="余弦相似度">{{ it.score.toFixed(3) }}</span>
+          <span
+            v-if="!it.hasEmbedding"
+            class="badge waiting_input"
+            title="embedding 缺失，语义检索不会命中"
+            >无索引</span
+          >
+          <span
+            v-if="it.score !== undefined"
+            class="badge running"
+            title="余弦相似度"
+            >{{ it.score.toFixed(3) }}</span
+          >
           <span class="muted time">{{ fmtTime(it.updatedAt) }}</span>
           <div class="ops">
-            <button class="btn tiny" @click="openEdit(it)"><Icon name="pencil" :size="12" /> 编辑</button>
-            <button class="btn tiny danger" :disabled="busy" @click="removeItem(it)"><Icon name="trash" :size="12" /> 删除</button>
+            <button class="btn tiny" @click="openEdit(it)">
+              <Icon name="pencil" :size="12" /> 编辑
+            </button>
+            <button
+              class="btn tiny danger"
+              :disabled="busy"
+              @click="removeItem(it)"
+            >
+              <Icon name="trash" :size="12" /> 删除
+            </button>
           </div>
         </div>
         <div class="content">{{ it.content }}</div>
       </div>
     </div>
 
-    <Modal v-if="showForm" :title="form.id ? `编辑记忆 #${form.id}` : '新建记忆'" :width="620" @close="showForm = false">
+    <Modal
+      v-if="showForm"
+      :title="form.id ? `编辑记忆 #${form.id}` : '新建记忆'"
+      :width="620"
+      @close="showForm = false"
+    >
       <label class="fld">
         内容 <span class="req">*</span>
-        <textarea v-model="form.content" rows="6" placeholder="记忆全文（将计算 embedding 供语义召回）" />
+        <textarea
+          v-model="form.content"
+          rows="6"
+          placeholder="记忆全文（将计算 embedding 供语义召回）"
+        />
       </label>
       <div class="frow">
         <label class="fld">
@@ -279,15 +352,25 @@ function scopeText(it: MemoryItem): string {
         <label v-if="form.scope === 'project'" class="fld">
           项目
           <select v-model.number="form.projectId">
-            <option v-for="p in projects" :key="p.id" :value="p.id">项目#{{ p.id }} {{ p.name }}</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">
+              项目#{{ p.id }} {{ p.name }}
+            </option>
           </select>
         </label>
       </div>
-      <div v-else class="muted" style="font-size: 12px">归属：{{ form.scope === 'global' ? '全局（不可改）' : `项目#${form.projectId}（不可改）` }}</div>
+      <div v-else class="muted" style="font-size: 12px">
+        归属：{{
+          form.scope === 'global'
+            ? '全局（不可改）'
+            : `项目#${form.projectId}（不可改）`
+        }}
+      </div>
       <div v-if="formErr" class="err-text">{{ formErr }}</div>
       <template #footer>
         <button class="btn" @click="showForm = false">取消</button>
-        <button class="btn primary" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+        <button class="btn primary" :disabled="busy" @click="save">
+          {{ busy ? '保存中…' : '保存' }}
+        </button>
       </template>
     </Modal>
   </div>

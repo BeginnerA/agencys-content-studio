@@ -10,7 +10,11 @@ import { assetApi, novelApi } from '../lib/api'
 import { taskStatus } from '../lib/format'
 import type { StatusMeta } from '../lib/format'
 import type {
-  Asset, NovelBoardData, NovelBoardPlanDoc, RunStep, TaskStatus,
+  Asset,
+  NovelBoardData,
+  NovelBoardPlanDoc,
+  RunStep,
+  TaskStatus,
 } from '../lib/types'
 import { studioOff, studioOn } from '../lib/socket'
 import type { StudioEventMap } from '../lib/socket'
@@ -27,7 +31,9 @@ const err = ref('')
 let timer: number | undefined
 let reloadTimer: number | undefined
 
-type NovelEpisode = NonNullable<NonNullable<NovelBoardPlanDoc['episodes']>[number]>
+type NovelEpisode = NonNullable<
+  NonNullable<NovelBoardPlanDoc['episodes']>[number]
+>
 
 const split = computed(() => board.value?.split ?? null)
 const chapters = computed(() => split.value?.chapters ?? [])
@@ -40,17 +46,28 @@ const events = computed(() => board.value?.events ?? null)
 const summary = computed(() => {
   const m = manifest.value
   if (!m) return '等待切分产物'
-  const parts = [`章节 ${m.selected ?? chapters.value.length}/${m.total ?? chapters.value.length}`]
+  const parts = [
+    `章节 ${m.selected ?? chapters.value.length}/${m.total ?? chapters.value.length}`,
+  ]
   // [M25·G6] 多部合并摘要：N 部 · M 章
-  if (m.per_source && m.books?.length) parts.unshift(`${m.books.length} 部 · ${m.total ?? chapters.value.length} 章`)
+  if (m.per_source && m.books?.length)
+    parts.unshift(
+      `${m.books.length} 部 · ${m.total ?? chapters.value.length} 章`,
+    )
   if (events.value) {
-    parts.push(`事件 ${events.value.done}/${events.value.total}${events.value.failed ? ` · 失败 ${events.value.failed}` : ''}`)
+    parts.push(
+      `事件 ${events.value.done}/${events.value.total}${events.value.failed ? ` · 失败 ${events.value.failed}` : ''}`,
+    )
   }
   if (scripts.value.length) parts.push(`剧本 ${scripts.value.length} 集`)
   return parts.join(' · ')
 })
 
-const REGEX_SOURCE_TEXT: Record<string, string> = { user: '用户正则', ai: 'AI 正则', default: '默认识别' }
+const REGEX_SOURCE_TEXT: Record<string, string> = {
+  user: '用户正则',
+  ai: 'AI 正则',
+  default: '默认识别',
+}
 const regexSource = computed(() => {
   const s = manifest.value?.regex_source
   return s ? (REGEX_SOURCE_TEXT[s] ?? s) : null
@@ -74,7 +91,8 @@ function eventMeta(s: string): StatusMeta {
 function epChaptersText(ep: NovelEpisode): string {
   const chs = ep.chapters ?? []
   if (!chs.length) return '—'
-  if (chs.length > 6) return `${chs[0] ?? '?'}–${chs[chs.length - 1] ?? '?'}（${chs.length} 章）`
+  if (chs.length > 6)
+    return `${chs[0] ?? '?'}–${chs[chs.length - 1] ?? '?'}（${chs.length} 章）`
   return chs.join(',')
 }
 
@@ -172,22 +190,31 @@ async function openAsset(assetId: number) {
     <div class="nb-head">
       <span class="nb-title"><Icon name="doc" :size="13" /> 小说改编看板</span>
       <span class="muted nb-sum">{{ summary }}</span>
-      <span v-if="regexSource" class="nb-tag" :class="manifest?.regex_source" title="章节切分正则来源">
+      <span
+        v-if="regexSource"
+        class="nb-tag"
+        :class="manifest?.regex_source"
+        title="章节切分正则来源"
+      >
         切分：{{ regexSource }}
       </span>
       <span class="grow" />
       <button class="btn sm" :disabled="refreshing" @click="manualRefresh">
-        <Icon name="refresh" :size="12" :class="{ 'nb-rot': refreshing }" /> 刷新
+        <Icon name="refresh" :size="12" :class="{ 'nb-rot': refreshing }" />
+        刷新
       </button>
     </div>
 
     <div v-if="step.status === 'waiting_input'" class="nb-hint">
-      <Icon name="clock" :size="12" /> 切分产物已就绪，等待审阅放行后进入事件提取
+      <Icon name="clock" :size="12" />
+      切分产物已就绪，等待审阅放行后进入事件提取
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
 
-    <div v-if="board && !board.found" class="empty nb-empty">该 run 无章节切分步骤</div>
+    <div v-if="board && !board.found" class="empty nb-empty">
+      该 run 无章节切分步骤
+    </div>
 
     <div v-else-if="!split" class="nb-wait muted">
       <Icon name="clock" :size="12" /> {{ waitText }}
@@ -199,12 +226,18 @@ async function openAsset(assetId: number) {
         <div class="nb-shead">
           章节
           <span class="muted">
-            {{ chapters.length }} 章<template v-if="manifest?.range"> · 范围 {{ manifest.range }}</template><template v-if="manifest?.reels?.length"> · {{ manifest.reels.length }} 卷</template>
+            {{ chapters.length }} 章<template v-if="manifest?.range">
+              · 范围 {{ manifest.range }}</template
+            ><template v-if="manifest?.reels?.length">
+              · {{ manifest.reels.length }} 卷</template
+            >
           </span>
         </div>
         <div class="nb-table ch" :class="{ src: manifest?.per_source }">
           <div class="nb-tr nb-th">
-            <span>#</span><span>标题</span><span>卷</span><template v-if="manifest?.per_source"><span>部</span></template><span class="nb-right">字数</span><span>事件</span>
+            <span>#</span><span>标题</span><span>卷</span
+            ><template v-if="manifest?.per_source"><span>部</span></template
+            ><span class="nb-right">字数</span><span>事件</span>
           </div>
           <div v-for="c in chapters" :key="c.asset_id" class="nb-tr">
             <span class="mono muted">{{ c.index }}</span>
@@ -216,11 +249,22 @@ async function openAsset(assetId: number) {
             >
               {{ c.title || `第${c.index}章` }}
             </button>
-            <span class="muted nb-ell" :title="c.reel ?? ''">{{ c.reel ?? '—' }}</span>
-            <span v-if="manifest?.per_source" class="muted nb-ell" :title="c.source_book ?? ''">{{ c.source_book ?? '—' }}</span>
+            <span class="muted nb-ell" :title="c.reel ?? ''">{{
+              c.reel ?? '—'
+            }}</span>
+            <span
+              v-if="manifest?.per_source"
+              class="muted nb-ell"
+              :title="c.source_book ?? ''"
+              >{{ c.source_book ?? '—' }}</span
+            >
             <span class="mono muted nb-right">{{ c.chars }}</span>
             <span>
-              <span v-if="c.event_status" class="badge" :class="eventMeta(c.event_status).cls">
+              <span
+                v-if="c.event_status"
+                class="badge"
+                :class="eventMeta(c.event_status).cls"
+              >
                 {{ eventMeta(c.event_status).text }}
               </span>
               <span v-else class="muted">—</span>
@@ -240,17 +284,27 @@ async function openAsset(assetId: number) {
         <div class="nb-eps">
           <div v-for="ep in episodes" :key="ep.ep ?? 0" class="nb-ep">
             <div class="nb-ephead">
-              <span class="nb-epno mono">E{{ String(ep.ep ?? 0).padStart(2, '0') }}</span>
-              <span class="nb-eptitle">{{ ep.title || `第 ${ep.ep ?? '?'} 集` }}</span>
+              <span class="nb-epno mono"
+                >E{{ String(ep.ep ?? 0).padStart(2, '0') }}</span
+              >
+              <span class="nb-eptitle">{{
+                ep.title || `第 ${ep.ep ?? '?'} 集`
+              }}</span>
               <span class="grow" />
-              <span class="muted mono" :title="`覆盖章 ${(ep.chapters ?? []).join(', ')}`">章 {{ epChaptersText(ep) }}</span>
+              <span
+                class="muted mono"
+                :title="`覆盖章 ${(ep.chapters ?? []).join(', ')}`"
+                >章 {{ epChaptersText(ep) }}</span
+              >
             </div>
             <div v-if="ep.synopsis" class="nb-syn">{{ ep.synopsis }}</div>
             <div v-if="ep.opening_hook" class="nb-hook">
-              <span class="nb-hk">开钩</span><span class="nb-hkt">{{ ep.opening_hook }}</span>
+              <span class="nb-hk">开钩</span
+              ><span class="nb-hkt">{{ ep.opening_hook }}</span>
             </div>
             <div v-if="ep.ending_hook" class="nb-hook end">
-              <span class="nb-hk">尾钩</span><span class="nb-hkt">{{ ep.ending_hook }}</span>
+              <span class="nb-hk">尾钩</span
+              ><span class="nb-hkt">{{ ep.ending_hook }}</span>
             </div>
           </div>
         </div>
@@ -272,13 +326,26 @@ async function openAsset(assetId: number) {
           >
             <Icon name="doc" :size="12" />
             <span class="nb-sname">{{ sc.name }}</span>
-            <span v-if="sc.ep !== null" class="muted mono">E{{ String(sc.ep).padStart(2, '0') }}</span>
+            <span v-if="sc.ep !== null" class="muted mono"
+              >E{{ String(sc.ep).padStart(2, '0') }}</span
+            >
           </button>
         </div>
       </div>
     </template>
 
-    <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewIndex" @close="previewOpen = false" @changed="(a: Asset) => { const i = previewAssets.findIndex((x) => x.id === a.id); if (i >= 0) previewAssets[i] = a }" />
+    <AssetPreviewer
+      v-if="previewOpen"
+      :assets="previewAssets"
+      :index="previewIndex"
+      @close="previewOpen = false"
+      @changed="
+        (a: Asset) => {
+          const i = previewAssets.findIndex((x) => x.id === a.id)
+          if (i >= 0) previewAssets[i] = a
+        }
+      "
+    />
   </div>
 </template>
 
@@ -575,7 +642,9 @@ async function openAsset(assetId: number) {
   border-radius: 8px;
   padding: 5px 10px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .nb-script:hover {

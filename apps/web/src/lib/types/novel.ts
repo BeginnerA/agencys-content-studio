@@ -15,7 +15,15 @@ export interface NovelManifestDoc {
   books?: Array<{ name?: string; count?: number }>
   /** [M25·G7] 增量连载批次记录 */
   appended_at?: unknown[]
-  chapters?: Array<{ index?: number; reel?: string | null; title?: string; name?: string; asset_id?: number; chars?: number; source_book?: string }>
+  chapters?: Array<{
+    index?: number
+    reel?: string | null
+    title?: string
+    name?: string
+    asset_id?: number
+    chars?: number
+    source_book?: string
+  }>
 }
 
 /** 章节行（服务端规范化 + 事件提取任务状态） */
@@ -36,7 +44,14 @@ export interface NovelBoardChapter {
 export interface NovelBoardGraphDoc {
   overview?: string
   characters?: Array<{ name?: string; role?: string; arc?: string }>
-  key_events?: Array<{ id?: string; name?: string; summary?: string; chapters?: number[]; intensity?: number; kind?: string }>
+  key_events?: Array<{
+    id?: string
+    name?: string
+    summary?: string
+    chapters?: number[]
+    intensity?: number
+    kind?: string
+  }>
 }
 
 /** 分集规划（plan.json，episodes 为准） */
@@ -57,7 +72,15 @@ export interface NovelBoardPlanDoc {
 
 /** [M25·G3] 服务端确定性力导向布局（graph.layout；脏 doc → null 前端降级表视图） */
 export interface GraphLayout {
-  nodes: Array<{ id: string; kind: 'event' | 'character'; label: string; weight?: number; x: number; y: number; r: number }>
+  nodes: Array<{
+    id: string
+    kind: 'event' | 'character'
+    label: string
+    weight?: number
+    x: number
+    y: number
+    r: number
+  }>
   links: Array<{ source: string; target: string; kind: string }>
   width: number
   height: number
@@ -69,7 +92,12 @@ export interface NovelBoardData {
   found: boolean
   step: { key: string; status: string } | null
   split: { manifest: NovelManifestDoc; chapters: NovelBoardChapter[] } | null
-  graph: { asset_id: number; name: string; doc: NovelBoardGraphDoc | null; layout?: GraphLayout | null } | null
+  graph: {
+    asset_id: number
+    name: string
+    doc: NovelBoardGraphDoc | null
+    layout?: GraphLayout | null
+  } | null
   plan: { asset_id: number; name: string; doc: NovelBoardPlanDoc | null } | null
   scripts: Array<{ asset_id: number; name: string; ep: number | null }>
   events: { total: number; done: number; failed: number } | null

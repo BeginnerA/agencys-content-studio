@@ -16,34 +16,71 @@ const est = computed(() => pf.value?.estimate ?? null)
 
 // [M31] 已采纳参考素材（来自服务端编译的 plan.refs）
 const refs = computed(() => plan.value?.refs ?? [])
-const thumbFor = (r: CreationRef): string | null => (r.kind === 'image' || r.kind === 'video' ? `/api/v1/assets/${r.assetId}/thumb?v=2` : null)
-const refKindIcon = (k: CreationRef['kind']): string => (k === 'image' ? 'photo' : k === 'video' ? 'film' : 'doc')
+const thumbFor = (r: CreationRef): string | null =>
+  r.kind === 'image' || r.kind === 'video'
+    ? `/api/v1/assets/${r.assetId}/thumb?v=2`
+    : null
+const refKindIcon = (k: CreationRef['kind']): string =>
+  k === 'image' ? 'photo' : k === 'video' ? 'film' : 'doc'
 function roleHint(r: CreationRef): string {
   switch (r.role) {
-    case 'style': return '作为画风 / 主体参考注入图像生成'
-    case 'first_frame': return r.shotId ? `作为镜头 ${r.shotId} 的图生视频首帧` : '作为图生视频首帧'
-    case 'subject': return '用于主体 / 角色跨镜一致性'
-    case 'content': return '解析视频可见/可听内容以约束方案'
-    case 'bgm': return '合成期作为背景乐混入（仅用户素材，不额外生成）'
-    default: return ''
+    case 'style':
+      return '作为画风 / 主体参考注入图像生成'
+    case 'first_frame':
+      return r.shotId
+        ? `作为镜头 ${r.shotId} 的图生视频首帧`
+        : '作为图生视频首帧'
+    case 'subject':
+      return '用于主体 / 角色跨镜一致性'
+    case 'content':
+      return '解析视频可见/可听内容以约束方案'
+    case 'bgm':
+      return '合成期作为背景乐混入（仅用户素材，不额外生成）'
+    default:
+      return ''
   }
 }
 
-const modeText = computed(() => (plan.value?.mode === 'dynamic' ? '动态视频镜头' : '多图配音（静态画面）'))
+const modeText = computed(() =>
+  plan.value?.mode === 'dynamic' ? '动态视频镜头' : '多图配音（静态画面）',
+)
 const modeHint = computed(() =>
   plan.value?.mode === 'dynamic'
     ? '每条镜头为真实 AI 生成视频；不会静默降级为静态图。'
     : '本模式使用静态画面 + 旁白字幕，非动态视频，已明确标注。',
 )
-const videoModeText = computed(() => (exec.value?.videoMode === 'i2v' ? '分镜图 → 图生视频' : exec.value?.videoMode === 't2v' ? '文生视频' : '—'))
+const videoModeText = computed(() =>
+  exec.value?.videoMode === 'i2v'
+    ? '分镜图 → 图生视频'
+    : exec.value?.videoMode === 't2v'
+      ? '文生视频'
+      : '—',
+)
 
 const providers = computed(() => {
   const e = exec.value
   if (!e) return [] as Array<{ k: string; v: string }>
-  const rows: Array<{ k: string; v: string }> = [{ k: '配音', v: `${e.endpoints.audio.provider} · ${e.endpoints.audio.model}` }]
-  if (e.endpoints.image) rows.push({ k: '画面', v: `${e.endpoints.image.provider} · ${e.endpoints.image.model}` })
-  if (e.endpoints.video) rows.push({ k: '视频', v: `${e.endpoints.video.provider} · ${e.endpoints.video.model}（${videoModeText.value}）` })
-  if (pf.value?.planningModel) rows.unshift({ k: '规划', v: `${pf.value.planningModel.provider} · ${pf.value.planningModel.model}` })
+  const rows: Array<{ k: string; v: string }> = [
+    {
+      k: '配音',
+      v: `${e.endpoints.audio.provider} · ${e.endpoints.audio.model}`,
+    },
+  ]
+  if (e.endpoints.image)
+    rows.push({
+      k: '画面',
+      v: `${e.endpoints.image.provider} · ${e.endpoints.image.model}`,
+    })
+  if (e.endpoints.video)
+    rows.push({
+      k: '视频',
+      v: `${e.endpoints.video.provider} · ${e.endpoints.video.model}（${videoModeText.value}）`,
+    })
+  if (pf.value?.planningModel)
+    rows.unshift({
+      k: '规划',
+      v: `${pf.value.planningModel.provider} · ${pf.value.planningModel.model}`,
+    })
   return rows
 })
 
@@ -54,7 +91,11 @@ const acceptUnpriced = ref(false)
 const ready = computed(() => !!pf.value?.ready)
 const blockers = computed(() => pf.value?.issues ?? [])
 // 方案已被确认（进入 started/starting）后本卡只读，旧方案不能再启动
-const confirmed = computed(() => !!detail.value && ['starting', 'started'].includes(detail.value.session.status))
+const confirmed = computed(
+  () =>
+    !!detail.value &&
+    ['starting', 'started'].includes(detail.value.session.status),
+)
 
 async function onConfirm(): Promise<void> {
   await props.s.confirm(acceptUnpriced.value)
@@ -66,7 +107,11 @@ async function onConfirm(): Promise<void> {
   <div v-if="plan" class="card panel">
     <header class="ch">
       <div class="ct">
-        <span class="badge" :class="plan.mode === 'dynamic' ? 'running' : 'pending'">{{ modeText }}</span>
+        <span
+          class="badge"
+          :class="plan.mode === 'dynamic' ? 'running' : 'pending'"
+          >{{ modeText }}</span
+        >
         <h2>{{ plan.title }}</h2>
       </div>
       <span v-if="confirmed" class="badge succeeded">
@@ -75,9 +120,7 @@ async function onConfirm(): Promise<void> {
     </header>
 
     <p class="sum">{{ plan.summary }}</p>
-    <p class="mode-hint">
-      <Icon name="alert" :size="12" /> {{ modeHint }}
-    </p>
+    <p class="mode-hint"><Icon name="alert" :size="12" /> {{ modeHint }}</p>
 
     <div class="meta">
       <span class="chip">
@@ -95,44 +138,67 @@ async function onConfirm(): Promise<void> {
     <div class="sections">
       <div class="sec">
         <div class="sh">
-          <Icon name="cog" :size="13" /> 供应商 / 模型<span class="sh-hint">实际调用 · 确认即冻结</span>
+          <Icon name="cog" :size="13" /> 供应商 / 模型<span class="sh-hint"
+            >实际调用 · 确认即冻结</span
+          >
         </div>
         <ul class="prov">
-          <li v-for="p in providers" :key="p.k"><span class="pk">{{ p.k }}</span><span class="pv mono">{{ p.v }}</span>
+          <li v-for="p in providers" :key="p.k">
+            <span class="pk">{{ p.k }}</span
+            ><span class="pv mono">{{ p.v }}</span>
           </li>
         </ul>
       </div>
       <div class="sec">
-        <div class="sh">
-          <Icon name="chart" :size="13" /> 费用预估
-        </div>
+        <div class="sh"><Icon name="chart" :size="13" /> 费用预估</div>
         <div class="cost">
-          <div><span class="cl">已发生规划</span><span class="mono">{{ fmtCost(s.state.detail?.planningUsage.cost ?? 0)
-              }}</span></div>
-          <div class="cost-main"><span class="cl">预计制作费用</span><span class="mono hi">{{ fmtCost(est?.knownCost ?? 0)
-              }}</span></div>
-          <div v-if="est?.imageCount"><span class="cl">静态画面</span><span class="mono">{{ est.imageCount }} 张</span></div>
-          <div v-if="est?.videoSeconds"><span class="cl">视频时长</span><span class="mono">{{ est.videoSeconds }} 秒</span>
+          <div>
+            <span class="cl">已发生规划</span
+            ><span class="mono">{{
+              fmtCost(s.state.detail?.planningUsage.cost ?? 0)
+            }}</span>
+          </div>
+          <div class="cost-main">
+            <span class="cl">预计制作费用</span
+            ><span class="mono hi">{{ fmtCost(est?.knownCost ?? 0) }}</span>
+          </div>
+          <div v-if="est?.imageCount">
+            <span class="cl">静态画面</span
+            ><span class="mono">{{ est.imageCount }} 张</span>
+          </div>
+          <div v-if="est?.videoSeconds">
+            <span class="cl">视频时长</span
+            ><span class="mono">{{ est.videoSeconds }} 秒</span>
           </div>
         </div>
         <div v-if="est?.unpriced.length" class="unpriced">
-          <Icon name="alert" :size="12" /> <span>未计价项（不按零元处理）：{{ est.unpriced.join('、') }}</span>
+          <Icon name="alert" :size="12" />
+          <span>未计价项（不按零元处理）：{{ est.unpriced.join('、') }}</span>
         </div>
       </div>
     </div>
 
     <div v-if="refs.length" class="refs">
-      <div class="bl">参考素材（已冻结进方案 · 确认即执行 · 编辑/删除会使旧确认失效）</div>
+      <div class="bl">
+        参考素材（已冻结进方案 · 确认即执行 · 编辑/删除会使旧确认失效）
+      </div>
       <ul class="reft">
         <li v-for="r in refs" :key="r.assetId + ':' + r.role" class="refi">
           <span class="ref-thumb">
-            <img v-if="thumbFor(r)" :src="thumbFor(r) ?? ''" :alt="REF_ROLE_LABELS[r.role]" loading="lazy" />
+            <img
+              v-if="thumbFor(r)"
+              :src="thumbFor(r) ?? ''"
+              :alt="REF_ROLE_LABELS[r.role]"
+              loading="lazy"
+            />
             <Icon v-else :name="refKindIcon(r.kind)" :size="15" />
           </span>
           <span class="ref-body">
             <span class="ref-role">
-              <Icon name="check" :size="11" /> {{ REF_ROLE_LABELS[r.role] }}<span v-if="r.shotId" class="ref-shot mono">
-                · {{ r.shotId }}</span>
+              <Icon name="check" :size="11" /> {{ REF_ROLE_LABELS[r.role]
+              }}<span v-if="r.shotId" class="ref-shot mono">
+                · {{ r.shotId }}</span
+              >
             </span>
             <span class="ref-hint muted">{{ roleHint(r) }}</span>
           </span>
@@ -140,24 +206,43 @@ async function onConfirm(): Promise<void> {
         </li>
       </ul>
       <p v-if="est && est.videoAnalysisCount > 0" class="ref-note">
-        <Icon name="alert" :size="11" /> 含 {{ est.videoAnalysisCount }} 段参考视频解析（多模态 + 转写），价格依供应商，见上方未计价项。
+        <Icon name="alert" :size="11" /> 含
+        {{ est.videoAnalysisCount }} 段参考视频解析（多模态 +
+        转写），价格依供应商，见上方未计价项。
       </p>
     </div>
 
     <div class="fold">
-      <button class="lnk" type="button" :aria-expanded="showScript" @click="showScript = !showScript">
-        <Icon :name="showScript ? 'chevron-down' : 'chevron-right'" :size="13" /> 旁白脚本
+      <button
+        class="lnk"
+        type="button"
+        :aria-expanded="showScript"
+        @click="showScript = !showScript"
+      >
+        <Icon
+          :name="showScript ? 'chevron-down' : 'chevron-right'"
+          :size="13"
+        />
+        旁白脚本
       </button>
       <pre v-if="showScript" class="pre">{{ plan.script }}</pre>
-      <button class="lnk" type="button" :aria-expanded="showShots" @click="showShots = !showShots">
-        <Icon :name="showShots ? 'chevron-down' : 'chevron-right'" :size="13" /> 分镜（{{ plan.shots.length }} 镜）
+      <button
+        class="lnk"
+        type="button"
+        :aria-expanded="showShots"
+        @click="showShots = !showShots"
+      >
+        <Icon :name="showShots ? 'chevron-down' : 'chevron-right'" :size="13" />
+        分镜（{{ plan.shots.length }} 镜）
       </button>
       <ol v-if="showShots" class="shots">
         <li v-for="sh in plan.shots" :key="sh.id">
           <span class="sidx mono">{{ sh.duration }}s</span>
           <div>
             <div class="sp">画面：{{ sh.image_prompt }}</div>
-            <div v-if="plan.mode === 'dynamic'" class="sm">运动：{{ sh.motion_prompt }}</div>
+            <div v-if="plan.mode === 'dynamic'" class="sm">
+              运动：{{ sh.motion_prompt }}
+            </div>
           </div>
         </li>
       </ol>
@@ -172,22 +257,44 @@ async function onConfirm(): Promise<void> {
         <RouterLink class="btn sm" to="/settings">
           <Icon name="sliders" :size="13" /> 前往 AI 配置
         </RouterLink>
-        <button class="btn sm" type="button" :disabled="s.state.busyAction" @click="s.refreshPreflight()">
-          <Icon name="refresh" :size="13" /> {{ s.state.busyAction ? '预检中…' : '重新预检' }}
+        <button
+          class="btn sm"
+          type="button"
+          :disabled="s.state.busyAction"
+          @click="s.refreshPreflight()"
+        >
+          <Icon name="refresh" :size="13" />
+          {{ s.state.busyAction ? '预检中…' : '重新预检' }}
         </button>
       </div>
-      <span class="bx-tip">改好 AI 配置（如视频能力声明）后点「重新预检」刷新——仅重算，不计费、不启动制作</span>
+      <span class="bx-tip"
+        >改好 AI
+        配置（如视频能力声明）后点「重新预检」刷新——仅重算，不计费、不启动制作</span
+      >
     </div>
 
     <footer v-else-if="!confirmed" class="cf">
       <label v-if="s.hasUnpriced.value" class="acc">
-        <input v-model="acceptUnpriced" type="checkbox" /> 我已了解并接受上述未计价项的实际扣费
+        <input v-model="acceptUnpriced" type="checkbox" />
+        我已了解并接受上述未计价项的实际扣费
       </label>
-      <button class="btn ok big" type="button"
-        :disabled="s.state.busyAction || (s.hasUnpriced.value && !acceptUnpriced)" @click="onConfirm">
-        <Icon name="bolt" :size="15" /> {{ s.state.busyAction ? '启动中…' : '按此方案开始制作' }}
+      <button
+        class="btn ok big"
+        type="button"
+        :disabled="
+          s.state.busyAction || (s.hasUnpriced.value && !acceptUnpriced)
+        "
+        @click="onConfirm"
+      >
+        <Icon name="bolt" :size="15" />
+        {{ s.state.busyAction ? '启动中…' : '按此方案开始制作' }}
       </button>
-      <button class="btn sm" type="button" :disabled="s.state.busyAction" @click="s.refreshPreflight()">
+      <button
+        class="btn sm"
+        type="button"
+        :disabled="s.state.busyAction"
+        @click="s.refreshPreflight()"
+      >
         <Icon name="refresh" :size="13" /> 重新预检
       </button>
     </footer>
@@ -200,7 +307,8 @@ async function onConfirm(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 13px;
-  background: linear-gradient(180deg, rgb(99 102 241 / 6%), transparent 30%), var(--panel);
+  background:
+    linear-gradient(180deg, rgb(99 102 241 / 6%), transparent 30%), var(--panel);
 }
 
 .ch {
@@ -343,7 +451,7 @@ async function onConfirm(): Promise<void> {
   font-size: 12.5px;
 }
 
-.cost>div {
+.cost > div {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -533,7 +641,7 @@ async function onConfirm(): Promise<void> {
   padding: 12px 14px;
 }
 
-.refs>.bl {
+.refs > .bl {
   font-size: 12px;
   color: var(--text-2);
   font-weight: 600;

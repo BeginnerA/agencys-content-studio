@@ -7,7 +7,11 @@
 import type { AspectStrategy, AspectValue } from './types'
 
 /** 可选发布画幅（label 面向分发场景） */
-export const ASPECT_OPTIONS: Array<{ value: AspectValue; label: string; short: string }> = [
+export const ASPECT_OPTIONS: Array<{
+  value: AspectValue
+  label: string
+  short: string
+}> = [
   { value: '9:16', label: '竖屏 9:16（抖音 / 快手 / Shorts）', short: '9:16' },
   { value: '1:1', label: '方形 1:1（信息流封面位）', short: '1:1' },
   { value: '4:5', label: '竖版图文 4:5（小红书 / Instagram）', short: '4:5' },
@@ -15,9 +19,21 @@ export const ASPECT_OPTIONS: Array<{ value: AspectValue; label: string; short: s
 ]
 
 /** 画幅适配策略说明（crop 默认） */
-export const ASPECT_STRATEGY_OPTIONS: Array<{ value: AspectStrategy; label: string; hint: string }> = [
-  { value: 'crop', label: '居中裁切', hint: '填满目标画幅，裁掉多余边缘（不留黑边，可能丢画面上下/左右内容）' },
-  { value: 'pad', label: '等比补边', hint: '完整保留画面，不足处补黑边（有效画面变小）' },
+export const ASPECT_STRATEGY_OPTIONS: Array<{
+  value: AspectStrategy
+  label: string
+  hint: string
+}> = [
+  {
+    value: 'crop',
+    label: '居中裁切',
+    hint: '填满目标画幅，裁掉多余边缘（不留黑边，可能丢画面上下/左右内容）',
+  },
+  {
+    value: 'pad',
+    label: '等比补边',
+    hint: '完整保留画面，不足处补黑边（有效画面变小）',
+  },
 ]
 
 const ASPECT_SET = new Set<string>(ASPECT_OPTIONS.map((o) => o.value))
@@ -35,7 +51,8 @@ function ratioOf(aspect: string): { aw: number; ah: number } | null {
   const parts = aspect.split(':').map((n) => Number(n))
   const aw = parts[0] ?? 0
   const ah = parts[1] ?? 0
-  if (!Number.isFinite(aw) || !Number.isFinite(ah) || aw <= 0 || ah <= 0) return null
+  if (!Number.isFinite(aw) || !Number.isFinite(ah) || aw <= 0 || ah <= 0)
+    return null
   return { aw, ah }
 }
 
@@ -53,7 +70,8 @@ export function aspectOfSlug(slug: string): AspectValue | null {
 /** 与源同比例 → 无需派生（镜像服务端 1e-6 容差） */
 export function isSameAspect(w: number, h: number, aspect: string): boolean {
   const r = ratioOf(aspect)
-  if (!r || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false
+  if (!r || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0)
+    return false
   return Math.abs(w / h - r.aw / r.ah) < 1e-6
 }
 
@@ -61,9 +79,20 @@ export function isSameAspect(w: number, h: number, aspect: string): boolean {
  * 派生画幅目标尺寸（镜像服务端 resolveAspectSize）：
  * 以高为基准 w = round(srcH × aw/ah)；超宽则改以宽为基准（保证不放大）；结果向下取偶（yuv420p）
  */
-export function resolveAspectSize(srcW: number, srcH: number, aspect: string): { w: number; h: number } | null {
+export function resolveAspectSize(
+  srcW: number,
+  srcH: number,
+  aspect: string,
+): { w: number; h: number } | null {
   const r = ratioOf(aspect)
-  if (!r || !Number.isFinite(srcW) || !Number.isFinite(srcH) || srcW <= 0 || srcH <= 0) return null
+  if (
+    !r ||
+    !Number.isFinite(srcW) ||
+    !Number.isFinite(srcH) ||
+    srcW <= 0 ||
+    srcH <= 0
+  )
+    return null
   let w = Math.round(srcH * (r.aw / r.ah))
   let h = srcH
   if (w > srcW) {

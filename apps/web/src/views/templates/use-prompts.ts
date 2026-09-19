@@ -18,7 +18,9 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
   const pSaving = ref(false)
   const pErr = ref('')
 
-  const pDirty = computed(() => pSelected.value !== null && pText.value !== pBaseline.value)
+  const pDirty = computed(
+    () => pSelected.value !== null && pText.value !== pBaseline.value,
+  )
 
   async function refreshPrompts() {
     pLoading.value = true
@@ -105,7 +107,8 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
   async function doCreatePrompt() {
     const name = newPromptName.value.trim().replace(/\\/g, '/')
     if (!name) {
-      newPromptErr.value = '请输入文件相对路径（如 cover-talking.md 或 sub/dir/name.md）'
+      newPromptErr.value =
+        '请输入文件相对路径（如 cover-talking.md 或 sub/dir/name.md）'
       return
     }
     newPromptCreating.value = true
@@ -120,7 +123,6 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
       newPromptCreating.value = false
     }
   }
-
 
   return {
     prompts,

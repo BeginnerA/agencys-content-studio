@@ -15,10 +15,19 @@ import type { CanvasOverview, CanvasOverviewBatch } from '../../../lib/types'
 import type { RunStatus } from '../../../lib/types'
 
 const props = defineProps<{ data: CanvasOverview }>()
-const emit = defineEmits<{ 'open-run': [id: number]; 'open-batch': [id: number]; reload: [] }>()
+const emit = defineEmits<{
+  'open-run': [id: number]
+  'open-batch': [id: number]
+  reload: []
+}>()
 
 /** 常见状态固定顺序，未知状态追加在后 */
-const STATUS_ORDER: RunStatus[] = ['running', 'completed', 'failed', 'cancelled']
+const STATUS_ORDER: RunStatus[] = [
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+]
 const statusChips = computed(() => {
   const by = props.data.stats.byStatus
   const seen = new Set<string>()
@@ -47,13 +56,22 @@ function batchProgress(b: CanvasOverviewBatch): number {
     <div class="panel ov-head">
       <div class="oh-l">
         <div class="oh-t">{{ data.project.name }}</div>
-        <div class="muted oh-sub">共 {{ data.stats.runCount }} 条运行 · {{ data.batches.length }} 个批次</div>
+        <div class="muted oh-sub">
+          共 {{ data.stats.runCount }} 条运行 · {{ data.batches.length }} 个批次
+        </div>
       </div>
       <div class="oh-r">
-        <span v-for="c in statusChips" :key="c.s" class="badge" :class="runStatus(c.s).cls">
+        <span
+          v-for="c in statusChips"
+          :key="c.s"
+          class="badge"
+          :class="runStatus(c.s).cls"
+        >
           {{ runStatus(c.s).text }} {{ c.n }}
         </span>
-        <span class="cost mono">总成本 {{ fmtCost(data.stats.totalCost) }}</span>
+        <span class="cost mono"
+          >总成本 {{ fmtCost(data.stats.totalCost) }}</span
+        >
       </div>
     </div>
 
@@ -74,17 +92,39 @@ function batchProgress(b: CanvasOverviewBatch): number {
     <template v-else>
       <!-- 批次组 -->
       <section v-for="b in data.batches" :key="`b${b.id}`" class="panel bgrp">
-        <div class="bhead" role="button" tabindex="0" :title="`查看批次 #${b.id}`" @click="emit('open-batch', b.id)" @keydown.enter="emit('open-batch', b.id)">
+        <div
+          class="bhead"
+          role="button"
+          tabindex="0"
+          :title="`查看批次 #${b.id}`"
+          @click="emit('open-batch', b.id)"
+          @keydown.enter="emit('open-batch', b.id)"
+        >
           <span class="bname">{{ b.name }}</span>
-          <span class="badge" :class="batchStatus(b.status).cls">{{ batchStatus(b.status).text }}</span>
-          <span class="bmeta mono muted">完成 {{ b.finished }}/{{ b.total }} · 成功 {{ b.succeeded }} · 失败 {{ b.failed }}</span>
+          <span class="badge" :class="batchStatus(b.status).cls">{{
+            batchStatus(b.status).text
+          }}</span>
+          <span class="bmeta mono muted"
+            >完成 {{ b.finished }}/{{ b.total }} · 成功 {{ b.succeeded }} · 失败
+            {{ b.failed }}</span
+          >
           <span class="sp" />
           <span class="muted btime">{{ fmtTime(b.createdAt) }}</span>
-          <span class="bgo muted">查看批次 <Icon name="chevron-right" :size="11" /></span>
+          <span class="bgo muted"
+            >查看批次 <Icon name="chevron-right" :size="11"
+          /></span>
         </div>
-        <div class="ptrack"><div class="pfill" :style="{ width: `${batchProgress(b)}%` }" /></div>
+        <div class="ptrack">
+          <div class="pfill" :style="{ width: `${batchProgress(b)}%` }" />
+        </div>
         <div v-if="b.runs.length" class="rgrid">
-          <RunCard v-for="r in b.runs" :key="r.id" :run="r" show-seq @open="emit('open-run', $event)" />
+          <RunCard
+            v-for="r in b.runs"
+            :key="r.id"
+            :run="r"
+            show-seq
+            @open="emit('open-run', $event)"
+          />
         </div>
         <div v-else class="muted">批次内暂无运行</div>
       </section>
@@ -93,10 +133,17 @@ function batchProgress(b: CanvasOverviewBatch): number {
       <section v-if="data.standaloneRuns.length" class="panel bgrp">
         <div class="bhead">
           <span class="bname">独立运行</span>
-          <span class="bmeta mono muted">{{ data.standaloneRuns.length }} 条 · 不隶属批次</span>
+          <span class="bmeta mono muted"
+            >{{ data.standaloneRuns.length }} 条 · 不隶属批次</span
+          >
         </div>
         <div class="rgrid">
-          <RunCard v-for="r in data.standaloneRuns" :key="r.id" :run="r" @open="emit('open-run', $event)" />
+          <RunCard
+            v-for="r in data.standaloneRuns"
+            :key="r.id"
+            :run="r"
+            @open="emit('open-run', $event)"
+          />
         </div>
       </section>
     </template>

@@ -23,10 +23,16 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
   const editMode = ref(false)
   const overrides = ref<Record<string, StepOverride>>({})
   /** [M23-E4] 边操作（按目标步骤聚合；added/removed 互斥——撤销即抵消，edits 最小化） */
-  const edgeOps = ref<Record<string, { added: string[]; removed: string[] }>>({})
+  const edgeOps = ref<Record<string, { added: string[]; removed: string[] }>>(
+    {},
+  )
 
   /** 是否有任何草稿改动（步骤覆盖 ∨ 边操作） */
-  const dirty = computed(() => Object.keys(overrides.value).length > 0 || Object.keys(edgeOps.value).length > 0)
+  const dirty = computed(
+    () =>
+      Object.keys(overrides.value).length > 0 ||
+      Object.keys(edgeOps.value).length > 0,
+  )
   /** 受影响步骤数（标题/文本/边变更键并集） */
   const overriddenCount = computed(() => {
     const keys = new Set(Object.keys(overrides.value))
@@ -79,17 +85,22 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
   function edgesOf(baseEdges: CanvasEdge[]): CanvasEdge[] {
     const out: CanvasEdge[] = []
     for (const e of baseEdges) {
-      if (e.type === 'sched' && edgeOps.value[e.to]?.removed.includes(e.from)) continue
+      if (e.type === 'sched' && edgeOps.value[e.to]?.removed.includes(e.from))
+        continue
       out.push(e)
     }
     for (const [toKey, ops] of Object.entries(edgeOps.value)) {
-      for (const from of ops.added) out.push({ from, to: toKey, type: 'sched', origin: 'after' })
+      for (const from of ops.added)
+        out.push({ from, to: toKey, type: 'sched', origin: 'after' })
     }
     return out
   }
 
   /** 边操作提交（空集 → 删条目） */
-  function commitOps(key: string, ops: { added: string[]; removed: string[] }): void {
+  function commitOps(
+    key: string,
+    ops: { added: string[]; removed: string[] },
+  ): void {
     const next = { ...edgeOps.value }
     if (!ops.added.length && !ops.removed.length) delete next[key]
     else next[key] = ops
@@ -104,10 +115,16 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
     const fn = baseNode(from)
     const tn = baseNode(to)
     if (!fn || !tn) return '节点不存在'
-    if (fn.seq >= tn.seq) return `仅支持前→后依赖：「${from}」不是「${to}」的前置步骤`
-    if (effectiveAfterList(tn).includes(from) || whenStepRefs(tn).includes(from)) return null
+    if (fn.seq >= tn.seq)
+      return `仅支持前→后依赖：「${from}」不是「${to}」的前置步骤`
+    if (
+      effectiveAfterList(tn).includes(from) ||
+      whenStepRefs(tn).includes(from)
+    )
+      return null
     const ops = { ...(edgeOps.value[to] ?? { added: [], removed: [] }) }
-    if (ops.removed.includes(from)) ops.removed = ops.removed.filter((k) => k !== from)
+    if (ops.removed.includes(from))
+      ops.removed = ops.removed.filter((k) => k !== from)
     else ops.added = [...ops.added, from]
     commitOps(to, ops)
     return null
@@ -120,9 +137,11 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
   function delEdge(from: string, to: string): string | null {
     const tn = baseNode(to)
     if (!tn) return '节点不存在'
-    if (whenStepRefs(tn).includes(from)) return '该依赖由条件表达式隐含引用（需先修改 when 条件）'
+    if (whenStepRefs(tn).includes(from))
+      return '该依赖由条件表达式隐含引用（需先修改 when 条件）'
     const ops = { ...(edgeOps.value[to] ?? { added: [], removed: [] }) }
-    if (ops.added.includes(from)) ops.added = ops.added.filter((k) => k !== from)
+    if (ops.added.includes(from))
+      ops.added = ops.added.filter((k) => k !== from)
     else if (!ops.removed.includes(from)) ops.removed = [...ops.removed, from]
     commitOps(to, ops)
     return null
@@ -214,7 +233,8 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
   function validateLocal(): string[] {
     const errs: string[] = []
     for (const [key, ov] of Object.entries(overrides.value)) {
-      if (ov.title !== undefined && ov.title.trim() === '') errs.push(`步骤「${key}」的标题不能为空`)
+      if (ov.title !== undefined && ov.title.trim() === '')
+        errs.push(`步骤「${key}」的标题不能为空`)
     }
     return errs
   }

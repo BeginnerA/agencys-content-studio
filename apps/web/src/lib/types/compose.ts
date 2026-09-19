@@ -13,7 +13,8 @@ export interface BrandMaterialSlot {
 export type BrandSlotKey = 'watermark' | 'intro' | 'outro'
 
 /** [M19] 水印位置（九宫格：上/中/下 × 左/中/右） */
-export type WatermarkPosition = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
+export type WatermarkPosition =
+  'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br'
 
 /** [M19] 水印配置（服务端 clamp：opacity 0.05–1、width_pct 0.03–0.5、margin_px 0–200） */
 export interface WatermarkConfig extends BrandMaterialSlot {
@@ -51,7 +52,8 @@ export interface BrandConfig {
 // ===== [M11] 单步重跑 / 合成设置（BGM·转场） =====
 
 /** [M11] 转场枚举（对齐 ffmpeg xfade 子集；与服务端 TRANSITIONS 同值） */
-export type ComposeTransition = 'none' | 'fade' | 'fadeblack' | 'slideleft' | 'slideright' | 'dissolve'
+export type ComposeTransition =
+  'none' | 'fade' | 'fadeblack' | 'slideleft' | 'slideright' | 'dissolve'
 
 /** [M11] run 级合成配置（run.input._compose；空对象 = 未设置，走模板 params / 代码默认） */
 export interface ComposeConfig {

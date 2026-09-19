@@ -6,7 +6,12 @@
  */
 import { computed } from 'vue'
 import { brandAssetApi } from '../../lib/api'
-import type { BrandConfig, BrandMaterialSlot, SubtitleStyleConfig, WatermarkPosition } from '../../lib/types'
+import type {
+  BrandConfig,
+  BrandMaterialSlot,
+  SubtitleStyleConfig,
+  WatermarkPosition,
+} from '../../lib/types'
 import Icon from '../common/Icon.vue'
 
 const props = defineProps<{
@@ -34,7 +39,9 @@ const SUB_DEFAULTS = {
   bold: false,
 }
 
-const subCfg = computed<SubtitleStyleConfig | null>(() => props.brand.subtitle ?? null)
+const subCfg = computed<SubtitleStyleConfig | null>(
+  () => props.brand.subtitle ?? null,
+)
 
 /** 预览帧高度（px）——用于将 pct 配置换算为像素 */
 const FRAME_H = 270 // 16:9 帧，高度 270px
@@ -47,9 +54,15 @@ const subStyle = computed(() => {
   // [M20 fix] size_pct/margin_v_pct/outline_pct 均为「视频高度百分比」
   // 合成基线 1080p：px = val/100 × 1080；预览帧按 FRAME_H 等比缩放
   const PREVIEW_SCALE = FRAME_H / 1080
-  const fontSize = Math.max(10, Math.round(sizePct / 100 * 1080 * PREVIEW_SCALE))
-  const marginV = Math.round(marginPct / 100 * 1080 * PREVIEW_SCALE)
-  const outlinePx = Math.max(0, Math.round(outlinePct / 100 * 1080 * PREVIEW_SCALE))
+  const fontSize = Math.max(
+    10,
+    Math.round((sizePct / 100) * 1080 * PREVIEW_SCALE),
+  )
+  const marginV = Math.round((marginPct / 100) * 1080 * PREVIEW_SCALE)
+  const outlinePx = Math.max(
+    0,
+    Math.round((outlinePct / 100) * 1080 * PREVIEW_SCALE),
+  )
   const shadowRaw = s?.shadow ?? SUB_DEFAULTS.shadow
   const shadowPx = Math.max(0, Math.round(shadowRaw * PREVIEW_SCALE))
   const color = s?.color ?? SUB_DEFAULTS.color
@@ -88,7 +101,9 @@ const subStyle = computed(() => {
   if (bottom) style.bottom = bottom
   if (extraTransform) style.transform = extraTransform
   if (shadowPx > 0) {
-    style.textShadow = (style.textShadow ? style.textShadow + ', ' : '') + `0 ${shadowPx}px ${shadowPx * 2}px rgba(0,0,0,0.7)`
+    style.textShadow =
+      (style.textShadow ? style.textShadow + ', ' : '') +
+      `0 ${shadowPx}px ${shadowPx * 2}px rgba(0,0,0,0.7)`
   }
   return style
 })
@@ -108,7 +123,9 @@ const wmAssetIdResolved = computed(() => {
 })
 // [M20 fix] wmEnabled 优先用 wmFile prop（实时表单联动），回退到 brand 内的已保存来源
 const wmEnabled = computed(
-  () => wmCfg.value?.enabled !== false && !!(wmAssetIdResolved.value > 0 || props.wmFile || wmCfg.value?.file),
+  () =>
+    wmCfg.value?.enabled !== false &&
+    !!(wmAssetIdResolved.value > 0 || props.wmFile || wmCfg.value?.file),
 )
 const wmOpacity = computed(() => {
   const v = wmCfg.value?.opacity
@@ -131,27 +148,44 @@ const wmPosStyle = computed(() => {
   // 水平
   if (pos.endsWith('l')) style.left = `${m}px`
   else if (pos.endsWith('r')) style.right = `${m}px`
-  else { style.left = '50%'; style.transform = 'translateX(-50%)' }
+  else {
+    style.left = '50%'
+    style.transform = 'translateX(-50%)'
+  }
   // 垂直
   if (pos.startsWith('t')) style.top = `${m}px`
   else if (pos.startsWith('b')) style.bottom = `${m}px`
-  else { style.top = '50%'; style.transform = (style.transform ? style.transform + ' ' : '') + 'translateY(-50%)' }
+  else {
+    style.top = '50%'
+    style.transform =
+      (style.transform ? style.transform + ' ' : '') + 'translateY(-50%)'
+  }
   return style
 })
 
 const wmFileResolved = computed(() => props.wmFile || wmCfg.value?.file || '')
 const wmUrl = computed(() => {
   // 资产来源走资产文件端点（asset_id 优先，与合成端 resolveMaterialPath 语义一致）
-  if (wmAssetIdResolved.value > 0) return `/api/v1/assets/${wmAssetIdResolved.value}/file`
-  return wmFileResolved.value ? brandAssetApi.fileUrl('watermark', props.wmPreviewTs ?? 0) : ''
+  if (wmAssetIdResolved.value > 0)
+    return `/api/v1/assets/${wmAssetIdResolved.value}/file`
+  return wmFileResolved.value
+    ? brandAssetApi.fileUrl('watermark', props.wmPreviewTs ?? 0)
+    : ''
 })
 
 // ---------- 片头片尾状态 ----------
 
 /** [M20 fix2] 片段槽是否生效（来源两态：asset_id 优先 → file；enabled=false 强制禁用） */
-function slotOn(cfg: BrandMaterialSlot | null | undefined, fileProp: string | undefined): boolean {
+function slotOn(
+  cfg: BrandMaterialSlot | null | undefined,
+  fileProp: string | undefined,
+): boolean {
   if (cfg?.enabled === false) return false
-  return !!(fileProp || cfg?.file || (typeof cfg?.asset_id === 'number' && cfg.asset_id > 0))
+  return !!(
+    fileProp ||
+    cfg?.file ||
+    (typeof cfg?.asset_id === 'number' && cfg.asset_id > 0)
+  )
 }
 const introOn = computed(() => slotOn(props.brand.intro, props.introFile))
 const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
@@ -192,24 +226,53 @@ const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
         class="bp-wm"
         :src="wmUrl"
         alt="水印预览"
-        :style="{ ...wmPosStyle, opacity: wmOpacity / 100, width: `${wmWidthPct}%` }"
+        :style="{
+          ...wmPosStyle,
+          opacity: wmOpacity / 100,
+          width: `${wmWidthPct}%`,
+        }"
       />
 
       <!-- 字幕 -->
-      <div v-if="subCfg" class="bp-sub" :class="subAlignClass" :style="subStyle">
+      <div
+        v-if="subCfg"
+        class="bp-sub"
+        :class="subAlignClass"
+        :style="subStyle"
+      >
         这是一段示例字幕文字
       </div>
-      <div v-else class="bp-sub bp-bot" style="font-size: 14px; color: #fff; text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000;">
+      <div
+        v-else
+        class="bp-sub bp-bot"
+        style="
+          font-size: 14px;
+          color: #fff;
+          text-shadow:
+            -1px 0 #000,
+            1px 0 #000,
+            0 -1px #000,
+            0 1px #000;
+        "
+      >
         未配置字幕样式（用默认）
       </div>
     </div>
 
     <!-- 状态摘要 -->
     <div class="bp-summary">
-      <span class="bp-chip" :class="{ on: !!subCfg }">字幕 {{ subCfg ? '已配置' : '默认' }}</span>
-      <span class="bp-chip" :class="{ on: wmEnabled }">水印 {{ wmEnabled ? '已启用' : '未启用' }}</span>
-      <span class="bp-chip" :class="{ on: introOn }">片头 {{ introOn ? '已配置' : '未配置' }}</span>
-      <span class="bp-chip" :class="{ on: outroOn }">片尾 {{ outroOn ? '已配置' : '未配置' }}</span>
+      <span class="bp-chip" :class="{ on: !!subCfg }"
+        >字幕 {{ subCfg ? '已配置' : '默认' }}</span
+      >
+      <span class="bp-chip" :class="{ on: wmEnabled }"
+        >水印 {{ wmEnabled ? '已启用' : '未启用' }}</span
+      >
+      <span class="bp-chip" :class="{ on: introOn }"
+        >片头 {{ introOn ? '已配置' : '未配置' }}</span
+      >
+      <span class="bp-chip" :class="{ on: outroOn }"
+        >片尾 {{ outroOn ? '已配置' : '未配置' }}</span
+      >
     </div>
   </div>
 </template>
@@ -254,7 +317,14 @@ const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
 .bp-scene {
   position: absolute;
   inset: 0;
-  background: linear-gradient(170deg, #1a1a3e 0%, #2d1b4e 35%, #4a2c6e 55%, #1e3a5f 80%, #0d1b2a 100%);
+  background: linear-gradient(
+    170deg,
+    #1a1a3e 0%,
+    #2d1b4e 35%,
+    #4a2c6e 55%,
+    #1e3a5f 80%,
+    #0d1b2a 100%
+  );
 }
 
 .bp-mountain {
@@ -282,7 +352,12 @@ const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: radial-gradient(circle, #ffd280 30%, #ff9e40 70%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    #ffd280 30%,
+    #ff9e40 70%,
+    transparent 100%
+  );
   box-shadow: 0 0 20px 8px rgba(255, 180, 80, 0.25);
 }
 
@@ -305,9 +380,15 @@ const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
   padding: 0 8px;
 }
 
-.bp-sub.pv-bot { bottom: 20px; }
-.bp-sub.pv-mid { top: 50%; /* transform 由 inline style 控制（含 translateX(-50%) 水平居中） */ }
-.bp-sub.pv-top { top: 12px; }
+.bp-sub.pv-bot {
+  bottom: 20px;
+}
+.bp-sub.pv-mid {
+  top: 50%; /* transform 由 inline style 控制（含 translateX(-50%) 水平居中） */
+}
+.bp-sub.pv-top {
+  top: 12px;
+}
 
 /* 片头片尾标记 */
 .bp-badge {

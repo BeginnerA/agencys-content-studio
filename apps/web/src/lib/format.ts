@@ -1,4 +1,10 @@
-import type { Asset, ImageQuality, RunStatus, StepStatus, TaskStatus } from './types'
+import type {
+  Asset,
+  ImageQuality,
+  RunStatus,
+  StepStatus,
+  TaskStatus,
+} from './types'
 
 export function fmtTime(ms: number | null | undefined): string {
   if (!ms) return '—'
@@ -186,7 +192,9 @@ export function fmtQty(n: number): string {
 }
 
 /** 输入摘要（前 3 键，超 80 字截断；批次内运行的行内标识） */
-export function inputSummary(input: Record<string, unknown> | null | undefined): string {
+export function inputSummary(
+  input: Record<string, unknown> | null | undefined,
+): string {
   if (!input) return '—'
   const s = Object.entries(input)
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
@@ -239,7 +247,11 @@ export function parseAssetCompliance(a: Asset): AssetCompliance | null {
   const raw = a.params?.['compliance']
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const rec = raw as Record<string, unknown>
-  if (typeof rec['status'] !== 'string' || !COMPLIANCE_STATUS.has(rec['status'])) return null
+  if (
+    typeof rec['status'] !== 'string' ||
+    !COMPLIANCE_STATUS.has(rec['status'])
+  )
+    return null
   return {
     status: rec['status'] as AssetCompliance['status'],
     hits: Array.isArray(rec['hits']) ? rec['hits'].length : 0,

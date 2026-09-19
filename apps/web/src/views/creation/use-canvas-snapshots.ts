@@ -7,9 +7,9 @@ import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'toast' | 'history'>
-  & Pick<CanvasDocument, 'loadDoc'>
-  & Pick<CanvasTarget, 'loadCanvases' | 'goCanvas'>
+type Dependencies = Pick<CanvasState, 'canvasId' | 'toast' | 'history'> &
+  Pick<CanvasDocument, 'loadDoc'> &
+  Pick<CanvasTarget, 'loadCanvases' | 'goCanvas'>
 
 export function useCanvasSnapshots(deps: Dependencies) {
   const { canvasId, toast, history, loadDoc, loadCanvases, goCanvas } = deps
@@ -47,7 +47,10 @@ export function useCanvasSnapshots(deps: Dependencies) {
     if (cid == null || snapsBusy.value) return
     snapsBusy.value = true
     try {
-      const r = await creationApi.createSnapshot(cid, snapLabel.value.trim() || undefined)
+      const r = await creationApi.createSnapshot(
+        cid,
+        snapLabel.value.trim() || undefined,
+      )
       snapLabel.value = ''
       toast(`快照「${r.snapshot.label}」已创建`)
       await loadSnaps()
@@ -72,7 +75,9 @@ export function useCanvasSnapshots(deps: Dependencies) {
       const r = await creationApi.restoreSnapshot(cid, s.id)
       showSnaps.value = false
       history.clear() // 快照恢复重放文档 → 命令栈失效
-      toast(`已恢复「${s.label}」（重放 ${r.restored.nodes} 节点/${r.restored.edges} 边；恢复前状态已自动备份）`)
+      toast(
+        `已恢复「${s.label}」（重放 ${r.restored.nodes} 节点/${r.restored.edges} 边；恢复前状态已自动备份）`,
+      )
       await loadDoc(true)
       void loadCanvases()
     } catch (e) {
@@ -123,7 +128,11 @@ export function useCanvasSnapshots(deps: Dependencies) {
     if (cid == null || !s) return
     diffLoading.value = true
     try {
-      diffData.value = await creationApi.snapshotDiff(cid, s.id, diffAgainst.value)
+      diffData.value = await creationApi.snapshotDiff(
+        cid,
+        s.id,
+        diffAgainst.value,
+      )
     } catch (e) {
       diffData.value = null
       toast(e instanceof Error ? e.message : String(e))
@@ -153,7 +162,11 @@ export function useCanvasSnapshots(deps: Dependencies) {
     if (cid == null || !s || branchBusy.value) return
     branchBusy.value = true
     try {
-      const r = await creationApi.branchSnapshot(cid, s.id, branchName.value.trim() || undefined)
+      const r = await creationApi.branchSnapshot(
+        cid,
+        s.id,
+        branchName.value.trim() || undefined,
+      )
       showSnaps.value = false
       branchFor.value = null
       toast(`已从「${s.label}」分支为新画布「${r.canvas.name}」`)

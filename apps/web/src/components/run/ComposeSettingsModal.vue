@@ -11,9 +11,18 @@
  * - 全部操作不触发执行：提示「重新合成后生效」；操作成功 emit changed
  */
 import { onMounted, ref } from 'vue'
-import { isKnownAspect, ASPECT_OPTIONS, ASPECT_STRATEGY_OPTIONS } from '../../lib/aspect'
+import {
+  isKnownAspect,
+  ASPECT_OPTIONS,
+  ASPECT_STRATEGY_OPTIONS,
+} from '../../lib/aspect'
 import { composeApi, projectApi } from '../../lib/api'
-import type { Asset, AspectStrategy, AspectValue, SubtitleStyleConfig } from '../../lib/types'
+import type {
+  Asset,
+  AspectStrategy,
+  AspectValue,
+  SubtitleStyleConfig,
+} from '../../lib/types'
 import BrandSettings from '../brand/BrandSettings.vue'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
@@ -74,7 +83,9 @@ const subPersisted = ref(false)
 
 /** 存储值 → 显示百分比（0.018 → 1.8；容忍脏数据） */
 function showPct(v: unknown, fallback: number): number {
-  return typeof v === 'number' && Number.isFinite(v) ? +(v * 100).toFixed(3) : fallback
+  return typeof v === 'number' && Number.isFinite(v)
+    ? +(v * 100).toFixed(3)
+    : fallback
 }
 
 /** 显示百分比 → 存储值（1.8 → 0.018；前端温和 clamp，服务端硬 clamp 兜底） */
@@ -88,14 +99,23 @@ function fillSubForm(s: SubtitleStyleConfig | null | undefined) {
   const cfg = s && typeof s === 'object' ? s : undefined
   subPersisted.value = !!cfg
   subOn.value = !!cfg
-  subFont.value = typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
+  subFont.value =
+    typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
   subSize.value = showPct(cfg?.size_pct, SUB_DEFAULTS.size)
-  subColor.value = typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
-  subOutlineColor.value = typeof cfg?.outline_color === 'string' ? cfg.outline_color : SUB_DEFAULTS.outlineColor
+  subColor.value =
+    typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
+  subOutlineColor.value =
+    typeof cfg?.outline_color === 'string'
+      ? cfg.outline_color
+      : SUB_DEFAULTS.outlineColor
   subOutline.value = showPct(cfg?.outline_pct, SUB_DEFAULTS.outline)
-  subShadow.value = typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow) ? cfg.shadow : SUB_DEFAULTS.shadow
+  subShadow.value =
+    typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow)
+      ? cfg.shadow
+      : SUB_DEFAULTS.shadow
   subMarginV.value = showPct(cfg?.margin_v_pct, SUB_DEFAULTS.marginV)
-  subAlign.value = cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
+  subAlign.value =
+    cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
   subBold.value = cfg?.bold === true
 }
 
@@ -113,7 +133,9 @@ onMounted(async () => {
     const ma = c.config.multi_aspect
     maPersisted.value = !!ma && typeof ma === 'object'
     maOn.value = ma?.enabled === true
-    maAspects.value = Array.isArray(ma?.aspects) ? ma.aspects.filter(isKnownAspect).slice(0, 3) : []
+    maAspects.value = Array.isArray(ma?.aspects)
+      ? ma.aspects.filter(isKnownAspect).slice(0, 3)
+      : []
     maStrategy.value = ma?.strategy === 'pad' ? 'pad' : 'crop'
     if (props.projectId > 0) {
       const r = await projectApi.assets(props.projectId, '?kind=audio&limit=50')
@@ -215,44 +237,63 @@ function toggleAspect(v: AspectValue) {
 
 /** 保存多画幅：开 → 提交配置；关 → 清除 multi_aspect（合成回到单路，filter 链与现行为一致） */
 function saveMultiAspect() {
-  void wrap(async () => {
-    if (!maOn.value) {
-      await composeApi.updateConfig(props.runId, { multi_aspect: null })
-      maPersisted.value = false
-      maAspects.value = []
-      return
-    }
-    if (maAspects.value.length === 0) throw new Error('启用多画幅时请至少勾选 1 个画幅')
-    const cfg = { enabled: true, aspects: [...maAspects.value], strategy: maStrategy.value }
-    await composeApi.updateConfig(props.runId, { multi_aspect: cfg })
-    maPersisted.value = true
-    maAspects.value = cfg.aspects
-    maStrategy.value = cfg.strategy
-  }, maOn.value ? '多画幅原生渲染已保存（重新合成后生效）' : '多画幅原生渲染已关闭（重新合成后回落单路）')
+  void wrap(
+    async () => {
+      if (!maOn.value) {
+        await composeApi.updateConfig(props.runId, { multi_aspect: null })
+        maPersisted.value = false
+        maAspects.value = []
+        return
+      }
+      if (maAspects.value.length === 0)
+        throw new Error('启用多画幅时请至少勾选 1 个画幅')
+      const cfg = {
+        enabled: true,
+        aspects: [...maAspects.value],
+        strategy: maStrategy.value,
+      }
+      await composeApi.updateConfig(props.runId, { multi_aspect: cfg })
+      maPersisted.value = true
+      maAspects.value = cfg.aspects
+      maStrategy.value = cfg.strategy
+    },
+    maOn.value
+      ? '多画幅原生渲染已保存（重新合成后生效）'
+      : '多画幅原生渲染已关闭（重新合成后回落单路）',
+  )
 }
 
 /** 保存字幕样式：开关开 → 提交 patch；开关关 → 清除 run 级覆盖（null 回落继承） */
 function saveSubtitle() {
-  void wrap(async () => {
-    if (!subOn.value) {
-      await composeApi.updateConfig(props.runId, { brand: { subtitle: null } })
-      fillSubForm(undefined)
-      return
-    }
-    const patch: SubtitleStyleConfig = {
-      font: subFont.value.trim() || undefined,
-      size_pct: storePct(subSize.value, 0.8, 6),
-      color: subColor.value,
-      outline_color: subOutlineColor.value,
-      outline_pct: storePct(subOutline.value, 0, 0.5),
-      shadow: Math.round(Math.min(8, Math.max(0, Number(subShadow.value) || 0))),
-      margin_v_pct: storePct(subMarginV.value, 0, 10),
-      alignment: subAlign.value,
-      bold: subBold.value,
-    }
-    await composeApi.updateConfig(props.runId, { brand: { subtitle: patch } })
-    fillSubForm(patch)
-  }, subOn.value ? '字幕样式已保存（重新合成后生效）' : '字幕样式覆盖已清除（回落项目/平台配置）')
+  void wrap(
+    async () => {
+      if (!subOn.value) {
+        await composeApi.updateConfig(props.runId, {
+          brand: { subtitle: null },
+        })
+        fillSubForm(undefined)
+        return
+      }
+      const patch: SubtitleStyleConfig = {
+        font: subFont.value.trim() || undefined,
+        size_pct: storePct(subSize.value, 0.8, 6),
+        color: subColor.value,
+        outline_color: subOutlineColor.value,
+        outline_pct: storePct(subOutline.value, 0, 0.5),
+        shadow: Math.round(
+          Math.min(8, Math.max(0, Number(subShadow.value) || 0)),
+        ),
+        margin_v_pct: storePct(subMarginV.value, 0, 10),
+        alignment: subAlign.value,
+        bold: subBold.value,
+      }
+      await composeApi.updateConfig(props.runId, { brand: { subtitle: patch } })
+      fillSubForm(patch)
+    },
+    subOn.value
+      ? '字幕样式已保存（重新合成后生效）'
+      : '字幕样式覆盖已清除（回落项目/平台配置）',
+  )
 }
 
 /** 恢复表单为默认基线（不提交；保存后生效） */
@@ -280,7 +321,9 @@ function fmtDur(sec: number | null): string {
       <template v-else>
         <!-- ===== 配乐（BGM）[M11] ===== -->
         <div class="bg-sec">
-          <div class="bg-lb"><Icon name="speaker-wave" :size="12" /> 配乐（BGM）</div>
+          <div class="bg-lb">
+            <Icon name="speaker-wave" :size="12" /> 配乐（BGM）
+          </div>
           <div v-if="bgm" class="bg-cur">
             <div class="bg-row">
               <Icon name="speaker-wave" :size="13" />
@@ -291,17 +334,41 @@ function fmtDur(sec: number | null): string {
                 <Icon name="trash" :size="12" /> 移除
               </button>
             </div>
-            <audio class="bg-audio" controls preload="none" :src="bgm.urls.file" />
+            <audio
+              class="bg-audio"
+              controls
+              preload="none"
+              :src="bgm.urls.file"
+            />
           </div>
-          <div v-else class="muted bg-none">未绑定 BGM——从下方候选选择或上传新文件</div>
+          <div v-else class="muted bg-none">
+            未绑定 BGM——从下方候选选择或上传新文件
+          </div>
 
-          <div class="bg-lb bg-lb-sub">混音音量（{{ volume }}%）<span class="muted bg-lb-tip">语音为主轨，BGM 默认 25%</span></div>
+          <div class="bg-lb bg-lb-sub">
+            混音音量（{{ volume }}%）<span class="muted bg-lb-tip"
+              >语音为主轨，BGM 默认 25%</span
+            >
+          </div>
           <div class="bg-vol">
-            <input v-model.number="volume" type="range" min="0" max="100" step="5" :disabled="busy" />
-            <button class="btn sm" :disabled="busy" @click="saveVolume">保存音量</button>
+            <input
+              v-model.number="volume"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              :disabled="busy"
+            />
+            <button class="btn sm" :disabled="busy" @click="saveVolume">
+              保存音量
+            </button>
           </div>
 
-          <div class="bg-lb bg-lb-sub">项目音频素材<span class="muted bg-lb-tip">点击「绑定」使用（复制行，不动源资产）</span></div>
+          <div class="bg-lb bg-lb-sub">
+            项目音频素材<span class="muted bg-lb-tip"
+              >点击「绑定」使用（复制行，不动源资产）</span
+            >
+          </div>
           <div v-if="candidates.length" class="bg-list">
             <div v-for="a in candidates" :key="a.id" class="bg-item">
               <div class="bg-row">
@@ -309,7 +376,11 @@ function fmtDur(sec: number | null): string {
                 <span class="bg-nm" :title="a.name">{{ a.name }}</span>
                 <span class="muted mono">{{ fmtDur(a.duration) }}</span>
                 <span class="grow" />
-                <button class="bg-mini" :disabled="busy" @click="togglePreview(a)">
+                <button
+                  class="bg-mini"
+                  :disabled="busy"
+                  @click="togglePreview(a)"
+                >
                   {{ previewId === a.id ? '收起' : '试听' }}
                 </button>
                 <button
@@ -321,16 +392,26 @@ function fmtDur(sec: number | null): string {
                   {{ isBound(a) ? '已绑定' : '绑定' }}
                 </button>
               </div>
-              <audio v-if="previewId === a.id" class="bg-audio" controls preload="none" :src="a.urls.file" />
+              <audio
+                v-if="previewId === a.id"
+                class="bg-audio"
+                controls
+                preload="none"
+                :src="a.urls.file"
+              />
             </div>
           </div>
-          <div v-else class="muted bg-none">项目内暂无音频素材——可在「素材」页导入后回来绑定</div>
+          <div v-else class="muted bg-none">
+            项目内暂无音频素材——可在「素材」页导入后回来绑定
+          </div>
 
           <div class="bg-row">
             <button class="btn sm" :disabled="busy" @click="pickUpload">
               <Icon name="upload" :size="12" /> 上传音频并绑定
             </button>
-            <span class="muted bg-lb-tip">mp3 / wav / aac / m4a / flac，≤200MB</span>
+            <span class="muted bg-lb-tip"
+              >mp3 / wav / aac / m4a / flac，≤200MB</span
+            >
           </div>
           <input
             ref="uploadInput"
@@ -345,14 +426,33 @@ function fmtDur(sec: number | null): string {
 
         <!-- ===== 镜头音效（SFX）[M19] ===== -->
         <div class="bg-sec">
-          <div class="bg-lb"><Icon name="bolt" :size="12" /> 镜头音效（SFX）</div>
-          <div class="muted bg-none">
-            已绑定 {{ sfxCount }} 镜{{ sfxCount ? '（各镜起点叠加配音/配乐之上）' : '——在工作台镜头卡片点「音效」绑定（上传或选项目音频）' }}
+          <div class="bg-lb">
+            <Icon name="bolt" :size="12" /> 镜头音效（SFX）
           </div>
-          <div class="bg-lb bg-lb-sub">音效音量（{{ sfxVolume }}%）<span class="muted bg-lb-tip">默认 100%，上限 200%</span></div>
+          <div class="muted bg-none">
+            已绑定 {{ sfxCount }} 镜{{
+              sfxCount
+                ? '（各镜起点叠加配音/配乐之上）'
+                : '——在工作台镜头卡片点「音效」绑定（上传或选项目音频）'
+            }}
+          </div>
+          <div class="bg-lb bg-lb-sub">
+            音效音量（{{ sfxVolume }}%）<span class="muted bg-lb-tip"
+              >默认 100%，上限 200%</span
+            >
+          </div>
           <div class="bg-vol">
-            <input v-model.number="sfxVolume" type="range" min="0" max="200" step="5" :disabled="busy" />
-            <button class="btn sm" :disabled="busy" @click="saveSfxVolume">保存音效音量</button>
+            <input
+              v-model.number="sfxVolume"
+              type="range"
+              min="0"
+              max="200"
+              step="5"
+              :disabled="busy"
+            />
+            <button class="btn sm" :disabled="busy" @click="saveSfxVolume">
+              保存音效音量
+            </button>
           </div>
         </div>
 
@@ -362,38 +462,98 @@ function fmtDur(sec: number | null): string {
         <div class="bg-sec">
           <label class="bg-ck">
             <input v-model="subOn" type="checkbox" :disabled="busy" />
-            <span class="bg-lb">自定义字幕样式<span class="muted bg-lb-tip">run 级覆盖；未启用时继承项目/平台配置或默认（字号 1.8% 高 / 底边距 2%）</span></span>
+            <span class="bg-lb"
+              >自定义字幕样式<span class="muted bg-lb-tip"
+                >run 级覆盖；未启用时继承项目/平台配置或默认（字号 1.8% 高 /
+                底边距 2%）</span
+              ></span
+            >
           </label>
 
           <div class="st-grid" :class="{ off: !subOn }">
             <div class="st-row">
               <span class="st-lb">字体</span>
-              <input v-model="subFont" type="text" class="st-txt grow" spellcheck="false" placeholder="Noto Sans CJK SC" :disabled="busy || !subOn" />
+              <input
+                v-model="subFont"
+                type="text"
+                class="st-txt grow"
+                spellcheck="false"
+                placeholder="Noto Sans CJK SC"
+                :disabled="busy || !subOn"
+              />
             </div>
             <div class="st-row">
               <span class="st-lb">字号</span>
-              <input v-model.number="subSize" type="number" class="st-num" min="0.8" max="6" step="0.1" :disabled="busy || !subOn" />
+              <input
+                v-model.number="subSize"
+                type="number"
+                class="st-num"
+                min="0.8"
+                max="6"
+                step="0.1"
+                :disabled="busy || !subOn"
+              />
               <span class="muted">%</span>
               <span class="st-lb st-lb-2">描边</span>
-              <input v-model.number="subOutline" type="number" class="st-num" min="0" max="0.5" step="0.01" :disabled="busy || !subOn" />
+              <input
+                v-model.number="subOutline"
+                type="number"
+                class="st-num"
+                min="0"
+                max="0.5"
+                step="0.01"
+                :disabled="busy || !subOn"
+              />
               <span class="muted">%</span>
               <span class="st-lb st-lb-2">阴影</span>
-              <input v-model.number="subShadow" type="number" class="st-num" min="0" max="8" step="1" :disabled="busy || !subOn" />
+              <input
+                v-model.number="subShadow"
+                type="number"
+                class="st-num"
+                min="0"
+                max="8"
+                step="1"
+                :disabled="busy || !subOn"
+              />
             </div>
             <div class="st-row">
               <span class="st-lb">字色</span>
-              <input v-model="subColor" type="color" class="st-color" :disabled="busy || !subOn" />
+              <input
+                v-model="subColor"
+                type="color"
+                class="st-color"
+                :disabled="busy || !subOn"
+              />
               <span class="muted mono">{{ subColor.toUpperCase() }}</span>
               <span class="st-lb st-lb-2">描边色</span>
-              <input v-model="subOutlineColor" type="color" class="st-color" :disabled="busy || !subOn" />
-              <span class="muted mono">{{ subOutlineColor.toUpperCase() }}</span>
+              <input
+                v-model="subOutlineColor"
+                type="color"
+                class="st-color"
+                :disabled="busy || !subOn"
+              />
+              <span class="muted mono">{{
+                subOutlineColor.toUpperCase()
+              }}</span>
             </div>
             <div class="st-row">
               <span class="st-lb">底边距</span>
-              <input v-model.number="subMarginV" type="number" class="st-num" min="0" max="10" step="0.5" :disabled="busy || !subOn" />
+              <input
+                v-model.number="subMarginV"
+                type="number"
+                class="st-num"
+                min="0"
+                max="10"
+                step="0.5"
+                :disabled="busy || !subOn"
+              />
               <span class="muted">%</span>
               <span class="st-lb st-lb-2">对齐</span>
-              <select v-model.number="subAlign" class="st-sel" :disabled="busy || !subOn">
+              <select
+                v-model.number="subAlign"
+                class="st-sel"
+                :disabled="busy || !subOn"
+              >
                 <option :value="2">底部居中</option>
                 <option :value="5">中部居中</option>
                 <option :value="8">顶部居中</option>
@@ -401,24 +561,48 @@ function fmtDur(sec: number | null): string {
             </div>
             <div class="st-row">
               <label class="bg-ck">
-                <input v-model="subBold" type="checkbox" :disabled="busy || !subOn" /> <span class="muted">加粗</span>
+                <input
+                  v-model="subBold"
+                  type="checkbox"
+                  :disabled="busy || !subOn"
+                />
+                <span class="muted">加粗</span>
               </label>
             </div>
           </div>
 
           <div class="bg-row">
-            <button class="btn sm" :class="{ primary: subOn }" :disabled="busy || (!subOn && !subPersisted)" @click="saveSubtitle">
-              <Icon name="check" :size="12" /> {{ subOn ? '保存样式' : '清除覆盖（用继承）' }}
+            <button
+              class="btn sm"
+              :class="{ primary: subOn }"
+              :disabled="busy || (!subOn && !subPersisted)"
+              @click="saveSubtitle"
+            >
+              <Icon name="check" :size="12" />
+              {{ subOn ? '保存样式' : '清除覆盖（用继承）' }}
             </button>
-            <button class="btn sm" :disabled="busy || !subOn" @click="resetSubForm">恢复默认</button>
-            <span class="muted bg-lb-tip">保存后重新合成生效；字号占成片高度百分比</span>
+            <button
+              class="btn sm"
+              :disabled="busy || !subOn"
+              @click="resetSubForm"
+            >
+              恢复默认
+            </button>
+            <span class="muted bg-lb-tip"
+              >保存后重新合成生效；字号占成片高度百分比</span
+            >
           </div>
         </div>
 
         <div class="bg-sep" />
 
         <!-- ===== [M19] 水印 / 片头 / 片尾（run 级覆盖；显示继承值与来源） ===== -->
-        <BrandSettings scope="run" :run-id="runId" :project-id="projectId" @changed="emit('changed')" />
+        <BrandSettings
+          scope="run"
+          :run-id="runId"
+          :project-id="projectId"
+          @changed="emit('changed')"
+        />
 
         <div class="bg-sep" />
 
@@ -426,7 +610,12 @@ function fmtDur(sec: number | null): string {
         <div class="bg-sec">
           <label class="bg-ck">
             <input v-model="maOn" type="checkbox" :disabled="busy" />
-            <span class="bg-lb"><Icon name="crop" :size="12" /> 多画幅原生渲染<span class="muted bg-lb-tip">合成时一次输出多路（各画幅独立重算字幕尺寸与水印定位）</span></span>
+            <span class="bg-lb"
+              ><Icon name="crop" :size="12" /> 多画幅原生渲染<span
+                class="muted bg-lb-tip"
+                >合成时一次输出多路（各画幅独立重算字幕尺寸与水印定位）</span
+              ></span
+            >
           </label>
           <div class="ma-chips" :class="{ off: !maOn }">
             <button
@@ -444,29 +633,54 @@ function fmtDur(sec: number | null): string {
           </div>
           <div class="bg-row">
             <span class="st-lb">策略</span>
-            <select v-model="maStrategy" class="st-sel" :disabled="busy || !maOn">
-              <option v-for="o in ASPECT_STRATEGY_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <select
+              v-model="maStrategy"
+              class="st-sel"
+              :disabled="busy || !maOn"
+            >
+              <option
+                v-for="o in ASPECT_STRATEGY_OPTIONS"
+                :key="o.value"
+                :value="o.value"
+              >
+                {{ o.label }}
+              </option>
             </select>
-            <span class="muted bg-lb-tip">{{ ASPECT_STRATEGY_OPTIONS.find((o) => o.value === maStrategy)?.hint }}</span>
+            <span class="muted bg-lb-tip">{{
+              ASPECT_STRATEGY_OPTIONS.find((o) => o.value === maStrategy)?.hint
+            }}</span>
           </div>
           <div class="bg-row">
-            <button class="btn sm ma-save-btn" :class="{ primary: maOn }" :disabled="busy || (!maOn && !maPersisted)" @click="saveMultiAspect">
-              <Icon name="check" :size="12" /> {{ maOn ? '保存多画幅' : '清除多画幅配置' }}
+            <button
+              class="btn sm ma-save-btn"
+              :class="{ primary: maOn }"
+              :disabled="busy || (!maOn && !maPersisted)"
+              @click="saveMultiAspect"
+            >
+              <Icon name="check" :size="12" />
+              {{ maOn ? '保存多画幅' : '清除多画幅配置' }}
             </button>
             <span class="muted bg-lb-tip">
-              已勾 {{ maAspects.length }}/3{{ maOn ? ` · 编码 ×${maAspects.length + 1}（与主画幅同比例项自动跳过）` : '' }}；
-              只想补一份其他比例请用运行详情页「派生画幅」（A 路径）
+              已勾 {{ maAspects.length }}/3{{
+                maOn
+                  ? ` · 编码 ×${maAspects.length + 1}（与主画幅同比例项自动跳过）`
+                  : ''
+              }}； 只想补一份其他比例请用运行详情页「派生画幅」（A 路径）
             </span>
           </div>
         </div>
 
         <div v-if="err" class="err-text">{{ err }}</div>
-        <div v-if="notice" class="bg-notice"><Icon name="check" :size="12" /> {{ notice }}</div>
+        <div v-if="notice" class="bg-notice">
+          <Icon name="check" :size="12" /> {{ notice }}
+        </div>
       </template>
     </div>
 
     <template #footer>
-      <span class="muted bg-tip">绑定 / 音量 / 样式 / 画幅均不触发生成，需「重新合成」后进入成片</span>
+      <span class="muted bg-tip"
+        >绑定 / 音量 / 样式 / 画幅均不触发生成，需「重新合成」后进入成片</span
+      >
       <button class="btn" @click="emit('close')">关闭</button>
     </template>
   </Modal>

@@ -1,15 +1,29 @@
 import { onMounted, ref, computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SeriesBoard from '../../components/project/SeriesBoard.vue'
-import { assetApi, batchApi, projectApi, publicationApi, templateApi, uploadFiles } from '../../lib/api'
+import {
+  assetApi,
+  batchApi,
+  projectApi,
+  publicationApi,
+  templateApi,
+  uploadFiles,
+} from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { schedulePendingRefresh } from '../../lib/pending'
-import type { Asset, Batch, BrandConfig, ProjectDetail, Publication, Run, TemplateMeta } from '../../lib/types'
+import type {
+  Asset,
+  Batch,
+  BrandConfig,
+  ProjectDetail,
+  Publication,
+  Run,
+  TemplateMeta,
+} from '../../lib/types'
 import { fmtSize, PLATFORM_TEXT } from '../../lib/format'
 import { getSocket, studioOff, studioOn } from '../../lib/socket'
 
 export function useProjectDetailPage() {
-
   const route = useRoute()
   const router = useRouter()
   const projectId = Number(route.params.id)
@@ -25,7 +39,9 @@ export function useProjectDetailPage() {
 
   function initTab(): TabKey {
     const q = route.query.tab
-    return typeof q === 'string' && TABS.some((t) => t.key === q) ? (q as TabKey) : 'runs'
+    return typeof q === 'string' && TABS.some((t) => t.key === q)
+      ? (q as TabKey)
+      : 'runs'
   }
 
   const activeTab = ref<TabKey>(initTab())
@@ -189,7 +205,9 @@ export function useProjectDetailPage() {
   // ?filter= 深链接（项目卡片待审阅角标直达；页内切换筛选不回写 URL）
   function initFilter(): RunFilter {
     const q = route.query.filter
-    return typeof q === 'string' && RUN_FILTERS.some((f) => f.v === q) ? (q as RunFilter) : 'all'
+    return typeof q === 'string' && RUN_FILTERS.some((f) => f.v === q)
+      ? (q as RunFilter)
+      : 'all'
   }
   const runFilter = ref<RunFilter>(initFilter())
   const rowPage = ref(1)
@@ -203,9 +221,15 @@ export function useProjectDetailPage() {
   }
 
   // ===== KPI 指标条 =====
-  const runningCount = computed(() => runs.value.filter((r) => r.status === 'running').length)
-  const waitingRuns = computed(() => runs.value.filter((r) => r.status === 'waiting_input'))
-  const assetCount = computed(() => project.value?.assetCount ?? assets.value.length)
+  const runningCount = computed(
+    () => runs.value.filter((r) => r.status === 'running').length,
+  )
+  const waitingRuns = computed(() =>
+    runs.value.filter((r) => r.status === 'waiting_input'),
+  )
+  const assetCount = computed(
+    () => project.value?.assetCount ?? assets.value.length,
+  )
 
   /** 指标卡入口：切到「运行」并套用筛选 */
   function gotoRuns(f: RunFilter) {
@@ -216,10 +240,15 @@ export function useProjectDetailPage() {
   /** [M19] 项目品牌已配置槽数（品牌 tab 角标） */
   const brandSlotCount = computed(() => {
     const s = project.value?.settings
-    const b = s && typeof s === 'object' ? (s as Record<string, unknown>)['brand'] : undefined
+    const b =
+      s && typeof s === 'object'
+        ? (s as Record<string, unknown>)['brand']
+        : undefined
     if (!b || typeof b !== 'object' || Array.isArray(b)) return 0
     const o = b as Record<string, unknown>
-    return (['subtitle', 'watermark', 'intro', 'outro'] as const).filter((k) => o[k] !== undefined && o[k] !== null).length
+    return (['subtitle', 'watermark', 'intro', 'outro'] as const).filter(
+      (k) => o[k] !== undefined && o[k] !== null,
+    ).length
   })
 
   function cntOf(key: TabKey): number {
@@ -239,7 +268,8 @@ export function useProjectDetailPage() {
       if (list) list.push(r)
       else m.set(r.batchId, [r])
     }
-    for (const list of m.values()) list.sort((a, b) => (a.batchSeq ?? a.id) - (b.batchSeq ?? b.id))
+    for (const list of m.values())
+      list.sort((a, b) => (a.batchSeq ?? a.id) - (b.batchSeq ?? b.id))
     return m
   })
 
@@ -247,7 +277,9 @@ export function useProjectDetailPage() {
 
   /** 独立运行（不属于已加载批次；批次在窗口外的孤儿运行也保留展示，避免记录消失） */
   const standaloneRuns = computed(() =>
-    runs.value.filter((r) => r.batchId === null || !batchIdSet.value.has(r.batchId)),
+    runs.value.filter(
+      (r) => r.batchId === null || !batchIdSet.value.has(r.batchId),
+    ),
   )
 
   interface TopRow {
@@ -262,17 +294,23 @@ export function useProjectDetailPage() {
     const f = runFilter.value
     const rows: TopRow[] = []
     for (const b of batches.value) {
-      if (f === 'all' || (childrenByBatch.value.get(b.id) ?? []).some((r) => runMatch(r, f))) {
+      if (
+        f === 'all' ||
+        (childrenByBatch.value.get(b.id) ?? []).some((r) => runMatch(r, f))
+      ) {
         rows.push({ kind: 'batch', ts: b.createdAt, batch: b, run: null })
       }
     }
     for (const r of standaloneRuns.value) {
-      if (runMatch(r, f)) rows.push({ kind: 'run', ts: r.createdAt, batch: null, run: r })
+      if (runMatch(r, f))
+        rows.push({ kind: 'run', ts: r.createdAt, batch: null, run: r })
     }
     return rows.sort((a, b) => b.ts - a.ts)
   })
 
-  const rowPageCount = computed(() => Math.max(1, Math.ceil(topRows.value.length / PAGE_SIZE)))
+  const rowPageCount = computed(() =>
+    Math.max(1, Math.ceil(topRows.value.length / PAGE_SIZE)),
+  )
 
   /** 展开态批次的子运行（筛选生效时仅展示匹配项） */
   function visibleChildren(b: Batch): Run[] {
@@ -297,13 +335,17 @@ export function useProjectDetailPage() {
   /** 当前页显示行（展开的批内子运行与加载窗口提示行紧随批次行） */
   const pagedRows = computed<DisplayRow[]>(() => {
     const out: DisplayRow[] = []
-    for (const t of topRows.value.slice((rowPage.value - 1) * PAGE_SIZE, rowPage.value * PAGE_SIZE)) {
+    for (const t of topRows.value.slice(
+      (rowPage.value - 1) * PAGE_SIZE,
+      rowPage.value * PAGE_SIZE,
+    )) {
       if (t.kind === 'batch' && t.batch) {
         const b = t.batch
         out.push({ key: `b-${b.id}`, kind: 'batch', batch: b })
         if (!expanded.value.has(b.id)) continue
         const kids = visibleChildren(b)
-        for (const r of kids) out.push({ key: `c-${r.id}`, kind: 'child', run: r })
+        for (const r of kids)
+          out.push({ key: `c-${r.id}`, kind: 'child', run: r })
         if (!kids.length) {
           out.push({
             key: `n-${b.id}`,
@@ -312,7 +354,12 @@ export function useProjectDetailPage() {
             batchId: b.id,
           })
         } else if (runFilter.value === 'all' && kids.length < b.total) {
-          out.push({ key: `n-${b.id}`, kind: 'note', text: `仅载入 ${kids.length}/${b.total} 项，更早记录见批次详情`, batchId: b.id })
+          out.push({
+            key: `n-${b.id}`,
+            kind: 'note',
+            text: `仅载入 ${kids.length}/${b.total} 项，更早记录见批次详情`,
+            batchId: b.id,
+          })
         }
       } else if (t.run) {
         out.push({ key: `r-${t.run.id}`, kind: 'run', run: t.run })
@@ -342,9 +389,11 @@ export function useProjectDetailPage() {
 
   const filteredAssets = computed(() => {
     let list = assets.value
-    if (purposeFilter.value !== 'all') list = list.filter((a) => a.purpose === purposeFilter.value)
+    if (purposeFilter.value !== 'all')
+      list = list.filter((a) => a.purpose === purposeFilter.value)
     if (favOnly.value) list = list.filter((a) => a.isFavorite === 1)
-    if (tagFilter.value !== 'all') list = list.filter((a) => (a.tags ?? []).includes(tagFilter.value))
+    if (tagFilter.value !== 'all')
+      list = list.filter((a) => (a.tags ?? []).includes(tagFilter.value))
     return list
   })
 
@@ -362,7 +411,9 @@ export function useProjectDetailPage() {
       const r = await assetApi.favorite(a.id, next)
       const i = assets.value.findIndex((x) => x.id === a.id)
       if (i >= 0) assets.value[i] = r.asset
-      assetNotice.value = next ? `「${a.name}」已收藏（版本清理保留豁免）` : `「${a.name}」已取消收藏`
+      assetNotice.value = next
+        ? `「${a.name}」已收藏（版本清理保留豁免）`
+        : `「${a.name}」已取消收藏`
     } catch (e) {
       assetErr.value = e instanceof Error ? e.message : String(e)
     }
@@ -386,7 +437,8 @@ export function useProjectDetailPage() {
   async function doCleanupVersions() {
     const ok = await confirmDialog({
       title: '清理历史版本',
-      message: '将清理本项目图片 / 视频的历史版本：每组保留最新 1 个、已收藏的、以及正在被流水线引用的；其余软删除（回收空间前可回溯）。',
+      message:
+        '将清理本项目图片 / 视频的历史版本：每组保留最新 1 个、已收藏的、以及正在被流水线引用的；其余软删除（回收空间前可回溯）。',
       confirmText: '开始清理',
     })
     if (!ok) return
@@ -408,7 +460,8 @@ export function useProjectDetailPage() {
   async function doGc() {
     const ok = await confirmDialog({
       title: '回收空间',
-      message: '将物理删除本项目「已清理」资产的磁盘文件（不可恢复；数据库记录保留）。建议先执行「清理历史版本」。',
+      message:
+        '将物理删除本项目「已清理」资产的磁盘文件（不可恢复；数据库记录保留）。建议先执行「清理历史版本」。',
       confirmText: '确认回收',
       danger: true,
     })
@@ -462,21 +515,27 @@ export function useProjectDetailPage() {
     const queue = assets.value.filter((a) => ids.has(a.id))
     let ok = 0
     let fail = 0
-    const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
-      while (queue.length) {
-        const a = queue.shift()!
-        try {
-          const r = await assetApi.updateTags(a.id, [...new Set([...(a.tags ?? []), tag])])
-          onAssetChanged(r.asset)
-          ok += 1
-        } catch {
-          fail += 1
+    const workers = Array.from(
+      { length: Math.min(6, queue.length) },
+      async () => {
+        while (queue.length) {
+          const a = queue.shift()!
+          try {
+            const r = await assetApi.updateTags(a.id, [
+              ...new Set([...(a.tags ?? []), tag]),
+            ])
+            onAssetChanged(r.asset)
+            ok += 1
+          } catch {
+            fail += 1
+          }
         }
-      }
-    })
+      },
+    )
     await Promise.allSettled(workers)
     bulkBusy.value = false
-    if (fail) assetErr.value = `批量打标：${ok} 成功 / ${fail} 失败（可刷新后重试）`
+    if (fail)
+      assetErr.value = `批量打标：${ok} 成功 / ${fail} 失败（可刷新后重试）`
     else assetNotice.value = `已为 ${ok} 个资产追加标签「${tag}」`
     bulkTagInput.value = ''
     checkedIds.value = []
@@ -544,8 +603,14 @@ export function useProjectDetailPage() {
   // [M14] 剧集地图「起作」：记录集号 → 弹窗预选项目模板 + 预填 episode_number
   const seriesRef = ref<InstanceType<typeof SeriesBoard> | null>(null)
   const startEpisodeNumber = ref<number | null>(null)
-  const runFormTplKey = computed(() => (startEpisodeNumber.value !== null ? defaultTplKey.value : undefined))
-  const runFormPrefill = computed(() => (startEpisodeNumber.value !== null ? { episode_number: startEpisodeNumber.value } : undefined))
+  const runFormTplKey = computed(() =>
+    startEpisodeNumber.value !== null ? defaultTplKey.value : undefined,
+  )
+  const runFormPrefill = computed(() =>
+    startEpisodeNumber.value !== null
+      ? { episode_number: startEpisodeNumber.value }
+      : undefined,
+  )
 
   function onStartEpisode(n: number) {
     startEpisodeNumber.value = n

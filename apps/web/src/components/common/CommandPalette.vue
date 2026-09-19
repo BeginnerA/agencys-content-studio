@@ -76,7 +76,8 @@ async function runSearch(query: string) {
   } catch (err) {
     if (my !== seq) return
     result.value = null
-    errorMsg.value = err instanceof Error && err.message ? err.message : '搜索失败'
+    errorMsg.value =
+      err instanceof Error && err.message ? err.message : '搜索失败'
   } finally {
     if (my === seq) loading.value = false
   }
@@ -85,15 +86,36 @@ async function runSearch(query: string) {
 watch(q, scheduleSearch)
 
 // ---- 静态条目：导航 + 全局动作 ----
-const navEntries: Entry[] = NAVS.map((n) => ({ key: `nav:${n.to}`, title: n.label, icon: n.icon, url: n.to }))
+const navEntries: Entry[] = NAVS.map((n) => ({
+  key: `nav:${n.to}`,
+  title: n.label,
+  icon: n.icon,
+  url: n.to,
+}))
 
 const globalActions: Entry[] = [
-  { key: 'act:new-project', title: '新建项目', subtitle: '项目页打开创建弹窗', icon: 'plus', url: '/?new=1' },
-  { key: 'act:new-schedule', title: '新建排产计划', subtitle: '统计 · 排产 Tab 打开新建表单', icon: 'calendar', url: '/stats?tab=schedule&new=1' },
+  {
+    key: 'act:new-project',
+    title: '新建项目',
+    subtitle: '项目页打开创建弹窗',
+    icon: 'plus',
+    url: '/?new=1',
+  },
+  {
+    key: 'act:new-schedule',
+    title: '新建排产计划',
+    subtitle: '统计 · 排产 Tab 打开新建表单',
+    icon: 'calendar',
+    url: '/stats?tab=schedule&new=1',
+  },
 ]
 
 function filterEntries(list: Entry[], kw: string): Entry[] {
-  return list.filter((e) => e.title.toLowerCase().includes(kw) || (e.subtitle ?? '').toLowerCase().includes(kw))
+  return list.filter(
+    (e) =>
+      e.title.toLowerCase().includes(kw) ||
+      (e.subtitle ?? '').toLowerCase().includes(kw),
+  )
 }
 
 // ---- 分组组装（idx 即扁平选择序） ----
@@ -111,7 +133,12 @@ const groups = computed<Array<{ label: string; items: IndexedEntry[] }>>(() => {
       for (const g of sr.groups) {
         push(
           g.label,
-          g.items.map((it) => ({ key: `s:${g.domain}:${it.id}`, title: it.title, subtitle: it.subtitle ?? undefined, url: it.url })),
+          g.items.map((it) => ({
+            key: `s:${g.domain}:${it.id}`,
+            title: it.title,
+            subtitle: it.subtitle ?? undefined,
+            url: it.url,
+          })),
         )
       }
       push(
@@ -134,7 +161,9 @@ const groups = computed<Array<{ label: string; items: IndexedEntry[] }>>(() => {
   return out
 })
 
-const flatEntries = computed<Entry[]>(() => groups.value.flatMap((g) => g.items))
+const flatEntries = computed<Entry[]>(() =>
+  groups.value.flatMap((g) => g.items),
+)
 const flatCount = computed(() => flatEntries.value.length)
 
 // 结果集变化 → 高亮归零
@@ -169,7 +198,9 @@ async function runEntry(entry: Entry): Promise<void> {
 
 function scrollActiveIntoView(): void {
   void nextTick(() => {
-    document.querySelector(`.cp-item[data-idx="${activeIdx.value}"]`)?.scrollIntoView({ block: 'nearest' })
+    document
+      .querySelector(`.cp-item[data-idx="${activeIdx.value}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
   })
 }
 
@@ -183,7 +214,10 @@ function onKey(e: KeyboardEvent) {
     const n = flatCount.value
     if (!n) return
     e.preventDefault()
-    activeIdx.value = e.key === 'ArrowDown' ? (activeIdx.value + 1) % n : (activeIdx.value - 1 + n) % n
+    activeIdx.value =
+      e.key === 'ArrowDown'
+        ? (activeIdx.value + 1) % n
+        : (activeIdx.value - 1 + n) % n
     scrollActiveIntoView()
     return
   }
@@ -274,7 +308,12 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div class="cp-mask" @click.self="emit('close')">
-      <div class="cp panel" role="dialog" aria-modal="true" aria-label="命令面板">
+      <div
+        class="cp panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="命令面板"
+      >
         <div class="cp-input">
           <Icon name="search" :size="15" />
           <input
@@ -304,13 +343,17 @@ onBeforeUnmount(() => {
               <span class="mid">
                 <span class="row">
                   <span class="t">{{ it.title }}</span>
-                  <span v-if="it.score !== undefined" class="score mono">{{ Math.round(it.score * 100) }}%</span>
+                  <span v-if="it.score !== undefined" class="score mono"
+                    >{{ Math.round(it.score * 100) }}%</span
+                  >
                 </span>
                 <span v-if="it.subtitle" class="s">{{ it.subtitle }}</span>
               </span>
             </button>
           </section>
-          <div v-if="q.trim() && loading && !flatCount" class="cp-hint">搜索中…</div>
+          <div v-if="q.trim() && loading && !flatCount" class="cp-hint">
+            搜索中…
+          </div>
           <div v-else-if="!loading && !flatCount" class="cp-empty">
             {{ q.trim() ? '无匹配结果' : '输入关键词搜索，或浏览下方命令' }}
           </div>
@@ -319,8 +362,14 @@ onBeforeUnmount(() => {
           <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
           <span><kbd>↵</kbd> 执行</span>
           <span><kbd>Esc</kbd> 关闭</span>
-          <span v-if="q.trim() && result?.semantic.indexing" class="sem">语义索引构建中…</span>
-          <span v-else-if="q.trim() && result && !result.semantic.available" class="sem">语义搜索不可用（关键词不受影响）</span>
+          <span v-if="q.trim() && result?.semantic.indexing" class="sem"
+            >语义索引构建中…</span
+          >
+          <span
+            v-else-if="q.trim() && result && !result.semantic.available"
+            class="sem"
+            >语义搜索不可用（关键词不受影响）</span
+          >
         </div>
       </div>
     </div>

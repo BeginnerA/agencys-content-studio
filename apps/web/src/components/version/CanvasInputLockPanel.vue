@@ -9,10 +9,17 @@ import type { CanvasDocEdge, CanvasDocNode } from '../../lib/types'
 import { canvasLockApi } from '../../lib/api'
 import Icon from '../common/Icon.vue'
 
-const props = defineProps<{ node: CanvasDocNode; nodes: CanvasDocNode[]; edges: CanvasDocEdge[] }>()
+const props = defineProps<{
+  node: CanvasDocNode
+  nodes: CanvasDocNode[]
+  edges: CanvasDocEdge[]
+}>()
 const emit = defineEmits<{ notice: [msg: string] }>()
 
-interface Candidate { assetId: number; name: string }
+interface Candidate {
+  assetId: number
+  name: string
+}
 
 const loading = ref(false)
 const busyNode = ref<number | null>(null)
@@ -22,7 +29,9 @@ const pins = ref<Record<number, number>>({})
 /** 每个上游待锁定的选中资产（默认 = 当前解析资产） */
 const selected = ref<Record<number, number>>({})
 
-const incoming = computed(() => props.edges.filter((e) => e.to === props.node.id))
+const incoming = computed(() =>
+  props.edges.filter((e) => e.to === props.node.id),
+)
 
 /** 上游节点可锁定的候选资产（gen → 结果画廊 / 当前产物；asset → 该资产；entity/run → 无单资产） */
 function candidatesOf(up: CanvasDocNode | undefined): Candidate[] {
@@ -33,7 +42,10 @@ function candidatesOf(up: CanvasDocNode | undefined): Candidate[] {
       .map((r) => ({ assetId: r.assetId, name: r.asset!.name }))
     if (list.length) return list
   }
-  if (up.assetId != null) return [{ assetId: up.assetId, name: up.asset?.name ?? `资产 #${up.assetId}` }]
+  if (up.assetId != null)
+    return [
+      { assetId: up.assetId, name: up.asset?.name ?? `资产 #${up.assetId}` },
+    ]
   return []
 }
 
@@ -100,7 +112,11 @@ function onPick(up: CanvasDocNode, ev: Event) {
   selected.value = { ...selected.value, [up.id]: Number.isInteger(v) ? v : -1 }
 }
 
-interface LockRow { up: CanvasDocNode; cands: Candidate[]; sel: number | null }
+interface LockRow {
+  up: CanvasDocNode
+  cands: Candidate[]
+  sel: number | null
+}
 /** 预解析上游：可锁定行（含候选资产与当前选中）+ 无资产可锁定的说明行 */
 const resolved = computed(() => {
   const lockable: LockRow[] = []
@@ -108,13 +124,21 @@ const resolved = computed(() => {
   for (const e of incoming.value) {
     const up = props.nodes.find((n) => n.id === e.from)
     const cands = candidatesOf(up)
-    if (up && cands.length) lockable.push({ up, cands, sel: selectedFor(up, cands) })
+    if (up && cands.length)
+      lockable.push({ up, cands, sel: selectedFor(up, cands) })
     else notes.push({ id: e.from, title: up?.title ?? `节点 #${e.from}` })
   }
   return { lockable, notes }
 })
 
-watch(() => props.node?.id, () => { selected.value = {}; void loadPins() }, { immediate: true })
+watch(
+  () => props.node?.id,
+  () => {
+    selected.value = {}
+    void loadPins()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -122,7 +146,10 @@ watch(() => props.node?.id, () => { selected.value = {}; void loadPins() }, { im
     <div class="sec-h">
       <Icon name="link" :size="12" /> 锁定输入（下次执行）
     </div>
-    <p class="hint">默认每次执行使用上游最新 / 采纳产物。锁定后<strong>仅下一次执行</strong>改用选定的历史资产，不改选片、不生成。</p>
+    <p class="hint">
+      默认每次执行使用上游最新 /
+      采纳产物。锁定后<strong>仅下一次执行</strong>改用选定的历史资产，不改选片、不生成。
+    </p>
     <div v-if="loading" class="muted pad">加载中…</div>
     <div v-else-if="!incoming.length" class="muted pad">无上游连线。</div>
     <ul v-else class="llist">
@@ -130,7 +157,9 @@ watch(() => props.node?.id, () => { selected.value = {}; void loadPins() }, { im
         <div class="lmain">
           <div class="lname">{{ row.up.title }}</div>
           <div class="lsub">
-            <span v-if="pins[row.up.id] != null" class="badge-pinned">已锁定 → #{{ pins[row.up.id] }}</span>
+            <span v-if="pins[row.up.id] != null" class="badge-pinned"
+              >已锁定 → #{{ pins[row.up.id] }}</span
+            >
             <span v-else class="muted">跟随最新 / 采纳</span>
           </div>
         </div>
@@ -140,7 +169,9 @@ watch(() => props.node?.id, () => { selected.value = {}; void loadPins() }, { im
           :disabled="busyNode === row.up.id"
           @change="onPick(row.up, $event)"
         >
-          <option v-for="c in row.cands" :key="c.assetId" :value="c.assetId">{{ c.name }}</option>
+          <option v-for="c in row.cands" :key="c.assetId" :value="c.assetId">
+            {{ c.name }}
+          </option>
         </select>
         <button
           v-if="pins[row.up.id] != null"
@@ -163,7 +194,11 @@ watch(() => props.node?.id, () => { selected.value = {}; void loadPins() }, { im
           {{ busyNode === row.up.id ? '处理中…' : '锁定' }}
         </button>
       </li>
-      <li v-for="note in resolved.notes" :key="'n' + note.id" class="lnote muted">
+      <li
+        v-for="note in resolved.notes"
+        :key="'n' + note.id"
+        class="lnote muted"
+      >
         {{ note.title }}：无独立资产可锁定（实体 / 运行按策略注入）
       </li>
     </ul>

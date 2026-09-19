@@ -36,7 +36,15 @@ export interface BoardEmits {
   'delete-selected': []
   'copy-selected': []
   'group-create': []
-  'group-patch': [gid: number, patch: { title?: string; color?: string | null; collapsed?: boolean; parentId?: number | null }]
+  'group-patch': [
+    gid: number,
+    patch: {
+      title?: string
+      color?: string | null
+      collapsed?: boolean
+      parentId?: number | null
+    },
+  ]
   'group-delete': [gid: number]
   /** [M22] 组条拖拽：后代组锚点批量平移（与 moved 节点平移同源 dx/dy） */
   'groups-moved': [moves: Array<{ id: number; x: number; y: number }>]
@@ -53,7 +61,8 @@ export type BoardEmitFn = {
 export const NODE_W = 220
 export const DEFAULT_H = 140
 export const PAD = 70
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+const clamp = (v: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, v))
 
 export interface EdgePath {
   id: number
@@ -118,16 +127,24 @@ const RUN_TEXT: Record<string, string> = {
   failed: '失败',
   cancelled: '已取消',
 }
-const ENTITY_KIND_TEXT: Record<string, string> = { character: '角色', scene: '场景', prop: '道具' }
+const ENTITY_KIND_TEXT: Record<string, string> = {
+  character: '角色',
+  scene: '场景',
+  prop: '道具',
+}
 
 export function stText(n: CanvasDocNode): string {
-  return n.status && n.status !== 'idle' ? (TASK_TEXT[n.status] ?? n.status) : ''
+  return n.status && n.status !== 'idle'
+    ? (TASK_TEXT[n.status] ?? n.status)
+    : ''
 }
 export function stCls(n: CanvasDocNode): string {
   return n.status ? (TASK_CLS[n.status] ?? 'pending') : ''
 }
 export function runText(n: CanvasDocNode): string {
-  return n.kind === 'run' && n.run ? (RUN_TEXT[n.run.status] ?? n.run.status) : ''
+  return n.kind === 'run' && n.run
+    ? (RUN_TEXT[n.run.status] ?? n.run.status)
+    : ''
 }
 export function runCls(n: CanvasDocNode): string {
   return n.kind === 'run' && n.run ? (RUN_CLS[n.run.status] ?? 'pending') : ''
@@ -135,7 +152,9 @@ export function runCls(n: CanvasDocNode): string {
 
 /** spec 类型守卫：是否 gen 规范（含 genKind） */
 function asGenSpec(s: AnyNodeSpec | null): CreationNodeSpec | null {
-  return s && typeof s === 'object' && 'genKind' in s ? (s as CreationNodeSpec) : null
+  return s && typeof s === 'object' && 'genKind' in s
+    ? (s as CreationNodeSpec)
+    : null
 }
 export function inputPortsOf(n: CanvasDocNode): string[] {
   if (n.kind !== 'gen') return []
@@ -179,7 +198,10 @@ export function specLine(n: CanvasDocNode): string {
   const spec = asGenSpec(n.spec)
   if (!spec) return n.specError ?? 'spec 缺失'
   if (spec.genKind === 'compose') {
-    const parts = [spec.resolution, spec.fps != null ? `${spec.fps}fps` : null].filter(Boolean)
+    const parts = [
+      spec.resolution,
+      spec.fps != null ? `${spec.fps}fps` : null,
+    ].filter(Boolean)
     return parts.length ? parts.join(' · ') : '（连线驱动合成）'
   }
   return spec.prompt || '（空 prompt）'
@@ -189,7 +211,9 @@ export function promptTitle(n: CanvasDocNode): string {
 }
 export function textBody(n: CanvasDocNode): string {
   const s = n.spec
-  return s && 'text' in s ? s.text || '（空文本）' : n.specError ?? 'spec 缺失'
+  return s && 'text' in s
+    ? s.text || '（空文本）'
+    : (n.specError ?? 'spec 缺失')
 }
 export function kindText(k: string): string {
   return ENTITY_KIND_TEXT[k] ?? k
@@ -207,7 +231,8 @@ export function entityThumb(n: CanvasDocNode): string | null {
 export function metaText(n: CanvasDocNode): string {
   const t = n.latestTask
   if (!t) return ''
-  if (t.status === 'succeeded' && t.completedAt) return fmtMs(t.completedAt - t.createdAt)
+  if (t.status === 'succeeded' && t.completedAt)
+    return fmtMs(t.completedAt - t.createdAt)
   if (t.status === 'failed' && t.attempts > 1) return `尝试 ${t.attempts}`
   return ''
 }

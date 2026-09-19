@@ -43,7 +43,9 @@ export function statusText(n: CanvasBoardNode): string {
 export function taskText(n: CanvasBoardNode): string {
   if (!n.tasks || !n.tasks.total) return ''
   const bad = n.tasks.failed + n.tasks.cancelled
-  return bad > 0 ? `任务 ${n.tasks.succeeded}/${n.tasks.total} · 异常 ${bad}` : `任务 ${n.tasks.succeeded}/${n.tasks.total}`
+  return bad > 0
+    ? `任务 ${n.tasks.succeeded}/${n.tasks.total} · 异常 ${bad}`
+    : `任务 ${n.tasks.succeeded}/${n.tasks.total}`
 }
 export function hasChips(n: CanvasBoardNode): boolean {
   return !!(

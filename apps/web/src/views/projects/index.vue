@@ -52,7 +52,9 @@ const allTags = computed(() => {
 })
 
 const filteredProjects = computed(() =>
-  tagFilter.value === 'all' ? projects.value : projects.value.filter((p) => (p.tags ?? []).includes(tagFilter.value)),
+  tagFilter.value === 'all'
+    ? projects.value
+    : projects.value.filter((p) => (p.tags ?? []).includes(tagFilter.value)),
 )
 
 /** 模板 key → 短名（列表未载/未知 key 回退原 key） */
@@ -64,7 +66,10 @@ async function load() {
   loading.value = true
   err.value = ''
   // 项目列表为主数据；模板列表独立静默加载（仅用于短名展示，失败不阻塞）
-  const [p, tpls] = await Promise.allSettled([projectApi.list(`?status=${statusTab.value}`), templateApi.list()])
+  const [p, tpls] = await Promise.allSettled([
+    projectApi.list(`?status=${statusTab.value}`),
+    templateApi.list(),
+  ])
   if (p.status === 'fulfilled') {
     projects.value = p.value.items
   } else {
@@ -122,7 +127,9 @@ function cardTo(p: Project) {
         <b>轻松创作 · 一句话成片</b>
         <small>描述一个想法 → 看方案 → 确认一次 → 自动出片</small>
       </span>
-      <span class="ec-cta-go">开始 <Icon name="chevron-right" :size="14" /></span>
+      <span class="ec-cta-go"
+        >开始 <Icon name="chevron-right" :size="14"
+      /></span>
     </RouterLink>
 
     <div class="page-h">
@@ -147,12 +154,21 @@ function cardTo(p: Project) {
           已归档
         </button>
       </div>
-      <select v-if="allTags.length" v-model="tagFilter" style="width: 140px" aria-label="按标签筛选项目">
+      <select
+        v-if="allTags.length"
+        v-model="tagFilter"
+        style="width: 140px"
+        aria-label="按标签筛选项目"
+      >
         <option value="all">全部标签</option>
         <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
       </select>
       <span class="sub">{{ filteredProjects.length }} 个</span>
-      <button class="btn primary" style="margin-left: auto" @click="showNew = true">
+      <button
+        class="btn primary"
+        style="margin-left: auto"
+        @click="showNew = true"
+      >
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建项目
       </button>
     </div>
@@ -162,15 +178,24 @@ function cardTo(p: Project) {
     <div v-else-if="!projects.length" class="empty">
       <template v-if="statusTab === 'active'">
         还没有项目。<br /><br />
-        <button class="btn primary" @click="showNew = true">创建第一个项目</button>
+        <button class="btn primary" @click="showNew = true">
+          创建第一个项目
+        </button>
       </template>
       <template v-else>没有已归档的项目。</template>
     </div>
 
-    <div v-else-if="!filteredProjects.length" class="empty">无标签「{{ tagFilter }}」的项目</div>
+    <div v-else-if="!filteredProjects.length" class="empty">
+      无标签「{{ tagFilter }}」的项目
+    </div>
 
     <div v-else class="grid">
-      <RouterLink v-for="p in filteredProjects" :key="p.id" class="card panel" :to="cardTo(p)">
+      <RouterLink
+        v-for="p in filteredProjects"
+        :key="p.id"
+        class="card panel"
+        :to="cardTo(p)"
+      >
         <div class="top">
           <span class="nm">{{ p.name }}</span>
           <span class="tops">
@@ -178,8 +203,13 @@ function cardTo(p: Project) {
               v-if="pendingOf(p.id)"
               class="badge waiting_input"
               :title="`${pendingOf(p.id)} 项待审阅（点击直达）`"
-            >待审阅 {{ pendingOf(p.id) }}</span>
-            <span v-if="statusTab === 'active' && p.status !== 'active'" class="badge cancelled">{{ p.status }}</span>
+              >待审阅 {{ pendingOf(p.id) }}</span
+            >
+            <span
+              v-if="statusTab === 'active' && p.status !== 'active'"
+              class="badge cancelled"
+              >{{ p.status }}</span
+            >
             <button
               v-if="statusTab === 'archived'"
               class="op always"
@@ -189,7 +219,11 @@ function cardTo(p: Project) {
             >
               <Icon name="refresh" :size="13" />
             </button>
-            <button class="op danger" title="归档 / 彻底删除" @click.stop.prevent="dangerProject = p">
+            <button
+              class="op danger"
+              title="归档 / 彻底删除"
+              @click.stop.prevent="dangerProject = p"
+            >
               <Icon name="trash" :size="13" />
             </button>
           </span>
@@ -197,7 +231,9 @@ function cardTo(p: Project) {
         <div class="brief">{{ p.brief || '—' }}</div>
         <div class="meta">
           <span class="chip">{{ projectGenreText(p.genre) }}</span>
-          <span class="chip">{{ p.templateKey ? tplName(p.templateKey) : '未绑定模板' }}</span>
+          <span class="chip">{{
+            p.templateKey ? tplName(p.templateKey) : '未绑定模板'
+          }}</span>
           <span class="chip">{{ p.assetCount }} 资产</span>
         </div>
         <div v-if="p.tags?.length" class="meta tags">
@@ -205,7 +241,9 @@ function cardTo(p: Project) {
         </div>
         <div v-if="p.recentRuns.length" class="runs">
           <div v-for="r in p.recentRuns.slice(0, 3)" :key="r.id" class="run">
-            <span class="badge" :class="r.status">{{ runStatus(r.status).text }}</span>
+            <span class="badge" :class="r.status">{{
+              runStatus(r.status).text
+            }}</span>
             <span class="muted mono">#{{ r.id }}</span>
             <span class="muted">{{ fmtTime(r.updatedAt) }}</span>
           </div>
@@ -214,7 +252,11 @@ function cardTo(p: Project) {
       </RouterLink>
     </div>
 
-    <ProjectFormModal v-if="showNew" @done="onCreated" @close="showNew = false" />
+    <ProjectFormModal
+      v-if="showNew"
+      @done="onCreated"
+      @close="showNew = false"
+    />
 
     <!-- 危险操作：归档 / 彻底删除 -->
     <ProjectDangerModal
@@ -239,7 +281,9 @@ function cardTo(p: Project) {
   padding: 16px;
   color: inherit;
   text-decoration: none;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
 }
 
 .card:hover {
@@ -281,7 +325,11 @@ function cardTo(p: Project) {
   color: var(--text-3);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .card:hover .op,
@@ -374,10 +422,16 @@ function cardTo(p: Project) {
   margin-bottom: 16px;
   border-radius: 14px;
   border: 1px solid rgb(99 102 241 / 40%);
-  background: linear-gradient(135deg, rgb(139 92 246 / 16%), rgb(79 70 229 / 12%));
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 16%),
+    rgb(79 70 229 / 12%)
+  );
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s, transform 0.15s;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
 }
 .ec-cta:hover {
   border-color: var(--accent);
@@ -395,9 +449,20 @@ function cardTo(p: Project) {
   color: #fff;
   flex-shrink: 0;
 }
-.ec-cta-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ec-cta-tx b { font-size: 14.5px; color: #fff; }
-.ec-cta-tx small { font-size: 12px; color: var(--text-2); }
+.ec-cta-tx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ec-cta-tx b {
+  font-size: 14.5px;
+  color: #fff;
+}
+.ec-cta-tx small {
+  font-size: 12px;
+  color: var(--text-2);
+}
 .ec-cta-go {
   margin-left: auto;
   display: inline-flex;

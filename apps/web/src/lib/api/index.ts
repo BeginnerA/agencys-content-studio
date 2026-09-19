@@ -5,7 +5,13 @@
  */
 export { ApiError, api } from './core'
 
-export { projectApi, templateApi, promptApi, batchApi, seriesApi } from './projects'
+export {
+  projectApi,
+  templateApi,
+  promptApi,
+  batchApi,
+  seriesApi,
+} from './projects'
 
 export { runApi, taskApi, stepApi, composeApi, shotApi, novelApi } from './runs'
 
@@ -28,7 +34,14 @@ export type { CanvasDocNode } from '../types'
 // [M30] 对话式「一句话成片」
 export { creationChatApi, newRequestKey } from './creation-chat'
 
-export { statsApi, exportApi, publicationApi, settingsApi, scheduleApi, budgetApi } from './insights'
+export {
+  statsApi,
+  exportApi,
+  publicationApi,
+  settingsApi,
+  scheduleApi,
+  budgetApi,
+} from './insights'
 
 export { workflowApi } from './workflows'
 export type { WorkflowCreateBody, WorkflowPatchBody } from './workflows'

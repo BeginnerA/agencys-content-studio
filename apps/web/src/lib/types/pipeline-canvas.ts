@@ -63,7 +63,11 @@ export interface RunCanvasNode {
   completedAt: number | null
   durationMs: number | null
   gate: CanvasGateInfo | null
-  gateTrace: { decision: 'approve' | 'reject'; note?: string; at: number } | null
+  gateTrace: {
+    decision: 'approve' | 'reject'
+    note?: string
+    at: number
+  } | null
   skippedReason: string | null
   tasks: CanvasTaskAgg
   assetIds: number[]
@@ -131,7 +135,13 @@ export interface TemplateCanvasNode {
 
 /** [M15] 模板画布读模型 */
 export interface TemplateCanvas {
-  template: { key: string; name: string; version: number; description?: string; genre: string }
+  template: {
+    key: string
+    name: string
+    version: number
+    description?: string
+    genre: string
+  }
   nodes: TemplateCanvasNode[]
   edges: CanvasEdge[]
 }
@@ -209,7 +219,11 @@ export interface CanvasOverview {
   batches: CanvasOverviewBatch[]
   /** 无批次归属 runs（createdAt desc） */
   standaloneRuns: OverviewRunLite[]
-  stats: { runCount: number; byStatus: Record<string, number>; totalCost: number }
+  stats: {
+    runCount: number
+    byStatus: Record<string, number>
+    totalCost: number
+  }
   /** [M27] 编排链（旧前端超集兼容；无链 → []） */
   workflows: WorkflowOverviewLite[]
 }

@@ -90,7 +90,8 @@ export interface RunNodeSpec {
 }
 
 /** [M17] 读模型节点 spec 联合（按 kind 分派解析） */
-export type AnyNodeSpec = CreationNodeSpec | TextNodeSpec | EntityNodeSpec | RunNodeSpec
+export type AnyNodeSpec =
+  CreationNodeSpec | TextNodeSpec | EntityNodeSpec | RunNodeSpec
 
 /** 画布视口（pan/zoom 持久化） */
 export interface CanvasViewport {
@@ -200,7 +201,9 @@ export interface CanvasRunInfo {
 }
 
 /** [M17] 显示任务（gen 采纳优先产物 + 资产冗余） */
-export type CanvasDisplayTask = CanvasGenTaskLite & { asset: CanvasAssetLite | null }
+export type CanvasDisplayTask = CanvasGenTaskLite & {
+  asset: CanvasAssetLite | null
+}
 
 /** [M17] 节点行原始形态（POST/PATCH/copy/extract 端点返回 DB 行，spec 为 JSON 字符串） */
 export interface CanvasNodeRow {
@@ -276,7 +279,13 @@ export interface PreviewNodeItem {
 /** [M18] 预估响应（amount 仅含有价节点；unpriced = 未计价节点数） */
 export interface PreviewCanvasResult {
   nodes: PreviewNodeItem[]
-  total: { amount: number; unpriced: number; ready: number; blocked: number; busy: number }
+  total: {
+    amount: number
+    unpriced: number
+    ready: number
+    blocked: number
+    busy: number
+  }
 }
 
 /** [M17] 导出 zip 结果（creation-export） */
@@ -307,7 +316,12 @@ export interface CanvasGroup {
 
 /** [M16] 画布文档全量读模型 */
 export interface CanvasDoc {
-  canvas: { id: number; projectId: number; name: string; viewport: CanvasViewport }
+  canvas: {
+    id: number
+    projectId: number
+    name: string
+    viewport: CanvasViewport
+  }
   nodes: CanvasDocNode[]
   edges: CanvasDocEdge[]
   /** [M18] 节点分组（成组/折叠） */
@@ -401,7 +415,8 @@ export interface SnapshotDiffResult extends SnapshotDiff {
 // ===== [M23] LLM 建议式编排（POST /canvases/:id/advice 契约；仅建议不执行） =====
 
 /** 建议 kind（raw = LLM 原文解析失败降级标记，白名单外） */
-export type CanvasAdviceKind = 'structure' | 'connect' | 'config' | 'generate' | 'cleanup' | 'raw'
+export type CanvasAdviceKind =
+  'structure' | 'connect' | 'config' | 'generate' | 'cleanup' | 'raw'
 
 /** 单条建议（targetNodeId 已由服务端校验存在→剔除；定位用） */
 export interface CanvasAdviceItem {

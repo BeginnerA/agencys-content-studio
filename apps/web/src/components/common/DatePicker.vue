@@ -58,7 +58,9 @@ function parseKey(s: string): { y: number; m: number; d: number } | null {
   const m = Number(ms) - 1
   const d = Number(ds)
   const dt = new Date(y, m, d)
-  return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d ? { y, m, d } : null
+  return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
+    ? { y, m, d }
+    : null
 }
 
 const NOW = new Date()
@@ -73,7 +75,9 @@ const displayText = computed(() => {
   if (!props.withTime) return base
   // 从 modelValue 提取时间部分
   const tm = /T(\d{2}):(\d{2})/.exec(props.modelValue)
-  return tm ? `${base} ${tm[1]}:${tm[2]}` : `${base} ${timeH.value}:${timeM.value}`
+  return tm
+    ? `${base} ${tm[1]}:${tm[2]}`
+    : `${base} ${timeH.value}:${timeM.value}`
 })
 const viewLabel = computed(() => `${viewY.value}年${viewM.value + 1}月`)
 
@@ -115,14 +119,17 @@ const cells = computed<Cell[]>(() => {
 
 const rows = computed<Cell[][]>(() => {
   const out: Cell[][] = []
-  for (let i = 0; i < cells.value.length; i += 7) out.push(cells.value.slice(i, i + 7))
+  for (let i = 0; i < cells.value.length; i += 7)
+    out.push(cells.value.slice(i, i + 7))
   return out
 })
 
 // ---------- 开合 ----------
 function focusCell() {
   void nextTick(() => {
-    panelEl.value?.querySelector<HTMLElement>(`[data-key="${focusKey.value}"]`)?.focus()
+    panelEl.value
+      ?.querySelector<HTMLElement>(`[data-key="${focusKey.value}"]`)
+      ?.focus()
   })
 }
 
@@ -269,8 +276,12 @@ function onDocPointerDown(e: PointerEvent) {
   if (rootEl.value && !rootEl.value.contains(e.target as Node)) closePanel()
 }
 
-onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+onMounted(() =>
+  document.addEventListener('pointerdown', onDocPointerDown, true),
+)
+onBeforeUnmount(() =>
+  document.removeEventListener('pointerdown', onDocPointerDown, true),
+)
 </script>
 
 <template>
@@ -300,11 +311,21 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
       @keydown="onPanelKey"
     >
       <div class="dp-head">
-        <button type="button" class="dp-nav" aria-label="上一月" @click="shiftMonth(-1)">
+        <button
+          type="button"
+          class="dp-nav"
+          aria-label="上一月"
+          @click="shiftMonth(-1)"
+        >
           <Icon name="chevron-left" :size="13" :stroke-width="2.1" />
         </button>
         <span class="dp-title" aria-live="polite">{{ viewLabel }}</span>
-        <button type="button" class="dp-nav" aria-label="下一月" @click="shiftMonth(1)">
+        <button
+          type="button"
+          class="dp-nav"
+          aria-label="下一月"
+          @click="shiftMonth(1)"
+        >
           <Icon name="chevron-right" :size="13" :stroke-width="2.1" />
         </button>
       </div>
@@ -338,11 +359,21 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
       <div v-if="withTime" class="dp-time-row">
         <span class="dp-time-label">时间</span>
         <div class="dp-time">
-          <select v-model="timeH" class="dp-tsel" aria-label="时" @change="commitTime">
+          <select
+            v-model="timeH"
+            class="dp-tsel"
+            aria-label="时"
+            @change="commitTime"
+          >
             <option v-for="h in HOURS" :key="h" :value="h">{{ h }}</option>
           </select>
           <span class="dp-tsep" aria-hidden="true">:</span>
-          <select v-model="timeM" class="dp-tsel" aria-label="分" @change="commitTime">
+          <select
+            v-model="timeM"
+            class="dp-tsel"
+            aria-label="分"
+            @change="commitTime"
+          >
             <option v-for="m in MINUTES" :key="m" :value="m">{{ m }}</option>
           </select>
         </div>
@@ -353,7 +384,14 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
           <button type="button" class="dp-link" @click="pickToday">今天</button>
           <button type="button" class="dp-link dim" @click="clear">清除</button>
         </div>
-        <button v-if="withTime" type="button" class="dp-done" @click="closePanel(true)">确定</button>
+        <button
+          v-if="withTime"
+          type="button"
+          class="dp-done"
+          @click="closePanel(true)"
+        >
+          确定
+        </button>
       </div>
     </div>
   </div>
@@ -380,7 +418,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .dp-trigger:hover {
@@ -478,7 +518,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   border-radius: 7px;
   color: var(--text-2);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .dp-nav:hover {
@@ -524,7 +566,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   font-family: inherit;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    box-shadow 0.12s;
 }
 
 .dp-cell:hover {
@@ -625,7 +670,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   cursor: pointer;
   outline: none;
   color-scheme: dark;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .dp-tsel:hover {
@@ -659,7 +706,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
   font-family: inherit;
   color: var(--accent-h);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .dp-link:hover {

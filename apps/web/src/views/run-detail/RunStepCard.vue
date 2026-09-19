@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { nodeClass, skipInfo, assetIds, inputPretty, outputPretty, iconOf } from './internals'
+import {
+  nodeClass,
+  skipInfo,
+  assetIds,
+  inputPretty,
+  outputPretty,
+  iconOf,
+} from './internals'
 import ShotBoard from '../../components/shot/board/index.vue'
 import NovelBoard from '../../components/NovelBoard.vue'
 import Icon from '../../components/common/Icon.vue'
@@ -8,111 +15,154 @@ import type { RunDetailApi } from './use-run-detail'
 import type { ExtrasApi } from './use-run-extras'
 import type { RunStep } from '../../lib/types'
 const props = defineProps<{ s: RunStep; u: RunDetailApi; e: ExtrasApi }>()
-const { runId, busy, run, active, loadDetail, previewBusy, openAssetPreview, WB_ACTIONS, composeInfo, onComposeInfo, recomposeStep, canRerunStep, openRerun } = props.u
+const {
+  runId,
+  busy,
+  run,
+  active,
+  loadDetail,
+  previewBusy,
+  openAssetPreview,
+  WB_ACTIONS,
+  composeInfo,
+  onComposeInfo,
+  recomposeStep,
+  canRerunStep,
+  openRerun,
+} = props.u
 const { badges, deriveOpen, hasFinalVideo } = props.e
 </script>
 
 <template>
-          <div class="st" :class="[nodeClass(s), { dim: s.status === 'pending' }]">
-            <div class="rail">
-              <div class="dot"><Icon :name="iconOf(s.actionKey)" :size="14" /></div>
-              <div class="line" />
-            </div>
-            <div class="card">
-              <div class="head">
-                <span class="tt">{{ s.title }}</span>
-                <span class="badge" :class="s.status === 'waiting_input' ? 'waiting_input' : s.status">
-                  {{ stepStatus(s.status).text }}
-                </span>
-                <span v-if="skipInfo(s)" class="badge skip" :class="{ ghost: !skipInfo(s)?.userSkip }">
-                  {{ skipInfo(s)?.text }}
-                </span>
-                <span class="muted mono" style="font-size: 11px">{{ s.actionKey }}</span>
-                <span v-if="badges[s.id]" class="badge mem">{{ badges[s.id] }}</span>
-              </div>
-              <div v-if="skipInfo(s)?.userSkip" class="skipnote muted">免审放行：产物已保留，下游正常执行</div>
-              <div v-if="s.error" class="serr mono">{{ s.error }}</div>
-              <div class="meta muted">
-                第 {{ s.seq + 1 }} 步 · 尝试 {{ s.attempts }}
-                <template v-if="s.startedAt"> · {{ fmtTime(s.startedAt) }}</template>
-                <template v-if="s.completedAt"> → {{ fmtTime(s.completedAt) }}</template>
-              </div>
+  <div class="st" :class="[nodeClass(s), { dim: s.status === 'pending' }]">
+    <div class="rail">
+      <div class="dot"><Icon :name="iconOf(s.actionKey)" :size="14" /></div>
+      <div class="line" />
+    </div>
+    <div class="card">
+      <div class="head">
+        <span class="tt">{{ s.title }}</span>
+        <span
+          class="badge"
+          :class="s.status === 'waiting_input' ? 'waiting_input' : s.status"
+        >
+          {{ stepStatus(s.status).text }}
+        </span>
+        <span
+          v-if="skipInfo(s)"
+          class="badge skip"
+          :class="{ ghost: !skipInfo(s)?.userSkip }"
+        >
+          {{ skipInfo(s)?.text }}
+        </span>
+        <span class="muted mono" style="font-size: 11px">{{
+          s.actionKey
+        }}</span>
+        <span v-if="badges[s.id]" class="badge mem">{{ badges[s.id] }}</span>
+      </div>
+      <div v-if="skipInfo(s)?.userSkip" class="skipnote muted">
+        免审放行：产物已保留，下游正常执行
+      </div>
+      <div v-if="s.error" class="serr mono">{{ s.error }}</div>
+      <div class="meta muted">
+        第 {{ s.seq + 1 }} 步 · 尝试 {{ s.attempts }}
+        <template v-if="s.startedAt"> · {{ fmtTime(s.startedAt) }}</template>
+        <template v-if="s.completedAt">
+          → {{ fmtTime(s.completedAt) }}</template
+        >
+      </div>
 
-              <!-- [M7] 镜头级轻工作台（ai_image / ai_video 步骤卡内嵌） -->
-              <ShotBoard
-                v-if="WB_ACTIONS.has(s.actionKey)"
-                :run-id="runId"
-                :project-id="run?.projectId ?? 0"
-                :step="s"
-                :active="active"
-                @changed="loadDetail()"
-                @compose="onComposeInfo"
-              />
+      <!-- [M7] 镜头级轻工作台（ai_image / ai_video 步骤卡内嵌） -->
+      <ShotBoard
+        v-if="WB_ACTIONS.has(s.actionKey)"
+        :run-id="runId"
+        :project-id="run?.projectId ?? 0"
+        :step="s"
+        :active="active"
+        @changed="loadDetail()"
+        @compose="onComposeInfo"
+      />
 
-              <!-- [M9] 小说改编看板（text_split 步骤卡内嵌，只读） -->
-              <NovelBoard v-if="s.actionKey === 'text_split'" :run-id="runId" :step="s" />
+      <!-- [M9] 小说改编看板（text_split 步骤卡内嵌，只读） -->
+      <NovelBoard
+        v-if="s.actionKey === 'text_split'"
+        :run-id="runId"
+        :step="s"
+      />
 
-              <!-- [M7] 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
-              <div v-if="s.actionKey === 'ffmpeg_merge'" class="compose-ops">
-                <span
-                  v-if="composeInfo?.stale === true"
-                  class="badge warn-c"
-                  title="镜头选择 / 分镜 / 时长有更新，重新合成后生效"
-                >
-                  待重新合成
-                </span>
-                <span v-else-if="composeInfo?.stale === false" class="badge ok-c" title="成片与当前选择一致">
-                  合成已最新
-                </span>
-                <button class="btn sm" :disabled="busy || active" @click="recomposeStep(s)">
-                  <Icon name="film" :size="12" /> 重新合成
-                </button>
-                <!-- [M19] A 路径：对已有成片二次派生其他发布画幅 -->
-                <button
-                  class="btn sm"
-                  :disabled="busy || active || !hasFinalVideo"
-                  :title="hasFinalVideo ? '从成片再编码一份 9:16 / 1:1 / 4:5 / 16:9 产物（不动原片）' : '尚未合成成片，无法派生'"
-                  @click="deriveOpen = true"
-                >
-                  <Icon name="crop" :size="12" /> 派生画幅
-                </button>
-              </div>
+      <!-- [M7] 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
+      <div v-if="s.actionKey === 'ffmpeg_merge'" class="compose-ops">
+        <span
+          v-if="composeInfo?.stale === true"
+          class="badge warn-c"
+          title="镜头选择 / 分镜 / 时长有更新，重新合成后生效"
+        >
+          待重新合成
+        </span>
+        <span
+          v-else-if="composeInfo?.stale === false"
+          class="badge ok-c"
+          title="成片与当前选择一致"
+        >
+          合成已最新
+        </span>
+        <button
+          class="btn sm"
+          :disabled="busy || active"
+          @click="recomposeStep(s)"
+        >
+          <Icon name="film" :size="12" /> 重新合成
+        </button>
+        <!-- [M19] A 路径：对已有成片二次派生其他发布画幅 -->
+        <button
+          class="btn sm"
+          :disabled="busy || active || !hasFinalVideo"
+          :title="
+            hasFinalVideo
+              ? '从成片再编码一份 9:16 / 1:1 / 4:5 / 16:9 产物（不动原片）'
+              : '尚未合成成片，无法派生'
+          "
+          @click="deriveOpen = true"
+        >
+          <Icon name="crop" :size="12" /> 派生画幅
+        </button>
+      </div>
 
-              <!-- [M11] 单步重跑（显示条件对齐服务端 assertRepairable：run 收敛 + 目标步收敛 + 无其他 failed） -->
-              <div v-if="canRerunStep(s)" class="rerun-ops">
-                <button
-                  class="btn sm"
-                  :disabled="busy"
-                  title="重跑该步骤：可复用成功子任务（0 调用）或全量重跑（计费）"
-                  @click="openRerun(s)"
-                >
-                  <Icon name="refresh" :size="12" /> 重跑
-                </button>
-              </div>
+      <!-- [M11] 单步重跑（显示条件对齐服务端 assertRepairable：run 收敛 + 目标步收敛 + 无其他 failed） -->
+      <div v-if="canRerunStep(s)" class="rerun-ops">
+        <button
+          class="btn sm"
+          :disabled="busy"
+          title="重跑该步骤：可复用成功子任务（0 调用）或全量重跑（计费）"
+          @click="openRerun(s)"
+        >
+          <Icon name="refresh" :size="12" /> 重跑
+        </button>
+      </div>
 
-              <details v-if="s.output && assetIds(s).length" class="prods">
-                <summary>产物（{{ assetIds(s).length }} 项）</summary>
-                <div class="links">
-                  <button
-                    v-for="aid in assetIds(s)"
-                    :key="aid"
-                    class="prod"
-                    :disabled="previewBusy !== null"
-                    :title="previewBusy === aid ? '正在载入资产…' : '内联预览资产'"
-                    @click="openAssetPreview(assetIds(s), aid)"
-                  >
-                    <Icon name="eye" :size="11" />
-                    {{ previewBusy === aid ? '载入中…' : `资产 #${aid}` }}
-                  </button>
-                </div>
-              </details>
-              <details class="raw">
-                <summary>输入 / 输出快照</summary>
-                <pre>{{ inputPretty(s) }}</pre>
-                <pre v-if="s.output">{{ outputPretty(s) }}</pre>
-              </details>
-            </div>
-          </div>
+      <details v-if="s.output && assetIds(s).length" class="prods">
+        <summary>产物（{{ assetIds(s).length }} 项）</summary>
+        <div class="links">
+          <button
+            v-for="aid in assetIds(s)"
+            :key="aid"
+            class="prod"
+            :disabled="previewBusy !== null"
+            :title="previewBusy === aid ? '正在载入资产…' : '内联预览资产'"
+            @click="openAssetPreview(assetIds(s), aid)"
+          >
+            <Icon name="eye" :size="11" />
+            {{ previewBusy === aid ? '载入中…' : `资产 #${aid}` }}
+          </button>
+        </div>
+      </details>
+      <details class="raw">
+        <summary>输入 / 输出快照</summary>
+        <pre>{{ inputPretty(s) }}</pre>
+        <pre v-if="s.output">{{ outputPretty(s) }}</pre>
+      </details>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -189,7 +239,9 @@ const { badges, deriveOpen, hasFinalVideo } = props.e
   padding: 2px 9px;
   border-radius: 999px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .prod:hover {
@@ -253,5 +305,4 @@ const { badges, deriveOpen, hasFinalVideo } = props.e
   color: var(--ok);
   border-color: rgb(34 197 94 / 22%);
 }
-
 </style>

@@ -92,7 +92,10 @@ function doCreate() {
     return
   }
   void guard(async () => {
-    const r = await seriesApi.create(props.projectId, { name, total_episodes: total })
+    const r = await seriesApi.create(props.projectId, {
+      name,
+      total_episodes: total,
+    })
     series.value = r.series
     episodes.value = r.episodes
     createOpen.value = false
@@ -171,13 +174,36 @@ async function doRemoveEpisode(e: Episode) {
   <div class="panel block">
     <div class="bh">
       <span class="bt">剧集地图</span>
-      <span v-if="series" class="muted">{{ series.name }} · {{ episodes.length }} 集</span>
+      <span v-if="series" class="muted"
+        >{{ series.name }} · {{ episodes.length }} 集</span
+      >
       <div v-if="series" class="sb-ops">
-        <button class="btn sm" :disabled="busy" title="追加一集" @click="doChangeTotal(1)">+1 集</button>
-        <button class="btn sm" :disabled="busy" title="删减一集（该集需未关联 run / 资产）" @click="doChangeTotal(-1)">−1 集</button>
-        <button class="btn sm danger" :disabled="busy" @click="doRemoveSeries">删剧</button>
+        <button
+          class="btn sm"
+          :disabled="busy"
+          title="追加一集"
+          @click="doChangeTotal(1)"
+        >
+          +1 集
+        </button>
+        <button
+          class="btn sm"
+          :disabled="busy"
+          title="删减一集（该集需未关联 run / 资产）"
+          @click="doChangeTotal(-1)"
+        >
+          −1 集
+        </button>
+        <button class="btn sm danger" :disabled="busy" @click="doRemoveSeries">
+          删剧
+        </button>
       </div>
-      <button v-else class="btn sm primary" style="margin-left: auto" @click="openCreate">
+      <button
+        v-else
+        class="btn sm primary"
+        style="margin-left: auto"
+        @click="openCreate"
+      >
         <Icon name="plus" :size="12" :stroke-width="2.2" /> 建立剧集地图
       </button>
     </div>
@@ -186,19 +212,29 @@ async function doRemoveEpisode(e: Episode) {
 
     <!-- 建剧表单 -->
     <div v-if="createOpen && !series" class="sb-create">
-      <label class="fld">剧名
-        <input v-model="cName" placeholder="如 萌宝镖客" @keyup.enter="doCreate" />
+      <label class="fld"
+        >剧名
+        <input
+          v-model="cName"
+          placeholder="如 萌宝镖客"
+          @keyup.enter="doCreate"
+        />
       </label>
-      <label class="fld">计划集数
+      <label class="fld"
+        >计划集数
         <input v-model="cTotal" type="number" min="1" max="999" />
       </label>
       <div class="sb-create-ops">
         <button class="btn" @click="createOpen = false">取消</button>
-        <button class="btn primary" :disabled="busy" @click="doCreate">{{ busy ? '建立中…' : '建立（生成 1..N 集）' }}</button>
+        <button class="btn primary" :disabled="busy" @click="doCreate">
+          {{ busy ? '建立中…' : '建立（生成 1..N 集）' }}
+        </button>
       </div>
     </div>
 
-    <div v-else-if="loading && !series" class="empty" style="padding: 14px 0">加载中…</div>
+    <div v-else-if="loading && !series" class="empty" style="padding: 14px 0">
+      加载中…
+    </div>
 
     <!-- 集列表 -->
     <div v-else-if="series" class="ep-list">
@@ -213,11 +249,22 @@ async function doRemoveEpisode(e: Episode) {
             @keyup.enter="saveEdit(e)"
             @blur="saveEdit(e)"
           />
-          <button v-else class="lnk" title="点击编辑集标题" @click="beginEdit(e)">{{ e.title || '未命名' }}</button>
+          <button
+            v-else
+            class="lnk"
+            title="点击编辑集标题"
+            @click="beginEdit(e)"
+          >
+            {{ e.title || '未命名' }}
+          </button>
         </span>
-        <span class="badge" :class="epStatus(e).cls">{{ epStatus(e).text }}</span>
+        <span class="badge" :class="epStatus(e).cls">{{
+          epStatus(e).text
+        }}</span>
         <span class="ep-run muted mono">
-          <RouterLink v-if="e.latestRunId" :to="`/runs/${e.latestRunId}`">Run #{{ e.latestRunId }}</RouterLink>
+          <RouterLink v-if="e.latestRunId" :to="`/runs/${e.latestRunId}`"
+            >Run #{{ e.latestRunId }}</RouterLink
+          >
           <template v-else>—</template>
         </span>
         <select
@@ -232,8 +279,16 @@ async function doRemoveEpisode(e: Episode) {
           <option value="done">已完成</option>
         </select>
         <span class="ep-ops">
-          <button class="btn sm" :disabled="busy" @click="startEpisode(e)">起作</button>
-          <button class="btn sm danger" :disabled="busy" @click="doRemoveEpisode(e)">删</button>
+          <button class="btn sm" :disabled="busy" @click="startEpisode(e)">
+            起作
+          </button>
+          <button
+            class="btn sm danger"
+            :disabled="busy"
+            @click="doRemoveEpisode(e)"
+          >
+            删
+          </button>
         </span>
       </div>
     </div>

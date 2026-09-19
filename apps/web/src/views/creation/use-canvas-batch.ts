@@ -5,8 +5,11 @@ import type { CanvasArrangeMode } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'nodes' | 'history' | 'toast' | 'selectedIds'>
-  & Pick<CanvasDocument, 'loadDoc'>
+type Dependencies = Pick<
+  CanvasState,
+  'canvasId' | 'nodes' | 'history' | 'toast' | 'selectedIds'
+> &
+  Pick<CanvasDocument, 'loadDoc'>
 
 export function useCanvasBatch(deps: Dependencies) {
   const { canvasId, nodes, history, loadDoc, toast, selectedIds } = deps
@@ -26,14 +29,22 @@ export function useCanvasBatch(deps: Dependencies) {
   const batchBusy = ref(false)
 
   /** 整理/对齐/分布（positions 快照入栈；失败 toast） */
-  async function runArrange(mode: CanvasArrangeMode, nodeIds?: number[]): Promise<void> {
+  async function runArrange(
+    mode: CanvasArrangeMode,
+    nodeIds?: number[],
+  ): Promise<void> {
     const cid = canvasId.value
     if (cid == null || !nodes.value.length) return
     batchBusy.value = true
     try {
-      const targets = nodeIds ? nodes.value.filter((n) => nodeIds.includes(n.id)) : nodes.value
+      const targets = nodeIds
+        ? nodes.value.filter((n) => nodeIds.includes(n.id))
+        : nodes.value
       const before = targets.map((n) => ({ id: n.id, x: n.x, y: n.y }))
-      const r = await creationApi.arrange(cid, mode === 'grid' ? { mode, nodeIds, sortBy: 'seq' } : { mode, nodeIds })
+      const r = await creationApi.arrange(
+        cid,
+        mode === 'grid' ? { mode, nodeIds, sortBy: 'seq' } : { mode, nodeIds },
+      )
       const after = r.positions
       history.push({
         label: ARRANGE_LABEL[mode],
@@ -118,7 +129,11 @@ export function useCanvasBatch(deps: Dependencies) {
         },
       })
       await loadDoc(true)
-      toast(r.skipped.length ? `已串联 ${created.length} 条边，跳过 ${r.skipped.length} 对` : `已串联 ${created.length} 条边`)
+      toast(
+        r.skipped.length
+          ? `已串联 ${created.length} 条边，跳过 ${r.skipped.length} 对`
+          : `已串联 ${created.length} 条边`,
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
     } finally {
@@ -135,9 +150,15 @@ export function useCanvasBatch(deps: Dependencies) {
     try {
       const r = await creationApi.runBatch(cid, { nodeIds: ids })
       await loadDoc(true)
-      if (r.started.length && r.skipped.length) toast(`已入队 ${r.started.length} 个节点，跳过 ${r.skipped.length} 个（未就绪）`)
+      if (r.started.length && r.skipped.length)
+        toast(
+          `已入队 ${r.started.length} 个节点，跳过 ${r.skipped.length} 个（未就绪）`,
+        )
       else if (r.started.length) toast(`已入队 ${r.started.length} 个节点执行`)
-      else toast(`无可执行节点：${r.skipped[0]?.problems.join('；') ?? '均未就绪'}`)
+      else
+        toast(
+          `无可执行节点：${r.skipped[0]?.problems.join('；') ?? '均未就绪'}`,
+        )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
     } finally {
@@ -148,7 +169,11 @@ export function useCanvasBatch(deps: Dependencies) {
   // ===== [M18] 一键停止全部（画布级在途任务；socket canvas.changed 驱动可见性） =====
   /** 在途 gen 任务（pending/processing；doc 由 socket 静默重拉） */
   const hasLiveTasks = computed(() =>
-    nodes.value.some((n) => n.kind === 'gen' && (n.status === 'pending' || n.status === 'processing')),
+    nodes.value.some(
+      (n) =>
+        n.kind === 'gen' &&
+        (n.status === 'pending' || n.status === 'processing'),
+    ),
   )
   const cancelAllBusy = ref(false)
 
@@ -159,7 +184,11 @@ export function useCanvasBatch(deps: Dependencies) {
     try {
       const r = await creationApi.cancelTasks(cid)
       await loadDoc(true)
-      toast(r.cancelled > 0 ? `已停止 ${r.cancelled} 个在途任务` : '当前没有在途任务')
+      toast(
+        r.cancelled > 0
+          ? `已停止 ${r.cancelled} 个在途任务`
+          : '当前没有在途任务',
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
     } finally {

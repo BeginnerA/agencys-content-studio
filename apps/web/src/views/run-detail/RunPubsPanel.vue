@@ -7,29 +7,41 @@ const { showPublish, publications, assetNameOf, removePub } = props.e
 </script>
 
 <template>
-          <!-- [M4] 发布记录（本 run 登记） -->
-          <div class="panel mini">
-            <div class="lhead">
-              <span class="lt">发布记录</span>
-              <button class="btn sm" @click="showPublish = true">
-                <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
-              </button>
-            </div>
-            <div v-if="publications.length" class="mrows">
-              <div v-for="pub in publications" :key="pub.id" class="mrow">
-                <span class="badge">{{ PLATFORM_TEXT[pub.platform] ?? pub.platform }}</span>
-                <span class="muted">{{ assetNameOf(pub.assetId) }}</span>
-                <span class="muted">{{ pub.publishedAt ? fmtTime(pub.publishedAt) : '—' }}</span>
-                <span class="muted mono">播放 {{ pub.metrics?.views ?? 0 }}</span>
-                <span class="grow" />
-                <a v-if="pub.url" :href="pub.url" target="_blank" rel="noopener" title="打开链接">
-                  <Icon name="external" :size="12" />
-                </a>
-                <button class="btn sm danger" @click="removePub(pub)">删除</button>
-              </div>
-            </div>
-            <div v-else class="empty" style="padding: 10px 0">未登记发布——发布后回来标记，积累复盘数据</div>
-          </div>
+  <!-- [M4] 发布记录（本 run 登记） -->
+  <div class="panel mini">
+    <div class="lhead">
+      <span class="lt">发布记录</span>
+      <button class="btn sm" @click="showPublish = true">
+        <Icon name="plus" :size="12" :stroke-width="2.2" /> 标记发布
+      </button>
+    </div>
+    <div v-if="publications.length" class="mrows">
+      <div v-for="pub in publications" :key="pub.id" class="mrow">
+        <span class="badge">{{
+          PLATFORM_TEXT[pub.platform] ?? pub.platform
+        }}</span>
+        <span class="muted">{{ assetNameOf(pub.assetId) }}</span>
+        <span class="muted">{{
+          pub.publishedAt ? fmtTime(pub.publishedAt) : '—'
+        }}</span>
+        <span class="muted mono">播放 {{ pub.metrics?.views ?? 0 }}</span>
+        <span class="grow" />
+        <a
+          v-if="pub.url"
+          :href="pub.url"
+          target="_blank"
+          rel="noopener"
+          title="打开链接"
+        >
+          <Icon name="external" :size="12" />
+        </a>
+        <button class="btn sm danger" @click="removePub(pub)">删除</button>
+      </div>
+    </div>
+    <div v-else class="empty" style="padding: 10px 0">
+      未登记发布——发布后回来标记，积累复盘数据
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -69,5 +81,4 @@ const { showPublish, publications, assetNameOf, removePub } = props.e
   font-weight: 600;
   font-size: 13px;
 }
-
 </style>

@@ -3,23 +3,45 @@ import { io, type Socket } from 'socket.io-client'
 /** /studio 命名空间单例（lazy 连接） */
 let socket: Socket | null = null
 export function getSocket(): Socket {
-  if (!socket) socket = io('/studio', { autoConnect: true, transports: ['websocket'] })
+  if (!socket)
+    socket = io('/studio', { autoConnect: true, transports: ['websocket'] })
   return socket
 }
 
 /** 与 server services/events.ts 的 StudioEvent 逐字段对齐（camelCase；server 单通道 'studio.event'） */
 export interface StudioEventMap {
   'run.started': { runId: number; projectId: number; stepCount: number }
-  'run.step': { runId: number; step: { id: number; key: string; action: string; status: string } }
+  'run.step': {
+    runId: number
+    step: { id: number; key: string; action: string; status: string }
+  }
   'step.log': { runId: number; stepId: number; seq: number; chunk: string }
   'run.gate': { runId: number; stepKey: string; message: string }
   'run.completed': { runId: number }
   'run.failed': { runId: number; stepKey: string; error: string }
-  'task.updated': { runId: number | null; taskId: number; status: string; error?: string }
-  'batch.updated': { runId: number | null; batchId: number; projectId: number; status: string; finished: number; total: number }
+  'task.updated': {
+    runId: number | null
+    taskId: number
+    status: string
+    error?: string
+  }
+  'batch.updated': {
+    runId: number | null
+    batchId: number
+    projectId: number
+    status: string
+    finished: number
+    total: number
+  }
   'canvas.changed': { canvasId: number; projectId: number; nodeId?: number }
   /** [M19 P6] 素材参考图批量生成（无 run；投递 project:{id} room） */
-  'entity.ref_gen': { projectId: number; taskId: number; entityId: number; status: string; error?: string }
+  'entity.ref_gen': {
+    projectId: number
+    taskId: number
+    entityId: number
+    status: string
+    error?: string
+  }
 }
 
 export type StudioEventName = keyof StudioEventMap
@@ -28,11 +50,17 @@ type Handler<K extends StudioEventName> = (payload: StudioEventMap[K]) => void
 // ---- 按 type 分发表（修复断链：此前前端 s.on('run.step')，server 只发 'studio.event' 单通道）----
 const byType = new Map<StudioEventName, Set<(payload: unknown) => void>>()
 
-function subscribe<K extends StudioEventName>(event: K, handler: Handler<K>): void {
+function subscribe<K extends StudioEventName>(
+  event: K,
+  handler: Handler<K>,
+): void {
   if (!byType.has(event)) byType.set(event, new Set())
   byType.get(event)!.add(handler as (payload: unknown) => void)
 }
-function unsubscribe<K extends StudioEventName>(event: K, handler: Handler<K>): void {
+function unsubscribe<K extends StudioEventName>(
+  event: K,
+  handler: Handler<K>,
+): void {
   byType.get(event)?.delete(handler as (payload: unknown) => void)
 }
 
@@ -55,11 +83,17 @@ function wire(): void {
 }
 
 /** 全局订阅/退订（无需 room 语义；TaskPanel 等「已由父级 join」场景用） */
-export function studioOn<K extends StudioEventName>(event: K, handler: Handler<K>): void {
+export function studioOn<K extends StudioEventName>(
+  event: K,
+  handler: Handler<K>,
+): void {
   wire()
   subscribe(event, handler)
 }
-export function studioOff<K extends StudioEventName>(event: K, handler: Handler<K>): void {
+export function studioOff<K extends StudioEventName>(
+  event: K,
+  handler: Handler<K>,
+): void {
   unsubscribe(event, handler)
 }
 

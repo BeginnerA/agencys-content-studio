@@ -24,14 +24,20 @@ export interface EdgePath {
   to: string
 }
 
-export function useCanvasLayout(props: { nodes: CanvasBoardNode[]; edges: CanvasEdge[]; mode: 'run' | 'template' }) {
+export function useCanvasLayout(props: {
+  nodes: CanvasBoardNode[]
+  edges: CanvasEdge[]
+  mode: 'run' | 'template'
+}) {
   // ---- 布局：sched 边最长路径 ----
   const layout = computed(() => {
     const nodes = props.nodes
     const level = new Map<string, number>()
     for (const n of nodes) level.set(n.key, 0)
     const keySet = new Set(nodes.map((n) => n.key))
-    const sched = props.edges.filter((e) => e.type === 'sched' && keySet.has(e.from) && keySet.has(e.to))
+    const sched = props.edges.filter(
+      (e) => e.type === 'sched' && keySet.has(e.from) && keySet.has(e.to),
+    )
     for (let round = 0; round < nodes.length; round++) {
       let changed = false
       for (const e of sched) {
@@ -59,9 +65,15 @@ export function useCanvasLayout(props: { nodes: CanvasBoardNode[]; edges: Canvas
     for (const [l, arr] of byLevel) {
       arr.sort((a, b) => a.seq - b.seq)
       const off = ((maxRows - arr.length) * ROW_GAP) / 2
-      arr.forEach((n, i) => pos.set(n.key, { x: l * COL_GAP, y: off + i * ROW_GAP }))
+      arr.forEach((n, i) =>
+        pos.set(n.key, { x: l * COL_GAP, y: off + i * ROW_GAP }),
+      )
     }
-    return { pos, width: maxLevel * COL_GAP + NODE_W, height: (maxRows - 1) * ROW_GAP + NODE_H }
+    return {
+      pos,
+      width: maxLevel * COL_GAP + NODE_W,
+      height: (maxRows - 1) * ROW_GAP + NODE_H,
+    }
   })
 
   const worldW = computed(() => layout.value.width + PAD * 2)
@@ -70,7 +82,12 @@ export function useCanvasLayout(props: { nodes: CanvasBoardNode[]; edges: Canvas
   function nodeStyle(key: string): Record<string, string> {
     const p = layout.value.pos.get(key)
     if (!p) return { display: 'none' }
-    return { left: `${PAD + p.x}px`, top: `${PAD + p.y}px`, width: `${NODE_W}px`, minHeight: `${NODE_H}px` }
+    return {
+      left: `${PAD + p.x}px`,
+      top: `${PAD + p.y}px`,
+      width: `${NODE_W}px`,
+      minHeight: `${NODE_H}px`,
+    }
   }
 
   // ---- 边路径（锚点右中 → 左中）----
@@ -91,13 +108,18 @@ export function useCanvasLayout(props: { nodes: CanvasBoardNode[]; edges: Canvas
         k: `${e.from}|${e.to}|${e.type}`,
         d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
         type: e.type,
-        flowing: props.mode === 'run' && e.type === 'sched' && statusByKey.get(e.to) === 'running',
+        flowing:
+          props.mode === 'run' &&
+          e.type === 'sched' &&
+          statusByKey.get(e.to) === 'running',
         from: e.from,
         to: e.to,
       })
     }
     // sched 在下、data 在上（同对混合双保留时数据边可见）
-    return out.sort((a, b) => (a.type === b.type ? 0 : a.type === 'sched' ? -1 : 1))
+    return out.sort((a, b) =>
+      a.type === b.type ? 0 : a.type === 'sched' ? -1 : 1,
+    )
   })
 
   return { layout, worldW, worldH, nodeStyle, edgePaths }

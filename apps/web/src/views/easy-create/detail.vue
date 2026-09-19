@@ -19,11 +19,28 @@ const hasPlan = computed(() => !!detail.value?.session.plan)
 const projectId = computed(() => session.value?.projectId ?? null)
 
 // 状态徽标（与列表页共用 creationStatusLabel/Tone）：ready 但预检未过时显「待完善配置」；started 控制态按 run 真实状态派生（progress 已带 run 状态）
-const confirmable = computed(() => session.value?.status === 'ready' && session.value?.preflight?.ready === true)
+const confirmable = computed(
+  () =>
+    session.value?.status === 'ready' &&
+    session.value?.preflight?.ready === true,
+)
 const statusLabel = computed(() =>
-  session.value ? creationStatusLabel(session.value.status, confirmable.value, detail.value?.progress?.status ?? null) : '')
+  session.value
+    ? creationStatusLabel(
+        session.value.status,
+        confirmable.value,
+        detail.value?.progress?.status ?? null,
+      )
+    : '',
+)
 const statusBadge = computed(() =>
-  session.value ? creationStatusTone(session.value.status, detail.value?.progress?.status ?? null) : 'pending')
+  session.value
+    ? creationStatusTone(
+        session.value.status,
+        detail.value?.progress?.status ?? null,
+      )
+    : 'pending',
+)
 
 function load(): void {
   if (id.value) void s.open(id.value)
@@ -42,7 +59,9 @@ onUnmounted(() => s.leave())
       </RouterLink>
       <span class="sep" aria-hidden="true" />
       <div class="wt">
-        <span v-if="session" class="badge" :class="statusBadge">{{ statusLabel }}</span>
+        <span v-if="session" class="badge" :class="statusBadge">{{
+          statusLabel
+        }}</span>
         <span class="wname">{{ session?.plan?.title || '创作会话' }}</span>
       </div>
       <nav class="wlinks" aria-label="专业工作台">
@@ -63,10 +82,15 @@ onUnmounted(() => s.leave())
         <CreationResult :s="s" />
         <CreationProgress :s="s" />
         <CreationPlanCard v-if="hasPlan" :s="s" />
-        <div v-if="!hasPlan && !detail?.progress && !detail?.result" class="panel idle">
+        <div
+          v-if="!hasPlan && !detail?.progress && !detail?.result"
+          class="panel idle"
+        >
           <Icon name="wand" :size="22" />
           <p class="idle-t">策划助手正在听你描述</p>
-          <p class="muted">左侧继续补充需求，方案会在这里生成。确认方案前不会产生媒体制作费用。</p>
+          <p class="muted">
+            左侧继续补充需求，方案会在这里生成。确认方案前不会产生媒体制作费用。
+          </p>
         </div>
       </div>
     </div>
@@ -91,7 +115,8 @@ onUnmounted(() => s.leave())
   flex-wrap: wrap;
   padding: 11px 16px;
   border-radius: 12px;
-  background: linear-gradient(180deg, rgb(99 102 241 / 6%), transparent 60%), var(--panel);
+  background:
+    linear-gradient(180deg, rgb(99 102 241 / 6%), transparent 60%), var(--panel);
 }
 
 .back {
@@ -104,7 +129,9 @@ onUnmounted(() => s.leave())
   white-space: nowrap;
   padding: 3px 6px 3px 2px;
   border-radius: 7px;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .back:hover {
@@ -153,7 +180,10 @@ onUnmounted(() => s.leave())
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-2);
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 
 .wl:hover {

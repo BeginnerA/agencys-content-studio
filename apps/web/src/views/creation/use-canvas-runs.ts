@@ -5,21 +5,49 @@ import type { CanvasState } from './use-canvas-state'
 import type { CanvasCommands } from './use-canvas-commands'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'nodes' | 'doc' | 'selNode' | 'toast' | 'activeProjectId' | 'canvasId' | 'boardRef'>
-  & Pick<CanvasCommands, 'addNodesCommand'>
-  & Pick<CanvasDocument, 'loadDoc'>
+type Dependencies = Pick<
+  CanvasState,
+  | 'nodes'
+  | 'doc'
+  | 'selNode'
+  | 'toast'
+  | 'activeProjectId'
+  | 'canvasId'
+  | 'boardRef'
+> &
+  Pick<CanvasCommands, 'addNodesCommand'> &
+  Pick<CanvasDocument, 'loadDoc'>
 
 export function useCanvasRuns(deps: Dependencies) {
-  const { nodes, doc, selNode, toast, activeProjectId, canvasId, boardRef, addNodesCommand, loadDoc } = deps
+  const {
+    nodes,
+    doc,
+    selNode,
+    toast,
+    activeProjectId,
+    canvasId,
+    boardRef,
+    addNodesCommand,
+    loadDoc,
+  } = deps
 
   // ===== [M17] run 节点轮询（存在非终态 run 时 5s；终态自动停） =====
-  const RUN_TEXT: Record<string, string> = { queued: '排队', running: '运行中', waiting_input: '待输入', completed: '完成', failed: '失败', cancelled: '已取消' }
+  const RUN_TEXT: Record<string, string> = {
+    queued: '排队',
+    running: '运行中',
+    waiting_input: '待输入',
+    completed: '完成',
+    failed: '失败',
+    cancelled: '已取消',
+  }
   const RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled'])
   let runPollTimer: number | null = null
   let runPollBusy = false
 
   function syncRunPoll(): void {
-    const live = nodes.value.some((n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status))
+    const live = nodes.value.some(
+      (n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status),
+    )
     if (live && runPollTimer == null) {
       runPollTimer = window.setInterval(() => void pollRuns(), 5000)
     } else if (!live && runPollTimer != null) {
@@ -30,14 +58,18 @@ export function useCanvasRuns(deps: Dependencies) {
 
   async function pollRuns(): Promise<void> {
     if (runPollBusy || !doc.value) return
-    const live = nodes.value.filter((n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status))
+    const live = nodes.value.filter(
+      (n) => n.kind === 'run' && n.run && !RUN_TERMINAL.has(n.run.status),
+    )
     if (!live.length) {
       syncRunPoll()
       return
     }
     runPollBusy = true
     try {
-      const details = await Promise.all(live.map((n) => runApi.detail(n.run!.id)))
+      const details = await Promise.all(
+        live.map((n) => runApi.detail(n.run!.id)),
+      )
       if (!doc.value) return
       const byId = new Map(details.map((d) => [d.run.id, d]))
       doc.value = {
@@ -46,7 +78,9 @@ export function useCanvasRuns(deps: Dependencies) {
           if (n.kind !== 'run' || !n.run) return n
           const d = byId.get(n.run.id)
           if (!d) return n
-          const succeeded = d.steps.filter((s) => s.status === 'succeeded').length
+          const succeeded = d.steps.filter(
+            (s) => s.status === 'succeeded',
+          ).length
           return {
             ...n,
             run: {
@@ -73,17 +107,25 @@ export function useCanvasRuns(deps: Dependencies) {
   const showRun = ref(false)
   const runAssetIds = computed<number[]>(() => {
     const sel = selNode.value
-    if (sel && sel.assetId != null && (sel.kind === 'asset' || sel.status === 'succeeded')) return [sel.assetId]
+    if (
+      sel &&
+      sel.assetId != null &&
+      (sel.kind === 'asset' || sel.status === 'succeeded')
+    )
+      return [sel.assetId]
     const ids: number[] = []
     for (const n of nodes.value) {
       if (n.assetId == null) continue
       if (n.kind !== 'asset' && n.status !== 'succeeded') continue
-      if (n.asset && n.asset.kind !== 'image' && n.asset.kind !== 'text') continue
+      if (n.asset && n.asset.kind !== 'image' && n.asset.kind !== 'text')
+        continue
       ids.push(n.assetId)
     }
     return ids
   })
-  const runPrefillInput = computed<Record<string, unknown>>(() => ({ setting_docs: runAssetIds.value }))
+  const runPrefillInput = computed<Record<string, unknown>>(() => ({
+    setting_docs: runAssetIds.value,
+  }))
 
   function openSendRun(): void {
     if (!runAssetIds.value.length) {
@@ -103,7 +145,11 @@ export function useCanvasRuns(deps: Dependencies) {
     const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
     void (async () => {
       try {
-        await addNodesCommand(cid, [{ kind: 'run', runId: id, x: at.x, y: at.y }], '新建运行节点')
+        await addNodesCommand(
+          cid,
+          [{ kind: 'run', runId: id, x: at.x, y: at.y }],
+          '新建运行节点',
+        )
         await loadDoc(true)
         toast(`已启动运行 #${id}，已加入运行节点（进度自动刷新）`)
       } catch (e) {

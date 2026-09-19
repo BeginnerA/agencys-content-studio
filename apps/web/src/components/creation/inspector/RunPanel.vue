@@ -15,39 +15,72 @@ const form = props.form
 </script>
 
 <template>
-      <!-- ===== [M17] run 节点：内嵌运行 ===== -->
-      <template v-if="node.kind === 'run'">
-        <section class="sec">
-          <div class="sec-h">运行</div>
-          <template v-if="node.run">
-            <div class="kvs">
-              <div class="kv"><span class="k">运行</span><span class="v mono">#{{ node.run.id }}</span></div>
-              <div class="kv"><span class="k">模板</span><span class="v mono">{{ node.run.templateKey }}</span></div>
-              <div class="kv">
-                <span class="k">状态</span>
-                <span class="v">
-                  <span class="badge" :class="RUN_CLS[node.run.status] ?? 'pending'">
-                    {{ RUN_TEXT[node.run.status] ?? node.run.status }}
-                  </span>
-                </span>
-              </div>
-              <div class="kv"><span class="k">步骤</span><span class="v mono">{{ node.run.steps.succeeded }}/{{ node.run.steps.total }} 成功</span></div>
-              <div v-if="node.run.startedAt" class="kv"><span class="k">开始</span><span class="v mono">{{ fmtTime(node.run.startedAt) }}</span></div>
-              <div v-if="node.run.completedAt" class="kv"><span class="k">结束</span><span class="v mono">{{ fmtTime(node.run.completedAt) }}</span></div>
-            </div>
-            <div class="ops">
-              <button type="button" class="btn sm" @click="openRunDetail">
-                <Icon name="doc" :size="12" /> 打开运行详情
-              </button>
-              <button v-if="form.canCancelRun" type="button" class="btn sm danger" :disabled="form.opBusy" @click="cancelRun">
-                <Icon name="stop" :size="12" /> 取消运行
-              </button>
-            </div>
-            <div class="muted mini">画布内进度由轮询实时更新；详情页可查看每步输入输出。</div>
-          </template>
-          <div v-else class="err-text">运行数据缺失或被删除（可能已超出保留期）</div>
-        </section>
+  <!-- ===== [M17] run 节点：内嵌运行 ===== -->
+  <template v-if="node.kind === 'run'">
+    <section class="sec">
+      <div class="sec-h">运行</div>
+      <template v-if="node.run">
+        <div class="kvs">
+          <div class="kv">
+            <span class="k">运行</span
+            ><span class="v mono">#{{ node.run.id }}</span>
+          </div>
+          <div class="kv">
+            <span class="k">模板</span
+            ><span class="v mono">{{ node.run.templateKey }}</span>
+          </div>
+          <div class="kv">
+            <span class="k">状态</span>
+            <span class="v">
+              <span
+                class="badge"
+                :class="RUN_CLS[node.run.status] ?? 'pending'"
+              >
+                {{ RUN_TEXT[node.run.status] ?? node.run.status }}
+              </span>
+            </span>
+          </div>
+          <div class="kv">
+            <span class="k">步骤</span
+            ><span class="v mono"
+              >{{ node.run.steps.succeeded }}/{{
+                node.run.steps.total
+              }}
+              成功</span
+            >
+          </div>
+          <div v-if="node.run.startedAt" class="kv">
+            <span class="k">开始</span
+            ><span class="v mono">{{ fmtTime(node.run.startedAt) }}</span>
+          </div>
+          <div v-if="node.run.completedAt" class="kv">
+            <span class="k">结束</span
+            ><span class="v mono">{{ fmtTime(node.run.completedAt) }}</span>
+          </div>
+        </div>
+        <div class="ops">
+          <button type="button" class="btn sm" @click="openRunDetail">
+            <Icon name="doc" :size="12" /> 打开运行详情
+          </button>
+          <button
+            v-if="form.canCancelRun"
+            type="button"
+            class="btn sm danger"
+            :disabled="form.opBusy"
+            @click="cancelRun"
+          >
+            <Icon name="stop" :size="12" /> 取消运行
+          </button>
+        </div>
+        <div class="muted mini">
+          画布内进度由轮询实时更新；详情页可查看每步输入输出。
+        </div>
       </template>
+      <div v-else class="err-text">
+        运行数据缺失或被删除（可能已超出保留期）
+      </div>
+    </section>
+  </template>
 </template>
 
 <style scoped>
@@ -104,5 +137,4 @@ const form = props.form
   color: var(--text-2);
   word-break: break-all;
 }
-
 </style>

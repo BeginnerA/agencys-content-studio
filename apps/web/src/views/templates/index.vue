@@ -15,8 +15,28 @@ const tab = ref<'tpl' | 'prompt'>('tpl')
 
 const t = useTemplates()
 const p = usePrompts({ refreshMetas: t.refreshMetas })
-const { helpDlg, newDlg, newKey, newErr, creating, copyDlg, copyKey, copyErr, copying, doCreate, doCopy, refreshMetas } = t
-const { newPromptDlg, newPromptName, newPromptErr, newPromptCreating, doCreatePrompt, refreshPrompts } = p
+const {
+  helpDlg,
+  newDlg,
+  newKey,
+  newErr,
+  creating,
+  copyDlg,
+  copyKey,
+  copyErr,
+  copying,
+  doCreate,
+  doCopy,
+  refreshMetas,
+} = t
+const {
+  newPromptDlg,
+  newPromptName,
+  newPromptErr,
+  newPromptCreating,
+  doCreatePrompt,
+  refreshPrompts,
+} = p
 
 onMounted(() => {
   void refreshMetas(true)
@@ -72,19 +92,44 @@ onMounted(() => {
     <Modal v-if="newDlg" title="新建模板" :width="500" @close="newDlg = false">
       <label class="fld">
         key（文件名，仅字母/数字/下划线/中划线）
-        <input v-model="newKey" type="text" placeholder="my-template" @keydown.enter="doCreate" />
+        <input
+          v-model="newKey"
+          type="text"
+          placeholder="my-template"
+          @keydown.enter="doCreate"
+        />
       </label>
-      <div class="muted" style="margin-bottom: 10px">将以最小骨架创建（从素材导入起步），创建后直接进入编辑器。</div>
+      <div class="muted" style="margin-bottom: 10px">
+        将以最小骨架创建（从素材导入起步），创建后直接进入编辑器。
+      </div>
 
       <div class="caps">
         <div class="caps-h">一个模板可以配置什么？</div>
         <ul class="caps-list">
-          <li><span class="caps-t">启动表单</span>——运行时先让使用者填写的内容（文字 / 数字 / 开关 / 文件）</li>
-          <li><span class="caps-t">流水线步骤</span>——按顺序执行的动作：写稿、出图、配音、合成……</li>
-          <li><span class="caps-t">人工审阅闸门</span>——关键步骤暂停，等你批准 / 驳回 / 跳过</li>
-          <li><span class="caps-t">批量与条件</span>——数组字段逐项批量执行；满足条件才执行某一步</li>
-          <li><span class="caps-t">默认参数</span>——模型 / 音色 / 尺寸等预设，可在项目里覆盖</li>
-          <li><span class="caps-t">上下游接力</span>——完成后推荐下一个模板（运行页「下一步建议」）</li>
+          <li>
+            <span class="caps-t">启动表单</span
+            >——运行时先让使用者填写的内容（文字 / 数字 / 开关 / 文件）
+          </li>
+          <li>
+            <span class="caps-t">流水线步骤</span
+            >——按顺序执行的动作：写稿、出图、配音、合成……
+          </li>
+          <li>
+            <span class="caps-t">人工审阅闸门</span>——关键步骤暂停，等你批准 /
+            驳回 / 跳过
+          </li>
+          <li>
+            <span class="caps-t">批量与条件</span
+            >——数组字段逐项批量执行；满足条件才执行某一步
+          </li>
+          <li>
+            <span class="caps-t">默认参数</span>——模型 / 音色 /
+            尺寸等预设，可在项目里覆盖
+          </li>
+          <li>
+            <span class="caps-t">上下游接力</span
+            >——完成后推荐下一个模板（运行页「下一步建议」）
+          </li>
         </ul>
         <div class="caps-tip">改完点「字段速查」可查每个字段怎么填。</div>
       </div>
@@ -98,12 +143,19 @@ onMounted(() => {
     </Modal>
 
     <!-- 另存为副本 -->
-    <Modal v-if="copyDlg" title="另存为副本" :width="420" @close="copyDlg = false">
+    <Modal
+      v-if="copyDlg"
+      title="另存为副本"
+      :width="420"
+      @close="copyDlg = false"
+    >
       <label class="fld">
         新 key
         <input v-model="copyKey" type="text" @keydown.enter="doCopy" />
       </label>
-      <div class="muted" style="margin-bottom: 8px">当前编辑器内容将存为新模板（yaml 内 key 同步替换）</div>
+      <div class="muted" style="margin-bottom: 8px">
+        当前编辑器内容将存为新模板（yaml 内 key 同步替换）
+      </div>
       <div v-if="copyErr" class="err-text">{{ copyErr }}</div>
       <template #footer>
         <button class="btn" @click="copyDlg = false">取消</button>
@@ -114,16 +166,32 @@ onMounted(() => {
     </Modal>
 
     <!-- 新建提示词 -->
-    <Modal v-if="newPromptDlg" title="新建提示词" :width="460" @close="newPromptDlg = false">
+    <Modal
+      v-if="newPromptDlg"
+      title="新建提示词"
+      :width="460"
+      @close="newPromptDlg = false"
+    >
       <label class="fld">
         文件相对路径（支持子目录）
-        <input v-model="newPromptName" type="text" placeholder="cover-talking.md" @keydown.enter="doCreatePrompt" />
+        <input
+          v-model="newPromptName"
+          type="text"
+          placeholder="cover-talking.md"
+          @keydown.enter="doCreatePrompt"
+        />
       </label>
-      <div class="muted" style="margin-bottom: 8px">将在 workspace/prompts 下创建空文件（限定目录内，防越界）</div>
+      <div class="muted" style="margin-bottom: 8px">
+        将在 workspace/prompts 下创建空文件（限定目录内，防越界）
+      </div>
       <div v-if="newPromptErr" class="err-text">{{ newPromptErr }}</div>
       <template #footer>
         <button class="btn" @click="newPromptDlg = false">取消</button>
-        <button class="btn primary" :disabled="newPromptCreating" @click="doCreatePrompt">
+        <button
+          class="btn primary"
+          :disabled="newPromptCreating"
+          @click="doCreatePrompt"
+        >
           {{ newPromptCreating ? '创建中…' : '创建' }}
         </button>
       </template>
@@ -155,7 +223,9 @@ onMounted(() => {
   padding: 5px 13px;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tab:hover {
@@ -164,7 +234,11 @@ onMounted(() => {
 }
 
 .tab.on {
-  background: linear-gradient(135deg, rgb(139 92 246 / 26%), rgb(79 70 229 / 22%));
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 26%),
+    rgb(79 70 229 / 22%)
+  );
   color: #fff;
 }
 

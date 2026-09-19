@@ -5,25 +5,27 @@ const { visible, selectedKey, selectedProvider, railStatus } = props.s
 </script>
 
 <template>
-        <aside class="panel rail" aria-label="供应商列表">
-          <div class="rhead">供应商（{{ visible.length }}）</div>
-          <button
-            v-for="p in visible"
-            :key="p.key"
-            class="item"
-            :class="{ active: selectedProvider?.key === p.key }"
-            :aria-current="selectedProvider?.key === p.key ? 'true' : undefined"
-            @click="selectedKey = p.key"
-          >
-            <div class="i1">
-              <span class="ik">{{ p.name }}</span>
-              <span v-if="p.configs.length" class="icount">{{ p.configs.length }}</span>
-            </div>
-            <div class="ist">
-              <span class="dot" :class="railStatus(p).cls" />{{ railStatus(p).text }}
-            </div>
-          </button>
-        </aside>
+  <aside class="panel rail" aria-label="供应商列表">
+    <div class="rhead">供应商（{{ visible.length }}）</div>
+    <button
+      v-for="p in visible"
+      :key="p.key"
+      class="item"
+      :class="{ active: selectedProvider?.key === p.key }"
+      :aria-current="selectedProvider?.key === p.key ? 'true' : undefined"
+      @click="selectedKey = p.key"
+    >
+      <div class="i1">
+        <span class="ik">{{ p.name }}</span>
+        <span v-if="p.configs.length" class="icount">{{
+          p.configs.length
+        }}</span>
+      </div>
+      <div class="ist">
+        <span class="dot" :class="railStatus(p).cls" />{{ railStatus(p).text }}
+      </div>
+    </button>
+  </aside>
 </template>
 
 <style scoped>
@@ -55,7 +57,9 @@ const { visible, selectedKey, selectedProvider, railStatus } = props.s
   padding: 8px 10px;
   margin-bottom: 2px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .item:hover {

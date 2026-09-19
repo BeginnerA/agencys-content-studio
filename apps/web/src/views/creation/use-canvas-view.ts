@@ -22,7 +22,10 @@ import { useCanvasAdvice } from './use-canvas-advice'
 /** [M28] 视图装配入口；URL 与 socket 的 immediate 顺序保持原页语义。 */
 export function useCanvasView() {
   const state = useCanvasState()
-  const target = useCanvasTarget({ ...state, loadDoc: (silent) => document.loadDoc(silent) })
+  const target = useCanvasTarget({
+    ...state,
+    loadDoc: (silent) => document.loadDoc(silent),
+  })
   const document = useCanvasDoc({ ...state, ...target })
   const { route, syncFromQuery } = target
   watch(() => route.query, syncFromQuery, { immediate: true })
@@ -38,7 +41,12 @@ export function useCanvasView() {
   const runs = useCanvasRuns({ ...state, ...commands, ...document })
   const overview = useCanvasOverview({ ...state, ...runs })
   const advice = useCanvasAdvice({ ...state, focusNode: overview.focusNode })
-  const palette = useCanvasPalette({ ...state, ...commands, ...document, ...target })
+  const palette = useCanvasPalette({
+    ...state,
+    ...commands,
+    ...document,
+    ...target,
+  })
   const trash = useCanvasTrash({ ...state, ...target })
   const snapshots = useCanvasSnapshots({ ...state, ...document, ...target })
   const copyTo = useCanvasCopyTo({ ...state, ...document, ...target })

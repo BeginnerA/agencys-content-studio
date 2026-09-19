@@ -41,14 +41,20 @@ function nodeXY(n: CanvasDocNode): { x: number; y: number } {
 function nodeStyle(n: CanvasDocNode): Record<string, string> {
   const p = nodeXY(n)
   const h = nodeHeights.value[n.id]
-  return { left: `${p.x}px`, top: `${p.y}px`, width: `${NODE_W}px`, ...(h ? {} : { minHeight: `${DEFAULT_H}px` }) }
+  return {
+    left: `${p.x}px`,
+    top: `${p.y}px`,
+    width: `${NODE_W}px`,
+    ...(h ? {} : { minHeight: `${DEFAULT_H}px` }),
+  }
 }
 
 /** 节点实测高度（边锚点 / 包围盒；ResizeObserver 式 ref 回调，值同则不动避免循环） */
 const nodeHeights = ref<Record<number, number>>({})
 function setNodeEl(id: number, el: unknown): void {
   const h = (el as HTMLElement | null)?.offsetHeight
-  if (h && nodeHeights.value[id] !== h) nodeHeights.value = { ...nodeHeights.value, [id]: h }
+  if (h && nodeHeights.value[id] !== h)
+    nodeHeights.value = { ...nodeHeights.value, [id]: h }
 }
 function nodeH(n: CanvasDocNode): number {
   return nodeHeights.value[n.id] ?? DEFAULT_H
@@ -119,7 +125,8 @@ const hiddenNodeIds = computed<Set<number>>(() => {
     for (const x of descGroupIds(g.id)) gset.add(x)
   }
   if (!gset.size) return s
-  for (const n of props.nodes) if (n.groupId != null && gset.has(n.groupId)) s.add(n.id)
+  for (const n of props.nodes)
+    if (n.groupId != null && gset.has(n.groupId)) s.add(n.id)
   return s
 })
 function isNodeHidden(n: CanvasDocNode): boolean {
@@ -127,7 +134,12 @@ function isNodeHidden(n: CanvasDocNode): boolean {
 }
 /** [M23] 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底，spec §2.2） */
 const VIEW_MARGIN = 0.5
-const visibleWorld = computed<{ x1: number; y1: number; x2: number; y2: number } | null>(() => {
+const visibleWorld = computed<{
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+} | null>(() => {
   const vw = viewW.value
   const vh = viewH.value
   if (!vw || !vh) return null
@@ -144,17 +156,27 @@ function inView(n: CanvasDocNode): boolean {
   const r = visibleWorld.value
   if (!r) return true
   const p = nodeXY(n)
-  return p.x + NODE_W >= r.x1 && p.x <= r.x2 && p.y + nodeH(n) >= r.y1 && p.y <= r.y2
+  return (
+    p.x + NODE_W >= r.x1 && p.x <= r.x2 && p.y + nodeH(n) >= r.y1 && p.y <= r.y2
+  )
 }
-const renderNodes = computed(() => props.nodes.filter((n) => isNodeHidden(n) === false && inView(n)))
+const renderNodes = computed(() =>
+  props.nodes.filter((n) => isNodeHidden(n) === false && inView(n)),
+)
 /** [M22] 空子树组锚点（拖拽中随 dragGroup 即时偏移） */
 function groupAnchor(g: CanvasGroup): { x: number; y: number } {
   const d = dragGroup.value
-  if (d?.moved && d.gids?.includes(g.id)) return { x: g.x + d.dx, y: g.y + d.dy }
+  if (d?.moved && d.gids?.includes(g.id))
+    return { x: g.x + d.dx, y: g.y + d.dy }
   return { x: g.x, y: g.y }
 }
 /** 组包围盒（世界坐标；递归成员实测尺寸 + 顶部组条空间；空子树用锚点默认 240×120） */
-function groupBox(g: CanvasGroup): { x: number; y: number; w: number; h: number } {
+function groupBox(g: CanvasGroup): {
+  x: number
+  y: number
+  w: number
+  h: number
+} {
   const ms = descendantNodesOf(g.id)
   if (ms.length === 0) {
     const a = groupAnchor(g)
@@ -171,12 +193,23 @@ function groupBox(g: CanvasGroup): { x: number; y: number; w: number; h: number 
     maxX = Math.max(maxX, p.x + NODE_W)
     maxY = Math.max(maxY, p.y + nodeH(n))
   }
-  return { x: minX - 12, y: minY - 34, w: maxX - minX + 24, h: maxY - minY + 46 }
+  return {
+    x: minX - 12,
+    y: minY - 34,
+    w: maxX - minX + 24,
+    h: maxY - minY + 46,
+  }
 }
 function groupFrameStyle(g: CanvasGroup): Record<string, string> {
   const b = groupBox(g)
-  if (g.collapsed) return { left: `${b.x}px`, top: `${b.y}px`, width: '220px', height: '32px' }
-  return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }
+  if (g.collapsed)
+    return { left: `${b.x}px`, top: `${b.y}px`, width: '220px', height: '32px' }
+  return {
+    left: `${b.x}px`,
+    top: `${b.y}px`,
+    width: `${b.w}px`,
+    height: `${b.h}px`,
+  }
 }
 function isGroupSelected(g: CanvasGroup): boolean {
   const ms = descendantNodesOf(g.id)
@@ -185,7 +218,17 @@ function isGroupSelected(g: CanvasGroup): boolean {
 const editingGroupId = ref<number | null>(null)
 const editingTitle = ref('')
 const openGroupMenu = ref<number | null>(null)
-const GROUP_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink', 'gray']
+const GROUP_COLORS = [
+  'red',
+  'orange',
+  'amber',
+  'green',
+  'teal',
+  'blue',
+  'purple',
+  'pink',
+  'gray',
+]
 function startRename(g: CanvasGroup): void {
   editingGroupId.value = g.id
   editingTitle.value = g.title
@@ -226,7 +269,6 @@ function moveToTopLevel(g: CanvasGroup): void {
   openGroupMenu.value = null
 }
 
-
 // ---- 边路径（锚点：源右中 → 目标左中）----
 const edgePaths = computed<EdgePath[]>(() => {
   const out: EdgePath[] = []
@@ -236,7 +278,8 @@ const edgePaths = computed<EdgePath[]>(() => {
     const a = nodeById.value.get(e.from)
     const b = nodeById.value.get(e.to)
     if (!a || !b) continue
-    if (hiddenNodeIds.value.has(e.from) || hiddenNodeIds.value.has(e.to)) continue // [M18] 折叠组成员：相关边隐藏
+    if (hiddenNodeIds.value.has(e.from) || hiddenNodeIds.value.has(e.to))
+      continue // [M18] 折叠组成员：相关边隐藏
     if (!visIds.has(e.from) && !visIds.has(e.to)) continue
     const pa = nodeXY(a)
     const pb = nodeXY(b)
@@ -249,7 +292,6 @@ const edgePaths = computed<EdgePath[]>(() => {
   }
   return out
 })
-
 
 // ---- 世界层 SVG 画布盒（覆盖节点 + 留白；viewBox 用世界坐标直通）----
 const svgBox = computed(() => {
@@ -264,18 +306,46 @@ const svgBox = computed(() => {
     maxX = Math.max(maxX, p.x + NODE_W)
     maxY = Math.max(maxY, p.y + nodeH(n))
   }
-  return { x: minX - PAD, y: minY - PAD, w: maxX - minX + PAD * 2, h: maxY - minY + PAD * 2 }
+  return {
+    x: minX - PAD,
+    y: minY - PAD,
+    w: maxX - minX + PAD * 2,
+    h: maxY - minY + PAD * 2,
+  }
 })
 
 // ---- 交互（M28 拆分：模式机/键盘/连线逻辑见 use-board-interactions.ts）----
 const {
-  mode, spaceDown, dragGroup, boxRect, boxStyle,
-  linkFrom, hotPort, linkPath,
-  onViewportPointerDown, onNodePointerDown, onOutPortPointerDown, onViewportPointerMove, onViewportPointerUp,
-  onGroupBarPointerDown, onDblClick, onDragOver, onDrop,
-  fitView, centerWorld, centerOn,
+  mode,
+  spaceDown,
+  dragGroup,
+  boxRect,
+  boxStyle,
+  linkFrom,
+  hotPort,
+  linkPath,
+  onViewportPointerDown,
+  onNodePointerDown,
+  onOutPortPointerDown,
+  onViewportPointerMove,
+  onViewportPointerUp,
+  onGroupBarPointerDown,
+  onDblClick,
+  onDragOver,
+  onDrop,
+  fitView,
+  centerWorld,
+  centerOn,
 } = useBoardInteractions(props, emit, {
-  vp, viewportEl, nodeById, nodeXY, nodeH, descNodeIds, descGroupIds, editingGroupId, openGroupMenu,
+  vp,
+  viewportEl,
+  nodeById,
+  nodeXY,
+  nodeH,
+  descNodeIds,
+  descGroupIds,
+  editingGroupId,
+  openGroupMenu,
 })
 
 defineExpose({ fit: fitView, centerWorld, centerOn })
@@ -285,7 +355,10 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   <div
     ref="viewportEl"
     class="cb-viewport"
-    :class="{ linking: linkFrom != null, grabbing: spaceDown || mode === 'pan' }"
+    :class="{
+      linking: linkFrom != null,
+      grabbing: spaceDown || mode === 'pan',
+    }"
     tabindex="0"
     aria-label="创作画布（左拖框选 / 空格或中键拖动平移 / 滚轮缩放 / 双击空白建节点 / 拖入素材）"
     @pointerdown="onViewportPointerDown"
@@ -306,11 +379,23 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
         v-for="g in renderGroups"
         :key="`g${g.id}`"
         class="cgroup"
-        :class="[g.color ? `cg-${g.color}` : '', { collapsed: g.collapsed, sel: isGroupSelected(g) }]"
+        :class="[
+          g.color ? `cg-${g.color}` : '',
+          { collapsed: g.collapsed, sel: isGroupSelected(g) },
+        ]"
         :style="groupFrameStyle(g)"
       >
-        <div class="cgroup-bar" @pointerdown="onGroupBarPointerDown($event, g)" @dblclick.stop="startRename(g)">
-          <button class="cgroup-tri" :title="g.collapsed ? '展开' : '折叠'" @pointerdown.stop @click.stop="toggleCollapse(g)">
+        <div
+          class="cgroup-bar"
+          @pointerdown="onGroupBarPointerDown($event, g)"
+          @dblclick.stop="startRename(g)"
+        >
+          <button
+            class="cgroup-tri"
+            :title="g.collapsed ? '展开' : '折叠'"
+            @pointerdown.stop
+            @click.stop="toggleCollapse(g)"
+          >
             {{ g.collapsed ? '▸' : '▾' }}
           </button>
           <input
@@ -324,10 +409,27 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
           />
           <span v-else class="cgroup-title">{{ g.title }}</span>
           <span class="cgroup-count">{{ descendantNodesOf(g.id).length }}</span>
-          <button class="cgroup-menu-btn" title="组操作" @pointerdown.stop @click.stop="toggleGroupMenu(g)">⋯</button>
-          <div v-if="openGroupMenu === g.id" class="cgroup-menu" @pointerdown.stop @dblclick.stop>
+          <button
+            class="cgroup-menu-btn"
+            title="组操作"
+            @pointerdown.stop
+            @click.stop="toggleGroupMenu(g)"
+          >
+            ⋯
+          </button>
+          <div
+            v-if="openGroupMenu === g.id"
+            class="cgroup-menu"
+            @pointerdown.stop
+            @dblclick.stop
+          >
             <div class="cgroup-colors">
-              <button class="cgroup-dot cg-none" :class="{ on: !g.color }" title="默认" @click="setGroupColor(g, null)" />
+              <button
+                class="cgroup-dot cg-none"
+                :class="{ on: !g.color }"
+                title="默认"
+                @click="setGroupColor(g, null)"
+              />
               <button
                 v-for="c in GROUP_COLORS"
                 :key="c"
@@ -337,7 +439,13 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
                 @click="setGroupColor(g, c)"
               />
             </div>
-            <button v-if="g.parentId != null" class="cgroup-act" @click="moveToTopLevel(g)">移出到顶层</button>
+            <button
+              v-if="g.parentId != null"
+              class="cgroup-act"
+              @click="moveToTopLevel(g)"
+            >
+              移出到顶层
+            </button>
             <div class="cgroup-h">移入组</div>
             <div class="cgroup-parents">
               <button
@@ -348,14 +456,21 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
               >
                 {{ p.title }}
               </button>
-              <div v-if="!parentCandidates(g).length" class="mini muted">无可选目标组</div>
+              <div v-if="!parentCandidates(g).length" class="mini muted">
+                无可选目标组
+              </div>
             </div>
             <button class="cgroup-act" @click="ungroup(g)">解组</button>
           </div>
         </div>
       </div>
 
-      <EdgeLayer :edge-paths="edgePaths" :link-path="linkPath" :svg-box="svgBox" @select-edge="emit('selectEdge', $event)" />
+      <EdgeLayer
+        :edge-paths="edgePaths"
+        :link-path="linkPath"
+        :svg-box="svgBox"
+        @select-edge="emit('selectEdge', $event)"
+      />
       <NodeLayer
         :render-nodes="renderNodes"
         :selected-ids="props.selectedIds"
@@ -365,37 +480,102 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
         @node-pointerdown="onNodePointerDown"
         @out-pointerdown="onOutPortPointerDown"
       />
-
     </div>
 
     <!-- 框选矩形（视口坐标；左拖 = 框选，全包含判定） -->
     <div v-if="boxRect" class="cb-box" :style="boxStyle" />
 
     <!-- 缩放控制（右下角；不拦截视口手势） -->
-    <div class="cb-zoombar" role="group" aria-label="画布缩放" @pointerdown.stop @dblclick.stop @keydown.stop>
-      <button type="button" class="zb" title="缩小" aria-label="缩小" @click="vp.zoomBy(1 / 1.25)">
+    <div
+      class="cb-zoombar"
+      role="group"
+      aria-label="画布缩放"
+      @pointerdown.stop
+      @dblclick.stop
+      @keydown.stop
+    >
+      <button
+        type="button"
+        class="zb"
+        title="缩小"
+        aria-label="缩小"
+        @click="vp.zoomBy(1 / 1.25)"
+      >
         <Icon name="zoom-out" :size="13" />
       </button>
-      <button type="button" class="pct" title="恢复 100% 缩放" aria-label="恢复 100% 缩放" @click="vp.zoomBy(1 / zoom)">{{ Math.round(zoom * 100) }}%</button>
-      <button type="button" class="zb" title="放大" aria-label="放大" @click="vp.zoomBy(1.25)">
+      <button
+        type="button"
+        class="pct"
+        title="恢复 100% 缩放"
+        aria-label="恢复 100% 缩放"
+        @click="vp.zoomBy(1 / zoom)"
+      >
+        {{ Math.round(zoom * 100) }}%
+      </button>
+      <button
+        type="button"
+        class="zb"
+        title="放大"
+        aria-label="放大"
+        @click="vp.zoomBy(1.25)"
+      >
         <Icon name="zoom-in" :size="13" />
       </button>
-      <button type="button" class="zb zb-fit" title="适应全部节点（F）" @click="fitView">适应</button>
+      <button
+        type="button"
+        class="zb zb-fit"
+        title="适应全部节点（F）"
+        @click="fitView"
+      >
+        适应
+      </button>
     </div>
 
-    <details class="cb-help" @pointerdown.stop @dblclick.stop @keydown.stop @keydown.esc.prevent="($event.currentTarget as HTMLDetailsElement).open = false">
+    <details
+      class="cb-help"
+      @pointerdown.stop
+      @dblclick.stop
+      @keydown.stop
+      @keydown.esc.prevent="
+        ($event.currentTarget as HTMLDetailsElement).open = false
+      "
+    >
       <summary>操作指南</summary>
       <div class="help-card panel">
         <strong>画布操作</strong>
         <dl>
-          <div><dt>框选节点</dt><dd>空白处左键拖动</dd></div>
-          <div><dt>平移画布</dt><dd>空格 + 拖动 / 中键</dd></div>
-          <div><dt>缩放 / 适应</dt><dd>滚轮 / F</dd></div>
-          <div><dt>新建节点</dt><dd>双击空白处</dd></div>
-          <div><dt>多选 / 全选</dt><dd>Shift + 单击 / Ctrl+A</dd></div>
-          <div><dt>复制 / 成组</dt><dd>Ctrl+D / Ctrl+G</dd></div>
-          <div><dt>撤销 / 重做</dt><dd>Ctrl+Z / Ctrl+Shift+Z</dd></div>
-          <div><dt>删除 / 取消选择</dt><dd>Del / Esc</dd></div>
+          <div>
+            <dt>框选节点</dt>
+            <dd>空白处左键拖动</dd>
+          </div>
+          <div>
+            <dt>平移画布</dt>
+            <dd>空格 + 拖动 / 中键</dd>
+          </div>
+          <div>
+            <dt>缩放 / 适应</dt>
+            <dd>滚轮 / F</dd>
+          </div>
+          <div>
+            <dt>新建节点</dt>
+            <dd>双击空白处</dd>
+          </div>
+          <div>
+            <dt>多选 / 全选</dt>
+            <dd>Shift + 单击 / Ctrl+A</dd>
+          </div>
+          <div>
+            <dt>复制 / 成组</dt>
+            <dd>Ctrl+D / Ctrl+G</dd>
+          </div>
+          <div>
+            <dt>撤销 / 重做</dt>
+            <dd>Ctrl+Z / Ctrl+Shift+Z</dd>
+          </div>
+          <div>
+            <dt>删除 / 取消选择</dt>
+            <dd>Del / Esc</dd>
+          </div>
         </dl>
       </div>
     </details>
@@ -436,11 +616,14 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   width: 0;
   height: 0;
   transform-origin: 0 0;
-  background-image: radial-gradient(circle, rgb(148 163 184 / 15%) 1px, transparent 1.3px);
+  background-image: radial-gradient(
+    circle,
+    rgb(148 163 184 / 15%) 1px,
+    transparent 1.3px
+  );
   background-size: 26px 26px;
   will-change: transform;
 }
-
 
 /* 框选矩形 */
 .cb-box {
@@ -626,16 +809,36 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
 }
 
 /* 分组配色（--cg = rgb 三元组；与后端白名单一致）*/
-.cg-red { --cg: 239 68 68; }
-.cg-orange { --cg: 249 115 22; }
-.cg-amber { --cg: 245 158 11; }
-.cg-yellow { --cg: 234 179 8; }
-.cg-green { --cg: 34 197 94; }
-.cg-teal { --cg: 20 184 166; }
-.cg-blue { --cg: 59 130 246; }
-.cg-purple { --cg: 168 85 247; }
-.cg-pink { --cg: 236 72 153; }
-.cg-gray { --cg: 107 114 128; }
+.cg-red {
+  --cg: 239 68 68;
+}
+.cg-orange {
+  --cg: 249 115 22;
+}
+.cg-amber {
+  --cg: 245 158 11;
+}
+.cg-yellow {
+  --cg: 234 179 8;
+}
+.cg-green {
+  --cg: 34 197 94;
+}
+.cg-teal {
+  --cg: 20 184 166;
+}
+.cg-blue {
+  --cg: 59 130 246;
+}
+.cg-purple {
+  --cg: 168 85 247;
+}
+.cg-pink {
+  --cg: 236 72 153;
+}
+.cg-gray {
+  --cg: 107 114 128;
+}
 
 /* ---- 缩放栏 / 提示 ---- */
 .cb-zoombar {
@@ -695,18 +898,76 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   color: #fff;
 }
 
-.cb-help { position: absolute; left: 14px; bottom: 14px; z-index: 4; font-size: 12px; color: var(--text-2); }
-.cb-help summary { display: flex; align-items: center; min-height: 40px; padding: 6px 12px; list-style: none; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; }
-.cb-help summary::-webkit-details-marker { display: none; }
-.cb-help summary:hover, .cb-help[open] summary { color: var(--text); border-color: var(--border-strong); }
-.help-card { position: absolute; left: 0; bottom: calc(100% + 8px); width: 300px; max-width: calc(100cqw - 28px); padding: 14px; color: var(--text); box-shadow: var(--shadow-lg); }
-.help-card dl { display: grid; gap: 10px; margin: 12px 0 0; }
-.help-card dl > div { display: flex; justify-content: space-between; gap: 12px; }
-.help-card dd { margin: 0; color: var(--text-2); text-align: right; }
-@container canvas-viewport (max-width: 340px) {
-  .cb-help { bottom: 64px; }
-  .cb-zoombar { right: 8px; bottom: 10px; }
+.cb-help {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 4;
+  font-size: 12px;
+  color: var(--text-2);
 }
-@media (pointer: coarse) { .zb, .pct, .cb-help summary { min-height: 44px; } }
-.cb-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cb-help summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 12px;
+  list-style: none;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.cb-help summary::-webkit-details-marker {
+  display: none;
+}
+.cb-help summary:hover,
+.cb-help[open] summary {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.help-card {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 300px;
+  max-width: calc(100cqw - 28px);
+  padding: 14px;
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+.help-card dl {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+.help-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.help-card dd {
+  margin: 0;
+  color: var(--text-2);
+  text-align: right;
+}
+@container canvas-viewport (max-width: 340px) {
+  .cb-help {
+    bottom: 64px;
+  }
+  .cb-zoombar {
+    right: 8px;
+    bottom: 10px;
+  }
+}
+@media (pointer: coarse) {
+  .zb,
+  .pct,
+  .cb-help summary {
+    min-height: 44px;
+  }
+}
+.cb-viewport:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 </style>

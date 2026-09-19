@@ -13,8 +13,21 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { CanvasBoardNode, CanvasEdge } from '../../lib/types'
 import { fmtMs } from '../../lib/format'
 import Icon from '../common/Icon.vue'
-import { NODE_H, NODE_W, PAD, useCanvasLayout, type EdgePath } from './use-canvas-layout'
-import { badgeClass, cardClass, hasChips, iconOf, statusText, taskText } from './canvas-card-helpers'
+import {
+  NODE_H,
+  NODE_W,
+  PAD,
+  useCanvasLayout,
+  type EdgePath,
+} from './use-canvas-layout'
+import {
+  badgeClass,
+  cardClass,
+  hasChips,
+  iconOf,
+  statusText,
+  taskText,
+} from './canvas-card-helpers'
 
 const props = defineProps<{
   nodes: CanvasBoardNode[]
@@ -36,7 +49,8 @@ const emit = defineEmits<{
 const ZOOM_MIN = 0.3
 const ZOOM_MAX = 2.5
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+const clamp = (v: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, v))
 
 // ---- 布局 / 边路径（纯派生，逐字迁至 use-canvas-layout）----
 const { layout, worldW, worldH, nodeStyle, edgePaths } = useCanvasLayout(props)
@@ -90,7 +104,11 @@ function onWheel(ev: WheelEvent): void {
   const el = viewport.value
   if (!el) return
   const rect = el.getBoundingClientRect()
-  applyZoom(zoom.value * Math.exp(-ev.deltaY * 0.0012), ev.clientX - rect.left, ev.clientY - rect.top)
+  applyZoom(
+    zoom.value * Math.exp(-ev.deltaY * 0.0012),
+    ev.clientX - rect.left,
+    ev.clientY - rect.top,
+  )
 }
 function zoomBy(f: number): void {
   const el = viewport.value
@@ -111,10 +129,18 @@ function onKeydown(ev: KeyboardEvent): void {
   if (ev.key === '+' || ev.key === '=') zoomBy(1.2)
   else if (ev.key === '-' || ev.key === '_') zoomBy(1 / 1.2)
   else if (ev.key === '0') fit()
-  else if ((ev.key === 'Delete' || ev.key === 'Backspace') && props.editMode && selEdge.value) {
+  else if (
+    (ev.key === 'Delete' || ev.key === 'Backspace') &&
+    props.editMode &&
+    selEdge.value
+  ) {
     // [M23] 删除选中调度边（仍存在才 emit；after 移除语义由父级应用）
     const cur = selEdge.value
-    if (props.edges.some((e) => e.type === 'sched' && e.from === cur.from && e.to === cur.to)) {
+    if (
+      props.edges.some(
+        (e) => e.type === 'sched' && e.from === cur.from && e.to === cur.to,
+      )
+    ) {
       emit('delEdge', cur.from, cur.to)
     }
     selEdge.value = null
@@ -136,7 +162,10 @@ function toWorld(clientX: number, clientY: number): { x: number; y: number } {
   const el = viewport.value
   if (!el) return { x: 0, y: 0 }
   const rect = el.getBoundingClientRect()
-  return { x: (clientX - rect.left - pan.value.x) / zoom.value, y: (clientY - rect.top - pan.value.y) / zoom.value }
+  return {
+    x: (clientX - rect.left - pan.value.x) / zoom.value,
+    y: (clientY - rect.top - pan.value.y) / zoom.value,
+  }
 }
 
 /** elementFromPoint 落点检测：取最近节点卡的 data-node-key */
@@ -276,7 +305,9 @@ watch(
           :d="e.d"
           class="cv-edge"
           :class="[e.type, { flowing: e.flowing, sel: isEdgeSel(e) }]"
-          :marker-end="e.type === 'sched' ? 'url(#cv-arrow-sched)' : 'url(#cv-arrow-data)'"
+          :marker-end="
+            e.type === 'sched' ? 'url(#cv-arrow-sched)' : 'url(#cv-arrow-data)'
+          "
           @pointerdown.stop
           @click.stop="onEdgeClick(e)"
         />
@@ -289,7 +320,10 @@ watch(
         :key="n.key"
         type="button"
         class="cnode"
-        :class="[cardClass(n), { sel: n.key === selectedKey, drop: n.key === dropKey }]"
+        :class="[
+          cardClass(n),
+          { sel: n.key === selectedKey, drop: n.key === dropKey },
+        ]"
         :style="nodeStyle(n.key)"
         :title="n.title"
         :data-node-key="n.key"
@@ -299,8 +333,12 @@ watch(
         <span class="cn-top">
           <Icon :name="iconOf(n.action)" :size="13" />
           <span class="cn-title">{{ n.title }}</span>
-          <span v-if="n.status" class="badge" :class="badgeClass(n)">{{ statusText(n) }}</span>
-          <span v-else-if="n.gateMessage" class="cn-gate" title="人工闸门"><Icon name="alert" :size="12" /></span>
+          <span v-if="n.status" class="badge" :class="badgeClass(n)">{{
+            statusText(n)
+          }}</span>
+          <span v-else-if="n.gateMessage" class="cn-gate" title="人工闸门"
+            ><Icon name="alert" :size="12"
+          /></span>
         </span>
         <span class="cn-meta">
           <span class="mono">#{{ n.seq + 1 }}</span>
@@ -308,21 +346,29 @@ watch(
           <span v-if="n.durationMs != null">{{ fmtMs(n.durationMs) }}</span>
           <span v-if="(n.attempts ?? 0) > 1">尝试 {{ n.attempts }}</span>
           <span v-if="n.whenText" :title="n.whenText">条件</span>
-          <span v-if="n.batchField" :title="`批量字段：${n.batchField}`">批量</span>
+          <span v-if="n.batchField" :title="`批量字段：${n.batchField}`"
+            >批量</span
+          >
         </span>
         <span v-if="hasChips(n)" class="cn-chips">
           <span
             v-if="taskText(n)"
             class="cn-chip"
-            :class="{ bad: ((n.tasks?.failed ?? 0) + (n.tasks?.cancelled ?? 0)) > 0 }"
-          >{{ taskText(n) }}</span>
-          <span v-if="n.assetCount" class="cn-chip ok">产物 {{ n.assetCount }}</span>
+            :class="{
+              bad: (n.tasks?.failed ?? 0) + (n.tasks?.cancelled ?? 0) > 0,
+            }"
+            >{{ taskText(n) }}</span
+          >
+          <span v-if="n.assetCount" class="cn-chip ok"
+            >产物 {{ n.assetCount }}</span
+          >
           <span v-if="n.skipText" class="cn-chip">{{ n.skipText }}</span>
           <span
             v-if="n.status === 'waiting_input' && n.gateMessage"
             class="cn-chip warn"
             :title="n.gateMessage"
-          >闸门待审</span>
+            >闸门待审</span
+          >
           <span v-if="n.hasError" class="cn-chip bad">错误</span>
         </span>
         <!-- [M23] 编辑模式输出口：拖拽到任一节点 = 新增调度依赖（上游 → 下游） -->
@@ -338,12 +384,19 @@ watch(
     <!-- 图例（左下角；不拦截拖拽） -->
     <div class="cv-legend" aria-hidden="true">
       <span class="lg">
-        <svg width="26" height="8" viewBox="0 0 26 8"><path d="M1 4h24" stroke="rgb(148 163 184 / 55%)" stroke-width="2" /></svg>
+        <svg width="26" height="8" viewBox="0 0 26 8">
+          <path d="M1 4h24" stroke="rgb(148 163 184 / 55%)" stroke-width="2" />
+        </svg>
         调度依赖
       </span>
       <span class="lg">
         <svg width="26" height="8" viewBox="0 0 26 8">
-          <path d="M1 4h24" stroke="var(--ok)" stroke-width="2" stroke-dasharray="5 4" />
+          <path
+            d="M1 4h24"
+            stroke="var(--ok)"
+            stroke-width="2"
+            stroke-dasharray="5 4"
+          />
         </svg>
         数据引用
       </span>
@@ -356,14 +409,28 @@ watch(
 
     <!-- 缩放控制（右下角；@pointerdown.stop 防误触 pan/取消选中） -->
     <div class="cv-zoombar" @pointerdown.stop>
-      <button type="button" class="zb" title="缩小（-）" @click="zoomBy(1 / 1.25)">
+      <button
+        type="button"
+        class="zb"
+        title="缩小（-）"
+        @click="zoomBy(1 / 1.25)"
+      >
         <Icon name="zoom-out" :size="13" />
       </button>
-      <button type="button" class="pct" title="适应视图（0）" @click="fit">{{ Math.round(zoom * 100) }}%</button>
+      <button type="button" class="pct" title="适应视图（0）" @click="fit">
+        {{ Math.round(zoom * 100) }}%
+      </button>
       <button type="button" class="zb" title="放大（+）" @click="zoomBy(1.25)">
         <Icon name="zoom-in" :size="13" />
       </button>
-      <button type="button" class="zb zb-fit" title="适应视图（0）" @click="fit">适应</button>
+      <button
+        type="button"
+        class="zb zb-fit"
+        title="适应视图（0）"
+        @click="fit"
+      >
+        适应
+      </button>
     </div>
   </div>
 </template>
@@ -390,7 +457,11 @@ watch(
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  background-image: radial-gradient(circle, rgb(148 163 184 / 15%) 1px, transparent 1.3px);
+  background-image: radial-gradient(
+    circle,
+    rgb(148 163 184 / 15%) 1px,
+    transparent 1.3px
+  );
   background-size: 26px 26px;
   will-change: transform;
 }
@@ -472,7 +543,9 @@ watch(
   text-align: left;
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .cnode:hover {
@@ -617,7 +690,9 @@ watch(
   background: var(--panel);
   cursor: crosshair;
   opacity: 0.72;
-  transition: opacity 0.15s, transform 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
   touch-action: none;
 }
 

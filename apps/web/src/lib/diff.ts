@@ -31,7 +31,8 @@ export function diffLines(oldText: string, newText: string): DiffResult {
 
   // 公共前缀/后缀不进 DP（改动居中的常见场景可大幅裁剪规模）
   let start = 0
-  while (start < a.length && start < b.length && a[start] === b[start]) start += 1
+  while (start < a.length && start < b.length && a[start] === b[start])
+    start += 1
   let endA = a.length - 1
   let endB = b.length - 1
   while (endA >= start && endB >= start && a[endA] === b[endB]) {
@@ -54,7 +55,9 @@ export function diffLines(oldText: string, newText: string): DiffResult {
     for (let i = m - 1; i >= 0; i -= 1) {
       for (let j = n - 1; j >= 0; j -= 1) {
         dp[i * W + j] =
-          midA[i] === midB[j] ? dp[(i + 1) * W + j + 1]! + 1 : Math.max(dp[(i + 1) * W + j]!, dp[i * W + j + 1]!)
+          midA[i] === midB[j]
+            ? dp[(i + 1) * W + j + 1]! + 1
+            : Math.max(dp[(i + 1) * W + j]!, dp[i * W + j + 1]!)
       }
     }
     // 回溯：相等取 same；否则朝 LCS 更大的方向（删优先输出，保证 - 在 + 前）
@@ -89,6 +92,7 @@ export function diffLines(oldText: string, newText: string): DiffResult {
   }
 
   // 公共后缀（a / b 同源，取 a 侧即可）
-  for (let i = endA + 1; i < a.length; i += 1) rows.push({ type: 'same', text: a[i]! })
+  for (let i = endA + 1; i < a.length; i += 1)
+    rows.push({ type: 'same', text: a[i]! })
   return { rows, truncated }
 }

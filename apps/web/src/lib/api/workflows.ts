@@ -23,7 +23,9 @@ export interface WorkflowPatchBody {
 }
 
 /** camelCase → 后端 snake_case 请求体（仅出现在 wire 层，内部一律 camelCase） */
-function toWire(b: WorkflowCreateBody | WorkflowPatchBody): Record<string, unknown> {
+function toWire(
+  b: WorkflowCreateBody | WorkflowPatchBody,
+): Record<string, unknown> {
   const wire: Record<string, unknown> = {}
   if (b.name !== undefined) wire['name'] = b.name
   if (b.segments !== undefined) wire['segments'] = b.segments
@@ -36,16 +38,27 @@ function toWire(b: WorkflowCreateBody | WorkflowPatchBody): Record<string, unkno
 export const workflowApi = {
   /** 列表（?project_id=&status=） */
   list: (params = '') => api.get<Items<Workflow>>(`/api/v1/workflows${params}`),
-  detail: (id: number) => api.get<{ workflow: Workflow }>(`/api/v1/workflows/${id}`),
+  detail: (id: number) =>
+    api.get<{ workflow: Workflow }>(`/api/v1/workflows/${id}`),
   /** 建链（后端 validateWorkflowChainDoc 校验；warnings 为 next 一致性软提示） */
   create: (projectId: number, body: WorkflowCreateBody) =>
-    api.post<{ workflow: Workflow; warnings: string[] }>(`/api/v1/projects/${projectId}/workflows`, toWire(body)),
-  update: (id: number, body: WorkflowPatchBody) => api.patch<{ workflow: Workflow }>(`/api/v1/workflows/${id}`, toWire(body)),
+    api.post<{ workflow: Workflow; warnings: string[] }>(
+      `/api/v1/projects/${projectId}/workflows`,
+      toWire(body),
+    ),
+  update: (id: number, body: WorkflowPatchBody) =>
+    api.patch<{ workflow: Workflow }>(`/api/v1/workflows/${id}`, toWire(body)),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/workflows/${id}`),
   /** 克隆为 draft（I2 编排层引用复用） */
-  clone: (id: number) => api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/clone`),
+  clone: (id: number) =>
+    api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/clone`),
   /** 显式启动首段 run（draft|paused→active；首段 autoAdvance 决定是否级联） */
-  start: (id: number) => api.post<{ workflow: Workflow; runId: number }>(`/api/v1/workflows/${id}/start`),
-  pause: (id: number) => api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/pause`),
-  resume: (id: number) => api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/resume`),
+  start: (id: number) =>
+    api.post<{ workflow: Workflow; runId: number }>(
+      `/api/v1/workflows/${id}/start`,
+    ),
+  pause: (id: number) =>
+    api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/pause`),
+  resume: (id: number) =>
+    api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/resume`),
 }

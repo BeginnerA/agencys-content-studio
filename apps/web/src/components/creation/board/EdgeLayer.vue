@@ -15,49 +15,53 @@ const emit = defineEmits<{
 </script>
 
 <template>
-      <svg
-        class="cb-edges"
-        :width="svgBox.w"
-        :height="svgBox.h"
-        :viewBox="`${svgBox.x} ${svgBox.y} ${svgBox.w} ${svgBox.h}`"
-        :style="{ left: `${svgBox.x}px`, top: `${svgBox.y}px` }"
+  <svg
+    class="cb-edges"
+    :width="svgBox.w"
+    :height="svgBox.h"
+    :viewBox="`${svgBox.x} ${svgBox.y} ${svgBox.w} ${svgBox.h}`"
+    :style="{ left: `${svgBox.x}px`, top: `${svgBox.y}px` }"
+  >
+    <defs>
+      <marker
+        id="cb-arrow"
+        viewBox="0 0 10 10"
+        refX="8.5"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
       >
-        <defs>
-          <marker
-            id="cb-arrow"
-            viewBox="0 0 10 10"
-            refX="8.5"
-            refY="5"
-            markerWidth="7"
-            markerHeight="7"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(148 163 184 / 60%)" />
-          </marker>
-          <marker
-            id="cb-arrow-sel"
-            viewBox="0 0 10 10"
-            refX="8.5"
-            refY="5"
-            markerWidth="7"
-            markerHeight="7"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-h)" />
-          </marker>
-        </defs>
-        <g v-for="e in edgePaths" :key="e.id">
-          <path :d="e.d" class="cb-edge-hit" @pointerdown.stop="emit('selectEdge', e.id)" />
-          <path
-            :d="e.d"
-            class="cb-edge"
-            :class="{ sel: e.sel }"
-            :port="e.port"
-            :marker-end="e.sel ? 'url(#cb-arrow-sel)' : 'url(#cb-arrow)'"
-          />
-        </g>
-        <path v-if="linkPath" :d="linkPath" class="cb-edge tmp" />
-      </svg>
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(148 163 184 / 60%)" />
+      </marker>
+      <marker
+        id="cb-arrow-sel"
+        viewBox="0 0 10 10"
+        refX="8.5"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-h)" />
+      </marker>
+    </defs>
+    <g v-for="e in edgePaths" :key="e.id">
+      <path
+        :d="e.d"
+        class="cb-edge-hit"
+        @pointerdown.stop="emit('selectEdge', e.id)"
+      />
+      <path
+        :d="e.d"
+        class="cb-edge"
+        :class="{ sel: e.sel }"
+        :port="e.port"
+        :marker-end="e.sel ? 'url(#cb-arrow-sel)' : 'url(#cb-arrow)'"
+      />
+    </g>
+    <path v-if="linkPath" :d="linkPath" class="cb-edge tmp" />
+  </svg>
 </template>
 
 <style scoped>

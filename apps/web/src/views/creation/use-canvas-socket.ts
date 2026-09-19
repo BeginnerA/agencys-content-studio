@@ -5,8 +5,8 @@ import type { StudioEventMap } from '../../lib/socket'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
 
-type Dependencies = Pick<CanvasState, 'canvasId'>
-  & Pick<CanvasDocument, 'scheduleRefresh'>
+type Dependencies = Pick<CanvasState, 'canvasId'> &
+  Pick<CanvasDocument, 'scheduleRefresh'>
 
 export function useCanvasSocket(deps: Dependencies) {
   const { canvasId, scheduleRefresh } = deps
@@ -39,7 +39,8 @@ export function useCanvasSocket(deps: Dependencies) {
   )
 
   function onCanvasEvent(p: StudioEventMap['canvas.changed']): void {
-    if (canvasId.value != null && p.canvasId === canvasId.value) scheduleRefresh()
+    if (canvasId.value != null && p.canvasId === canvasId.value)
+      scheduleRefresh()
   }
 
   function disposeSocket(): void {

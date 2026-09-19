@@ -205,7 +205,10 @@ async function doExtract() {
   <div>
     <div class="page-h">
       <h1>风格预设</h1>
-      <span class="sub">{{ items.length }} 条 · 启用 {{ items.filter((p) => p.isActive).length }} 条</span>
+      <span class="sub"
+        >{{ items.length }} 条 · 启用
+        {{ items.filter((p) => p.isActive).length }} 条</span
+      >
       <button class="btn primary" style="margin-left: auto" @click="openNew">
         <Icon name="plus" :size="14" :stroke-width="2.2" /> 新建预设
       </button>
@@ -214,11 +217,17 @@ async function doExtract() {
     <div v-if="err" class="err-text">{{ err }}</div>
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!items.length" class="empty">
-      还没有风格预设。新建画风词块（如「3D 写实厚涂」）后，在项目「编辑」里绑定 → 分镜图/首帧图/参考图出图时统一注入，保证全片视觉基调一致。
+      还没有风格预设。新建画风词块（如「3D 写实厚涂」）后，在项目「编辑」里绑定
+      → 分镜图/首帧图/参考图出图时统一注入，保证全片视觉基调一致。
     </div>
 
     <div v-else class="list">
-      <div v-for="p in items" :key="p.id" class="row panel" :class="{ off: !p.isActive }">
+      <div
+        v-for="p in items"
+        :key="p.id"
+        class="row panel"
+        :class="{ off: !p.isActive }"
+      >
         <div class="ord" :title="`排序 ${p.sortOrder}`">{{ p.sortOrder }}</div>
         <div class="main">
           <div class="nm">
@@ -240,41 +249,82 @@ async function doExtract() {
           >
             <span class="knob" />
           </button>
-          <button class="btn tiny" @click="openEdit(p)"><Icon name="pencil" :size="12" /> 编辑</button>
-          <button class="btn tiny danger" :disabled="busy" @click="removeItem(p)"><Icon name="trash" :size="12" /> 删除</button>
+          <button class="btn tiny" @click="openEdit(p)">
+            <Icon name="pencil" :size="12" /> 编辑
+          </button>
+          <button
+            class="btn tiny danger"
+            :disabled="busy"
+            @click="removeItem(p)"
+          >
+            <Icon name="trash" :size="12" /> 删除
+          </button>
         </div>
       </div>
     </div>
 
-    <Modal v-if="showForm" :title="form.id ? `编辑预设「${form.name}」` : '新建风格预设'" :width="640" @close="showForm = false">
+    <Modal
+      v-if="showForm"
+      :title="form.id ? `编辑预设「${form.name}」` : '新建风格预设'"
+      :width="640"
+      @close="showForm = false"
+    >
       <div class="frow">
         <label class="fld">
           预设名 <span class="req">*</span>
-          <input v-model="form.name" type="text" placeholder="如：3D 写实厚涂 · 冷蓝调" />
+          <input
+            v-model="form.name"
+            type="text"
+            placeholder="如：3D 写实厚涂 · 冷蓝调"
+          />
         </label>
         <label class="fld" style="max-width: 120px">
           排序号
-          <input v-model.number="form.sortOrder" type="number" min="0" step="1" />
+          <input
+            v-model.number="form.sortOrder"
+            type="number"
+            min="0"
+            step="1"
+          />
         </label>
       </div>
       <div class="extract-box">
         <div class="eb-head">
-          <span><Icon name="sparkles" :size="13" /> 从参考图提取画风词（可选）</span>
-          <span class="muted" style="font-size: 11.5px">1~4 张同基调参考图 → 视觉模型提取 → 预填下方词块</span>
+          <span
+            ><Icon name="sparkles" :size="13" />
+            从参考图提取画风词（可选）</span
+          >
+          <span class="muted" style="font-size: 11.5px"
+            >1~4 张同基调参考图 → 视觉模型提取 → 预填下方词块</span
+          >
         </div>
         <div class="frow">
           <label class="fld" style="max-width: 220px">
             项目
             <select v-model.number="extractPid" @change="onExtractProject">
               <option :value="0">选择项目…</option>
-              <option v-for="p in projects" :key="p.id" :value="p.id">项目#{{ p.id }} {{ p.name }}</option>
+              <option v-for="p in projects" :key="p.id" :value="p.id">
+                项目#{{ p.id }} {{ p.name }}
+              </option>
             </select>
           </label>
           <div class="eb-imgs">
             <span>参考图（已选 {{ extractIds.length }}/4）</span>
-            <span v-if="!extractPid" class="muted" style="font-size: 12px">先选项目</span>
-            <span v-else-if="assetsLoading" class="muted" style="font-size: 12px">图片加载中…</span>
-            <span v-else-if="!extractAssets.length" class="muted" style="font-size: 12px">该项目暂无图片资产（先出图或导入素材）</span>
+            <span v-if="!extractPid" class="muted" style="font-size: 12px"
+              >先选项目</span
+            >
+            <span
+              v-else-if="assetsLoading"
+              class="muted"
+              style="font-size: 12px"
+              >图片加载中…</span
+            >
+            <span
+              v-else-if="!extractAssets.length"
+              class="muted"
+              style="font-size: 12px"
+              >该项目暂无图片资产（先出图或导入素材）</span
+            >
             <div v-else class="thumbs">
               <button
                 v-for="a in extractAssets"
@@ -285,19 +335,33 @@ async function doExtract() {
                 :title="a.name"
                 @click="toggleExtractAsset(a.id)"
               >
-                <img :src="a.urls.thumb ?? a.urls.file" :alt="a.name" loading="lazy" />
-                <span v-if="extractIds.includes(a.id)" class="ck"><Icon name="check" :size="11" :stroke-width="2.6" /></span>
+                <img
+                  :src="a.urls.thumb ?? a.urls.file"
+                  :alt="a.name"
+                  loading="lazy"
+                />
+                <span v-if="extractIds.includes(a.id)" class="ck"
+                  ><Icon name="check" :size="11" :stroke-width="2.6"
+                /></span>
               </button>
             </div>
           </div>
         </div>
         <div class="eb-ops">
-          <button class="btn tiny" type="button" :disabled="extracting || !extractPid || !extractIds.length" @click="doExtract">
-            <Icon name="sparkles" :size="12" /> {{ extracting ? '提取中…' : '提取风格词' }}
+          <button
+            class="btn tiny"
+            type="button"
+            :disabled="extracting || !extractPid || !extractIds.length"
+            @click="doExtract"
+          >
+            <Icon name="sparkles" :size="12" />
+            {{ extracting ? '提取中…' : '提取风格词' }}
           </button>
           <span v-if="extractErr" class="eb-err">{{ extractErr }}</span>
           <span v-else-if="extractNote" class="eb-ok">{{ extractNote }}</span>
-          <span v-else class="muted" style="font-size: 11.5px">提取依赖支持图片输入的 LLM 视觉模型（设置 → AI 配置）</span>
+          <span v-else class="muted" style="font-size: 11.5px"
+            >提取依赖支持图片输入的 LLM 视觉模型（设置 → AI 配置）</span
+          >
         </div>
       </div>
       <label class="fld">
@@ -310,13 +374,19 @@ async function doExtract() {
       </label>
       <label class="fld">
         描述 description（选填，说明适用题材）
-        <input v-model="form.description" type="text" placeholder="如：适合科幻/悬疑向短剧" />
+        <input
+          v-model="form.description"
+          type="text"
+          placeholder="如：适合科幻/悬疑向短剧"
+        />
       </label>
 
       <div v-if="formErr" class="err-text">{{ formErr }}</div>
       <template #footer>
         <button class="btn" @click="showForm = false">取消</button>
-        <button class="btn primary" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+        <button class="btn primary" :disabled="busy" @click="save">
+          {{ busy ? '保存中…' : '保存' }}
+        </button>
       </template>
     </Modal>
   </div>
@@ -413,7 +483,9 @@ async function doExtract() {
   background: var(--panel-2);
   cursor: pointer;
   padding: 0;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .sw .knob {
@@ -424,11 +496,17 @@ async function doExtract() {
   height: 14px;
   border-radius: 50%;
   background: var(--text-3);
-  transition: transform 0.15s, background 0.15s;
+  transition:
+    transform 0.15s,
+    background 0.15s;
 }
 
 .sw.on {
-  background: linear-gradient(135deg, rgb(139 92 246 / 40%), rgb(79 70 229 / 36%));
+  background: linear-gradient(
+    135deg,
+    rgb(139 92 246 / 40%),
+    rgb(79 70 229 / 36%)
+  );
   border-color: rgb(139 92 246 / 55%);
 }
 

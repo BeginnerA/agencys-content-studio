@@ -23,7 +23,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  decided: [action: 'approve' | 'reject' | 'skip' | 'abort', payload: { note?: string; textOverride?: string }]
+  decided: [
+    action: 'approve' | 'reject' | 'skip' | 'abort',
+    payload: { note?: string; textOverride?: string },
+  ]
 }>()
 
 const tab = ref<'view' | 'edit' | 'diff'>('view')
@@ -79,7 +82,10 @@ async function loadDiff(force = false): Promise<void> {
   diffLoading.value = true
   diffErr.value = ''
   try {
-    const [oldText, newText] = await Promise.all([readAssetText(base.assetId), readAssetText(cur.assetId)])
+    const [oldText, newText] = await Promise.all([
+      readAssetText(base.assetId),
+      readAssetText(cur.assetId),
+    ])
     const d = diffLines(oldText, newText)
     diffRows.value = d.rows
     diffTruncated.value = d.truncated
@@ -110,7 +116,10 @@ onMounted(async () => {
 
 function approve() {
   emit('decided', 'approve', {
-    textOverride: showEdit.value && edited.value !== props.artifactText ? edited.value : undefined,
+    textOverride:
+      showEdit.value && edited.value !== props.artifactText
+        ? edited.value
+        : undefined,
   })
 }
 
@@ -141,14 +150,23 @@ async function abort() {
 <template>
   <div class="gate panel">
     <div class="ghead">
-      <div class="tt">
-        <span class="dot" /> 人工闸门 · {{ stepTitle }}
-      </div>
+      <div class="tt"><span class="dot" /> 人工闸门 · {{ stepTitle }}</div>
       <div class="act">
         <button class="btn sm" :disabled="busy" @click="abort">中止</button>
-        <button v-if="skipLabel" class="btn sm skip" :disabled="busy" @click="skip">{{ skipLabel }}</button>
-        <button class="btn sm ok" :disabled="busy" @click="approve">批准继续</button>
-        <button class="btn sm danger" :disabled="busy" @click="reject">驳回重跑</button>
+        <button
+          v-if="skipLabel"
+          class="btn sm skip"
+          :disabled="busy"
+          @click="skip"
+        >
+          {{ skipLabel }}
+        </button>
+        <button class="btn sm ok" :disabled="busy" @click="approve">
+          批准继续
+        </button>
+        <button class="btn sm danger" :disabled="busy" @click="reject">
+          驳回重跑
+        </button>
       </div>
     </div>
 
@@ -156,9 +174,19 @@ async function abort() {
 
     <template v-if="artifactText">
       <div class="tabs">
-        <button :class="{ on: tab === 'view' }" @click="tab = 'view'">预览产物</button>
-        <button :class="{ on: tab === 'edit' }" @click="tab = 'edit'">审阅修改</button>
-        <button v-if="hasDiff" :class="{ on: tab === 'diff' }" @click="tab = 'diff'">对比（{{ revisions.length }} 版）</button>
+        <button :class="{ on: tab === 'view' }" @click="tab = 'view'">
+          预览产物
+        </button>
+        <button :class="{ on: tab === 'edit' }" @click="tab = 'edit'">
+          审阅修改
+        </button>
+        <button
+          v-if="hasDiff"
+          :class="{ on: tab === 'diff' }"
+          @click="tab = 'diff'"
+        >
+          对比（{{ revisions.length }} 版）
+        </button>
       </div>
       <div v-if="tab === 'view'" class="doc">
         <MarkdownPreview :source="artifactText" />
@@ -166,24 +194,42 @@ async function abort() {
       <div v-else-if="tab === 'diff'" class="doc">
         <div class="diff-bar">
           <select v-model.number="baseIdx" aria-label="对比基准版本">
-            <option v-for="o in baseOptions" :key="o.idx" :value="o.idx">{{ o.label }}</option>
+            <option v-for="o in baseOptions" :key="o.idx" :value="o.idx">
+              {{ o.label }}
+            </option>
           </select>
           <span class="muted">→ 当前产物</span>
           <span v-if="diffRows.length" class="stat mono">
-            <span class="addn">+{{ diffStat.add }}</span> <span class="deln">-{{ diffStat.del }}</span>
+            <span class="addn">+{{ diffStat.add }}</span>
+            <span class="deln">-{{ diffStat.del }}</span>
           </span>
-          <button class="btn sm" style="margin-left: auto" :disabled="diffLoading" @click="loadDiff(true)">刷新</button>
+          <button
+            class="btn sm"
+            style="margin-left: auto"
+            :disabled="diffLoading"
+            @click="loadDiff(true)"
+          >
+            刷新
+          </button>
         </div>
         <div v-if="diffErr" class="err-text">{{ diffErr }}</div>
-        <div v-else-if="diffLoading" class="muted" style="padding: 8px 0">对比加载中…</div>
-        <div v-else-if="!diffRows.length" class="muted" style="padding: 8px 0">两版内容一致或无可对比内容</div>
+        <div v-else-if="diffLoading" class="muted" style="padding: 8px 0">
+          对比加载中…
+        </div>
+        <div v-else-if="!diffRows.length" class="muted" style="padding: 8px 0">
+          两版内容一致或无可对比内容
+        </div>
         <div v-else class="diff-rows">
           <div v-for="(r, i) in diffRows" :key="i" class="drow" :class="r.type">
-            <span class="sign">{{ r.type === 'add' ? '+' : r.type === 'del' ? '-' : '' }}</span>
+            <span class="sign">{{
+              r.type === 'add' ? '+' : r.type === 'del' ? '-' : ''
+            }}</span>
             <span class="txt">{{ r.text || ' ' }}</span>
           </div>
         </div>
-        <div v-if="diffTruncated" class="muted trunc">版本过大，已按规模保护截断显示</div>
+        <div v-if="diffTruncated" class="muted trunc">
+          版本过大，已按规模保护截断显示
+        </div>
       </div>
       <div v-else class="doc">
         <div class="muted" style="margin-bottom: 6px">
@@ -197,12 +243,20 @@ async function abort() {
       本步骤无可预览文本产物，直接批准、跳过或驳回。
     </div>
 
-    <div v-if="skipLabel" class="muted" style="padding: 2px 0 0; font-size: 11.5px">
+    <div
+      v-if="skipLabel"
+      class="muted"
+      style="padding: 2px 0 0; font-size: 11.5px"
+    >
       「{{ skipLabel }}」= 免审放行：产物保留并继续下游，不产生修改。
     </div>
 
     <div class="note-row">
-      <input v-model="note" type="text" placeholder="驳回意见（可选，批准/跳过时忽略）：指出要修改的点…" />
+      <input
+        v-model="note"
+        type="text"
+        placeholder="驳回意见（可选，批准/跳过时忽略）：指出要修改的点…"
+      />
     </div>
   </div>
 </template>

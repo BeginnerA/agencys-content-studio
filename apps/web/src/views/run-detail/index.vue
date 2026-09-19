@@ -24,9 +24,62 @@ const u = useRunDetail({
   refreshExtras: () => e.refreshExtras(),
   loadTplMetas: () => e.loadTplMetas(),
 })
-const e = useRunExtras({ runId: u.runId, detail: u.detail, run: u.run, steps: u.steps, err: u.err })
-const { router, runId, err, busy, gateStep, gateMessage, gateText, gateTextName, showLog, run, steps, canCancel, canResume, hasTasks, active, gateSkipLabel, parallelHint, snapshot, snapshotTip, loadDetail, toggleLog, decide, cancelRun, resumeRun, previewAssets, previewOpen, previewStart, rerunStep, notice, onRerunDone } = u
-const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, showExport, showPublish, runAssets, publishCandidate, showPubsPanel, deriveOpen, onDerived, onExportDone, onPubSaved } = e
+const e = useRunExtras({
+  runId: u.runId,
+  detail: u.detail,
+  run: u.run,
+  steps: u.steps,
+  err: u.err,
+})
+const {
+  router,
+  runId,
+  err,
+  busy,
+  gateStep,
+  gateMessage,
+  gateText,
+  gateTextName,
+  showLog,
+  run,
+  steps,
+  canCancel,
+  canResume,
+  hasTasks,
+  active,
+  gateSkipLabel,
+  parallelHint,
+  snapshot,
+  snapshotTip,
+  loadDetail,
+  toggleLog,
+  decide,
+  cancelRun,
+  resumeRun,
+  previewAssets,
+  previewOpen,
+  previewStart,
+  rerunStep,
+  notice,
+  onRerunDone,
+} = u
+const {
+  showRelay,
+  relayTplKey,
+  tplName,
+  nextOptions,
+  openRelay,
+  onRelayDone,
+  showExport,
+  showPublish,
+  runAssets,
+  publishCandidate,
+  showPubsPanel,
+  deriveOpen,
+  onDerived,
+  onExportDone,
+  onPubSaved,
+} = e
 </script>
 
 <template>
@@ -36,29 +89,59 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
         <Icon name="arrow-left" :size="14" /> 项目
       </RouterLink>
       <h1>Run #{{ runId }}</h1>
-      <span v-if="run" class="badge" :class="run.status">{{ runStatus(run.status).text }}</span>
+      <span v-if="run" class="badge" :class="run.status">{{
+        runStatus(run.status).text
+      }}</span>
       <span v-if="run" class="sub">{{ tplName(run.templateKey) }}</span>
-      <span v-if="snapshot" class="badge skip" :title="snapshotTip(snapshot)">快照 v{{ snapshot.rv }}</span>
-      <span v-if="run?.summary?.durationMs" class="sub muted">{{ fmtMs(run.summary.durationMs) }}</span>
+      <span v-if="snapshot" class="badge skip" :title="snapshotTip(snapshot)"
+        >快照 v{{ snapshot.rv }}</span
+      >
+      <span v-if="run?.summary?.durationMs" class="sub muted">{{
+        fmtMs(run.summary.durationMs)
+      }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
-        <button class="btn" title="在流水线画布中查看（节点状态 / 闸门 / 任务 / 产物，可就地操作）" @click="router.push(`/canvas?run=${runId}`)">
+        <button
+          class="btn"
+          title="在流水线画布中查看（节点状态 / 闸门 / 任务 / 产物，可就地操作）"
+          @click="router.push(`/canvas?run=${runId}`)"
+        >
           <Icon name="flow" :size="14" /> 画布视图
         </button>
-        <button v-if="canCancel" class="btn danger" :disabled="busy" @click="cancelRun">取消运行</button>
-        <button v-if="canResume" class="btn primary" :disabled="busy" @click="resumeRun">
+        <button
+          v-if="canCancel"
+          class="btn danger"
+          :disabled="busy"
+          @click="cancelRun"
+        >
+          取消运行
+        </button>
+        <button
+          v-if="canResume"
+          class="btn primary"
+          :disabled="busy"
+          @click="resumeRun"
+        >
           <Icon name="refresh" :size="14" /> 断点续跑
         </button>
-        <button class="btn" :disabled="!runAssets.length" title="选择产物打包下载" @click="showExport = true">
+        <button
+          class="btn"
+          :disabled="!runAssets.length"
+          title="选择产物打包下载"
+          @click="showExport = true"
+        >
           <Icon name="download" :size="14" /> 导出发布包
         </button>
         <button class="btn" @click="toggleLog">
-          <Icon :name="showLog ? 'x' : 'doc'" :size="14" /> {{ showLog ? '隐藏日志' : '运行日志' }}
+          <Icon :name="showLog ? 'x' : 'doc'" :size="14" />
+          {{ showLog ? '隐藏日志' : '运行日志' }}
         </button>
       </div>
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
-    <div v-if="notice" class="notice-box"><Icon name="check" :size="12" /> {{ notice }}</div>
+    <div v-if="notice" class="notice-box">
+      <Icon name="check" :size="12" /> {{ notice }}
+    </div>
     <div v-if="!run" class="empty">{{ err || '加载中…' }}</div>
 
     <template v-if="run">
@@ -67,8 +150,18 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
       <!-- 完成态「下一步建议」：模板 next 声明的下游模板，点击一键接力 -->
       <div v-if="nextOptions.length" class="nextbar panel">
         <span class="nb-t"><Icon name="sparkles" :size="13" /> 下一步建议</span>
-        <button v-for="t in nextOptions" :key="t.key" type="button" class="nb-chip" @click="openRelay(t.key)">
-          去「{{ t.name }}」<Icon name="chevron-right" :size="11" :stroke-width="2.2" />
+        <button
+          v-for="t in nextOptions"
+          :key="t.key"
+          type="button"
+          class="nb-chip"
+          @click="openRelay(t.key)"
+        >
+          去「{{ t.name }}」<Icon
+            name="chevron-right"
+            :size="11"
+            :stroke-width="2.2"
+          />
         </button>
       </div>
 
@@ -97,9 +190,20 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
         <div class="right">
           <RunLogPanel :u="u" />
 
-          <TaskPanel v-if="hasTasks" :run-id="runId" :active="active" class="tpanel-wrap" @changed="loadDetail()" />
+          <TaskPanel
+            v-if="hasTasks"
+            :run-id="runId"
+            :active="active"
+            class="tpanel-wrap"
+            @changed="loadDetail()"
+          />
 
-          <RunParamsPanel v-if="run" :run="run" :action-keys="steps.map((s) => s.actionKey)" @changed="loadDetail()" />
+          <RunParamsPanel
+            v-if="run"
+            :run="run"
+            :action-keys="steps.map((s) => s.actionKey)"
+            @changed="loadDetail()"
+          />
 
           <RunCostPanel :e="e" />
 
@@ -111,7 +215,12 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
     </template>
 
     <!-- [M4] 单 run 导出向导 / 标记发布 -->
-    <ExportWizardModal v-if="showExport" :run-id="runId" @done="onExportDone" @close="showExport = false" />
+    <ExportWizardModal
+      v-if="showExport"
+      :run-id="runId"
+      @done="onExportDone"
+      @close="showExport = false"
+    />
     <!-- [M19] 成片多画幅派生（A 路径） -->
     <AspectDeriveModal
       v-if="deriveOpen"
@@ -150,7 +259,12 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
     />
 
     <!-- 产物统一预览 -->
-    <AssetPreviewer v-if="previewOpen" :assets="previewAssets" :index="previewStart" @close="previewOpen = false" />
+    <AssetPreviewer
+      v-if="previewOpen"
+      :assets="previewAssets"
+      :index="previewStart"
+      @close="previewOpen = false"
+    />
   </div>
 </template>
 
@@ -224,7 +338,9 @@ const { showRelay, relayTplKey, tplName, nextOptions, openRelay, onRelayDone, sh
   font-size: 12.5px;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .nb-chip:hover {

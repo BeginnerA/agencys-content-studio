@@ -5,13 +5,21 @@ import type { CanvasCommands } from './use-canvas-commands'
 import type { CanvasDocument } from './use-canvas-doc'
 import type { CanvasTarget } from './use-canvas-target'
 
-type Dependencies = Pick<CanvasState, 'canvasId' | 'boardRef' | 'toast'>
-  & Pick<CanvasCommands, 'addNodesCommand' | 'onDropFiles'>
-  & Pick<CanvasDocument, 'loadDoc'>
-  & Pick<CanvasTarget, 'fileInput'>
+type Dependencies = Pick<CanvasState, 'canvasId' | 'boardRef' | 'toast'> &
+  Pick<CanvasCommands, 'addNodesCommand' | 'onDropFiles'> &
+  Pick<CanvasDocument, 'loadDoc'> &
+  Pick<CanvasTarget, 'fileInput'>
 
 export function useCanvasPalette(deps: Dependencies) {
-  const { canvasId, boardRef, addNodesCommand, toast, loadDoc, fileInput, onDropFiles } = deps
+  const {
+    canvasId,
+    boardRef,
+    addNodesCommand,
+    toast,
+    loadDoc,
+    fileInput,
+    onDropFiles,
+  } = deps
 
   // ===== 素材面板 =====
   function paletteDragStart(ev: DragEvent, a: Asset): void {
@@ -26,7 +34,11 @@ export function useCanvasPalette(deps: Dependencies) {
     const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
     const jitter = (paletteSeq++ % 5) * 26
     try {
-      await addNodesCommand(cid, [{ kind: 'asset', assetId: a.id, x: at.x + jitter, y: at.y + jitter }], '新建素材节点')
+      await addNodesCommand(
+        cid,
+        [{ kind: 'asset', assetId: a.id, x: at.x + jitter, y: at.y + jitter }],
+        '新建素材节点',
+      )
       toast('已加入素材节点')
       void loadDoc(true)
     } catch (e) {
@@ -35,7 +47,11 @@ export function useCanvasPalette(deps: Dependencies) {
   }
 
   /** [M17] 实体 Tab：类型标签 + 拖入 / 单击送至视口中心（建 entity 节点） */
-  const ENT_KIND_TEXT: Record<EntityItem['kind'], string> = { character: '角色', scene: '场景', prop: '道具' }
+  const ENT_KIND_TEXT: Record<EntityItem['kind'], string> = {
+    character: '角色',
+    scene: '场景',
+    prop: '道具',
+  }
   function paletteEntityDragStart(ev: DragEvent, e: EntityItem): void {
     ev.dataTransfer?.setData('text/acs-entity-id', String(e.id))
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy'
@@ -46,18 +62,37 @@ export function useCanvasPalette(deps: Dependencies) {
     const at = boardRef.value?.centerWorld() ?? { x: 160, y: 120 }
     const jitter = (paletteSeq++ % 5) * 26
     try {
-      await addNodesCommand(cid, [{ kind: 'entity', entityId: e.id, x: at.x + jitter, y: at.y + jitter }], '新建实体节点')
+      await addNodesCommand(
+        cid,
+        [
+          {
+            kind: 'entity',
+            entityId: e.id,
+            x: at.x + jitter,
+            y: at.y + jitter,
+          },
+        ],
+        '新建实体节点',
+      )
       toast('已加入实体节点')
       void loadDoc(true)
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err))
     }
   }
-  async function onDropEntity(p: { entityId: number; x: number; y: number }): Promise<void> {
+  async function onDropEntity(p: {
+    entityId: number
+    x: number
+    y: number
+  }): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
     try {
-      await addNodesCommand(cid, [{ kind: 'entity', entityId: p.entityId, x: p.x, y: p.y }], '新建实体节点')
+      await addNodesCommand(
+        cid,
+        [{ kind: 'entity', entityId: p.entityId, x: p.x, y: p.y }],
+        '新建实体节点',
+      )
       toast('已加入实体节点')
       void loadDoc(true)
     } catch (err) {

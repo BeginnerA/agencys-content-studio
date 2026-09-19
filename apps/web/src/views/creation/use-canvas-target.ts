@@ -3,14 +3,36 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { creationApi, entityApi, projectApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { Asset, CanvasListItem, EntityItem, Project } from '../../lib/types'
+import type {
+  Asset,
+  CanvasListItem,
+  EntityItem,
+  Project,
+} from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 
-type Dependencies = Pick<CanvasState, 'projectId' | 'canvasId' | 'toast' | 'selectedIds' | 'selectedEdgeId' | 'doc' | 'history'>
-  & { loadDoc: (silent?: boolean) => Promise<void> }
+type Dependencies = Pick<
+  CanvasState,
+  | 'projectId'
+  | 'canvasId'
+  | 'toast'
+  | 'selectedIds'
+  | 'selectedEdgeId'
+  | 'doc'
+  | 'history'
+> & { loadDoc: (silent?: boolean) => Promise<void> }
 
 export function useCanvasTarget(deps: Dependencies) {
-  const { projectId, canvasId, toast, selectedIds, selectedEdgeId, doc, history, loadDoc } = deps
+  const {
+    projectId,
+    canvasId,
+    toast,
+    selectedIds,
+    selectedEdgeId,
+    doc,
+    history,
+    loadDoc,
+  } = deps
 
   const route = useRoute()
   const router = useRouter()
@@ -118,8 +140,14 @@ export function useCanvasTarget(deps: Dependencies) {
   // ===== URL 同步 =====
   function syncFromQuery(): void {
     const q = route.query
-    const p = typeof q.project === 'string' && /^\d+$/.test(q.project) ? Number(q.project) : null
-    const c = typeof q.canvas === 'string' && /^\d+$/.test(q.canvas) ? Number(q.canvas) : null
+    const p =
+      typeof q.project === 'string' && /^\d+$/.test(q.project)
+        ? Number(q.project)
+        : null
+    const c =
+      typeof q.canvas === 'string' && /^\d+$/.test(q.canvas)
+        ? Number(q.canvas)
+        : null
     const projChanged = p !== projectId.value
     const canvasChanged = c !== canvasId.value
     projectId.value = p
@@ -152,7 +180,8 @@ export function useCanvasTarget(deps: Dependencies) {
     renamingCanvas.value = false
     const cid = canvasId.value
     const name = canvasNameDraft.value.trim()
-    if (cid == null || !doc.value || !name || name === doc.value.canvas.name) return
+    if (cid == null || !doc.value || !name || name === doc.value.canvas.name)
+      return
     try {
       await creationApi.update(cid, { name })
       toast('画布已改名')

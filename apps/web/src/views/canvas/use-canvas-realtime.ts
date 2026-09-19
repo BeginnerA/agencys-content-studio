@@ -69,7 +69,8 @@ export function useCanvasRealtime(opts: {
     else if (tab.value === 'overview') scheduleRefresh()
   }
   function onTaskEvent(p: StudioEventMap['task.updated']): void {
-    if (runId.value != null && (p.runId == null || p.runId === runId.value)) scheduleRefresh()
+    if (runId.value != null && (p.runId == null || p.runId === runId.value))
+      scheduleRefresh()
     else if (tab.value === 'overview') scheduleRefresh()
   }
   /** [M23] 批次头变更（计数/状态）→ 全景对账 */
@@ -77,7 +78,8 @@ export function useCanvasRealtime(opts: {
     if (tab.value === 'overview') scheduleRefresh()
   }
   function onLogEvent(p: StudioEventMap['step.log']): void {
-    if (runId.value != null && p.runId === runId.value && drawerOpen.value) scheduleLogRefresh()
+    if (runId.value != null && p.runId === runId.value && drawerOpen.value)
+      scheduleLogRefresh()
   }
 
   // ===== 日志（抽屉打开时按节流拉取；抽屉内再按 [stepKey] 过滤）=====

@@ -3,7 +3,11 @@ import { computed } from 'vue'
 import type { TemplateMeta } from '../../lib/types'
 import { groupTemplates, genreText } from '../../lib/scene'
 
-const props = defineProps<{ templates: TemplateMeta[]; selected?: string; defaultKey?: string }>()
+const props = defineProps<{
+  templates: TemplateMeta[]
+  selected?: string
+  defaultKey?: string
+}>()
 const emit = defineEmits<{ select: [key: string] }>()
 
 const groups = computed(() => groupTemplates(props.templates))
@@ -30,7 +34,9 @@ const groups = computed(() => groupTemplates(props.templates))
               {{ t.name }}
               <span v-if="t.key === defaultKey" class="tc-def">默认</span>
             </span>
-            <span class="tc-meta">{{ t.stepCount }} 步 · {{ genreText(t.genre) }}</span>
+            <span class="tc-meta"
+              >{{ t.stepCount }} 步 · {{ genreText(t.genre) }}</span
+            >
           </span>
           <span class="tc-ds">{{ t.description }}</span>
         </button>
@@ -94,7 +100,10 @@ const groups = computed(() => groupTemplates(props.templates))
   padding: 10px 12px;
   cursor: pointer;
   color: var(--text);
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.1s;
 }
 
 .tc:hover {

@@ -26,8 +26,14 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
       <p class="msg">{{ message }}</p>
     </div>
     <template #footer>
-      <button class="btn" @click="emit('cancel')">{{ cancelText ?? '取消' }}</button>
-      <button class="btn" :class="danger ? 'danger' : 'primary'" @click="emit('confirm')">
+      <button class="btn" @click="emit('cancel')">
+        {{ cancelText ?? '取消' }}
+      </button>
+      <button
+        class="btn"
+        :class="danger ? 'danger' : 'primary'"
+        @click="emit('confirm')"
+      >
         {{ confirmText ?? '确认' }}
       </button>
     </template>

@@ -1,11 +1,26 @@
 /** [M28] 运行详情附加数据：接力推荐 / 记忆徽标 / 导出包 / 成本 / 发布记录；核心状态由 deps 注入。 */
 import { computed, ref } from 'vue'
-import { assetApi, exportApi, publicationApi, statsApi, templateApi } from '../../lib/api'
+import {
+  assetApi,
+  exportApi,
+  publicationApi,
+  statsApi,
+  templateApi,
+} from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { PLATFORM_TEXT } from '../../lib/format'
 import { assetIds } from './internals'
 import type { ComputedRef, Ref } from 'vue'
-import type { ExportAssetLite, Publication, Run, RunAssetLite, RunDetail, RunStep, TemplateMeta, UsageSummary } from '../../lib/types'
+import type {
+  ExportAssetLite,
+  Publication,
+  Run,
+  RunAssetLite,
+  RunDetail,
+  RunStep,
+  TemplateMeta,
+  UsageSummary,
+} from '../../lib/types'
 
 export function useRunExtras(deps: {
   runId: number
@@ -62,15 +77,23 @@ export function useRunExtras(deps: {
     window.location.href = `/runs/${id}`
   }
 
-
   // [M3] 记忆/角色步骤徽标：读产物资产 params 组装（轻量、失败静默、按 step:asset 缓存）
-  const BADGE_ACTIONS = new Set(['memory_write', 'memory_recall', 'character_sync'])
+  const BADGE_ACTIONS = new Set([
+    'memory_write',
+    'memory_recall',
+    'character_sync',
+  ])
   const badges = ref<Record<number, string>>({})
   const badgeCache = new Set<string>()
 
   async function loadBadges() {
     // 先收集待拉取项（缓存命中/无产物同步跳过），再并发拉取（替代串行 for-await）
-    const todo: Array<{ sid: number; aid: number; key: string; action: string }> = []
+    const todo: Array<{
+      sid: number
+      aid: number
+      key: string
+      action: string
+    }> = []
     for (const s of steps.value) {
       if (!BADGE_ACTIONS.has(s.actionKey)) continue
       const aid = assetIds(s)[0]
@@ -81,24 +104,34 @@ export function useRunExtras(deps: {
     }
     if (!todo.length) return
     const next: Record<number, string> = { ...badges.value }
-    await Promise.all(todo.map(async ({ sid, aid, key, action }) => {
-      try {
-        const { asset: a } = await assetApi.detail(aid)
-        const p = (a.params ?? {}) as Record<string, unknown>
-        if (action === 'memory_recall') {
-          const top = typeof p['topScore'] === 'number' ? (p['topScore'] as number).toFixed(2) : null
-          next[sid] = `召回 ${p['count'] ?? 0} 条${top ? ` · top ${top}` : ''}`
-        } else if (action === 'memory_write') {
-          const nm = typeof p['name'] === 'string' && p['name'] ? (p['name'] as string) : '（匿名）'
-          next[sid] = `记忆已写 ${nm}`
-        } else {
-          next[sid] = `建档 ${p['created'] ?? 0} 新增 / ${p['updated'] ?? 0} 更新`
+    await Promise.all(
+      todo.map(async ({ sid, aid, key, action }) => {
+        try {
+          const { asset: a } = await assetApi.detail(aid)
+          const p = (a.params ?? {}) as Record<string, unknown>
+          if (action === 'memory_recall') {
+            const top =
+              typeof p['topScore'] === 'number'
+                ? (p['topScore'] as number).toFixed(2)
+                : null
+            next[sid] =
+              `召回 ${p['count'] ?? 0} 条${top ? ` · top ${top}` : ''}`
+          } else if (action === 'memory_write') {
+            const nm =
+              typeof p['name'] === 'string' && p['name']
+                ? (p['name'] as string)
+                : '（匿名）'
+            next[sid] = `记忆已写 ${nm}`
+          } else {
+            next[sid] =
+              `建档 ${p['created'] ?? 0} 新增 / ${p['updated'] ?? 0} 更新`
+          }
+          badgeCache.add(key)
+        } catch {
+          // 产物不可读 → 不显示徽标
         }
-        badgeCache.add(key)
-      } catch {
-        // 产物不可读 → 不显示徽标
-      }
-    }))
+      }),
+    )
     badges.value = next
   }
 
@@ -163,7 +196,9 @@ export function useRunExtras(deps: {
   // ===== [M19] 成片多画幅派生（A 路径：对最新 final_video 二次编码） =====
   const deriveOpen = ref(false)
   /** 有 final_video 产物才可派生 */
-  const hasFinalVideo = computed(() => runAssets.value.some((a) => a.purpose === 'final_video'))
+  const hasFinalVideo = computed(() =>
+    runAssets.value.some((a) => a.purpose === 'final_video'),
+  )
   /** 派生完成 → 刷新 run 产物（项目资产已新行，导出/发布候选跟着更新） */
   function onDerived() {
     refreshExtras()

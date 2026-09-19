@@ -6,18 +6,61 @@ import LinesEditor from './LinesEditor.vue'
 import { useStoryboardEditor } from './use-storyboard-editor'
 import type { RunStep, ShotBoardShot } from '../../../lib/types'
 
-const props = defineProps<{ runId: number; step: RunStep; shots: ShotBoardShot[]; canOperate: boolean }>()
+const props = defineProps<{
+  runId: number
+  step: RunStep
+  shots: ShotBoardShot[]
+  canOperate: boolean
+}>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const s = useStoryboardEditor({ props, emit })
-const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted, textField, setTextField, numFieldText, setNumField, setBoolField, setJsonField, durText, setDur, charList, addChar, removeChar, extraKeys, fieldKind, addingKey, newKey, startAddKey, commitAddKey, removeKey, changeCount, dirty, save, requestClose } = s
+const {
+  drafts,
+  busy,
+  err,
+  charNames,
+  active,
+  aliveCount,
+  addShot,
+  toggleDeleted,
+  textField,
+  setTextField,
+  numFieldText,
+  setNumField,
+  setBoolField,
+  setJsonField,
+  durText,
+  setDur,
+  charList,
+  addChar,
+  removeChar,
+  extraKeys,
+  fieldKind,
+  addingKey,
+  newKey,
+  startAddKey,
+  commitAddKey,
+  removeKey,
+  changeCount,
+  dirty,
+  save,
+  requestClose,
+} = s
 </script>
 
 <template>
-  <Modal :title="`分镜编辑器 · ${step.title || step.stepKey}`" :width="1000" @close="requestClose">
+  <Modal
+    :title="`分镜编辑器 · ${step.title || step.stepKey}`"
+    :width="1000"
+    @close="requestClose"
+  >
     <div class="se">
       <div class="se-hint">
         <Icon name="sliders" :size="12" />
-        <span>增删 / 改字段 / 拖拽重排镜头：保存后仅改写分镜与镜头顺序，<b>不触发生成</b>，重新合成后生效。</span>
+        <span
+          >增删 / 改字段 /
+          拖拽重排镜头：保存后仅改写分镜与镜头顺序，<b>不触发生成</b>，重新合成后生效。</span
+        >
       </div>
       <div v-if="!canOperate" class="se-lock">
         <Icon name="alert" :size="12" /> 当前状态只读（run 执行中或不可返修）
@@ -27,9 +70,20 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
       <div class="se-body">
         <!-- 左栏：镜头列表 -->
         <div class="se-list">
-          <ShotRow v-for="(d, i) in drafts" :key="d.uid" :s="s" :d="d" :i="i" :canOperate="canOperate" />
+          <ShotRow
+            v-for="(d, i) in drafts"
+            :key="d.uid"
+            :s="s"
+            :d="d"
+            :i="i"
+            :canOperate="canOperate"
+          />
           <div v-if="!drafts.length" class="muted se-empty">无镜头</div>
-          <button class="btn sm se-add" :disabled="!canOperate" @click="addShot">
+          <button
+            class="btn sm se-add"
+            :disabled="!canOperate"
+            @click="addShot"
+          >
             <Icon name="plus" :size="12" /> 新增镜头
           </button>
         </div>
@@ -39,8 +93,13 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
           <template v-if="active">
             <div v-if="active.deleted" class="se-dead-tip">
               <Icon name="alert" :size="12" />
-              <span>该镜头已标记删除（保存后从分镜移除；任务 / 产物保留为历史）</span>
-              <button class="btn sm" @click="toggleDeleted(active)">撤销删除</button>
+              <span
+                >该镜头已标记删除（保存后从分镜移除；任务 /
+                产物保留为历史）</span
+              >
+              <button class="btn sm" @click="toggleDeleted(active)">
+                撤销删除
+              </button>
             </div>
 
             <template v-else>
@@ -101,7 +160,12 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
                 <div class="se-tags">
                   <span v-for="c in charList(active)" :key="c" class="se-tag">
                     {{ c }}
-                    <button type="button" aria-label="移除角色" :disabled="!canOperate" @click="removeChar(active, c)">
+                    <button
+                      type="button"
+                      aria-label="移除角色"
+                      :disabled="!canOperate"
+                      @click="removeChar(active, c)"
+                    >
                       <Icon name="x" :size="10" />
                     </button>
                   </span>
@@ -135,7 +199,9 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
                       :disabled="!canOperate"
                       @change="setBoolField(active, k, $event)"
                     />
-                    <span class="muted se-kv-hint">{{ active.fields[k] === true ? 'true' : 'false' }}</span>
+                    <span class="muted se-kv-hint">{{
+                      active.fields[k] === true ? 'true' : 'false'
+                    }}</span>
                   </template>
                   <input
                     v-else-if="fieldKind(active.fields[k]) === 'number'"
@@ -150,7 +216,9 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
                     class="se-json mono"
                     rows="2"
                     spellcheck="false"
-                    :value="active.jsonText[k] ?? JSON.stringify(active.fields[k])"
+                    :value="
+                      active.jsonText[k] ?? JSON.stringify(active.fields[k])
+                    "
                     :disabled="!canOperate"
                     @input="setJsonField(active, k, $event)"
                   />
@@ -179,10 +247,19 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
                     spellcheck="false"
                     @keydown.enter.prevent="commitAddKey(active)"
                   />
-                  <button class="btn sm" @click="commitAddKey(active)">添加</button>
-                  <button class="btn sm" @click="addingKey = false">取消</button>
+                  <button class="btn sm" @click="commitAddKey(active)">
+                    添加
+                  </button>
+                  <button class="btn sm" @click="addingKey = false">
+                    取消
+                  </button>
                 </div>
-                <button v-else class="btn sm se-add" :disabled="!canOperate" @click="startAddKey">
+                <button
+                  v-else
+                  class="btn sm se-add"
+                  :disabled="!canOperate"
+                  @click="startAddKey"
+                >
                   <Icon name="plus" :size="12" /> 添加字段
                 </button>
               </div>
@@ -196,11 +273,17 @@ const { drafts, busy, err, charNames, active, aliveCount, addShot, toggleDeleted
     <template #footer>
       <div class="se-foot">
         <span class="muted se-count">
-          {{ aliveCount }} 镜{{ changeCount > 0 ? ` · ${changeCount} 项改动` : '' }}
+          {{ aliveCount }} 镜{{
+            changeCount > 0 ? ` · ${changeCount} 项改动` : ''
+          }}
         </span>
         <span class="grow" />
         <button class="btn" :disabled="busy" @click="requestClose">取消</button>
-        <button class="btn primary" :disabled="!canOperate || busy || !dirty" @click="save">
+        <button
+          class="btn primary"
+          :disabled="!canOperate || busy || !dirty"
+          @click="save"
+        >
           <Icon name="check" :size="12" /> {{ busy ? '保存中…' : '保存' }}
         </button>
       </div>

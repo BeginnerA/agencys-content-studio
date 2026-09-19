@@ -8,7 +8,10 @@ import type { Run, TemplateMeta } from '../../lib/types'
 import Icon from '../../components/common/Icon.vue'
 
 defineProps<{ runs: Run[]; tplMetas: TemplateMeta[] }>()
-const emit = defineEmits<{ 'open-run': [id: number]; 'open-template': [key: string] }>()
+const emit = defineEmits<{
+  'open-run': [id: number]
+  'open-template': [key: string]
+}>()
 </script>
 
 <template>

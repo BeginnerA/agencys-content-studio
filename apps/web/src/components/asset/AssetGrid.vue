@@ -1,13 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Asset } from '../../lib/types'
-import { KIND_TEXT, fmtSize, fmtTime, parseAssetQuality, qualityText } from '../../lib/format'
+import {
+  KIND_TEXT,
+  fmtSize,
+  fmtTime,
+  parseAssetQuality,
+  qualityText,
+} from '../../lib/format'
 import AssetPreviewer from './previewer/index.vue'
 import AssetThumb from './AssetThumb.vue'
 import Icon from '../common/Icon.vue'
 
-const props = defineProps<{ assets: Asset[]; loading?: boolean; pickable?: boolean; selectable?: boolean; checkedIds?: number[]; removable?: boolean }>()
-const emit = defineEmits<{ pick: [asset: Asset]; favorite: [asset: Asset]; changed: [asset: Asset]; removed: [asset: Asset]; toggleCheck: [asset: Asset] }>()
+const props = defineProps<{
+  assets: Asset[]
+  loading?: boolean
+  pickable?: boolean
+  selectable?: boolean
+  checkedIds?: number[]
+  removable?: boolean
+}>()
+const emit = defineEmits<{
+  pick: [asset: Asset]
+  favorite: [asset: Asset]
+  changed: [asset: Asset]
+  removed: [asset: Asset]
+  toggleCheck: [asset: Asset]
+}>()
 
 const previewIdx = ref<number | null>(null)
 
@@ -26,7 +45,10 @@ function activate(a: Asset) {
     emit('toggleCheck', a)
     return
   }
-  previewIdx.value = Math.max(0, props.assets.findIndex((x) => x.id === a.id))
+  previewIdx.value = Math.max(
+    0,
+    props.assets.findIndex((x) => x.id === a.id),
+  )
 }
 
 function kindText(kind: string): string {
@@ -35,7 +57,13 @@ function kindText(kind: string): string {
 
 /** 键盘与读屏可用的整卡描述 */
 function ariaLabel(a: Asset): string {
-  const act = props.pickable ? '选择' : props.selectable ? (isChecked(a) ? '取消选中' : '选中') : '预览'
+  const act = props.pickable
+    ? '选择'
+    : props.selectable
+      ? isChecked(a)
+        ? '取消选中'
+        : '选中'
+      : '预览'
   return `${a.name}，${kindText(a.kind)}，${fmtSize(a.fileSize)}，${fmtTime(a.createdAt)}，回车${act}`
 }
 
@@ -65,8 +93,18 @@ function qualityWarn(a: Asset): string | null {
         @click="activate(a)"
       >
         <AssetThumb :asset="a" :pickable="pickable" />
-        <span v-if="selectable" class="ck" :class="{ on: isChecked(a) }" aria-hidden="true">
-          <Icon v-if="isChecked(a)" name="check" :size="11" :stroke-width="2.6" />
+        <span
+          v-if="selectable"
+          class="ck"
+          :class="{ on: isChecked(a) }"
+          aria-hidden="true"
+        >
+          <Icon
+            v-if="isChecked(a)"
+            name="check"
+            :size="11"
+            :stroke-width="2.6"
+          />
         </span>
         <span
           v-if="qualityWarn(a)"
@@ -82,8 +120,14 @@ function qualityWarn(a: Asset): string | null {
           :class="{ on: a.isFavorite === 1 }"
           role="button"
           tabindex="0"
-          :aria-label="a.isFavorite === 1 ? `取消收藏 ${a.name}` : `收藏 ${a.name}`"
-          :title="a.isFavorite === 1 ? '取消收藏（版本清理保留豁免）' : '收藏（版本清理保留豁免）'"
+          :aria-label="
+            a.isFavorite === 1 ? `取消收藏 ${a.name}` : `收藏 ${a.name}`
+          "
+          :title="
+            a.isFavorite === 1
+              ? '取消收藏（版本清理保留豁免）'
+              : '收藏（版本清理保留豁免）'
+          "
           @click.stop="toggleFav(a)"
           @keydown.enter.stop.prevent="toggleFav(a)"
           @keydown.space.stop.prevent="toggleFav(a)"
@@ -95,7 +139,9 @@ function qualityWarn(a: Asset): string | null {
           <span v-if="a.tags?.length" class="tgs" :title="a.tags.join('、')">
             <span class="tg">{{ a.tags[0] }}</span>
             <span v-if="a.tags.length > 1" class="tg">{{ a.tags[1] }}</span>
-            <span v-if="a.tags.length > 2" class="tg more">+{{ a.tags.length - 2 }}</span>
+            <span v-if="a.tags.length > 2" class="tg more"
+              >+{{ a.tags.length - 2 }}</span
+            >
           </span>
           <span class="sub">
             <span class="kind">{{ kindText(a.kind) }}</span>
@@ -303,7 +349,9 @@ function qualityWarn(a: Asset): string | null {
   backdrop-filter: blur(4px);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
 }
 
 .cell:hover .fav,

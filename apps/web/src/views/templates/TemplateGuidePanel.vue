@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { kindText, fmtDefault, stepBadgesOf, GUIDE_BADGE_TEXT } from './internals'
+import {
+  kindText,
+  fmtDefault,
+  stepBadgesOf,
+  GUIDE_BADGE_TEXT,
+} from './internals'
 import Icon from '../../components/common/Icon.vue'
 import { SCENE_LABELS, genreText } from '../../lib/scene'
 import { actionText } from '../../lib/template-dict'
@@ -10,63 +15,73 @@ const { selected, detail, toEdit } = props.t
 </script>
 
 <template>
-            <template v-if="detail">
-              <p class="vdesc">{{ detail.description || '（模板未写介绍）' }}</p>
-              <div class="vmeta">
-                <span class="chip">{{ genreText(detail.genre) }}</span>
-                <span v-if="detail.scene" class="chip">{{ SCENE_LABELS[detail.scene] ?? detail.scene }}</span>
-                <span class="chip">v{{ detail.version }}</span>
-                <span class="chip">{{ detail.steps.length }} 步</span>
-              </div>
+  <template v-if="detail">
+    <p class="vdesc">{{ detail.description || '（模板未写介绍）' }}</p>
+    <div class="vmeta">
+      <span class="chip">{{ genreText(detail.genre) }}</span>
+      <span v-if="detail.scene" class="chip">{{
+        SCENE_LABELS[detail.scene] ?? detail.scene
+      }}</span>
+      <span class="chip">v{{ detail.version }}</span>
+      <span class="chip">{{ detail.steps.length }} 步</span>
+    </div>
 
-              <div class="ih">启动时要填什么</div>
-              <table v-if="detail.inputs.length" class="tbl">
-                <thead>
-                  <tr>
-                    <th>字段</th>
-                    <th>问题</th>
-                    <th>类型</th>
-                    <th>必填</th>
-                    <th>默认</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="inp in detail.inputs" :key="inp.key">
-                    <td class="mono">{{ inp.key }}</td>
-                    <td>{{ inp.label ?? '—' }}</td>
-                    <td>{{ kindText(inp.kind) }}</td>
-                    <td>{{ inp.required ? '是' : '否' }}</td>
-                    <td class="mono">{{ fmtDefault(inp.default) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div v-else class="muted">此模板不需要填写内容，选中它直接启动即可。</div>
+    <div class="ih">启动时要填什么</div>
+    <table v-if="detail.inputs.length" class="tbl">
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>问题</th>
+          <th>类型</th>
+          <th>必填</th>
+          <th>默认</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="inp in detail.inputs" :key="inp.key">
+          <td class="mono">{{ inp.key }}</td>
+          <td>{{ inp.label ?? '—' }}</td>
+          <td>{{ kindText(inp.kind) }}</td>
+          <td>{{ inp.required ? '是' : '否' }}</td>
+          <td class="mono">{{ fmtDefault(inp.default) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else class="muted">此模板不需要填写内容，选中它直接启动即可。</div>
 
-              <div class="ih">流水线会做什么</div>
-              <ol class="steplist" role="list">
-                <li v-for="(s, i) in detail.steps" :key="s.key" class="step">
-                  <span class="s-idx">{{ i + 1 }}</span>
-                  <div class="s-r1">
-                    <span class="s-title">{{ s.title }}</span>
-                    <span class="s-act">{{ actionText(s.action) }}</span>
-                    <span
-                      v-for="(bd, bi) in stepBadgesOf(s)"
-                      :key="bi"
-                      class="s-bd"
-                      :class="bd.cls"
-                      :title="bd.tip"
-                    >{{ GUIDE_BADGE_TEXT[bd.cls] }}</span>
-                  </div>
-                </li>
-              </ol>
+    <div class="ih">流水线会做什么</div>
+    <ol class="steplist" role="list">
+      <li v-for="(s, i) in detail.steps" :key="s.key" class="step">
+        <span class="s-idx">{{ i + 1 }}</span>
+        <div class="s-r1">
+          <span class="s-title">{{ s.title }}</span>
+          <span class="s-act">{{ actionText(s.action) }}</span>
+          <span
+            v-for="(bd, bi) in stepBadgesOf(s)"
+            :key="bi"
+            class="s-bd"
+            :class="bd.cls"
+            :title="bd.tip"
+            >{{ GUIDE_BADGE_TEXT[bd.cls] }}</span
+          >
+        </div>
+      </li>
+    </ol>
 
-              <div class="ebar">
-                <span class="muted">模板文件：workspace/templates/{{ selected }}.yaml · 保存后下一个新运行立即生效</span>
-                <button class="btn primary" title="打开 YAML 编辑器（高级模式）" @click="toEdit">
-                  <Icon name="pencil" :size="13" /> 编辑 YAML
-                </button>
-              </div>
-            </template>
+    <div class="ebar">
+      <span class="muted"
+        >模板文件：workspace/templates/{{ selected }}.yaml ·
+        保存后下一个新运行立即生效</span
+      >
+      <button
+        class="btn primary"
+        title="打开 YAML 编辑器（高级模式）"
+        @click="toEdit"
+      >
+        <Icon name="pencil" :size="13" /> 编辑 YAML
+      </button>
+    </div>
+  </template>
 </template>
 
 <style scoped>
@@ -177,5 +192,4 @@ const { selected, detail, toEdit } = props.t
   color: var(--text-2);
   margin: 14px 0 8px;
 }
-
 </style>

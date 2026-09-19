@@ -7,23 +7,27 @@ const { costUsage } = props.e
 </script>
 
 <template>
-          <!-- [M4] 本 run 成本（usage_records 聚合，按 kind） -->
-          <div class="panel mini">
-            <div class="lhead">
-              <span class="lt">本 run 成本</span>
-              <span class="muted mono">{{ costUsage ? fmtCost(costUsage.totals.cost) : '—' }}</span>
-            </div>
-            <div v-if="costUsage?.items.length" class="mrows">
-              <div v-for="it in costUsage.items" :key="it.key" class="mrow">
-                <span class="chip">{{ COST_KIND_TEXT[it.key] ?? it.key }}</span>
-                <span class="muted mono">{{ fmtQty(it.quantity) }}</span>
-                <span class="grow" />
-                <span v-if="it.unpriced" class="badge skip">未计价 {{ it.unpriced }}</span>
-                <span class="mono">{{ fmtCost(it.cost) }}</span>
-              </div>
-            </div>
-            <div v-else class="empty" style="padding: 10px 0">暂无用量记录</div>
-          </div>
+  <!-- [M4] 本 run 成本（usage_records 聚合，按 kind） -->
+  <div class="panel mini">
+    <div class="lhead">
+      <span class="lt">本 run 成本</span>
+      <span class="muted mono">{{
+        costUsage ? fmtCost(costUsage.totals.cost) : '—'
+      }}</span>
+    </div>
+    <div v-if="costUsage?.items.length" class="mrows">
+      <div v-for="it in costUsage.items" :key="it.key" class="mrow">
+        <span class="chip">{{ COST_KIND_TEXT[it.key] ?? it.key }}</span>
+        <span class="muted mono">{{ fmtQty(it.quantity) }}</span>
+        <span class="grow" />
+        <span v-if="it.unpriced" class="badge skip"
+          >未计价 {{ it.unpriced }}</span
+        >
+        <span class="mono">{{ fmtCost(it.cost) }}</span>
+      </div>
+    </div>
+    <div v-else class="empty" style="padding: 10px 0">暂无用量记录</div>
+  </div>
 </template>
 
 <style scoped>
@@ -63,5 +67,4 @@ const { costUsage } = props.e
   font-weight: 600;
   font-size: 13px;
 }
-
 </style>

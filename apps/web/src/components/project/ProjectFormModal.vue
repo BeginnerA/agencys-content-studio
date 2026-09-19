@@ -6,9 +6,23 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import Modal from '../common/Modal.vue'
-import { ApiError, projectApi, stylePresetApi, templateApi } from '../../lib/api'
-import type { ProjectDetail, StylePresetItem, TemplateMeta } from '../../lib/types'
-import { GENRE_DEFAULT_TPL, PROJECT_GENRES, groupTemplates, normalizeGenre } from '../../lib/scene'
+import {
+  ApiError,
+  projectApi,
+  stylePresetApi,
+  templateApi,
+} from '../../lib/api'
+import type {
+  ProjectDetail,
+  StylePresetItem,
+  TemplateMeta,
+} from '../../lib/types'
+import {
+  GENRE_DEFAULT_TPL,
+  PROJECT_GENRES,
+  groupTemplates,
+  normalizeGenre,
+} from '../../lib/scene'
 
 const props = defineProps<{ project?: ProjectDetail | null }>()
 const emit = defineEmits<{ done: []; close: [] }>()
@@ -34,17 +48,24 @@ const stylePresetIds = ref<number[]>([])
 /** 体裁下拉选项：绑定值为字典外存量值时追加临时项（避免静默改写） */
 const genreOptions = computed(() => {
   if (genre.value && !PROJECT_GENRES.some((g) => g.value === genre.value)) {
-    return [...PROJECT_GENRES, { value: genre.value, label: `${genre.value}（未识别）` }]
+    return [
+      ...PROJECT_GENRES,
+      { value: genre.value, label: `${genre.value}（未识别）` },
+    ]
   }
   return PROJECT_GENRES
 })
 
 /** 绑定的默认模板不在列表中（已删除）→ 追加临时项，避免静默改写 */
-const tplMissing = computed(() => !!tplKey.value && !templates.value.some((t) => t.key === tplKey.value))
+const tplMissing = computed(
+  () => !!tplKey.value && !templates.value.some((t) => t.key === tplKey.value),
+)
 
 /** [M13] 启用中预设（按 sortOrder 展示；勾选叠加顺序 = 数组顺序） */
 const activePresets = computed(() =>
-  presets.value.filter((s) => !!s.isActive).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
+  presets.value
+    .filter((s) => !!s.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
 )
 
 /** [M13] 绑定值不在「启用中」预设里 → 追加可取消条目（已停用/已删，避免静默改写） */
@@ -61,7 +82,8 @@ const missingBound = computed(() =>
 function onGenreChange() {
   if (tplTouched.value) return
   const mapped = GENRE_DEFAULT_TPL[genre.value]
-  if (mapped && templates.value.some((t) => t.key === mapped)) tplKey.value = mapped
+  if (mapped && templates.value.some((t) => t.key === mapped))
+    tplKey.value = mapped
 }
 
 onMounted(async () => {
@@ -86,7 +108,11 @@ onMounted(async () => {
       : st['style_preset_id'] !== undefined
         ? [st['style_preset_id']]
         : []
-    stylePresetIds.value = [...new Set(rawIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
+    stylePresetIds.value = [
+      ...new Set(
+        rawIds.map(Number).filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ]
     try {
       presets.value = (await stylePresetApi.list()).items
     } catch {
@@ -95,7 +121,10 @@ onMounted(async () => {
   } else {
     // 新建：默认体裁短剧 → 预选映射模板（命中才用），否则回退列表第一个
     const mapped = GENRE_DEFAULT_TPL[genre.value]
-    tplKey.value = mapped && templates.value.some((t) => t.key === mapped) ? mapped : (templates.value[0]?.key ?? '')
+    tplKey.value =
+      mapped && templates.value.some((t) => t.key === mapped)
+        ? mapped
+        : (templates.value[0]?.key ?? '')
   }
 })
 
@@ -112,7 +141,14 @@ async function submit() {
       brief: brief.value.trim(),
       genre: genre.value,
       template_key: tplKey.value || undefined,
-      tags: [...new Set(tagsInput.value.split(/[,，、]/).map((t) => t.trim()).filter(Boolean))],
+      tags: [
+        ...new Set(
+          tagsInput.value
+            .split(/[,，、]/)
+            .map((t) => t.trim())
+            .filter(Boolean),
+        ),
+      ],
     }
     if (props.project) {
       // [M13] 读-合并写 settings（保留既有其他键；无勾选 → null + 显式清理旧单值键）
@@ -120,7 +156,8 @@ async function submit() {
         ...body,
         settings: {
           ...(props.project.settings ?? {}),
-          style_preset_ids: stylePresetIds.value.length > 0 ? stylePresetIds.value : null,
+          style_preset_ids:
+            stylePresetIds.value.length > 0 ? stylePresetIds.value : null,
           style_preset_id: null,
         },
       })
@@ -137,7 +174,11 @@ async function submit() {
 </script>
 
 <template>
-  <Modal :title="isEdit ? '编辑项目' : '新建项目'" :width="560" @close="emit('close')">
+  <Modal
+    :title="isEdit ? '编辑项目' : '新建项目'"
+    :width="560"
+    @close="emit('close')"
+  >
     <label class="fld">
       项目名 <span class="req">*</span>
       <input v-model="name" type="text" placeholder="如：萌宝镖客" />
@@ -145,15 +186,21 @@ async function submit() {
     <label class="fld">
       体裁
       <select v-model="genre" @change="onGenreChange">
-        <option v-for="g in genreOptions" :key="g.value" :value="g.value">{{ g.label }}</option>
+        <option v-for="g in genreOptions" :key="g.value" :value="g.value">
+          {{ g.label }}
+        </option>
       </select>
     </label>
     <label class="fld">
       默认模板
       <select v-model="tplKey" @change="tplTouched = true">
-        <option v-if="tplMissing" :value="tplKey">{{ tplKey }}（已失效）</option>
+        <option v-if="tplMissing" :value="tplKey">
+          {{ tplKey }}（已失效）
+        </option>
         <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">
-          <option v-for="t in g.items" :key="t.key" :value="t.key">{{ t.name }}</option>
+          <option v-for="t in g.items" :key="t.key" :value="t.key">
+            {{ t.name }}
+          </option>
         </optgroup>
       </select>
     </label>
@@ -169,24 +216,36 @@ async function submit() {
           <input v-model="stylePresetIds" type="checkbox" :value="m.id" />
           <span class="pnm">{{ m.label }}</span>
         </label>
-        <div v-if="!activePresets.length && !missingBound.length" class="muted" style="font-size: 12px">
+        <div
+          v-if="!activePresets.length && !missingBound.length"
+          class="muted"
+          style="font-size: 12px"
+        >
           预设库为空：先到「风格预设」页新建画风词块
         </div>
       </div>
     </div>
     <label class="fld">
       标签（逗号分隔；用于列表筛选与全局搜索）
-      <input v-model="tagsInput" type="text" placeholder="如：萌宝，民国，镖局" />
+      <input
+        v-model="tagsInput"
+        type="text"
+        placeholder="如：萌宝，民国，镖局"
+      />
     </label>
     <label class="fld">
       简介 brief
-      <textarea v-model="brief" rows="2" placeholder="一句话说明本项目定位（将作为创作上下文）" />
+      <textarea
+        v-model="brief"
+        rows="2"
+        placeholder="一句话说明本项目定位（将作为创作上下文）"
+      />
     </label>
     <div v-if="err" class="err-text">{{ err }}</div>
     <template #footer>
       <button class="btn" @click="emit('close')">取消</button>
       <button class="btn primary" :disabled="busy" @click="submit">
-        {{ busy ? (isEdit ? '保存中…' : '创建中…') : (isEdit ? '保存' : '创建') }}
+        {{ busy ? (isEdit ? '保存中…' : '创建中…') : isEdit ? '保存' : '创建' }}
       </button>
     </template>
   </Modal>

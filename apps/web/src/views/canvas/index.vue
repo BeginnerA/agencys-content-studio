@@ -19,8 +19,17 @@ import { canvasApi, projectApi, runApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { fmtTime, runStatus, skipReasonText } from '../../lib/format'
 import type {
-  CanvasBoardNode, CanvasOverview, EditNodeState, Project, Run, RunCanvas, RunCanvasNode, StepOverride,
-  TemplateCanvas, TemplateCanvasNode, TemplateMeta,
+  CanvasBoardNode,
+  CanvasOverview,
+  EditNodeState,
+  Project,
+  Run,
+  RunCanvas,
+  RunCanvasNode,
+  StepOverride,
+  TemplateCanvas,
+  TemplateCanvasNode,
+  TemplateMeta,
 } from '../../lib/types'
 import { useCanvasEdit } from './use-canvas-edit'
 import { useCanvasDesign } from './use-canvas-design'
@@ -66,7 +75,8 @@ const showStart = ref(false)
 
 function syncFromQuery(): void {
   const q = route.query
-  const r = typeof q.run === 'string' && /^\d+$/.test(q.run) ? Number(q.run) : null
+  const r =
+    typeof q.run === 'string' && /^\d+$/.test(q.run) ? Number(q.run) : null
   const t = typeof q.template === 'string' && q.template ? q.template : null
   const ov = q.overview === '1'
   if (r != null) {
@@ -123,7 +133,8 @@ async function loadRun(silent = false): Promise<void> {
       err.value = ''
     }
   } catch (e) {
-    if (!silent && runId.value === id) err.value = e instanceof Error ? e.message : String(e)
+    if (!silent && runId.value === id)
+      err.value = e instanceof Error ? e.message : String(e)
   } finally {
     if (!silent) loading.value = false
   }
@@ -165,7 +176,8 @@ async function loadOverview(silent = false): Promise<void> {
       err.value = ''
     }
   } catch (e) {
-    if (!silent && tab.value === 'overview') err.value = e instanceof Error ? e.message : String(e)
+    if (!silent && tab.value === 'overview')
+      err.value = e instanceof Error ? e.message : String(e)
   } finally {
     if (!silent) overviewLoading.value = false
   }
@@ -173,7 +185,11 @@ async function loadOverview(silent = false): Promise<void> {
 
 async function loadLists(): Promise<void> {
   try {
-    const [r, t, p] = await Promise.all([runApi.list(), templateApi.list(), projectApi.list()])
+    const [r, t, p] = await Promise.all([
+      runApi.list(),
+      templateApi.list(),
+      projectApi.list(),
+    ])
     runs.value = r.items
     tplMetas.value = t.items
     projects.value = p.items
@@ -188,7 +204,13 @@ async function loadLists(): Promise<void> {
 }
 
 // ===== 实时 / socket 房间 / 日志（M26 拆分：./use-canvas-realtime）=====
-const { logText, loadLog } = useCanvasRealtime({ tab, runId, drawerOpen, loadRun, loadOverview })
+const { logText, loadLog } = useCanvasRealtime({
+  tab,
+  runId,
+  drawerOpen,
+  loadRun,
+  loadOverview,
+})
 
 // ===== Board 数据归一化（run / template 两态 → CanvasBoardNode）=====
 const boardNodes = computed<CanvasBoardNode[]>(() => {
@@ -241,7 +263,8 @@ const selRunNode = computed<RunCanvasNode | null>(() => {
   return runCanvas.value.nodes.find((n) => n.key === selectedKey.value) ?? null
 })
 const selTplNode = computed<TemplateCanvasNode | null>(() => {
-  if (tplKey.value == null || !selectedKey.value || !tplCanvas.value) return null
+  if (tplKey.value == null || !selectedKey.value || !tplCanvas.value)
+    return null
   return tplCanvas.value.nodes.find((n) => n.key === selectedKey.value) ?? null
 })
 const drawerSel = computed(() =>
@@ -254,7 +277,8 @@ const drawerSel = computed(() =>
 
 // ===== [M23] 编辑装配（编辑区视图 + patch 回流；E3）=====
 const editNode = computed<EditNodeState | null>(() => {
-  if (tab.value !== 'template' || !editMode.value || !selTplNode.value) return null
+  if (tab.value !== 'template' || !editMode.value || !selTplNode.value)
+    return null
   return edit.nodeState(selTplNode.value)
 })
 
@@ -271,7 +295,8 @@ async function exitEdit(): Promise<void> {
   if (editDirty.value) {
     const ok = await confirmDialog({
       title: '退出编辑',
-      message: '有未保存的修改，退出将丢弃这些修改（编辑为本地草稿，不影响原模板文件）。',
+      message:
+        '有未保存的修改，退出将丢弃这些修改（编辑为本地草稿，不影响原模板文件）。',
       confirmText: '退出并丢弃',
       danger: true,
     })
@@ -331,7 +356,9 @@ function onDrawerRefresh(): void {
 }
 
 // ===== 顶栏操作 =====
-const curRun = computed(() => (runId.value != null ? runCanvas.value?.run ?? null : null))
+const curRun = computed(() =>
+  runId.value != null ? (runCanvas.value?.run ?? null) : null,
+)
 const cancelBusy = ref(false)
 const resumeBusy = ref(false)
 
@@ -456,7 +483,10 @@ function onStarted(id: number): void {
 function onOpenCreationCanvas(canvasId: number): void {
   const pid = runCanvas.value?.run.projectId
   if (pid == null) return
-  void router.push({ path: '/creation', query: { project: String(pid), canvas: String(canvasId) } })
+  void router.push({
+    path: '/creation',
+    query: { project: String(pid), canvas: String(canvasId) },
+  })
 }
 
 // ===== 生命周期（socket 订阅与清理由 ./use-canvas-realtime 负责）=====
@@ -473,7 +503,11 @@ onMounted(() => {
       <button type="button" class="btn sm" title="返回上一页" @click="goBack">
         <Icon name="arrow-left" :size="13" />
       </button>
-      <div class="tabs" role="tablist" aria-label="运行画布 / 模板画布 / 全景切换">
+      <div
+        class="tabs"
+        role="tablist"
+        aria-label="运行画布 / 模板画布 / 全景切换"
+      >
         <button
           type="button"
           class="tab"
@@ -507,14 +541,22 @@ onMounted(() => {
       </div>
 
       <template v-if="tab === 'run'">
-        <select v-model="selRunId" class="sel" aria-label="选择运行" :disabled="!runs.length">
+        <select
+          v-model="selRunId"
+          class="sel"
+          aria-label="选择运行"
+          :disabled="!runs.length"
+        >
           <option value="" disabled>选择运行…</option>
           <option v-for="r in runs" :key="r.id" :value="String(r.id)">
-            #{{ r.id }} · {{ r.templateKey }} · {{ runStatus(r.status).text }} · {{ fmtTime(r.createdAt) }}
+            #{{ r.id }} · {{ r.templateKey }} · {{ runStatus(r.status).text }} ·
+            {{ fmtTime(r.createdAt) }}
           </option>
         </select>
         <template v-if="curRun">
-          <span class="badge" :class="curRun.status">{{ runStatus(curRun.status).text }}</span>
+          <span class="badge" :class="curRun.status">{{
+            runStatus(curRun.status).text
+          }}</span>
           <span class="muted mono">#{{ curRun.id }}</span>
         </template>
         <button
@@ -524,7 +566,8 @@ onMounted(() => {
           :disabled="cancelBusy"
           @click="cancelRun"
         >
-          <Icon name="stop" :size="12" /> {{ cancelBusy ? '处理中…' : '取消运行' }}
+          <Icon name="stop" :size="12" />
+          {{ cancelBusy ? '处理中…' : '取消运行' }}
         </button>
         <button
           v-if="runCanvas?.runActions.canResume"
@@ -533,21 +576,41 @@ onMounted(() => {
           :disabled="resumeBusy"
           @click="resumeRun"
         >
-          <Icon name="play" :size="12" /> {{ resumeBusy ? '处理中…' : '断点续跑' }}
+          <Icon name="play" :size="12" />
+          {{ resumeBusy ? '处理中…' : '断点续跑' }}
         </button>
       </template>
 
       <template v-else-if="tab === 'template'">
-        <select v-model="selTplKey" class="sel" aria-label="选择模板" :disabled="!tplMetas.length">
+        <select
+          v-model="selTplKey"
+          class="sel"
+          aria-label="选择模板"
+          :disabled="!tplMetas.length"
+        >
           <option value="" disabled>选择模板…</option>
-          <option v-for="t in tplMetas" :key="t.key" :value="t.key">{{ t.name }}（v{{ t.version }}）</option>
+          <option v-for="t in tplMetas" :key="t.key" :value="t.key">
+            {{ t.name }}（v{{ t.version }}）
+          </option>
         </select>
-        <select v-model="selProject" class="sel" aria-label="选择启动项目" :disabled="!projects.length">
+        <select
+          v-model="selProject"
+          class="sel"
+          aria-label="选择启动项目"
+          :disabled="!projects.length"
+        >
           <option value="" disabled>选择项目…</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
+          <option v-for="p in projects" :key="p.id" :value="String(p.id)">
+            {{ p.name }}
+          </option>
         </select>
         <!-- 空态出路：无项目时「启动运行」永远灰着，给出新建项目入口 -->
-        <RouterLink v-if="projectsLoaded && !projects.length" class="sel-link" to="/" title="运行需要先有一个项目，点击去创建">
+        <RouterLink
+          v-if="projectsLoaded && !projects.length"
+          class="sel-link"
+          to="/"
+          title="运行需要先有一个项目，点击去创建"
+        >
           <Icon name="plus" :size="12" /> 还没有项目？先创建一个
         </RouterLink>
         <button
@@ -572,8 +635,16 @@ onMounted(() => {
         </button>
         <template v-else>
           <span class="edit-flag">编辑中</span>
-          <span v-if="editDirty" class="edit-dirty">有未保存修改（{{ editCount }} 步）</span>
-          <button v-if="editDirty" type="button" class="btn sm" title="丢弃全部编辑草稿" @click="resetEdits">
+          <span v-if="editDirty" class="edit-dirty"
+            >有未保存修改（{{ editCount }} 步）</span
+          >
+          <button
+            v-if="editDirty"
+            type="button"
+            class="btn sm"
+            title="丢弃全部编辑草稿"
+            @click="resetEdits"
+          >
             <Icon name="undo" :size="12" /> 重置修改
           </button>
           <!-- [M23] E4 落盘通道：草案预览（不落盘）/ 保存为新模板（原文件零触碰） -->
@@ -585,7 +656,8 @@ onMounted(() => {
             title="以受控 edits 生成新模板 YAML 预览（不落盘）"
             @click="openDraftModal"
           >
-            <Icon name="doc" :size="12" /> {{ draftBusy ? '生成中…' : '导出草案' }}
+            <Icon name="doc" :size="12" />
+            {{ draftBusy ? '生成中…' : '导出草案' }}
           </button>
           <button
             v-if="editDirty"
@@ -597,25 +669,45 @@ onMounted(() => {
           >
             <Icon name="download" :size="12" /> 保存为新模板
           </button>
-          <button type="button" class="btn sm" title="退出编辑（有修改时需确认）" @click="toggleEdit">
+          <button
+            type="button"
+            class="btn sm"
+            title="退出编辑（有修改时需确认）"
+            @click="toggleEdit"
+          >
             <Icon name="check" :size="12" /> 退出编辑
           </button>
         </template>
       </template>
 
       <template v-else>
-        <select v-model="selProject" class="sel" aria-label="选择项目" :disabled="!projects.length">
+        <select
+          v-model="selProject"
+          class="sel"
+          aria-label="选择项目"
+          :disabled="!projects.length"
+        >
           <option value="" disabled>选择项目…</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
+          <option v-for="p in projects" :key="p.id" :value="String(p.id)">
+            {{ p.name }}
+          </option>
         </select>
-        <span v-if="overview" class="muted mono">{{ overview.stats.runCount }} 条运行 · {{ overview.batches.length }} 个批次</span>
+        <span v-if="overview" class="muted mono"
+          >{{ overview.stats.runCount }} 条运行 ·
+          {{ overview.batches.length }} 个批次</span
+        >
         <span v-else-if="overviewLoading" class="muted">加载中…</span>
       </template>
 
       <span class="sp" />
       <span v-if="listErr" class="muted" :title="listErr">目录加载失败</span>
       <span v-if="loading" class="muted">加载中…</span>
-      <button type="button" class="btn sm" title="适应视图（0）" @click="fitView">
+      <button
+        type="button"
+        class="btn sm"
+        title="适应视图（0）"
+        @click="fitView"
+      >
         <Icon name="zoom-in" :size="12" /> 适应视图
       </button>
     </div>
@@ -623,20 +715,40 @@ onMounted(() => {
     <div v-if="err" class="errbar">
       <Icon name="alert" :size="13" />
       <span class="eb-t">{{ err }}</span>
-      <button type="button" class="btn sm" @click="clearTarget">返回选择</button>
+      <button type="button" class="btn sm" @click="clearTarget">
+        返回选择
+      </button>
     </div>
 
     <!-- ===== 舞台（Board + Drawer 覆盖层）===== -->
     <div class="cv-stage">
       <!-- [M23] 全景（项目级聚合：跨批次/跨模板） -->
       <div v-if="tab === 'overview'" class="ov-wrap">
-        <OverviewPanel v-if="overview" :data="overview" @open-run="goRun" @open-batch="goBatch" @reload="loadOverview()" />
+        <OverviewPanel
+          v-if="overview"
+          :data="overview"
+          @open-run="goRun"
+          @open-batch="goBatch"
+          @reload="loadOverview()"
+        />
         <div v-else class="ov-ph muted">
-          {{ overviewLoading ? '加载中…' : projectId == null ? '暂无项目（先在项目页创建一个项目）' : '暂无全景数据' }}
+          {{
+            overviewLoading
+              ? '加载中…'
+              : projectId == null
+                ? '暂无项目（先在项目页创建一个项目）'
+                : '暂无全景数据'
+          }}
         </div>
       </div>
 
-      <CanvasGuide v-else-if="empty" :runs="runs" :tpl-metas="tplMetas" @open-run="goRun" @open-template="goTemplate" />
+      <CanvasGuide
+        v-else-if="empty"
+        :runs="runs"
+        :tpl-metas="tplMetas"
+        @open-run="goRun"
+        @open-template="goTemplate"
+      />
 
       <CanvasBoard
         v-else
@@ -729,7 +841,9 @@ onMounted(() => {
   border: 1px dashed rgb(99 102 241 / 45%);
   border-radius: 999px;
   background: var(--accent-weak);
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .sel-link:hover {

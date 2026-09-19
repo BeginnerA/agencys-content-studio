@@ -14,40 +14,50 @@ const form = props.form
 </script>
 
 <template>
-      <!-- ===== 联动：设为实体参考图 ===== -->
-      <section v-if="node.assetId != null" class="sec">
-        <div class="sec-h">联动</div>
-        <button type="button" class="btn sm" :disabled="node.assetId == null" @click="toggleEntities">
-          <Icon name="link" :size="12" /> {{ form.entOpen ? '收起' : '设为实体参考图…' }}
+  <!-- ===== 联动：设为实体参考图 ===== -->
+  <section v-if="node.assetId != null" class="sec">
+    <div class="sec-h">联动</div>
+    <button
+      type="button"
+      class="btn sm"
+      :disabled="node.assetId == null"
+      @click="toggleEntities"
+    >
+      <Icon name="link" :size="12" />
+      {{ form.entOpen ? '收起' : '设为实体参考图…' }}
+    </button>
+    <template v-if="form.entOpen">
+      <div class="frow">
+        <label class="flabel">实体类型</label>
+        <select v-model="form.entKind">
+          <option value="character">角色</option>
+          <option value="scene">场景</option>
+          <option value="prop">道具</option>
+        </select>
+      </div>
+      <div v-if="form.entLoading" class="muted">加载中…</div>
+      <div v-else-if="!form.entList.length" class="muted">
+        该项目下暂无{{ ENT_KIND_LABEL[form.entKind] }}实体
+      </div>
+      <div v-else class="entlist">
+        <button
+          v-for="e in form.entList"
+          :key="e.id"
+          type="button"
+          class="entitem"
+          :disabled="form.entBusy === e.id"
+          :title="`把产物 #${node.assetId} 挂为该实体的参考图`"
+          @click="attachTo(e)"
+        >
+          <span class="entname">{{ e.name }}</span>
+          <span class="muted mini"
+            >{{ e.refAssets?.length ?? 0 }} 张参考图</span
+          >
         </button>
-        <template v-if="form.entOpen">
-          <div class="frow">
-            <label class="flabel">实体类型</label>
-            <select v-model="form.entKind">
-              <option value="character">角色</option>
-              <option value="scene">场景</option>
-              <option value="prop">道具</option>
-            </select>
-          </div>
-          <div v-if="form.entLoading" class="muted">加载中…</div>
-          <div v-else-if="!form.entList.length" class="muted">该项目下暂无{{ ENT_KIND_LABEL[form.entKind] }}实体</div>
-          <div v-else class="entlist">
-            <button
-              v-for="e in form.entList"
-              :key="e.id"
-              type="button"
-              class="entitem"
-              :disabled="form.entBusy === e.id"
-              :title="`把产物 #${node.assetId} 挂为该实体的参考图`"
-              @click="attachTo(e)"
-            >
-              <span class="entname">{{ e.name }}</span>
-              <span class="muted mini">{{ e.refAssets?.length ?? 0 }} 张参考图</span>
-            </button>
-          </div>
-          <div v-if="form.entErr" class="err-text">{{ form.entErr }}</div>
-        </template>
-      </section>
+      </div>
+      <div v-if="form.entErr" class="err-text">{{ form.entErr }}</div>
+    </template>
+  </section>
 </template>
 
 <style scoped>
@@ -120,5 +130,4 @@ const form = props.form
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 </style>

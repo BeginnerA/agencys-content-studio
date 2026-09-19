@@ -8,11 +8,11 @@ const { steps } = props.u
 </script>
 
 <template>
-        <div class="timeline panel">
-          <RunStepCard v-for="s in steps" :key="s.id" :s="s" :u="u" :e="e" />
+  <div class="timeline panel">
+    <RunStepCard v-for="s in steps" :key="s.id" :s="s" :u="u" :e="e" />
 
-          <div v-if="!steps.length" class="empty">该 run 尚无步骤记录</div>
-        </div>
+    <div v-if="!steps.length" class="empty">该 run 尚无步骤记录</div>
+  </div>
 </template>
 
 <style scoped>
@@ -72,7 +72,13 @@ const { steps } = props.u
 }
 
 .st.skip .line {
-  background-image: linear-gradient(90deg, transparent 30%, var(--border) 31%, var(--border) 69%, transparent 70%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 30%,
+    var(--border) 31%,
+    var(--border) 69%,
+    transparent 70%
+  );
   background-size: 6px 2px;
   background-repeat: repeat-x;
   background-position: 0 60%;
@@ -113,5 +119,4 @@ const { steps } = props.u
 .dim {
   opacity: 0.55;
 }
-
 </style>

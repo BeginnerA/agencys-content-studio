@@ -8,7 +8,13 @@ const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const html = computed(() => {
   if (!props.source) return ''
   const body = md.render(props.source)
-  return props.compact ? body.replace(/<h[1-6][^>]*>.*?<\/h[1-6]>/gs, (m) => `<div class="md-h">${m.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/s, '$1')}</div>`) : body
+  return props.compact
+    ? body.replace(
+        /<h[1-6][^>]*>.*?<\/h[1-6]>/gs,
+        (m) =>
+          `<div class="md-h">${m.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/s, '$1')}</div>`,
+      )
+    : body
 })
 </script>
 

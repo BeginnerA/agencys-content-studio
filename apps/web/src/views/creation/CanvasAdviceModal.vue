@@ -5,14 +5,17 @@ import Modal from '../../components/common/Modal.vue'
 import type { CanvasAdviceKind } from '../../lib/types'
 import type { CanvasViewState } from './use-canvas-view'
 
-const props = defineProps<{ cv: Pick<CanvasViewState,
-  | 'showAdvice'
-  | 'adviceBusy'
-  | 'adviceError'
-  | 'adviceResult'
-  | 'openAdvice'
-  | 'locateAdvice'
-> }>()
+const props = defineProps<{
+  cv: Pick<
+    CanvasViewState,
+    | 'showAdvice'
+    | 'adviceBusy'
+    | 'adviceError'
+    | 'adviceResult'
+    | 'openAdvice'
+    | 'locateAdvice'
+  >
+}>()
 const cv = props.cv
 
 /** 建议类型 → 图标/文案（对齐服务端 canvas-advice.md 输出契约；raw = 降级原文） */
@@ -35,7 +38,12 @@ const KIND_TEXT: Record<CanvasAdviceKind, string> = {
 </script>
 
 <template>
-  <Modal v-if="cv.showAdvice" title="AI 编排建议" :width="680" @close="cv.showAdvice = false">
+  <Modal
+    v-if="cv.showAdvice"
+    title="AI 编排建议"
+    :width="680"
+    @close="cv.showAdvice = false"
+  >
     <div v-if="cv.adviceBusy" class="ad-loading muted">
       <Icon name="sparkles" :size="14" />
       <span>正在分析画布（节点 / 连线 / 就绪状态）…</span>
@@ -77,12 +85,20 @@ const KIND_TEXT: Record<CanvasAdviceKind, string> = {
       <span v-if="cv.adviceResult" class="ad-usage muted">
         {{ cv.adviceResult.provider }}/{{ cv.adviceResult.model }}
         <template v-if="cv.adviceResult.usage">
-          · 用量 {{ cv.adviceResult.usage.tokensIn }}↑ {{ cv.adviceResult.usage.tokensOut }}↓
+          · 用量 {{ cv.adviceResult.usage.tokensIn }}↑
+          {{ cv.adviceResult.usage.tokensOut }}↓
         </template>
         · {{ cv.adviceResult.mode === 'raw' ? '降级原文' : '结构化' }}
       </span>
-      <button type="button" class="btn" @click="cv.showAdvice = false">关闭</button>
-      <button type="button" class="btn primary" :disabled="cv.adviceBusy" @click="cv.openAdvice">
+      <button type="button" class="btn" @click="cv.showAdvice = false">
+        关闭
+      </button>
+      <button
+        type="button"
+        class="btn primary"
+        :disabled="cv.adviceBusy"
+        @click="cv.openAdvice"
+      >
         <Icon name="refresh" :size="12" /> 重新生成
       </button>
     </template>

@@ -20,7 +20,8 @@ export type CreationMode = 'dynamic' | 'slideshow'
 // ===== [M31] 对话式参考输入：参考素材类型 / 用途 / 附件返回 =====
 export type CreationRefKind = 'image' | 'video' | 'audio'
 /** 参考用途：风格 / 首帧 / 主体一致性 / 视频内容解析 / 背景乐 */
-export type CreationRefRole = 'style' | 'first_frame' | 'subject' | 'content' | 'bgm'
+export type CreationRefRole =
+  'style' | 'first_frame' | 'subject' | 'content' | 'bgm'
 
 /** 已采纳并冻结进方案的参考素材（服务端 refSchema 投影；进 planHash → 确认即执行） */
 export interface CreationRef {
@@ -75,7 +76,8 @@ export const REF_MAX_COUNT = 12
 /** 按扩展名推断参考类型（与服务端 kindByExt 媒体子集对齐）；非媒体返回 null */
 export function refKindByExt(name: string): CreationRefKind | null {
   const e = '.' + (name.split('.').pop() ?? '').toLowerCase()
-  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(e)) return 'image'
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(e))
+    return 'image'
   if (['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(e)) return 'video'
   if (['.mp3', '.wav', '.aac', '.m4a', '.flac'].includes(e)) return 'audio'
   return null
@@ -142,14 +144,23 @@ export interface CreationPreflight {
   planningModel: { provider: string; model: string } | null
 }
 
-export type CreationSessionStatus = 'draft' | 'planning' | 'ready' | 'starting' | 'started'
+export type CreationSessionStatus =
+  'draft' | 'planning' | 'ready' | 'starting' | 'started'
 
 /** 会话状态 → 中文标签（列表与详情共用，避免两处映射漂移） */
 export const CREATION_STATUS_LABELS: Record<CreationSessionStatus, string> = {
-  draft: '草稿', planning: '规划中', ready: '待确认', starting: '启动中', started: '制作中',
+  draft: '草稿',
+  planning: '规划中',
+  ready: '待确认',
+  starting: '启动中',
+  started: '制作中',
 }
 /** [M31+] 「待确认」仅当预检通过才成立；有方案但预检未过（confirmable=false）→ 明确为「待完善配置」 */
-export function creationStatusLabel(status: CreationSessionStatus, confirmable = true, runStatus?: string | null): string {
+export function creationStatusLabel(
+  status: CreationSessionStatus,
+  confirmable = true,
+  runStatus?: string | null,
+): string {
   if (status === 'ready' && !confirmable) return '待完善配置'
   // [修复] 会话 status 是控制态（started 后不回写）：制作启动后按 run 真实状态派生，避免已完成仍显「制作中」
   if ((status === 'started' || status === 'starting') && runStatus) {
@@ -161,14 +172,21 @@ export function creationStatusLabel(status: CreationSessionStatus, confirmable =
   return CREATION_STATUS_LABELS[status]
 }
 /** 列表/详情共用：状态 → 徽标与强调条色调（全局 .badge 语义色同名类） */
-export function creationStatusTone(status: CreationSessionStatus, runStatus?: string | null): string {
+export function creationStatusTone(
+  status: CreationSessionStatus,
+  runStatus?: string | null,
+): string {
   if (status === 'started' || status === 'starting') {
     if (runStatus === 'completed') return 'completed'
     if (runStatus === 'failed') return 'failed'
     if (runStatus === 'cancelled') return 'cancelled'
     return 'running'
   }
-  return status === 'planning' ? 'running' : status === 'ready' ? 'pending' : 'cancelled'
+  return status === 'planning'
+    ? 'running'
+    : status === 'ready'
+      ? 'pending'
+      : 'cancelled'
 }
 
 export interface CreationChatMessagePayload {
@@ -272,4 +290,3 @@ export interface CreationRetryBody extends CreationConfirmBody {
   runId: number
   verifiedFailedTaskIds?: number[]
 }
-

@@ -2,7 +2,12 @@
 import { computed, ref } from 'vue'
 import CreationBoard from '../../components/creation/board/index.vue'
 import { createCanvasHistory } from '../../lib/canvas-history'
-import type { CanvasDoc, CanvasDocEdge, CanvasDocNode, CanvasGroup } from '../../lib/types'
+import type {
+  CanvasDoc,
+  CanvasDocEdge,
+  CanvasDocNode,
+  CanvasGroup,
+} from '../../lib/types'
 
 export function useCanvasState() {
   // ===== 目标（route.query 单一真源）=====
@@ -21,8 +26,16 @@ export function useCanvasState() {
   /** [M17] 命令栈按钮状态（嵌套 ref → computed 供模板解包） */
   const canUndo = computed(() => history.canUndo.value)
   const canRedo = computed(() => history.canRedo.value)
-  const undoTitle = computed(() => (history.undoLabel.value ? `撤销：${history.undoLabel.value}（Ctrl+Z）` : '撤销（Ctrl+Z）'))
-  const redoTitle = computed(() => (history.redoLabel.value ? `重做：${history.redoLabel.value}（Ctrl+Shift+Z）` : '重做（Ctrl+Shift+Z）'))
+  const undoTitle = computed(() =>
+    history.undoLabel.value
+      ? `撤销：${history.undoLabel.value}（Ctrl+Z）`
+      : '撤销（Ctrl+Z）',
+  )
+  const redoTitle = computed(() =>
+    history.redoLabel.value
+      ? `重做：${history.redoLabel.value}（Ctrl+Shift+Z）`
+      : '重做（Ctrl+Shift+Z）',
+  )
 
   const nodes = computed<CanvasDocNode[]>(() => doc.value?.nodes ?? [])
   const edges = computed<CanvasDocEdge[]>(() => doc.value?.edges ?? [])
@@ -34,9 +47,13 @@ export function useCanvasState() {
     return nodes.value.find((n) => n.id === ids[0]) ?? null
   })
   const selEdge = computed<CanvasDocEdge | null>(() =>
-    selectedEdgeId.value == null ? null : (edges.value.find((e) => e.id === selectedEdgeId.value) ?? null),
+    selectedEdgeId.value == null
+      ? null
+      : (edges.value.find((e) => e.id === selectedEdgeId.value) ?? null),
   )
-  const activeProjectId = computed(() => doc.value?.canvas.projectId ?? projectId.value ?? 0)
+  const activeProjectId = computed(
+    () => doc.value?.canvas.projectId ?? projectId.value ?? 0,
+  )
 
   // ===== toast =====
   const toastMsg = ref('')

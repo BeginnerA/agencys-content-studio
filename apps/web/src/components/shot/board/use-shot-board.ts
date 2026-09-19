@@ -8,7 +8,14 @@ import { assetApi, composeApi, shotApi } from '../../../lib/api'
 import { confirmDialog } from '../../../lib/confirm'
 import { qualityText } from '../../../lib/format'
 import type {
-  Asset, ComposeConfig, ComposeTransition, ShotBoardData, ShotBoardShot, ShotEditItem, ShotPick, ShotVersion,
+  Asset,
+  ComposeConfig,
+  ComposeTransition,
+  ShotBoardData,
+  ShotBoardShot,
+  ShotEditItem,
+  ShotPick,
+  ShotVersion,
 } from '../../../lib/types'
 import { studioOff, studioOn } from '../../../lib/socket'
 import type { StudioEventMap } from '../../../lib/socket'
@@ -47,11 +54,12 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   // [M10] 大编辑器 / 拖拽重排 / 上传替换
   const editorOpen = ref(false)
   const dragShotId = ref<string | null>(null)
-  const dropTarget = ref<{ shotId: string; side: 'left' | 'right' } | null>(null)
+  const dropTarget = ref<{ shotId: string; side: 'left' | 'right' } | null>(
+    null,
+  )
   const uploadShotId = ref<string | null>(null)
   const uploadBusy = ref(false)
   const uploadInput = ref<HTMLInputElement | null>(null)
-
 
   const composeCfg = ref<ComposeConfig | null>(null)
   const cfgTransition = ref<ComposeTransition>('none')
@@ -63,10 +71,11 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const sfxMap = ref<Record<string, Asset>>({})
   const sfxShotId = ref<string | null>(null)
 
-
   const shots = computed(() => board.value?.shots ?? [])
   const compose = computed(() => board.value?.compose ?? null)
-  const repairable = computed(() => board.value?.repairable ?? { ok: false, reason: null })
+  const repairable = computed(
+    () => board.value?.repairable ?? { ok: false, reason: null },
+  )
   const locked = computed(() => props.active || opBusy.value)
   const canOperate = computed(() => repairable.value.ok && !locked.value)
   const isVideoStep = computed(() => props.step.actionKey === 'ai_video')
@@ -82,8 +91,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const promptField = computed<'image_prompt' | 'motion_prompt'>(() =>
     isVideoStep.value ? 'motion_prompt' : 'image_prompt',
   )
-  const promptFieldLabel = computed(() => (isVideoStep.value ? '动效提示词' : '出图提示词'))
-
+  const promptFieldLabel = computed(() =>
+    isVideoStep.value ? '动效提示词' : '出图提示词',
+  )
 
   // ---------- 数据加载 ----------
 
@@ -116,7 +126,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
   }
 
-
   /** 操作封装：busy → 执行 → 成功 notice + 重拉 / 失败 err */
   async function run<T>(fn: () => Promise<T>): Promise<T | null> {
     if (locked.value) return null
@@ -135,7 +144,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
   }
 
-
   // ---------- 选择模型 ----------
 
   /** 有效选中版本：draft > 当前 output 选中 > 最新版本 */
@@ -143,7 +151,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     const d = draftSelected.value[shot.shotId]
     if (d !== undefined) return d
     if (shot.selectedAssetId !== null) return shot.selectedAssetId
-    return shot.versions.length ? shot.versions[shot.versions.length - 1]!.id : null
+    return shot.versions.length
+      ? shot.versions[shot.versions.length - 1]!.id
+      : null
   }
 
   /** 启用态：draft 排除优先；显式选版 = 启用；否则以「在 output 中」为初始启用 */
@@ -159,7 +169,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       const v = shot.versions.find((x) => x.id === id)
       if (v) return v
     }
-    return shot.versions.length ? shot.versions[shot.versions.length - 1]! : null
+    return shot.versions.length
+      ? shot.versions[shot.versions.length - 1]!
+      : null
   }
 
   function thumbUrl(shot: ShotBoardShot): string | null {
@@ -170,13 +182,15 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   function markThumbFailed(shotId: string) {
-    if (!thumbFailed.value.includes(shotId)) thumbFailed.value = [...thumbFailed.value, shotId]
+    if (!thumbFailed.value.includes(shotId))
+      thumbFailed.value = [...thumbFailed.value, shotId]
   }
 
   // 版本条缩略图加载失败集合（回退占位，避免破损图）
   const verThumbFailed = ref<number[]>([])
   function markVerThumbFailed(id: number) {
-    if (!verThumbFailed.value.includes(id)) verThumbFailed.value = [...verThumbFailed.value, id]
+    if (!verThumbFailed.value.includes(id))
+      verThumbFailed.value = [...verThumbFailed.value, id]
   }
 
   /** draft 变更计数（被禁用的有产物镜 + 版本切换/恢复启用） */
@@ -193,7 +207,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     return n
   })
 
-
   function toggleEnable(shot: ShotBoardShot) {
     if (isEnabled(shot)) {
       if (!draftExcluded.value.includes(shot.shotId)) {
@@ -203,7 +216,10 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
     // 启用：移出排除表；初始不在 output 中（历史剔除/未选）时锚定最新版本
     draftExcluded.value = draftExcluded.value.filter((id) => id !== shot.shotId)
-    if (draftSelected.value[shot.shotId] === undefined && shot.selectedAssetId === null) {
+    if (
+      draftSelected.value[shot.shotId] === undefined &&
+      shot.selectedAssetId === null
+    ) {
       const last = shot.versions[shot.versions.length - 1]
       if (last) draftSelected.value[shot.shotId] = last.id
     }
@@ -215,7 +231,11 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       : [...bulkPicked.value, shotId]
   }
 
-  const allPicked = computed(() => shots.value.length > 0 && shots.value.every((s) => bulkPicked.value.includes(s.shotId)))
+  const allPicked = computed(
+    () =>
+      shots.value.length > 0 &&
+      shots.value.every((s) => bulkPicked.value.includes(s.shotId)),
+  )
 
   function toggleAll(e: Event) {
     const on = (e.target as HTMLInputElement).checked
@@ -223,12 +243,18 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   function toggleGallery(shot: ShotBoardShot) {
-    galleryShotId.value = galleryShotId.value === shot.shotId ? null : shot.shotId
+    galleryShotId.value =
+      galleryShotId.value === shot.shotId ? null : shot.shotId
   }
 
   function pickVersion(shot: ShotBoardShot, assetId: number) {
-    if (shot.selectedAssetId === assetId && draftExcluded.value.includes(shot.shotId)) {
-      draftExcluded.value = draftExcluded.value.filter((id) => id !== shot.shotId)
+    if (
+      shot.selectedAssetId === assetId &&
+      draftExcluded.value.includes(shot.shotId)
+    ) {
+      draftExcluded.value = draftExcluded.value.filter(
+        (id) => id !== shot.shotId,
+      )
     } else if (shot.selectedAssetId === assetId) {
       delete draftSelected.value[shot.shotId]
     } else {
@@ -236,7 +262,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
     galleryShotId.value = null
   }
-
 
   // ---------- 时长编辑（change 即提交） ----------
 
@@ -267,7 +292,11 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       delete durationDrafts.value[shot.shotId]
       return
     }
-    const res = await run(() => shotApi.edit(props.runId, props.step.stepKey, [{ shot_id: shot.shotId, duration: rounded }]))
+    const res = await run(() =>
+      shotApi.edit(props.runId, props.step.stepKey, [
+        { shot_id: shot.shotId, duration: rounded },
+      ]),
+    )
     if (res) {
       delete durationDrafts.value[shot.shotId]
       notice.value = `镜头 ${shot.shotId} 时长 ${rounded}s 已保存（重新合成后生效）`
@@ -284,15 +313,19 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       err.value = '先勾选要应用时长的镜头'
       return
     }
-    const items: ShotEditItem[] = bulkPicked.value.map((sid) => ({ shot_id: sid, duration: Math.round(v * 10) / 10 }))
-    const res = await run(() => shotApi.edit(props.runId, props.step.stepKey, items))
+    const items: ShotEditItem[] = bulkPicked.value.map((sid) => ({
+      shot_id: sid,
+      duration: Math.round(v * 10) / 10,
+    }))
+    const res = await run(() =>
+      shotApi.edit(props.runId, props.step.stepKey, items),
+    )
     if (res) {
       bulkPicked.value = []
       bulkDuration.value = ''
       notice.value = `已更新 ${res.edited} 个镜头时长（重新合成后生效）`
     }
   }
-
 
   // ---------- 选片提交 / 恢复默认 ----------
 
@@ -308,7 +341,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       err.value = '至少保留一个有产物的镜头才能应用选择'
       return
     }
-    const res = await run(() => shotApi.select(props.runId, props.step.stepKey, { picks }))
+    const res = await run(() =>
+      shotApi.select(props.runId, props.step.stepKey, { picks }),
+    )
     if (res) {
       draftSelected.value = {}
       draftExcluded.value = []
@@ -317,7 +352,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   async function resetSelection() {
-    const res = await run(() => shotApi.select(props.runId, props.step.stepKey, { reset: true }))
+    const res = await run(() =>
+      shotApi.select(props.runId, props.step.stepKey, { reset: true }),
+    )
     if (res) {
       draftSelected.value = {}
       draftExcluded.value = []
@@ -325,7 +362,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       notice.value = '已恢复全量默认（全部有产物镜头 × 最新版本）'
     }
   }
-
 
   // ---------- 提示词编辑 / 单镜重生成 ----------
 
@@ -359,7 +395,11 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       notice.value = '提示词无变化'
       return
     }
-    const res = await run(() => shotApi.edit(props.runId, props.step.stepKey, [buildPromptItem(shot, text)]))
+    const res = await run(() =>
+      shotApi.edit(props.runId, props.step.stepKey, [
+        buildPromptItem(shot, text),
+      ]),
+    )
     if (res) {
       promptShotId.value = null
       notice.value = '提示词已保存到分镜（重生成 / 重新合成后生效）'
@@ -375,15 +415,19 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       confirmText: '开始重生成',
     })
     if (!ok) return
-    const item: ShotEditItem = dirty ? buildPromptItem(shot, text) : { shot_id: shot.shotId }
-    const res = await run(() => shotApi.regenerate(props.runId, props.step.stepKey, item))
+    const item: ShotEditItem = dirty
+      ? buildPromptItem(shot, text)
+      : { shot_id: shot.shotId }
+    const res = await run(() =>
+      shotApi.regenerate(props.runId, props.step.stepKey, item),
+    )
     if (res) {
       promptShotId.value = null
-      notice.value = '已入队：仅目标镜重跑；完成后镜头列表重建，请重新选择 / 合成'
+      notice.value =
+        '已入队：仅目标镜重跑；完成后镜头列表重建，请重新选择 / 合成'
       emit('changed')
     }
   }
-
 
   // ---------- [M10] 拖拽重排 ----------
 
@@ -397,7 +441,12 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   function onCardDragOver(shot: ShotBoardShot, e: DragEvent) {
-    if (!canOperate.value || !dragShotId.value || dragShotId.value === shot.shotId) return
+    if (
+      !canOperate.value ||
+      !dragShotId.value ||
+      dragShotId.value === shot.shotId
+    )
+      return
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -407,7 +456,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
 
   function onCardDragLeave(shot: ShotBoardShot, e: DragEvent) {
     const card = e.currentTarget as HTMLElement
-    if (e.relatedTarget instanceof Node && card.contains(e.relatedTarget)) return
+    if (e.relatedTarget instanceof Node && card.contains(e.relatedTarget))
+      return
     if (dropTarget.value?.shotId === shot.shotId) dropTarget.value = null
   }
 
@@ -433,10 +483,13 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     if (targetIdx < 0) return
     without.splice(side === 'left' ? targetIdx : targetIdx + 1, 0, src)
     if (without.join(',') === ids.join(',')) return
-    const res = await run(() => shotApi.mutate(props.runId, props.step.stepKey, [{ op: 'reorder', order: without }]))
+    const res = await run(() =>
+      shotApi.mutate(props.runId, props.step.stepKey, [
+        { op: 'reorder', order: without },
+      ]),
+    )
     if (res) notice.value = '镜头顺序已更新（重新合成后生效）'
   }
-
 
   // ---------- [M10] 上传替换 ----------
 
@@ -473,7 +526,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
   }
 
-
   // ---------- [M10] 大编辑器 ----------
 
   function openEditor() {
@@ -487,7 +539,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     void load()
   }
 
-
   // ---------- 重新合成 ----------
 
   async function doRecompose() {
@@ -495,7 +546,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     if (!c) return
     const ok = await confirmDialog({
       title: '重新合成',
-      message: '将重新执行合成（镜头选择 / 分镜 / 时长的最新值生效）；已成功的镜头步骤全部跳过。',
+      message:
+        '将重新执行合成（镜头选择 / 分镜 / 时长的最新值生效）；已成功的镜头步骤全部跳过。',
       confirmText: '重新合成',
     })
     if (!ok) return
@@ -508,13 +560,12 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
 
   // ---------- [M11] 合成设置 ----------
 
-
-
   const cfgDirty = computed(() => {
     const c = composeCfg.value
     if (!c) return false
     const curT = asTransition(c.transition)
-    const curD = typeof c.transition_duration === 'number' ? c.transition_duration : 0.5
+    const curD =
+      typeof c.transition_duration === 'number' ? c.transition_duration : 0.5
     return cfgTransition.value !== curT || cfgDur.value !== curD
   })
 
@@ -529,7 +580,10 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       const r = await composeApi.getConfig(props.runId)
       composeCfg.value = r.config
       cfgTransition.value = asTransition(r.config.transition)
-      cfgDur.value = typeof r.config.transition_duration === 'number' ? r.config.transition_duration : 0.5
+      cfgDur.value =
+        typeof r.config.transition_duration === 'number'
+          ? r.config.transition_duration
+          : 0.5
       const b = await composeApi.getBgm(props.runId)
       bgm.value = b.bgm
       const s = await composeApi.listSfx(props.runId)
@@ -562,7 +616,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     }
   }
 
-
   // ---------- [M19] 镜头音效（SFX） ----------
 
   function openSfx(shot: ShotBoardShot) {
@@ -585,9 +638,10 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   /** 台词角标：分镜 raw.lines（字符串数组） */
   function lineIdsOf(shot: ShotBoardShot): string[] {
     const l = shot.raw['lines']
-    return Array.isArray(l) ? l.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+    return Array.isArray(l)
+      ? l.filter((x): x is string => typeof x === 'string' && !!x.trim())
+      : []
   }
-
 
   // ---------- [M12] 收藏 / 质量徽标 / 版本清理 ----------
 
@@ -621,19 +675,27 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   async function doCleanupVersions() {
     const ok = await confirmDialog({
       title: '清理旧版本',
-      message: '将清理本步骤的历史产物：每个镜头保留最新 1 版、已收藏的、以及正在使用的（成片引用）；其余软删除（回收空间前可回溯）。不影响当前选中与成片。',
+      message:
+        '将清理本步骤的历史产物：每个镜头保留最新 1 版、已收藏的、以及正在使用的（成片引用）；其余软删除（回收空间前可回溯）。不影响当前选中与成片。',
       confirmText: '开始清理',
     })
     if (!ok) return
-    const res = await run(() => shotApi.cleanup(props.runId, props.step.stepKey))
+    const res = await run(() =>
+      shotApi.cleanup(props.runId, props.step.stepKey),
+    )
     if (res) {
-      notice.value = res.cleaned > 0 ? `已清理 ${res.cleaned} 个历史版本（保留 ${res.kept} 个）` : '没有可清理的历史版本'
+      notice.value =
+        res.cleaned > 0
+          ? `已清理 ${res.cleaned} 个历史版本（保留 ${res.kept} 个）`
+          : '没有可清理的历史版本'
     }
   }
 
   /** 预览器重检结果：同步预览列表对象 + 刷新 board 徽标 */
   function onPreviewAssetChanged(updated: Asset) {
-    previewAssets.value = previewAssets.value.map((a) => (a.id === updated.id ? updated : a))
+    previewAssets.value = previewAssets.value.map((a) =>
+      a.id === updated.id ? updated : a,
+    )
     void load()
   }
 
@@ -644,10 +706,18 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     previewBusy.value = true
     err.value = ''
     try {
-      const list = await Promise.all(shot.versions.map((v) => assetApi.detail(v.id).then((r) => r.asset)))
-      const target = firstId ?? effSelected(shot) ?? shot.versions[shot.versions.length - 1]!.id
+      const list = await Promise.all(
+        shot.versions.map((v) => assetApi.detail(v.id).then((r) => r.asset)),
+      )
+      const target =
+        firstId ??
+        effSelected(shot) ??
+        shot.versions[shot.versions.length - 1]!.id
       previewAssets.value = list
-      previewIndex.value = Math.max(0, shot.versions.findIndex((v) => v.id === target))
+      previewIndex.value = Math.max(
+        0,
+        shot.versions.findIndex((v) => v.id === target),
+      )
       previewOpen.value = true
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
@@ -655,7 +725,6 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       previewBusy.value = false
     }
   }
-
 
   // ---------- 实时刷新 ----------
 
@@ -713,32 +782,119 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   // ---- sb 状态总线（M28 装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
   const sb = reactive({
     // 数据
-    board, loading, err, notice, opBusy,
+    board,
+    loading,
+    err,
+    notice,
+    opBusy,
     // draft / 交互状态
-    draftSelected, draftExcluded, bulkPicked, bulkDuration, durationDrafts,
-    promptShotId, promptDraft, galleryShotId, thumbFailed, verThumbFailed,
-    previewOpen, previewAssets, previewIndex, previewBusy,
-    editorOpen, dragShotId, dropTarget, uploadShotId, uploadBusy, uploadInput,
-    composeCfg, cfgTransition, cfgDur, cfgBusy, bgm, composeSettingsOpen,
-    sfxMap, sfxShotId,
+    draftSelected,
+    draftExcluded,
+    bulkPicked,
+    bulkDuration,
+    durationDrafts,
+    promptShotId,
+    promptDraft,
+    galleryShotId,
+    thumbFailed,
+    verThumbFailed,
+    previewOpen,
+    previewAssets,
+    previewIndex,
+    previewBusy,
+    editorOpen,
+    dragShotId,
+    dropTarget,
+    uploadShotId,
+    uploadBusy,
+    uploadInput,
+    composeCfg,
+    cfgTransition,
+    cfgDur,
+    cfgBusy,
+    bgm,
+    composeSettingsOpen,
+    sfxMap,
+    sfxShotId,
     // 派生视图
-    shots, compose, repairable, locked, canOperate, isVideoStep, summary,
-    promptField, promptFieldLabel, draftCount, allPicked, cfgDirty,
+    shots,
+    compose,
+    repairable,
+    locked,
+    canOperate,
+    isVideoStep,
+    summary,
+    promptField,
+    promptFieldLabel,
+    draftCount,
+    allPicked,
+    cfgDirty,
   })
 
   return {
     sb,
     // —— 视图层（index 解构直用；函数下传卡片/画廊/合成行子组件）——
-    loading, err, notice, shots, compose, repairable, canOperate, summary, draftCount, allPicked,
-    previewOpen, previewAssets, previewIndex, editorOpen, composeSettingsOpen, sfxShotId, sfxMap,
-    uploadInput, isVideoStep, bulkDuration, bulkPicked,
-    openEditor, doRecompose, applySelection, toggleAll, applyBulkDuration, doCleanupVersions, resetSelection,
-    onUploadPicked, onPreviewAssetChanged, loadComposeCfg, onSfxChanged, onEditorSaved, saveTransition,
-    isEnabled, openPreview, thumbUrl, markThumbFailed, lineIdsOf, selectedQualityWarn,
-    onCardDragOver, onCardDragLeave, onCardDrop, onGripDragStart, clearDrag,
-    togglePick, toggleEnable, durationValue, onDurationInput, commitDuration,
-    togglePrompt, doRegenerate, pickUpload, toggleGallery, openSfx, savePrompt,
-    effSelected, verQualityWarn, toggleVersionFavorite, markVerThumbFailed, pickVersion,
+    loading,
+    err,
+    notice,
+    shots,
+    compose,
+    repairable,
+    canOperate,
+    summary,
+    draftCount,
+    allPicked,
+    previewOpen,
+    previewAssets,
+    previewIndex,
+    editorOpen,
+    composeSettingsOpen,
+    sfxShotId,
+    sfxMap,
+    uploadInput,
+    isVideoStep,
+    bulkDuration,
+    bulkPicked,
+    openEditor,
+    doRecompose,
+    applySelection,
+    toggleAll,
+    applyBulkDuration,
+    doCleanupVersions,
+    resetSelection,
+    onUploadPicked,
+    onPreviewAssetChanged,
+    loadComposeCfg,
+    onSfxChanged,
+    onEditorSaved,
+    saveTransition,
+    isEnabled,
+    openPreview,
+    thumbUrl,
+    markThumbFailed,
+    lineIdsOf,
+    selectedQualityWarn,
+    onCardDragOver,
+    onCardDragLeave,
+    onCardDrop,
+    onGripDragStart,
+    clearDrag,
+    togglePick,
+    toggleEnable,
+    durationValue,
+    onDurationInput,
+    commitDuration,
+    togglePrompt,
+    doRegenerate,
+    pickUpload,
+    toggleGallery,
+    openSfx,
+    savePrompt,
+    effSelected,
+    verQualityWarn,
+    toggleVersionFavorite,
+    markVerThumbFailed,
+    pickVersion,
   }
 }
 

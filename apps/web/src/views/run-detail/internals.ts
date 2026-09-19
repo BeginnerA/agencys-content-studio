@@ -14,10 +14,15 @@ export function nodeClass(s: RunStep): string {
 }
 
 /** [M2] 跳过原因（output.skipped.reason）；succeeded 且带 skipped 记录 = 免审放行 */
-export function skipInfo(s: RunStep): { text: string; userSkip: boolean } | null {
-  const reason = (s.output as { skipped?: { reason?: string } } | null)?.skipped?.reason
-  if (s.status === 'skipped') return { text: skipReasonText(reason ?? 'skipped'), userSkip: false }
-  if (s.status === 'succeeded' && reason === 'user_skip') return { text: '免审放行', userSkip: true }
+export function skipInfo(
+  s: RunStep,
+): { text: string; userSkip: boolean } | null {
+  const reason = (s.output as { skipped?: { reason?: string } } | null)?.skipped
+    ?.reason
+  if (s.status === 'skipped')
+    return { text: skipReasonText(reason ?? 'skipped'), userSkip: false }
+  if (s.status === 'succeeded' && reason === 'user_skip')
+    return { text: '免审放行', userSkip: true }
   return null
 }
 
@@ -25,7 +30,6 @@ export function assetIds(s: RunStep): number[] {
   const out = s.output?.asset_ids
   return Array.isArray(out) ? (out as number[]) : []
 }
-
 
 export function inputPretty(s: RunStep): string {
   if (!s.input) return '—'
@@ -52,4 +56,9 @@ export function iconOf(key: string): string {
   return ACTION_ICON[key] ?? 'doc'
 }
 
-export const COST_KIND_TEXT: Record<string, string> = { llm: 'LLM', image: '图像', video: '视频', tts: '配音' }
+export const COST_KIND_TEXT: Record<string, string> = {
+  llm: 'LLM',
+  image: '图像',
+  video: '视频',
+  tts: '配音',
+}

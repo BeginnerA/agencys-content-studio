@@ -13,8 +13,12 @@ import Icon from './common/Icon.vue'
 const props = defineProps<{ board: NovelBoardData | null }>()
 const emit = defineEmits<{ reload: [] }>()
 
-type NovelCharacter = NonNullable<NonNullable<NovelBoardGraphDoc['characters']>[number]>
-type NovelKeyEvent = NonNullable<NonNullable<NovelBoardGraphDoc['key_events']>[number]>
+type NovelCharacter = NonNullable<
+  NonNullable<NovelBoardGraphDoc['characters']>[number]
+>
+type NovelKeyEvent = NonNullable<
+  NonNullable<NovelBoardGraphDoc['key_events']>[number]
+>
 
 const graph = computed(() => props.board?.graph?.doc ?? null)
 const layout = computed(() => props.board?.graph?.layout ?? null)
@@ -26,7 +30,9 @@ const eventList = computed<NovelKeyEvent[]>(() => graph.value?.key_events ?? [])
 const graphView = ref<'table' | 'svg'>('table')
 /** 选中事件节点 id（'event:名'）：SVG 点击 → 表行高亮 */
 const selectedEvent = ref('')
-const nodeById = computed(() => new Map((layout.value?.nodes ?? []).map((n) => [n.id, n])))
+const nodeById = computed(
+  () => new Map((layout.value?.nodes ?? []).map((n) => [n.id, n])),
+)
 
 /** 视口（viewBox 四元组；fit = 布局全幅，pan/zoom 只改这四个数） */
 const vb = ref({ x: 0, y: 0, w: 800, h: 500 })
@@ -48,7 +54,11 @@ function onPanDown(e: PointerEvent): void {
 function onPanMove(e: PointerEvent): void {
   if (!panning) return
   const scale = vb.value.w / (e.currentTarget as HTMLElement).clientWidth
-  vb.value = { ...vb.value, x: panning.vx - (e.clientX - panning.px) * scale, y: panning.vy - (e.clientY - panning.py) * scale }
+  vb.value = {
+    ...vb.value,
+    x: panning.vx - (e.clientX - panning.px) * scale,
+    y: panning.vy - (e.clientY - panning.py) * scale,
+  }
 }
 function onPanUp(): void {
   panning = null
@@ -69,13 +79,23 @@ function onNodeClick(id: string, kind: string): void {
   if (kind !== 'event') return
   selectedEvent.value = id
   graphView.value = 'table'
-  void nextTick(() => document.getElementById(`nb-ev-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+  void nextTick(() =>
+    document
+      .getElementById(`nb-ev-${id}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+  )
 }
 
 // ---------- [M25·G5] 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content ----------
 
 const editIdx = ref(-1)
-const editForm = ref({ name: '', chapters: '', summary: '', intensity: 3, kind: '' })
+const editForm = ref({
+  name: '',
+  chapters: '',
+  summary: '',
+  intensity: 3,
+  kind: '',
+})
 const editErr = ref('')
 const editSaving = ref(false)
 
@@ -98,12 +118,18 @@ async function saveEventEdit(): Promise<void> {
   const gid = props.board?.graph?.asset_id
   if (!doc || !gid || editIdx.value < 0) return
   const name = editForm.value.name.trim()
-  const chapters = editForm.value.chapters.split(/[,，\s]+/).filter(Boolean).map(Number)
+  const chapters = editForm.value.chapters
+    .split(/[,，\s]+/)
+    .filter(Boolean)
+    .map(Number)
   if (!name) {
     editErr.value = '事件名不能为空'
     return
   }
-  if (!chapters.length || chapters.some((n) => !Number.isInteger(n) || n <= 0)) {
+  if (
+    !chapters.length ||
+    chapters.some((n) => !Number.isInteger(n) || n <= 0)
+  ) {
     editErr.value = '涉及章需为逗号分隔的正整数（与保存服务端契约同口径）'
     return
   }
@@ -117,12 +143,18 @@ async function saveEventEdit(): Promise<void> {
             name,
             chapters,
             summary: editForm.value.summary.trim(),
-            intensity: Math.min(5, Math.max(1, Math.round(editForm.value.intensity) || 3)),
+            intensity: Math.min(
+              5,
+              Math.max(1, Math.round(editForm.value.intensity) || 3),
+            ),
             kind: editForm.value.kind.trim() || undefined,
           }
         : e,
     )
-    await assetApi.updateContent(gid, JSON.stringify({ ...doc, key_events: events }, null, 2))
+    await assetApi.updateContent(
+      gid,
+      JSON.stringify({ ...doc, key_events: events }, null, 2),
+    )
     editIdx.value = -1
     emit('reload')
   } catch (e) {
@@ -141,9 +173,26 @@ async function saveEventEdit(): Promise<void> {
       <span v-if="board?.graph" class="muted">{{ board.graph.name }}</span>
       <span class="grow" />
       <!-- [M25·G3] 视图切换（layout=null 脏 doc 降级：只留表视图） -->
-      <div v-if="layout" class="nb-seg" role="tablist" aria-label="图谱视图切换">
-        <button class="nb-segb" :class="{ on: graphView === 'table' }" @click="graphView = 'table'">表</button>
-        <button class="nb-segb" :class="{ on: graphView === 'svg' }" @click="graphView = 'svg'">图形</button>
+      <div
+        v-if="layout"
+        class="nb-seg"
+        role="tablist"
+        aria-label="图谱视图切换"
+      >
+        <button
+          class="nb-segb"
+          :class="{ on: graphView === 'table' }"
+          @click="graphView = 'table'"
+        >
+          表
+        </button>
+        <button
+          class="nb-segb"
+          :class="{ on: graphView === 'svg' }"
+          @click="graphView = 'svg'"
+        >
+          图形
+        </button>
       </div>
     </div>
     <p v-if="graph.overview" class="nb-overview">{{ graph.overview }}</p>
@@ -153,7 +202,9 @@ async function saveEventEdit(): Promise<void> {
           <span class="nb-cname">{{ ch.name ?? '—' }}</span>
           <span v-if="ch.role" class="nb-chip">{{ ch.role }}</span>
         </div>
-        <div v-if="ch.arc" class="muted nb-arc" :title="ch.arc">{{ ch.arc }}</div>
+        <div v-if="ch.arc" class="muted nb-arc" :title="ch.arc">
+          {{ ch.arc }}
+        </div>
       </div>
     </div>
     <!-- [M25·G3] SVG 自绘：服务端坐标，fit + 拖拽 pan + 滚轮 zoom；事件节点点击→表行高亮 -->
@@ -166,7 +217,11 @@ async function saveEventEdit(): Promise<void> {
       @pointercancel="onPanUp"
       @wheel="onWheel"
     >
-      <svg :viewBox="`${vb.x} ${vb.y} ${vb.w} ${vb.h}`" class="nb-svg" :aria-label="`事件图谱，${layout.nodes.length} 个节点`">
+      <svg
+        :viewBox="`${vb.x} ${vb.y} ${vb.w} ${vb.h}`"
+        class="nb-svg"
+        :aria-label="`事件图谱，${layout.nodes.length} 个节点`"
+      >
         <line
           v-for="(l, i) in layout.links"
           :key="`lk-${i}`"
@@ -188,13 +243,18 @@ async function saveEventEdit(): Promise<void> {
           <text :x="n.x" :y="n.y + n.r + 14">{{ n.label }}</text>
         </g>
       </svg>
-      <button class="nb-fitbtn" title="重置缩放与平移" @click.stop="resetView()">
+      <button
+        class="nb-fitbtn"
+        title="重置缩放与平移"
+        @click.stop="resetView()"
+      >
         <Icon name="refresh" :size="12" /> 适应
       </button>
     </div>
     <div v-if="graphView === 'table' && eventList.length" class="nb-table ev">
       <div class="nb-tr nb-th">
-        <span>#</span><span>事件</span><span>涉及章</span><span>强度</span><span>类型</span><span />
+        <span>#</span><span>事件</span><span>涉及章</span><span>强度</span
+        ><span>类型</span><span />
       </div>
       <div
         v-for="(ev, i) in eventList"
@@ -206,12 +266,23 @@ async function saveEventEdit(): Promise<void> {
       >
         <span class="mono muted">{{ ev.id ?? i + 1 }}</span>
         <span class="nb-ell">{{ ev.name ?? '—' }}</span>
-        <span class="mono muted nb-ell">{{ ev.chapters?.length ? ev.chapters.join(',') : '—' }}</span>
+        <span class="mono muted nb-ell">{{
+          ev.chapters?.length ? ev.chapters.join(',') : '—'
+        }}</span>
         <span class="nb-dots" :title="`强度 ${ev.intensity ?? '—'}/5`">
-          <span v-for="n in 5" :key="n" class="nb-dot" :class="{ on: (ev.intensity ?? 0) >= n }" />
+          <span
+            v-for="n in 5"
+            :key="n"
+            class="nb-dot"
+            :class="{ on: (ev.intensity ?? 0) >= n }"
+          />
         </span>
         <span class="muted nb-ell">{{ ev.kind ?? '—' }}</span>
-        <button class="nb-ico" title="编辑事件（结构化表单）" @click="startEditEvent(i)">
+        <button
+          class="nb-ico"
+          title="编辑事件（结构化表单）"
+          @click="startEditEvent(i)"
+        >
           <Icon name="pencil" :size="12" />
         </button>
       </div>
@@ -219,7 +290,12 @@ async function saveEventEdit(): Promise<void> {
   </div>
 
   <!-- [M25·G5] 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content -->
-  <Modal v-if="editIdx >= 0" title="编辑事件" :width="480" @close="editIdx = -1">
+  <Modal
+    v-if="editIdx >= 0"
+    title="编辑事件"
+    :width="480"
+    @close="editIdx = -1"
+  >
     <label class="nb-fld">
       事件名
       <input v-model="editForm.name" type="text" placeholder="如：初遇" />
@@ -230,21 +306,37 @@ async function saveEventEdit(): Promise<void> {
     </label>
     <label class="nb-fld">
       摘要
-      <textarea v-model="editForm.summary" rows="3" placeholder="一句话概述该事件" />
+      <textarea
+        v-model="editForm.summary"
+        rows="3"
+        placeholder="一句话概述该事件"
+      />
     </label>
     <div class="nb-frow">
       <label class="nb-fld">
         强度（1–5）
-        <input v-model.number="editForm.intensity" type="number" min="1" max="5" step="1" />
+        <input
+          v-model.number="editForm.intensity"
+          type="number"
+          min="1"
+          max="5"
+          step="1"
+        />
       </label>
       <label class="nb-fld">
         类型
-        <input v-model="editForm.kind" type="text" placeholder="如：转折 / 高潮" />
+        <input
+          v-model="editForm.kind"
+          type="text"
+          placeholder="如：转折 / 高潮"
+        />
       </label>
     </div>
     <div v-if="editErr" class="err-text">{{ editErr }}</div>
     <template #footer>
-      <button class="btn" :disabled="editSaving" @click="editIdx = -1">取消</button>
+      <button class="btn" :disabled="editSaving" @click="editIdx = -1">
+        取消
+      </button>
       <button class="btn primary" :disabled="editSaving" @click="saveEventEdit">
         <Icon name="check" :size="13" /> {{ editSaving ? '保存中…' : '保存' }}
       </button>
@@ -406,7 +498,9 @@ async function saveEventEdit(): Promise<void> {
   font-family: inherit;
   padding: 2px 10px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .nb-segb + .nb-segb {
@@ -459,7 +553,9 @@ async function saveEventEdit(): Promise<void> {
 .nb-node circle {
   stroke: var(--border-strong);
   stroke-width: 1.5;
-  transition: stroke 0.15s, filter 0.15s;
+  transition:
+    stroke 0.15s,
+    filter 0.15s;
 }
 
 .nb-node.event circle {
@@ -504,7 +600,9 @@ async function saveEventEdit(): Promise<void> {
   border-radius: 7px;
   padding: 3px 8px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .nb-fitbtn:hover {
@@ -530,7 +628,9 @@ async function saveEventEdit(): Promise<void> {
   border-radius: 6px;
   color: var(--text-3);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .nb-ico:hover {

@@ -3,36 +3,49 @@ import Icon from '../../components/common/Icon.vue'
 import type { SettingsApi } from './use-settings'
 const props = defineProps<{ s: SettingsApi }>()
 const { credentials, editingCred, showCredForm } = props.s
+
+// 多语句 handler 抽为单函数：prettier 在 semi:false 下会删模板属性里的分隔分号，产生非法 JS
+function editCred(cr: (typeof credentials.value)[number]) {
+  editingCred.value = cr
+  showCredForm.value = true
+}
 </script>
 
 <template>
-      <!-- 供应商凭证管理（卡片式列表，API Key 只配一次） -->
-      <details class="panel creds" open>
-        <summary class="psum">
-          <Icon name="key" :size="14" />
-          <span class="pt">供应商凭证</span>
-          <span class="muted">每个厂商只需配置一次 API Key，所有模型实例共享</span>
-          <span class="chev"><Icon name="chevron-down" :size="14" /></span>
-        </summary>
-        <div class="pbody">
-          <div class="cred-grid">
-            <div v-for="cr in credentials" :key="cr.id" class="cred-card" :class="{ 'no-key': !cr.hasKey }">
-              <div class="cc-head">
-                <span class="cc-name">{{ cr.name }}</span>
-                <span v-if="cr.hasKey" class="cc-key mono">{{ cr.apiKeyMasked }}</span>
-                <span v-else class="cc-key warn">未配置 Key</span>
-              </div>
-              <div class="cc-meta">
-                <span class="muted">{{ cr.configCount }} 个实例</span>
-                <span v-if="cr.vendor" class="muted mono">{{ cr.vendor }}</span>
-              </div>
-              <button class="btn sm" @click="editingCred = cr; showCredForm = true">
-                {{ cr.hasKey ? '修改' : '配置 Key' }}
-              </button>
-            </div>
+  <!-- 供应商凭证管理（卡片式列表，API Key 只配一次） -->
+  <details class="panel creds" open>
+    <summary class="psum">
+      <Icon name="key" :size="14" />
+      <span class="pt">供应商凭证</span>
+      <span class="muted">每个厂商只需配置一次 API Key，所有模型实例共享</span>
+      <span class="chev"><Icon name="chevron-down" :size="14" /></span>
+    </summary>
+    <div class="pbody">
+      <div class="cred-grid">
+        <div
+          v-for="cr in credentials"
+          :key="cr.id"
+          class="cred-card"
+          :class="{ 'no-key': !cr.hasKey }"
+        >
+          <div class="cc-head">
+            <span class="cc-name">{{ cr.name }}</span>
+            <span v-if="cr.hasKey" class="cc-key mono">{{
+              cr.apiKeyMasked
+            }}</span>
+            <span v-else class="cc-key warn">未配置 Key</span>
           </div>
+          <div class="cc-meta">
+            <span class="muted">{{ cr.configCount }} 个实例</span>
+            <span v-if="cr.vendor" class="muted mono">{{ cr.vendor }}</span>
+          </div>
+          <button class="btn sm" @click="editCred(cr)">
+            {{ cr.hasKey ? '修改' : '配置 Key' }}
+          </button>
         </div>
-      </details>
+      </div>
+    </div>
+  </details>
 </template>
 
 <style scoped>

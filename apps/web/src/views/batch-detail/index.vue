@@ -5,7 +5,13 @@ import Icon from '../../components/common/Icon.vue'
 import { batchApi, exportApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import type { BatchDetail, TemplateMeta } from '../../lib/types'
-import { runStatus, fmtTime, fmtCost, batchStatus, inputSummary } from '../../lib/format'
+import {
+  runStatus,
+  fmtTime,
+  fmtCost,
+  batchStatus,
+  inputSummary,
+} from '../../lib/format'
 import { getSocket, studioOff, studioOn } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
 
@@ -19,7 +25,11 @@ const err = ref('')
 const notice = ref('')
 const cancelling = ref(false)
 const exporting = ref(false)
-const exportResult = ref<Array<{ runId: number; assetId: number; name: string }> | null>(null)
+const exportResult = ref<Array<{
+  runId: number
+  assetId: number
+  name: string
+}> | null>(null)
 
 // [优化] 模板短名（静默加载；失败回退裸 key）
 const tplMetas = ref<TemplateMeta[]>([])
@@ -85,7 +95,12 @@ function onBatchUpdated(p: StudioEventMap['batch.updated']) {
   refresh()
 }
 // run 事件：仅批内 run 响应（runs 集合过滤；加载前的早期事件由 batch.updated + 轮询兜底）
-function onRunEvent(p: StudioEventMap['run.step'] | StudioEventMap['run.completed'] | StudioEventMap['run.failed']) {
+function onRunEvent(
+  p:
+    | StudioEventMap['run.step']
+    | StudioEventMap['run.completed']
+    | StudioEventMap['run.failed'],
+) {
   if (!runs.value.some((r) => r.id === p.runId)) return
   refresh()
 }
@@ -102,7 +117,8 @@ onMounted(() => {
     studioOff('run.step', onRunEvent)
     studioOff('run.completed', onRunEvent)
     studioOff('run.failed', onRunEvent)
-    if (projectJoined && detail.value) getSocket().emit('leave', `project:${detail.value.batch.projectId}`)
+    if (projectJoined && detail.value)
+      getSocket().emit('leave', `project:${detail.value.batch.projectId}`)
     if (timer !== undefined) clearInterval(timer)
   })
 })
@@ -154,18 +170,33 @@ function errOf(s: string | null): string {
 <template>
   <div>
     <div class="page-h">
-      <RouterLink :to="batch ? `/projects/${batch.projectId}` : '/'" class="back">
+      <RouterLink
+        :to="batch ? `/projects/${batch.projectId}` : '/'"
+        class="back"
+      >
         <Icon name="arrow-left" :size="14" /> 项目
       </RouterLink>
       <h1>{{ batch?.name ?? `批次 #${batchId}` }}</h1>
-      <span v-if="batch" class="badge" :class="batchStatus(batch.status).cls">{{ batchStatus(batch.status).text }}</span>
+      <span v-if="batch" class="badge" :class="batchStatus(batch.status).cls">{{
+        batchStatus(batch.status).text
+      }}</span>
       <span v-if="batch" class="sub">{{ tplName(batch.templateKey) }}</span>
       <div style="margin-left: auto; display: flex; gap: 8px">
-        <button v-if="running" class="btn danger" :disabled="cancelling" @click="cancelBatch">
+        <button
+          v-if="running"
+          class="btn danger"
+          :disabled="cancelling"
+          @click="cancelBatch"
+        >
           {{ cancelling ? '取消中…' : '取消批次' }}
         </button>
-        <button class="btn primary" :disabled="exporting || !runs.length" @click="exportAll">
-          <Icon name="download" :size="14" /> {{ exporting ? '打包中…' : '批量导出' }}
+        <button
+          class="btn primary"
+          :disabled="exporting || !runs.length"
+          @click="exportAll"
+        >
+          <Icon name="download" :size="14" />
+          {{ exporting ? '打包中…' : '批量导出' }}
         </button>
       </div>
     </div>
@@ -177,10 +208,21 @@ function errOf(s: string | null): string {
       <div class="panel block">
         <div class="bh">
           <span class="bt">进度</span>
-          <span class="muted mono">完成 {{ batch.finished }}/{{ batch.total }} · 成功 {{ batch.succeeded }} · 失败 {{ batch.failed }}</span>
-          <span class="muted mono" style="margin-left: auto">并发上限 {{ batch.schedule.max_concurrent ?? 1 }}</span>
+          <span class="muted mono"
+            >完成 {{ batch.finished }}/{{ batch.total }} · 成功
+            {{ batch.succeeded }} · 失败 {{ batch.failed }}</span
+          >
+          <span class="muted mono" style="margin-left: auto"
+            >并发上限 {{ batch.schedule.max_concurrent ?? 1 }}</span
+          >
         </div>
-        <div class="ptrack" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
+        <div
+          class="ptrack"
+          role="progressbar"
+          :aria-valuenow="progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
           <div class="pfill" :style="{ width: progress + '%' }" />
         </div>
       </div>
@@ -214,22 +256,39 @@ function errOf(s: string | null): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in runs" :key="r.id" class="rrow" @click="router.push(`/runs/${r.id}`)">
+            <tr
+              v-for="r in runs"
+              :key="r.id"
+              class="rrow"
+              @click="router.push(`/runs/${r.id}`)"
+            >
               <td class="mono">#{{ r.batchSeq ?? '—' }}</td>
-              <td><span class="badge" :class="r.status">{{ runStatus(r.status).text }}</span></td>
+              <td>
+                <span class="badge" :class="r.status">{{
+                  runStatus(r.status).text
+                }}</span>
+              </td>
               <td class="sum">
-                <span v-if="r.error" class="em" :title="r.error">{{ errOf(r.error) }}</span>
+                <span v-if="r.error" class="em" :title="r.error">{{
+                  errOf(r.error)
+                }}</span>
                 <span v-else class="muted">{{ inputSummary(r.input) }}</span>
               </td>
               <td class="mono">{{ fmtCost(r.cost) }}</td>
               <td class="muted" style="white-space: nowrap">
                 {{ fmtTime(r.startedAt ?? r.createdAt) }}
-                <template v-if="r.completedAt">→ {{ fmtTime(r.completedAt) }}</template>
+                <template v-if="r.completedAt"
+                  >→ {{ fmtTime(r.completedAt) }}</template
+                >
               </td>
               <td><span class="muted">详情 →</span></td>
             </tr>
             <tr v-if="!runs.length">
-              <td colspan="6"><div class="empty" style="padding: 18px 0">批次内还没有 run</div></td>
+              <td colspan="6">
+                <div class="empty" style="padding: 18px 0">
+                  批次内还没有 run
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>

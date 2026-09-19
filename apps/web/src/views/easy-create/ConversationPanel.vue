@@ -4,7 +4,12 @@ import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
 import { assetApi } from '../../lib/api'
 import { REF_ROLE_LABELS, REF_VALID_ROLES } from '../../lib/types'
-import type { Asset, CreationChatMessage, CreationRefKind, CreationRefRole } from '../../lib/types'
+import type {
+  Asset,
+  CreationChatMessage,
+  CreationRefKind,
+  CreationRefRole,
+} from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
@@ -14,8 +19,14 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
 watch(
-  () => [props.s.state.detail?.messages.length ?? 0, props.s.state.detail?.session.status],
-  () => void nextTick(() => { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight }),
+  () => [
+    props.s.state.detail?.messages.length ?? 0,
+    props.s.state.detail?.session.status,
+  ],
+  () =>
+    void nextTick(() => {
+      if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+    }),
 )
 
 const uploading = () => props.s.uploadingAttachments.value
@@ -50,16 +61,20 @@ const refLoading = ref<number | null>(null)
 const isAttachment = (m: CreationChatMessage): boolean =>
   m.payload?.kind === 'attachment' && typeof m.payload.assetId === 'number'
 const refAssetId = (m: CreationChatMessage): number => m.payload?.assetId ?? 0
-const refKind = (m: CreationChatMessage): CreationRefKind => m.payload?.ref?.kind ?? 'image'
+const refKind = (m: CreationChatMessage): CreationRefKind =>
+  m.payload?.ref?.kind ?? 'image'
 const refRoleLabel = (m: CreationChatMessage): string => {
   const role = m.payload?.ref?.role
   return role ? REF_ROLE_LABELS[role] : '参考'
 }
 // 文件名：剥离服务端消息前缀「已上传参考素材：」，回退整句
-const refName = (m: CreationChatMessage): string => m.content.replace(/^已上传参考素材：/, '').trim() || m.content
+const refName = (m: CreationChatMessage): string =>
+  m.content.replace(/^已上传参考素材：/, '').trim() || m.content
 // 图片/视频走后端缩略图端点（与方案卡同源 ?v=2 破缓存）；音频无缩略图 → 图标
 const refThumb = (m: CreationChatMessage): string | null =>
-  refKind(m) === 'image' || refKind(m) === 'video' ? `/api/v1/assets/${refAssetId(m)}/thumb?v=2` : null
+  refKind(m) === 'image' || refKind(m) === 'video'
+    ? `/api/v1/assets/${refAssetId(m)}/thumb?v=2`
+    : null
 async function openRefPreview(m: CreationChatMessage): Promise<void> {
   const id = refAssetId(m)
   if (!id || refLoading.value === id) return
@@ -79,7 +94,8 @@ function useQuestion(q: string): void {
   draft.value = draft.value.trim() ? `${draft.value.trim()}\n${q}` : q
 }
 
-const planning = () => props.s.state.detail?.session.status === 'planning' || props.s.state.busySend
+const planning = () =>
+  props.s.state.detail?.session.status === 'planning' || props.s.state.busySend
 </script>
 
 <template>
@@ -91,37 +107,72 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
         </span>
         <p class="hello-t">用一句话描述你想做的视频</p>
         <p class="muted">比如「做一条 30 秒的咖啡科普短视频，轻松一点」。</p>
-        <p class="muted">未指定时默认竖屏 9:16、中文旁白、30 秒、动态镜头。产品参数、价格、功效缺失不会编造。</p>
+        <p class="muted">
+          未指定时默认竖屏 9:16、中文旁白、30
+          秒、动态镜头。产品参数、价格、功效缺失不会编造。
+        </p>
       </div>
-      <div v-for="m in s.state.detail?.messages ?? []" :key="m.id" class="msg" :class="m.role">
+      <div
+        v-for="m in s.state.detail?.messages ?? []"
+        :key="m.id"
+        class="msg"
+        :class="m.role"
+      >
         <span class="avatar" :class="m.role" aria-hidden="true">
           <Icon :name="m.role === 'user' ? 'users' : 'wand'" :size="15" />
         </span>
         <div class="mcol">
           <div class="who">{{ m.role === 'user' ? '我' : '策划助手' }}</div>
-          <div v-if="isAttachment(m)" class="bubble ref-bubble" role="button" tabindex="0"
-            :aria-label="'查看参考素材：' + refName(m)" :aria-busy="refLoading === refAssetId(m)" @click="openRefPreview(m)"
-            @keydown.enter.prevent="openRefPreview(m)" @keydown.space.prevent="openRefPreview(m)">
+          <div
+            v-if="isAttachment(m)"
+            class="bubble ref-bubble"
+            role="button"
+            tabindex="0"
+            :aria-label="'查看参考素材：' + refName(m)"
+            :aria-busy="refLoading === refAssetId(m)"
+            @click="openRefPreview(m)"
+            @keydown.enter.prevent="openRefPreview(m)"
+            @keydown.space.prevent="openRefPreview(m)"
+          >
             <span class="ref-thumb">
-              <img v-if="refThumb(m)" :src="refThumb(m) ?? ''" :alt="refName(m)" loading="lazy" />
+              <img
+                v-if="refThumb(m)"
+                :src="refThumb(m) ?? ''"
+                :alt="refName(m)"
+                loading="lazy"
+              />
               <Icon v-else :name="kindIcon(refKind(m))" :size="18" />
               <span class="ref-view" aria-hidden="true">
                 <Icon name="eye" :size="11" />
               </span>
-              <span v-if="refLoading === refAssetId(m)" class="ref-load" aria-hidden="true">
+              <span
+                v-if="refLoading === refAssetId(m)"
+                class="ref-load"
+                aria-hidden="true"
+              >
                 <Icon name="refresh" :size="16" />
               </span>
             </span>
             <span class="ref-meta">
               <span class="ref-tag">
-                <Icon :name="kindIcon(refKind(m))" :size="10" /> 参考 · {{ refRoleLabel(m) }}
+                <Icon :name="kindIcon(refKind(m))" :size="10" /> 参考 ·
+                {{ refRoleLabel(m) }}
               </span>
               <span class="ref-file" :title="refName(m)">{{ refName(m) }}</span>
             </span>
           </div>
           <div v-else class="bubble">{{ m.content }}</div>
-          <div v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length" class="qs">
-            <button v-for="(q, i) in m.payload.questions" :key="i" class="chip q" type="button" @click="useQuestion(q)">
+          <div
+            v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
+            class="qs"
+          >
+            <button
+              v-for="(q, i) in m.payload.questions"
+              :key="i"
+              class="chip q"
+              type="button"
+              @click="useQuestion(q)"
+            >
               {{ q }}
             </button>
           </div>
@@ -133,8 +184,10 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
         </span>
         <div class="mcol">
           <div class="who">策划助手</div>
-          <div class="bubble wait"><span class="dot" /><span class="dot" /><span class="dot" />
-            正在理解需求并生成方案…（本步骤会调用大模型，产生少量费用）</div>
+          <div class="bubble wait">
+            <span class="dot" /><span class="dot" /><span class="dot" />
+            正在理解需求并生成方案…（本步骤会调用大模型，产生少量费用）
+          </div>
         </div>
       </div>
     </div>
@@ -146,9 +199,19 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
         <div class="att-h">
           <Icon name="photo" :size="12" /> 参考素材 · 发送后编译进方案并影响制作
         </div>
-        <div v-for="a in s.state.attachments" :key="a.clientId" class="att" :class="{ 'att-errored': a.error }">
+        <div
+          v-for="a in s.state.attachments"
+          :key="a.clientId"
+          class="att"
+          :class="{ 'att-errored': a.error }"
+        >
           <span class="att-thumb">
-            <img v-if="a.thumbUrl" :src="a.thumbUrl" :alt="a.name" loading="lazy" />
+            <img
+              v-if="a.thumbUrl"
+              :src="a.thumbUrl"
+              :alt="a.name"
+              loading="lazy"
+            />
             <Icon v-else :name="kindIcon(a.kind)" :size="16" />
           </span>
           <span class="att-main">
@@ -159,37 +222,90 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
               <span v-else-if="a.assetId" class="ok">已就绪</span>
             </span>
           </span>
-          <select class="att-role" :value="a.role" :disabled="a.uploading" :aria-label="'参考用途：' + a.name"
-            @change="onRoleChange(a.clientId, ($event.target as HTMLSelectElement).value)">
-            <option v-for="r in REF_VALID_ROLES[a.kind]" :key="r" :value="r">{{ REF_ROLE_LABELS[r] }}</option>
+          <select
+            class="att-role"
+            :value="a.role"
+            :disabled="a.uploading"
+            :aria-label="'参考用途：' + a.name"
+            @change="
+              onRoleChange(
+                a.clientId,
+                ($event.target as HTMLSelectElement).value,
+              )
+            "
+          >
+            <option v-for="r in REF_VALID_ROLES[a.kind]" :key="r" :value="r">
+              {{ REF_ROLE_LABELS[r] }}
+            </option>
           </select>
-          <button v-if="a.error && !a.uploading" class="icobtn" type="button" title="重试上传" aria-label="重试上传"
-            @click="s.retryAttachment(a.clientId)">
+          <button
+            v-if="a.error && !a.uploading"
+            class="icobtn"
+            type="button"
+            title="重试上传"
+            aria-label="重试上传"
+            @click="s.retryAttachment(a.clientId)"
+          >
             <Icon name="refresh" :size="14" />
           </button>
-          <button class="icobtn" type="button" title="移除参考" aria-label="移除参考" @click="s.removeAttachment(a.clientId)">
+          <button
+            class="icobtn"
+            type="button"
+            title="移除参考"
+            aria-label="移除参考"
+            @click="s.removeAttachment(a.clientId)"
+          >
             <Icon name="x" :size="14" />
           </button>
         </div>
       </div>
-      <textarea v-model="draft" rows="2" :maxlength="6000" :disabled="planning()"
-        placeholder="补充要求或修改方案，例如：换成温暖风格 / 改成图文模式 / 时长 45 秒" aria-label="创作需求" @keydown.enter.exact.prevent="submit" />
+      <textarea
+        v-model="draft"
+        rows="2"
+        :maxlength="6000"
+        :disabled="planning()"
+        placeholder="补充要求或修改方案，例如：换成温暖风格 / 改成图文模式 / 时长 45 秒"
+        aria-label="创作需求"
+        @keydown.enter.exact.prevent="submit"
+      />
       <div class="crow">
-        <input ref="fileInput" class="file-in" type="file" accept="image/*,video/*,audio/*" multiple
-          @change="onFiles" />
-        <button class="btn sm ghost att-btn" type="button" :disabled="planning() || uploading()" @click="pickFiles">
+        <input
+          ref="fileInput"
+          class="file-in"
+          type="file"
+          accept="image/*,video/*,audio/*"
+          multiple
+          @change="onFiles"
+        />
+        <button
+          class="btn sm ghost att-btn"
+          type="button"
+          :disabled="planning() || uploading()"
+          @click="pickFiles"
+        >
           <Icon name="upload" :size="13" /> 添加参考
         </button>
         <span class="muted cost-hint">
-          <Icon name="alert" :size="12" /> 上传参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
+          <Icon name="alert" :size="12" />
+          上传参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
         </span>
-        <button class="btn primary" type="submit" :disabled="planning() || uploading() || !draft.trim()">
-          <Icon name="send" :size="14" /> {{ uploading() ? '上传中…' : planning() ? '处理中…' : '发送' }}
+        <button
+          class="btn primary"
+          type="submit"
+          :disabled="planning() || uploading() || !draft.trim()"
+        >
+          <Icon name="send" :size="14" />
+          {{ uploading() ? '上传中…' : planning() ? '处理中…' : '发送' }}
         </button>
       </div>
     </form>
 
-    <AssetPreviewer v-if="previewAsset" :assets="[previewAsset]" :index="0" @close="previewAsset = null" />
+    <AssetPreviewer
+      v-if="previewAsset"
+      :assets="[previewAsset]"
+      :index="0"
+      @close="previewAsset = null"
+    />
   </section>
 </template>
 
@@ -325,7 +441,9 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
   max-width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: filter 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .ref-bubble:hover {
@@ -448,7 +566,10 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
   padding: 5px 12px;
   border-radius: 999px;
   font-size: 12px;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 
 .chip.q:hover {
@@ -465,7 +586,8 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
 .composer {
   border-top: 1px solid var(--border);
   padding: 13px 16px;
-  background: linear-gradient(180deg, transparent, rgb(99 102 241 / 4%)), var(--panel);
+  background:
+    linear-gradient(180deg, transparent, rgb(99 102 241 / 4%)), var(--panel);
 }
 
 .composer textarea {

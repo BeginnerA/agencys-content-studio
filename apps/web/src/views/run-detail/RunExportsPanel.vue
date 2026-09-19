@@ -8,25 +8,33 @@ const { showExport, exportsList, runAssets, removeExport } = props.e
 </script>
 
 <template>
-          <!-- [M4] 导出包（purpose=export 资产） -->
-          <div class="panel mini">
-            <div class="lhead">
-              <span class="lt">导出包</span>
-              <button class="btn sm" :disabled="!runAssets.length" @click="showExport = true">
-                <Icon name="download" :size="12" /> 新建
-              </button>
-            </div>
-            <div v-if="exportsList.length" class="mrows">
-              <div v-for="ex in exportsList" :key="ex.id" class="mrow">
-                <span class="enm" :title="ex.name">{{ ex.name }}</span>
-                <span class="muted">{{ fmtSize(ex.fileSize) }}</span>
-                <span class="grow" />
-                <a class="btn sm" :href="exportApi.fileUrl(ex.id, true)"><Icon name="download" :size="12" /> 下载</a>
-                <button class="btn sm danger" @click="removeExport(ex)">删除</button>
-              </div>
-            </div>
-            <div v-else class="empty" style="padding: 10px 0">还没有导出包——选择产物一键打包下载</div>
-          </div>
+  <!-- [M4] 导出包（purpose=export 资产） -->
+  <div class="panel mini">
+    <div class="lhead">
+      <span class="lt">导出包</span>
+      <button
+        class="btn sm"
+        :disabled="!runAssets.length"
+        @click="showExport = true"
+      >
+        <Icon name="download" :size="12" /> 新建
+      </button>
+    </div>
+    <div v-if="exportsList.length" class="mrows">
+      <div v-for="ex in exportsList" :key="ex.id" class="mrow">
+        <span class="enm" :title="ex.name">{{ ex.name }}</span>
+        <span class="muted">{{ fmtSize(ex.fileSize) }}</span>
+        <span class="grow" />
+        <a class="btn sm" :href="exportApi.fileUrl(ex.id, true)"
+          ><Icon name="download" :size="12" /> 下载</a
+        >
+        <button class="btn sm danger" @click="removeExport(ex)">删除</button>
+      </div>
+    </div>
+    <div v-else class="empty" style="padding: 10px 0">
+      还没有导出包——选择产物一键打包下载
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -75,5 +83,4 @@ const { showExport, exportsList, runAssets, removeExport } = props.e
   font-weight: 600;
   font-size: 13px;
 }
-
 </style>

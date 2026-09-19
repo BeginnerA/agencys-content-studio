@@ -29,7 +29,10 @@ export function setHotkeysEnabled(on: boolean): void {
 }
 
 /** 注册组合键；返回解绑函数（组件 onBeforeUnmount 调用） */
-export function bindHotkey(combo: HotkeyCombo, handler: HotkeyHandler): () => void {
+export function bindHotkey(
+  combo: HotkeyCombo,
+  handler: HotkeyHandler,
+): () => void {
   const b: Binding = { combo, handler }
   bindings.push(b)
   return () => {

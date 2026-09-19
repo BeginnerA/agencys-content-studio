@@ -32,9 +32,15 @@ const fFile = ref<File | null>(null)
 /** 文件输入重挂键（提交成功/清除后清掉原生 input 的脏残留） */
 const fileKey = ref(0)
 
-const providerSpec = computed(() => providers.value.find((p) => p.key === fProvider.value) ?? null)
+const providerSpec = computed(
+  () => providers.value.find((p) => p.key === fProvider.value) ?? null,
+)
 const canCreate = computed(
-  () => !!fName.value.trim() && !!providerSpec.value?.available && !!fFile.value && !busy.value,
+  () =>
+    !!fName.value.trim() &&
+    !!providerSpec.value?.available &&
+    !!fFile.value &&
+    !busy.value,
 )
 
 function onPick(e: Event) {
@@ -44,7 +50,10 @@ function onPick(e: Event) {
     fFile.value = null
     return
   }
-  if (!/\.(wav|mp3)$/i.test(f.name) && !/audio\/(wav|x-wav|wave|mpeg|mp3)/i.test(f.type)) {
+  if (
+    !/\.(wav|mp3)$/i.test(f.name) &&
+    !/audio\/(wav|x-wav|wave|mpeg|mp3)/i.test(f.type)
+  ) {
     err.value = '样本需为 WAV 或 MP3 音频文件'
     fFile.value = null
     fileKey.value += 1
@@ -65,7 +74,8 @@ async function load() {
     const res = await voiceCloneApi.list()
     items.value = res.items
     providers.value = res.providers
-    if (!fProvider.value) fProvider.value = res.providers.find((p) => p.available)?.key ?? ''
+    if (!fProvider.value)
+      fProvider.value = res.providers.find((p) => p.available)?.key ?? ''
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -186,7 +196,8 @@ function metaOf(r: VoiceCloneItem): { protocol?: string; prefix?: string } {
       <Icon name="speaker-wave" :size="14" />
       <b>平台音色库</b>
       <span class="muted">
-        样本要求：WAV / MP3、含 ≥5 秒连续清晰人声（建议 10~20 秒）、≤10MB；复刻成功后在角色声线填
+        样本要求：WAV / MP3、含 ≥5 秒连续清晰人声（建议 10~20
+        秒）、≤10MB；复刻成功后在角色声线填
         <code class="mono">clone:{id}</code> 引用
       </span>
     </div>
@@ -197,36 +208,61 @@ function metaOf(r: VoiceCloneItem): { protocol?: string; prefix?: string } {
       <div class="vl-grid">
         <label class="vl-f">
           <span>音色名</span>
-          <input v-model="fName" type="text" maxlength="64" placeholder="如：萌宝-童声A（同名会被拒绝）" />
+          <input
+            v-model="fName"
+            type="text"
+            maxlength="64"
+            placeholder="如：萌宝-童声A（同名会被拒绝）"
+          />
         </label>
         <label class="vl-f">
           <span>供应商</span>
           <select v-model="fProvider">
             <option value="" disabled>选择供应商</option>
-            <option v-for="p in providers" :key="p.key" :value="p.key" :disabled="!p.available">
+            <option
+              v-for="p in providers"
+              :key="p.key"
+              :value="p.key"
+              :disabled="!p.available"
+            >
               {{ p.name }}{{ p.available ? '' : '（不支持克隆）' }}
             </option>
           </select>
         </label>
         <label class="vl-f">
           <span>目标模型</span>
-          <input v-model="fModel" type="text" placeholder="留空 = 供应商默认克隆模型" />
+          <input
+            v-model="fModel"
+            type="text"
+            placeholder="留空 = 供应商默认克隆模型"
+          />
         </label>
         <label class="vl-f">
           <span>样本文件</span>
-          <input :key="fileKey" type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" @change="onPick" />
+          <input
+            :key="fileKey"
+            type="file"
+            accept=".wav,.mp3,audio/wav,audio/mpeg"
+            @change="onPick"
+          />
         </label>
       </div>
       <div class="vl-row">
         <span class="muted grow">
-          {{ fFile ? `已选样本：${fFile.name} · ${fmtSize(fFile.size)}` : '未选择样本（本地文件以 Base64 内联提交，不落盘）' }}
+          {{
+            fFile
+              ? `已选样本：${fFile.name} · ${fmtSize(fFile.size)}`
+              : '未选择样本（本地文件以 Base64 内联提交，不落盘）'
+          }}
         </span>
         <button class="btn sm primary" :disabled="!canCreate" @click="doCreate">
-          <Icon name="sparkles" :size="13" /> {{ busy ? '复刻中（约 10~60 秒）…' : '开始复刻' }}
+          <Icon name="sparkles" :size="13" />
+          {{ busy ? '复刻中（约 10~60 秒）…' : '开始复刻' }}
         </button>
       </div>
       <div v-if="!providers.some((p) => p.available)" class="vl-tip">
-        当前 audio 供应商目录中无可克隆协议的供应商——需在「语音合成」tab 配置支持声音复刻的实例后方可使用
+        当前 audio 供应商目录中无可克隆协议的供应商——需在「语音合成」tab
+        配置支持声音复刻的实例后方可使用
       </div>
     </section>
 
@@ -238,11 +274,19 @@ function metaOf(r: VoiceCloneItem): { protocol?: string; prefix?: string } {
       </div>
 
       <div class="vl-row">
-        <input v-model="testText" type="text" class="grow" maxlength="200" placeholder="试听文本（≤200 字）" />
+        <input
+          v-model="testText"
+          type="text"
+          class="grow"
+          maxlength="200"
+          placeholder="试听文本（≤200 字）"
+        />
       </div>
 
       <div v-if="loading" class="muted">加载中…</div>
-      <div v-else-if="!items.length" class="muted">暂无克隆音色——填写上方表单开始复刻</div>
+      <div v-else-if="!items.length" class="muted">
+        暂无克隆音色——填写上方表单开始复刻
+      </div>
       <table v-else class="vl-tbl">
         <thead>
           <tr>
@@ -258,18 +302,31 @@ function metaOf(r: VoiceCloneItem): { protocol?: string; prefix?: string } {
           <tr v-for="r in items" :key="r.id">
             <td>
               <div class="vl-name">{{ r.name }}</div>
-              <div v-if="metaOf(r).protocol" class="muted mono">{{ metaOf(r).protocol }}</div>
+              <div v-if="metaOf(r).protocol" class="muted mono">
+                {{ metaOf(r).protocol }}
+              </div>
             </td>
             <td class="mono">{{ r.providerKey }}<br />{{ r.model }}</td>
             <td class="mono vl-dim" :title="r.voiceId">{{ r.voiceId }}</td>
             <td>
-              <button class="vl-ref mono" title="点击复制引用令牌" @click="copyRef(r)">clone:{{ r.id }}</button>
+              <button
+                class="vl-ref mono"
+                title="点击复制引用令牌"
+                @click="copyRef(r)"
+              >
+                clone:{{ r.id }}
+              </button>
             </td>
             <td class="muted">{{ fmtTime(r.createdAt) }}</td>
             <td>
               <div class="vl-acts">
-                <button class="btn sm" :disabled="previewing !== null" @click="doPreview(r)">
-                  <Icon name="play" :size="12" /> {{ previewing === r.id ? '合成中…' : '试听' }}
+                <button
+                  class="btn sm"
+                  :disabled="previewing !== null"
+                  @click="doPreview(r)"
+                >
+                  <Icon name="play" :size="12" />
+                  {{ previewing === r.id ? '合成中…' : '试听' }}
                 </button>
                 <button class="btn sm danger" @click="doDelete(r)">
                   <Icon name="trash" :size="12" />
@@ -290,9 +347,13 @@ function metaOf(r: VoiceCloneItem): { protocol?: string; prefix?: string } {
     </section>
 
     <div v-if="err" class="err-text">{{ err }}</div>
-    <div v-if="notice" class="vl-ok"><Icon name="check" :size="12" /> {{ notice }}</div>
+    <div v-if="notice" class="vl-ok">
+      <Icon name="check" :size="12" /> {{ notice }}
+    </div>
     <ul v-if="warns.length" class="vl-warns">
-      <li v-for="(w, i) in warns" :key="i"><Icon name="alert" :size="12" /> {{ w }}</li>
+      <li v-for="(w, i) in warns" :key="i">
+        <Icon name="alert" :size="12" /> {{ w }}
+      </li>
     </ul>
   </div>
 </template>

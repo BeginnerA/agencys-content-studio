@@ -14,10 +14,13 @@ import type {
 export const configApi = {
   providers: () => api.get<Items<ApiProvider>>('/api/v1/api-providers'),
   list: () => api.get<Items<ApiConfig>>('/api/v1/api-configs'),
-  create: (body: Record<string, unknown>) => api.post<ApiConfig>('/api/v1/api-configs', body),
-  update: (id: number, body: Record<string, unknown>) => api.put<ApiConfig>(`/api/v1/api-configs/${id}`, body),
+  create: (body: Record<string, unknown>) =>
+    api.post<ApiConfig>('/api/v1/api-configs', body),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<ApiConfig>(`/api/v1/api-configs/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
-  test: (id: number) => api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
+  test: (id: number) =>
+    api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
   /** 在线拉取供应商可用模型目录（OpenAI 兼容 GET /models，失败回退预置列表） */
   fetchModels: (body: Record<string, unknown>) =>
     api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
@@ -25,9 +28,18 @@ export const configApi = {
 
 export const vendorApi = {
   list: () => api.get<Items<VendorCredential>>('/api/v1/vendor-credentials'),
-  create: (body: Record<string, unknown>) => api.post<{ credential: VendorCredential }>('/api/v1/vendor-credentials', body),
-  update: (id: number, body: Record<string, unknown>) => api.put<{ credential: VendorCredential }>(`/api/v1/vendor-credentials/${id}`, body),
-  remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/vendor-credentials/${id}`),
+  create: (body: Record<string, unknown>) =>
+    api.post<{ credential: VendorCredential }>(
+      '/api/v1/vendor-credentials',
+      body,
+    ),
+  update: (id: number, body: Record<string, unknown>) =>
+    api.put<{ credential: VendorCredential }>(
+      `/api/v1/vendor-credentials/${id}`,
+      body,
+    ),
+  remove: (id: number) =>
+    api.del<{ ok: boolean }>(`/api/v1/vendor-credentials/${id}`),
 }
 
 /**
@@ -36,12 +48,18 @@ export const vendorApi = {
  */
 export const brandAssetApi = {
   /** multipart 上传（watermark 须图片 / intro|outro 须视频；≤200MB）→ 更新后 brand 全量 */
-  upload: async (slot: BrandSlotKey, file: File): Promise<{ brand: BrandConfig }> => {
+  upload: async (
+    slot: BrandSlotKey,
+    file: File,
+  ): Promise<{ brand: BrandConfig }> => {
     const form = new FormData()
     form.append('file', file, file.name)
     let res: Response
     try {
-      res = await fetch(`/api/v1/settings/brand/assets/${slot}`, { method: 'POST', body: form })
+      res = await fetch(`/api/v1/settings/brand/assets/${slot}`, {
+        method: 'POST',
+        body: form,
+      })
     } catch {
       throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
     }
@@ -62,17 +80,23 @@ export const brandAssetApi = {
     return (await res.json()) as { brand: BrandConfig }
   },
   /** 预览 URL（ts 传值防缓存；无引用/文件缺失 → 404） */
-  fileUrl: (slot: BrandSlotKey, ts?: number) => `/api/v1/settings/brand/assets/${slot}${ts ? `?t=${ts}` : ''}`,
+  fileUrl: (slot: BrandSlotKey, ts?: number) =>
+    `/api/v1/settings/brand/assets/${slot}${ts ? `?t=${ts}` : ''}`,
   /** 清除引用（仅删 file 键；磁盘文件保留）→ 更新后 brand 全量 */
   clear: (slot: BrandSlotKey) =>
-    api.del<{ ok: boolean; brand: BrandConfig; note: string }>(`/api/v1/settings/brand/assets/${slot}`),
+    api.del<{ ok: boolean; brand: BrandConfig; note: string }>(
+      `/api/v1/settings/brand/assets/${slot}`,
+    ),
 }
 
 /**
  * [M19 P8] 平台音色库（Settings 音色库 tab；声音克隆）。
  * 密钥不落本表：服务端经 Settings → 语音合成实例（api_configs）解析端点与 Key。
  */
-async function voiceCloneSend(path: string, body: FormData | Record<string, unknown>): Promise<Response> {
+async function voiceCloneSend(
+  path: string,
+  body: FormData | Record<string, unknown>,
+): Promise<Response> {
   const isForm = body instanceof FormData
   let res: Response
   try {
@@ -103,7 +127,10 @@ async function voiceCloneSend(path: string, body: FormData | Record<string, unkn
 
 export const voiceCloneApi = {
   /** 音色列表 + 能力位矩阵（available=false 的供应商不可选） */
-  list: () => api.get<{ items: VoiceCloneItem[]; providers: VoiceCloneProvider[] }>('/api/v1/voice-clones'),
+  list: () =>
+    api.get<{ items: VoiceCloneItem[]; providers: VoiceCloneProvider[] }>(
+      '/api/v1/voice-clones',
+    ),
   /** multipart 克隆创建（样本 wav/mp3 ≤10MB；失败不落行：400 校验 / 502 供应商详情） */
   create: async (p: {
     name: string
@@ -119,13 +146,22 @@ export const voiceCloneApi = {
     if (p.sampleUrl) form.append('sample_url', p.sampleUrl)
     if (p.file) form.append('file', p.file, p.file.name)
     const res = await voiceCloneSend('/api/v1/voice-clones', form)
-    return (await res.json()) as { ok: boolean; clone: VoiceCloneItem; warnings: string[] }
+    return (await res.json()) as {
+      ok: boolean
+      clone: VoiceCloneItem
+      warnings: string[]
+    }
   },
   /** 移除本地登记（供应商侧音色未删；引用该音色的声线配置自动降级） */
-  remove: (id: number) => api.del<{ ok: boolean; name: string; note: string }>(`/api/v1/voice-clones/${id}`),
+  remove: (id: number) =>
+    api.del<{ ok: boolean; name: string; note: string }>(
+      `/api/v1/voice-clones/${id}`,
+    ),
   /** 试听（≤200 字）→ mp3 Blob（不落资产、不记账） */
   test: async (id: number, text: string): Promise<Blob> => {
-    const res = await voiceCloneSend(`/api/v1/voice-clones/${id}/test`, { text })
+    const res = await voiceCloneSend(`/api/v1/voice-clones/${id}/test`, {
+      text,
+    })
     return await res.blob()
   },
 }

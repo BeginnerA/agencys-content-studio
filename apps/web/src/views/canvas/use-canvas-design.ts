@@ -33,7 +33,9 @@ export function useCanvasDesign(opts: {
   })
 
   // ===== [M23-E4] 设计态编排（拖拽连线 + 落盘通道：草案预览 / 保存为新模板）=====
-  const boardEdit = computed(() => tab.value === 'template' && edit.editMode.value)
+  const boardEdit = computed(
+    () => tab.value === 'template' && edit.editMode.value,
+  )
 
   /** Board 拖拽连线：编辑层校验（仅前→后；已存在静默忽略），拒绝原因 toast */
   function onConnect(from: string, to: string): void {
@@ -129,7 +131,11 @@ export function useCanvasDesign(opts: {
     saveBusy.value = true
     saveErr.value = ''
     try {
-      const res = await templateApi.editSave(key, edits, saveKey.value.trim() || undefined)
+      const res = await templateApi.editSave(
+        key,
+        edits,
+        saveKey.value.trim() || undefined,
+      )
       showSave.value = false
       showToast(`已保存为新模板「${res.templateKey}」（原模板文件零改动）`)
       edit.exit()

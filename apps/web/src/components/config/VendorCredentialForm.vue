@@ -53,7 +53,11 @@ async function submit() {
 </script>
 
 <template>
-  <Modal :title="`供应商凭证：${credential.name}`" :width="480" @close="emit('close')">
+  <Modal
+    :title="`供应商凭证：${credential.name}`"
+    :width="480"
+    @close="emit('close')"
+  >
     <label class="fld">
       显示名
       <input v-model="name" type="text" placeholder="如：阿里千问" />
@@ -63,18 +67,30 @@ async function submit() {
       <input
         v-model="apiKey"
         type="password"
-        :placeholder="credential.hasKey ? '留空保持不变（已配置 ' + credential.apiKeyMasked + '）' : '粘贴明文 key（仅存本地 secrets.json）'"
+        :placeholder="
+          credential.hasKey
+            ? '留空保持不变（已配置 ' + credential.apiKeyMasked + '）'
+            : '粘贴明文 key（仅存本地 secrets.json）'
+        "
       />
     </label>
     <label class="fld">
       自定义端点（可选）
-      <input v-model="baseUrl" type="text" placeholder="留空使用各能力默认端点" />
-      <span class="note">覆盖该厂商所有能力的默认 base_url（通常不需要填）</span>
+      <input
+        v-model="baseUrl"
+        type="text"
+        placeholder="留空使用各能力默认端点"
+      />
+      <span class="note"
+        >覆盖该厂商所有能力的默认 base_url（通常不需要填）</span
+      >
     </label>
     <div v-if="err" class="err-text">{{ err }}</div>
     <template #footer>
       <button class="btn" @click="emit('close')">取消</button>
-      <button class="btn primary" :disabled="busy" @click="submit">{{ busy ? '保存中…' : '保存' }}</button>
+      <button class="btn primary" :disabled="busy" @click="submit">
+        {{ busy ? '保存中…' : '保存' }}
+      </button>
     </template>
   </Modal>
 </template>

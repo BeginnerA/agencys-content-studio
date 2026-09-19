@@ -10,7 +10,11 @@ import { uploadFiles } from '../../lib/api'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 
-const props = defineProps<{ projectId: number; baseUrl: string; baseName?: string }>()
+const props = defineProps<{
+  projectId: number
+  baseUrl: string
+  baseName?: string
+}>()
 const emit = defineEmits<{ close: []; saved: [assetId: number] }>()
 
 /** 蒙版最长边（控制上传体积；wanx 侧会自行缩放） */
@@ -73,12 +77,16 @@ function lineWidth(): number {
   return brush.value * (c.width / rect.width)
 }
 
-function stroke(a: { x: number; y: number }, b: { x: number; y: number }): void {
+function stroke(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): void {
   if (!ctx) return
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.lineWidth = lineWidth()
-  ctx.globalCompositeOperation = mode.value === 'erase' ? 'destination-out' : 'source-over'
+  ctx.globalCompositeOperation =
+    mode.value === 'erase' ? 'destination-out' : 'source-over'
   ctx.strokeStyle = '#ffffff'
   ctx.beginPath()
   ctx.moveTo(a.x, a.y)
@@ -135,9 +143,13 @@ async function save(): Promise<void> {
     octx.fillStyle = '#000000'
     octx.fillRect(0, 0, out.width, out.height)
     octx.drawImage(c, 0, 0)
-    const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
+    const blob = await new Promise<Blob | null>((resolve) =>
+      out.toBlob(resolve, 'image/png'),
+    )
     if (!blob) throw new Error('蒙版导出失败（toBlob 返回空）')
-    const file = new File([blob], `mask-${Date.now()}.png`, { type: 'image/png' })
+    const file = new File([blob], `mask-${Date.now()}.png`, {
+      type: 'image/png',
+    })
     const assets = await uploadFiles(props.projectId, 'mask', [file])
     const a = assets[0]
     if (!a) throw new Error('蒙版上传失败（服务端未返回资产）')
@@ -154,14 +166,25 @@ async function save(): Promise<void> {
   <Modal title="蒙版编辑器" :width="920" @close="emit('close')">
     <div class="mb-bar">
       <span class="muted mini">
-        底图：{{ baseName || '源图' }} —— 涂抹要编辑的区域（白色笔迹 = 蒙版范围，导出为黑底白痕）
+        底图：{{ baseName || '源图' }} —— 涂抹要编辑的区域（白色笔迹 =
+        蒙版范围，导出为黑底白痕）
       </span>
       <span class="sp" />
       <div class="seg">
-        <button type="button" :class="{ on: mode === 'paint' }" title="笔刷（涂抹 = 要编辑）" @click="mode = 'paint'">
+        <button
+          type="button"
+          :class="{ on: mode === 'paint' }"
+          title="笔刷（涂抹 = 要编辑）"
+          @click="mode = 'paint'"
+        >
           <Icon name="brush" :size="12" /> 笔刷
         </button>
-        <button type="button" :class="{ on: mode === 'erase' }" title="橡皮（擦掉涂抹）" @click="mode = 'erase'">
+        <button
+          type="button"
+          :class="{ on: mode === 'erase' }"
+          title="橡皮（擦掉涂抹）"
+          @click="mode = 'erase'"
+        >
           <Icon name="x" :size="12" /> 橡皮
         </button>
       </div>
@@ -170,7 +193,14 @@ async function save(): Promise<void> {
         <input v-model.number="brush" type="range" min="8" max="160" step="2" />
         <span class="mono">{{ brush }}</span>
       </label>
-      <button type="button" class="btn sm" title="清空所有涂抹" @click="clearAll">清空</button>
+      <button
+        type="button"
+        class="btn sm"
+        title="清空所有涂抹"
+        @click="clearAll"
+      >
+        清空
+      </button>
     </div>
 
     <div class="mb-stage">
@@ -192,9 +222,17 @@ async function save(): Promise<void> {
     <div v-if="err" class="err-text">{{ err }}</div>
 
     <template #footer>
-      <button type="button" class="btn" :disabled="busy" @click="emit('close')">取消</button>
-      <button type="button" class="btn primary" :disabled="busy || !loaded" @click="save">
-        <Icon name="check" :size="12" /> {{ busy ? '上传中…' : '保存蒙版并应用' }}
+      <button type="button" class="btn" :disabled="busy" @click="emit('close')">
+        取消
+      </button>
+      <button
+        type="button"
+        class="btn primary"
+        :disabled="busy || !loaded"
+        @click="save"
+      >
+        <Icon name="check" :size="12" />
+        {{ busy ? '上传中…' : '保存蒙版并应用' }}
       </button>
     </template>
   </Modal>

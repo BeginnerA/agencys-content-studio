@@ -7,12 +7,24 @@
  *   → 服务端自动挂接 ref_asset_ids；行内可取消 / 失败重试（重新发起）。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { entityApi, projectApi, uploadEntityRefImage, voiceCloneApi } from '../../lib/api'
+import {
+  entityApi,
+  projectApi,
+  uploadEntityRefImage,
+  voiceCloneApi,
+} from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { getSocket, studioOff, studioOn } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
-import type { Asset, EntityItem, EntityKind, EntityRefGenTask, Project, VoiceCloneItem } from '../../lib/types'
+import type {
+  Asset,
+  EntityItem,
+  EntityKind,
+  EntityRefGenTask,
+  Project,
+  VoiceCloneItem,
+} from '../../lib/types'
 
 export function useEntitiesPage() {
   interface KindCfg {
@@ -43,7 +55,8 @@ export function useEntitiesPage() {
       negPh: '如：成人化五官、替换服装配色',
       summaryPh: '一句话人物设定（可空）',
       refLabel: '定妆照',
-      empty: '还没有角色。运行角色建档类模板（character_sync）自动入库，或手动新建；定妆照用于出图一致性锚定。',
+      empty:
+        '还没有角色。运行角色建档类模板（character_sync）自动入库，或手动新建；定妆照用于出图一致性锚定。',
     },
     {
       kind: 'scene',
@@ -57,7 +70,8 @@ export function useEntitiesPage() {
       negPh: '如：布局改变、陈设增减、色调偏移',
       summaryPh: '一句话说明（地点类型 + 剧情作用，可空）',
       refLabel: '场景参考图',
-      empty: '还没有场景。运行素材建档模板（entity_sync）自动入库，或手动新建；场景参考图用于空镜一致性锚定。',
+      empty:
+        '还没有场景。运行素材建档模板（entity_sync）自动入库，或手动新建；场景参考图用于空镜一致性锚定。',
     },
     {
       kind: 'prop',
@@ -71,7 +85,8 @@ export function useEntitiesPage() {
       negPh: '如：形状改变、颜色偏移、材质错误',
       summaryPh: '一句话说明（物件属性 + 剧情作用，可空）',
       refLabel: '道具参考图',
-      empty: '还没有道具。运行素材建档模板（entity_sync）自动入库，或手动新建；道具参考图用于出图一致性锚定。',
+      empty:
+        '还没有道具。运行素材建档模板（entity_sync）自动入库，或手动新建；道具参考图用于出图一致性锚定。',
     },
   ]
 
@@ -131,7 +146,8 @@ export function useEntitiesPage() {
   /** voice → 下拉选中态（仅 clone:{id} 且音色仍在库中时回显） */
   function syncCloneSel() {
     const id = /^clone:(\d+)$/.exec(form.voice.trim())?.[1] ?? ''
-    cloneSel.value = id && clones.value.some((c) => c.id === Number(id)) ? id : ''
+    cloneSel.value =
+      id && clones.value.some((c) => c.id === Number(id)) ? id : ''
   }
 
   /** 下拉变更：选中 → voice 填 clone:{id}；清除 → 仅移除克隆令牌（手工声线文本不动） */
@@ -156,9 +172,15 @@ export function useEntitiesPage() {
     loading.value = true
     err.value = ''
     try {
-      const params = projectFilter.value && projectFilter.value !== 'global' ? `&project_id=${projectFilter.value}` : ''
+      const params =
+        projectFilter.value && projectFilter.value !== 'global'
+          ? `&project_id=${projectFilter.value}`
+          : ''
       const data = await entityApi.list(kind.value, params)
-      items.value = projectFilter.value === 'global' ? data.items.filter((c) => c.scope === 'global') : data.items
+      items.value =
+        projectFilter.value === 'global'
+          ? data.items.filter((c) => c.scope === 'global')
+          : data.items
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -226,7 +248,10 @@ export function useEntitiesPage() {
     form.negative = ''
     form.voice = ''
     form.states = ''
-    form.projectId = projectFilter.value && projectFilter.value !== 'global' ? Number(projectFilter.value) : 0
+    form.projectId =
+      projectFilter.value && projectFilter.value !== 'global'
+        ? Number(projectFilter.value)
+        : 0
     form.refIds = []
     formErr.value = ''
     upNote.value = ''
@@ -362,7 +387,9 @@ export function useEntitiesPage() {
         .join('；')
       notice.value =
         `润色完成：成功 ${r.polished.length} 项` +
-        (r.failed.length ? `，失败 ${r.failed.length} 项（失败项已保留选中，可重试）` : '') +
+        (r.failed.length
+          ? `，失败 ${r.failed.length} 项（失败项已保留选中，可重试）`
+          : '') +
         (detail ? `\n${detail}` : '')
       await load()
     } catch (e) {
@@ -399,15 +426,25 @@ export function useEntitiesPage() {
   let refWasLive = false
   let joinedRefPid = 0
 
-  const selItems = computed(() => items.value.filter((c) => selected.value.has(c.id)))
+  const selItems = computed(() =>
+    items.value.filter((c) => selected.value.has(c.id)),
+  )
   /** 所选素材的唯一项目 id（0 = 跨项目或含全局素材，服务端会整单拒绝 → 客户端先拦） */
   const selProjectId = computed(() => {
     const pids = [...new Set(selItems.value.map((c) => c.projectId ?? 0))]
     return pids.length === 1 ? pids[0]! : 0
   })
-  const selNoAppearance = computed(() => selItems.value.filter((c) => !(c.appearance ?? '').trim()).map((c) => c.name))
+  const selNoAppearance = computed(() =>
+    selItems.value
+      .filter((c) => !(c.appearance ?? '').trim())
+      .map((c) => c.name),
+  )
   const refPlanned = computed(() => selItems.value.length * refVariants.value)
-  const refLive = computed(() => refTasks.value.filter((t) => t.status === 'pending' || t.status === 'processing'))
+  const refLive = computed(() =>
+    refTasks.value.filter(
+      (t) => t.status === 'pending' || t.status === 'processing',
+    ),
+  )
   const refPct = computed(() => {
     const n = refTasks.value.length
     return n ? Math.round(((n - refLive.value.length) / n) * 100) : 0
@@ -434,8 +471,15 @@ export function useEntitiesPage() {
     if (!refPid.value) return
     try {
       const d = await entityApi.refGenTasks(refPid.value)
-      const rows = d.items.filter((t) => refBatch.value.has(t.id) || t.status === 'pending' || t.status === 'processing')
-      for (const t of rows) if (t.status === 'pending' || t.status === 'processing') refBatch.value.add(t.id)
+      const rows = d.items.filter(
+        (t) =>
+          refBatch.value.has(t.id) ||
+          t.status === 'pending' ||
+          t.status === 'processing',
+      )
+      for (const t of rows)
+        if (t.status === 'pending' || t.status === 'processing')
+          refBatch.value.add(t.id)
       mergeRefTasks(rows)
       settleRefBatch()
     } catch {
@@ -457,8 +501,12 @@ export function useEntitiesPage() {
     const bad = refTasks.value.filter((t) => t.status === 'failed')
     notice.value =
       `参考图生成完成：成功 ${ok} 张 / 共 ${refTasks.value.length} 个任务` +
-      (bad.length ? `，失败 ${bad.length} 项（行内可重试，原因见进度行）` : '') +
-      (bad.length ? `\n${bad[0]!.entityName}：${bad[0]!.errorMsg ?? '未知原因'}` : '') +
+      (bad.length
+        ? `，失败 ${bad.length} 项（行内可重试，原因见进度行）`
+        : '') +
+      (bad.length
+        ? `\n${bad[0]!.entityName}：${bad[0]!.errorMsg ?? '未知原因'}`
+        : '') +
       '\n新图已自动挂接到对应素材参考图。'
     void load()
   }
@@ -610,7 +658,9 @@ export function useEntitiesPage() {
   }
 
   /** 卡片图比例按 kind：角色竖版 / 场景横版 / 道具方版 */
-  const ratioCls = computed(() => ({ character: 'pc', scene: 'ps', prop: 'pp' })[kind.value])
+  const ratioCls = computed(
+    () => ({ character: 'pc', scene: 'ps', prop: 'pp' })[kind.value],
+  )
 
   return {
     KINDS,

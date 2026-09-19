@@ -10,34 +10,52 @@ const props = defineProps<{
 </script>
 
 <template>
-      <!-- ===== asset 节点：素材信息 ===== -->
-      <template v-if="node.kind === 'asset'">
-        <section class="sec">
-          <div class="sec-h">素材</div>
-          <button v-if="node.asset" type="button" class="resbox" title="点击预览" @click="openPreview(node.assetId)">
-            <img v-if="assetThumb(node.asset)" :src="assetThumb(node.asset)!" alt="" />
-            <span v-else class="muted">{{ KIND_TEXT[node.asset.kind] ?? node.asset.kind }}</span>
-          </button>
-          <div v-else class="err-text">引用的资产已不存在（#{{ node.assetId ?? '?' }}）</div>
-          <div v-if="node.asset" class="kvs">
-            <div class="kv">
-              <span class="k">类型</span>
-              <span class="v">
-                {{ KIND_TEXT[node.asset.kind] ?? node.asset.kind }}
-                <template v-if="node.asset.purpose"> · {{ purposeText(node.asset.purpose) }}</template>
-              </span>
-            </div>
-            <div v-if="node.asset.width && node.asset.height" class="kv">
-              <span class="k">尺寸</span>
-              <span class="v mono">{{ node.asset.width }}×{{ node.asset.height }}</span>
-            </div>
-            <div v-if="node.asset.duration" class="kv">
-              <span class="k">时长</span>
-              <span class="v mono">{{ node.asset.duration }}s</span>
-            </div>
-          </div>
-        </section>
-      </template>
+  <!-- ===== asset 节点：素材信息 ===== -->
+  <template v-if="node.kind === 'asset'">
+    <section class="sec">
+      <div class="sec-h">素材</div>
+      <button
+        v-if="node.asset"
+        type="button"
+        class="resbox"
+        title="点击预览"
+        @click="openPreview(node.assetId)"
+      >
+        <img
+          v-if="assetThumb(node.asset)"
+          :src="assetThumb(node.asset)!"
+          alt=""
+        />
+        <span v-else class="muted">{{
+          KIND_TEXT[node.asset.kind] ?? node.asset.kind
+        }}</span>
+      </button>
+      <div v-else class="err-text">
+        引用的资产已不存在（#{{ node.assetId ?? '?' }}）
+      </div>
+      <div v-if="node.asset" class="kvs">
+        <div class="kv">
+          <span class="k">类型</span>
+          <span class="v">
+            {{ KIND_TEXT[node.asset.kind] ?? node.asset.kind }}
+            <template v-if="node.asset.purpose">
+              · {{ purposeText(node.asset.purpose) }}</template
+            >
+          </span>
+        </div>
+        <div v-if="node.asset.width && node.asset.height" class="kv">
+          <span class="k">尺寸</span>
+          <span class="v mono"
+            >{{ node.asset.width }}×{{ node.asset.height }}</span
+          >
+        </div>
+        <div v-if="node.asset.duration" class="kv">
+          <span class="k">时长</span>
+          <span class="v mono">{{ node.asset.duration }}s</span>
+        </div>
+      </div>
+    </section>
+  </template>
 </template>
 
 <style scoped>
@@ -107,5 +125,4 @@ const props = defineProps<{
   color: var(--text-2);
   word-break: break-all;
 }
-
 </style>

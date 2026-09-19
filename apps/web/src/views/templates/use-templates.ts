@@ -3,7 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { msg, skeleton, withKey } from './internals'
-import type { TemplateDetail, TemplateMeta, TemplateValidation } from '../../lib/types'
+import type {
+  TemplateDetail,
+  TemplateMeta,
+  TemplateValidation,
+} from '../../lib/types'
 
 export function useTemplates() {
   // ===== 模板区状态 =====
@@ -24,10 +28,14 @@ export function useTemplates() {
   const loadErr = ref('')
   const actionErr = ref('')
 
-  const dirty = computed(() => selected.value !== null && yamlText.value !== baseline.value)
+  const dirty = computed(
+    () => selected.value !== null && yamlText.value !== baseline.value,
+  )
   /** 实时解析结果：编辑中优先校验产物（实时结构），否则已保存版本；说明书视图固定显示已保存版本 */
   const liveTpl = computed<TemplateDetail | null>(() =>
-    mode.value === 'edit' ? (validation.value?.template ?? detail.value) : detail.value,
+    mode.value === 'edit'
+      ? (validation.value?.template ?? detail.value)
+      : detail.value,
   )
 
   async function refreshMetas(autoOpen = false) {
@@ -36,7 +44,8 @@ export function useTemplates() {
       const r = await templateApi.list()
       metas.value = r.items
       listErr.value = ''
-      if (autoOpen && !selected.value && metas.value.length) await openTemplate(metas.value[0]!.key)
+      if (autoOpen && !selected.value && metas.value.length)
+        await openTemplate(metas.value[0]!.key)
     } catch (e) {
       listErr.value = msg(e)
     } finally {
@@ -99,10 +108,14 @@ export function useTemplates() {
     const seq = ++valSeq
     validating.value = true
     try {
-      const r = await templateApi.validate(yamlText.value, selected.value ?? undefined)
+      const r = await templateApi.validate(
+        yamlText.value,
+        selected.value ?? undefined,
+      )
       if (seq === valSeq) validation.value = r
     } catch (e) {
-      if (seq === valSeq) validation.value = { ok: false, errors: [msg(e)], warnings: [] }
+      if (seq === valSeq)
+        validation.value = { ok: false, errors: [msg(e)], warnings: [] }
     } finally {
       if (seq === valSeq) validating.value = false
     }
@@ -145,7 +158,6 @@ export function useTemplates() {
   const copyKey = ref('')
   const copyErr = ref('')
   const copying = ref(false)
-
 
   function openNew() {
     newDlg.value = true
@@ -231,12 +243,12 @@ export function useTemplates() {
     const el = e.target as HTMLTextAreaElement
     const s = el.selectionStart
     const en = el.selectionEnd
-    yamlText.value = yamlText.value.slice(0, s) + '  ' + yamlText.value.slice(en)
+    yamlText.value =
+      yamlText.value.slice(0, s) + '  ' + yamlText.value.slice(en)
     requestAnimationFrame(() => {
       el.selectionStart = el.selectionEnd = s + 2
     })
   }
-
 
   return {
     metas,
