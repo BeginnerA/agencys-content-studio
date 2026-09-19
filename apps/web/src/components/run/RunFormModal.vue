@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Modal from '../common/Modal.vue'
 import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
@@ -24,6 +24,33 @@ const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
 /** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
 const adv = ref({ imageSize: '', resolution: '', duration: '', voice: '', temperature: '' })
+
+/** action → 可覆盖参数分组：仅当模板实际用到对应生成环节时才显示相应字段 */
+const ACTION_GROUP: Record<string, 'image' | 'video' | 'audio' | 'llm'> = {
+  ai_image: 'image',
+  ai_video: 'video',
+  tts: 'audio',
+  ai_text: 'llm',
+}
+/** 当前模板涉及的参数分组集合（据 steps[].action 推导） */
+const activeGroups = computed(() => {
+  const s = new Set<'image' | 'video' | 'audio' | 'llm'>()
+  for (const st of tpl.value?.steps ?? []) {
+    const g = ACTION_GROUP[st.action]
+    if (g) s.add(g)
+  }
+  return s
+})
+const showImage = computed(() => activeGroups.value.has('image'))
+const showVideo = computed(() => activeGroups.value.has('video'))
+const showAudio = computed(() => activeGroups.value.has('audio'))
+const showLlm = computed(() => activeGroups.value.has('llm'))
+/** 模板不涉及任何可覆盖环节 → 整块「本集参数覆盖」不显示 */
+const hasOverride = computed(() => activeGroups.value.size > 0)
+
+function resetAdv(): void {
+  adv.value = { imageSize: '', resolution: '', duration: '', voice: '', temperature: '' }
+}
 const err = ref('')
 const busy = ref(false)
 const loading = ref(false)
@@ -34,6 +61,7 @@ async function selectTemplate(key: string) {
   tplKey.value = key
   tpl.value = null
   form.value = {}
+  resetAdv()
   err.value = ''
   loadingDetail.value = true
   try {
@@ -68,6 +96,7 @@ function backToPicker() {
   tplKey.value = ''
   tpl.value = null
   form.value = {}
+  resetAdv()
   err.value = ''
 }
 
@@ -88,18 +117,23 @@ async function submit() {
     else input[inp.key] = v ?? ''
   }
   // [M14] 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
+  // 仅提交当前模板实际涉及的分组，隐藏字段一律忽略（双保险，防残留值误提交）
   const p: Record<string, Record<string, unknown>> = {}
-  if (adv.value.imageSize.trim()) p.image = { size: adv.value.imageSize.trim() }
-  const resolution = adv.value.resolution
-  const duration = adv.value.duration.trim() ? Number(adv.value.duration) : undefined
-  if (resolution || (duration !== undefined && Number.isFinite(duration))) {
-    p.video = {}
-    if (resolution) p.video.resolution = resolution
-    if (duration !== undefined && Number.isFinite(duration)) p.video.duration = duration
+  if (showImage.value && adv.value.imageSize.trim()) p.image = { size: adv.value.imageSize.trim() }
+  if (showVideo.value) {
+    const resolution = adv.value.resolution
+    const duration = adv.value.duration.trim() ? Number(adv.value.duration) : undefined
+    if (resolution || (duration !== undefined && Number.isFinite(duration))) {
+      p.video = {}
+      if (resolution) p.video.resolution = resolution
+      if (duration !== undefined && Number.isFinite(duration)) p.video.duration = duration
+    }
   }
-  if (adv.value.voice.trim()) p.audio = { voice: adv.value.voice.trim() }
-  const temperature = adv.value.temperature.trim() ? Number(adv.value.temperature) : undefined
-  if (temperature !== undefined && Number.isFinite(temperature)) p.llm = { temperature }
+  if (showAudio.value && adv.value.voice.trim()) p.audio = { voice: adv.value.voice.trim() }
+  if (showLlm.value) {
+    const temperature = adv.value.temperature.trim() ? Number(adv.value.temperature) : undefined
+    if (temperature !== undefined && Number.isFinite(temperature)) p.llm = { temperature }
+  }
   if (Object.keys(p).length > 0) input['_params'] = p
   busy.value = true
   err.value = ''
@@ -158,14 +192,14 @@ init()
         <template v-else-if="tpl">
           <div class="desc muted" style="margin-bottom: 10px">{{ tpl.description }}</div>
           <TemplateInputFields :tpl="tpl" :assets="assets" :publications="publications" :values="form" @change="(k, v) => (form[k] = v)" />
-          <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认） -->
-          <details class="adv">
+          <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
+          <details v-if="hasOverride" class="adv">
             <summary>本集参数覆盖（可选）——仅本 run 生效，优先于项目设置</summary>
             <div class="adv-grid">
-              <label class="fld">出图尺寸
+              <label v-if="showImage" class="fld">出图尺寸
                 <input v-model="adv.imageSize" placeholder="宽x高，如 832x1248（默认用项目设置）" />
               </label>
-              <label class="fld">视频清晰度
+              <label v-if="showVideo" class="fld">视频清晰度
                 <select v-model="adv.resolution">
                   <option value="">默认</option>
                   <option value="480p">480p</option>
@@ -173,13 +207,13 @@ init()
                   <option value="1080p">1080p</option>
                 </select>
               </label>
-              <label class="fld">单镜时长（秒）
+              <label v-if="showVideo" class="fld">单镜时长（秒）
                 <input v-model="adv.duration" type="number" min="1" max="30" placeholder="1–30（默认用项目设置）" />
               </label>
-              <label class="fld">配音音色
+              <label v-if="showAudio" class="fld">配音音色
                 <input v-model="adv.voice" placeholder="如 Cherry（默认用项目设置）" />
               </label>
-              <label class="fld">LLM 温度
+              <label v-if="showLlm" class="fld">LLM 温度
                 <input v-model="adv.temperature" type="number" min="0" max="2" step="0.1" placeholder="0–2（默认用项目设置）" />
               </label>
             </div>
