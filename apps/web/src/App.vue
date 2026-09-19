@@ -13,14 +13,30 @@ import { NAVS, type NavItem } from './lib/nav'
 const route = useRoute()
 const router = useRouter()
 
-// [M30] 轻松创作页：专业导航收为单一「专业工作台」入口，AI 配置始终可达（降低新手认知负担）
-const isEasyCreate = computed(() => route.path === '/create' || route.path.startsWith('/create/'))
+// [M30] 菜单模式：轻松创作页用精简导航（含直达「设置」），专业工作台页用完整导航。
+// 模式随导航「粘滞」——从精简模式点击「设置」进入 /system 时保持精简导航，
+// 不会强制展开为专业工作台菜单（降低新手认知负担）。
+function isEasyRoute(path: string): boolean {
+  return path === '/create' || path.startsWith('/create/')
+}
+// 初始：落在 /create 或 /system 用精简导航，其余专业路由用完整导航
+const proMode = ref(!isEasyRoute(route.path) && route.path !== '/system')
 const EASY_CREATE_NAVS: NavItem[] = [
   { to: '/create', icon: 'chat', label: '轻松创作' },
   { to: '/', icon: 'folder', label: '专业工作台' },
-  { to: '/settings', icon: 'sliders', label: 'AI 配置' },
+  { to: '/system', icon: 'cog', label: '设置' },
 ]
-const shownNavs = computed(() => (isEasyCreate.value ? EASY_CREATE_NAVS : NAVS))
+const shownNavs = computed(() => (proMode.value ? NAVS : EASY_CREATE_NAVS))
+
+// 导航切换时联动菜单模式：/create* 归为精简；专业路由归为完整；/system（设置）保持当前模式不切换
+watch(
+  () => route.path,
+  (path) => {
+    if (isEasyRoute(path)) proMode.value = false
+    else if (path === '/system') return
+    else proMode.value = true
+  },
+)
 let stopPendingWatcher: (() => void) | null = null
 
 // [M21] 全局命令面板（Ctrl/Cmd+K 经 lib/hotkeys 单例注册；批 2 已迁移统一键盘流）

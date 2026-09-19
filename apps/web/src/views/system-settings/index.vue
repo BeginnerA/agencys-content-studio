@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
  * [M20] 系统设置页
- * 从 AI 配置（/settings）中独立出来的通用设置入口。
- * 当前包含「品牌」「通知」「运行」Tab；后续可扩展更多设置类别。
+ * 平台级统一设置入口：含「AI 配置」（由独立菜单迁入）与「品牌」「通知」「运行」「数据」Tab。
+ * 支持 ?tab= 直达指定分类（旧 /settings 深链经路由重定向至 ?tab=ai）。
  */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import AiConfigPanel from '../settings/index.vue'
 import BrandPreview from '../../components/brand/BrandPreview.vue'
 import BrandSettings from '../../components/brand/BrandSettings.vue'
 import Icon from '../../components/common/Icon.vue'
@@ -20,6 +22,7 @@ import type { BrandConfig } from '../../lib/types'
 
 // Tab 定义（后续新增设置类别只需追加到数组）
 const TABS = [
+  { key: 'ai', label: 'AI 配置', icon: 'sliders', hint: '模型网关 / 密钥 / 定价（密钥仅存本地）' },
   { key: 'brand', label: '品牌', icon: 'brush', hint: '水印 / 片头 / 片尾 / 字幕样式（平台默认；项目与 run 可覆盖）' },
   { key: 'notify', label: '通知', icon: 'bell', hint: '长任务离开页面也能感知（仅后台标签页推送）' },
   { key: 'run', label: '运行', icon: 'sliders', hint: '全局并发上限（跨批次与多开任务的总闸门）' },
@@ -27,7 +30,23 @@ const TABS = [
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
-const activeTab = ref<TabKey>('brand')
+const route = useRoute()
+const TAB_KEYS = TABS.map((t) => t.key) as readonly string[]
+/** 从 ?tab= 解析初始分类（非法/缺省回退首个 Tab「AI 配置」） */
+function tabFromQuery(): TabKey {
+  const q = route.query.tab
+  const v = Array.isArray(q) ? q[0] : q
+  return TAB_KEYS.includes(v as string) ? (v as TabKey) : 'ai'
+}
+
+const activeTab = ref<TabKey>(tabFromQuery())
+// 页内已切换时，外部再次导航携带 ?tab= 仍能联动（如 /settings 重定向）
+watch(
+  () => route.query.tab,
+  () => {
+    if (route.path === '/system') activeTab.value = tabFromQuery()
+  },
+)
 
 // 品牌配置快照（用于预览联动）
 const brandSnapshot = ref<BrandConfig>({})
@@ -219,6 +238,8 @@ loadData()
       </div>
     </div>
 
+    <!-- AI 配置 Tab（由独立菜单迁入；保留能力子 Tab：文本/图片/视频/语音/音色库 + 定价） -->
+    <AiConfigPanel v-if="activeTab === 'ai'" />
     <!-- 品牌 Tab -->
     <div v-if="activeTab === 'brand'" class="sys-brand">
       <div class="sys-brand-form">

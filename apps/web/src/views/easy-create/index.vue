@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
+import { creationStatusLabel } from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -27,10 +28,7 @@ async function go(): Promise<void> {
   if (id) void router.push(`/create/${id}`)
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  draft: '草稿', planning: '规划中', ready: '待确认', starting: '启动中', started: '制作中',
-}
-// 状态 → 卡片左侧强调条 + 徽标色（同源语义色，避免仅靠颜色区分）
+// 状态 → 卡片左侧强调条 + 徽标色（同源语义色，避免仅靠颜色区分；标签走共享 creationStatusLabel）
 const STATUS_TONE: Record<string, string> = {
   draft: 'cancelled', planning: 'running', ready: 'pending', starting: 'running', started: 'running',
 }
@@ -105,7 +103,7 @@ const STATUS_TONE: Record<string, string> = {
           <span class="bar" :class="STATUS_TONE[c.status] ?? 'pending'" aria-hidden="true" />
           <div class="it-top">
             <span class="badge" :class="STATUS_TONE[c.status] ?? 'pending'">
-              {{ STATUS_TEXT[c.status] ?? c.status }}
+              {{ creationStatusLabel(c.status, c.confirmable) }}
             </span>
             <span class="it-time muted">{{ fmtTime(c.updatedAt) }}</span>
           </div>

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
+import { creationStatusLabel } from '../../lib/types'
 import ConversationPanel from './ConversationPanel.vue'
 import CreationPlanCard from './CreationPlanCard.vue'
 import CreationProgress from './CreationProgress.vue'
@@ -17,10 +18,8 @@ const session = computed(() => detail.value?.session ?? null)
 const hasPlan = computed(() => !!detail.value?.session.plan)
 const projectId = computed(() => session.value?.projectId ?? null)
 
-// 状态标签（与列表页一致，复用同一份映射）
-const STATUS_TEXT: Record<string, string> = {
-  draft: '草稿', planning: '规划中', ready: '待确认', starting: '启动中', started: '制作中',
-}
+// 状态徽标（与列表页共用 creationStatusLabel）：ready 但预检未过时显「待完善配置」
+const confirmable = computed(() => session.value?.status === 'ready' && session.value?.preflight?.ready === true)
 const statusBadge = (st: string): string =>
   st === 'started' || st === 'starting' ? 'running' : st === 'ready' ? 'pending' : st === 'draft' ? 'cancelled' : 'pending'
 
@@ -39,7 +38,7 @@ onUnmounted(() => s.leave())
       <RouterLink class="back" to="/create"><Icon name="chevron-left" :size="16" /> 轻松创作</RouterLink>
       <span class="sep" aria-hidden="true" />
       <div class="wt">
-        <span v-if="session" class="badge" :class="statusBadge(session.status)">{{ STATUS_TEXT[session.status] ?? session.status }}</span>
+        <span v-if="session" class="badge" :class="statusBadge(session.status)">{{ creationStatusLabel(session.status, confirmable) }}</span>
         <span class="wname">{{ session?.plan?.title || '创作会话' }}</span>
       </div>
       <nav class="wlinks" aria-label="专业工作台">

@@ -14,10 +14,9 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
 </script>
 
 <template>
-  <div>
-    <div class="page-h">
-      <h1>AI 配置</h1>
-      <span class="sub">密钥仅存本地 data/secrets.json（不入库）</span>
+  <div class="ai-config">
+    <div class="ai-bar">
+      <span class="ai-hint">密钥仅存本地 data/secrets.json（不入库）</span>
       <div class="tabs" role="tablist" aria-label="按能力分类">
         <button
           v-for="t in TABS"
@@ -82,6 +81,19 @@ const { TABS, activeTab, credentials, err, loading, editing, editingCred, showCr
 </template>
 
 <style scoped>
+/* ---------- 嵌入「设置」页的能力子 Tab 栏（不再自带页头 h1） ---------- */
+.ai-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.ai-hint {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 /* ---------- 页头内嵌 tabs（与模板页同源：品牌渐变激活态） ---------- */
 .tabs {
   margin-left: auto;

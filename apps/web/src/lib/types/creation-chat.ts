@@ -144,6 +144,16 @@ export interface CreationPreflight {
 
 export type CreationSessionStatus = 'draft' | 'planning' | 'ready' | 'starting' | 'started'
 
+/** 会话状态 → 中文标签（列表与详情共用，避免两处映射漂移） */
+export const CREATION_STATUS_LABELS: Record<CreationSessionStatus, string> = {
+  draft: '草稿', planning: '规划中', ready: '待确认', starting: '启动中', started: '制作中',
+}
+/** [M31+] 「待确认」仅当预检通过才成立；有方案但预检未过（confirmable=false）→ 明确为「待完善配置」 */
+export function creationStatusLabel(status: CreationSessionStatus, confirmable = true): string {
+  if (status === 'ready' && !confirmable) return '待完善配置'
+  return CREATION_STATUS_LABELS[status]
+}
+
 export interface CreationChatMessagePayload {
   kind: string
   questions?: string[]
@@ -227,6 +237,8 @@ export interface CreationSessionListItem {
   status: CreationSessionStatus
   runId: number | null
   updatedAt: number
+  /** [M31+] status=ready 且预检通过（真的可点确认）才为 true；否则列表显示「待完善配置」 */
+  confirmable: boolean
 }
 
 /** 确认请求：planHash 为 64 位十六进制（仅在 ready 且哈希存在时发起） */

@@ -20,6 +20,5 @@ export const NAVS: NavItem[] = [
   { to: '/templates', icon: 'doc', label: '模板' },
   { to: '/memories', icon: 'sparkles', label: '记忆' },
   { to: '/stats', icon: 'chart', label: '统计' },
-  { to: '/settings', icon: 'sliders', label: 'AI 配置' },
   { to: '/system', icon: 'cog', label: '设置' },
 ]
