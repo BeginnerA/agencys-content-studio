@@ -55,11 +55,13 @@ export async function creationDetail(id: number) {
 }
 
 export async function listCreationSessions() {
-  const rows = await db.select({ session: creationSessions, name: projects.name }).from(creationSessions)
+  const rows = await db.select({ session: creationSessions, name: projects.name, runStatus: pipelineRuns.status }).from(creationSessions)
     .innerJoin(projects, and(eq(projects.id, creationSessions.projectId), isNull(projects.deletedAt)))
+    // 会话 status 是控制态（started 后不回写）；带出 run 真实状态供列表派生「已完成/失败/取消」显示
+    .leftJoin(pipelineRuns, eq(pipelineRuns.id, creationSessions.runId))
     .orderBy(desc(creationSessions.updatedAt)).limit(100)
-  return rows.map(({ session, name }) => ({
-    id: session.id, projectId: session.projectId, name, status: session.status, runId: session.runId, updatedAt: session.updatedAt,
+  return rows.map(({ session, name, runStatus }) => ({
+    id: session.id, projectId: session.projectId, name, status: session.status, runId: session.runId, updatedAt: session.updatedAt, runStatus: runStatus ?? null,
     // [M31+] 「待确认」须真的可确认：status=ready 但预检未过（缺配置/超预算）时置 false，前端据此改显「待完善配置」，不再误导
     confirmable: session.status === 'ready' && parseJson<{ ready?: boolean } | null>(session.preflight, null)?.ready === true,
   }))

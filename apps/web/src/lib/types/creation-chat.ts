@@ -149,9 +149,26 @@ export const CREATION_STATUS_LABELS: Record<CreationSessionStatus, string> = {
   draft: '草稿', planning: '规划中', ready: '待确认', starting: '启动中', started: '制作中',
 }
 /** [M31+] 「待确认」仅当预检通过才成立；有方案但预检未过（confirmable=false）→ 明确为「待完善配置」 */
-export function creationStatusLabel(status: CreationSessionStatus, confirmable = true): string {
+export function creationStatusLabel(status: CreationSessionStatus, confirmable = true, runStatus?: string | null): string {
   if (status === 'ready' && !confirmable) return '待完善配置'
+  // [修复] 会话 status 是控制态（started 后不回写）：制作启动后按 run 真实状态派生，避免已完成仍显「制作中」
+  if ((status === 'started' || status === 'starting') && runStatus) {
+    if (runStatus === 'completed') return '已完成'
+    if (runStatus === 'failed') return '制作失败'
+    if (runStatus === 'cancelled') return '已取消'
+    return '制作中'
+  }
   return CREATION_STATUS_LABELS[status]
+}
+/** 列表/详情共用：状态 → 徽标与强调条色调（全局 .badge 语义色同名类） */
+export function creationStatusTone(status: CreationSessionStatus, runStatus?: string | null): string {
+  if (status === 'started' || status === 'starting') {
+    if (runStatus === 'completed') return 'completed'
+    if (runStatus === 'failed') return 'failed'
+    if (runStatus === 'cancelled') return 'cancelled'
+    return 'running'
+  }
+  return status === 'planning' ? 'running' : status === 'ready' ? 'pending' : 'cancelled'
 }
 
 export interface CreationChatMessagePayload {
@@ -237,6 +254,8 @@ export interface CreationSessionListItem {
   status: CreationSessionStatus
   runId: number | null
   updatedAt: number
+  /** [修复] 关联制作任务的真实状态（queued|running|completed|failed|cancelled…）；控制态 started 不回写，列表据此派生显示 */
+  runStatus: string | null
   /** [M31+] status=ready 且预检通过（真的可点确认）才为 true；否则列表显示「待完善配置」 */
   confirmable: boolean
 }

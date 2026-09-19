@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
-import { creationStatusLabel } from '../../lib/types'
+import { creationStatusLabel, creationStatusTone } from '../../lib/types'
 import { memoryApi } from '../../lib/api'
 import { useEasyCreate } from './use-creation-chat'
 
@@ -88,10 +88,7 @@ async function go(): Promise<void> {
   if (id) void router.push(`/create/${id}`)
 }
 
-// 状态 → 卡片左侧强调条 + 徽标色（同源语义色，避免仅靠颜色区分；标签走共享 creationStatusLabel）
-const STATUS_TONE: Record<string, string> = {
-  draft: 'cancelled', planning: 'running', ready: 'pending', starting: 'running', started: 'running',
-}
+// 状态 → 卡片左侧强调条 + 徽标色（走共享 creationStatusTone；started 控制态按 run 真实状态派生已完成/失败/取消）
 </script>
 
 <template>
@@ -174,10 +171,10 @@ const STATUS_TONE: Record<string, string> = {
       </div>
       <div v-else class="grid">
         <RouterLink v-for="c in s.state.sessions" :key="c.id" class="item panel" :to="`/create/${c.id}`">
-          <span class="bar" :class="STATUS_TONE[c.status] ?? 'pending'" aria-hidden="true" />
+          <span class="bar" :class="creationStatusTone(c.status, c.runStatus)" aria-hidden="true" />
           <div class="it-top">
-            <span class="badge" :class="STATUS_TONE[c.status] ?? 'pending'">
-              {{ creationStatusLabel(c.status, c.confirmable) }}
+            <span class="badge" :class="creationStatusTone(c.status, c.runStatus)">
+              {{ creationStatusLabel(c.status, c.confirmable, c.runStatus) }}
             </span>
             <span class="it-time muted">{{ fmtTime(c.updatedAt) }}</span>
           </div>
@@ -283,6 +280,8 @@ const STATUS_TONE: Record<string, string> = {
 .item .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
 .bar.running { background: linear-gradient(180deg, #8b5cf6, #6366f1); }
 .bar.pending { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.bar.completed { background: linear-gradient(180deg, #22c55e, #16a34a); }
+.bar.failed { background: linear-gradient(180deg, #f87171, #dc2626); }
 .bar.cancelled { background: rgb(148 163 184 / 40%); }
 .it-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .it-name { font-size: 14.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
