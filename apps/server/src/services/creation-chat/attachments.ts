@@ -1,5 +1,5 @@
 import { extname } from 'node:path'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, like } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, creationMessages } from '../../db/schema'
 import { importFiles, kindByExt, sha256Hex } from '../storage'
@@ -63,14 +63,33 @@ export async function addAttachment(
   const hash = asset!.sha256 ?? sha256Hex(data)
   const ref = refSchema.parse({ assetId: asset!.id, kind, role, hash })
   const now = Date.now()
-  await db.insert(creationMessages).values({
-    sessionId,
-    role: 'user',
-    content: `已上传参考素材：${asset!.name}`,
-    payload: JSON.stringify({ kind: 'attachment', assetId: asset!.id, ref }),
-    requestKey: `att_${asset!.id}_${now}`,
-    createdAt: now,
+  const payload = JSON.stringify({ kind: 'attachment', assetId: asset!.id, ref })
+  // 同一资产重复上传（如改用途）：原地更新既有 attachment 消息的 payload，不再插新行。
+  // 否则对话流出现多条同图卡片，且 resolveAttachmentRefs 按 assetId 后写覆盖，旧条目沦为幽灵记录。
+  const existing = await db
+    .select({ id: creationMessages.id, payload: creationMessages.payload })
+    .from(creationMessages)
+    .where(and(eq(creationMessages.sessionId, sessionId), like(creationMessages.content, '已上传参考素材：%')))
+  const dup = existing.find((m) => {
+    try {
+      const p = JSON.parse(m.payload ?? '') as { kind?: string; assetId?: number }
+      return p.kind === 'attachment' && p.assetId === asset!.id
+    } catch {
+      return false
+    }
   })
+  if (dup) {
+    await db.update(creationMessages).set({ payload }).where(eq(creationMessages.id, dup.id))
+  } else {
+    await db.insert(creationMessages).values({
+      sessionId,
+      role: 'user',
+      content: `已上传参考素材：${asset!.name}`,
+      payload,
+      requestKey: `att_${asset!.id}_${now}`,
+      createdAt: now,
+    })
+  }
   return { assetId: asset!.id, kind, role, hash, name: asset!.name, thumbUrl: thumbUrlFor(kind, asset!.id) }
 }
 

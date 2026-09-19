@@ -156,6 +156,18 @@ async function main(): Promise<void> {
       const dup = await addAttachment(sid, { name: 'style-copy.png', data: PNG_1X1 })
       check(dup.assetId === img.assetId, '相同内容附件按 sha256 去重复用同一资产')
 
+      // 同内容改用途重传：应原地更新既有 attachment 消息的 role，不再插新行（防对话流出现多条同图卡片）
+      const { db: pdb } = await import('../src/db')
+      const { creationMessages: pcm } = await import('../src/db/schema')
+      const { eq: peq } = await import('drizzle-orm')
+      await addAttachment(sid, { name: 'style.png', data: PNG_1X1 }, 'subject')
+      const attRows = await pdb.select().from(pcm).where(peq(pcm.sessionId, sid))
+      const dupRows = attRows.filter((r) => {
+        try { return (JSON.parse(r.payload ?? '{}') as { assetId?: number }).assetId === img.assetId } catch { return false }
+      })
+      const dupRole = (() => { try { return (JSON.parse(dupRows[0]?.payload ?? '{}') as { ref?: { role?: string } }).ref?.role } catch { return undefined } })()
+      check(dupRows.length === 1 && dupRole === 'subject', '同内容改用途重传 → 单条 attachment 消息原地更新 role，不插新行')
+
       const refs = await resolveAttachmentRefs(sid, pid, [img.assetId, subj.assetId])
       check(refs.length === 2 && refs.every((r) => r.kind === 'image'), '规划前核验通过：附件资产编译为 refs')
 

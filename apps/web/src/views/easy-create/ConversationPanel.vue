@@ -554,7 +554,8 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
 
 .att-main {
   min-width: 0;
-  flex: 1;
+  /* 全局 select{width:100%} 曾把用途下拉撑满整行、文件名挤成竖排；下方 .att-role width:auto 修正后，这里再给最小可读宽度兜底 */
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -582,6 +583,7 @@ const planning = () => props.s.state.detail?.session.status === 'planning' || pr
 
 .att-role {
   flex: none;
+  width: auto; /* 覆盖全局 select{width:100%}，防止撑满 .att 行挤没文件名 */
   font-size: 12px;
   padding: 3px 6px;
   border-radius: 7px;

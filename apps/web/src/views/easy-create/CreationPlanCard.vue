@@ -86,7 +86,7 @@ async function onConfirm(): Promise<void> {
       <span class="chip">{{ plan.aspectRatio }} 画幅</span>
       <span class="chip">{{ plan.shots.length }} 个镜头</span>
       <span class="chip">{{ plan.language }}</span>
-      <span class="chip">{{ plan.style }}</span>
+      <span class="chip chip-style">{{ plan.style }}</span>
       <span v-if="refs.length" class="chip ref-chip">
         <Icon name="photo" :size="12" /> {{ refs.length }} 项参考
       </span>
@@ -257,6 +257,18 @@ async function onConfirm(): Promise<void> {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+/* 全局 .chip 为 nowrap：短标签无碍，但风格描述是整句长文本，nowrap 会把卡片横向撑爆（小屏页面出现水平滚动、内容错位裁切） */
+.meta .chip {
+  max-width: 100%;
+}
+
+.chip-style {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.6;
+  border-radius: 12px; /* 换行后胶囊 999px 圆角会吃掉文字，改小圆角 */
 }
 
 /* ---------- 分区（供应商 / 费用） ---------- */
