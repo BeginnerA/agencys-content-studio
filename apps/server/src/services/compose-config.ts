@@ -2,7 +2,8 @@
  * [M11] run 级合成设置服务（BGM 绑定 + _compose 配置）。
  * - BGM 事实源：assets 行 {projectId, runId, kind='audio', purpose='bgm', deletedAt=null}
  *   （至多 1 条有效——绑定即软删旧行；复制行/上传两类来源）
- * - BGM 不走 refs 通道（run 级直查）：任意模板快照版本的 run 可用；产物 params.bgm 记录审计
+ * - BGM 默认不走 refs 通道（run 级直查）：任意模板快照版本的 run 可用；产物 params.bgm 记录审计
+ *   （[M31] 例外：严格交付下仅当批准方案含 role:'bgm' ref 时按该 assetId 窄口径 opt-in 消费）
  * - _compose：run.input JSON 下划线内部键（transition / transition_duration / bgm_volume / bgm_fade / brand / multi_aspect）
  * - [M19] brand：品牌 run 级覆盖（字段级合并到平台/项目层；槽值 null = 清除该槽覆盖回落继承）
  * - [M19] SFX：per-shot 音效（purpose='sfx'，params.shotId 为键；每镜 ≤1 条有效；_compose.sfx_volume clamp 0–2）
@@ -136,6 +137,16 @@ export async function loadBgmAsset(runId: number): Promise<Asset | null> {
     .from(assets)
     .where(and(eq(assets.runId, runId), eq(assets.purpose, 'bgm'), isNull(assets.deletedAt)))
     .orderBy(desc(assets.updatedAt))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/** [M31] 按 id 取有效资产（严格合成期 BGM opt-in 消费；项目/kind/内容摘要已由 assertRecipeSources 核验） */
+export async function loadAssetById(assetId: number): Promise<Asset | null> {
+  const rows = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.id, assetId), isNull(assets.deletedAt)))
     .limit(1)
   return rows[0] ?? null
 }

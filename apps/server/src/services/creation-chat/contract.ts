@@ -3,6 +3,20 @@ import { z } from 'zod'
 
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/)
 const text = (max: number) => z.string().trim().min(1).max(max)
+
+// [M31] 对话式参考输入：受方案约束的参考素材（上传后编译进 refs → 进 planHash，确认即执行）。
+// role 语义：style 风格参考 / first_frame 首帧 / subject 主体一致性 / content 视频内容解析 / bgm 背景乐。
+export const refRoleSchema = z.enum(['style', 'first_frame', 'subject', 'content', 'bgm'])
+export type CreationRefRole = z.infer<typeof refRoleSchema>
+export const refSchema = z.object({
+  assetId: z.number().int().positive(),
+  kind: z.enum(['image', 'video', 'audio']),
+  role: refRoleSchema,
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+  shotId: id.optional(),
+}).strict()
+export type CreationRef = z.infer<typeof refSchema>
+
 export const creationPlanSchema = z.object({
   title: text(100),
   summary: text(1200),
@@ -21,6 +35,8 @@ export const creationPlanSchema = z.object({
     motion_prompt: text(1200),
     lines: z.array(id).max(12),
   }).strict()).min(2).max(12),
+  // [M31] 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
+  refs: z.array(refSchema).max(12).default([]),
 }).strict().superRefine((plan, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message })
   if (new Set(plan.shots.map((s) => s.id)).size !== plan.shots.length) issue('镜头 ID 必须唯一')

@@ -45,10 +45,8 @@ async function onRetryVerified(): Promise<void> {
       <span class="badge" :class="runMeta.cls">{{ runMeta.text }}</span>
     </header>
 
-    <div v-if="total" class="bar">
-      <div class="bfill" :style="{ width: Math.min(100, (prog.completedShots / total) * 100) + '%' }" />
-    </div>
-    <div class="shotn">已完成镜头 <b class="mono">{{ prog.completedShots }}</b> / {{ total }}</div>
+    <div v-if="total" class="bar"><div class="bfill" :style="{ width: Math.min(100, (prog.completedShots / total) * 100) + '%' }" /></div>
+    <div class="shotn"><span>已完成镜头 <b class="mono">{{ prog.completedShots }}</b> / {{ total }}</span><span class="mono pct">{{ total ? Math.round(Math.min(100, (prog.completedShots / total) * 100)) : 0 }}%</span></div>
 
     <ol class="steps">
       <li v-for="st in prog.steps" :key="st.key">
@@ -96,9 +94,10 @@ async function onRetryVerified(): Promise<void> {
 .ph h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 7px; font-weight: 700; }
 .ph h2 .ic { color: var(--accent-h); }
 .bar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--border); }
-.bfill { height: 100%; background: var(--grad-brand); transition: width 0.3s ease; }
-.shotn { font-size: 12.5px; color: var(--text-2); }
+.bfill { height: 100%; background: var(--grad-brand); box-shadow: 0 0 12px -2px rgb(99 102 241 / 60%); transition: width 0.3s ease; }
+.shotn { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; color: var(--text-2); }
 .shotn b { color: #a5b4fc; }
+.shotn .pct { color: var(--text-3); font-size: 12px; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .steps li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .serr { font-size: 12px; color: var(--bad); }

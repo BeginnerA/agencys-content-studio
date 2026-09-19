@@ -41,11 +41,12 @@ const coverUrl = computed(() => (result.value?.coverId ? `/api/v1/assets/${resul
 </template>
 
 <style scoped>
-.card { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.card { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(180deg, rgb(34 197 94 / 7%), transparent 34%), var(--panel); }
 .ok-card { border-color: rgb(34 197 94 / 34%); }
 .rh { display: flex; align-items: center; justify-content: space-between; }
 .rh h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 7px; font-weight: 700; color: var(--ok); }
+.rh h2 .ic { color: var(--ok); }
 .note { margin: 0; font-size: 12px; color: var(--text-3); line-height: 1.6; }
-.player { width: 100%; max-height: 60vh; border-radius: 10px; background: #000; border: 1px solid var(--border); object-fit: contain; }
+.player { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; border: 1px solid var(--border-strong); object-fit: contain; box-shadow: var(--shadow); }
 .rf { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>

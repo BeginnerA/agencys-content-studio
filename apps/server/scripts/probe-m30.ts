@@ -345,6 +345,14 @@ async function main(): Promise<void> {
         const strictArgs = buildComposeArgs({ segments: [{ id: 1, path: 'a.mp4', kind: 'video', durSec: 5 }, { id: 2, path: 'b.mp4', kind: 'video', durSec: 5 }], width: 720, height: 1280, fps: 25, xfadePlan: { enabled: false, type: 'none', durSec: 0, videoLens: [5, 5], offsets: [], totalDur: 10 }, voicePaths: [], lineIds: [], alignPlan: null, total: 10, srtAbs: null, style: 'x', bgmPath: null, bgmVolume: 0.25, bgmFade: 2, watermark: null, intro: null, outro: null, outAbs: 'C:/o.mp4', strictDelivery: true })
         check(!legacy.args.join(' ').includes('trim=duration'), 'strict_delivery 关闭 → 旧合成不注入逐镜裁切（行为不变）')
         check(strictArgs.args.join(' ').includes('trim=duration') && strictArgs.args.join(' ').includes('tpad='), 'strict_delivery 开启 → 逐镜裁切归零 + 尾帧补齐上限生效')
+
+        // ---- [M31] ref-first-frame 零回归：refs 并入 recipe 后，旧无参考方案解析与首帧路径不受影响 ----
+        const { recipeSchema, recipeFirstFrameId } = await import('../src/services/creation-chat/recipe')
+        const legacyRaw = JSON.parse(JSON.stringify(dyn.recipe)) as Record<string, unknown>
+        delete legacyRaw.refs
+        const reparsed = recipeSchema.parse(legacyRaw)
+        check(Array.isArray(reparsed.refs) && reparsed.refs.length === 0, '旧无参考 run（无 refs 字段）→ recipe 解析出空 refs（向后兼容零回归）')
+        check(reparsed.plan.duration === dyn.recipe.plan.duration && reparsed.videoMode === dyn.recipe.videoMode && recipeFirstFrameId(reparsed, 's1') === null, '无参考方案首帧解析恒为 null（不凭空注入首帧，旧合成路径不变）')
         void resolveFfmpeg
       } finally {
         engine.engine.startRun = origStart as typeof engine.engine.startRun

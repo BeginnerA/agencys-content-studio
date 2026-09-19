@@ -1,10 +1,13 @@
-import { api, type Items } from './core'
+import { api, ApiError, type Items } from './core'
 import type {
+  CreationAttachmentResult,
   CreationConfirmBody,
   CreationDetail,
+  CreationRefRole,
   CreationRetryBody,
   CreationSessionListItem,
 } from '../types'
+import type { ApiErrorBody } from '../types'
 
 // ===== [M30] 对话式「一句话成片」REST（统一挂 /api/v1/creation-sessions） =====
 
@@ -22,10 +25,37 @@ export const creationChatApi = {
   list: () => api.get<Items<CreationSessionListItem>>(BASE),
   create: (content: string, requestKey: string) => api.post<CreationDetail>(BASE, { content, requestKey }),
   detail: (id: number) => api.get<CreationDetail>(`${BASE}/${id}`),
-  send: (id: number, content: string, requestKey: string) =>
-    api.post<CreationDetail>(`${BASE}/${id}/messages`, { content, requestKey }),
+  send: (id: number, content: string, requestKey: string, attachments?: number[]) =>
+    api.post<CreationDetail>(`${BASE}/${id}/messages`, { content, requestKey, ...(attachments && attachments.length ? { attachments } : {}) }),
   preflight: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/preflight`),
   confirm: (id: number, body: CreationConfirmBody) => api.post<{ runId: number }>(`${BASE}/${id}/confirm`, body),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
   retry: (id: number, body: CreationRetryBody) => api.post<{ runId: number }>(`${BASE}/${id}/retry`, body),
+  /** [M31] 上传参考素材（multipart file+role）：落会话项目、不计费、不触发规划 */
+  uploadAttachment: async (id: number, file: File, role?: CreationRefRole): Promise<CreationAttachmentResult> => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (role) form.append('role', role)
+    let res: Response
+    try {
+      res = await fetch(`${BASE}/${id}/attachments`, { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as CreationAttachmentResult
+  },
 }

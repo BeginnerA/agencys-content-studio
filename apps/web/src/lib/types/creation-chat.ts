@@ -17,6 +17,70 @@ export type CreationGenre = 'science' | 'story' | 'product'
 export type CreationAspect = '9:16' | '16:9' | '1:1'
 export type CreationMode = 'dynamic' | 'slideshow'
 
+// ===== [M31] 对话式参考输入：参考素材类型 / 用途 / 附件返回 =====
+export type CreationRefKind = 'image' | 'video' | 'audio'
+/** 参考用途：风格 / 首帧 / 主体一致性 / 视频内容解析 / 背景乐 */
+export type CreationRefRole = 'style' | 'first_frame' | 'subject' | 'content' | 'bgm'
+
+/** 已采纳并冻结进方案的参考素材（服务端 refSchema 投影；进 planHash → 确认即执行） */
+export interface CreationRef {
+  assetId: number
+  kind: CreationRefKind
+  role: CreationRefRole
+  hash: string
+  shotId?: string
+}
+
+/** POST /:id/attachments 返回体（不计费、不触发规划） */
+export interface CreationAttachmentResult {
+  assetId: number
+  kind: CreationRefKind
+  role: CreationRefRole
+  hash: string
+  name: string
+  thumbUrl: string | null
+}
+
+/** 各用途中文标签（与服务端 refRoleSchema 对齐） */
+export const REF_ROLE_LABELS: Record<CreationRefRole, string> = {
+  style: '风格参考',
+  first_frame: '首帧',
+  subject: '主体 / 角色',
+  content: '视频内容',
+  bgm: '背景音乐',
+}
+
+/** 各类型可选用途（与服务端 VALID_ROLES 对齐；默认按 kind 推断） */
+export const REF_VALID_ROLES: Record<CreationRefKind, CreationRefRole[]> = {
+  image: ['style', 'first_frame', 'subject'],
+  video: ['content'],
+  audio: ['bgm'],
+}
+
+/** 各类型默认用途（与服务端 ROLE_BY_KIND 对齐） */
+export const REF_DEFAULT_ROLE: Record<CreationRefKind, CreationRefRole> = {
+  image: 'style',
+  video: 'content',
+  audio: 'bgm',
+}
+
+/** 前端预校验上限（与服务端 attachments.ts 常量一致；服务端仍权威拒绝） */
+export const REF_MAX_PER_KIND: Record<CreationRefKind, number> = {
+  image: 20 * 1024 * 1024,
+  video: 512 * 1024 * 1024,
+  audio: 100 * 1024 * 1024,
+}
+export const REF_MAX_COUNT = 12
+
+/** 按扩展名推断参考类型（与服务端 kindByExt 媒体子集对齐）；非媒体返回 null */
+export function refKindByExt(name: string): CreationRefKind | null {
+  const e = '.' + (name.split('.').pop() ?? '').toLowerCase()
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(e)) return 'image'
+  if (['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(e)) return 'video'
+  if (['.mp3', '.wav', '.aac', '.m4a', '.flac'].includes(e)) return 'audio'
+  return null
+}
+
 /** 已确认的结构化方案（服务端 creationPlanSchema 输出投影） */
 export interface CreationPlan {
   title: string
@@ -30,6 +94,8 @@ export interface CreationPlan {
   script: string
   lines: CreationLine[]
   shots: CreationShot[]
+  /** [M31] 已采纳参考素材（缺省空数组，旧方案向后兼容） */
+  refs: CreationRef[]
 }
 
 /** 冻结的不含密钥供应商实例快照 */
@@ -55,6 +121,8 @@ export interface CreationPreparedRecipe {
   imageSize: string
   resolution: string
   templateHash: string
+  /** [M31] 执行快照携带参考素材（随 hashJson({plan,execution}) 进 planHash） */
+  refs: CreationRef[]
 }
 
 export interface CreationPreflight {
@@ -67,6 +135,9 @@ export interface CreationPreflight {
     imageCount: number
     videoSeconds: number
     voiceChars: number
+    /** [M31] 已采纳参考数量与需解析视频数 */
+    refCount: number
+    videoAnalysisCount: number
   }
   planningModel: { provider: string; model: string } | null
 }
@@ -79,6 +150,9 @@ export interface CreationChatMessagePayload {
   revision?: number
   runId?: number
   verifiedFailedTaskIds?: number[]
+  /** [M31] 附件消息：assetId + 冻结的 ref 指纹 */
+  assetId?: number
+  ref?: CreationRef
 }
 
 export interface CreationChatMessage {

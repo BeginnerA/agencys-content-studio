@@ -14,7 +14,7 @@ import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
-import { pinOf, recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
+import { pinOf, recipeOf, mediaFailure, recipeFirstFrameId } from '../../services/creation-chat/recipe'
 
 interface ShotSpec {
   id: string
@@ -99,7 +99,9 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   const frameIndex = await buildFirstFrameIndex(frameIds)
   const recipe = recipeOf(ctx.run)
   const frameCap = recipe ? getVideoAdapter(provider!).firstFrame ?? 'none' : await videoFirstFrameCapability(provider)
-  if (recipe?.videoMode === 'i2v' && (frameCap === 'none' || shots.some((s) => !frameIndex.has(s.id)))) {
+  // [M31] 首帧参考覆盖：用户上传 first_frame ref 优先于 gen_frames 产物；本镜“有首帧”= 分镜直传/ref/gen_frames 任一
+  const shotHasFirstFrame = (s: ShotSpec): boolean => shotFirstFrameOf(s) !== null || recipeFirstFrameId(recipe, s.id) !== null || frameIndex.has(s.id)
+  if (recipe?.videoMode === 'i2v' && (frameCap === 'none' || shots.some((s) => !shotHasFirstFrame(s)))) {
     throw new Error('已批准图生视频方案首帧不可用，禁止降级文生视频')
   }
   const uriCache = new Map<number, string>()
@@ -143,7 +145,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
       resolution: resolution ?? null,
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,
-      firstFrameAssetId: shotFirstFrameOf(shot) ?? frameIndex.get(shot.id) ?? null,
+      firstFrameAssetId: shotFirstFrameOf(shot) ?? recipeFirstFrameId(recipe, shot.id) ?? frameIndex.get(shot.id) ?? null,
       setRefAssetIds: normalizePositiveIds([...(shot.ref_asset_ids ?? []), ...collectSetRefAssetIds(shot, sceneIndex, propIndex)]),
     })
     const existingTask = taskByShotId.get(shot.id)

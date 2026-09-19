@@ -14,7 +14,7 @@ import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } f
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
-import { pinOf, recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
+import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services/creation-chat/recipe'
 
 interface ShotSpec {
   id: string
@@ -42,6 +42,19 @@ const MAX_CHARACTER_REFS_PER_SHOT = 4
 
 /** [M8] 单镜参考图总量上限（角色 ≤4 + 场景 ≤1 + 道具 ≤1） */
 const MAX_REFS_PER_SHOT = 6
+
+/** [M31] 并入 ai_image 参考图通道的批准参考角色（风格/主体/首帧） */
+const IMAGE_REF_ROLES = ['style', 'subject', 'first_frame'] as const
+
+/** [M31] 参考图 id 合并（M31 上传参考前置 → 实体/画布参考，保序去重，总量 ≤MAX_REFS_PER_SHOT） */
+function mergeRefIds(primary: number[], secondary: number[]): number[] {
+  const ids: number[] = []
+  const seen = new Set<number>()
+  for (const id of [...primary, ...secondary]) {
+    if (!seen.has(id)) { seen.add(id); ids.push(id) }
+  }
+  return ids.slice(0, MAX_REFS_PER_SHOT)
+}
 
 /**
  * ai_image：批量镜头出图（spec §5.3）。
@@ -113,11 +126,13 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     ctx.log(`风格注入：${styleResolved.map((s) => s.name).join(' + ')}（预设 ${styleResolved.map((s) => `#${s.id}`).join(',')}）`)
   }
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
+  // [M31] 批准的参考图片（风格/主体/首帧）并入本镜参考图通道（确定性、可幂等：recipe 固定 → params 稳定）
+  const recipe = recipeOf(ctx.run)
   const refCap = pinOf(imgCfg) ? getImageAdapter(provider!).referenceImages ?? 'none' : await imageRefCapability(provider)
   const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
-  if (useRefs && refCap !== 'base64' && finalShots.some((s) => collectRefAssetIds(s, indexes).length > 0)) {
+  if (useRefs && refCap !== 'base64' && finalShots.some((s) => collectRefAssetIds(s, indexes).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
     ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（锚定注入仍生效）')
   }
 
@@ -138,7 +153,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
 
   for (const shot of finalShots) {
     const promptText = shot.image_prompt.trim()
-    const refAssetIds = collectRefAssetIds(shot, indexes)
+    const refAssetIds = mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), collectRefAssetIds(shot, indexes))
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
     const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, MAX_REFS_PER_SHOT) : 0
     const purpose = purposeOf(shot, stepParams, outputPurpose)

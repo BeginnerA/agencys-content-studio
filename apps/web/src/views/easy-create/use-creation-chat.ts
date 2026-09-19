@@ -2,11 +2,31 @@ import { computed, reactive } from 'vue'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { studioOff, studioOn } from '../../lib/socket'
-import type { CreationDetail, CreationSessionListItem, CreationMode } from '../../lib/types'
+import {
+  REF_DEFAULT_ROLE, REF_MAX_COUNT, REF_MAX_PER_KIND, refKindByExt,
+} from '../../lib/types'
+import type {
+  CreationDetail, CreationSessionListItem, CreationMode,
+  CreationRefKind, CreationRefRole,
+} from '../../lib/types'
 
 // ===== [M30] 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
 
 const RUNNING = new Set(['queued', 'running', 'pending', 'processing', 'waiting_input'])
+
+/** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl） */
+export interface AttachmentItem {
+  clientId: string
+  file: File
+  name: string
+  kind: CreationRefKind
+  role: CreationRefRole
+  assetId?: number
+  hash?: string
+  thumbUrl?: string | null
+  uploading: boolean
+  error?: string
+}
 
 function isPollable(d: CreationDetail | null): boolean {
   if (!d) return false
@@ -25,6 +45,8 @@ const state = reactive({
   busyAction: false,
   error: '',
   notice: '',
+  // [M31] 参考附件托盘（仅当前会话；切会话/离开即清空，避免旧素材错挂新会话）
+  attachments: [] as AttachmentItem[],
 })
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -118,6 +140,7 @@ async function open(id: number): Promise<void> {
   state.error = ''
   state.notice = ''
   confirmKey.hash = ''
+  state.attachments = []
   state.loadingDetail = true
   try {
     const detail = await creationChatApi.detail(id)
@@ -155,9 +178,12 @@ async function send(content: string): Promise<void> {
   if (!id || state.busySend) return
   state.busySend = true
   state.error = ''
+  // [M31] 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
+  const sentAssetIds = state.attachments.filter((a) => a.assetId && !a.error).map((a) => a.assetId!)
   try {
-    const detail = await creationChatApi.send(id, content, newRequestKey('msg'))
+    const detail = await creationChatApi.send(id, content, newRequestKey('msg'), sentAssetIds)
     commit(id, detail)
+    if (id === state.currentId) state.attachments = state.attachments.filter((a) => !a.assetId || a.error)
     ensurePolling()
   } catch (e) {
     if (id === state.currentId) state.error = errText(e)
@@ -250,7 +276,67 @@ async function retry(verifiedFailedTaskIds: number[]): Promise<number | null> {
 function leave(): void {
   stopPolling()
   state.currentId = 0
+  state.attachments = []
 }
+
+// ===== [M31] 参考附件上传（composer：预校验 → 上传到当前会话项目；不计费、不触发规划） =====
+let attSeq = 0
+async function uploadItem(item: AttachmentItem): Promise<void> {
+  const id = state.currentId
+  if (!id) { item.error = '请先发送一句话创建会话后再上传参考'; item.uploading = false; return }
+  item.uploading = true
+  item.error = undefined
+  try {
+    const res = await creationChatApi.uploadAttachment(id, item.file, item.role)
+    // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
+    if (state.currentId === id && state.attachments.includes(item)) {
+      item.assetId = res.assetId; item.hash = res.hash; item.thumbUrl = res.thumbUrl
+      item.name = res.name; item.kind = res.kind; item.role = res.role
+    }
+  } catch (e) {
+    if (state.attachments.includes(item)) item.error = errText(e)
+  } finally {
+    if (state.attachments.includes(item)) item.uploading = false
+  }
+}
+
+/** 选择文件：预校验类型/大小/数量 → 按 kind 默认用途上传 */
+async function addAttachment(file: File): Promise<void> {
+  const kind = refKindByExt(file.name)
+  if (!kind) { state.error = `参考仅支持图片 / 视频 / 音频：${file.name}`; return }
+  if (file.size === 0) { state.error = `参考文件为空：${file.name}`; return }
+  if (file.size > REF_MAX_PER_KIND[kind]) {
+    const label = kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频'
+    state.error = `${label}参考超过 ${Math.floor(REF_MAX_PER_KIND[kind] / 1024 / 1024)}MB 上限：${file.name}`
+    return
+  }
+  if (state.attachments.length >= REF_MAX_COUNT) { state.error = `参考素材最多 ${REF_MAX_COUNT} 个`; return }
+  const item: AttachmentItem = { clientId: `att${++attSeq}_${Date.now()}`, file, name: file.name, kind, role: REF_DEFAULT_ROLE[kind], uploading: false }
+  state.attachments.push(item)
+  // 必须通过响应式代理回填上传态（push 后读回数组元素为 reactive 代理；直接改 push 前的 raw 引用不触发 set 陷阱，UI 会永久停在「上传中」）
+  await uploadItem(state.attachments[state.attachments.length - 1]!)
+}
+
+/** 更改用途：已上传项按新 role 重传（同内容服务端按 sha256 去重，仅更新登记 role） */
+async function changeAttachmentRole(clientId: string, role: CreationRefRole): Promise<void> {
+  const item = state.attachments.find((a) => a.clientId === clientId)
+  if (!item || item.role === role) return
+  item.role = role
+  if (item.assetId) { item.assetId = undefined; item.hash = undefined; item.thumbUrl = null; await uploadItem(item) }
+}
+
+function removeAttachment(clientId: string): void {
+  const i = state.attachments.findIndex((a) => a.clientId === clientId)
+  if (i >= 0) state.attachments.splice(i, 1)
+}
+
+function retryAttachment(clientId: string): void {
+  const item = state.attachments.find((a) => a.clientId === clientId)
+  if (item) void uploadItem(item)
+}
+
+const uploadingAttachments = computed(() => state.attachments.some((a) => a.uploading))
+const readyAttachmentCount = computed(() => state.attachments.filter((a) => a.assetId && !a.error).length)
 
 const modeLabel = computed<CreationMode | null>(() => state.detail?.session.plan?.mode ?? null)
 
@@ -270,6 +356,12 @@ export function useEasyCreate() {
     cancel,
     retry,
     leave,
+    addAttachment,
+    changeAttachmentRole,
+    removeAttachment,
+    retryAttachment,
+    uploadingAttachments,
+    readyAttachmentCount,
     ensurePolling,
     stopPolling,
     errText,

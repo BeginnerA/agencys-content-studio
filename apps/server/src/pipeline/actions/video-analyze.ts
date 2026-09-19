@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../services/ffmpeg'
 import { resolveAsrEndpoint, transcribeAudio, type AsrResult } from '../../services/asr'
 import { extractVideoFrame } from '../../services/creation/gen/frame'
-import { chatCompleteDetailed, loadPromptTemplate, resolveLlmEndpoint, type ChatContentPart } from '../../services/llm'
+import { chatCompleteDetailed, loadPromptTemplate, resolveLlmEndpoint, type ChatContentPart, type LlmUsage } from '../../services/llm'
 import { absPathOf, writeTextAsset } from '../../services/storage'
 import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
@@ -183,23 +183,33 @@ async function runFfmpeg(args: string[], timeoutMs = 120_000): Promise<void> {
   })
 }
 
-export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
-  const params = (ctx.def.params ?? {}) as Record<string, unknown>
-  const frames = clampFrameCount(params['frames'])
-  const transcribe = params['transcribe'] !== false
+export interface VideoAnalysisOutcome {
+  tl: VideoTimeline
+  frames: number
+  transcribed: boolean
+  asrProvider?: string
+  asrModel?: string
+}
 
-  // —— 1. 视频源资产（首个存在本地文件的视频；spec §2.9 输入契约） ——
-  const videoIds = ctx.assetIdsOf('video')
-  if (videoIds.length === 0) throw new StepError('video_analyze：inputs.video 无视频资产')
-  const rows = await ctx.assetsOf(videoIds)
-  const v = rows.find((a) => a.kind === 'video' && a.relPath && existsSync(absPathOf(a.relPath)))
-  if (!v || !v.relPath) throw new StepError('video_analyze：inputs.video 无可用视频资产（非视频 / 文件缺失）')
-  const srcAbs = absPathOf(v.relPath)
-  const duration = (typeof v.duration === 'number' && v.duration > 0 ? v.duration : null) ?? probeMediaDuration(srcAbs)
-  if (!duration || !(duration > 0)) throw new StepError(`video_analyze：无法取得视频时长（asset#${v.id}）`)
-  ctx.log(`视频源「${v.name}」时长 ${duration.toFixed(1)}s → 抽帧 ${frames}（宽 ≤${ANALYSIS_FRAME_WIDTH}，临时目录不落库）`)
-
-  // —— 2. 临时目录抽帧（帧不长期落资产，v1 防爆库；spec §2.9） ——
+/**
+ * [M31] 可复用视频分析核心（探帧 + ASR + 多模态时间轴）：video_analyze 步骤与对话规划前参考视频摘要共用，
+ * 不另建引擎。帧临时目录不落库；时长以探测为准；ASR 命中⇒兼容内嵌兼底 transcript（与步骤历史行为一致）。
+ * 纯分析不写资产；资产落库由调用方（步骤 action）负责。
+ */
+export async function analyzeVideoSource(args: {
+  srcAbs: string
+  name: string
+  durationHint?: number | null
+  frames?: unknown
+  transcribe?: unknown
+  log: (message: string) => void
+  onUsage?: (u: { provider: string; model: string; usage: LlmUsage | null }) => Promise<void>
+}): Promise<VideoAnalysisOutcome> {
+  const frames = clampFrameCount(args.frames)
+  const transcribe = args.transcribe !== false
+  const duration = (typeof args.durationHint === 'number' && args.durationHint > 0 ? args.durationHint : null) ?? probeMediaDuration(args.srcAbs)
+  if (!duration || !(duration > 0)) throw new Error(`无法取得视频时长（${args.name}）`)
+  args.log(`视频源「${args.name}」时长 ${duration.toFixed(1)}s → 抽帧 ${frames}（宽 ≤${ANALYSIS_FRAME_WIDTH}，临时目录不落库）`)
   const tmp = mkdtempSync(join(tmpdir(), 'acs-m25-'))
   try {
     const times = uniformVideoTimes(frames, duration)
@@ -207,33 +217,31 @@ export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
     for (let i = 0; i < times.length; i++) {
       const p = join(tmp, `frame-${String(i).padStart(2, '0')}.jpg`)
       try {
-        await extractVideoFrame(srcAbs, p, times[i]!, ANALYSIS_FRAME_WIDTH)
+        await extractVideoFrame(args.srcAbs, p, times[i]!, ANALYSIS_FRAME_WIDTH)
         frameFiles.push({ t: times[i]!, path: p })
       } catch (err) {
-        ctx.log(`帧 @${times[i]}s 抽取失败跳过：${(err as Error).message}`)
+        args.log(`帧 @${times[i]}s 抽取失败跳过：${(err as Error).message}`)
       }
     }
-    if (frameFiles.length === 0) throw new StepError('video_analyze：全部抽帧失败（ffmpeg 可用？源文件损坏？）')
+    if (frameFiles.length === 0) throw new Error('全部抽帧失败（ffmpeg 可用？源文件损坏？）')
 
-    // —— 3. 音轨 ASR（宽容降级链：端点缺失/抽轨失败/转写失败 → 无音轨继续） ——
     let asr: AsrResult | null = null
     const asrEp = transcribe ? await resolveAsrEndpoint() : null
     if (transcribe) {
-      if (!asrEp) ctx.log('ASR 端点不可解析（无 OpenAI 兼容 audio 实例）→ 跳过音轨转写')
+      if (!asrEp) args.log('ASR 端点不可解析（无 OpenAI 兼容 audio 实例）→ 跳过音轨转写')
       else {
         const mp3 = join(tmp, 'audio.mp3')
         try {
-          await runFfmpeg(buildAudioExtractArgs(srcAbs, mp3))
+          await runFfmpeg(buildAudioExtractArgs(args.srcAbs, mp3))
           asr = await transcribeAudio(mp3, asrEp)
-          if (asr) ctx.log(`音轨转写成功：${asr.text.length} 字${asr.segments ? `（${asr.segments.length} 段）` : ''}`)
-          else ctx.log('音轨转写失败 → 降级为无音轨（server 日志留痕）')
+          if (asr) args.log(`音轨转写成功：${asr.text.length} 字${asr.segments ? `（${asr.segments.length} 段）` : ''}`)
+          else args.log('音轨转写失败 → 降级为无音轨（server 日志留痕）')
         } catch (err) {
-          ctx.log(`音轨抽取失败 → 降级为无音轨：${(err as Error).message}`)
+          args.log(`音轨抽取失败 → 降级为无音轨：${(err as Error).message}`)
         }
       }
     }
 
-    // —— 4. 多模态 LLM 时间轴（帧序列带时间戳标注 + 转写文本） ——
     const parts: ChatContentPart[] = [
       {
         type: 'text',
@@ -253,7 +261,7 @@ export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
     parts.push({ type: 'text', text: '请按提示词契约输出时间轴 JSON（duration / scenes / transcript），时间单位秒。' })
 
     const ep = await resolveLlmEndpoint()
-    ctx.log(`调用多模态 LLM：${ep.model}（${frameFiles.length} 帧 + ${asr ? '有' : '无'}转写）…`)
+    args.log(`调用多模态 LLM：${ep.model}（${frameFiles.length} 帧 + ${asr ? '有' : '无'}转写）…`)
     const res = await chatCompleteDetailed(
       [
         { role: 'system', content: loadPromptTemplate('video-analyze.md') },
@@ -262,51 +270,78 @@ export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
       ep,
       { temperature: 0.2, maxTokens: 16000, timeoutMs: 600_000 },
     )
-    await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
+    await args.onUsage?.({ provider: res.provider, model: res.model, usage: res.usage })
 
     const tl = parseTimelineJson(res.content)
-    if (!tl) throw new StepError(`video_analyze：时间轴输出不合契约。开头 200 字符：${res.content.slice(0, 200)}`)
-    // duration 以服务端探测为准；LLM 未回填 transcript 但 ASR 有结果 → 兜底内嵌（机读链保底）：
-    //   优先用带时间戳的 segments；无分段（如 SenseVoice 仅回整段 text）时兜底单段，保证「ASR 命中 ⇒ transcript 非空」确定性。
+    if (!tl) throw new Error(`时间轴输出不合契约。开头 200 字符：${res.content.slice(0, 200)}`)
     tl.duration = Math.round(duration * 10) / 10
     if (!tl.transcript || tl.transcript.length === 0) {
-      if (asr?.segments?.length) {
-        tl.transcript = asr.segments.map((s) => ({ t0: s.t0, t1: s.t1, text: s.text }))
-      } else if (asr?.text?.trim()) {
-        tl.transcript = [{ t0: 0, t1: tl.duration, text: asr.text.trim() }]
-      }
+      if (asr?.segments?.length) tl.transcript = asr.segments.map((s) => ({ t0: s.t0, t1: s.t1, text: s.text }))
+      else if (asr?.text?.trim()) tl.transcript = [{ t0: 0, t1: tl.duration, text: asr.text.trim() }]
     }
-    const hasTranscript = !!tl.transcript?.length
-
-    // —— 5. 落库：json 在前（G10 反推步骤 .asset 引用锚）+ md 人读报告 ——
-    const analysis = {
-      scenes: tl.scenes.length,
-      hasTranscript,
-      frames: frameFiles.length,
-      duration: tl.duration,
-      ...(asr && asrEp ? { asr_provider: asrEp.providerKey, asr_model: asrEp.model } : {}),
-    }
-    const jsonAsset = await writeTextAsset(ctx.run.projectId, {
-      name: `视频时间轴-${v.name}.json`,
-      content: JSON.stringify(tl, null, 2),
-      purpose: 'video_analysis',
-      stepId: ctx.step.id,
-      runId: ctx.run.id,
-      params: { analysis, frames_kept: false },
-      tags: ['video_analysis'],
-    })
-    const mdAsset = await writeTextAsset(ctx.run.projectId, {
-      name: `视频解析报告-${v.name}.md`,
-      content: renderAnalysisReportMd(tl, { sourceName: v.name, frames: frameFiles.length, transcribed: !!asr }),
-      purpose: 'video_analysis',
-      stepId: ctx.step.id,
-      runId: ctx.run.id,
-      params: { analysis, report: true },
-      tags: ['video_analysis'],
-    })
-    ctx.log(`解析完成：${tl.scenes.length} 段场景${hasTranscript ? `、${tl.transcript!.length} 段转写` : '（无音轨）'}（json asset#${jsonAsset.id} + md #${mdAsset.id}）`)
-    return { assetIds: [jsonAsset.id, mdAsset.id] }
+    return { tl, frames: frameFiles.length, transcribed: !!asr, ...(asr && asrEp ? { asrProvider: asrEp.providerKey, asrModel: asrEp.model } : {}) }
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
+}
+
+/** [M31] 参考视频→人读摘要（仅取视频内实际可见/可听内容，缺失不编造），供规划上下文注入。 */
+export function renderVideoReferenceSummary(out: VideoAnalysisOutcome, sourceName: string): string {
+  const tl = out.tl
+  const scenes = tl.scenes.slice(0, 12).map((s) => `- [${s.t0.toFixed(1)}–${s.t1.toFixed(1)}s] ${s.visual || s.speech || '（无描述）'}${s.shot_type ? `（${s.shot_type}）` : ''}`)
+  const speech = (tl.transcript ?? []).slice(0, 12).map((x) => `- ${x.text}`)
+  return [
+    `【参考视频解析】${sourceName}（时长 ${tl.duration.toFixed(1)}s，场景 ${tl.scenes.length} 段${out.transcribed ? '，含人声转写' : '，未识别人声'}）`,
+    scenes.length ? `画面时间轴：\n${scenes.join('\n')}` : '画面时间轴：（未产出可见场景）',
+    speech.length ? `可听内容（转写）：\n${speech.join('\n')}` : '可听内容：（无转写内容）',
+  ].join('\n')
+}
+
+export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
+  const params = (ctx.def.params ?? {}) as Record<string, unknown>
+  // —— 1. 视频源资产（首个存在本地文件的视频；spec §2.9 输入契约） ——
+  const videoIds = ctx.assetIdsOf('video')
+  if (videoIds.length === 0) throw new StepError('video_analyze：inputs.video 无视频资产')
+  const rows = await ctx.assetsOf(videoIds)
+  const v = rows.find((a) => a.kind === 'video' && a.relPath && existsSync(absPathOf(a.relPath)))
+  if (!v || !v.relPath) throw new StepError('video_analyze：inputs.video 无可用视频资产（非视频 / 文件缺失）')
+  const out = await analyzeVideoSource({
+    srcAbs: absPathOf(v.relPath),
+    name: v.name,
+    durationHint: typeof v.duration === 'number' && v.duration > 0 ? v.duration : null,
+    frames: params['frames'],
+    transcribe: params['transcribe'],
+    log: (m) => ctx.log(m),
+    onUsage: async (u) => { await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: u.provider, model: u.model, usage: u.usage }) },
+  })
+  const tl = out.tl
+  const hasTranscript = !!tl.transcript?.length
+  // —— 5. 落库：json 在前（G10 反推步骤 .asset 引用锚）+ md 人读报告 ——
+  const analysis = {
+    scenes: tl.scenes.length,
+    hasTranscript,
+    frames: out.frames,
+    duration: tl.duration,
+    ...(out.asrProvider ? { asr_provider: out.asrProvider, asr_model: out.asrModel } : {}),
+  }
+  const jsonAsset = await writeTextAsset(ctx.run.projectId, {
+    name: `视频时间轴-${v.name}.json`,
+    content: JSON.stringify(tl, null, 2),
+    purpose: 'video_analysis',
+    stepId: ctx.step.id,
+    runId: ctx.run.id,
+    params: { analysis, frames_kept: false },
+    tags: ['video_analysis'],
+  })
+  const mdAsset = await writeTextAsset(ctx.run.projectId, {
+    name: `视频解析报告-${v.name}.md`,
+    content: renderAnalysisReportMd(tl, { sourceName: v.name, frames: out.frames, transcribed: out.transcribed }),
+    purpose: 'video_analysis',
+    stepId: ctx.step.id,
+    runId: ctx.run.id,
+    params: { analysis, report: true },
+    tags: ['video_analysis'],
+  })
+  ctx.log(`解析完成：${tl.scenes.length} 段场景${hasTranscript ? `、${tl.transcript!.length} 段转写` : '（无音轨）'}（json asset#${jsonAsset.id} + md #${mdAsset.id}）`)
+  return { assetIds: [jsonAsset.id, mdAsset.id] }
 }

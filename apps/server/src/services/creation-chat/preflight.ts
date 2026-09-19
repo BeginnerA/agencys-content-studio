@@ -5,7 +5,7 @@ import { loadTemplate } from '../../pipeline/loader'
 import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
 import { checkBudget } from '../budget'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
-import { CreationError, hashJson, type CreationPlan } from './contract'
+import { CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
 import type { CreationRecipe, EndpointSnapshot } from './recipe'
 
 /** 声明绑定精确模型；仅记录经供应商文档/实测核实的能力，不按名称推测。 */
@@ -21,7 +21,7 @@ export interface CreationPreflight {
   ready: boolean
   issues: Array<{ code: string; message: string }>
   execution: PreparedRecipe | null
-  estimate: { knownCost: number; unpriced: string[]; imageCount: number; videoSeconds: number; voiceChars: number }
+  estimate: { knownCost: number; unpriced: string[]; imageCount: number; videoSeconds: number; voiceChars: number; refCount: number; videoAnalysisCount: number }
   planningModel: { provider: string; model: string } | null
 }
 
@@ -55,7 +55,7 @@ function assertAdapterDurations(ep: ResolvedEndpoint, durations: number[]): void
 export async function preflightPlan(projectId: number, plan: CreationPlan): Promise<CreationPreflight> {
   const result: CreationPreflight = {
     ready: false, issues: [], execution: null, planningModel: null,
-    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: plan.lines.reduce((n, l) => n + l.text.length, 0) },
+    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length },
   }
   try {
     const llm = await requiredEndpoint('llm')
@@ -68,6 +68,8 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       plan, endpoints: { audio: await snapshot(audio, 'tts', 'char') },
       videoMode: 'none', requestDurations: {}, voice, imageSize: '1024x1024', resolution: '720p',
       templateHash: hashJson(loadTemplate('easy-video')),
+      // [M31] 参考素材随方案进入执行快照（进 planHash → 确认即执行）；缺失项不编造，仅按现有能力核验
+      refs: plan.refs as CreationRef[],
     }
     if (plan.mode === 'dynamic') {
       const video = await requiredEndpoint('video')
@@ -80,6 +82,8 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       execution.videoMode = c.modes.includes('i2v') && adapter.firstFrame === 'base64' ? 'i2v' : c.modes.includes('t2v') ? 't2v' : 'none'
       if (execution.videoMode === 'none') throw new CreationError('first_frame_unsupported', '当前适配器无法严格传递首帧，且模型未声明文生视频能力', 422)
       if (video.providerKey === 'siliconflow_video' && execution.videoMode === 'i2v' && !/i2v/i.test(video.model!)) throw new CreationError('first_frame_unsupported', '当前硅基流动适配器要求明确的 I2V 模型', 422)
+      // [M31] 首帧参考不可用即停机：能力不支持图生视频首帧时，绝不静默降级为文生
+      if (execution.videoMode !== 'i2v' && plan.refs.some((r) => r.role === 'first_frame')) throw new CreationError('first_frame_unsupported', '方案含首帧参考但当前能力不支持图生视频首帧，请改用图文模式或更换支持 i2v 的实例', 422)
       execution.resolution = video.providerKey === 'minimax_video' ? (['2K', '1080p'].includes(c.resolution) ? '2K' : '768P') : video.providerKey === 'volcengine_video' ? (c.resolution === '480p' ? '480p' : '720p') : c.resolution
       const durations = [...c.durations].sort((a, b) => a - b)
       for (const shot of plan.shots) {
@@ -97,6 +101,10 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       execution.imageSize = typeof image.extra.size === 'string' && /^\d{2,4}[x*]\d{2,4}$/.test(image.extra.size) ? image.extra.size : '1024x1024'
       result.estimate.imageCount = plan.shots.length
     }
+    // [M31] 图片主体/风格参考需图像端点消费（无图像端点时无法注入参考图 → 停机，不静默忽略）
+    if (!execution.endpoints.image && plan.refs.some((r) => r.kind === 'image' && r.role !== 'first_frame')) {
+      throw new CreationError('ref_image_unsupported', '方案含图片参考（主体/风格）但未解析到可用图像实例，请检查 AI 配置', 422)
+    }
     for (const [key, qty] of [['audio', result.estimate.voiceChars], ['image', result.estimate.imageCount], ['video', result.estimate.videoSeconds]] as const) {
       const ep = execution.endpoints[key]
       if (!ep) continue
@@ -104,6 +112,8 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       else result.estimate.knownCost += qty * ep.unitPrice
     }
     result.estimate.knownCost = Math.round(result.estimate.knownCost * 1e6) / 1e6
+    // [M31] 视频内容解析 = 多模态 token + ASR，离线不可定价 → 显式列入未计价（不按零元），确认时须接受
+    if (result.estimate.videoAnalysisCount > 0) result.estimate.unpriced.push(`参考视频解析 × ${result.estimate.videoAnalysisCount}（多模态 + 语音转写，价格依供应商）`)
     result.execution = execution
     const budget = await checkBudget({ projectId, estimatedCost: result.estimate.knownCost })
     if (budget) result.issues.push(budget)

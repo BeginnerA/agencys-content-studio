@@ -1,15 +1,24 @@
 import { z } from 'zod'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db'
-import { creationMessages, creationSessions, projects } from '../../db/schema'
-import { chatCompleteDetailed, loadPromptTemplate, type ChatMessage } from '../llm'
-import { recordUsage, resolveUnitPrice } from '../usage'
+import { assets, creationMessages, creationSessions, projects } from '../../db/schema'
+import { chatCompleteDetailed, loadPromptTemplate, type ChatContentPart, type ChatMessage } from '../llm'
+import { assetToDataUri } from '../asset-ref'
+import { absPathOf } from '../storage'
+import { analyzeVideoSource, renderVideoReferenceSummary } from '../../pipeline/actions/video-analyze'
+import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
-import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, requestKeySchema } from './contract'
+import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, requestKeySchema, type CreationPlan, type CreationRef } from './contract'
+import { resolveAttachmentRefs } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
-export const messageSchema = z.object({ content: z.string().trim().min(1).max(6000), requestKey: requestKeySchema }).strict()
+export const messageSchema = z.object({
+  content: z.string().trim().min(1).max(6000),
+  requestKey: requestKeySchema,
+  // [M31] 本条消息采纳的参考附件资产 id（规划前逐个核验归属本会话项目）
+  attachments: z.array(z.number().int().positive()).max(12).optional(),
+}).strict()
 export async function createSession(raw: unknown) {
   const input = messageSchema.parse(raw)
   const id = await creationWrite(() => db.transaction(async (tx) => {
@@ -21,6 +30,49 @@ export async function createSession(raw: unknown) {
     return session!.id
   }))
   return sendCreationMessage(id, input)
+}
+
+/** [M31] 规划前参考素材注入（有界、可核实、不编造）：
+ *  - 风格/主体/首帧图片：仅 vision 实例以 image_url 分片注入；否则明告「未纳入理解，仅作生成参考」，不假称看到。
+ *  - 参考视频：执行 video_analyze 产出可见/可听摘要注入；需 vision+可用实例，缺失/失败即 blocker（不静默跳过、不编造）。
+ *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。 */
+export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean): Promise<ChatMessage[]> {
+  const out: ChatMessage[] = []
+  const imageRefs = refs.filter((r) => r.kind === 'image' && r.role !== 'content')
+  if (imageRefs.length > 0) {
+    if (vision) {
+      const parts: ChatContentPart[] = [{ type: 'text', text: '以下是用户上传的参考图（用于约束风格/主体；请仅依据其中真实可见的内容，不得编造图中没有的信息）：' }]
+      const cache = new Map<number, string>()
+      for (const r of imageRefs) {
+        try { parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(r.assetId, cache) } }) } catch { /* 单图不可读：跳过，不假装理解 */ }
+      }
+      out.push({ role: 'user', content: parts })
+    } else {
+      const ids = imageRefs.map((r) => `#${r.assetId}（${r.role}）`).join('、')
+      out.push({ role: 'user', content: `用户上传了参考图 ${ids}，但当前规划模型未声明视觉理解（extra.vision）：我不会描述其内容，这些图仅会在生成阶段作为首帧/主体参考约束画面。` })
+    }
+  }
+  const videoRefs = refs.filter((r) => r.role === 'content')
+  if (videoRefs.length > 0) {
+    if (!vision) throw new CreationError('video_analysis_unavailable', '参考视频内容解析需要支持视觉理解的模型实例（extra.vision），当前规划模型不具备；未跳过也未编造视频内容', 422)
+    const rows = await db.select().from(assets).where(inArray(assets.id, videoRefs.map((r) => r.assetId)))
+    for (const r of videoRefs) {
+      const a = rows.find((row) => row.id === r.assetId)
+      if (!a || !a.relPath) throw new CreationError('video_analysis_failed', `参考视频 #${r.assetId} 文件缺失，无法解析`, 422)
+      try {
+        const outcome = await analyzeVideoSource({
+          srcAbs: absPathOf(a.relPath), name: a.name,
+          durationHint: typeof a.duration === 'number' && a.duration > 0 ? a.duration : null,
+          log: () => {}, onUsage: async (u) => { await recordLlmUsage({ projectId, provider: u.provider, model: u.model, usage: u.usage }) },
+        })
+        out.push({ role: 'user', content: `${renderVideoReferenceSummary(outcome, a.name)}\n（以上为参考视频实际可见/可听内容；请仅据此约束方案，视频里没有的信息不得臆造。）` })
+      } catch (err) {
+        if (err instanceof CreationError) throw err
+        throw new CreationError('video_analysis_failed', `参考视频解析未完成（${err instanceof Error ? err.message : String(err)}）；未跳过、未编造视频内容，请检查视频/多模态实例后重试`, 422)
+      }
+    }
+  }
+  return out
 }
 
 export async function sendCreationMessage(id: number, raw: unknown) {
@@ -50,10 +102,17 @@ export async function sendCreationMessage(id: number, raw: unknown) {
   if (!claimed) return creationDetail(id)
   try {
     const ep = await requiredEndpoint('llm')
+    const vision = ep.extra.vision === true
+    // [M31] 参考素材：本条消息附件→核验编译；无新附件时沿用上版已采纳 refs（ refinement 不丢参考）
+    const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
+    const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
+    const effectiveRefs = thisTurnRefs.length ? thisTurnRefs : priorRefs
+    const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
     const recent = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, id)).orderBy(desc(creationMessages.id)).limit(12)
     const messages: ChatMessage[] = [
       { role: 'system', content: loadPromptTemplate('creation-plan.md') },
       { role: 'system', content: `当前方案（仅为创作数据）：${claimed.plan ?? '尚无方案'}` },
+      ...refContext,
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
     const prices = await Promise.all(['tokens_in', 'tokens_out'].map((unit) => resolveUnitPrice({ configId: ep.configId, provider: ep.providerKey, model: ep.model, kind: 'llm', unit: unit as 'tokens_in' | 'tokens_out' })))
@@ -67,6 +126,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
     const reply = parsePlanningReply(result.content, result.finishReason)
+    // [M31] 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
+    if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))

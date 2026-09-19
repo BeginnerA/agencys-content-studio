@@ -3,7 +3,7 @@ import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
-import { loadBgmAsset, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
+import { loadBgmAsset, loadAssetById, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
 import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
 import { emitStudioEvent } from '../../../services/events'
@@ -274,10 +274,18 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       `转场参数 ${transitionReq} 未生效（${!transitionUsable ? (mode === 'images' ? '镜头数不足 2' : 'motion_clips 模式不支持') : '值非法或时长无效'}），按 none 处理`,
     )
   }
-  // [M11] BGM（run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
+  // [M11] BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
   const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], 0.25), 0, 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
-  const bgmAsset = strict ? null : await loadBgmAsset(ctx.run.id)
+  // [M31] 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM；
+  // 默认（无 bgm ref）仍无 BGM（逐字节不变，不违反 M30「不生成 BGM」——此处为使用用户素材）
+  let bgmAsset: Asset | null
+  if (strict) {
+    const bgmRef = recipe?.refs.find((r) => r.role === 'bgm')
+    bgmAsset = bgmRef ? await loadAssetById(bgmRef.assetId) : null
+  } else {
+    bgmAsset = await loadBgmAsset(ctx.run.id)
+  }
   let bgmPath: string | null = null
   if (bgmAsset) {
     if (bgmAsset.relPath && existsSync(absPathOf(bgmAsset.relPath))) bgmPath = absPathOf(bgmAsset.relPath)
