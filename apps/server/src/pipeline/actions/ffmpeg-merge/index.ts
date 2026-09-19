@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
@@ -8,7 +8,8 @@ import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../..
 import { resolveBrandConfig } from '../../../services/brand-config'
 import { emitStudioEvent } from '../../../services/events'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
-import { isSameAspect } from './aspect'
+import { srtToAss } from './subtitle-ass'
+import { isSameAspect, resolveAspectSize } from './aspect'
 import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset } from './segments'
 import { loadShotAlignShots, planVoiceAlignedSegments, planSrtShifts, countSrtCues, shiftSrtText } from './align'
 import { buildTransitionPlan } from './transition'
@@ -424,6 +425,44 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
 
+  // [M32] SRT → ASS 转换：内置 ffmpeg 的 libass 不支持 CJK 换行 + force_style 吃 SRT 时按默认小
+  // PlayResY 二次放大字号 → 长句横向冲出画面。改为生成显式 PlayResX/Y=输出尺寸的 ASS 喂 subtitles
+  // 滤镜（force_style 仍生效、args 结构不变）：字号回归真实像素、左右边距由 ASS Style 提供、超长行 \\N 预换行。
+  // 多画幅各路 PlayRes 不同 → 主 + 每派生路各生成一份 ASS。strict 交付不动其 SRT 校验链。
+  const assTempAbs: string[] = []
+  let subtitlePaths: string[] | undefined
+  if (!strict && srtAbs && srtRelPath) {
+    try {
+      const fsFromStyle = (s: string, fb: number): number => {
+        const m = /FontSize=([\d.]+)/.exec(s)
+        return m ? Number(m[1]) : fb
+      }
+      const rawSrt = readFileSync(srtAbs, 'utf8')
+      const mainFontSize = fsFromStyle(style, Math.max(16, Math.round(height * 0.018)))
+      const assDir = dirname(srtAbs)
+      const stamp = Date.now()
+      const writeAss = (w: number, h: number, fontSize: number, tag: string): string => {
+        const ass = srtToAss(rawSrt, { width: w, height: h, fontSize })
+        const p = join(assDir, `.sub-${ctx.run.id}-${stamp}${tag}.ass`)
+        writeFileSync(p, ass, 'utf8')
+        assTempAbs.push(p)
+        return p
+      }
+      const paths = [writeAss(width, height, mainFontSize, '')]
+      for (const t of maTargets) {
+        const { w, h } = resolveAspectSize(width, height, t.aspect)
+        const fs = brand.subtitle
+          ? fsFromStyle(buildSubtitleStyle(h, brand.subtitle), Math.max(16, Math.round(h * (brand.subtitle.size_pct ?? 0.018))))
+          : mainFontSize
+        paths.push(writeAss(w, h, fs, `-${paths.length}`))
+      }
+      subtitlePaths = paths
+      ctx.log(`字幕 SRT→ASS：PlayRes ${width}×${height} 显式声明，左右边距 5%，防中文横向溢出（临时 ASS 合成后清理）`)
+    } catch (err) {
+      ctx.log(`字幕 ASS 转换失败（回落 SRT 原样烧录）：${(err as Error).message}`)
+    }
+  }
+
   // 组装 filter_complex 与编码参数（[M19] 提炼 buildComposeArgs 纯函数；无水印/片头尾 → 与 M11 逐字节一致）
   const hasAudio = voicePaths.length > 0
   const { args, cwd, totalAll, derived } = buildComposeArgs({
@@ -438,6 +477,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     alignPlan,
     total,
     srtAbs,
+    subtitlePaths,
     style,
     bgmPath,
     bgmVolume,
@@ -466,9 +506,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   try {
     await runFfmpeg(ctx, ffmpeg, args, cwd)
   } finally {
-    if (tempSrtAbs) {
+    for (const tmp of [tempSrtAbs, ...assTempAbs]) {
+      if (!tmp) continue
       try {
-        unlinkSync(tempSrtAbs)
+        unlinkSync(tmp)
       } catch {
         // 临时字幕清理失败不影响成片
       }
@@ -667,6 +708,8 @@ function runFfmpeg(ctx: StepContext, ffmpeg: string, args: string[], cwd?: strin
 }
 
 export { defaultSubtitleStyle, toAssColor, buildSubtitleStyle } from './subtitle-style'
+export { estimateMaxCharsPerLine, wrapSingleLine, wrapSrtText } from './subtitle-wrap'
+export { srtToAss, parseSrtCues } from './subtitle-ass'
 export { watermarkOverlayXY } from './watermark'
 export { resolveAspectSize, aspectGeometryFilter, isSameAspect } from './aspect'
 export { computeShotSegments, parseShotDurations } from './segments'

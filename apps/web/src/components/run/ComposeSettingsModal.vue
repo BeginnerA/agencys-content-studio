@@ -274,7 +274,7 @@ function fmtDur(sec: number | null): string {
 </script>
 
 <template>
-  <Modal title="合成设置" :width="620" @close="emit('close')">
+  <Modal title="合成设置" :width="720" @close="emit('close')">
     <div class="bg">
       <div v-if="loading" class="muted">加载中…</div>
       <template v-else>
@@ -450,7 +450,7 @@ function fmtDur(sec: number | null): string {
             <span class="muted bg-lb-tip">{{ ASPECT_STRATEGY_OPTIONS.find((o) => o.value === maStrategy)?.hint }}</span>
           </div>
           <div class="bg-row">
-            <button class="btn sm" :class="{ primary: maOn }" :disabled="busy || (!maOn && !maPersisted)" @click="saveMultiAspect">
+            <button class="btn sm ma-save-btn" :class="{ primary: maOn }" :disabled="busy || (!maOn && !maPersisted)" @click="saveMultiAspect">
               <Icon name="check" :size="12" /> {{ maOn ? '保存多画幅' : '清除多画幅配置' }}
             </button>
             <span class="muted bg-lb-tip">
@@ -506,6 +506,11 @@ function fmtDur(sec: number | null): string {
   margin-left: 8px;
   font-weight: 400;
   font-size: 11.5px;
+}
+
+.ma-save-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .bg-cur {

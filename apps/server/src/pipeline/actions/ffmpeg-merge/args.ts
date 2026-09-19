@@ -38,6 +38,8 @@ export interface ComposeArgsInput {
   /** 成片总长（秒；正片 Σd，未含片头尾） */
   total: number
   srtAbs: string | null
+  /** [M32] 每路字幕文件（[0]=主，[k+1]=派生路 k）；缺省/越界 → 回落 srtAbs。多画幅各路 PlayRes 不同，需各自 ASS。 */
+  subtitlePaths?: string[]
   style: string
   bgmPath: string | null
   bgmVolume: number
@@ -97,6 +99,9 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const maTargets = input.multiAspect?.targets ?? []
   const maStrategy = input.multiAspect?.strategy ?? 'crop'
   const maSubCfg = input.multiAspect?.subtitleCfg ?? null
+  // [M32] 每路字幕文件：[0]=主，[k+1]=派生路 k；缺省/越界回落 srtAbs（多画幅各路 PlayRes 不同，需各自 ASS）
+  const subtitlePaths = input.subtitlePaths ?? []
+  const subPathFor = (idx: number): string => subtitlePaths[idx] ?? srtAbs!
   const introDur = intro ? round3(intro.durSec) : 0
   const outroDur = outro ? round3(outro.durSec) : 0
   const totalAll = round3(total + introDur + outroDur)
@@ -248,7 +253,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const subOut: string | null = srtAbs ? (watermark ? 'subv' : 'outv') : null
   if (srtAbs) {
     fcParts.push(
-      `[${mainBase}]subtitles='${basename(srtAbs)}':force_style='${style}'[${subOut}]`,
+      `[${mainBase}]subtitles='${basename(subPathFor(0))}':force_style='${style}'[${subOut}]`,
     )
   }
   // [M19] 水印 overlay（最顶层；字幕烧录之后）
@@ -268,7 +273,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     prev = `dv${k}`
     if (srtAbs) {
       const st = maSubCfg ? buildSubtitleStyle(h, maSubCfg).replace(/['"]/g, '') : style
-      fcParts.push(`[${prev}]subtitles='${basename(srtAbs)}':force_style='${st}'[dsub${k}]`)
+      fcParts.push(`[${prev}]subtitles='${basename(subPathFor(k + 1))}':force_style='${st}'[dsub${k}]`)
       prev = `dsub${k}`
     }
     if (watermark) {
