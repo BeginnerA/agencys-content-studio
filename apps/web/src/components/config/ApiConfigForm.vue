@@ -8,6 +8,7 @@ import type {
   VendorCredential,
 } from '../../lib/types'
 import VideoCapsEditor from './VideoCapsEditor.vue'
+import PricingSuggest from './PricingSuggest.vue'
 import { configApi } from '../../lib/api'
 
 const props = defineProps<{
@@ -42,23 +43,21 @@ const capsEditor = ref<InstanceType<typeof VideoCapsEditor> | null>(null)
 /** 编辑回显：既有 creationCapabilities（无则 null），作为子组件 initial 传入 */
 const capsInitial = ref<unknown>(null)
 
-/** 实例级定价（按能力类型显示不同单位） */
-const priceInput = ref('')
-const priceOutput = ref('')
-
-/** 当前能力类型对应的定价单位描述 */
-const pricingUnits = computed(() => {
-  const st = props.provider.serviceType
-  if (st === 'llm')
-    return {
-      input: '元/百万 token（输入）',
-      output: '元/百万 token（输出）',
-      dual: true,
-    }
-  if (st === 'image') return { input: '元/张', output: '', dual: false }
-  if (st === 'video') return { input: '元/秒', output: '', dual: false }
-  return { input: '元/千字符', output: '', dual: false } // audio/tts
-})
+/**
+ * [M33] 定价智能带出子组件（PricingSuggest，全通道）：命中平台参考定价表→自动预填（可改），
+ * 未命中→回落手填。编辑回显经 pricingInitial 传入，提交经其 buildPricing 回收。
+ * 「选中即生成」：@suggest 回报参考定价命中 / 默认通道建议（新建且该通道无实例时自动勾 isDefault，用户可取消）。
+ */
+const pricingSuggest = ref<InstanceType<typeof PricingSuggest> | null>(null)
+const pricingInitial = ref<Record<string, number> | null>(null)
+const pricingHit = ref(false)
+const suggestDefault = ref(false)
+const defaultTouched = ref(false)
+function onPricingSuggest(p: { pricingHit: boolean; suggestDefault: boolean }): void {
+  pricingHit.value = p.pricingHit
+  suggestDefault.value = p.suggestDefault
+  if (p.suggestDefault && !props.config && !defaultTouched.value) isDefault.value = true
+}
 
 /** 凭证下拉候选：显示 "厂商名 ****tail" */
 const credentialOptions = computed(() => {
@@ -109,22 +108,12 @@ watch(
       capsInitial.value = null
     }
     extraErr.value = ''
-    // 定价回显
-    const p = c?.pricing ?? {}
-    const st = props.provider.serviceType
-    if (st === 'llm') {
-      priceInput.value = p['tokens_in'] != null ? String(p['tokens_in']) : ''
-      priceOutput.value = p['tokens_out'] != null ? String(p['tokens_out']) : ''
-    } else if (st === 'image') {
-      priceInput.value = p['image'] != null ? String(p['image']) : ''
-      priceOutput.value = ''
-    } else if (st === 'video') {
-      priceInput.value = p['second'] != null ? String(p['second']) : ''
-      priceOutput.value = ''
-    } else {
-      priceInput.value = p['char'] != null ? String(p['char']) : ''
-      priceOutput.value = ''
-    }
+    // 定价回显（[M33] 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
+    pricingInitial.value =
+      c?.pricing && Object.keys(c.pricing).length ? { ...c.pricing } : null
+    pricingHit.value = false
+    suggestDefault.value = false
+    defaultTouched.value = false
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
     if (c) void fetchModels(true)
   },
@@ -164,24 +153,7 @@ async function fetchModels(silent = false) {
   }
 }
 
-/** 组装定价 JSON */
-function buildPricing(): Record<string, number> {
-  const st = props.provider.serviceType
-  const out: Record<string, number> = {}
-  const v1 = parseFloat(priceInput.value)
-  const v2 = parseFloat(priceOutput.value)
-  if (st === 'llm') {
-    if (Number.isFinite(v1) && v1 >= 0) out['tokens_in'] = v1
-    if (Number.isFinite(v2) && v2 >= 0) out['tokens_out'] = v2
-  } else if (st === 'image') {
-    if (Number.isFinite(v1) && v1 >= 0) out['image'] = v1
-  } else if (st === 'video') {
-    if (Number.isFinite(v1) && v1 >= 0) out['second'] = v1
-  } else {
-    if (Number.isFinite(v1) && v1 >= 0) out['char'] = v1
-  }
-  return out
-}
+/** 组装定价 JSON：已由 [M33] PricingSuggest 子组件 buildPricing 负责 */
 
 async function submit() {
   if (!name.value.trim()) {
@@ -229,8 +201,8 @@ async function submit() {
   if (Object.keys(finalExtra).length > 0) body.extra = finalExtra
   else if (props.config?.extra && Object.keys(props.config.extra).length > 0)
     body.extra = {}
-  // 定价
-  const pricing = buildPricing()
+  // 定价（[M33] 由子组件按服务类型组装；留空 → {}，编辑清空原值由下方分支显式传 {}）
+  const pricing = pricingSuggest.value?.buildPricing() ?? {}
   body.pricing = pricing
   busy.value = true
   err.value = ''
@@ -322,26 +294,21 @@ async function submit() {
       >
     </div>
 
-    <!-- 实例级定价 -->
-    <div class="fld">
-      <span>定价（可选，留空则用全局兜底定价）</span>
-      <div class="prow">
-        <input
-          v-model="priceInput"
-          type="number"
-          min="0"
-          step="0.0001"
-          :placeholder="pricingUnits.input"
-        />
-        <input
-          v-if="pricingUnits.dual"
-          v-model="priceOutput"
-          type="number"
-          min="0"
-          step="0.0001"
-          :placeholder="pricingUnits.output"
-        />
-      </div>
+    <!-- [M33] 定价智能带出：命中平台参考定价表自动预填（Tier A），未命中回落手填 -->
+    <PricingSuggest
+      ref="pricingSuggest"
+      :service-type="provider.serviceType"
+      :provider-key="provider.key"
+      :model="model"
+      :initial="pricingInitial"
+      @suggest="onPricingSuggest"
+    />
+
+    <!-- [M33] 选中即生成汇总（视频能力档位另由下方编辑器就地背书提示） -->
+    <div v-if="!config && (pricingHit || suggestDefault)" class="note">
+      「选中即生成」：参考定价
+      {{ pricingHit ? '已按平台真源带出（可修改）' : '暂无（需核实手填）' }}
+      <template v-if="suggestDefault"> · 该通道首个实例，已建议设为默认</template>
     </div>
 
     <!-- [M32] 视频「轻松创作能力」：默认平台自动背书（Tier A），可覆盖为手动声明；逻辑见 VideoCapsEditor -->
@@ -393,7 +360,12 @@ async function submit() {
 
     <div class="opts">
       <label
-        ><input v-model="isDefault" type="checkbox" /> 同类型默认实例</label
+        ><input
+          v-model="isDefault"
+          type="checkbox"
+          @change="defaultTouched = true"
+        />
+        同类型默认实例</label
       >
       <label><input v-model="isActive" type="checkbox" /> 启用</label>
     </div>
@@ -440,17 +412,6 @@ async function submit() {
 
 .mrow .btn {
   flex: none;
-}
-
-.prow {
-  display: flex;
-  gap: 8px;
-  margin-top: 5px;
-}
-
-.prow input {
-  flex: 1;
-  min-width: 0;
 }
 
 .note {

@@ -8,6 +8,7 @@ import type {
   FetchModelsResult,
   VendorCredential,
   VideoCapsResult,
+  ModelSuggestResult,
   VoiceCloneItem,
   VoiceCloneProvider,
 } from '../types'
@@ -29,6 +30,11 @@ export const configApi = {
   videoCaps: (providerKey: string, model: string) =>
     api.get<VideoCapsResult>(
       `/api/v1/api-configs/video-caps?provider_key=${encodeURIComponent(providerKey)}&model=${encodeURIComponent(model)}`,
+    ),
+  /** [M33] 跨通道「选中即生成」Tier A 建议：参考定价 + 视频能力 + 默认通道建议 */
+  modelSuggest: (providerKey: string, serviceType: string, model: string) =>
+    api.get<ModelSuggestResult>(
+      `/api/v1/api-configs/model-suggest?provider_key=${encodeURIComponent(providerKey)}&service_type=${encodeURIComponent(serviceType)}&model=${encodeURIComponent(model)}`,
     ),
 }
 

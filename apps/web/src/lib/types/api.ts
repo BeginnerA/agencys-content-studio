@@ -51,6 +51,31 @@ export interface VideoCapsResult {
   caps?: VideoModelCaps
 }
 
+/**
+ * [M33] 模型参考定价（Tier A，服务端定价真源表解析结果）。
+ * prices 按计价单位索引（元/百万 token、元/张、元/秒、元/千字符），与实例 apiConfigs.pricing 同口径；
+ * source 为供应商公开定价页锚点 + 口径说明，供前端「为何是这个值」提示。
+ */
+export interface ModelPricing {
+  prices: Partial<Record<'tokens_in' | 'tokens_out' | 'image' | 'second' | 'char', number>>
+  source: string
+}
+
+/**
+ * [M33] GET /api-configs/model-suggest 响应：跨通道「选中即生成」Tier A 建议。
+ * supported=是否有任一可自动带出的信息（参考定价 / 视频能力 / 默认通道建议）；
+ * pricing 命中即预填（全通道），caps 仅视频命中（复用 M32），suggestDefault=该类型当前无实例。
+ */
+export interface ModelSuggestResult {
+  supported: boolean
+  serviceType: string
+  providerKey: string
+  model: string
+  pricing?: ModelPricing
+  caps?: VideoModelCaps
+  suggestDefault?: boolean
+}
+
 export interface ApiProvider {
   key: string
   name: string

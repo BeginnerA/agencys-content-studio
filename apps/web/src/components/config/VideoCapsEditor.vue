@@ -187,6 +187,12 @@ function applyCapsPreset(): void {
   }
 }
 
+/** 「改为手动声明」：切手动态并按平台/保守起点预填（命名方法，避免多语句内联表达式解析歧义） */
+function switchToManual(): void {
+  capsMode.value = 'manual'
+  applyCapsPreset()
+}
+
 /** 编辑回显：载入既有 creationCapabilities（有 → 进入手动模式并回填；无 → 复位为默认自动） */
 function loadFromExtra(caps: unknown): void {
   if (caps && typeof caps === 'object' && !Array.isArray(caps)) {
@@ -282,14 +288,7 @@ watch(
         </div>
       </dl>
       <div class="caps-actions">
-        <button
-          type="button"
-          class="btn sm"
-          @click="
-            capsMode = 'manual'
-            applyCapsPreset()
-          "
-        >
+        <button type="button" class="btn sm" @click="switchToManual">
           改为手动声明
         </button>
       </div>

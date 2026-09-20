@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
 import { resolveVideoCaps } from '../adapters/video-capabilities'
+import { resolveModelPricing, type PricingServiceType } from '../adapters/pricing-capabilities'
 import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
 import { probePollinationsVideoEndpoint } from '../adapters/pollinations-video'
 import { probeSiliconflowVideoEndpoint } from '../adapters/siliconflow-video'
@@ -242,6 +243,27 @@ apiRoutes.get('/api-configs/video-caps', h(async (c) => {
   const caps = resolveVideoCaps(providerKey, model)
   if (!caps) return c.json({ supported: false, providerKey, model })
   return c.json({ supported: true, providerKey, model, caps })
+}))
+
+// GET /api-configs/model-suggest?provider_key=&model=&service_type= —— [M33] 选中即生成：跨通道 Tier A 只读建议
+// 命中任一即 supported:true：参考定价（全通道，resolveModelPricing）+ 视频能力档位（复用 M32）+ 默认通道建议（该类型当前无实例）。
+// 三者皆无 → { supported:false }（前端全手填）。只读、零网络、零计费、零写库；不改事后计价口径。
+apiRoutes.get('/api-configs/model-suggest', h(async (c) => {
+  const providerKey = c.req.query('provider_key') ?? ''
+  const model = c.req.query('model') ?? ''
+  const serviceType = c.req.query('service_type') ?? ''
+  if (!providerKey) throw new HttpError(400, 'bad_provider', 'provider_key 必填')
+  if (!SERVICE_TYPES.includes(serviceType)) throw new HttpError(400, 'bad_type', `service_type 需为 ${SERVICE_TYPES.join('|')}`)
+  const pricing = resolveModelPricing(serviceType as PricingServiceType, providerKey, model)
+  const caps = serviceType === 'video' ? resolveVideoCaps(providerKey, model) : null
+  const cnt = await db.select({ n: count() }).from(apiConfigs).where(eq(apiConfigs.serviceType, serviceType))
+  const suggestDefault = (cnt[0]?.n ?? 0) === 0
+  const supported = !!pricing || !!caps || suggestDefault
+  const res: Record<string, unknown> = { supported, serviceType, providerKey, model }
+  if (pricing) res.pricing = pricing
+  if (caps) res.caps = caps
+  if (suggestDefault) res.suggestDefault = true
+  return c.json(res)
 }))
 
 // PUT /api-configs/:id —— 更新（同字段；api_key 传明文则覆盖；credential_id / pricing 可更新）

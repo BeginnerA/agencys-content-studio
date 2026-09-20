@@ -19,6 +19,7 @@
 - 模板 `defaults` 指定的 `provider`（如 `openai_image`）需存在同 providerKey 实例；不符时按报错指引补建实例，或在项目设置中覆盖 provider
 - 提示：视频通道改配置（型号/参数）**立即影响后续任务**（含运行中 run 的待执行任务）——改前请确认型号与项目 `settings.video` 参数兼容
 - 「一句话成片」轻松创作能力（M32·Tier A）：视频模型的时长 / 分辨率 / 生成模式档位以服务端「单一真源表」（`apps/server/src/adapters/video-capabilities.ts`）为准——命中背书（MiniMax / 火山 Seedance / 万相 / Pollinations）时预检自动按表推导、前端自动预填，**无需再逐项勾选「已核实」**（执行前预检卡仍可复核，并可「改为手动声明」覆盖）；未背书（如 SiliconFlow，产出时长未文档化）则回退手填实例 extra 的 `creationCapabilities`。前端经 `GET /api/v1/api-configs/video-caps?provider_key=&model=` 查询背书档位
+- AI 配置「选中即生成」（M33·Tier A）：新建 / 编辑实例选供应商 + 模型后，系统按服务端「定价真源表」（`apps/server/src/adapters/pricing-capabilities.ts`）**自动带出参考定价**（命中→预填、可改、标注来源锚点；未命中→回落手填并提示核实），与 M32 视频能力档位背书 + 「该通道首个实例自动建议设为默认」共同实现「选模型即生成完整实例草稿」。跨通道建议端点：`GET /api/v1/api-configs/model-suggest?provider_key=&service_type=&model=`。纪律：参考定价**仅用于建实例预填**，不注入事后计价（计价仍是 实例 pricing → 全局 `settings.pricing` → 未计价）；表内只登记经供应商公开定价页核实的条目（首批 DeepSeek / 通义 / 万相图像），未核实一律回落手填、绝不塞通用默认价
 - 语音通道可声明情绪透传：实例 extra 设 `emotion_param`（如 `emotion`）+ `emotion_map`（基调词 → 供应商值）后，tts 按台词 `emotion_hint` 自动透传该参数；未声明则仅记录 `asset.params.emotion_key` 不透传
 
 ## 记忆与模型

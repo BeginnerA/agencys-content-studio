@@ -420,18 +420,34 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M33–M37 立项 · **未实施**）
+## M33 能力速览（AI 配置智能化：定价 Tier A 自动带出 + 选中即生成完整实例）
 
-> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）**已交付**，见上方「M32 能力速览」。
+把 M32 的「能力真源表 + Tier A 自动背书」范式从视频档位扩展到**定价**，并新增跨通道的**「选中即生成」**：建实例时选供应商 + 模型 → 系统按真源自动带出「参考定价 + 视频能力 + 默认通道建议」，一次生成完整实例草稿，收敛 G4（定价手填、未命中不带出）与 G5（model 手动复制、无选中即生成）。核心纪律延续 M32：**仅登记经供应商公开定价页核实的参考价、逐条附来源锚点、不按模型名猜测、未命中 fail-closed 回落手填**；且定价真源表**仅用于建实例预填，绝不注入 `resolveUnitPrice` 事后计价链**（零漂移，成本可见不低估）。
+
+- **定价单一真源表（pricing-registry）**：新增 `apps/server/src/adapters/pricing-capabilities.ts`——`resolveModelPricing(serviceType, providerKey, model)` 逐条背书首批 7 条官方核实价：DeepSeek flash 2/8、v4-pro 9/27（元/百万 token，高峰·缓存未命中全价，谷时/命中更低已在 source 注明）；阿里云通义 qwen3.8-max 12/36、qwen3.7-plus 2/8、qwen3.8-flash 0.8/2.7（基础档标准价，Batch/缓存折扣另计）；万相文生图 wan2.7-image 0.2、wan2.7-image-pro 0.5（元/张）。`UNITS_BY_SERVICE` 单位守卫：行内计价单位与能力类型不符 → 视为未核实不背书；未知 provider / 无依据 model / 空 model / 大小写·空格归一后仍未登记 → `null`（回落手填）。MiniMax / 火山 / Pollinations / SiliconFlow / OpenAI / Google 及视频秒价、音频因非 CNY 公开牌价或分辨率分档未取净 → 一律留空不猜。
+- **跨通道只读建议端点（model-suggest）**：`GET /api/v1/api-configs/model-suggest?provider_key=&service_type=&model=`——泛化 M32 `video-caps`，一次返回 `{supported, pricing?, caps?, suggestDefault?}`：`pricing` 命中定价真源表、`caps`（仅 video）复用 M32 `resolveVideoCaps`、`suggestDefault`（该 serviceType 当前无实例 → 建议设为默认通道）。非法 service_type → 400。M32 `video-caps` 端点保留（向后兼容）。
+- **前端抽组件 + 选中即生成（creator-ui）**：抽出 `PricingSuggest.vue`（全通道定价区，三态 auto✓来源 / stored 回显 / manual 手填），`ApiConfigForm.vue` 移除内联定价逻辑改由子组件托管；经 api 客户端 `configApi.modelSuggest` 拉取（遵裸 fetch 红线）；命中即 Tier A 自动预填定价、展示「选中即生成」汇总、`suggestDefault` 时新建态自动勾「默认通道」（用户可取消，`defaultTouched` 防覆盖）；编辑态 stored 优先不覆盖存量；未命中回落手填不塞默认价。
+- **M32 遗留 build 修复**：`VideoCapsEditor.vue` 多语句内联 `@click` 致 `vite:vue` 编译失败（vue-tsc 不查、M32 遗漏 build 门禁），抽为命名方法 `switchToManual()`，`pnpm --filter @acs/web build` 转绿。
+
+数据与兼容：新表 0 / 新列 0（定价仍存 `apiConfigs.pricing` JSON，与真源表同基数口径）；`resolveUnitPrice` 事后计价链零触碰（真源表不进回退链，probe cost-drift 断言）；M32 `video-caps` 端点保留。文件行数：`ApiConfigForm.vue` 441、`PricingSuggest.vue` 207、`pricing-capabilities.ts` 73、`probe-m33.ts` 123，均 ≤800。
+
+端点：`GET /api/v1/api-configs/model-suggest`（新增）；`GET /api/v1/api-configs/video-caps`（M32 保留）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m33.ts`（三节全绿，零网络零计费：registry〔7 条逐值命中 + 大小写/空格归一 + openai/未知 provider/单位守卫/空 model/视频未登记 → `null` fail-closed〕/ endpoint〔pricing 命中 + suggestDefault、播实例后 suggestDefault 消失、video 命中 caps 无 pricing、未背书+有实例 → `supported:false`、非法 service_type → 400〕/ cost-drift〔表命中但无实例/全局定价 → `resolveUnitPrice:null`、实例定价生效零漂移，证真源表不注入事后计价〕）；`probe-m33` 经 `run-probes.ts` 自动发现纳入 `probe:ci`；**M30（50）/ M31（33）/ M32（21）零回归全绿**；双端 `tsc --noEmit` / `vue-tsc --noEmit` + `pnpm --filter @acs/web build` 全绿。
+
+---
+
+## 路线图（M34–M37 立项 · **未实施**）
+
+> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A 自动带出 + 选中即生成）**已交付**，见上方对应「能力速览」。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
 | 里程碑 | 主题 | 核心缺口 | 状态 |
 |---|---|---|---|
-| **M33** | AI 配置智能化 | 新实例定价手填未命中不带出、model 手动复制、无「选中即生成完整实例」 | 立项 · 未实施 |
 | **M34** | 模板与运行入参自动化 | 模板不参考 brief/历史 run 预填、自然语言无模板推荐、RunParams 覆盖项空白手填 | 立项 · 未实施 |
 | **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议 | 立项 · 未实施 |
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | 立项 · 未实施 |
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
