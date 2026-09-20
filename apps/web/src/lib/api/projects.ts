@@ -4,10 +4,12 @@ import type {
   Batch,
   BatchDetail,
   Episode,
+  NextStep,
   Project,
   ProjectDetail,
   PromptItem,
   PrefillResult,
+  RecommendResult,
   Run,
   SeriesInfo,
   TemplateDetail,
@@ -65,6 +67,9 @@ export const projectApi = {
     api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, {
       status: 'active',
     }),
+  /** [M35 G11] 下一步建议（规则引擎，零 LLM、零计费，≤ 3 条） */
+  nextSteps: (id: number) =>
+    api.get<{ items: NextStep[] }>(`/api/v1/projects/${id}/next-steps`),
 }
 
 export const templateApi = {
@@ -77,6 +82,11 @@ export const templateApi = {
   prefill: (projectId: number, key: string) =>
     api.get<PrefillResult>(
       `/api/v1/templates/${encodeURIComponent(key)}/prefill?project_id=${projectId}`,
+    ),
+  /** [M35 G7] 自然语言→模板推荐（embedding 零成本，失败回落关键词；只读、零计费） */
+  recommend: (text: string, top = 3) =>
+    api.get<RecommendResult>(
+      `/api/v1/templates/recommend?text=${encodeURIComponent(text)}&top=${top}`,
     ),
   /** 纯校验不落盘（编辑器防抖调用） */
   validate: (yaml: string, key?: string) =>

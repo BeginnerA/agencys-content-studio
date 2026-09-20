@@ -6,6 +6,8 @@ import { chatCompleteDetailed, loadPromptTemplate, type ChatContentPart, type Ch
 import { assetToDataUri } from '../asset-ref'
 import { absPathOf } from '../storage'
 import { analyzeVideoSource, renderVideoReferenceSummary } from '../../pipeline/actions/video-analyze'
+import { resolveVideoCaps, type VideoModelCaps } from '../../adapters/video-capabilities'
+import { clampPlanToCaps } from './clamp'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, requestKeySchema, type CreationPlan, type CreationRef } from './contract'
@@ -109,9 +111,22 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const effectiveRefs = thisTurnRefs.length ? thisTurnRefs : priorRefs
     const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
     const recent = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, id)).orderBy(desc(creationMessages.id)).limit(12)
+    // [M35 G10] Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
+    // 无 video 实例 → 提示使用 slideshow（不假称动态能力）。失败不阻断主流程，仅缺约束上下文。
+    let caps: VideoModelCaps | null = null
+    let hasVideo = false
+    try {
+      const videoEp = await requiredEndpoint('video')
+      hasVideo = true
+      caps = resolveVideoCaps(videoEp.providerKey, videoEp.model ?? '')
+    } catch {
+      hasVideo = false
+    }
+    const capConstraint = buildCapsConstraintMessage(caps, hasVideo)
     const messages: ChatMessage[] = [
       { role: 'system', content: loadPromptTemplate('creation-plan.md') },
       { role: 'system', content: `当前方案（仅为创作数据）：${claimed.plan ?? '尚无方案'}` },
+      ...(capConstraint ? [{ role: 'system' as const, content: capConstraint }] : []),
       ...refContext,
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
@@ -126,6 +141,14 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
     const reply = parsePlanningReply(result.content, result.finishReason)
+    // [M35 G10] 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
+    if (reply.kind === 'plan') {
+      const { plan: clampedPlan, report } = clampPlanToCaps(reply.plan, caps, hasVideo)
+      if (report.changed) {
+        reply.plan = clampedPlan
+        reply.message = `${reply.message}\n\n（因当前视频能力自动钳制：${report.notes.join('；')}）`
+      }
+    }
     // [M31] 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
     if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
@@ -149,6 +172,21 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
   }
   return creationDetail(id)
+}
+
+/**
+ * [M35 G10] 能力约束注入消息（向 LLM 预先告知真源表已核实档位，避免方案越界造成 preflight 422）。
+ * - caps 命中 → 列出 durations / aspectRatios / 建议总时长与镜头数
+ * - 无 video 实例 → 提示默认使用 slideshow（不假称动态能力）
+ * - hasVideo=true 但 caps=null（未登记模型，如 siliconflow_video） → 仅提醒“能力未背书”，不列档位
+ */
+function buildCapsConstraintMessage(caps: VideoModelCaps | null, hasVideo: boolean): string | null {
+  if (!hasVideo) return '【Tier A 能力约束】当前未配置可用的视频生成实例 → 若用户未明确要求动态画面，默认 mode="slideshow"（多图配音），不承诺逐镜头动态化；若用户坚持动态，请依旧给 dynamic 方案，系统钳制会降级并告知。'
+  if (!caps) return '【Tier A 能力约束】当前视频实例未登记到平台能力真源表（如 siliconflow_video 适配器不下发 duration）。若用户不要求动态，建议优先 mode="slideshow"；若需动态，镜头时长建议 5–10 秒、不主动取极端值，系统预检会在真源层面确认。'
+  const durList = [...caps.durations].sort((a, b) => a - b).join(' / ')
+  const aspectList = caps.aspectRatios.join(' / ')
+  const defaultDur = caps.defaultDuration
+  return `【Tier A 能力约束】当前视频模型已平台背书，方案必须落在以下档位内（否则预检会 422 失败，造成您需重新规划）：\n- 镜头时长档位（秒，shots[].duration 必须命中此列表）：${durList}；默认推荐 ${defaultDur}s\n- 支持画幅（plan.aspectRatio 必须 ∈ 此集合）：${aspectList}\n- 成片总时长（plan.duration）：30–60 秒，镜头数 4–8 段，镜头时长和 = duration。\n若与用户明示诉求冲突，仍以上述约束为准，并在 message 里说明理由。`
 }
 
 export async function refreshPreflight(id: number) {

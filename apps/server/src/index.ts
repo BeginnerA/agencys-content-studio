@@ -17,6 +17,7 @@ import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
 import { onStudioEvent } from './services/events'
 import { notifyCreationSettled, reconcileCreationSessions } from './services/creation-chat/store'
+import { refreshTemplateVectors } from './services/template-recommend'
 
 const log = createLogger('main')
 
@@ -108,6 +109,9 @@ async function main(): Promise<void> {
 
   // [M20] 启动排产调度器（60s 轮询 + 幂等触发）
   startScheduler()
+
+  // [M35 G7] 自然语言→模板推荐 embedding 预计算（首次加载 2–3 秒，fire-and-forget；失败已内部兑底为关键词回落）
+  void refreshTemplateVectors().catch((err) => log.warn('template recommend embedding 预计算失败（回落 keyword）', err))
 
   // [M22·6] 回收站保留期自动清理：启动执行一次 + 6h 周期（unref 防挂起；autoPurge=false 由服务内跳过）
   void purgeExpiredCanvases().catch((err) => log.error('trash sweep failed', err))

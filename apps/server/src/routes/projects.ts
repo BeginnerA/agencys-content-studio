@@ -26,6 +26,8 @@ import {
 import { RUN_LOGS_DIR } from '../env'
 import { createLogger } from '../logger'
 import { loadTemplate } from '../pipeline/loader'
+import { validateProjectSettings } from '../services/project-settings'
+import { resolveNextSteps } from '../services/next-steps'
 import { projectAbsDir } from '../services/storage'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -95,6 +97,11 @@ projectsRoutes.post('/projects', h(async (c) => {
     throw new HttpError(400, 'bad_template', `模板不可用：${(err as Error).message}`)
   }
   const genre = typeof body['genre'] === 'string' ? body['genre'] : 'drama_short'
+  // [M35 G9] settings 写时闸门（已登记字段白名单校验，未登记字段放行）
+  if (body['settings'] !== undefined && body['settings'] !== null) {
+    const errs = validateProjectSettings(body['settings'])
+    if (errs.length > 0) throw new HttpError(400, 'bad_settings', errs.join('；'))
+  }
   const settings = body['settings'] && typeof body['settings'] === 'object' ? JSON.stringify(body['settings']) : '{}'
   const tags = Array.isArray(body['tags']) ? JSON.stringify(body['tags'].filter((t: unknown) => typeof t === 'string')) : '[]'
   const t = Date.now()
@@ -173,12 +180,24 @@ projectsRoutes.patch('/projects/:id', h(async (c) => {
     try { loadTemplate(body['template_key']) } catch (err) { throw new HttpError(400, 'bad_template', `模板不可用：${(err as Error).message}`) }
     patch['templateKey'] = body['template_key']
   }
-  if (body['settings'] !== undefined && typeof body['settings'] === 'object') patch['settings'] = JSON.stringify(body['settings'])
+  if (body['settings'] !== undefined && typeof body['settings'] === 'object') {
+    // [M35 G9] settings 写时闸门（与 POST 同口径，已登记字段白名单 + 未登记字段放行）
+    const errs = validateProjectSettings(body['settings'])
+    if (errs.length > 0) throw new HttpError(400, 'bad_settings', errs.join('；'))
+    patch['settings'] = JSON.stringify(body['settings'])
+  }
   if (body['tags'] !== undefined && Array.isArray(body['tags'])) patch['tags'] = JSON.stringify(body['tags'])
   if (body['cover_asset_id'] !== undefined) patch['coverAssetId'] = body['cover_asset_id'] === null ? null : Number(body['cover_asset_id'])
   const rows = await db.update(projects).set(patch).where(and(eq(projects.id, id), isNull(projects.deletedAt))).returning()
   if (!rows[0]) return notFound(c, `项目 ${id}`)
   return c.json({ project: rows[0] })
+}))
+
+// [M35 G11] GET /projects/:id/next-steps —— 规则引擎下一步建议（零 LLM、零计费，纯提示不自动执行）
+projectsRoutes.get('/projects/:id/next-steps', h(async (c) => {
+  const id = idParam(c)
+  const items = await resolveNextSteps(id)
+  return c.json({ items })
 }))
 
 // DELETE /projects/:id —— 默认归档（逻辑删 status=archived，可恢复）；?purge=1 彻底删除（事务清库 + 删除磁盘文件，不可恢复）

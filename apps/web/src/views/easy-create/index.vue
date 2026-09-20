@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
-import { memoryApi } from '../../lib/api'
+import { memoryApi, templateApi } from '../../lib/api'
+import type { RecommendItem } from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -99,6 +100,27 @@ async function go(): Promise<void> {
   if (id) void router.push(`/create/${id}`)
 }
 
+// [M35 G7] idea debounce → 模板推荐提示（仅展示，不预选、不路由）
+const ideaRec = ref<RecommendItem | null>(null)
+let ideaRecTimer: ReturnType<typeof setTimeout> | null = null
+async function fireIdeaRecommend(text: string): Promise<void> {
+  const t = text.trim()
+  if (!t || t.length < 6) {
+    ideaRec.value = null
+    return
+  }
+  try {
+    const r = await templateApi.recommend(t, 1)
+    ideaRec.value = r.items[0] ?? null
+  } catch {
+    ideaRec.value = null
+  }
+}
+function onIdeaInput(): void {
+  if (ideaRecTimer) clearTimeout(ideaRecTimer)
+  ideaRecTimer = setTimeout(() => void fireIdeaRecommend(idea.value), 800)
+}
+
 // 状态 → 卡片左侧强调条 + 徽标色（走共享 creationStatusTone；started 控制态按 run 真实状态派生已完成/失败/取消）
 </script>
 
@@ -133,6 +155,7 @@ async function go(): Promise<void> {
           :maxlength="6000"
           :disabled="s.state.busySend"
           placeholder="例如：做一条 30 秒的咖啡科普短视频，轻松一点。"
+          @input="onIdeaInput"
           @keydown.enter.exact.prevent="go"
         />
         <span class="count mono">{{ idea.length }} / 6000</span>
@@ -167,6 +190,15 @@ async function go(): Promise<void> {
       </div>
 
       <div v-if="s.state.error" class="err-text">{{ s.state.error }}</div>
+
+      <!-- [M35 G7] 创意→模板推荐提示（零成本 embedding，仅展示不预选不自动路由） -->
+      <div v-if="ideaRec" class="idea-rec" role="status">
+        <Icon name="sparkles" :size="13" />
+        <span>
+          此创意接近模板「<b>{{ ideaRec.name }}</b>」（score
+          {{ ideaRec.score.toFixed(2) }}）——发送后助手会基于该模板风格推进规划。
+        </span>
+      </div>
 
       <div class="pfoot">
         <span class="muted hint"
@@ -425,6 +457,29 @@ async function go(): Promise<void> {
   gap: 16px;
   flex-wrap: wrap;
   margin-top: 2px;
+}
+
+/* [M35 G7] 创意→模板推荐提示条 */
+.idea-rec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1px dashed rgb(99 102 241 / 35%);
+  border-radius: 10px;
+  background: rgb(99 102 241 / 6%);
+  color: var(--text-2);
+}
+.idea-rec .ic {
+  color: var(--accent-h, #6366f1);
+  flex: none;
+}
+.idea-rec b {
+  color: var(--text);
+  font-weight: 600;
 }
 .hint {
   display: inline-flex;

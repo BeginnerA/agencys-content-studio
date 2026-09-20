@@ -14,6 +14,7 @@ import {
 } from '../../lib/api'
 import type {
   ProjectDetail,
+  RecommendItem,
   StylePresetItem,
   TemplateMeta,
 } from '../../lib/types'
@@ -44,6 +45,37 @@ const tplTouched = ref(false)
 /** [M13] 视觉风格多选绑定：勾选 id 数组（叠加顺序 = 数组顺序）；预设列表含停用项（绑定残留友好显示） */
 const presets = ref<StylePresetItem[]>([])
 const stylePresetIds = ref<number[]>([])
+
+/** [M35 G7] brief → 自然语言推荐模板（embedding 零成本、失败回落关键词）；仅新建成交展示，编辑不干预既有选择 */
+const recommends = ref<RecommendItem[]>([])
+const recommendReady = ref(false)
+let recTimer: ReturnType<typeof setTimeout> | null = null
+async function fireRecommend(text: string): Promise<void> {
+  const t = text.trim()
+  if (!t || t.length < 4) {
+    recommends.value = []
+    recommendReady.value = false
+    return
+  }
+  try {
+    const r = await templateApi.recommend(t, 3)
+    recommends.value = r.items
+    recommendReady.value = r.ready
+  } catch {
+    // 静默：推荐为增量能力，失败不影响表单填写
+    recommends.value = []
+    recommendReady.value = false
+  }
+}
+function onBriefInput(): void {
+  if (isEdit.value) return
+  if (recTimer) clearTimeout(recTimer)
+  recTimer = setTimeout(() => void fireRecommend(brief.value), 500)
+}
+function applyRecommend(key: string): void {
+  tplKey.value = key
+  tplTouched.value = true
+}
 
 /** 体裁下拉选项：绑定值为字典外存量值时追加临时项（避免静默改写） */
 const genreOptions = computed(() => {
@@ -204,6 +236,24 @@ async function submit() {
         </optgroup>
       </select>
     </label>
+    <!-- [M35 G7] brief 推荐命中（前 3）：点击徽标预设 tplKey；不自动改选，避免静默覆盖 -->
+    <div v-if="recommends.length && !isEdit" class="rec-bar">
+      <span class="rec-lead muted">
+        ✦ 根据简介推荐
+        <span v-if="!recommendReady" class="rec-tag">关键词回落</span>
+      </span>
+      <button
+        v-for="r in recommends"
+        :key="r.key"
+        class="rec-chip"
+        type="button"
+        :class="{ on: tplKey === r.key }"
+        :title="`score ${r.score.toFixed(2)}・点击预设`"
+        @click="applyRecommend(r.key)"
+      >
+        {{ r.name }}
+      </button>
+    </div>
     <div v-if="isEdit" class="fldbox">
       视觉风格（可多选；分镜图/首帧图/参考图按勾选顺序拼接注入画风词块）
       <div class="preset-box">
@@ -239,6 +289,7 @@ async function submit() {
         v-model="brief"
         rows="2"
         placeholder="一句话说明本项目定位（将作为创作上下文）"
+        @input="onBriefInput"
       />
     </label>
     <div v-if="err" class="err-text">{{ err }}</div>
@@ -294,5 +345,50 @@ async function submit() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* [M35 G7] brief 推荐 chips */
+.rec-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 12px;
+  font-size: 12px;
+}
+.rec-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+}
+.rec-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--warn-weak, rgb(245 158 11 / 12%));
+  color: var(--warn, #b45309);
+  font-size: 10.5px;
+}
+.rec-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.rec-chip:hover {
+  border-color: rgb(99 102 241 / 45%);
+}
+.rec-chip.on {
+  border-color: var(--brand, #6366f1);
+  background: rgb(99 102 241 / 12%);
+  font-weight: 600;
 }
 </style>

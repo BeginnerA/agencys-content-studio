@@ -20,6 +20,7 @@ import {
 } from '../pipeline/template-edit'
 import type { Template } from '../pipeline/types'
 import { PrefillError, resolveRunPrefill } from '../services/run-prefill'
+import { recommendTemplates, refreshTemplateVectors } from '../services/template-recommend'
 import { HttpError, h } from './helpers'
 
 export const templatesRoutes = new Hono()
@@ -28,6 +29,16 @@ export const templatesRoutes = new Hono()
 templatesRoutes.get('/templates', (c) => {
   return c.json({ items: listTemplates() })
 })
+
+// [M35 G7] GET /templates/recommend?text=&top=3 —— 自然语言→模板推荐（embedding 零成本，失败回落关键词）
+// 预于 /templates/:key 注册，同方法下 Hono 静态优先，不依赖路由树实现细节。
+templatesRoutes.get('/templates/recommend', h(async (c) => {
+  const text = c.req.query('text') ?? ''
+  if (!text.trim()) throw new HttpError(400, 'bad_text', 'text 需为非空字符串')
+  const topRaw = Number(c.req.query('top'))
+  const top = Number.isInteger(topRaw) && topRaw >= 1 && topRaw <= 10 ? topRaw : 3
+  return c.json(await recommendTemplates(text, top))
+}))
 
 // GET /templates/:key —— 完整模板 + 原文 YAML（编辑器消费）
 templatesRoutes.get('/templates/:key', h((c) => {
@@ -87,6 +98,8 @@ templatesRoutes.post('/templates', h(async (c) => {
   const res = validateTemplateText(yaml, key)
   if (!res.ok || !res.template) throw new HttpError(400, 'template_invalid', res.errors.join('；'))
   const template = saveTemplate(key, yaml)
+  // [M35 G7] 模板新建 → fire-and-forget refresh embedding 向量（不阻塞响应；失败已内部兑底）
+  void refreshTemplateVectors()
   return c.json({ ok: true, template, warnings: res.warnings }, 201)
 }))
 
@@ -102,6 +115,8 @@ templatesRoutes.put('/templates/:key', h(async (c) => {
   const res = validateTemplateText(yaml, key)
   if (!res.ok || !res.template) throw new HttpError(400, 'template_invalid', res.errors.join('；'))
   const template = saveTemplate(key, yaml)
+  // [M35 G7] 模板更新 → fire-and-forget refresh embedding 向量
+  void refreshTemplateVectors()
   return c.json({ ok: true, template, warnings: res.warnings })
 }))
 
@@ -126,6 +141,8 @@ templatesRoutes.delete('/templates/:key', h(async (c) => {
     )
   }
   deleteTemplate(key)
+  // [M35 G7] 模板删除 → fire-and-forget refresh embedding 向量
+  void refreshTemplateVectors()
   return c.json({ ok: true })
 }))
 

@@ -5,6 +5,7 @@ import PublishModal from '../../components/run/PublishModal.vue'
 import BatchFormModal from '../../components/project/BatchFormModal.vue'
 import ProjectFormModal from '../../components/project/ProjectFormModal.vue'
 import ProjectDangerModal from '../../components/project/ProjectDangerModal.vue'
+import NextStepsBar from '../../components/project/NextStepsBar.vue'
 import { fmtQty } from '../../lib/format'
 import { useProjectDetailPage } from './use-project-detail'
 import RunsPanel from './RunsPanel.vue'
@@ -155,6 +156,9 @@ const {
           </span>
         </button>
       </div>
+
+      <!-- [M35 G11] 下一步建议（服务端规则引擎，≤3 条；run 终态自动重拉） -->
+      <NextStepsBar :project-id="projectId" />
 
       <!-- 页内 Tab（?tab= 深链接） -->
       <div class="tabs" role="tablist" aria-label="项目分区">

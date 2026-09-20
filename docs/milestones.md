@@ -454,16 +454,33 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M35–M37 立项 · **未实施**）
+## M35 能力速览（创作流程自动化 · G9 settings 闸门 + G10 clamp + G11 下一步建议 + G7 模板推荐 · 零成本）
 
-> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）**已交付**，见上方对应「能力速览」。**M34 的 G7（自然语言→模板推荐）用户拍板暂缓**（取零成本规则/embedding 路线，不引入 LLM 成本），并入下方 M35 评估。
+把 M32/M33/M34 的「真源表 + Tier A 自动推导」范式从**单点预填**扩展到**写时与方案后处理的全链路径**：收敛 G9（项目 `settings.video` 可填越界值，运行时才炸）、G10（轻松创作 `plan.mode/aspectRatio/duration` 不感知当前视频实例能力→ `preflightPlan` 抛错被迫重规划）、G11（`Template.next` 元数据存在但从未消费，项目主页看不到「下一步」）、**G7**（M34 遗留 · 自然语言→模板推荐，embedding 零成本路线）。核心纪律：**全程零 LLM 计费 / 零新表新列 / 不改既有契约**——G9 写时闸门与 run-params RULES 同白名单（**未登记字段一律放行**避免破坏既有项目）；G10 clamp 只调数值/枚举、不动文本，**每次钳制记入 notes 明写到 assistant message**（不静默降级）；G11 规则引擎≤ 3 条提示、**不自动执行**（用户点击才路由）；G7 embedding 本地预计算失败回落关键词，不猜不静默。
+
+- **G9 写时闸门（project-settings service）**：新增 `apps/server/src/services/project-settings.ts`——`validateProjectSettings(raw)` 对齐 run-params 已登记 4 组白名单（video/image/audio/llm）逐一校验，**未登记字段一律放行**（fps/duration_per_shot/subtitle_style/aspect_ratio 等）；兼容 `video.resolution` 双格式（`480p/720p/1080p` **或** `1080x1920` 类 WxH）——ai-video（输入域枚举）与 ffmpeg-merge（输出域像素）历史命名冲突、不同语义同字段 → 两格式都合法，避免破坏现网。接线：`POST /projects` / `PATCH /projects/:id` 入口处 `settings` 非空时先 validate，errs>0 → 400 `bad_settings`（Tier A 不取消校验，把「核实」主体从用户转移到服务端闸门）。
+- **G7 自然语言→模板推荐（template-recommend service）**：新增 `apps/server/src/services/template-recommend.ts`——**启动时预计算 + 内存 Map**（用户拍板零磁盘持久化、重启重算 2–3 秒可接受）：`refreshTemplateVectors()` 对 15 套模板 embed(`name。description。体裁：genre。场景：scene`) 得 normalize 向量存 `Map<key, TemplateVector>`（inflight 互斥）；`recommendTemplates(text, top=3)` embedding 优先 cosine 排序，失败/未 ready → 回落 15 套 KEYWORDS 手工表（密度分 hits/words.length）；返回 `{items, source: 'embedding'|'keyword'|'empty', ready, error?}`。接线：`GET /api/v1/templates/recommend?text=&top=`（**预于 `/templates/:key` 注册避免路由歧义**）；`index.ts` 启动 `void refreshTemplateVectors()` fire-and-forget；`saveTemplate`/``deleteTemplate``` 后按需刷新（同样不阻塞响应）。**前端接线**：`ProjectFormModal.vue` brief 输入 debounce 500ms → `templateApi.recommend(brief, 3)` → 命中展示「✦ 根据简介推荐」前 3 chip（点击预设 tplKey + tplTouched；不自动改选避免静默覆盖）；`easy-create/index.vue` idea debounce 800ms → `recommend(idea, 1)` → 命中下方「💡 此创意接近『{name}』」提示（不预选不路由）。
+- **G10 方案后置钳制（clamp）**：新增 `apps/server/src/services/creation-chat/clamp.ts`——`clampPlanToCaps(plan, caps, hasVideo)` 三规则：① `hasVideo=false + mode=dynamic` → 强制 slideshow（无视频实例不背动态）；② `caps` 命中时 shots[].duration 不在 durations → `snapToCapsDuration` 就近上取（同默认：都小于目标取最大）；③ 钳后重算 `plan.duration = shots 和`（保持 `contract.ts` superRefine 不变式，钳到 30–60）；④ `aspectRatio` 不在 caps 集 → 回落 `caps.aspectRatios[0]`。`ClampReport { shotDurations[], aspectRatio?, mode?, notes[], changed }`；notes 追写到 assistant message 尾部「因当前视频能力自动钳制：…」。**不静默降级**：只调数值/枚举不动文本，钳后仍走原 `preflightPlan`（有病态依旧抛）。接线：`sendCreationMessage` 中探测 `requiredEndpoint('video')` + `resolveVideoCaps` → `buildCapsConstraintMessage` 追写为 system 消息（不新增计费，同一次 LLM 调用内）；LLM 后 `clampPlanToCaps` 钳制 + 追写 notes。
+- **G11 规则引擎下一步建议（next-steps service）**：新增 `apps/server/src/services/next-steps.ts`——`resolveNextSteps(projectId)` 读 projects/pipelineRuns/publications + listTemplates/loadTemplate，5 条规则优先级：**无 run** → 「开始制作」（route `run-new?tpl=`）；**in-flight**（queued/running/waiting_input）→ 「进行中 · #id · 模板名」`auto:true`（不行动）；**latestDone + tpl.next 非空** → 「下一步：{next[0].name}」；**latestDone + 无 pub** → 「发布本集」；**latestDone + hasPub + 无 next** → 「进入专业工作台精修」route `canvas`；**≤ 3 条**（slice(0,3)）。`GET /api/v1/projects/:id/next-steps` → `{items: NextStep[]}`。前端：`NextStepsBar.vue` 自拉 + socket `run.completed/failed` 重拉，接 `use-project-detail.ts` 同一机制；项目详情页 `stat-strip` 下方挂载；**不自动执行**（点击才 router.push）。
+
+数据与兼容：新表 0 / 新列 0 / 新价 0；`settings` JSON 列内容不变（仅写入前闸门）；`creationPlan` 契约（`contract.ts` superRefine）不变（仅预钳制令其少失败）；`canvasAdvice`（LLM）保留手动入口不拆。**不猜测**：G10 caps=null（未登记模型）不钳制，交 preflight fail-closed；G9 未登记字段一律放行；G11 项目不存在 → `[]` 不抛；G7 无关文本 → `source=empty`。端点：**3 新**（GET /templates/recommend + GET /projects/:id/next-steps + [既有端点不变]）；**既有端点零改**（POST/PATCH /projects 仅入口新加闸门，合法请求行为完全一致）。文件行数：`project-settings.ts` 135 / `template-recommend.ts` 171 / `clamp.ts` 106 / `next-steps.ts` 162 / `NextStepsBar.vue` 154 / `probe-m35.ts` 424，均 ≤800。
+
+端点：`GET /api/v1/templates/recommend`（新增）；`GET /api/v1/projects/:id/next-steps`（新增）；`POST /projects` / `PATCH /projects/:id`（**入口新加 settings 闸门**，既有行为兼容）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m35.ts`（五节 **44 项断言**全绿，零网络零计费：g9-settings〔11：resolution 双格式 + 未登记字段放行 + provider/image.size 类型守 + 非对象拦截 + POST/PATCH 400 同口径〕/ g7-recommend〔10：关键词命中 embedding-或-keyword 均可 + 无关→empty + 空白→400 + top 越界回落 + 路由歧义：:key 不被 recommend 抢占〕/ g10-clamp〔15：dynamic→slideshow + duration 就近上取 + 总时长重算不变式 + aspectRatio 回落 + caps=null 不钳制 + 二次幂等 + 原对象就地不变〕/ g11-next-steps〔13：5 条规则 × 3 态× ≤ 3 约束 + in-flight 优先 + route 契约 + 项目不存在 fail-open + GET 200〕/ guards〔3：200 + 项目不存在 → 200 items=[] + 非法 id 400/404〕）；**M30（50）/ M31（33）/ M32（21）/ M33 / M34 零回归全绿**；双端 `tsc --noEmit` / `vue-tsc --noEmit` + `pnpm --filter @acs/web build` 全绿。
+
+---
+
+## 路线图（M36–M37 立项 · **未实施**）
+
+> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）、**M35（创作流程自动化：G9+G10+G11+G7）** **已交付**，见上方对应「能力速览」。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
 | 里程碑 | 主题 | 核心缺口 | 状态 |
 |---|---|---|---|
-| **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | 立项 · 未实施 |
+| **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | **已交付**（见上方 M35 能力速览）|
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | 立项 · 未实施 |
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34/M35（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。

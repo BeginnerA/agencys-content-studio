@@ -192,3 +192,35 @@ export interface PrefillResult {
   lastRunId: number | null
   overrides: { video: VideoOverride | null }
 }
+
+// ===== [M35] G7 自然语言→模板推荐 + G11 下一步建议 =====
+
+/** G7 推荐命中项（embedding 优先、keyword 回落） */
+export interface RecommendItem {
+  key: string
+  name: string
+  score: number
+}
+export type RecommendSource = 'embedding' | 'keyword' | 'empty'
+/** GET /templates/recommend 响应 */
+export interface RecommendResult {
+  items: RecommendItem[]
+  source: RecommendSource
+  /** true = embedding 就绪（语义匹配）；false = 回落关键词 */
+  ready: boolean
+  error?: string
+}
+
+/** G11 下一步建议条目（服务端规则引擎产 ≤3 条） */
+export type NextStepKind = 'run' | 'publish' | 'next_tpl' | 'progress' | 'workbench'
+export interface NextStep {
+  key: string
+  kind: NextStepKind
+  title: string
+  hint?: string
+  cta?: string
+  route?: string
+  templateKey?: string
+  /** true = 纯状态提示（不显按钮） */
+  auto?: boolean
+}
