@@ -145,6 +145,35 @@ export interface FetchModelsResult {
   note?: string
 }
 
+/**
+ * [M38] 扩展参数单一真源字段描述（GET /api-configs/extra-schema）。
+ * 服务端 adapters/extra-params.ts 逐条登记（仅核实事实，不猜）；前端据此按供应商动态渲染
+ * 结构化表单（替代裸 JSON 天书框）。type 决定控件：select 下拉 / boolean 开关 / number 数字 /
+ * text 文本 / url-list 多行 URL / json 对象。default 为 Tier A 预填（用户可覆盖），required 标必填。
+ */
+export type ExtraFieldType = 'text' | 'select' | 'boolean' | 'number' | 'url-list' | 'json'
+export interface ExtraFieldOption {
+  value: string
+  label: string
+}
+export interface ExtraField {
+  key: string
+  label: string
+  type: ExtraFieldType
+  options?: ExtraFieldOption[]
+  default?: string | number | boolean | string[] | Record<string, unknown>
+  required?: boolean
+  placeholder?: string
+  help?: string
+}
+
+/** GET /api-configs/extra-schema 响应 */
+export interface ExtraSchemaResult {
+  providerKey: string
+  serviceType: string
+  fields: ExtraField[]
+}
+
 // ===== [M19 P8] 音色库（声音克隆） =====
 
 /** [M19] 克隆音色行（voice_clones；meta 为供应商留痕 JSON 字符串） */

@@ -7,6 +7,7 @@ import { vendorPriorityRank } from '../db/seed'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
 import { resolveVideoCaps } from '../adapters/video-capabilities'
+import { resolveExtraSchema } from '../adapters/extra-params'
 import { resolveModelPricing, type PricingServiceType } from '../adapters/pricing-capabilities'
 import { normalizeModelList, sortEntriesWithPreset, type ModelEntry } from '../adapters/model-metadata'
 import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
@@ -266,6 +267,15 @@ apiRoutes.get('/api-configs/video-caps', h(async (c) => {
   const caps = resolveVideoCaps(providerKey, model)
   if (!caps) return c.json({ supported: false, providerKey, model })
   return c.json({ supported: true, providerKey, model, caps })
+}))
+
+// GET /api-configs/extra-schema?provider_key=&service_type= —— [M38] 扩展参数单一真源只读查询
+// 返回该实例可结构化配置的扩展参数清单（前端据此动态渲染表单，替代裸 JSON 天书框）。零网络、零计费、零写库。
+apiRoutes.get('/api-configs/extra-schema', h(async (c) => {
+  const providerKey = c.req.query('provider_key') ?? ''
+  const serviceType = c.req.query('service_type') ?? ''
+  if (!providerKey || !serviceType) throw new HttpError(400, 'bad_provider', 'provider_key 与 service_type 必填')
+  return c.json({ providerKey, serviceType, fields: resolveExtraSchema(providerKey, serviceType) })
 }))
 
 // GET /api-configs/model-suggest?provider_key=&model=&service_type= —— [M33] 选中即生成：跨通道 Tier A 只读建议

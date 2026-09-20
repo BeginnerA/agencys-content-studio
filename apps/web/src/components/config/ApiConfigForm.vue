@@ -4,11 +4,13 @@ import Modal from '../common/Modal.vue'
 import SearchSelect from '../common/SearchSelect.vue'
 import type {
   ApiProvider,
+  ExtraField,
   ModelEntry,
   ProviderConfigLite,
   VendorCredential,
 } from '../../lib/types'
 import VideoCapsEditor from './VideoCapsEditor.vue'
+import ExtraParamsEditor from './ExtraParamsEditor.vue'
 import PricingSuggest from './PricingSuggest.vue'
 import { configApi } from '../../lib/api'
 
@@ -45,6 +47,18 @@ const isVideo = computed(() => props.provider.serviceType === 'video')
 const capsEditor = ref<InstanceType<typeof VideoCapsEditor> | null>(null)
 /** 编辑回显：既有 creationCapabilities（无则 null），作为子组件 initial 传入 */
 const capsInitial = ref<unknown>(null)
+
+/**
+ * [M38] 扩展参数结构化编辑器（ExtraParamsEditor）：按服务端 extra-schema 真源动态渲染已知 key
+ * （音色 / 尺寸 / 参考素材 / 视觉声明 等），替代裸 JSON 天书框。父组件拉取 fields、剥离已知 key
+ * 交子组件、提交时合并；未知透传参数仍留在下方「高级」JSON 框（三者 key 互不重叠）。
+ */
+const extraEditor = ref<InstanceType<typeof ExtraParamsEditor> | null>(null)
+const extraFields = ref<ExtraField[]>([])
+/** 编辑回显：命中已知 key 的子集（传子组件 seed） */
+const structuredInitial = ref<Record<string, unknown>>({})
+/** 当前编辑实例的完整 extra（applyEcho 的输入源；新建为 {}） */
+const currentExtra = ref<Record<string, unknown>>({})
 
 /**
  * [M33] 定价智能带出子组件（PricingSuggest，全通道）：命中平台参考定价表→自动预填（可改），
@@ -133,24 +147,9 @@ watch(
     fetchNote.value = ''
     fetchNoteWarn.value = false
     fetchBusy.value = false
-    // 扩展参数回显：视频实例把 creationCapabilities 剥离给上方可视化表单，JSON 文本框仅留其余透传参数
-    const rawExtra: Record<string, unknown> =
-      c?.extra && typeof c.extra === 'object' ? { ...c.extra } : {}
-    if (isVideo.value) {
-      const caps = rawExtra.creationCapabilities
-      delete rawExtra.creationCapabilities
-      extraText.value = Object.keys(rawExtra).length
-        ? JSON.stringify(rawExtra, null, 2)
-        : ''
-      capsInitial.value =
-        caps && typeof caps === 'object' && !Array.isArray(caps) ? caps : null
-    } else {
-      extraText.value = Object.keys(rawExtra).length
-        ? JSON.stringify(rawExtra, null, 2)
-        : ''
-      capsInitial.value = null
-    }
-    extraErr.value = ''
+    // 扩展参数回显：已知 key 交结构化编辑器、creationCapabilities 交 VideoCapsEditor、其余留 JSON 框
+    currentExtra.value = c?.extra && typeof c.extra === 'object' ? { ...c.extra } : {}
+    applyEcho()
     // 定价回显（[M33] 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
     pricingInitial.value =
       c?.pricing && Object.keys(c.pricing).length ? { ...c.pricing } : null
@@ -161,6 +160,48 @@ watch(
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
     if (c) void fetchModels(true)
   },
+  { immediate: true },
+)
+
+/**
+ * [M38] 把 currentExtra 拆分为三部分：creationCapabilities → VideoCapsEditor；已知 key → 结构化编辑器；
+ * 其余透传 → JSON 框。schema 异步到达或 config 回显变化时均重跑，最终态收敛一致。
+ */
+function applyEcho(): void {
+  const raw: Record<string, unknown> = { ...currentExtra.value }
+  if (isVideo.value) {
+    const caps = raw.creationCapabilities
+    delete raw.creationCapabilities
+    capsInitial.value =
+      caps && typeof caps === 'object' && !Array.isArray(caps) ? caps : null
+  } else {
+    capsInitial.value = null
+  }
+  const structured: Record<string, unknown> = {}
+  for (const f of extraFields.value) {
+    if (f.key in raw) {
+      structured[f.key] = raw[f.key]
+      delete raw[f.key]
+    }
+  }
+  structuredInitial.value = structured
+  extraText.value = Object.keys(raw).length ? JSON.stringify(raw, null, 2) : ''
+  extraErr.value = ''
+}
+
+/** [M38] 拉取本供应商 / 通道的扩展参数字段清单（失败 → 空，回退裸 JSON 透传） */
+async function loadExtraSchema(): Promise<void> {
+  try {
+    const res = await configApi.extraSchema(props.provider.key, props.provider.serviceType)
+    extraFields.value = res.fields ?? []
+  } catch {
+    extraFields.value = []
+  }
+  applyEcho()
+}
+watch(
+  () => [props.provider.key, props.provider.serviceType],
+  () => void loadExtraSchema(),
   { immediate: true },
 )
 
@@ -233,12 +274,18 @@ async function submit() {
     }
   }
   // [M32] 能力声明由子组件裁决：自动背书 / 空声明 → 不写 creationCapabilities（服务端按表推导）；手动声明 → 校验后合并
-  let finalExtra: Record<string, unknown> = baseExtra
+  // [M38] 结构化扩展参数（已知 key）：校验并合并（覆盖 JSON 框同名 key，正常无重叠）
+  const structured = extraEditor.value?.buildExtra()
+  if (structured && !structured.ok) return // 子组件已就地显示必填 / JSON 错误
+  let finalExtra: Record<string, unknown> = {
+    ...baseExtra,
+    ...(structured?.values ?? {}),
+  }
   if (isVideo.value) {
     const r = capsEditor.value?.buildExtra()
     if (r && !r.ok) return // 子组件已就地显示 caps 错误提示
     if (r?.ok && r.write && r.caps)
-      finalExtra = { ...baseExtra, creationCapabilities: r.caps }
+      finalExtra = { ...finalExtra, creationCapabilities: r.caps }
   }
   const body: Record<string, unknown> = {
     provider_key: props.provider.key,
@@ -367,6 +414,14 @@ async function submit() {
       :initial="capsInitial"
     />
 
+    <!-- [M38] 扩展参数结构化表单：按服务端 extra-schema 真源动态渲染已知 key（音色/尺寸/参考/视觉等） -->
+    <ExtraParamsEditor
+      v-if="extraFields.length"
+      ref="extraEditor"
+      :fields="extraFields"
+      :initial="structuredInitial"
+    />
+
     <details class="adv">
       <summary>
         高级：自定义端点{{
@@ -405,21 +460,23 @@ async function submit() {
         />
       </label>
       <label class="fld">
-        扩展参数（JSON，可选）
+        其他透传参数（JSON，可选）
         <textarea
           v-model="extraText"
           class="code"
           rows="3"
           spellcheck="false"
-          placeholder='供适配器透传，如火山 TTS：{"appid":"你的应用 ID"}'
+          placeholder='仅上方未列出的适配器透传参数，如 {"custom":"..."}'
           @input="extraErr = ''"
         ></textarea>
       </label>
       <span v-if="extraErr" class="note warn">{{ extraErr }}</span>
       <span v-else class="note">{{
-        isVideo
-          ? '仅填其余透传参数（如 seed / watermark）；creationCapabilities 由上方「轻松创作能力声明」维护，无需在此手写'
-          : '留空表示无扩展参数（编辑时清空即移除）'
+        extraFields.length
+          ? '常见参数已在上方结构化表单配置，此处仅供高级透传（如自定义网关参数），无需求可不填'
+          : isVideo
+            ? 'creationCapabilities 由上方「轻松创作能力声明」维护；此处仅填其余透传参数'
+            : '留空表示无扩展参数（编辑时清空即移除）'
       }}</span>
     </details>
 

@@ -4,6 +4,7 @@ import { getVideoAdapter } from '../../adapters/video'
 import { mapResolution, resolveVideoCaps } from '../../adapters/video-capabilities'
 import { loadTemplate } from '../../pipeline/loader'
 import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
+import { defaultVoice } from '../../adapters/extra-params'
 import { checkBudget } from '../budget'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
 import { CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
@@ -52,8 +53,12 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
     result.planningModel = { provider: llm.providerKey, model: llm.model! }
     if (!resolveFfmpeg() || !resolveFfprobe()) throw new CreationError('missing_ffmpeg', '请安装可用的 ffmpeg 和 ffprobe 后重新预检', 422)
     const audio = await requiredEndpoint('audio')
-    const voice = typeof audio.extra.voice === 'string' ? audio.extra.voice.trim() : ''
-    if (!voice || voice.startsWith('clone:')) throw new CreationError('missing_voice', '请在语音实例扩展参数 voice 中设置现成音色；轻松创作不使用克隆声音', 422)
+    const configured = typeof audio.extra.voice === 'string' ? audio.extra.voice.trim() : ''
+    // [M38] 音色 Tier A 收敛：未配置时按供应商真源默认兜底（不再强制用户手填裸 JSON）；
+    // 克隆音色（clone:）仍拒（轻松创作不用克隆声音，既定红线）；无安全默认供应商（如 SiliconFlow「模型:音色」）仍须显式配置（不猜）。
+    if (configured.startsWith('clone:')) throw new CreationError('missing_voice', '轻松创作不使用克隆声音；请在语音实例选择现成音色', 422)
+    const voice = configured || defaultVoice(audio.providerKey)
+    if (!voice) throw new CreationError('missing_voice', '该语音供应商无通用默认音色（需「模型:音色」格式），请在语音实例的「音色」中显式填写', 422)
     const execution: PreparedRecipe = {
       plan, endpoints: { audio: await snapshot(audio, 'tts', 'char') },
       videoMode: 'none', requestDurations: {}, voice, imageSize: '1024x1024', resolution: '720p',

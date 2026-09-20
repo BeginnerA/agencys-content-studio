@@ -520,9 +520,24 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M32–M37 · **全部交付 · 收官**）
+## M38 能力速览（扩展参数结构化与默认自动化 · 承接 M32–M37 收官后残留的裸 JSON 配置债）
 
-> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
+M32–M37 把「啥都让用户配」收敛为「默认自动推导 + 用户可覆盖 + 执行前预览」，但 AI 配置实例的「扩展参数」仍是**对所有供应商一视同仁的裸 JSON textarea**——用户无从得知能填哪些 key、什么类型、合法值、是否必填、默认是什么。而服务端真正读取的 extra key 其实是有限且已知的一小撮（音色 / 尺寸 / 参考素材 URL / 生成音频 / 水印 / 种子 / 视觉声明 / 火山 appid 等），绝大多数有安全默认值——本质属 Tier A（系统真源已知）却被错放进「用户手填 JSON」。M38 沿用 `video-capabilities → /video-caps → VideoCapsEditor` 已验证的三段式范式补齐：
+
+- **G14.1 服务端单一真源注册表 `adapters/extra-params.ts`**：`resolveExtraSchema(providerKey, serviceType)` 逐条登记可结构化字段（`{ key, label, type, options?, default?, required?, placeholder?, help? }`，type ∈ text/select/boolean/number/url-list/json），`defaultVoice(providerKey)` 收敛散在 tts-aliyun(`Cherry`)/tts(`alloy`)/tts-volcengine(`BV700_streaming`) 的音色兜底为唯一真源。纪律：仅登记经供应商文档/适配器实现核实的事实，不按模型名猜测；无安全通用默认者（如 SiliconFlow「模型:音色」）返回空串，绝不注入占位音色。
+- **G14.2 只读路由 `GET /api-configs/extra-schema`**：镜像 `/video-caps`，零网络、零计费、零写库；前端据此按供应商动态渲染。
+- **G14.3 前端结构化编辑器 `ExtraParamsEditor.vue`**：按 fields 渲染下拉/开关/数字/文本/URL 列表/JSON，带中文标签、默认预填、必填标记、用途说明；`buildExtra` 产出托管 key（空值省略、类型归一、必填/JSON 就地校验）。`ApiConfigForm.vue` 接线：拉 schema → `applyEcho` 把 `creationCapabilities` 剥离给 VideoCapsEditor、已知 key 剥离给结构化编辑器、其余透传留「高级」JSON 框（三者 key 互不重叠，提交时合并）。
+- **G14.4 拆音色假门禁（Tier A 收敛）**：`preflight.ts` 中 `extra.voice` 为空时改为按 `defaultVoice(providerKey)` 兜底（不再强制手填），显式配置覆盖默认；`clone:` 仍拒（轻松创作不用克隆声音，红线不降）；无安全默认供应商（SiliconFlow）仍 `missing_voice` 但换成可行动提示（不猜、不注入占位）。实际生效音色随 `execution.voice` 进预检快照/确认卡（参数可见）。
+
+数据与兼容：**0 改数据库 schema / 0 改 extra 存储格式**（仅影响表单渲染与预检兜底），既有实例数据零迁移、零破坏；不动密钥录入、付费执行确认、合规放行等人工红线。文件行数：`extra-params.ts` 208 / `ExtraParamsEditor.vue` 262 / `probe-m38.ts` 133，均 ≤800。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m38.ts`（**24 项断言全绿**：registry 18 + preflight 6，零网络零计费）；**M24 / M30–M37 零回归全绿**（m32/m33/m37 复跑 112 断言全绿）；`vue-tsc --noEmit` + `vite build` 全绿。
+
+---
+
+## 路线图（M32–M38 · **全部交付 · 收官**）
+
+> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
@@ -531,5 +546,6 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 | **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | **已交付**（见上方 M35 能力速览）|
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | **已交付**（见上方 M36 能力速览）|
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | **已交付**（见上方 M37 能力速览）|
+| **M38** | 扩展参数结构化与默认自动化 | AI 配置「扩展参数」仍是裸 JSON 天书框（用户不知能填啥/要填啥）；轻松创作音色假门禁逼手填 Tier A 已知项 | **已交付**（见上方 M38 能力速览）|
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32–M37 已全部交付，G1–G13 十二项缺口 + 收尾锁闭环**；遗留技术债候选：`probe-m26 split-audit` 要求的 11 个历史 >800 文件拆分（与本路线图表目无关，待另立专项）。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32–M38 已全部交付，G1–G14 缺口 + 收尾锁闭环**；遗留技术债候选：`probe-m26 split-audit` 要求的 11 个历史 >800 文件拆分（与本路线图表目无关，待另立专项）。
