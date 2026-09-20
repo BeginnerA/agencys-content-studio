@@ -72,13 +72,22 @@ function parseEmotionDecl(extra: Record<string, unknown>): { param: string; map?
   return { param }
 }
 
-/** 情绪透传载荷（E4）：实例声明 emotion_param 才透传；map 命中 → 映射值，否则基调词原样；无 key/未声明 → null */
+/**
+ * 情绪透传载荷（E4）：实例 extra 声明 emotion_param 才透传（未声明 → null，兼容任意网关）。
+ * 入参为**完整 emotion_hint**（形如 `基调词——六维细节`）：
+ * - 「——」前的基调词命中 emotion_map → 下发映射后的网关枚举值（供只认枚举值的网关）；
+ * - 无 map / 未命中 → 透传完整 emotion_hint（含六维细节，供吃自然语言情绪/风格描述的模型，不再截断）。
+ */
 export function resolveEmotionPayload(
-  key: string,
+  hint: string,
   emotion?: { param: string; map?: Record<string, string> },
 ): { param: string; value: string } | null {
-  if (!key || !emotion) return null
-  return { param: emotion.param, value: emotion.map?.[key] ?? key }
+  const trimmed = hint.trim()
+  if (!trimmed || !emotion) return null
+  const idx = trimmed.indexOf('——')
+  const key = idx >= 0 ? trimmed.slice(0, idx).trim() : trimmed
+  const value = emotion.map?.[key] ?? trimmed
+  return { param: emotion.param, value }
 }
 
 export interface SynthSpeechOptions {

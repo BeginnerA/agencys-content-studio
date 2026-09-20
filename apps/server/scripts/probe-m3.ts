@@ -563,6 +563,9 @@ async function main(): Promise<void> {
     check(em !== null && em.param === 'emotion' && em.value === 'cheerful', 'resolveEmotionPayload map 命中 → 映射值')
     check(resolveEmotionPayload('干笑', { param: 'emotion' })?.value === '干笑', 'resolveEmotionPayload 无 map → 基调词原样')
     check(resolveEmotionPayload('', { param: 'emotion' }) === null && resolveEmotionPayload('干笑', undefined) === null, 'resolveEmotionPayload 无 key/未声明 → null')
+    // 完整 emotion_hint 透传（去掉六维细节截断）：基调词命中 map → 枚举值；无 map/未命中 → 透传全串
+    check(resolveEmotionPayload('干笑——语气虚浮带躲闪、语速偏慢', { param: 'emotion' })?.value === '干笑——语气虚浮带躲闪、语速偏慢', 'resolveEmotionPayload 完整 hint 无 map → 透传全串（不截断六维细节）')
+    check(resolveEmotionPayload('干笑——语气虚浮', { param: 'emotion', map: { 干笑: 'cheerful' } })?.value === 'cheerful', 'resolveEmotionPayload —— 前基调词命中 map → 枚举值')
   }
 
   const sectionSubtitle = async (): Promise<void> => {

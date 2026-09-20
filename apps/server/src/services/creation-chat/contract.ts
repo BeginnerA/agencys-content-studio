@@ -27,7 +27,8 @@ export const creationPlanSchema = z.object({
   mode: z.enum(['dynamic', 'slideshow']).default('dynamic'),
   style: text(300),
   script: text(6000),
-  lines: z.array(z.object({ id, text: text(300) }).strict()).min(1).max(36),
+  // emotion_hint 可选：`基调词——六维细节`，供 audio 实例声明 emotion_param 时透传（缺省 → 不带情绪，旧方案不受影响）
+  lines: z.array(z.object({ id, text: text(300), emotion_hint: z.string().trim().min(1).max(200).optional() }).strict()).min(1).max(36),
   shots: z.array(z.object({
     id,
     duration: z.number().min(1).max(15),

@@ -5,6 +5,7 @@ import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
+import { resolveVideoCaps } from '../adapters/video-capabilities'
 import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
 import { probePollinationsVideoEndpoint } from '../adapters/pollinations-video'
 import { probeSiliconflowVideoEndpoint } from '../adapters/siliconflow-video'
@@ -230,6 +231,17 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
     source: 'preset',
     note: liveError ? `在线目录获取失败（${liveError.slice(0, 200)}），已回退预置列表` : '在线目录为空，已回退预置列表',
   })
+}))
+
+// GET /api-configs/video-caps?provider_key=&model= —— [M32] 视频模型能力单一真源表只读查询
+// 命中：{ supported:true, caps }（前端据此自动背书、去「已核实」勾选）；未命中：{ supported:false }（回退手填声明）。
+apiRoutes.get('/api-configs/video-caps', h(async (c) => {
+  const providerKey = c.req.query('provider_key') ?? ''
+  const model = c.req.query('model') ?? ''
+  if (!providerKey) throw new HttpError(400, 'bad_provider', 'provider_key 必填')
+  const caps = resolveVideoCaps(providerKey, model)
+  if (!caps) return c.json({ supported: false, providerKey, model })
+  return c.json({ supported: true, providerKey, model, caps })
 }))
 
 // PUT /api-configs/:id —— 更新（同字段；api_key 传明文则覆盖；credential_id / pricing 可更新）

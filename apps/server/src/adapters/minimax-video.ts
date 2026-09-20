@@ -14,6 +14,7 @@
  * - H3 原生音画同步生成，官方文档无独立 generate_audio 开关，该字段忽略
  */
 import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
+import { clampDuration, mapResolution } from './video-capabilities'
 
 /** 仅支持 MiniMax-H3 系列（前缀匹配，兼容未来 H3.x 变体） */
 const H3_MODEL_PREFIX = 'minimax-h3'
@@ -109,8 +110,9 @@ export class MiniMaxVideoAdapter implements VideoAdapter {
     const body: Record<string, unknown> = {
       model,
       content,
-      duration: normalizeDuration(req.duration),
-      resolution: normalizeResolution(req.resolution),
+      // [M32] 时长/分辨率归一委托单一真源表（消除本地魔法数，与档位声明同源）
+      duration: clampDuration('minimax_video', model, req.duration),
+      resolution: mapResolution('minimax_video', req.resolution),
     }
 
     // 图生视频（有首帧）ratio 恒为 adaptive，省略；文生视频 ratio 必填
@@ -145,20 +147,6 @@ export class MiniMaxVideoAdapter implements VideoAdapter {
     }
     return { status: (status as 'processing') || 'processing' }
   }
-}
-
-function normalizeDuration(duration?: number): number {
-  const parsed = Math.round(Number(duration || 5))
-  if (!Number.isFinite(parsed)) return 5
-  // MiniMax H3 支持 4-15 秒
-  return Math.min(15, Math.max(4, parsed))
-}
-
-/** MiniMax 仅 768P / 2K 两档；480p/720p 统一归到 768P，1080p/2K 归到 2K */
-function normalizeResolution(resolution?: string): string {
-  const r = (resolution || '').toLowerCase()
-  if (r === '2k' || r === '1080p') return '2K'
-  return '768P'
 }
 
 async function postJson(url: string, apiKey: string, body: unknown): Promise<any> {

@@ -30,6 +30,27 @@ export interface VideoCreationCapabilities {
   resolution: '480p' | '720p' | '1080p' | '768P' | '2K'
 }
 
+/**
+ * [M32] 视频模型能力单一真源表只读查询结果（GET /api-configs/video-caps）。
+ * supported=true 时 caps 为平台背书档位（Tier A）——前端据此自动预填、免用户手填核实；
+ * supported=false（如 siliconflow / 未知供应商）时前端回退到手填声明表单。
+ */
+export interface VideoModelCaps {
+  modes: Array<'i2v' | 't2v'>
+  durations: number[]
+  aspectRatios: Array<'9:16' | '16:9' | '1:1'>
+  resolutions: Array<'480p' | '720p' | '1080p' | '768P' | '2K'>
+  defaultDuration: number
+  defaultResolution: '480p' | '720p' | '1080p' | '768P' | '2K'
+}
+
+export interface VideoCapsResult {
+  supported: boolean
+  providerKey: string
+  model: string
+  caps?: VideoModelCaps
+}
+
 export interface ApiProvider {
   key: string
   name: string

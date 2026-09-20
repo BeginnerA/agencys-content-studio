@@ -7,6 +7,7 @@ import type {
   BrandSlotKey,
   FetchModelsResult,
   VendorCredential,
+  VideoCapsResult,
   VoiceCloneItem,
   VoiceCloneProvider,
 } from '../types'
@@ -24,6 +25,11 @@ export const configApi = {
   /** 在线拉取供应商可用模型目录（OpenAI 兼容 GET /models，失败回退预置列表） */
   fetchModels: (body: Record<string, unknown>) =>
     api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
+  /** [M32] 查询视频模型能力单一真源表（命中→平台自动背书档位；未命中→回退手填声明） */
+  videoCaps: (providerKey: string, model: string) =>
+    api.get<VideoCapsResult>(
+      `/api/v1/api-configs/video-caps?provider_key=${encodeURIComponent(providerKey)}&model=${encodeURIComponent(model)}`,
+    ),
 }
 
 export const vendorApi = {

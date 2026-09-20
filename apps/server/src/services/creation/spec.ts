@@ -72,6 +72,8 @@ export interface NodeSpec {
   voice?: string
   /** [M17] 语速（仅 audio，0.25-4） */
   speed?: number
+  /** 情绪透传（仅 audio）：完整 emotion hint（`基调词——六维细节`）；仅当 audio 实例 extra 声明 emotion_param 时下发 */
+  emotion?: string
   provider?: string
   model?: string
   /** [M18] LLM 温度（仅 llm，0-2，默认 0.8） */
@@ -380,6 +382,15 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
     const sp = o['speed']
     if (typeof sp !== 'number' || !Number.isFinite(sp) || sp < 0.25 || sp > 4) throw new Error('spec.speed 需为 0.25-4 间的数字')
     spec.speed = sp
+  }
+  if (o['emotion'] !== undefined && o['emotion'] !== null) {
+    const em = o['emotion']
+    if (typeof em !== 'string') throw new Error('spec.emotion 需为字符串')
+    const emTrim = em.trim()
+    if (emTrim) {
+      if (emTrim.length > 200) throw new Error('spec.emotion 需为 1-200 字')
+      spec.emotion = emTrim
+    }
   }
   if (o['useStylePreset'] !== undefined) {
     if (typeof o['useStylePreset'] !== 'boolean') throw new Error('spec.useStylePreset 需为布尔')

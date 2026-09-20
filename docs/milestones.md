@@ -402,3 +402,36 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 数据与兼容：新表 0 / 新列 0（refs 存于既有方案 JSON 与消息 payload，媒体复用 imports 资产体系）；`recipeSchema.refs` 缺省空数组向后兼容；`estimate` +`refCount`/`videoAnalysisCount`、`Confirmation`/`create`/`send` +`attachments`（缺省兼容）；引擎 / DAG / 适配器签名 / 模板零触碰。
 
 验证：`pnpm --filter @acs/server exec tsx scripts/probe-m31.ts`（五节 **33 项断言**，零网络零计费：attachment〔10：上传类型/大小/归属/去重、附件资产编译为 refs、跨项目引用拒绝、不计费不触发规划〕/ hashguard〔8：refs 进 planHash、编辑/删除/换项目参考触发「参考已变化」停机〕/ capability〔6：视觉不可用不假称理解降级、无 i2v 首帧拒绝、无解析实例 blocker、成本可见未计价〕/ bgm〔2：严格合成默认无 BGM 逐字节不变、方案批准 role:bgm 放行用户上传音轨〕/ firstframe〔7：shot 级优先/全局回退/非首帧不误用/本镜命中不越界、i2v 首帧进严格合成链产出可解码含音轨 MP4〕）；扩 `probe-m30` media 节 ref-first-frame（旧无参考路径零回归）；`pnpm ci:check` 端到端 exit=0（双端 typecheck + 模板校验 **15 份 / 107 步 0 错 0 警** + `probe:ci` **27 探针 / 3048 断言全绿**含 `probe-m31` 与扩展后的 `probe-m30`）；`pnpm --filter @acs/web build` 绿。**真实参考消费样片（视觉风格贴合、跨镜一致性、视频解析效果、BGM 混音）待另行取得明确模型/预算授权后验证**——离线全绿只证功能与契约、能力闸门与零回归，不代供应商可用性与成片质量验收。
+
+---
+
+## M32 能力速览（视频能力/默认单一真源表 + Tier A 智能默认引擎 · 平台智能化基建，全站前置）
+
+把「啥都让用户选、啥都让用户配」决策模型收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层的首个落地里程碑（Tier A：系统真源已知 → 自动预填、免用户核实）。核心治理：**模型档位此前散落在三处各自维护、易自相矛盾**——① 各适配器 `generate` 内的 normalize（minimax / volcengine / pollinations）、② 预检 `assertAdapterDurations` 硬编码分支、③ 前端 `applyCapsPreset` + `capsHint` 硬编码预填与提示——并逼用户逐项勾选「已核实」。M32 将其收敛为服务端**唯一真源表**，前端据此自动背书、去「已核实」勾选。纪律不变：**仅登记经供应商文档 / 适配器实现核实的事实、不按模型名猜测、未命中 fail-closed**（Tier A 不取消校验，而是把「核实」主体从用户转移到系统真源表 + 预览闸门）。
+
+- **单一真源表（registry）**：新增 `apps/server/src/adapters/video-capabilities.ts`——`resolveVideoCaps(providerKey, model)` 逐字段背书 MiniMax H3（i2v+t2v / 4–15 秒 / 768P·2K）、火山 Seedance（4–15 秒 / 480p·720p）、万相 3.0（2–30 秒 / 含 1080p）、Pollinations 网关（t2v-only、minimax 系 5·10·15 秒 480p、其余 5·10 秒 720p）；`siliconflow_video`（适配器不下发 duration、真实产出时长未文档化）与未知供应商 → 返回 `null`（须显式声明，不自动背书）。纯工具 `clampDuration` / `mapResolution` / `snapPollinationsDuration` 供适配器委托，消除三处平行魔法数。
+- **适配器委托（equivalence）**：minimax / volcengine / pollinations 视频适配器的 normalize 逻辑改为委托真源表，逐值与迁移前一致；预检 `preflight.ts` 接线 `resolveVideoCaps`——stored `creationCapabilities` 优先、无则按表派生、均未命中 → `capabilities_unverified`。**修复零回归**：移除预检中过严的 modes 子集校验（会抢占更可行动的 `first_frame_unsupported`），modes 真源回归 `adapter.firstFrame`（t2v-only 含首帧仍停机，红线不降）。
+- **只读背书端点（caps-api）**：`GET /api/v1/api-configs/video-caps?provider_key=&model=`——命中返 `{supported:true, caps}`（前端自动预填），未命中返 `{supported:false}`（回退手填）。
+- **前端 Tier A（creator-ui）**：`ApiConfigForm.vue` 移除「已核实」勾选与全部硬编码档位，抽出视频专属子组件 `VideoCapsEditor.vue`——命中背书默认「自动背书」（不写 `creationCapabilities`，交服务端按表推导），可「改为手动声明」覆盖；未背书回退手填表单。经 api 客户端 `configApi.videoCaps` 拉取（遵裸 fetch 红线）。自动背书 / 空声明均不写 `creationCapabilities`（保留「先建实例、稍后声明」路径）。
+
+数据与兼容：新表 0 / 新列 0（仍存 `extra.creationCapabilities`，命中背书时不写）；存储声明与原行为逐字段兼容（equivalence 节断言）；引擎 / DAG / 模板零触碰。文件行数：抽出 `VideoCapsEditor.vue`（509 行）使 `ApiConfigForm.vue` 由 875→915→**515 行**，令 >800 行超标文件从 12→11（净减负债，未新增超标文件）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m32.ts`（五节 **21 项断言**，零网络零付费零计费：registry〔4 家背书逐字段命中 + siliconflow/未知 fail-closed〕/ preflight〔无声明仅 provider+model → Tier A 就绪、未知 → capabilities_unverified〕/ equivalence〔显式存储 vs 按表背书 execution 逐字段一致〕/ degrade〔t2v-only 含首帧仍 first_frame_unsupported〕/ normalize〔clampDuration/mapResolution/snapPollinationsDuration 逐值等价迁移前〕）；`probe-m32` 经 `run-probes.ts` 自动发现纳入 `probe:ci`；**M30（50 断言）/ M31（33 断言）零回归全绿**；双端 `tsc --noEmit` + `vue-tsc --noEmit` 全绿。
+
+---
+
+## 路线图（M33–M37 立项 · **未实施**）
+
+> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）**已交付**，见上方「M32 能力速览」。
+
+**主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
+
+| 里程碑 | 主题 | 核心缺口 | 状态 |
+|---|---|---|---|
+| **M33** | AI 配置智能化 | 新实例定价手填未命中不带出、model 手动复制、无「选中即生成完整实例」 | 立项 · 未实施 |
+| **M34** | 模板与运行入参自动化 | 模板不参考 brief/历史 run 预填、自然语言无模板推荐、RunParams 覆盖项空白手填 | 立项 · 未实施 |
+| **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议 | 立项 · 未实施 |
+| **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | 立项 · 未实施 |
+| **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
+
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。

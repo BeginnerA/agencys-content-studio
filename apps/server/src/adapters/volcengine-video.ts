@@ -9,6 +9,7 @@
  * - 首帧/尾帧（M6）：content role first_frame / last_frame（排在参考素材之前；role 依据实弹对表）
  */
 import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
+import { clampDuration, mapResolution } from './video-capabilities'
 
 /** 仅支持 Seedance 2.x 系列（前缀匹配：2-0/2-5 及未来 2.x 变体；1.x 已陆续下架） */
 const SEEDANCE2_MODEL_PREFIX = 'doubao-seedance-2'
@@ -104,9 +105,9 @@ export class VolcEngineVideoAdapter implements VideoAdapter {
       content,
       generate_audio: generateAudio !== 0 && generateAudio !== false,
       ratio: req.aspectRatio || 'adaptive',
-      duration: normalizeDuration(req.duration),
-      // Seedance 2.0 仅 480p/720p 两档，1080p 收敛到 720p
-      resolution: req.resolution === '480p' ? '480p' : '720p',
+      // [M32] 时长/分辨率归一委托单一真源表（与档位声明同源；Seedance 2.0 仅 480p/720p 两档）
+      duration: clampDuration('volcengine_video', model, req.duration),
+      resolution: mapResolution('volcengine_video', req.resolution),
       watermark: extra.watermark === true,
     }
 
@@ -139,13 +140,6 @@ export class VolcEngineVideoAdapter implements VideoAdapter {
     }
     return { status: (status as 'processing') || 'processing' }
   }
-}
-
-function normalizeDuration(duration?: number): number {
-  const parsed = Math.round(Number(duration || 5))
-  if (!Number.isFinite(parsed)) return 5
-  // Seedance 2.0 支持 4-15 秒
-  return Math.min(15, Math.max(4, parsed))
 }
 
 async function postJson(url: string, apiKey: string, body: unknown): Promise<any> {

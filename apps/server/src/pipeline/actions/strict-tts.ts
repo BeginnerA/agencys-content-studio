@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks, pipelineRuns } from '../../db/schema'
 import { recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
-import { resolveAudioEndpoint, synthSpeech } from '../../services/tts'
+import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { recordUsage } from '../../services/usage'
 import { emitStudioEvent } from '../../services/events'
@@ -39,7 +39,9 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
     await db.update(genTasks).set({ status: 'processing', attempts: 1, updatedAt: Date.now() }).where(eq(genTasks.id, task!.id))
     emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task!.id, status: 'processing' })
     try {
-      const data = await synthSpeech(line.text, endpoint, { voice: recipe.voice })
+      // 情绪透传（同 tts.ts 模式）：仅当 audio 实例 extra 声明 emotion_param 才生效；透传完整 emotion_hint
+      const emotionPayload = resolveEmotionPayload(line.emotion_hint ?? '', endpoint.emotion)
+      const data = await synthSpeech(line.text, endpoint, { voice: recipe.voice, emotion: emotionPayload ?? undefined })
       ensureProjectDirs(ctx.run.projectId)
       const name = `${Date.now()}-voice-${line.id}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', name)
@@ -47,7 +49,7 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
       const asset = await registerAsset(ctx.run.projectId, {
         runId: ctx.run.id, stepId: ctx.step.id, taskId: task!.id, kind: 'audio', purpose: 'voice',
         name, relPath, mime: 'audio/mpeg', ext: 'mp3', fileSize: data.byteLength,
-        prompt: line.text, params: { lineId: line.id, voice: recipe.voice, provider: pin.provider, model: pin.model },
+        prompt: line.text, params: { lineId: line.id, voice: recipe.voice, provider: pin.provider, model: pin.model, emotionHint: line.emotion_hint ?? null, emotionSent: emotionPayload?.value ?? null },
       })
       await db.update(genTasks).set({ status: 'succeeded', resultAssetId: asset.id, updatedAt: Date.now(), completedAt: Date.now() }).where(eq(genTasks.id, task!.id))
       await recordUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, taskId: task!.id, assetId: asset.id,

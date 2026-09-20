@@ -6,8 +6,8 @@ import type {
   ApiProvider,
   ProviderConfigLite,
   VendorCredential,
-  VideoCreationCapabilities,
 } from '../../lib/types'
+import VideoCapsEditor from './VideoCapsEditor.vue'
 import { configApi } from '../../lib/api'
 
 const props = defineProps<{
@@ -33,164 +33,14 @@ const extraText = ref('')
 const extraErr = ref('')
 
 /**
- * [M31+] 视频「轻松创作能力声明」可视化表单：仅管理 extra.creationCapabilities，
- * 其余透传参数（promptExtend / watermark / seed…）仍由下方原始 JSON 文本框维护，二者互不覆盖。
- * 视频实例加载时把 creationCapabilities 从 JSON 文本框剥离、回填到这里；提交时再合并回去。
+ * [M32] 视频「轻松创作能力」子组件（VideoCapsEditor）：仅管理 extra.creationCapabilities，
+ * 命中平台能力表时默认自动背书、免手填核实；其余透传参数仍由下方原始 JSON 文本框维护，二者互不覆盖。
+ * 编辑时把 creationCapabilities 剥离出 JSON 文本框、以 initial 传入子组件；提交时经子组件 buildExtra 合并。
  */
-const CAP_RESOLUTIONS = ['480p', '720p', '1080p', '768P', '2K'] as const
 const isVideo = computed(() => props.provider.serviceType === 'video')
-const capsVerified = ref(false)
-const capsModel = ref('')
-const capsModes = ref<string[]>([])
-const capsDurations = ref('')
-const capsAspectRatios = ref<string[]>([])
-const capsResolution = ref('')
-const capsErr = ref('')
-
-/** 能力声明模型与实例所选模型不一致（预检会拒绝执行）——实时提示，不等提交 */
-const capsModelMismatch = computed(() => {
-  const inst = model.value.trim()
-  const c = capsModel.value.trim()
-  return !!inst && !!c && c !== inst
-})
-
-/** 依供应商 + 模型给出已知适配器约束提示（源自各适配器实现，非猜测） */
-const capsHint = computed(() => {
-  const key = props.provider.key
-  const m = (capsModel.value || model.value).toLowerCase()
-  if (key === 'pollinations_video') {
-    return /minimax/.test(m)
-      ? 'Pollinations 网关：minimax 系模型上游仅接受 5 / 10 / 15 秒三档（其余就近取档）；该适配器不支持首帧注入，请只声明文生视频（t2v）。'
-      : 'Pollinations 网关为同步长请求，不支持首帧注入（i2v）；动态模式请声明文生视频（t2v）。'
-  }
-  if (key === 'minimax_video')
-    return 'MiniMax 适配器：时长透传 4–15 秒；分辨率仅 768P / 2K 两档（480p/720p 归 768P，1080p 归 2K）。'
-  if (key === 'volcengine_video')
-    return '火山 Seedance 适配器：时长 4–15 秒；分辨率仅 480p / 720p（1080p 收敛到 720p）。'
-  if (key === 'aliyun_wan_video')
-    return '万相适配器：时长至少 2 秒；分辨率支持 480P / 720P / 1080P。'
-  if (key === 'siliconflow_video')
-    return '硅基流动适配器不下发 duration，只能声明一个经核实的固定产出时长；启用 i2v 需模型名含 I2V。'
-  return ''
-})
-
-/** 勾选了适配器实际不支持的 i2v 时给出明确警告（避免声明与能力背离） */
-const capsI2vWarn = computed(() => {
-  if (!capsModes.value.includes('i2v')) return ''
-  if (props.provider.key === 'pollinations_video') {
-    return '该 Pollinations 适配器不支持首帧注入（i2v）；若方案含首帧参考会预检失败，动态模式请改用文生视频（t2v）。'
-  }
-  if (
-    props.provider.key === 'siliconflow_video' &&
-    !/i2v/i.test(capsModel.value || model.value)
-  ) {
-    return '硅基流动 i2v 需模型名包含 I2V，否则预检会拒绝首帧。'
-  }
-  return ''
-})
-
-function resetCaps(): void {
-  capsVerified.value = false
-  capsModel.value = ''
-  capsModes.value = []
-  capsDurations.value = ''
-  capsAspectRatios.value = []
-  capsResolution.value = ''
-  capsErr.value = ''
-}
-
-// 勾选启用时若模型未填，自动带入当前所选模型（省去复制）
-watch(capsVerified, (v) => {
-  if (v && !capsModel.value) capsModel.value = model.value.trim()
-})
-
-/** 逗号/空格分隔文本 → 去重升序整数秒数组；含非法值返回 null */
-function parseCapsDurations(): number[] | null {
-  const nums = capsDurations.value
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => Number(s))
-  if (!nums.length || nums.some((d) => !Number.isInteger(d) || d < 1 || d > 30))
-    return null
-  return [...new Set(nums)].sort((a, b) => a - b)
-}
-
-/** 组装并校验能力声明对象（与服务端 videoCapabilitiesSchema 逐字段对齐） */
-function buildVideoCaps():
-  | { ok: true; value: VideoCreationCapabilities }
-  | { ok: false; error: string } {
-  const inst = model.value.trim()
-  const m = capsModel.value.trim() || inst
-  if (!m)
-    return { ok: false, error: '请填写能力声明模型（或先在上方选择模型）' }
-  if (inst && m !== inst)
-    return {
-      ok: false,
-      error: `能力声明模型「${m}」与实例模型「${inst}」不一致，预检会拒绝执行`,
-    }
-  const modes = capsModes.value.filter(
-    (x): x is 'i2v' | 't2v' => x === 'i2v' || x === 't2v',
-  )
-  if (!modes.length)
-    return { ok: false, error: '生成模式至少勾选一项（i2v / t2v）' }
-  const durations = parseCapsDurations()
-  if (!durations)
-    return {
-      ok: false,
-      error: '时长须为 1–30 的整数秒，逗号分隔（如 5, 10, 15）',
-    }
-  const ar = capsAspectRatios.value.filter(
-    (x): x is '9:16' | '16:9' | '1:1' =>
-      x === '9:16' || x === '16:9' || x === '1:1',
-  )
-  if (!ar.length) return { ok: false, error: '画幅至少勾选一项' }
-  if (!capsResolution.value) return { ok: false, error: '请选择输出分辨率' }
-  return {
-    ok: true,
-    value: {
-      model: m,
-      verified: true,
-      modes,
-      durations,
-      aspectRatios: ar,
-      resolution:
-        capsResolution.value as VideoCreationCapabilities['resolution'],
-    },
-  }
-}
-
-/** 一键填入推荐起点（按供应商真实约束预填，用户仍须核实并勾选「已核实」方生效） */
-function applyCapsPreset(): void {
-  if (!capsModel.value) capsModel.value = model.value.trim()
-  const m = (capsModel.value || model.value).toLowerCase()
-  capsAspectRatios.value = ['9:16', '16:9', '1:1']
-  if (props.provider.key === 'pollinations_video') {
-    capsModes.value = ['t2v']
-    capsDurations.value = /minimax/.test(m) ? '5, 10, 15' : '5, 10'
-    capsResolution.value = /minimax/.test(m) ? '480p' : '720p'
-  } else if (props.provider.key === 'minimax_video') {
-    capsModes.value = ['i2v', 't2v']
-    capsDurations.value = '5, 10'
-    capsResolution.value = '768P'
-  } else if (props.provider.key === 'volcengine_video') {
-    capsModes.value = ['i2v', 't2v']
-    capsDurations.value = '5, 10'
-    capsResolution.value = '720p'
-  } else if (props.provider.key === 'aliyun_wan_video') {
-    capsModes.value = ['i2v', 't2v']
-    capsDurations.value = '5'
-    capsResolution.value = '720p'
-  } else if (props.provider.key === 'siliconflow_video') {
-    capsModes.value = /i2v/i.test(m) ? ['i2v'] : ['t2v']
-    capsDurations.value = '4'
-    capsResolution.value = '720p'
-  } else {
-    capsModes.value = ['t2v']
-    capsDurations.value = '5, 10'
-    capsResolution.value = '720p'
-  }
-}
+const capsEditor = ref<InstanceType<typeof VideoCapsEditor> | null>(null)
+/** 编辑回显：既有 creationCapabilities（无则 null），作为子组件 initial 传入 */
+const capsInitial = ref<unknown>(null)
 
 /** 实例级定价（按能力类型显示不同单位） */
 const priceInput = ref('')
@@ -250,32 +100,13 @@ watch(
       extraText.value = Object.keys(rawExtra).length
         ? JSON.stringify(rawExtra, null, 2)
         : ''
-      if (caps && typeof caps === 'object' && !Array.isArray(caps)) {
-        const o = caps as Record<string, unknown>
-        capsVerified.value = o.verified === true
-        capsModel.value = typeof o.model === 'string' ? o.model : ''
-        capsModes.value = Array.isArray(o.modes)
-          ? o.modes.filter((x) => x === 'i2v' || x === 't2v')
-          : []
-        capsDurations.value = Array.isArray(o.durations)
-          ? o.durations.join(', ')
-          : ''
-        capsAspectRatios.value = Array.isArray(o.aspectRatios)
-          ? o.aspectRatios.filter(
-              (x) => x === '9:16' || x === '16:9' || x === '1:1',
-            )
-          : []
-        capsResolution.value =
-          typeof o.resolution === 'string' ? o.resolution : ''
-      } else {
-        resetCaps()
-      }
-      capsErr.value = ''
+      capsInitial.value =
+        caps && typeof caps === 'object' && !Array.isArray(caps) ? caps : null
     } else {
       extraText.value = Object.keys(rawExtra).length
         ? JSON.stringify(rawExtra, null, 2)
         : ''
-      resetCaps()
+      capsInitial.value = null
     }
     extraErr.value = ''
     // 定价回显
@@ -357,9 +188,8 @@ async function submit() {
     err.value = '请填写实例名'
     return
   }
-  // 扩展参数：JSON 文本框维护透传参数；视频实例的 creationCapabilities 由可视化表单管理并合并
+  // 扩展参数：JSON 文本框维护透传参数；视频实例的 creationCapabilities 由子组件管理并合并
   extraErr.value = ''
-  capsErr.value = ''
   let baseExtra: Record<string, unknown> = {}
   const extraRaw = extraText.value.trim()
   if (extraRaw) {
@@ -375,15 +205,13 @@ async function submit() {
       return
     }
   }
-  // 视频且勾选「已核实」→ 校验并合并能力声明；未勾选 → 不写 creationCapabilities（编辑时即移除旧声明）
+  // [M32] 能力声明由子组件裁决：自动背书 / 空声明 → 不写 creationCapabilities（服务端按表推导）；手动声明 → 校验后合并
   let finalExtra: Record<string, unknown> = baseExtra
-  if (isVideo.value && capsVerified.value) {
-    const built = buildVideoCaps()
-    if (!built.ok) {
-      capsErr.value = built.error
-      return
-    }
-    finalExtra = { ...baseExtra, creationCapabilities: built.value }
+  if (isVideo.value) {
+    const r = capsEditor.value?.buildExtra()
+    if (r && !r.ok) return // 子组件已就地显示 caps 错误提示
+    if (r?.ok && r.write && r.caps)
+      finalExtra = { ...baseExtra, creationCapabilities: r.caps }
   }
   const body: Record<string, unknown> = {
     provider_key: props.provider.key,
@@ -516,109 +344,15 @@ async function submit() {
       </div>
     </div>
 
-    <!-- [M31+] 视频「轻松创作能力声明」可视化表单：替代手写 creationCapabilities JSON；仅管理该键，其余透传参数仍在下方原始 JSON 维护 -->
-    <section v-if="isVideo" class="caps">
-      <label class="caps-head">
-        <input v-model="capsVerified" type="checkbox" />
-        <span>
-          <b>声明轻松创作能力</b>
-          <em
-            >「一句话成片」不猜测模型能力——需你核实并显式声明支持的时长 / 画幅 /
-            分辨率 / 生成模式，确认后才会写入扩展参数
-            <code>creationCapabilities</code>。</em
-          >
-        </span>
-      </label>
-
-      <template v-if="capsVerified">
-        <div class="caps-actions">
-          <button type="button" class="btn sm" @click="applyCapsPreset">
-            填入推荐起点（请核实）
-          </button>
-          <button
-            v-if="model.trim()"
-            type="button"
-            class="btn sm"
-            @click="capsModel = model.trim()"
-          >
-            同步上方模型
-          </button>
-        </div>
-
-        <label class="fld">
-          能力声明模型（须与所选模型一字不差）
-          <input
-            v-model="capsModel"
-            type="text"
-            :placeholder="model.trim() || '如：minimax/minimax-h3-max-turbo'"
-          />
-          <span v-if="capsModelMismatch" class="note warn"
-            >与上方实例模型「{{
-              model.trim()
-            }}」不一致，轻松创作预检会拒绝执行</span
-          >
-          <span v-else class="note">留空则提交时自动取上方所选模型</span>
-        </label>
-
-        <div class="fld">
-          <span>生成模式（至少一项）</span>
-          <div class="checks">
-            <label
-              ><input v-model="capsModes" type="checkbox" value="i2v" />
-              图生视频·首帧（i2v）</label
-            >
-            <label
-              ><input v-model="capsModes" type="checkbox" value="t2v" />
-              文生视频（t2v）</label
-            >
-          </div>
-          <span v-if="capsI2vWarn" class="note warn">{{ capsI2vWarn }}</span>
-          <span v-else class="note"
-            >首帧参考 / 跨镜角色一致性需 i2v；仅文生动态视频勾 t2v 即可</span
-          >
-        </div>
-
-        <label class="fld">
-          支持时长（秒，逗号分隔，1–30 整数）
-          <input
-            v-model="capsDurations"
-            type="text"
-            placeholder="如：5, 10, 15"
-          />
-        </label>
-
-        <div class="fld">
-          <span>画幅（至少一项）</span>
-          <div class="checks">
-            <label
-              ><input v-model="capsAspectRatios" type="checkbox" value="9:16" />
-              9:16 竖屏</label
-            >
-            <label
-              ><input v-model="capsAspectRatios" type="checkbox" value="16:9" />
-              16:9 横屏</label
-            >
-            <label
-              ><input v-model="capsAspectRatios" type="checkbox" value="1:1" />
-              1:1 方形</label
-            >
-          </div>
-        </div>
-
-        <label class="fld">
-          输出分辨率
-          <select v-model="capsResolution">
-            <option value="">—— 选择 ——</option>
-            <option v-for="r in CAP_RESOLUTIONS" :key="r" :value="r">
-              {{ r }}
-            </option>
-          </select>
-        </label>
-
-        <p v-if="capsHint" class="note caps-hint">{{ capsHint }}</p>
-        <span v-if="capsErr" class="note warn caps-err">{{ capsErr }}</span>
-      </template>
-    </section>
+    <!-- [M32] 视频「轻松创作能力」：默认平台自动背书（Tier A），可覆盖为手动声明；逻辑见 VideoCapsEditor -->
+    <VideoCapsEditor
+      v-if="isVideo"
+      ref="capsEditor"
+      :provider-key="provider.key"
+      :provider-name="provider.name"
+      :model="model"
+      :initial="capsInitial"
+    />
 
     <details class="adv">
       <summary>
@@ -763,100 +497,6 @@ async function submit() {
 .adv .code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-}
-
-/* [M31+] 轻松创作能力声明区块 */
-.caps {
-  margin: 2px 0 12px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-}
-
-.caps-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.caps-head input[type='checkbox'] {
-  margin-top: 2px;
-  flex: none;
-}
-
-.caps-head b {
-  font-size: 13px;
-  color: var(--text-1);
-}
-
-.caps-head em {
-  display: block;
-  margin-top: 3px;
-  font-style: normal;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-}
-
-.caps-head code {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--bg);
-}
-
-.caps-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 10px 0 12px;
-}
-
-.caps .fld {
-  margin-bottom: 10px;
-}
-
-.caps .fld:last-of-type {
-  margin-bottom: 0;
-}
-
-.checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin-top: 5px;
-}
-
-.checks label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 13px;
-  color: var(--text-1);
-  cursor: pointer;
-}
-
-.caps select {
-  display: block;
-  width: 100%;
-  margin-top: 5px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-  background: var(--bg);
-  color: var(--text-1);
-}
-
-.caps-hint {
-  margin: 10px 0 0;
-}
-
-.caps-err {
-  margin-top: 8px;
 }
 
 .opts {

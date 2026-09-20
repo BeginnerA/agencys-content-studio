@@ -1,4 +1,5 @@
 import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
+import { snapPollinationsDuration } from './video-capabilities'
 
 /**
  * Pollinations 视频适配器（gen.pollinations.ai，M2.1 接入）。
@@ -11,20 +12,6 @@ import type { GeneratedVideo, VideoAdapter, VideoGenRequest } from './types'
 const DEFAULT_MODEL = 'google/veo-3.1-fast'
 const REQUEST_TIMEOUT_MS = 10 * 60_000
 
-/**
- * minimax h3 系列（如 minimax/minimax-h3-max-turbo）上游仅接受 5/10/15 三档时长，
- * 其余值返回 400（Invalid parameters: ... supports 5, 10, or 15 seconds）。
- * 分镜时长为创作层自由值（常见 3~4s），此处就近取档（≤7→5、8~12→10、≥13→15），
- * 使成片节奏偏差最小（合成端按素材实际时长 concat，不裁剪）。其他模型档位不一，保持透传。
- */
-function normalizeDurationForModel(sec: number, model: string): number {
-  const v = Math.round(sec)
-  if (!/minimax/i.test(model)) return v
-  if (v <= 7) return 5
-  if (v <= 12) return 10
-  return 15
-}
-
 export class PollinationsVideoAdapter implements VideoAdapter {
   readonly provider = 'pollinations_video'
   /** 首帧注入能力：不支持 */
@@ -35,7 +22,8 @@ export class PollinationsVideoAdapter implements VideoAdapter {
     const model = req.model ?? DEFAULT_MODEL
     params.set('model', model)
     if (typeof req.duration === 'number' && req.duration > 0) {
-      params.set('duration', String(normalizeDurationForModel(req.duration, model)))
+      // [M32] 时长取档委托单一真源表（minimax 系就近 5/10/15，其余四舍五入透传）
+      params.set('duration', String(snapPollinationsDuration(model, req.duration)))
     }
     if (req.aspectRatio) params.set('aspectRatio', req.aspectRatio)
     if (req.resolution) params.set('resolution', req.resolution)

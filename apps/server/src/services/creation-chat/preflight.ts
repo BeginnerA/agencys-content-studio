@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { getImageAdapter, resolveEndpoint, type ResolvedEndpoint } from '../../adapters/provider'
 import { getVideoAdapter } from '../../adapters/video'
+import { mapResolution, resolveVideoCaps } from '../../adapters/video-capabilities'
 import { loadTemplate } from '../../pipeline/loader'
 import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
 import { checkBudget } from '../budget'
@@ -16,6 +17,7 @@ export const videoCapabilitiesSchema = z.object({
   aspectRatios: z.array(z.enum(['9:16', '16:9', '1:1'])).min(1),
   resolution: z.enum(['480p', '720p', '1080p', '768P', '2K']),
 }).strict()
+type DeclaredCaps = z.infer<typeof videoCapabilitiesSchema>
 export type PreparedRecipe = Omit<CreationRecipe, 'sessionId' | 'sources'>
 export interface CreationPreflight {
   ready: boolean
@@ -40,18 +42,6 @@ async function snapshot(ep: ResolvedEndpoint, kind: UsageKind, unit: UsageUnit):
   return { configId: ep.configId, configHash: ep.configHash, provider: ep.providerKey, model: ep.model!, unitPrice: unitPrice !== null && unitPrice >= 0 ? unitPrice : null }
 }
 
-/** 模型声明不能覆盖适配器自身的参数限制（否则预估秒数与真实请求不同）。 */
-function assertAdapterDurations(ep: ResolvedEndpoint, durations: number[]): void {
-  if (['minimax_video', 'volcengine_video'].includes(ep.providerKey) && durations.some((n) => n < 4 || n > 15)) {
-    throw new CreationError('duration_unsupported', '当前适配器只透传 4–15 秒整数时长，请校正能力声明', 422)
-  }
-  if (ep.providerKey === 'aliyun_wan_video' && durations.some((n) => n < 2)) throw new CreationError('duration_unsupported', '当前万相适配器要求至少 2 秒', 422)
-  if (ep.providerKey === 'pollinations_video' && /minimax/i.test(ep.model!) && durations.some((n) => ![5, 10, 15].includes(n))) {
-    throw new CreationError('duration_unsupported', '当前网关适配器会归一化时长，能力声明须使用 5/10/15 秒档位', 422)
-  }
-  if (ep.providerKey === 'siliconflow_video' && durations.length !== 1) throw new CreationError('duration_unsupported', '当前硅基流动适配器不下发 duration，仅允许声明一个经核实的固定产出时长', 422)
-}
-
 export async function preflightPlan(projectId: number, plan: CreationPlan): Promise<CreationPreflight> {
   const result: CreationPreflight = {
     ready: false, issues: [], execution: null, planningModel: null,
@@ -73,10 +63,27 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
     }
     if (plan.mode === 'dynamic') {
       const video = await requiredEndpoint('video')
-      const caps = videoCapabilitiesSchema.safeParse(video.extra.creationCapabilities)
-      if (!caps.success || caps.data.model !== video.model) throw new CreationError('capabilities_unverified', '视频模型能力待核实：请在实例 creationCapabilities 中声明精确 model、verified、modes、durations、aspectRatios 和 resolution', 422)
-      const c = caps.data
-      assertAdapterDurations(video, c.durations)
+      // [M32] Tier A：优先采用实例显式声明的 creationCapabilities（后向兼容既有 run 与探针）；
+      // 缺失/未背书时按单一真源表自动背书——系统负责核实，用户仅在预览卡确认。
+      const declared = resolveVideoCaps(video.providerKey, video.model ?? '')
+      const stored = videoCapabilitiesSchema.safeParse(video.extra.creationCapabilities)
+      let c: DeclaredCaps
+      if (stored.success && stored.data.model === video.model) {
+        c = stored.data
+        // 档位合法性 = 声明须落在真源表内（消除按供应商硬编码的时长分支；否则预估秒数与真实请求不同）。
+        // 注：modes 不在此校验——图生/文生能力以 adapter.firstFrame 为唯一真源（见下方 videoMode 推导），
+        // 越界的 i2v 声明会自然落到 first_frame_unsupported（比通用「未核实」更可行动）。
+        if (declared) {
+          if (c.durations.some((d) => !declared.durations.includes(d))) throw new CreationError('duration_unsupported', `声明时长超出「${video.providerKey} / ${video.model}」适配器支持档位（${declared.durations.join('/')} 秒），请校正能力声明`, 422)
+          if (!declared.resolutions.includes(c.resolution)) throw new CreationError('capabilities_unverified', `声明分辨率超出适配器支持档位（${declared.resolutions.join('/')}），请校正`, 422)
+        } else if (video.providerKey === 'siliconflow_video' && c.durations.length !== 1) {
+          throw new CreationError('duration_unsupported', '当前硅基流动适配器不下发 duration，仅允许声明一个经核实的固定产出时长', 422)
+        }
+      } else if (declared) {
+        c = { model: video.model!, verified: true, modes: declared.modes, durations: declared.durations, aspectRatios: declared.aspectRatios, resolution: declared.defaultResolution }
+      } else {
+        throw new CreationError('capabilities_unverified', '视频模型能力待核实：该模型暂无平台背书档位，请在实例扩展参数 creationCapabilities 中声明精确 model、verified、modes、durations、aspectRatios 和 resolution，或更换已支持模型', 422)
+      }
       if (!c.aspectRatios.includes(plan.aspectRatio)) throw new CreationError('aspect_unsupported', '已核实的视频模型不支持本方案画幅，请修改方案', 422)
       const adapter = getVideoAdapter(video.providerKey)
       execution.videoMode = c.modes.includes('i2v') && adapter.firstFrame === 'base64' ? 'i2v' : c.modes.includes('t2v') ? 't2v' : 'none'
@@ -84,7 +91,8 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       if (video.providerKey === 'siliconflow_video' && execution.videoMode === 'i2v' && !/i2v/i.test(video.model!)) throw new CreationError('first_frame_unsupported', '当前硅基流动适配器要求明确的 I2V 模型', 422)
       // [M31] 首帧参考不可用即停机：能力不支持图生视频首帧时，绝不静默降级为文生
       if (execution.videoMode !== 'i2v' && plan.refs.some((r) => r.role === 'first_frame')) throw new CreationError('first_frame_unsupported', '方案含首帧参考但当前能力不支持图生视频首帧，请改用图文模式或更换支持 i2v 的实例', 422)
-      execution.resolution = video.providerKey === 'minimax_video' ? (['2K', '1080p'].includes(c.resolution) ? '2K' : '768P') : video.providerKey === 'volcengine_video' ? (c.resolution === '480p' ? '480p' : '720p') : c.resolution
+      // [M32] 实际下发分辨率由单一真源表归一（minimax/volcengine 收敛档位，其余透传）——与适配器 normalize 同源
+      execution.resolution = mapResolution(video.providerKey, c.resolution) || c.resolution
       const durations = [...c.durations].sort((a, b) => a - b)
       for (const shot of plan.shots) {
         const duration = durations.find((n) => n >= shot.duration)

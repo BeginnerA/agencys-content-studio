@@ -18,7 +18,7 @@ import { saveGeneratedMedia } from '../../net'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, writeTextAsset } from '../../storage'
 import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../style-preset'
 import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../provenance'
-import { resolveAudioEndpoint, synthSpeech } from '../../tts'
+import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../tts'
 import { cloneEndpoint, loadCloneIndex } from '../../tts-clone'
 import { recordLlmUsage, recordUsage } from '../../usage'
 import { buildComposeArgs, planAlignedSegments } from './compose-args'
@@ -363,7 +363,8 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
       clone ? `clone:${clone.id} ${clone.name}` : voiceSource
     }）${text.length} 字`,
   )
-  const data = await synthSpeech(text, ep, { voice, speed: spec.speed })
+  const emotionPayload = resolveEmotionPayload(spec.emotion ?? '', ep.emotion)
+  const data = await synthSpeech(text, ep, { voice, speed: spec.speed, emotion: emotionPayload ?? undefined })
   if (await taskCancelled(taskId)) return // 生成不可中断——完成后若已取消 → 弃存
 
   const fileName = `${Date.now()}-voice-node${node.id}.mp3`
@@ -388,6 +389,8 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
       model: ep.model,
       voice,
       voiceSource: clone ? 'clone' : voiceSource,
+      emotionHint: spec.emotion ?? null,
+      emotionSent: emotionPayload?.value ?? null,
       clone_id: clone?.id ?? null,
       clone_name: clone?.name ?? null,
       speed: spec.speed ?? null,

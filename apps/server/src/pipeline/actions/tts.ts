@@ -31,7 +31,7 @@ interface LineItem {
  * 抗抖重试（params.retry，默认 1 → 共 2 次尝试）：短剧长链（数十句）单句瞬时网络抖动不应拖垮整步，
  * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
  * 声线七级链（spec §6.2 + [M24] voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
- * 情绪：emotion_hint → 基调词（首个「——」前段）→ 实例声明 emotion_param 时透传（emotion_map 映射）。
+ * 情绪：emotion_hint → 实例声明 emotion_param 时透传（基调词命中 emotion_map → 枚举值；否则透传完整 emotion_hint 含六维细节）。
  * [M19 P8] 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
@@ -106,7 +106,8 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       const lineEp = hit.clone ? await cloneEndpoint(hit.clone, cloneEpCache) : ep
       const voice = hit.voice
       const emotionKey = parseEmotionKey(line.emotionHint ?? '')
-      const emotionPayload = resolveEmotionPayload(emotionKey, lineEp.emotion)
+      // 下发透传完整 emotion_hint（六维细节不再截断）；emotionKey 仅保留作审计基调词
+      const emotionPayload = resolveEmotionPayload(line.emotionHint ?? '', lineEp.emotion)
       // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出
       let data: Uint8Array
       for (let attempt = 1; ; attempt++) {
