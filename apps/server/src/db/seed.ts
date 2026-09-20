@@ -23,6 +23,15 @@ interface VendorSeed {
   name: string
 }
 
+/** 优先展示厂商（AI 配置页供应商列表 / 厂商凭证靠前显示），按数组顺序排前 */
+export const VENDOR_PRIORITY: string[] = ['volcengine', 'aliyun']
+
+/** 厂商展示优先级：名单内按序取 0/1/…，名单外统一取末尾值（配合稳定排序保持原有相对顺序） */
+export function vendorPriorityRank(vendor: string | null | undefined): number {
+  const i = VENDOR_PRIORITY.indexOf(vendor ?? '')
+  return i === -1 ? VENDOR_PRIORITY.length : i
+}
+
 export const VENDOR_SEEDS: VendorSeed[] = [
   { vendor: 'aliyun', name: '阿里千问' },
   { vendor: 'deepseek', name: 'DeepSeek' },

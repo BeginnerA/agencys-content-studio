@@ -5,6 +5,7 @@
  */
 import { onMounted, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import ProvenanceBadge from '../../components/common/ProvenanceBadge.vue'
 import { exportApi } from '../../lib/api'
 import type { ExportPreset } from '../../lib/types'
 
@@ -17,6 +18,8 @@ const editItems = ref<ExportPreset[]>([])
 // [M36·G12.1] 从平台目录一键补全缺失预设
 const seeding = ref(false)
 const seedMsg = ref('')
+/** [M37·G13] 本次补全条数（>0 才挂来源徽标，「无需补全」不加噪） */
+const seedAdded = ref(0)
 
 async function load() {
   loading.value = true
@@ -77,6 +80,7 @@ async function seedFromCatalog() {
     const r = await exportApi.seed()
     presets.value = r.items
     seedMsg.value = r.added > 0 ? `已从平台目录补全 ${r.added} 个缺失预设` : '所有已知平台均已配置，无需补全'
+    seedAdded.value = r.added
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -104,7 +108,15 @@ async function seedFromCatalog() {
             </button>
           </div>
         </div>
-        <div v-if="seedMsg" class="seed-msg">{{ seedMsg }}</div>
+        <div v-if="seedMsg" class="seed-msg">
+          <ProvenanceBadge
+            v-if="seedAdded > 0"
+            kind="auto"
+            text="平台目录"
+            title="预设由平台导出规格单一真源目录自动生成（仅补缺失、不覆盖已配）"
+          />
+          {{ seedMsg }}
+        </div>
         <table class="tbl">
           <thead>
             <tr>

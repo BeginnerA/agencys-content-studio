@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import Modal from '../common/Modal.vue'
 import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
+import ProvenanceBadge from '../common/ProvenanceBadge.vue'
 import type {
   Asset,
   PrefillSource,
@@ -294,6 +295,13 @@ init()
           <details v-if="hasOverride" class="adv">
             <summary>
               本集参数覆盖（可选）——仅本 run 生效，优先于项目设置
+              <!-- [M37·G13] 补齐 caps_suggest 来源标注：合法域非手拍，由平台能力真源表收窄 -->
+              <ProvenanceBadge
+                v-if="videoOverride"
+                kind="auto"
+                text="能力表合法域"
+                :title="`时长/分辨率可选域由平台能力真源表按本模型（${videoOverride.model}）收窄，越界会被服务端 clamp`"
+              />
             </summary>
             <div class="adv-grid">
               <label v-if="showImage" class="fld"

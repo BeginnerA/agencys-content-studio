@@ -8,6 +8,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { configApi } from '../../lib/api'
+import ProvenanceBadge from '../common/ProvenanceBadge.vue'
 import type { ModelPricing } from '../../lib/types'
 
 const props = defineProps<{
@@ -17,15 +18,19 @@ const props = defineProps<{
   model: string
   /** 编辑回显：既有实例 pricing（无则 null）；有则尊重存量、不自动覆盖 */
   initial?: Record<string, number> | null
+  /** [M33.1] 在线目录带出的参考定价（供应商接口明确返回，如阿里千问 LLM）；优先级 live > 核实表 */
+  live?: ModelPricing | null
 }>()
-const emit = defineEmits<{ suggest: [payload: { pricingHit: boolean; suggestDefault: boolean }] }>()
+const emit = defineEmits<{
+  suggest: [payload: { hit: boolean; source: 'live' | 'table' | 'stored' | 'none'; suggestDefault: boolean }]
+}>()
 
 const priceInput = ref('')
 const priceOutput = ref('')
 const suggested = ref<ModelPricing | null>(null)
 const fetching = ref(false)
-/** 'auto'=命中平台参考价并预填 · 'stored'=沿用实例存量 · 'manual'=手填（默认 / 未命中 / 用户改过） */
-const mode = ref<'auto' | 'stored' | 'manual'>('manual')
+/** 'live'=命中供应商在线目录价 · 'auto'=命中平台核实表 · 'stored'=沿用实例存量 · 'manual'=手填（默认 / 未命中 / 用户改过） */
+const mode = ref<'live' | 'auto' | 'stored' | 'manual'>('manual')
 /** 用户是否手动编辑过定价框（编辑后自动带出不覆盖用户输入） */
 const edited = ref(false)
 
@@ -55,32 +60,45 @@ function fillFromPrices(prices: ModelPricing['prices']): void {
   }
 }
 
-/** [M33] 按供应商 + 模型拉取平台参考定价；命中→自动预填（未手改 / 非编辑存量时），未命中→回落手填 */
+/** [M33.1] 按优先级带出参考定价：编辑存量 stored > 在线目录 live > 平台核实表 auto > 手填 manual（未命中不塞默认价） */
 async function refresh(): Promise<void> {
   fetching.value = true
   try {
     const res = await configApi.modelSuggest(props.providerKey, props.serviceType, (props.model ?? '').trim())
-    suggested.value = res.pricing ?? null
-    if (hasInitial()) {
-      fillFromPrices(props.initial!)
-      mode.value = 'stored'
-    } else if (res.pricing && !edited.value) {
-      fillFromPrices(res.pricing.prices)
-      mode.value = 'auto'
-    } else if (!res.pricing) {
-      if (!edited.value) {
-        priceInput.value = ''
-        priceOutput.value = ''
-      }
-      mode.value = 'manual'
-    }
-    emit('suggest', { pricingHit: !!res.pricing, suggestDefault: !!res.suggestDefault })
+    applyPricing(res.pricing ?? null, !!res.suggestDefault)
   } catch {
-    suggested.value = null
-    if (!hasInitial() && !edited.value) mode.value = 'manual'
-    emit('suggest', { pricingHit: false, suggestDefault: false })
+    // model-suggest 失败：仍有 live（父组件已从 fetch-models 拿到）/ 存量则照带，否则回落手填（不猜）
+    applyPricing(null, false)
   } finally {
     fetching.value = false
+  }
+}
+
+/** 带出优先级落地：依据 live / 存量 / 核实表填价并回报父（source 供主区只读摘要展示） */
+function applyPricing(table: ModelPricing | null, sd: boolean): void {
+  if (hasInitial()) {
+    fillFromPrices(props.initial!)
+    suggested.value = props.live ?? table
+    mode.value = 'stored'
+    emit('suggest', { hit: true, source: 'stored', suggestDefault: sd })
+  } else if (props.live) {
+    fillFromPrices(props.live.prices)
+    suggested.value = props.live
+    mode.value = props.model ? 'live' : 'manual'
+    emit('suggest', { hit: !!props.model, source: 'live', suggestDefault: sd })
+  } else if (table && !edited.value) {
+    fillFromPrices(table.prices)
+    suggested.value = table
+    mode.value = 'auto'
+    emit('suggest', { hit: true, source: 'table', suggestDefault: sd })
+  } else {
+    suggested.value = table
+    if (!edited.value) {
+      priceInput.value = ''
+      priceOutput.value = ''
+    }
+    mode.value = 'manual'
+    emit('suggest', { hit: false, source: 'none', suggestDefault: sd })
   }
 }
 
@@ -130,6 +148,11 @@ watch(
   () => props.initial,
   () => void refresh(),
 )
+// [M33.1] 在线目录带出价到达（选定模型后 fetch-models 结果）→ 重评优先级
+watch(
+  () => props.live,
+  () => void refresh(),
+)
 </script>
 
 <template>
@@ -156,8 +179,16 @@ watch(
     </div>
 
     <span v-if="fetching" class="note">正在按平台定价真源核实…</span>
-    <template v-else-if="mode === 'auto' && suggested">
-      <span class="note ok">✓ 已按平台参考定价预填：{{ suggested.source }}</span>
+    <template v-else-if="(mode === 'auto' || mode === 'live') && suggested">
+      <!-- [M37·G13] 统一来源徽标：预填依据一目了然，核实锚点收进 hover -->
+      <span class="prow-line">
+        <ProvenanceBadge
+          kind="auto"
+          :text="mode === 'live' ? '供应商在线目录定价' : '平台核实表定价'"
+          :title="`参考定价锚点：${suggested.source}；可直接修改`"
+        />
+        <span class="note ok">已按参考定价预填（可改）</span>
+      </span>
       <div class="pacts">
         <button type="button" class="btn sm" @click="toManual">改为手填</button>
       </div>
@@ -172,7 +203,7 @@ watch(
     </template>
     <template v-else>
       <span v-if="suggested" class="note">
-        已获取平台参考定价（{{ suggested.source }}）
+        已获取参考定价（{{ suggested.source }}）
       </span>
       <div v-if="suggested" class="pacts">
         <button type="button" class="btn sm" @click="applySuggested">
@@ -207,6 +238,19 @@ watch(
 
 .pacts {
   margin-top: 6px;
+}
+
+/* [M37] 徽标 + 短注一行 */
+.prow-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+.prow-line .note {
+  display: inline;
+  margin-top: 0;
 }
 
 .note {

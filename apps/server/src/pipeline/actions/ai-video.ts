@@ -6,9 +6,13 @@ import { resolveEndpoint } from '../../adapters/provider'
 import type { VideoAdapter, VideoGenRequest } from '../../adapters/types'
 import { assetToDataUri } from '../../services/asset-ref'
 import { loadEntityIndex } from '../../services/character'
+import { probeMediaDuration } from '../../services/ffmpeg'
+import { absPathOf } from '../../services/storage'
 import { saveGeneratedMedia } from '../../services/net'
 import { emitStudioEvent } from '../../services/events'
 import { shotDurationSec } from '../../services/shot'
+import { parseShotLines, planAudioDrivenShotDurations } from './ffmpeg-merge/align'
+import { lineIdOfVoiceAsset } from './ffmpeg-merge/segments'
 import { recordUsage } from '../../services/usage'
 import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
@@ -49,6 +53,8 @@ const POLL_TIMEOUT_MS = 10 * 60_000
  * （首帧优先决策：有首帧则跳过，兼规避 Wan 帧/参考互斥）；params.setRefAssetIds 记快照。
  * [M22] 分镜直通字段（画布/模板写入）：first_frame_asset_id 优先于 gen_frames 索引；
  * ref_asset_ids 与场景/道具收集合并（保序去重），仍受首帧优先与 refCap 决策约束。
+ * [以音定画] 接 inputs.voices（tts 逐句配音产物）时：逐镜视频时长 = 该镜台词句实测音频总长（planAudioDrivenShotDurations），
+ * 优先于分镜 LLM 估长/兜底固定时长，使动效成片逐镜音画对齐；无 voices / 探测全失败 → 维持原分镜估长/兜底行为逐字不变。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功视频）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
  * 未成功任务的 prompt/生成参数执行时与当前分镜/项目设置同步（修正分镜或调
@@ -93,6 +99,32 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   ctx.log(
     `批量生成视频：${shots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次，prompt 字段 ${promptField}）`,
   )
+
+  // [以音定画] 逐镜视频时长跟随配音实测音频时长：动效模式合成按 clip 时长累计成片，令每镜 clip 长 = 该镜台词音频和即逐镜对齐。
+  // 仅当本步接了 voices 输入（mengbao gen_motion）时启用；无 voices / 探测全失败 → audioDurByShot=null，维持原时长决策链。
+  let audioDurByShot: Map<string, number> | null = null
+  const voiceIds = ctx.assetIdsOf('voices')
+  if (voiceIds.length > 0) {
+    const voiceDur = new Map<string, number>()
+    try {
+      const vRows = await ctx.assetsOf(voiceIds)
+      for (const a of vRows) {
+        const lineId = lineIdOfVoiceAsset(a)
+        if (!lineId || !a.relPath) continue
+        const sec = probeMediaDuration(absPathOf(a.relPath))
+        if (sec && sec > 0) voiceDur.set(lineId, sec)
+      }
+    } catch (err) {
+      ctx.log(`配音时长探测失败（以音定画回退分镜估长）：${(err as Error).message}`)
+    }
+    if (voiceDur.size > 0) {
+      const map = planAudioDrivenShotDurations(parseShotLines(raw).shots, voiceDur)
+      if (map.size > 0) {
+        audioDurByShot = map
+        ctx.log(`以音定画：${map.size}/${shots.length} 镜视频时长改为跟随配音实测时长`)
+      }
+    }
+  }
 
   // 首帧注入（M6）：gen_frames 产物按 params.shotId 建索引；能力判定入队前 resolve 一次
   const frameIds = ctx.assetIdsOf('first_frame')
@@ -141,7 +173,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     const promptText = pickPromptText(shot as unknown as Record<string, unknown>, promptFields)
     const paramsJson = JSON.stringify({
       shotId: shot.id,
-      duration: recipe?.requestDurations[shot.id] ?? shotDurationSec(shot) ?? fallbackDuration ?? null,
+      duration: recipe?.requestDurations[shot.id] ?? audioDurByShot?.get(shot.id) ?? shotDurationSec(shot) ?? fallbackDuration ?? null,
       resolution: resolution ?? null,
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,

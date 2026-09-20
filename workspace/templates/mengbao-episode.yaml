@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 9
+version: 10
 name: 短剧·单集
-description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 场景道具档案与参考图（可选）→ 台词切句 → 分镜（可审阅）→ 出图或动效 → 配音 → 字幕 → 合成。
+description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 场景道具档案与参考图（可选）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]
@@ -285,10 +285,12 @@ steps:
     action: ai_video
     title: 批量镜头动效
     when: input.motion == true
-    after: [make_storyboard, gen_frames]
+    after: [make_storyboard, gen_frames, voice]
     inputs:
       shots: steps.make_storyboard.asset
       first_frame: steps.gen_frames.assets
+      # [以音定画] 逐句配音实测时长 → 动效镜时长按台词音频设定（with_voice=false 时该输入为空 → 回退分镜估长/兜底）
+      voices: steps.voice.assets
     params:
       prompt_field: motion_prompt,image_prompt
     batch: { field: shots, max_concurrent: 2, retry: 1 }

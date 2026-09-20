@@ -126,6 +126,27 @@ export function planVoiceAlignedSegments(
   return { aligned: true, segments, lines, totalDur: round3(timelineCursor), warnShots }
 }
 
+/**
+ * [以音定画] 逐镜音频驱动时长（纯函数，探针直测）：镜头视频时长跟随该镜所属台词句的实测音频总长。
+ * 供 ai_video 生成期把每镜 clip 时长对齐台词音频——动效模式合成分镜段 = clip 自身时长、
+ * 音频轨逐句首尾相接，故只要每镜 clip 长 == 该镜台词音频和，累计音画即逐镜对齐（消除「先视频后配音」的时长错位）。
+ * 与 planVoiceAlignedSegments 不同：不做全量映射严格校验、不以显式时长取大——只要有 ≥1 句命中即采用句和；
+ * 无命中句（空镜/动作镜）不进表（调用方回退分镜估长/兜底）。
+ */
+export function planAudioDrivenShotDurations(
+  shots: AlignShotInput[],
+  voiceDur: Map<string, number>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  if (voiceDur.size === 0) return out
+  for (const s of shots) {
+    let sum = 0
+    for (const id of s.lineIds) sum += voiceDur.get(id) ?? 0
+    if (sum > 0) out.set(s.id, round3(sum))
+  }
+  return out
+}
+
 /** [M11] SRT 每 cue 平移秒数（cue ↔ 句序 = voices 序；任一缺失 → null = 不平移） */
 export function planSrtShifts(align: AlignPlan, lineIdsInCueOrder: string[]): number[] | null {
   if (!align.aligned || lineIdsInCueOrder.length === 0) return null

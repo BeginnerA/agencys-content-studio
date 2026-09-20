@@ -3,13 +3,15 @@ import { asc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret, deleteSecret } from '../services/secrets'
+import { vendorPriorityRank } from '../db/seed'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const vendorRoutes = new Hono()
 
-// GET /vendor-credentials —— 列出所有凭证（Key 脱敏）+ 每个凭证下关联实例数
+// GET /vendor-credentials —— 列出所有凭证（Key 脱敏）+ 每个凭证下关联实例数；火山方舟/阿里千问优先展示，其余按名称原序
 vendorRoutes.get('/vendor-credentials', h(async (c) => {
-  const rows = await db.select().from(vendorCredentials).orderBy(asc(vendorCredentials.name))
+  const credRows = await db.select().from(vendorCredentials).orderBy(asc(vendorCredentials.name))
+  const rows = credRows.sort((a, b) => vendorPriorityRank(a.vendor) - vendorPriorityRank(b.vendor))
   const configs = await db.select({ id: apiConfigs.id, credentialId: apiConfigs.credentialId }).from(apiConfigs)
   const countByCredential = new Map<number, number>()
   for (const cfg of configs) {

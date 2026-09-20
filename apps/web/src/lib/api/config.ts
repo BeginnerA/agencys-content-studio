@@ -23,7 +23,7 @@ export const configApi = {
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
   test: (id: number) =>
     api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
-  /** 在线拉取供应商可用模型目录（OpenAI 兼容 GET /models，失败回退预置列表） */
+  /** 在线拉取供应商可用模型目录（[M33.1] 阿里千问 LLM 走 DashScope 原生带价口，其余 OpenAI 兼容仅 id，失败回退预置） */
   fetchModels: (body: Record<string, unknown>) =>
     api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
   /** [M32] 查询视频模型能力单一真源表（命中→平台自动背书档位；未命中→回退手填声明） */

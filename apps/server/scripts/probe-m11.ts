@@ -288,7 +288,7 @@ async function main(): Promise<void> {
   }
 
   const sectionAlign = async (): Promise<void> => {
-    const { parseShotLines, planVoiceAlignedSegments, planSrtShifts, shiftSrtText, srtTsToSec, secToSrtTs } = await import(
+    const { parseShotLines, planVoiceAlignedSegments, planAudioDrivenShotDurations, planSrtShifts, shiftSrtText, srtTsToSec, secToSrtTs } = await import(
       '../src/pipeline/actions/ffmpeg-merge'
     )
 
@@ -378,6 +378,21 @@ async function main(): Promise<void> {
       { hasLinesField: true },
     )
     check(!f6.aligned && f6.reason === 'mapping_mismatch', 'mapping_mismatch：重复句（跨镜复引）')
+
+    // ---- [以音定画] planAudioDrivenShotDurations：逐镜句和（供 ai_video 生成期时长）----
+    const adShots = [
+      { id: 's01', durationSec: 10, lineIds: ['L1', 'L2'] },
+      { id: 's02', durationSec: null, lineIds: [] as string[] },
+      { id: 's03', durationSec: 3, lineIds: ['L3'] },
+    ]
+    const adMap = planAudioDrivenShotDurations(adShots, voiceA)
+    check(adMap.get('s01') === 5, `s01：时长以音频和为准(2+3=5)、不受显式 10 抬高（实际 ${adMap.get('s01')}）`)
+    check(!adMap.has('s02'), 's02：无台词镜不进表（调用方回退分镜估长/兜底）')
+    check(adMap.get('s03') === 4, `s03：句和 4 > 显式 3 → 以音频 4 为准（实际 ${adMap.get('s03')}）`)
+    // 部分命中宽容：幽灵 id 不抛错，仅累计存在句（与严格 plan 的 mapping_mismatch 回退不同）
+    const adPartial = planAudioDrivenShotDurations([{ id: 's01', durationSec: 2, lineIds: ['L1', 'LX'] }], new Map([['L1', 1.234]]))
+    check(adPartial.get('s01') === 1.234, `部分命中宽容：忽略幽灵 LX、仅 L1=1.234（实际 ${adPartial.get('s01')}）`)
+    check(planAudioDrivenShotDurations(adShots, new Map()).size === 0, '无音频时长 → 空表')
 
     // ---- planSrtShifts：逐 cue 平移 / 数量与序校验 ----
     const shifts = planSrtShifts(planA, ['L1', 'L2', 'L3'])

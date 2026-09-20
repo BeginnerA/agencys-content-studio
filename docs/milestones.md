@@ -437,6 +437,23 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
+## M33.1 能力速览（AI 配置极简零重构：只配 Key + 选模型，定价「谁给价谁带」）
+
+把 M33 仍偏「要用户配」的手填真源表兜价，升级为**在线目录优先自动带价**：现场用真实 Key 核对供应商列模型接口后，建实例主表单**只必填「供应商凭证 / Key + 选模型」**，其余（实例名、定价、端点、能力）一律自动带出、可入「高级」覆盖。核心纪律不降级：**仅接供应商接口明确返回且可归一为非折扣全价 CNY 的价格、单位/币种无法归一 → 视为未命中按未计价（绝不猜价）；在线元数据仅用于建实例预填，绝不注入 `resolveUnitPrice` 事后计价链（零漂移）**。
+
+- **现实核对（Step 0 真实 Key 现场拉取）**：DashScope 原生 `GET /api/v1/models?providers=qwen` 对 `aliyun_*` 行返回 `output.models[]` 携 `prices`（input/output + 币种 + 单位「每百万tokens」，与平台口径**完全一致零换算**）+ context；实测 78 模型，`qwen3.8-max` 12/36、`qwen3.7-plus` 2/8、`qwen3.8-flash` 0.8/2.7 **精确复现 M33 真源表**。而 OpenAI 兼容 `/v1/models`、DeepSeek `/v1/models` **不含价格**（坐实「谁给价谁带」前提）。
+- **模型元数据适配层（model-metadata）**：新增 `apps/server/src/adapters/model-metadata.ts` 纯函数（仅 import type，零运行时依赖）——`normalizeModelList(serviceType, providerKey, json)` 分供应商归一：`dashscopePricing` 取 `range_name==='Default'`（缺则首组）全价档、`type` 精确匹配 `input_token/output_token`、单位必须「每百万tokens」否则省略，非 CNY/缺档/单位守卫 → `pricing` 省略；**仅 LLM 走 live 带价，图/视频/语音按档不猜**（回落 M33 核实表 / 手填 / 未计价）。OpenAI 兼容口仅取 id。`sortEntriesWithPreset` 预置置顶 + 其余字母序。M33 `pricing-capabilities.ts` 保留为兜底（未命中再用），零死代码。
+- **fetch-models 契约升级**：返回 `models: string[]` → `models: ModelEntry[]`（新增 `pricing?/context?/source`）。`aliyun_qwen_llm` 不再短路 preset，改走原生带价分页口（`page_size=100` 上限保护、`Bearer` 带 `resolveConfigApiKey/credential key`）；失败/超时回退 preset（附 note）。其余供应商维持兼容口仅取 id。保留 `source:'live'|'preset'` / `note` 语义。
+- **前端主表单极简（creator-ui）**：`ApiConfigForm.vue` 主区收敛为「供应商凭证 / Key + 选模型」+ 一行只读「自动带出」摘要；**实例名自动生成** `${供应商}·${模型}`（`watch` 模型变化更新，用户改过则不覆盖，仅「高级」可改，提交非空校验对自动值恒成立）；**选凭证即自动在线拉取**（含新建态，免点「获取模型」）；定价主区不再放输入框——命中 live > 核实表 > 未计价，只读展示来源，手填入口移入「高级」折叠；`PricingSuggest.vue` 改为高级模式，新增 `live` 优先入参与 `mode='live'`（优先级 stored > live > 表 > manual）。`isDefault` 沿用「首个实例自动建议 + `defaultTouched` 防覆盖」，视频 caps 维持 M32 背书。
+
+数据与兼容：**0 新表 / 0 新列**（定价仍存 `apiConfigs.pricing` JSON、caps 仍存 `extra.creationCapabilities`，元数据解析策略写在代码按 providerKey 分流，不加 DB 列）；`resolveUnitPrice` 事后计价链零触碰（probe cost-drift 断言 live 命中也不改变）；`ModelEntry` 契约变更仅 `ApiConfigForm` 消费（grep 复核无其它调用方）。文件行数：`model-metadata.ts` 162、`api-configs.ts` 471、`ApiConfigForm.vue` 556、`PricingSuggest.vue` 228、`probe-m33.ts` 198，均 ≤800。
+
+端点：`POST /api/v1/api-configs/fetch-models`（契约升级 `ModelEntry[]` + 阿里千问 LLM 走原生带价口）；`GET /api/v1/api-configs/model-suggest`（M33 保留，作表兜底，无需联网行为不变）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m33.ts`（**五节全绿**：registry〔M33 表兜底不破〕/ metadata〔DashScope 样例 fixture → 单位换算正确 12/36·2/8·0.8/2.7 + context + image 排除 + 非 llm 空 + 非 CNY/缺档/单位守卫 → `pricing` 省略 + compat 仅 id 去重〕/ endpoint〔M33 原节〕/ fetch-endpoint〔mock fetch：aliyun 原生带价 `ModelEntry[]` + 失败回退 preset + compat 仅 id〕/ cost-drift〔live 命中亦 `resolveUnitPrice:null` 零漂移〕）；真实 Key 现场拉取 78 模型逐值对齐真源表；浏览器实测「新建实例只选凭证 + 选模型即保存跑通、live 价 `{12,36}` 落库、实例名自动生成」；`probe:all` 全量：**M30（50）/ M31（34）/ M32（21）/ M33（33）零回归全绿**（m26 split-audit / m13-m14 并行嵌套 spawn 竞态为预先存在项，非本次引入）；双端 `tsc --noEmit` / `vue-tsc --noEmit` + `pnpm --filter @acs/web build` 全绿。
+
+---
+
 ## M34 能力速览（模板与运行入参自动化 · G6 输入预填 + G8 视频合法档位 · 零成本）
 
 把 M32/M33 的「真源表 + Tier A 自动预填」范式从 AI 配置扩展到**建 run 链路**：选模板后系统按「上次同模板 run 真实入参 + 项目 brief」自动预填 inputs、按视频能力真源表给出覆盖项合法档位，收敛 G6（输入不参考历史/brief 手填）与 G8（RunParams 覆盖项空白手填可越界）。**G7（自然语言→模板推荐）本轮暂缓**（用户拍板取零成本路线，归后续 M35 评估）。核心纪律：**全程零 LLM / 零网络 / 零计费**（纯 DB 读 + 静态真源表），每个自动值携 `source` 供前端标注「为何是这个值」（M37 前置），不改 `_params` 三层叠加与执行契约。
@@ -488,9 +505,24 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M37 立项 · **未实施**）
+## M37 能力速览（收尾与回归 · G13 自动值来源统一可追溯 · 纯前端 + 探针锁，零服务端变更）
 
-> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 `docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（L0.5 立项纲领，仓库内相对路径）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）、M35（创作流程自动化：G9+G10+G11+G7）、**M36（运营配置自动化：G12.1-4）** **已交付**，见上方对应「能力速览」。
+路线图收官项：M32–M36 落地的各处「自动值 / 智能建议」在 UI 上各自造标注（chip 文案 / 长句 note / 徽标 / 无标注），用户看不到统一的「为何是这个值」；且存在一处实质缺口——M34 的 `caps_suggest`（覆盖项合法域由能力表收窄）服务端已下发 `source` 但前端从未消费。M37 = 一个统一徽标组件 + 9 触点接线 + `probe-m37` 锁定各自动化契约的 source 语义。核心纪律：**0 服务端代码 / 0 新端点 / 0 LLM 计费**（`tsc` 零 diff 可证），只标注不改行为（取值/提交/去噪策略逐字不变）。
+
+- **G13.1 统一组件 `ProvenanceBadge.vue`**（纯展示 80 行，无状态无 emit）：`kind ∈ {auto 自动, endorse 背书, suggest 建议, builtin 内置}` 四类用户语言映射（**不向用户暴露内部术语 Tier A/B**，拍板），`text` 来源短语 + `title` 长依据收进 hover；色板与全局 token 同源（accent/ok/warn/中性灰），不引入新色值。「建议」类徽标必须传达「仅提示未执行」（Tier B/C 边界可见性）。
+- **G13.2 自动值触点接线（6 处）**：`TemplateInputFields` 预填 chip（last_run→「自动 · 沿用上次运行」、brief→「自动 · 来自项目简介」，template_default 维持 M34 去噪不标注）；**`RunFormModal` 覆盖区补 `caps_suggest` 标注（G13 缺口）**——命中能力表时 summary 挂「自动 · 能力表合法域」，title 注明按本模型收窄且越界会被服务端 clamp；`PricingSuggest` 命中行改「自动 · 供应商在线目录/平台核实表定价」徽标（核实锚点入 hover，原长句精简）；`VideoCapsEditor` 自动背书 note 前置「背书 · 平台能力表」；`CompliancePanel` 词库仅兜底时挂「内置 · 基准词库兜底」（用户自有文件非自动值不加噪）；`PlatformPresets` seed 结果行挂「自动 · 平台目录」（added>0 才显示）。
+- **G13.3 建议类触点（3 处）**：`NextStepsBar` 头部挂「建议 · 规则引擎」（前端静态标注即事实：规则引擎为唯一来源；强化「仅提示、点击才路由」）；`CompliancePanel` 建议区挂「建议 · 复审结论聚合」（表意来自已付费产物、零新计费）；`ScheduleCadence` 批量建结果挂「自动 · 节奏模板展开」。
+- **G13.4 `probe-m37` 契约一致性锁（五节 34 断言）**：锁定前端标注的真源不漂移——prefill 各 key `source ∈ {template_default,last_run,brief}`、last_run 覆盖 template_default、`overrides.video.source='caps_suggest'` 且 `defaultResolution ∈ selectableResolutions`、未登记→null（不猜）；model-suggest 命中定价必带非空核实锚点、未登记双缺席；rules `source ∈ {file,builtin}`（缺失=builtin 全量、在位=file 仅文件）+ catalog 字段非空 + seed `added=3` 幂等重放 0；suggest 恒 warn 起步 + evidence 非空（「建议」不越权）+ 采纳落盘后 source 回 file；next-steps `kind` ∈ 枚举、≤3；cadence `errors` 非空 ⇔ timestamps 空（不静默产出）。未来若里程碑改 source 枚举，探针先红、前端标注随后适配。
+
+数据与兼容：**服务端零变更**（新表 0 / 新列 0 / 新端点 0，`GET /compliance/rules` 等契约不变）；徽标纯展示组件，任一触点可单点回退互不牵连；清理两处自造样式残留（`TemplateInputFields` 的 `.src-chip`、`CompliancePanel` 的 `.badge*`）收敛入统一组件。文件行数：`ProvenanceBadge.vue` 80 / `TemplateInputFields.vue` 325 / `RunFormModal.vue` 422 / `PricingSuggest.vue` 249 / `VideoCapsEditor.vue` 470 / `CompliancePanel.vue` 262 / `PlatformPresets.vue` 293 / `ScheduleCadence.vue` 323 / `NextStepsBar.vue` 145 / `probe-m37.ts` 271，均 ≤800。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m37.ts`（**34 项断言全绿**，零网络零计费）；**M24 / M30–M36 零回归全绿**；`vue-tsc --noEmit` + `vite build` 全绿；`probe:ci` fail-fast 下仍仅 `m26 split-audit` 存量债红（11 个历史 >800 文件，M36 已 HEAD 复验与近期交付无关，可作后续专项清理）。
+
+---
+
+## 路线图（M32–M37 · **全部交付 · 收官**）
+
+> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
@@ -498,6 +530,6 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 |---|---|---|---|
 | **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | **已交付**（见上方 M35 能力速览）|
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | **已交付**（见上方 M36 能力速览）|
-| **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
+| **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | **已交付**（见上方 M37 能力速览）|
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34/M35/M36（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32–M37 已全部交付，G1–G13 十二项缺口 + 收尾锁闭环**；遗留技术债候选：`probe-m26 split-audit` 要求的 11 个历史 >800 文件拆分（与本路线图表目无关，待另立专项）。

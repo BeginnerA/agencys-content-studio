@@ -7,6 +7,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import ProvenanceBadge from '../../components/common/ProvenanceBadge.vue'
 import { projectApi, scheduleApi } from '../../lib/api'
 import type { Cadence, Project, Schedule } from '../../lib/types'
 
@@ -223,7 +224,14 @@ function toggleWeekday(v: number) {
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
-    <div v-if="msg" class="cp-msg ok">{{ msg }}</div>
+    <div v-if="msg" class="cp-msg ok">
+      <ProvenanceBadge
+        kind="auto"
+        text="节奏模板展开"
+        title="时间点由纯日期数学按所选节奏展开（零 LLM 零计费），入参继承模板源计划"
+      />
+      {{ msg }}
+    </div>
     <div v-if="previewErrors.length" class="cp-msg bad">
       校验未通过：{{ previewErrors.join('；') }}
     </div>

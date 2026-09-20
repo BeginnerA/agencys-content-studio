@@ -9,6 +9,7 @@ import type {
 import { fmtTime, PLATFORM_TEXT, purposeText } from '../../lib/format'
 import AssetPreviewer from '../asset/previewer/index.vue'
 import Icon from '../common/Icon.vue'
+import ProvenanceBadge from '../common/ProvenanceBadge.vue'
 
 const props = defineProps<{
   tpl: TemplateDetail | null
@@ -69,11 +70,11 @@ function openPreview(id: number) {
   if (i >= 0) previewIdx.value = i
 }
 
-/** [M34] 自动预填来源 chip（仅标注本轮新增的 Tier A/B 自动值；模板自身默认不加噪） */
+/** [M34] 自动预填来源（[M37·G13] 改挂统一徽标；仅标注本轮新增的自动值，模板自身默认不加噪） */
 function srcChip(k: string): string {
   const s = props.sources?.[k]
-  if (s === 'last_run') return '↺ 沿用上次运行'
-  if (s === 'brief') return '✦ 来自项目简介'
+  if (s === 'last_run') return '沿用上次运行'
+  if (s === 'brief') return '来自项目简介'
   return ''
 }
 </script>
@@ -83,7 +84,7 @@ function srcChip(k: string): string {
     <template v-for="inp in tpl?.inputs ?? []" :key="inp.key">
       <label v-if="inp.kind === 'text'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <em v-if="srcChip(inp.key)" class="src-chip">{{ srcChip(inp.key) }}</em>
+        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
         <textarea
           v-if="!dense"
           :value="textOf(inp.key)"
@@ -100,7 +101,7 @@ function srcChip(k: string): string {
 
       <label v-else-if="inp.kind === 'int'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <em v-if="srcChip(inp.key)" class="src-chip">{{ srcChip(inp.key) }}</em>
+        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
         <input
           type="number"
           :value="numOf(inp.key)"
@@ -281,17 +282,6 @@ function srcChip(k: string): string {
   margin: 4px 0 0;
   font-size: 11.5px;
   line-height: 1.5;
-}
-
-.src-chip {
-  margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-style: normal;
-  vertical-align: 1px;
-  color: var(--accent-h);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .picklist {

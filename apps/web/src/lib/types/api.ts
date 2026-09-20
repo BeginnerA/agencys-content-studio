@@ -126,9 +126,21 @@ export interface VendorCredential {
   updatedAt: number
 }
 
-/** POST /api-configs/fetch-models 响应：在线目录 / 预置回退 */
+/**
+ * [M33.1] 在线模型目录条目（fetch-models 归一结果）。
+ * pricing 仅供应商接口明确返回且可归一时给出（阿里千问 LLM 走 DashScope 原生带价口）；
+ * 给不了则缺席 → 前端回落 model-suggest 核实表 / 手填 / 未计价（绝不猜价）。context 供展示，不参与计价。
+ */
+export interface ModelEntry {
+  id: string
+  name?: string
+  pricing?: ModelPricing
+  context?: { input?: number; output?: number }
+}
+
+/** POST /api-configs/fetch-models 响应：在线目录（含参考定价 ModelEntry[]）/ 预置回退 */
 export interface FetchModelsResult {
-  models: string[]
+  models: ModelEntry[]
   source: 'live' | 'preset'
   note?: string
 }

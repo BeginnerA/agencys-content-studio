@@ -12,6 +12,7 @@ import { projectApi } from '../../lib/api'
 import { studioOff, studioOn } from '../../lib/socket'
 import type { NextStep } from '../../lib/types'
 import Icon from '../common/Icon.vue'
+import ProvenanceBadge from '../common/ProvenanceBadge.vue'
 
 const props = defineProps<{ projectId: number }>()
 const router = useRouter()
@@ -63,6 +64,12 @@ defineExpose({ reload })
     <span class="lead muted"
       ><Icon name="sparkles" :size="12" /> 下一步</span
     >
+    <!-- [M37·G13] 来源可追溯：规则引擎是本条唯一来源（前端静态标注即事实），强化「仅建议不执行」可见性 -->
+    <ProvenanceBadge
+      kind="suggest"
+      text="规则引擎"
+      title="由服务端规则引擎按项目状态推导（零 LLM、零计费）；仅提示不自动执行，点击才会跳转"
+    />
     <template v-for="s in steps" :key="s.key">
       <span
         v-if="s.auto"

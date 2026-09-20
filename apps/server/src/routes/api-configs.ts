@@ -3,10 +3,12 @@ import { and, asc, count, desc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
+import { vendorPriorityRank } from '../db/seed'
 import { chatComplete, providerDefaultUrl } from '../services/llm'
 import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
 import { resolveVideoCaps } from '../adapters/video-capabilities'
 import { resolveModelPricing, type PricingServiceType } from '../adapters/pricing-capabilities'
+import { normalizeModelList, sortEntriesWithPreset, type ModelEntry } from '../adapters/model-metadata'
 import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
 import { probePollinationsVideoEndpoint } from '../adapters/pollinations-video'
 import { probeSiliconflowVideoEndpoint } from '../adapters/siliconflow-video'
@@ -20,6 +22,10 @@ const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
 
 /** DashScope 原生协议行（万相文生图/视频、千问图像、千问 TTS）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
 const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_wan_image', 'aliyun_qwen_image', 'aliyun_wan_video', 'aliyun_qwen_tts'])
+
+/** [M33.1] DashScope 原生列模型口根址与 providers 过滤映射（仅阿里千问 LLM 走此口以带出参考定价） */
+const DASHSCOPE_NATIVE_ROOT = 'https://dashscope.aliyuncs.com/api/v1'
+const DASHSCOPE_PROVIDERS_BY_KEY: Record<string, string> = { aliyun_qwen_llm: 'qwen' }
 
 /**
  * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
@@ -38,9 +44,10 @@ function isConfigTestable(serviceType: string, providerKey: string): boolean {
   return true
 }
 
-// GET /api-providers —— 供应商目录（预置 + 已建 config 关联态）
+// GET /api-providers —— 供应商目录（预置 + 已建 config 关联态；火山方舟/阿里千问优先展示，其余保持原序）
 apiRoutes.get('/api-providers', h(async (c) => {
-  const providers = await db.select().from(apiProviders).orderBy(asc(apiProviders.serviceType), asc(apiProviders.key))
+  const providerRows = await db.select().from(apiProviders).orderBy(asc(apiProviders.serviceType), asc(apiProviders.key))
+  const providers = providerRows.sort((a, b) => vendorPriorityRank(a.vendor) - vendorPriorityRank(b.vendor))
   const configs = await db.select().from(apiConfigs)
   const byProvider = new Map<string, typeof configs[number][]>()
   for (const cfg of configs) {
@@ -157,10 +164,11 @@ apiRoutes.post('/api-configs', h(async (c) => {
   return c.json({ config: row[0] }, 201)
 }))
 
-// POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（OpenAI 兼容 GET {baseUrl}/models）
-// body: { provider_key, base_url?, api_key?, config_id? }
-// 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 目录 defaultUrl；无 key 亦尝试（部分网关目录公开）。
-// 在线失败 / 为空 → 回退目录 presetModels，并在 note 中说明原因。
+// POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（[M33.1] 含参考定价，返回 ModelEntry[]）
+// body: { provider_key, base_url?, api_key?, config_id?, credential_id? }
+// 阿里千问 LLM 走 DashScope 原生 GET /api/v1/models（带 prices/context，谁给价谁带）；其余走 OpenAI 兼容 GET {baseUrl}/models（仅 id，不猜价）。
+// 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 凭证（credential_id）> 目录 defaultUrl。
+// 在线失败 / 为空 → 回退目录 presetModels（id-only），并在 note 中说明原因。零写库、不改事后计价口径。
 apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const providerKey = body['provider_key']
@@ -168,16 +176,18 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   const providerRows = await db.select().from(apiProviders).where(eq(apiProviders.key, providerKey)).limit(1)
   const provider = providerRows[0]
   if (!provider) throw new HttpError(400, 'bad_provider', `供应商 ${providerKey} 不存在`)
+  const serviceType = provider.serviceType as PricingServiceType
   const preset = (safeJson(provider.presetModels, []) as unknown[]).filter(
     (m): m is string => typeof m === 'string' && !!m,
   )
+  const presetEntries: ModelEntry[] = preset.map((id) => ({ id }))
 
-  // DashScope 原生协议行在线拉取必 404（无 /models 端点）；直接回退预置目录并说明原因
+  // DashScope 原生协议行在线拉取必 404（无 OpenAI 兼容 /models 端点），且图/视频/语音价按档不猜 → 直接回退预置
   if (NATIVE_DASHSCOPE_PROVIDER_KEYS.has(providerKey)) {
     return c.json({
-      models: preset,
+      models: presetEntries,
       source: 'preset',
-      note: '该供应商为 DashScope 原生协议（无 /models 接口），模型目录由平台预置',
+      note: '该供应商为 DashScope 原生协议（无 /models 价格档），模型目录由平台预置',
     })
   }
 
@@ -188,20 +198,37 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
     const cfgRows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, configId)).limit(1)
     const cfg = cfgRows[0]
     if (cfg) {
-      if (!baseUrl) baseUrl = cfg.baseUrl?.trim() ?? ''
-      if (!apiKey) apiKey = resolveApiKey(cfg.apiKeyRef) || ''
+      // 密钥/端点解析须凭证感知：共享凭证场景下实例 apiKeyRef 可能仍为 'local'（无 Key），
+      // 真实密钥存于 vendor_credentials.apiKeyRef —— 与连通测试 resolveConfigApiKey 同源，
+      // 否则在线拉取会漏掉 Authorization 头导致 401（如阿里千问 compatible-mode）。
+      if (!apiKey) apiKey = await resolveConfigApiKey(cfg)
+      if (!baseUrl) baseUrl = await resolveConfigBaseUrl(cfg)
+    }
+  }
+  // 新建实例尚未落库（无 config_id）：Key 存于前端所选供应商凭证 → 直接按 credential_id 解析，
+  // 否则在线拉取无 Authorization 头 → 401（阿里千问等 compatible-mode 端点必现）。
+  const credentialId = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
+  if (credentialId !== null && (!apiKey || !baseUrl)) {
+    const credRows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, credentialId)).limit(1)
+    const cred = credRows[0]
+    if (cred) {
+      if (!apiKey) apiKey = resolveApiKey(cred.apiKeyRef) || ''
+      if (!baseUrl) baseUrl = cred.baseUrl?.trim() ?? ''
     }
   }
   if (!baseUrl) baseUrl = provider.defaultUrl?.trim() ?? ''
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 20_000)
   let liveError = ''
-  let models: string[] = []
-  if (!baseUrl) {
-    liveError = '端点未配置（实例与目录均无 baseUrl）'
-  } else {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20_000)
-    try {
+  let entries: ModelEntry[] = []
+  try {
+    if (providerKey === 'aliyun_qwen_llm') {
+      // [M33.1] 阿里千问 LLM：走 DashScope 原生列模型口（带 prices/context），分页聚合
+      entries = await fetchDashscopeModels(providerKey, serviceType, apiKey, controller.signal)
+    } else if (!baseUrl) {
+      liveError = '端点未配置（实例与目录均无 baseUrl）'
+    } else {
       const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
         headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
         signal: controller.signal,
@@ -210,25 +237,21 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
         const text = await res.text().catch(() => '')
         liveError = `HTTP ${res.status}${text ? ` ${text.slice(0, 160)}` : ''}`
       } else {
-        models = normalizeModelIds(await res.json().catch(() => null))
+        entries = normalizeModelList(serviceType, providerKey, await res.json().catch(() => null))
       }
-    } catch (e) {
-      liveError = e instanceof Error ? e.message : String(e)
-    } finally {
-      clearTimeout(timer)
     }
+  } catch (e) {
+    liveError = e instanceof Error ? e.message : String(e)
+  } finally {
+    clearTimeout(timer)
   }
-  if (models.length > 0) {
+
+  if (entries.length > 0) {
     // 预置模型置顶，其余字母序（网关混合目录下常用项优先可见）
-    const set = new Set(models)
-    const head: string[] = []
-    for (const m of preset) if (set.has(m)) head.push(m)
-    const headSet = new Set(head)
-    const rest = models.filter((m) => !headSet.has(m)).sort((a, b) => a.localeCompare(b))
-    return c.json({ models: [...head, ...rest].slice(0, 800), source: 'live' })
+    return c.json({ models: sortEntriesWithPreset(entries, preset).slice(0, 800), source: 'live' })
   }
   return c.json({
-    models: preset,
+    models: presetEntries,
     source: 'preset',
     note: liveError ? `在线目录获取失败（${liveError.slice(0, 200)}），已回退预置列表` : '在线目录为空，已回退预置列表',
   })
@@ -440,25 +463,37 @@ function safeJson(s: string | null, fallback: unknown): unknown {
   try { return JSON.parse(s) } catch { return fallback }
 }
 
-/** 兼容三种模型目录形态：[{id}] / {data:[{id}]} / {models:[{id}|'id']} */
-function normalizeModelIds(json: unknown): string[] {
-  let arr: unknown[] = []
-  if (Array.isArray(json)) {
-    arr = json
-  } else if (json && typeof json === 'object') {
-    const obj = json as Record<string, unknown>
-    if (Array.isArray(obj['data'])) arr = obj['data'] as unknown[]
-    else if (Array.isArray(obj['models'])) arr = obj['models'] as unknown[]
+/**
+ * [M33.1] 拉取 DashScope 原生列模型目录（分页聚合，page_size=100，上限 5 页）→ 归一为 ModelEntry[]。
+ * 仅阿里千问 LLM 使用；价格/上下文归一见 adapters/model-metadata（不猜价：非 token 全价档一律不带）。
+ */
+async function fetchDashscopeModels(
+  providerKey: string,
+  serviceType: PricingServiceType,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<ModelEntry[]> {
+  const providerFilter = DASHSCOPE_PROVIDERS_BY_KEY[providerKey] ?? 'qwen'
+  const merged: unknown[] = []
+  for (let pageNo = 1; pageNo <= 5; pageNo++) {
+    const url = `${DASHSCOPE_NATIVE_ROOT}/models?providers=${encodeURIComponent(providerFilter)}&page_no=${pageNo}&page_size=100`
+    const res = await fetch(url, {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      signal,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}${text ? ` ${text.slice(0, 160)}` : ''}`)
+    }
+    const json = await res.json().catch(() => null)
+    const output = json && typeof json === 'object' ? (json as Record<string, unknown>)['output'] : null
+    const pageModels = output && typeof output === 'object' ? (output as Record<string, unknown>)['models'] : undefined
+    const list = Array.isArray(pageModels) ? pageModels : []
+    merged.push(...list)
+    const total = output && typeof output === 'object' && typeof (output as Record<string, unknown>)['total'] === 'number'
+      ? (output as Record<string, unknown>)['total'] as number
+      : merged.length
+    if (merged.length >= total || list.length === 0) break
   }
-  const ids = new Set<string>()
-  for (const item of arr) {
-    const id =
-      typeof item === 'string'
-        ? item
-        : item && typeof item === 'object'
-          ? (item as Record<string, unknown>)['id'] ?? (item as Record<string, unknown>)['name']
-          : null
-    if (typeof id === 'string' && id.trim()) ids.add(id.trim())
-  }
-  return [...ids]
+  return normalizeModelList(serviceType, providerKey, { output: { models: merged } })
 }

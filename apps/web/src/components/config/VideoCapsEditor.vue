@@ -7,6 +7,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { configApi } from '../../lib/api'
+import ProvenanceBadge from '../common/ProvenanceBadge.vue'
 import type { VideoCreationCapabilities, VideoModelCaps } from '../../lib/types'
 
 const props = defineProps<{
@@ -252,6 +253,11 @@ watch(
       <b>轻松创作能力</b>
       <span v-if="capsFetching" class="note">正在按平台能力表核实档位…</span>
       <span v-else-if="capsSupported && capsMode === 'auto'" class="note">
+        <ProvenanceBadge
+          kind="endorse"
+          text="平台能力表"
+          :title="`已按「${providerName}${modelStr.trim() ? ` / ${modelStr.trim()}` : ''}」真源表担保档位，无需逐项核实`"
+        />
         系统已按「{{ providerName
         }}<template v-if="modelStr.trim()"> / {{ modelStr.trim() }}</template
         >」能力表自动背书，无需手动核实；执行前预检卡仍可复核，如需可「改为手动声明」覆盖。

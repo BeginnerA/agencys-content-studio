@@ -7,6 +7,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import ProvenanceBadge from '../../components/common/ProvenanceBadge.vue'
 import { complianceApi, projectApi } from '../../lib/api'
 import type { ComplianceRulesView, Project, SuggestedRule } from '../../lib/types'
 
@@ -107,13 +108,13 @@ onMounted(async () => {
       <div class="panel cp-view">
         <div class="cp-header">
           <h3><Icon name="check" :size="15" /> 合规词库</h3>
-          <span
-            class="badge"
-            :class="view?.source === 'file' ? 'ok' : 'warn'"
-            :title="view?.source === 'file' ? '已加载用户词库文件' : '词库文件缺失，已启用内置《广告法》基准地板兜底'"
-          >
-            {{ view?.source === 'file' ? '词库文件已加载' : '内置基准兜底中' }}
-          </span>
+          <!-- [M37·G13] 统一徽标：仅兜底时提示（用户自有词库非「自动值」，不加噪） -->
+          <ProvenanceBadge
+            v-if="view?.source === 'builtin'"
+            kind="builtin"
+            text="基准词库兜底"
+            title="词库文件缺失，已启用内置《广告法》基准地板兜底（补齐后自动恢复用户词库）"
+          />
         </div>
         <div class="cp-total">
           共 <strong>{{ view?.total ?? 0 }}</strong> 条规则
@@ -128,7 +129,14 @@ onMounted(async () => {
       <!-- 补充建议 -->
       <div class="panel cp-suggest">
         <div class="cp-header">
-          <h3><Icon name="sparkles" :size="15" /> 词库补充建议</h3>
+          <h3>
+            <Icon name="sparkles" :size="15" /> 词库补充建议
+            <ProvenanceBadge
+              kind="suggest"
+              text="复审结论聚合"
+              title="候选词来自已付费的合规复审产物（零新计费）；仅提示未执行，需人工勾选采纳"
+            />
+          </h3>
           <div class="cp-tools">
             <select v-model="projectId">
               <option value="">全域项目</option>
@@ -218,20 +226,6 @@ onMounted(async () => {
 }
 .mono {
   font-family: var(--mono, monospace);
-}
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-}
-.badge.ok {
-  color: var(--ok, #16a34a);
-  border-color: var(--ok, #16a34a);
-}
-.badge.warn {
-  color: var(--warn, #d97706);
-  border-color: var(--warn, #d97706);
 }
 .cp-total {
   font-size: 13px;

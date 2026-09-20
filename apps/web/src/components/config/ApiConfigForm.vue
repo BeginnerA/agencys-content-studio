@@ -4,6 +4,7 @@ import Modal from '../common/Modal.vue'
 import SearchSelect from '../common/SearchSelect.vue'
 import type {
   ApiProvider,
+  ModelEntry,
   ProviderConfigLite,
   VendorCredential,
 } from '../../lib/types'
@@ -21,6 +22,8 @@ const props = defineProps<{
 const emit = defineEmits<{ saved: []; close: [] }>()
 
 const name = ref('')
+/** [M33.1] 实例名默认自动生成（供应商·模型），用户改过则不覆盖 */
+const nameTouched = ref(false)
 const baseUrl = ref('')
 const model = ref('')
 const apiKey = ref('')
@@ -46,18 +49,39 @@ const capsInitial = ref<unknown>(null)
 /**
  * [M33] 定价智能带出子组件（PricingSuggest，全通道）：命中平台参考定价表→自动预填（可改），
  * 未命中→回落手填。编辑回显经 pricingInitial 传入，提交经其 buildPricing 回收。
- * 「选中即生成」：@suggest 回报参考定价命中 / 默认通道建议（新建且该通道无实例时自动勾 isDefault，用户可取消）。
+ * [M33.1] 新增 live 优先：选定模型后从在线目录（fetch-models）带出供应商实时参考价（live > 核实表）。
+ * 主区改为只读摘要（不需用户配），手填入口移入「高级」折叠。
  */
 const pricingSuggest = ref<InstanceType<typeof PricingSuggest> | null>(null)
 const pricingInitial = ref<Record<string, number> | null>(null)
-const pricingHit = ref(false)
 const suggestDefault = ref(false)
 const defaultTouched = ref(false)
-function onPricingSuggest(p: { pricingHit: boolean; suggestDefault: boolean }): void {
-  pricingHit.value = p.pricingHit
+/** [M33.1] 主区只读定价摘要（source 来源 + 是否命中） */
+const pricingSummaryHit = ref(false)
+const pricingSource = ref<'live' | 'table' | 'stored' | 'none'>('none')
+function onPricingSuggest(p: {
+  hit: boolean
+  source: 'live' | 'table' | 'stored' | 'none'
+  suggestDefault: boolean
+}): void {
+  pricingSummaryHit.value = p.hit
+  pricingSource.value = p.source
   suggestDefault.value = p.suggestDefault
   if (p.suggestDefault && !props.config && !defaultTouched.value) isDefault.value = true
 }
+/** [M33.1] 主区只读摘要文案（不需用户配定价） */
+const pricingSummaryText = computed(() => {
+  switch (pricingSource.value) {
+    case 'live':
+      return '✓ 参考定价已按供应商在线目录自动带出（可在「高级」查看 / 覆盖）'
+    case 'table':
+      return '✓ 参考定价已按平台核实表自动带出（可在「高级」查看 / 覆盖）'
+    case 'stored':
+      return '✓ 沿用该实例已配置的定价（保存后按实例价计费）'
+    default:
+      return '定价：未计价（供应商目录未提供，可进「高级」手填；用量将按未计价记录）'
+  }
+})
 
 /** 凭证下拉候选：显示 "厂商名 ****tail" */
 const credentialOptions = computed(() => {
@@ -69,8 +93,23 @@ const credentialOptions = computed(() => {
   }))
 })
 
-/** 模型候选：目录预置 → 在线拉取覆盖 */
+/** 模型候选：目录预置 → 在线拉取覆盖（[M33.1] modelEntries 携参考定价/上下文，modelOptions 仅 id 供下拉） */
 const modelOptions = ref<string[]>([])
+const modelEntries = ref<ModelEntry[]>([])
+/** [M33.1] 是否已做过一次在线拉取（新建选 Key 后自动触发一次） */
+const liveFetched = ref(false)
+/** 当前选中模型对应的在线目录条目（取其实时参考价 live 优先） */
+const selectedEntry = computed(
+  () => modelEntries.value.find((e) => e.id === model.value.trim()) ?? null,
+)
+const livePricing = computed(() => selectedEntry.value?.pricing ?? null)
+/** 自动生成实例名（供应商·模型） */
+const autoName = computed(
+  () => `${props.provider.name}${model.value.trim() ? `·${model.value.trim()}` : ''}`,
+)
+watch(model, () => {
+  if (!props.config && !nameTouched.value) name.value = autoName.value
+})
 /** 拉取结果说明（在线数量 / 回退原因） */
 const fetchNote = ref('')
 const fetchNoteWarn = ref(false)
@@ -82,11 +121,15 @@ watch(
     name.value = c?.name ?? ''
     baseUrl.value = c?.baseUrl ?? ''
     model.value = c?.model ?? ''
+    nameTouched.value = false
+    liveFetched.value = false
+    if (!c) name.value = autoName.value
     isDefault.value = c?.isDefault ?? false
     isActive.value = c?.isActive ?? true
     credentialId.value = c?.credentialId ?? null
     apiKey.value = ''
     modelOptions.value = props.provider.presetModels ?? []
+    modelEntries.value = (props.provider.presetModels ?? []).map((id) => ({ id }))
     fetchNote.value = ''
     fetchNoteWarn.value = false
     fetchBusy.value = false
@@ -111,7 +154,8 @@ watch(
     // 定价回显（[M33] 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
     pricingInitial.value =
       c?.pricing && Object.keys(c.pricing).length ? { ...c.pricing } : null
-    pricingHit.value = false
+    pricingSummaryHit.value = false
+    pricingSource.value = 'none'
     suggestDefault.value = false
     defaultTouched.value = false
     // 编辑既有实例：静默刷新一次在线目录（带存量密钥；失败保留预置候选不打扰）
@@ -119,6 +163,16 @@ watch(
   },
   { immediate: true },
 )
+
+// [M33.1] 新建实例：选定凭证 / 填入 Key 后自动拉取一次在线目录（带价），无需用户点「获取模型」
+watch([credentialId, apiKey], () => {
+  if (props.config || liveFetched.value) return
+  const hasKey = credentialId.value != null || apiKey.value.trim().length > 0
+  if (hasKey) {
+    liveFetched.value = true
+    void fetchModels(true)
+  }
+})
 
 /** 拉取在线模型目录；silent=true 时失败不提示（编辑打开自动刷新用） */
 async function fetchModels(silent = false) {
@@ -131,9 +185,13 @@ async function fetchModels(silent = false) {
     const body: Record<string, unknown> = { provider_key: props.provider.key }
     if (baseUrl.value.trim()) body['base_url'] = baseUrl.value.trim()
     if (apiKey.value.trim()) body['api_key'] = apiKey.value.trim()
+    // 新建实例尚未落库（无 config_id）时，Key 存于所选供应商凭证 → 需带 credential_id 供服务端解析
+    if (credentialId.value != null) body['credential_id'] = credentialId.value
     if (props.config) body['config_id'] = props.config.id
     const res = await configApi.fetchModels(body)
-    modelOptions.value = res.models
+    modelEntries.value = res.models
+    modelOptions.value = res.models.map((e) => e.id)
+    liveFetched.value = true
     if (!silent) {
       if (res.source === 'preset') {
         fetchNote.value = res.note ?? '已回退预置列表'
@@ -156,10 +214,7 @@ async function fetchModels(silent = false) {
 /** 组装定价 JSON：已由 [M33] PricingSuggest 子组件 buildPricing 负责 */
 
 async function submit() {
-  if (!name.value.trim()) {
-    err.value = '请填写实例名'
-    return
-  }
+  if (!name.value.trim()) name.value = autoName.value
   // 扩展参数：JSON 文本框维护透传参数；视频实例的 creationCapabilities 由子组件管理并合并
   extraErr.value = ''
   let baseExtra: Record<string, unknown> = {}
@@ -225,14 +280,7 @@ async function submit() {
     :width="560"
     @close="emit('close')"
   >
-    <label class="fld">
-      实例名
-      <input
-        v-model="name"
-        type="text"
-        placeholder="如：主用图像 / DeepSeek 网关"
-      />
-    </label>
+    <!-- [M33.1] 主表单仅需：供应商凭证 / Key + 选择模型；实例名自动生成、定价/端点/能力自动带出（高级可改） -->
 
     <!-- 供应商凭证选择（替代原来的 API Key 字段） -->
     <div class="fld">
@@ -294,21 +342,19 @@ async function submit() {
       >
     </div>
 
-    <!-- [M33] 定价智能带出：命中平台参考定价表自动预填（Tier A），未命中回落手填 -->
-    <PricingSuggest
-      ref="pricingSuggest"
-      :service-type="provider.serviceType"
-      :provider-key="provider.key"
-      :model="model"
-      :initial="pricingInitial"
-      @suggest="onPricingSuggest"
-    />
-
-    <!-- [M33] 选中即生成汇总（视频能力档位另由下方编辑器就地背书提示） -->
-    <div v-if="!config && (pricingHit || suggestDefault)" class="note">
-      「选中即生成」：参考定价
-      {{ pricingHit ? '已按平台真源带出（可修改）' : '暂无（需核实手填）' }}
-      <template v-if="suggestDefault"> · 该通道首个实例，已建议设为默认</template>
+    <!-- [M33.1] 自动带出只读摘要（参考定价 + 上下文）：用户无需配置，手填入口在「高级」 -->
+    <div class="fld autos">
+      <span>自动带出</span>
+      <div class="auto-line" :class="pricingSummaryHit ? 'ok' : 'warn'">
+        {{ pricingSummaryText }}
+      </div>
+      <div v-if="selectedEntry?.context" class="note">
+        上下文窗口：输入 {{ selectedEntry.context.input ?? '—' }} / 输出
+        {{ selectedEntry.context.output ?? '—' }} tokens
+      </div>
+      <div v-if="!config && suggestDefault" class="note">
+        该通道首个实例，已建议设为默认（可在下方取消）
+      </div>
     </div>
 
     <!-- [M32] 视频「轻松创作能力」：默认平台自动背书（Tier A），可覆盖为手动声明；逻辑见 VideoCapsEditor -->
@@ -327,6 +373,25 @@ async function submit() {
           provider.defaultUrl ? `（默认 ${provider.defaultUrl}）` : ''
         }}
       </summary>
+      <label class="fld">
+        实例名（默认自动生成，可改）
+        <input
+          v-model="name"
+          type="text"
+          placeholder="如：主用图像 / DeepSeek 网关"
+          @input="nameTouched = true"
+        />
+      </label>
+      <!-- [M33.1] 参考定价手填 / 覆盖入口（默认已自动带出，此处可改）；live > 核实表 > 存量 -->
+      <PricingSuggest
+        ref="pricingSuggest"
+        :service-type="provider.serviceType"
+        :provider-key="provider.key"
+        :model="model"
+        :initial="pricingInitial"
+        :live="livePricing"
+        @suggest="onPricingSuggest"
+      />
       <label class="fld">
         端点 base_url
         <input
@@ -423,6 +488,20 @@ async function submit() {
 }
 
 .note.warn {
+  color: var(--warn);
+}
+
+/* [M33.1] 自动带出只读摘要 */
+.autos .auto-line {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.autos .auto-line.ok {
+  color: var(--ok, #2e7d32);
+}
+
+.autos .auto-line.warn {
   color: var(--warn);
 }
 
