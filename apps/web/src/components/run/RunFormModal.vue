@@ -5,9 +5,11 @@ import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
 import type {
   Asset,
+  PrefillSource,
   Publication,
   TemplateDetail,
   TemplateMeta,
+  VideoOverride,
 } from '../../lib/types'
 import { projectApi, publicationApi, runApi, templateApi } from '../../lib/api'
 
@@ -27,6 +29,21 @@ const assets = ref<Asset[]>([])
 /** [整改] 项目发布记录（publications 类输入的选择源，复盘回灌直接勾选） */
 const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
+/** [M34] 自动预填来源映射（key → last_run/brief；用户编辑即剔除，驱动字段 chip） */
+const sourceMap = ref<Record<string, PrefillSource>>({})
+/** [M34] G8 视频覆盖合法档位（null → 前端回退现硬编码手填） */
+const videoOverride = ref<VideoOverride | null>(null)
+const RES_DEFAULT = ['480p', '720p', '1080p']
+const resolutionOptions = computed(() =>
+  videoOverride.value?.selectableResolutions?.length
+    ? videoOverride.value.selectableResolutions
+    : RES_DEFAULT,
+)
+const durationMin = computed(() => videoOverride.value?.durations?.[0] ?? 1)
+const durationMax = computed(() => {
+  const d = videoOverride.value?.durations
+  return d?.length ? d[d.length - 1] : 30
+})
 /** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
 const adv = ref({
   imageSize: '',
@@ -73,11 +90,23 @@ const busy = ref(false)
 const loading = ref(false)
 const loadingDetail = ref(false)
 
+/** 用户编辑任一预填字段 → 写入值并剔除该 key 的来源 chip（接管后不再标自动） */
+function onFieldChange(k: string, v: unknown): void {
+  form.value[k] = v
+  if (k in sourceMap.value) {
+    const next = { ...sourceMap.value }
+    delete next[k]
+    sourceMap.value = next
+  }
+}
+
 /** 第二步：选中模板 → 加载详情 + 回填默认值 */
 async function selectTemplate(key: string) {
   tplKey.value = key
   tpl.value = null
   form.value = {}
+  sourceMap.value = {}
+  videoOverride.value = null
   resetAdv()
   err.value = ''
   loadingDetail.value = true
@@ -94,11 +123,29 @@ async function selectTemplate(key: string) {
       else if (inp.kind === 'publications') form.value[inp.key] = []
       else form.value[inp.key] = d ?? ''
     }
-    // [M14] 起作预填（如 episode_number）：覆盖模板默认值（仅模板声明的键）
+    // [M34] G6 输入预填（历史 run + brief）+ G8 视频合法档位；失败非致命→回落模板默认
+    try {
+      const pf = await templateApi.prefill(props.projectId, key)
+      for (const [k, iv] of Object.entries(pf.inputs)) {
+        form.value[k] = iv.value
+        if (iv.source === 'last_run' || iv.source === 'brief') sourceMap.value[k] = iv.source
+      }
+      videoOverride.value = pf.overrides?.video ?? null
+    } catch {
+      videoOverride.value = null
+    }
+    // [M14] 起作预填（如 episode_number）：覆盖模板默认值 / 预填（仅模板声明的键，用户上下文非自动）
     if (props.prefillInput) {
       for (const inp of res.template.inputs) {
         const pv = props.prefillInput[inp.key]
-        if (pv !== undefined) form.value[inp.key] = pv
+        if (pv !== undefined) {
+          form.value[inp.key] = pv
+          if (inp.key in sourceMap.value) {
+            const next = { ...sourceMap.value }
+            delete next[inp.key]
+            sourceMap.value = next
+          }
+        }
       }
     }
   } catch (e) {
@@ -113,6 +160,8 @@ function backToPicker() {
   tplKey.value = ''
   tpl.value = null
   form.value = {}
+  sourceMap.value = {}
+  videoOverride.value = null
   resetAdv()
   err.value = ''
 }
@@ -238,7 +287,8 @@ init()
             :assets="assets"
             :publications="publications"
             :values="form"
-            @change="(k, v) => (form[k] = v)"
+            :sources="sourceMap"
+            @change="onFieldChange"
           />
           <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
           <details v-if="hasOverride" class="adv">
@@ -257,20 +307,30 @@ init()
                 >视频清晰度
                 <select v-model="adv.resolution">
                   <option value="">默认</option>
-                  <option value="480p">480p</option>
-                  <option value="720p">720p</option>
-                  <option value="1080p">1080p</option>
+                  <option v-for="r in resolutionOptions" :key="r" :value="r">
+                    {{ r }}
+                  </option>
                 </select>
+                <span
+                  v-if="videoOverride?.defaultResolution"
+                  class="cap-hint"
+                  >推荐 {{ videoOverride.defaultResolution }}（本模型
+                  {{ videoOverride.model }}）</span
+                >
               </label>
               <label v-if="showVideo" class="fld"
                 >单镜时长（秒）
                 <input
                   v-model="adv.duration"
                   type="number"
-                  min="1"
-                  max="30"
-                  placeholder="1–30（默认用项目设置）"
+                  :min="durationMin"
+                  :max="durationMax"
+                  :placeholder="`${durationMin}–${durationMax}（默认用项目设置）`"
                 />
+                <span v-if="videoOverride" class="cap-hint"
+                  >推荐 {{ videoOverride.defaultDuration }}s（本模型
+                  {{ durationMin }}–{{ durationMax }}s）</span
+                >
               </label>
               <label v-if="showAudio" class="fld"
                 >配音音色
@@ -365,5 +425,12 @@ init()
   grid-template-columns: 1fr 1fr;
   gap: 2px 12px;
   margin-top: 4px;
+}
+
+.cap-hint {
+  margin-top: 2px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--accent-h);
 }
 </style>

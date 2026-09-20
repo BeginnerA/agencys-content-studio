@@ -19,6 +19,7 @@ import {
   type TemplateEditsResult,
 } from '../pipeline/template-edit'
 import type { Template } from '../pipeline/types'
+import { PrefillError, resolveRunPrefill } from '../services/run-prefill'
 import { HttpError, h } from './helpers'
 
 export const templatesRoutes = new Hono()
@@ -38,6 +39,23 @@ templatesRoutes.get('/templates/:key', h((c) => {
     return c.json({ template, yaml })
   } catch (err) {
     throw new HttpError(404, 'template_not_found', (err as Error).message)
+  }
+}))
+
+// [M34] GET /templates/:key/prefill?project_id=N —— 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位）
+// 只读、零网络、零计费；200 → PrefillResult；project_id 非法 400；模板/项目缺失 404
+templatesRoutes.get('/templates/:key/prefill', h(async (c) => {
+  const key = c.req.param('key') ?? ''
+  const pidRaw = c.req.query('project_id')
+  const pid = Number(pidRaw)
+  if (!pidRaw || !Number.isInteger(pid) || pid <= 0) {
+    throw new HttpError(400, 'bad_project', 'project_id 需为正整数')
+  }
+  try {
+    return c.json(await resolveRunPrefill(pid, key))
+  } catch (err) {
+    if (err instanceof PrefillError) throw new HttpError(404, err.code, err.message)
+    throw err
   }
 }))
 

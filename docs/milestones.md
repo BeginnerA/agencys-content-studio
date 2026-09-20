@@ -437,17 +437,33 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M34–M37 立项 · **未实施**）
+## M34 能力速览（模板与运行入参自动化 · G6 输入预填 + G8 视频合法档位 · 零成本）
 
-> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A 自动带出 + 选中即生成）**已交付**，见上方对应「能力速览」。
+把 M32/M33 的「真源表 + Tier A 自动预填」范式从 AI 配置扩展到**建 run 链路**：选模板后系统按「上次同模板 run 真实入参 + 项目 brief」自动预填 inputs、按视频能力真源表给出覆盖项合法档位，收敛 G6（输入不参考历史/brief 手填）与 G8（RunParams 覆盖项空白手填可越界）。**G7（自然语言→模板推荐）本轮暂缓**（用户拍板取零成本路线，归后续 M35 评估）。核心纪律：**全程零 LLM / 零网络 / 零计费**（纯 DB 读 + 静态真源表），每个自动值携 `source` 供前端标注「为何是这个值」（M37 前置），不改 `_params` 三层叠加与执行契约。
+
+- **G6 输入预填（run-prefill 服务）**：新增 `apps/server/src/services/run-prefill.ts`——`resolveRunPrefill(projectId, templateKey)` 逐 key 按优先级 `template_default` → `last_run`（最近一条 input 可解析的同模板 run 精确标量值复用）→ `brief`（白名单关键词命中的空文本输入放置项目简介原文，不改写），损坏 run 跳过取次新；媒体类（files/publications）与内部键（`_params`/`_compose`）一律排除（防跨集资产误绑）。
+- **G8 视频合法档位（域对齐）**：复用 M32 `resolveVideoCaps` 给「本集参数覆盖」的时长数字输入收窄 min/max（如 MiniMax/火山 4–15 秒，替代通用 1–30）+ 推荐默认；分辨率覆盖下拉可选域 = `caps.resolutions ∩ run-params 输入白名单 {480p,720p,1080p}`（交集空回落全量、`defaultResolution` 仅在可选域内给出），**规避把 768P/2K 输出档位塞进覆盖导致 `validateRunParams` 400**；未登记模型 / 非视频模板 → `overrides.video=null` 回退手填。
+- **只读端点（prefill-api）**：`GET /api/v1/templates/:key/prefill?project_id=N` → `PrefillResult`（`inputs` 候选值+来源、`lastRunId`、`overrides.video`）；纯加法，不新增表/列、不改既有端点；`project_id` 非法 400、模板/项目缺失 404。
+- **前端接线（creator-ui）**：`RunFormModal.vue` `selectTemplate` 拉详情后调 `templateApi.prefill` 应用候选值 + 存 `sourceMap` + 驱动视频覆盖档位（失败非致命回落模板默认，M14 集号 `prefillInput` 仍末位覆盖）；`TemplateInputFields.vue` 加 `sources` prop，命中 `last_run`/`brief` 的字段旁渲染来源 chip（「↺ 沿用上次运行」「✦ 来自项目简介」），用户编辑即 `onFieldChange` 剔除 chip。
+
+数据与兼容：新表 0 / 新列 0（读 `projects.brief/settings`、`pipeline_runs.input` 快照、`api_configs` 默认视频实例，`pipeline_runs` 无软删列、随项目级联）；预填仅作用于建 run 前表单值，`run.input` 快照 / 引擎 / `_params` 叠加零改。文件行数：`run-prefill.ts` 195、`RunFormModal.vue` 414、`TemplateInputFields.vue` 334、`probe-m34.ts` 185，均 ≤800。
+
+端点：`GET /api/v1/templates/:key/prefill`（新增）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m34.ts`（三节全绿，零网络零计费：g6-inputs〔无 run brief 承接 + template_default + 媒体/int 不猜 + last_run 精确复用覆盖来源 + 内部键/媒体排除 + 损坏 run 跳过取次新 + brief 不越权覆盖已有默认〕/ g8-caps〔minimax 时长 4–15 + 域对齐防 400 + volcengine 可选域收敛 + 未登记/非视频 → null + 回落默认实例〕/ guards〔200 + 缺/非法 project_id 400 + 项目/模板 404〕）；`probe-m34` 经 `run-probes.ts` 自动发现纳入 `probe:ci`；**M30（50）/ M31（33）/ M32（21）/ M33 零回归全绿**；双端 `tsc --noEmit` / `vue-tsc --noEmit` + `pnpm --filter @acs/web build` + `validate:templates` 全绿。
+
+---
+
+## 路线图（M35–M37 立项 · **未实施**）
+
+> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）**已交付**，见上方对应「能力速览」。**M34 的 G7（自然语言→模板推荐）用户拍板暂缓**（取零成本规则/embedding 路线，不引入 LLM 成本），并入下方 M35 评估。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
 | 里程碑 | 主题 | 核心缺口 | 状态 |
 |---|---|---|---|
-| **M34** | 模板与运行入参自动化 | 模板不参考 brief/历史 run 预填、自然语言无模板推荐、RunParams 覆盖项空白手填 | 立项 · 未实施 |
-| **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议 | 立项 · 未实施 |
+| **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | 立项 · 未实施 |
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | 立项 · 未实施 |
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。

@@ -7,6 +7,7 @@ import type {
   Project,
   ProjectDetail,
   PromptItem,
+  PrefillResult,
   Run,
   SeriesInfo,
   TemplateDetail,
@@ -71,6 +72,11 @@ export const templateApi = {
   detail: (key: string) =>
     api.get<{ template: TemplateDetail; yaml: string }>(
       `/api/v1/templates/${encodeURIComponent(key)}`,
+    ),
+  /** [M34] 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位；只读、零计费） */
+  prefill: (projectId: number, key: string) =>
+    api.get<PrefillResult>(
+      `/api/v1/templates/${encodeURIComponent(key)}/prefill?project_id=${projectId}`,
     ),
   /** 纯校验不落盘（编辑器防抖调用） */
   validate: (yaml: string, key?: string) =>

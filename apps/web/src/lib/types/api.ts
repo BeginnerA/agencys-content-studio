@@ -157,3 +157,38 @@ export interface VoiceCloneProvider {
   name: string
   available: boolean
 }
+
+// ===== [M34] 运行入参预填（G6 历史 run/brief + G8 视频合法档位） =====
+
+/** 自动值来源（可追溯：前端据此标注「为何是这个值」） */
+export type PrefillSource = 'template_default' | 'last_run' | 'brief'
+
+/** 单个输入候选值 + 来源 */
+export interface PrefillInputValue {
+  value: string | number | boolean
+  source: PrefillSource
+}
+
+/** G8 视频覆盖候选（域对齐：可选项 = caps ∩ 输入白名单，防 400） */
+export interface VideoOverride {
+  providerKey: string
+  model: string
+  durations: number[]
+  defaultDuration: number
+  /** caps 输出档位（仅展示提示） */
+  resolutions: string[]
+  /** 覆盖下拉实际可选项（交集空则回落全量） */
+  selectableResolutions: string[]
+  /** 推荐默认（仅 ∈ 可选域时非空） */
+  defaultResolution: string | null
+  source: 'caps_suggest'
+}
+
+/** GET /templates/:key/prefill 响应 */
+export interface PrefillResult {
+  projectId: number
+  templateKey: string
+  inputs: Record<string, PrefillInputValue>
+  lastRunId: number | null
+  overrides: { video: VideoOverride | null }
+}
