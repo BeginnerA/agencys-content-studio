@@ -224,3 +224,58 @@ export interface NextStep {
   /** true = 纯状态提示（不显按钮） */
   auto?: boolean
 }
+
+// ===== [M36] G12 运营配置自动化 =====
+
+/**
+ * [M36·G12.1] 平台导出规格单一真源目录条目（GET /exports/presets/catalog）。
+ * 前端「从目录补全」据此一键带出缺失平台预设，替代逐项手填；机器键与 publications/export 域对齐（视频号=wechat_channels）。
+ */
+export interface PlatformCatalogEntry {
+  platform: string
+  label: string
+  kind: 'video' | 'text'
+  aspect: string
+  maxDuration: number
+  namingPattern: string
+  includeCover: boolean
+  includeSubtitle: boolean
+  watermark: boolean
+}
+
+/**
+ * [M36·G12.2] 合规词库只读视图（GET /compliance/rules）。
+ * source='file' 用户词库在位；'builtin' = 文件缺失启用内置《广告法》基准地板兜底（不再返空静默）。
+ */
+export interface ComplianceRulesView {
+  total: number
+  byCategory: Record<string, number>
+  source: 'file' | 'builtin'
+}
+
+/**
+ * [M36·G12.3] 词库补充建议条目（GET /compliance/suggest，Tier B 零新计费）。
+ * 从既有已付费复审结论聚合候选新词；level 一律 warn（升 block 属法务判断，保留人工）。
+ */
+export interface SuggestedRule {
+  category: string
+  word: string
+  level: 'block' | 'warn'
+  evidence: string
+  times: number
+}
+
+/**
+ * [M36·G12.4] 发布节奏（Tier A 纯日期数学）：日更 / 隔 N 日 / 每周指定星期。
+ * 与服务端 services/cadence.ts 的 Cadence 严格同构。
+ */
+export type Cadence =
+  | { kind: 'daily' }
+  | { kind: 'interval'; intervalDays: number }
+  | { kind: 'weekly'; weekdays: number[] }
+
+/** POST /schedules/cadence-preview 响应：展开后的未来时间戳（ms）+ 校验错误（errors 非空时 timestamps 为空） */
+export interface CadencePreviewResult {
+  timestamps: number[]
+  errors: string[]
+}

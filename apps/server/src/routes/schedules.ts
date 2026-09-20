@@ -16,6 +16,7 @@ import {
   resetSchedule,
   scheduleCalendar,
 } from '../services/schedule'
+import { expandCadence, type Cadence } from '../services/cadence'
 import {
   budgetOverview,
   checkAlerts,
@@ -93,6 +94,61 @@ schedulesRoutes.post('/projects/:id/schedules', h(async (c) => {
     note: typeof body['note'] === 'string' ? body['note'] : undefined,
   })
   return c.json({ schedule: toScheduleView(row) }, 201)
+}))
+
+// POST /schedules/cadence-preview —— [M36·G12.4] 节奏展开预览（纯日期数学，不建库，先看日期再确认）
+schedulesRoutes.post('/schedules/cadence-preview', h(async (c) => {
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const cadence = parseCadence(body['cadence'])
+  const { timestamps, errors } = expandCadence({
+    startAt: Number(body['start_at']),
+    count: Number(body['count']),
+    cadence: cadence ?? ({ kind: 'invalid' } as unknown as Cadence),
+  })
+  return c.json({ timestamps, errors })
+}))
+
+// POST /projects/:id/schedules/cadence —— [M36·G12.4] 批量建（逐条 createSchedule 未来校验，名称带 #序；errors → 400）
+schedulesRoutes.post('/projects/:id/schedules/cadence', h(async (c) => {
+  const projectId = idParam(c)
+  const proj = (
+    await db.select().from(projects).where(and(eq(projects.id, projectId), isNull(projects.deletedAt))).limit(1)
+  )[0]
+  if (!proj) return notFound(c, `项目 ${projectId}`)
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const inputTemplate = body['input_template']
+  if (!Array.isArray(inputTemplate) || !inputTemplate.length) {
+    throw new HttpError(400, 'bad_input_template', 'input_template 需为非空数组')
+  }
+  const cadence = parseCadence(body['cadence'])
+  const count = Number(body['count'])
+  const { timestamps, errors } = expandCadence({
+    startAt: Number(body['start_at']),
+    count,
+    cadence: cadence ?? ({ kind: 'invalid' } as unknown as Cadence),
+  })
+  if (errors.length) throw new HttpError(400, 'bad_cadence', errors.join('；'))
+  const namePrefix = typeof body['name_prefix'] === 'string' && body['name_prefix'].trim() ? body['name_prefix'].trim() : '排产'
+  const templateKey = typeof body['template_key'] === 'string' && body['template_key'] ? body['template_key'] : proj.templateKey
+  const note = typeof body['note'] === 'string' ? body['note'] : undefined
+  const created: Array<Record<string, unknown>> = []
+  for (const [i, ts] of timestamps.entries()) {
+    const row = await createSchedule({
+      projectId,
+      name: `${namePrefix} #${i + 1}`,
+      templateKey,
+      scheduledAt: ts,
+      inputTemplate: inputTemplate as Array<Record<string, unknown>>,
+      note,
+    })
+    created.push(toScheduleView(row))
+  }
+  const skipped = (Number.isInteger(count) ? count : 0) - timestamps.length
+  return c.json({ created, skipped }, 201)
 }))
 
 // POST /schedules/:id/cancel —— 取消
@@ -180,6 +236,16 @@ schedulesRoutes.post('/budget/check-alerts', h(async (c) => {
 }))
 
 // ========== 辅助 ==========
+
+/** body.cadence → Cadence（未知形态 → null，交由 expandCadence 报 errors） */
+function parseCadence(raw: unknown): Cadence | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (o.kind === 'daily') return { kind: 'daily' }
+  if (o.kind === 'interval') return { kind: 'interval', intervalDays: Number(o.intervalDays) }
+  if (o.kind === 'weekly') return { kind: 'weekly', weekdays: Array.isArray(o.weekdays) ? o.weekdays.map(Number) : [] }
+  return null
+}
 
 function toScheduleView(s: typeof schedules.$inferSelect): Record<string, unknown> {
   let inputTemplate: unknown = {}

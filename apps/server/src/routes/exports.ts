@@ -9,6 +9,7 @@ import { db } from '../db'
 import { pipelineRuns, projects, settings, type Asset } from '../db/schema'
 import { summarizeBatch } from '../services/batch'
 import { ExportError, buildRunExport, collectRunAssets, listExports } from '../services/export'
+import { PLATFORM_CATALOG, seedMissing, type PlatformCatalogEntry } from '../services/platform-catalog'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const exportsRoutes = new Hono()
@@ -96,14 +97,15 @@ function safeParse(s: string | null): unknown {
 
 // ---------- [M20] B8 平台导出预设 ----------
 
-/** 默认平台预设（与 publications 平台枚举对齐） */
-const DEFAULT_PRESETS: Record<string, ExportPreset> = {
-  douyin: { platform: 'douyin', label: '抖音', aspect: '9:16', maxDuration: 60, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
-  wechat_channels: { platform: 'wechat_channels', label: '视频号', aspect: '9:16', maxDuration: 180, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
-  kuaishou: { platform: 'kuaishou', label: '快手', aspect: '9:16', maxDuration: 120, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
-  xiaohongshu: { platform: 'xiaohongshu', label: '小红书', aspect: '4:5', maxDuration: 60, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
-  bilibili: { platform: 'bilibili', label: 'B站', aspect: '16:9', maxDuration: 600, namingPattern: '{project}_{template}_run{run}', includeCover: true, includeSubtitle: true },
+/** [M36·G12.1] 目录条目 → 导出预设（不含 watermark，保持既有 5 键逐字零漂移；watermark 交用户在编辑态设） */
+function presetFromCatalog(c: PlatformCatalogEntry): ExportPreset {
+  return { platform: c.platform, label: c.label, aspect: c.aspect, maxDuration: c.maxDuration, namingPattern: c.namingPattern, includeCover: c.includeCover, includeSubtitle: c.includeSubtitle }
 }
+
+/** 默认平台预设：从单一真源目录派生（仅视频向 5 平台，与 publications 平台枚举对齐；图文平台按需 seed 补入） */
+const DEFAULT_PRESETS: Record<string, ExportPreset> = Object.fromEntries(
+  PLATFORM_CATALOG.filter((c) => c.kind === 'video').map((c) => [c.platform, presetFromCatalog(c)]),
+)
 
 interface ExportPreset {
   platform: string
@@ -167,4 +169,25 @@ exportsRoutes.put('/exports/presets', h(async (c) => {
   }
   await savePresets(map)
   return c.json({ items: Object.values(map) })
+}))
+
+/** [M36·G12.1] GET /exports/presets/catalog —— 平台导出规格单一真源目录（供前端「从目录补全」） */
+exportsRoutes.get('/exports/presets/catalog', h(async (c) => c.json({ items: PLATFORM_CATALOG })))
+
+/** [M36·G12.1] POST /exports/presets/seed —— 从目录补全缺失平台预设（仅填缺失，用户已配/改过的不覆盖） */
+exportsRoutes.post('/exports/presets/seed', h(async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const rawOnly = body['platforms']
+  let only: string[] | undefined
+  if (rawOnly !== undefined) {
+    if (!Array.isArray(rawOnly)) throw new HttpError(400, 'bad_input', 'platforms 需为数组')
+    only = rawOnly.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((s) => s.trim())
+  }
+  const current = await loadPresets()
+  const missing = seedMissing(Object.keys(current), only)
+  if (!missing.length) return c.json({ items: Object.values(current), added: 0 })
+  const merged: Record<string, ExportPreset> = { ...current }
+  for (const e of missing) merged[e.platform] = presetFromCatalog(e)
+  await savePresets(merged)
+  return c.json({ items: Object.values(merged), added: missing.length })
 }))

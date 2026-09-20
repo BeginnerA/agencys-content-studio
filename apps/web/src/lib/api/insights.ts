@@ -44,6 +44,17 @@ export const exportApi = {
       '/api/v1/exports/presets',
       { items },
     ),
+  // [M36·G12.1] 平台导出规格单一真源目录（供「从目录补全」）
+  catalog: () =>
+    api.get<{ items: import('../types').PlatformCatalogEntry[] }>(
+      '/api/v1/exports/presets/catalog',
+    ),
+  // [M36·G12.1] 从目录补全缺失平台预设（仅填缺失，不覆盖已配；platforms 缺省 = 全目录）
+  seed: (platforms?: string[]) =>
+    api.post<{ items: import('../types').ExportPreset[]; added: number }>(
+      '/api/v1/exports/presets/seed',
+      platforms?.length ? { platforms } : {},
+    ),
 }
 
 export const publicationApi = {
@@ -118,6 +129,48 @@ export const scheduleApi = {
       {},
     ),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/schedules/${id}`),
+  // [M36·G12.4] 节奏展开预览（纯日期数学，不建库，先看日期再确认）
+  cadencePreview: (body: {
+    start_at: number
+    count: number
+    cadence: import('../types').Cadence
+  }) =>
+    api.post<import('../types').CadencePreviewResult>(
+      '/api/v1/schedules/cadence-preview',
+      body,
+    ),
+  // [M36·G12.4] 批量建排产（逐条未来校验，名称带 #序）
+  cadenceCreate: (
+    projectId: number,
+    body: {
+      start_at: number
+      count: number
+      cadence: import('../types').Cadence
+      input_template: Array<Record<string, unknown>>
+      name_prefix?: string
+      template_key?: string
+      note?: string
+    },
+  ) =>
+    api.post<{
+      created: import('../types').Schedule[]
+      skipped: number
+    }>(`/api/v1/projects/${projectId}/schedules/cadence`, body),
+}
+
+// ===== [M36] G12.2/G12.3 合规词库视图 + 补充建议 =====
+
+export const complianceApi = {
+  // 词库只读视图（source='file' 在位 / 'builtin' 缺失兜底）
+  rules: () => api.get<import('../types').ComplianceRulesView>('/api/v1/compliance/rules'),
+  // 从既有复审结论聚合候选新词（Tier B 零新计费；projectId 缺省 = 全域）
+  suggest: (projectId?: number) =>
+    api.get<{ items: import('../types').SuggestedRule[] }>(
+      `/api/v1/compliance/suggest${projectId ? `?project_id=${projectId}` : ''}`,
+    ),
+  // 采纳建议：将规则追加进词库（去重、追加不覆盖、自动建文件）
+  appendRules: (rules: Array<{ category: string; word: string; level: string }>) =>
+    api.post<{ added: number; total: number }>('/api/v1/compliance/rules', { rules }),
 }
 
 export const budgetApi = {

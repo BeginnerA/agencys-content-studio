@@ -7,13 +7,15 @@ import type { Overview, Project, UsageSummary } from '../../lib/types'
 import { KIND_TEXT, fmtCost, fmtQty } from '../../lib/format'
 import { projectGenreText } from '../../lib/scene'
 import ScheduleCalendar from './ScheduleCalendar.vue'
+import ScheduleCadence from './ScheduleCadence.vue'
 import BudgetPanel from './BudgetPanel.vue'
 import PublicationPanel from './PublicationPanel.vue'
 import CostPanel from './CostPanel.vue'
 import ReviewPanel from './ReviewPanel.vue'
 import PlatformPresets from './PlatformPresets.vue'
+import CompliancePanel from './CompliancePanel.vue'
 
-// [M20] Tab 切换：概览 / 排产 / 预算 / 发布 / 成本 / 复盘
+// [M20] Tab 切换：概览 / 排产 / 预算 / 发布 / 成本 / 复盘 / 合规
 const TABS = [
   { key: 'overview', label: '概览', icon: 'chart' },
   { key: 'schedule', label: '排产', icon: 'calendar' },
@@ -21,6 +23,7 @@ const TABS = [
   { key: 'publications', label: '发布', icon: 'share' },
   { key: 'cost', label: '成本', icon: 'dollar' },
   { key: 'review', label: '复盘', icon: 'file' },
+  { key: 'compliance', label: '合规', icon: 'check' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
@@ -239,6 +242,8 @@ function pct(n: number): string {
     <!-- [M20] 排产 Tab -->
     <div v-show="activeTab === 'schedule'" role="tabpanel">
       <ScheduleCalendar />
+      <!-- [M36·G12.4] 按节奏批量排期（克隆现有计划 + 纯日期展开） -->
+      <ScheduleCadence />
     </div>
 
     <!-- [M20] 预算 Tab -->
@@ -267,6 +272,11 @@ function pct(n: number): string {
     <!-- [M20] 复盘 Tab -->
     <div v-show="activeTab === 'review'" role="tabpanel">
       <ReviewPanel />
+    </div>
+
+    <!-- [M36·G12.2/G12.3] 合规 Tab -->
+    <div v-show="activeTab === 'compliance'" role="tabpanel">
+      <CompliancePanel />
     </div>
 
     <!-- 概览 Tab（原有内容） -->

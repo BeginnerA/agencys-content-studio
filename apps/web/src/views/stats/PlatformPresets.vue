@@ -14,6 +14,9 @@ const saving = ref(false)
 const presets = ref<ExportPreset[]>([])
 const editing = ref(false)
 const editItems = ref<ExportPreset[]>([])
+// [M36·G12.1] 从平台目录一键补全缺失预设
+const seeding = ref(false)
+const seedMsg = ref('')
 
 async function load() {
   loading.value = true
@@ -64,6 +67,22 @@ function addPreset() {
 function removePreset(idx: number) {
   editItems.value.splice(idx, 1)
 }
+
+/** [M36·G12.1] 从单一真源目录补全尚未配置的平台预设（仅填缺失、不覆盖已配） */
+async function seedFromCatalog() {
+  seeding.value = true
+  err.value = ''
+  seedMsg.value = ''
+  try {
+    const r = await exportApi.seed()
+    presets.value = r.items
+    seedMsg.value = r.added > 0 ? `已从平台目录补全 ${r.added} 个缺失预设` : '所有已知平台均已配置，无需补全'
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    seeding.value = false
+  }
+}
 </script>
 
 <template>
@@ -76,10 +95,16 @@ function removePreset(idx: number) {
       <div v-if="!editing" class="presets-view">
         <div class="pv-header">
           <h3>平台导出预设</h3>
-          <button class="btn sm" @click="startEdit">
-            <Icon name="edit" :size="12" /> 编辑
-          </button>
+          <div class="pv-actions">
+            <button class="btn sm" :disabled="seeding" @click="seedFromCatalog">
+              <Icon name="download" :size="12" /> {{ seeding ? '补全中…' : '从平台目录补全' }}
+            </button>
+            <button class="btn sm" @click="startEdit">
+              <Icon name="edit" :size="12" /> 编辑
+            </button>
+          </div>
         </div>
+        <div v-if="seedMsg" class="seed-msg">{{ seedMsg }}</div>
         <table class="tbl">
           <thead>
             <tr>
@@ -185,6 +210,15 @@ function removePreset(idx: number) {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+.pv-actions {
+  display: flex;
+  gap: 8px;
+}
+.seed-msg {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-2);
 }
 .pv-header h3 {
   margin: 0;

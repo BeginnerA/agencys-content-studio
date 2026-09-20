@@ -21,6 +21,42 @@ export interface ComplianceRule {
   level: 'block' | 'warn'
 }
 
+/**
+ * [M36·G12.2] 内置《广告法》极限词高频基准地板：仅在 words.txt 文件缺失/读取异常时兜底启用，
+ * 修复「词库缺失 → 合规扫描静默空转、产物误导为 pass」这一真实降级隐患（违「不静默降级」）。
+ * 用户词库文件在位时**绝不并入**（现网命中集逐字零变化，probe-m24 文件路径零回归）。
+ * 这是标记/拦截语义的地板，非完整法务词库，不构成法务意见（沿用 spec §8 免责）。
+ */
+export const BASE_RULES: ComplianceRule[] = [
+  { category: '广告', word: '最便宜', level: 'block' },
+  { category: '广告', word: '最佳', level: 'block' },
+  { category: '广告', word: '最好', level: 'block' },
+  { category: '广告', word: '最优', level: 'block' },
+  { category: '广告', word: '第一', level: 'block' },
+  { category: '广告', word: '首选', level: 'block' },
+  { category: '广告', word: '绝对', level: 'block' },
+  { category: '广告', word: '极致', level: 'block' },
+  { category: '广告', word: '顶尖', level: 'block' },
+  { category: '广告', word: '顶级', level: 'block' },
+  { category: '广告', word: '独家', level: 'block' },
+  { category: '广告', word: '唯一', level: 'block' },
+  { category: '广告', word: '万能', level: 'block' },
+  { category: '广告', word: '100%', level: 'block' },
+  { category: '广告', word: '百分百', level: 'block' },
+  { category: '广告', word: '无副作用', level: 'block' },
+  { category: '广告', word: '根治', level: 'block' },
+  { category: '广告', word: '包治', level: 'block' },
+  { category: '广告', word: '永不复发', level: 'block' },
+  { category: '广告', word: '史无前例', level: 'block' },
+  { category: '广告', word: '国家级', level: 'warn' },
+  { category: '广告', word: '世界级', level: 'warn' },
+  { category: '广告', word: '纯天然', level: 'warn' },
+  { category: '广告', word: '行业领先', level: 'warn' },
+  { category: '医疗', word: '无效退款', level: 'block' },
+  { category: '医疗', word: '药到病除', level: 'block' },
+  { category: '医疗', word: '立竿见影', level: 'warn' },
+]
+
 export interface ComplianceHit {
   word: string
   category: string
@@ -60,15 +96,18 @@ export function parseRules(text: string): ComplianceRule[] {
   return rules
 }
 
-/** 现读词库文件（每次 action 现读，编辑即用；缺失 → source='missing' 不抛） */
-export function loadRules(dir: string = COMPLIANCE_DIR): { rules: ComplianceRule[]; source: 'file' | 'missing'; path: string } {
+/**
+ * 现读词库文件（每次 action 现读，编辑即用）。
+ * [M36·G12.2] 文件在位 → source='file'（仅文件规则，逐字不变）；文件缺失/读失败 → 启用 BASE_RULES 兜底，source='builtin'（不再返空静默）。
+ */
+export function loadRules(dir: string = COMPLIANCE_DIR): { rules: ComplianceRule[]; source: 'file' | 'builtin'; path: string } {
   const file = join(dir, 'words.txt')
-  if (!existsSync(file)) return { rules: [], source: 'missing', path: file }
+  if (!existsSync(file)) return { rules: BASE_RULES, source: 'builtin', path: file }
   try {
     return { rules: parseRules(readFileSync(file, 'utf8')), source: 'file', path: file }
   } catch (err) {
-    log.warn(`词库读取失败（${(err as Error).message}）→ 空规则`, {})
-    return { rules: [], source: 'missing', path: file }
+    log.warn(`词库读取失败（${(err as Error).message}）→ 启用内置基准地板`, {})
+    return { rules: BASE_RULES, source: 'builtin', path: file }
   }
 }
 
@@ -185,8 +224,8 @@ export async function recordCompliance(assetId: number, mark: ComplianceMark): P
   return updated[0] ?? null
 }
 
-/** 词库只读视图（GET /compliance/rules）：文件缺失 → total 0 + source missing（不 500） */
-export function rulesView(): { total: number; byCategory: Record<string, number>; source: 'file' | 'missing' } {
+/** 词库只读视图（GET /compliance/rules）：文件在位 source='file'；缺失 → source='builtin'（内置地板兜底，不 500、不返空） */
+export function rulesView(): { total: number; byCategory: Record<string, number>; source: 'file' | 'builtin' } {
   const { rules, source } = loadRules()
   const byCategory: Record<string, number> = {}
   for (const r of rules) byCategory[r.category] = (byCategory[r.category] ?? 0) + 1

@@ -471,16 +471,33 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 ---
 
-## 路线图（M36–M37 立项 · **未实施**）
+## M36 能力速览（运营配置自动化 · G12.1 平台目录 + G12.2 合规兜底 + G12.3 词库建议 + G12.4 排期节奏 · 零成本）
 
-> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 [`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`](file:///d:/work/AI/docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md)（L0.5 立项纲领）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）、**M35（创作流程自动化：G9+G10+G11+G7）** **已交付**，见上方对应「能力速览」。
+把 M32–M35 的「真源表 + Tier A 自动推导 / Tier B 建议」范式从**创作链**扩展到**运营配置面**：收敛痛点 6「平台预设 / 合规词库 / 排期节奏全靠手工维护」。核心纪律：**全程零 LLM 计费 / 零网络 / 新表 0 新列 0**——G12.1 静态目录真源、G12.2 代码级基准地板、G12.3 复用**已付费的**合规复审产物聚合、G12.4 纯日期数学。加法优先：仅新端点 + 复用 `settings` 键 + 词库文件追加，不改既有契约。
+
+- **G12.1 平台目录 + 预设 Tier A 补全（catalog）**：新增 `apps/server/src/services/platform-catalog.ts`——`PLATFORM_CATALOG` 把 8 个已知平台（5 视频：抖音/视频号/快手/小红书/B 站 + 3 图文：公众号/知乎/头条）推荐导出规格收敛为**单一真源常量**（机器键与 `publications`/`export_presets` 域对齐：视频号 = `wechat_channels`）；`seedMissing(present, only?)` 返回目录中「尚未配置」条目。`exports.ts`：`DEFAULT_PRESETS` 改由目录 `kind==='video'` 子集**派生**（恰好 5 键，`presetFromCatalog` 刻意不带 `watermark` 键 → 现网默认逐字**零漂移**）；新端点 `GET /exports/presets/catalog`（只读目录）、`POST /exports/presets/seed`（仅补缺失、**不覆盖用户已配/改过** → `{items,added}`）。前端 `PlatformPresets.vue` 加「从平台目录补全」按钮（替代逐项手填），`exportApi.catalog/seed`。
+- **G12.2 合规内置基础词兜底（baserules）**：`compliance.ts` 新增 `BASE_RULES`（27 条《广告法》极限词 + 医疗高频词，block/warn 分级）；`loadRules` **仅在 words.txt 文件缺失 / 读取异常时**启用兜底（`source:'builtin'`），修复「词库缺失 → 合规扫描静默空转、产物误导为 pass」这一真实降级隐患（违「不静默降级」）；**文件在位时绝不并入**（`source:'file'`、命中集逐字零变化）。`rulesView` / `compliance-check` 的 `source` 域由 `file|missing` 收敛为 `file|builtin`。**m24 适配**：`probe-m24` 词库缺失断言随之由「missing/0」更新为「builtin 兜底 N 条（仍不 500）」——此为 G12.2 有意的行为变更（缺失不再返空），文件在位路径断言保持不变。
+- **G12.3 词库补充建议采纳（suggest，Tier B）**：新增 `apps/server/src/services/compliance-suggest.ts`——`suggestRules(projectId|null)` 从**既有已付费的** `assets.params.compliance.llm.items` 聚合候选新词（`(category,归一词)` 去重计数、**剔除词库已有词**、level 一律 `warn` 起步〔升 block 属法务判断保留人工〕、按 `times` 降序 cap 50）；`appendRules(rules)` 建/续写 words.txt（`(category,normalize(word))` 去重、**追加不覆盖**、自动建目录、清洗破坏 `类别|词|级别` 格式的字符）。新端点 `GET /compliance/suggest?project_id=`、`POST /compliance/rules`。**零新 LLM 调用**（只读既有复审结论）。前端新增 `CompliancePanel.vue`（词库视图 + source 徽标 + 建议勾选采纳），经 `complianceApi.rules/suggest/appendRules`。
+- **G12.4 排期发布节奏模板（cadence，Tier A）**：新增 `apps/server/src/services/cadence.ts`——`expandCadence({startAt,count,cadence})` 纯日期数学展开 `daily`/`interval(N 日)`/`weekly(星期集合)` 三模式为未来时间戳（校验 count 1–60 / intervalDays 2–30 / weekdays 非空、`errors` 非空则 `timestamps=[]`；末尾 `>= now-60s` 未来过滤）。新端点 `POST /schedules/cadence-preview`（不建库先看日期，`errors` 也回 200 供前端提示）、`POST /projects/:id/schedules/cadence`（逐条 `createSchedule` 复用既有未来时间校验、名称带 `#序` → `{created,skipped}`；`errors` → 400 `bad_cadence`）。前端新增 `ScheduleCadence.vue`——**以某条既有计划为模板源克隆其 `input_template`/`template_key`**（复用而不重复造输入表单），配节奏 + 预览 + 批量建，挂在排产 Tab（`ScheduleCalendar` 兄弟，未触碰其 890 行历史文件）。
+
+数据与兼容：**新表 0 / 新列 0 / 新价 0**；预设仍存 `settings.export_presets`（`seed` 仅合并缺失键）；`BASE_RULES` 不落盘（仅缺失时内存兜底）；建议只读既有 `assets.params.compliance`、采纳才写词库文件；节奏复用 `schedules` 表与 `createSchedule`（`cronExpr='once'`、`status='pending'` 语义不变）。**不猜测 / 保留人工**：未登记平台 `catalogByPlatform → null`、建议一律 warn 起步、节奏越界 fail-closed 回 `errors`。文件行数：`platform-catalog.ts` 41 / `compliance-suggest.ts` 122 / `cadence.ts` 62 / `routes/compliance.ts` 25 / `routes/exports.ts` 176 / `routes/schedules.ts` 247 / `probe-m36.ts` 285 / `ScheduleCadence.vue` 315 / `CompliancePanel.vue` 268 / `PlatformPresets.vue` 281，均 ≤800（新组件独立成文件，未增 `ScheduleCalendar.vue` 负债）。
+
+端点：`GET /exports/presets/catalog`、`POST /exports/presets/seed`、`GET /compliance/suggest`、`POST /compliance/rules`、`POST /schedules/cadence-preview`、`POST /projects/:id/schedules/cadence`（均新增）；`GET /compliance/rules`（`source` 域 `missing→builtin`）、`GET/PUT /exports/presets`（默认派生零漂移）行为向后兼容。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m36.ts`（四节 **59 项断言**全绿，零网络零计费：g12-catalog〔目录 8 平台、默认预设 5 视频无 watermark 键、seed 补图文幂等不覆盖已配〕/ g12-baserules〔缺失 → builtin 兜底、**文件在位绝不并入 BASE_RULES**〕/ g12-suggest〔从复审结论聚合、剔除词库已有词、level 恒 warn、appendRules 去重容错追加不覆盖〕/ g12-cadence〔三模式展开 + 6 校验错误 + 未来过滤、preview 200、bulk 建 N 条 pending 名称带 #序、bad_cadence/bad_input_template 400〕）；`probe-m36` 经 `run-probes.ts` 自动发现纳入 `probe:ci`；**M24（含更新后的词库缺失断言）/ M30 / M31 / M32 / M33 / M34 / M35 零回归全绿**；双端 `tsc --noEmit` / `vue-tsc --noEmit` + `pnpm --filter @acs/web build` 全绿。
+
+---
+
+## 路线图（M37 立项 · **未实施**）
+
+> 本节为**立项登记**，非「能力速览」——以下里程碑**尚未开工、不改动业务代码**，仅登记归宿与范围。详规见 `docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（L0.5 立项纲领，仓库内相对路径）。M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化：定价 Tier A + 选中即生成）、M34（模板与运行入参自动化：G6 预填 + G8 合法档位）、M35（创作流程自动化：G9+G10+G11+G7）、**M36（运营配置自动化：G12.1-4）** **已交付**，见上方对应「能力速览」。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
 | 里程碑 | 主题 | 核心缺口 | 状态 |
 |---|---|---|---|
 | **M35** | 创作流程自动化 | 项目 `settings.video` 可填越界值、轻松创作模式/画幅/时长需手选、`canvasAdvice` 未全站默认下一步建议；**含 M34 遗留 G7 自然语言→模板推荐（零成本路线）** | **已交付**（见上方 M35 能力速览）|
-| **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | 立项 · 未实施 |
+| **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | **已交付**（见上方 M36 能力速览）|
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | 立项 · 未实施 |
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34/M35（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32/M33/M34/M35/M36（已交付）为其余全部前置**；每里程碑开工前另立 L1 spec。

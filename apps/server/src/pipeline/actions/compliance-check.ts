@@ -27,7 +27,7 @@ export async function complianceCheck(ctx: StepContext): Promise<StepResult> {
   const promptTpl = typeof params['prompt_tpl'] === 'string' && params['prompt_tpl'] ? params['prompt_tpl'] : 'compliance-review.md'
 
   const { rules, source } = loadRules()
-  if (rules.length === 0 && source === 'missing') ctx.log('合规词库缺失（workspace/compliance/words.txt）→ 词库扫描按空规则继续')
+  if (source === 'builtin') ctx.log('合规词库缺失（workspace/compliance/words.txt）→ 启用内置《广告法》基准地板（非完整法务词库，请按业务扩充 words.txt）')
 
   // 被检资产（text）+ 可选字面文本
   const ids = ctx.assetIdsOf('content')
@@ -75,7 +75,7 @@ export async function complianceCheck(ctx: StepContext): Promise<StepResult> {
   const lines = [
     `# 合规审核汇总`,
     ``,
-    `- 结论：**${overall.toUpperCase()}** · 词库 ${rules.length} 条（${source === 'file' ? '已加载' : '缺失'}） · LLM 复审：${llmReview ? '启用' : '关闭'}`,
+    `- 结论：**${overall.toUpperCase()}** · 词库 ${rules.length} 条（${source === 'file' ? '已加载' : '内置基准地板'}） · LLM 复审：${llmReview ? '启用' : '关闭'}`,
     `- on_block=${onBlock} · 共审核 ${marks.length} 个对象`,
     ``,
     `| 对象 | 状态 | 词库命中 | LLM |`,

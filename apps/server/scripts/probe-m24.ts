@@ -433,7 +433,7 @@ async function main(): Promise<void> {
     const { eq: deq } = await import('drizzle-orm')
     const { assets: assetsTbl, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
     const { absPathOf, writeTextAsset } = await import('../src/services/storage')
-    const { recordCompliance, rulesView } = await import('../src/services/compliance')
+    const { recordCompliance, rulesView, BASE_RULES } = await import('../src/services/compliance')
     const { complianceCheck } = await import('../src/pipeline/actions/compliance-check')
     const { StepError } = await import('../src/pipeline/types')
     const T0 = 1_700_000_000_000
@@ -455,7 +455,8 @@ async function main(): Promise<void> {
     check(view.total === 2 && view.byCategory['广告'] === 2 && view.source === 'file', `rulesView 聚合（${JSON.stringify(view)}）`)
     rmSync(join(COMPLIANCE_TMP, 'words.txt'))
     const viewMissing = rulesView()
-    check(viewMissing.source === 'missing' && viewMissing.total === 0, 'rulesView 词库缺失 → missing/0（不 500 语义）')
+    // [M36·G12.2] 词库缺失不再返空静默：启用内置 BASE_RULES 兜底（source='builtin'），仍不 500
+    check(viewMissing.source === 'builtin' && viewMissing.total === BASE_RULES.length, `rulesView 词库缺失 → builtin 兜底 ${viewMissing.total} 条（不 500/不返空）`)
     writeFileSync(join(COMPLIANCE_TMP, 'words.txt'), '广告|最好|block\n广告|行业领先|warn\n')
     // recordCompliance 写回结构（merge 保留既有键 / 二次覆盖 / 不存在 → null）
     const marked = await writeTextAsset(pid, {

@@ -40,6 +40,7 @@ export {
   publicationApi,
   settingsApi,
   scheduleApi,
+  complianceApi,
   budgetApi,
 } from './insights'
 
