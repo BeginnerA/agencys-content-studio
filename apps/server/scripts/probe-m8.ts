@@ -465,14 +465,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v9：版本 9 / 21 步 / 角色链 + 场景道具链与注入前置 ——
+    // —— T1 mengbao-episode v10：版本 10 / 21 步 / 角色链 + 场景道具链与注入前置 ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 9, `version=9（实际 ${t.version}）`)
+        check(t.version === 10, `version=10（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),

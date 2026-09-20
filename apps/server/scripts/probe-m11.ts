@@ -14,7 +14,7 @@
  *   bgm        compose-config：上传/复制行绑定、替换软删、隔离、移除 + 校验矩阵 +
  *              updateComposeConfig（白名单/枚举/clamp/合并写）+ readComposeConfig 容错
  *   transition buildTransitionPlan：videoLens/offsets/totalDur 数学 + clamp + 禁用矩阵 + round3
- *   template   模板 v9：make_storyboard after+inputs.lines / compose 四键默认值 / v8 快照优先兼容
+ *   template   模板 v10：make_storyboard after+inputs.lines / compose 四键默认值 / v8 快照优先兼容
  *   regression M7 零回归：computeShotSegments（均分/显式/估算）+ parseShotDurations 双口径 +
  *              对齐回退形态正交
  *
@@ -575,7 +575,10 @@ async function main(): Promise<void> {
     cpSync(join(REPO_ROOT, 'workspace', 'templates', 'mengbao-episode.yaml'), join(TEMPLATES_DIR, 'mengbao-episode.yaml'))
 
     const tpl = loadTemplate('mengbao-episode', true)
-    check(tpl.version === 9, `version=9（实际 ${tpl.version}）`)
+    // v10（3660aef「以音定画」）：gen_motion 新增 after=voice + inputs.voices；步骤数/其余结构不变
+    check(tpl.version === 10, `version=10（实际 ${tpl.version}）`)
+    const gm = tpl.steps.find((s) => s.key === 'gen_motion')
+    check(!!gm && (gm.after ?? []).includes('voice') && gm.inputs['voices'] === 'steps.voice.assets', 'v10 以音定画：gen_motion 依赖 voice 并注入实测音频')
     const stepOf = (k: string) => tpl.steps.find((s) => s.key === k)
     const ms = stepOf('make_storyboard')
     check(!!ms && (ms.after ?? []).includes('cast_lines'), 'make_storyboard.after 含 cast_lines')
@@ -587,7 +590,7 @@ async function main(): Promise<void> {
       'compose_video.params M11 四键默认值（none/0.5/0.25/2）',
     )
 
-    // ---- v8 快照（存量 run）：快照优先，行为不随 v9 文件漂移 ----
+    // ---- v8 快照（存量 run）：快照优先，行为不随 v10 文件漂移 ----
     const v8 = JSON.parse(JSON.stringify(tpl)) as {
       key: string
       version: number
@@ -603,15 +606,15 @@ async function main(): Promise<void> {
     const loadedV8 = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: JSON.stringify(v8) })
     check(loadedV8.version === 8 && loadedV8.steps.length === tpl.steps.length, `v8 快照加载（version=${loadedV8.version}，steps=${loadedV8.steps.length}）`)
     const lms = loadedV8.steps.find((s) => s.key === 'make_storyboard')!
-    check(!(lms.after ?? []).includes('cast_lines') && !('lines' in lms.inputs), 'v8 快照无 M11 特征（不被 v9 注入）')
+    check(!(lms.after ?? []).includes('cast_lines') && !('lines' in lms.inputs), 'v8 快照无 M11 特征（不被新版文件注入）')
     const lmg = loadedV8.steps.find((s) => s.key === 'compose_video')!
     check(!('transition' in (lmg.params ?? {})), 'v8 快照 compose 参数无 M11 键')
 
-    // ---- 无快照 → 文件 v9；损坏快照 → 回退文件 ----
+    // ---- 无快照 → 文件 v10；损坏快照 → 回退文件 ----
     const noSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: null })
-    check(noSnap.version === 9, '无快照 → v9 文件加载')
+    check(noSnap.version === 10, '无快照 → v10 文件加载')
     const badSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: 'junk' })
-    check(badSnap.version === 9, '损坏快照 → 回退文件加载')
+    check(badSnap.version === 10, '损坏快照 → 回退文件加载')
   }
 
   const sectionRegression = async (): Promise<void> => {

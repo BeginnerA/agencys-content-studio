@@ -668,14 +668,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode v9：版本 9 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 —
+    // —— T3 mengbao-episode v10：版本 10 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 —
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 9, `mengbao-episode version=9（实际 ${t3.version}）`)
+        check(t3.version === 10, `mengbao-episode version=10（实际 ${t3.version}）`)
         check(t3.steps.length === 21, `mengbao-episode steps=21（实际 ${t3.steps.length}）`)
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),

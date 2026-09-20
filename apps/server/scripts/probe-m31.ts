@@ -1,10 +1,11 @@
 /**
  * M31 探针（对话式参考输入：图 / 视频 / 角色 / BGM）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m31.ts [--section=attachment|hashguard|capability|bgm|firstframe]
+ *   cd apps/server && npx tsx scripts/probe-m31.ts [--section=attachment|fromasset|hashguard|capability|bgm|firstframe]
  *
  * 隔离策略：isolatedEnv('m31', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
  * 必须先于任何 src 动态 import。零网络、零付费模型调用、零计费：
  *   - attachment：直调 addAttachment/resolveAttachmentRefs（真实本地文件落盘、sha256 去重、跨项目拒绝）；
+ *   - fromasset：[M31+] 直调 addAttachmentFromAsset（存量资产选取：同项目直登、跨项目复制+去重、拒绝面全覆盖）；
  *   - hashguard：refs 进 planHash + 确认冻结链 → 编辑/软删/迁移项目一律停机（不静默消费）；无参考零回归；
  *   - capability：视觉不可用不假称理解、无 i2v 拒绝降级、无图像端点拒绝图片参考、成本可见（预检纯函数）；
  *   - bgm：严格合成 BGM 窄口径 opt-in（有 role:'bgm' 才混音、无则 params.bgm=null）；
@@ -20,7 +21,7 @@ import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib
 const { cleanup: envCleanup } = isolatedEnv('m31', { bridge: ['templates', 'prompts'] })
 process.env.PROBE_M31_KEY = 'probe-m31-offline-secret-key-7a1d'
 
-const SECTIONS = ['attachment', 'hashguard', 'capability', 'bgm', 'firstframe'] as const
+const SECTIONS = ['attachment', 'fromasset', 'hashguard', 'capability', 'bgm', 'firstframe'] as const
 
 // 1x1 透明 PNG（合法可解码图像字节，供参考图资产）
 const PNG_1X1 = Buffer.from(
@@ -32,6 +33,8 @@ const PNG_1X1_ALT = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64',
 )
+// 拼接字节 PNG（第三份不同内容，供「文件缺失」拒绝面）
+const PNG_UNIQUE = Buffer.concat([PNG_1X1, PNG_1X1_ALT])
 
 function makePlan(mode: 'dynamic' | 'slideshow', refs: unknown[] = []) {
   return {
@@ -175,6 +178,57 @@ async function main(): Promise<void> {
       const otherSid = await mkSession(otherPid)
       check(await codeOf(() => resolveAttachmentRefs(otherSid, otherPid, [img.assetId])) === 'ref_not_found', '跨项目引用附件 → ref_not_found（拒绝他项目资产）')
       check(await codeOf(() => resolveAttachmentRefs(sid, pid, Array.from({ length: 13 }, (_, i) => i + 1))) === 'too_many_refs', '参考数量超过 12 上限被拒')
+    },
+
+    // ============ fromasset：[M31+] 从素材选取（同项目直登 / 跨项目复制去重 / 拒绝面） ============
+    fromasset: async () => {
+      const { addAttachmentFromAsset, resolveAttachmentRefs } = await import('../src/services/creation-chat/attachments')
+      const { importFiles, absPathOf } = await import('../src/services/storage')
+      const { db } = await import('../src/db')
+      const { assets, creationMessages } = await import('../src/db/schema')
+      const { eq } = await import('drizzle-orm')
+      await seedEndpoints()
+      const pidA = await mkProject('m31-fa-src')
+      const pidB = await mkProject('m31-fa-sess')
+      const sidB = await mkSession(pidB)
+
+      const [imgA] = await importFiles(pidA, [{ name: 'style-a.png', data: PNG_1X1 }], { purpose: 'source' })
+      const [txtA] = await importFiles(pidA, [{ name: 'notes.txt', data: new Uint8Array(Buffer.from('hello probe note')) }], { purpose: 'source' })
+
+      // 同项目：资产与会话同项目 → 直接登记不复制
+      const sidA = await mkSession(pidA)
+      const same = await addAttachmentFromAsset(sidA, imgA!.id)
+      check(same.assetId === imgA!.id && same.kind === 'image' && same.role === 'style' && /^[a-f0-9]{64}$/.test(same.hash) && (same.thumbUrl ?? '').includes('/thumb'), '同项目素材选取 → 直接登记不复制（返回摘要与缩略图）')
+
+      // 跨项目：自动复制进会话项目，规划前核验可过
+      const cross = await addAttachmentFromAsset(sidB, imgA!.id)
+      check(cross.assetId !== imgA!.id && cross.hash === same.hash, '跨项目素材选取 → 复制进会话项目（新资产 id、内容摘要一致）')
+      const copied = (await db.select().from(assets).where(eq(assets.id, cross.assetId)))[0]!
+      check(copied.projectId === pidB && copied.kind === 'image', '复制资产归属会话项目（满足规划前归属核验）')
+      const refs = await resolveAttachmentRefs(sidB, pidB, [cross.assetId])
+      check(refs.length === 1 && refs[0]!.role === 'style', '跨项目选取的参考通过规划前核验并编译为 refs')
+
+      // 重复选取改用途：sha256 复用同一会话资产 + 单条 attachment 消息原地更新 role
+      const again = await addAttachmentFromAsset(sidB, imgA!.id, 'subject')
+      check(again.assetId === cross.assetId, '重复选取同内容 → sha256 去重复用同一会话资产（不产生新文件）')
+      const faMsgs = (await db.select().from(creationMessages).where(eq(creationMessages.sessionId, sidB))).filter((r) => {
+        try { return (JSON.parse(r.payload ?? '{}') as { assetId?: number }).assetId === cross.assetId } catch { return false }
+      })
+      const faRole = (() => { try { return (JSON.parse(faMsgs[0]?.payload ?? '{}') as { ref?: { role?: string } }).ref?.role } catch { return undefined } })()
+      check(faMsgs.length === 1 && faRole === 'subject', '重复选取改用途 → 单条 attachment 消息原地更新 role，不插新行')
+
+      // 拒绝面：非媒体 / role 不匹配 / 软删 / 不存在 / 非法 id / 磁盘文件缺失
+      check(await codeOf(() => addAttachmentFromAsset(sidA, txtA!.id)) === 'bad_kind', '非媒体（文本）素材选取 → 拒绝（不静默收为参考）')
+      check(await codeOf(() => addAttachmentFromAsset(sidA, imgA!.id, 'bgm')) === 'bad_role', '图片用作 bgm → role 与 kind 不匹配被拒')
+      check(await codeOf(() => addAttachmentFromAsset(sidB, 0)) === 'bad_asset', '非法资产编号 → bad_asset')
+      check(await codeOf(() => addAttachmentFromAsset(sidB, 999999)) === 'asset_not_found', '不存在的资产 → asset_not_found')
+      const [imgC] = await importFiles(pidA, [{ name: 'gone.png', data: PNG_UNIQUE }], { purpose: 'source' })
+      await db.update(assets).set({ deletedAt: Date.now() }).where(eq(assets.id, imgC!.id))
+      check(await codeOf(() => addAttachmentFromAsset(sidB, imgC!.id)) === 'asset_not_found', '已软删素材选取 → asset_not_found（不引用回收站素材）')
+      const [imgD] = await importFiles(pidA, [{ name: 'missing.png', data: new Uint8Array(Buffer.concat([PNG_UNIQUE, PNG_1X1_ALT])) }], { purpose: 'source' })
+      const { rmSync } = await import('node:fs')
+      rmSync(absPathOf(imgD!.relPath!))
+      check(await codeOf(() => addAttachmentFromAsset(sidB, imgD!.id)) === 'no_file', '磁盘文件缺失的素材 → no_file 拒绝（不登记幽灵参考）')
     },
 
     // ================= hashguard：refs 进 planHash + 篡改/删除/迁移停机 + 无参考零回归 =================

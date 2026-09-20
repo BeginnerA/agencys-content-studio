@@ -83,4 +83,10 @@ export const creationChatApi = {
     }
     return (await res.json()) as CreationAttachmentResult
   },
+  /** [M31+] 从素材选取：存量资产登记为参考（跨项目由服务端自动复制进会话项目）；与上传同规则、不计费 */
+  attachAsset: (id: number, assetId: number, role?: CreationRefRole) =>
+    api.post<CreationAttachmentResult>(
+      `${BASE}/${id}/attachments/from-asset`,
+      { assetId, ...(role ? { role } : {}) },
+    ),
 }

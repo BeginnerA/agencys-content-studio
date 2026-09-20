@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
+import AssetPickerModal from './AssetPickerModal.vue'
 import { assetApi } from '../../lib/api'
 import { REF_ROLE_LABELS, REF_VALID_ROLES } from '../../lib/types'
 import type {
@@ -16,6 +17,8 @@ const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+// [M31+] 从素材选取弹窗
+const showPicker = ref(false)
 
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
 watch(
@@ -47,6 +50,11 @@ async function onFiles(e: Event): Promise<void> {
   const files = Array.from(input.files ?? [])
   input.value = ''
   for (const f of files) await props.s.addAttachment(f)
+}
+// [M31+] 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
+async function onPickAssets(picked: Asset[]): Promise<void> {
+  showPicker.value = false
+  for (const a of picked) await props.s.addAssetReference(a)
 }
 function onRoleChange(clientId: string, role: string): void {
   void props.s.changeAttachmentRole(clientId, role as CreationRefRole)
@@ -199,6 +207,9 @@ const planning = () =>
     </div>
 
     <div v-if="s.state.error" class="err-text pad">{{ s.state.error }}</div>
+    <div v-if="s.state.notice && !s.state.error" class="muted pad note-text">
+      {{ s.state.notice }}
+    </div>
 
     <form class="composer" @submit.prevent="submit">
       <div v-if="s.state.attachments.length" class="atts">
@@ -291,9 +302,18 @@ const planning = () =>
         >
           <Icon name="upload" :size="13" /> 添加参考
         </button>
+        <button
+          class="btn sm ghost att-btn"
+          type="button"
+          :disabled="planning() || uploading()"
+          title="从各项目素材库选取存量图 / 视频 / 音频"
+          @click="showPicker = true"
+        >
+          <Icon name="arrange" :size="13" /> 从素材选取
+        </button>
         <span class="muted cost-hint">
           <Icon name="alert" :size="12" />
-          上传参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
+          上传/选取参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
         </span>
         <button
           class="btn primary"
@@ -311,6 +331,12 @@ const planning = () =>
       :assets="[previewAsset]"
       :index="0"
       @close="previewAsset = null"
+    />
+
+    <AssetPickerModal
+      v-if="showPicker"
+      @close="showPicker = false"
+      @pick="onPickAssets"
     />
   </section>
 </template>
@@ -650,6 +676,12 @@ const planning = () =>
 .pad {
   padding: 0 16px;
   margin: 0;
+}
+
+/* 托盘提示（如重复选取）：弱于错误的中性反馈，避免误报红色 */
+.note-text {
+  padding-bottom: 6px;
+  line-height: 1.5;
 }
 
 .composer {

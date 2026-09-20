@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono'
 import { ZodError } from 'zod'
 import { CreationError } from '../services/creation-chat/contract'
 import { createSession, refreshPreflight, sendCreationMessage } from '../services/creation-chat/planning'
-import { addAttachment } from '../services/creation-chat/attachments'
+import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
 import { creationDetail, listCreationSessions } from '../services/creation-chat/store'
 
@@ -40,6 +40,13 @@ creationChatRoutes.post(`${path}/:id/attachments`, route(async (c) => {
   const roleVal = form.get('role')
   const buf = new Uint8Array(await fileVal.arrayBuffer())
   return c.json(await addAttachment(sessionId, { name: fileVal.name || `reference-${Date.now()}`, data: buf }, typeof roleVal === 'string' ? roleVal : undefined), 201)
+}))
+// [M31+] 从素材选取：存量资产登记为参考（跨项目自动复制进会话项目）；规则与上传一致，不触发规划、不计费。
+creationChatRoutes.post(`${path}/:id/attachments/from-asset`, route(async (c) => {
+  const sessionId = id(c)
+  const req = (await body(c)) as { assetId?: unknown; role?: unknown }
+  if (typeof req.assetId !== 'number') throw new CreationError('bad_asset', 'assetId 需为数字', 400)
+  return c.json(await addAttachmentFromAsset(sessionId, req.assetId, typeof req.role === 'string' ? req.role : undefined), 201)
 }))
 creationChatRoutes.post(`${path}/:id/messages`, route(async (c) => c.json(await sendCreationMessage(id(c), await body(c)))))
 creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await refreshPreflight(id(c)))))

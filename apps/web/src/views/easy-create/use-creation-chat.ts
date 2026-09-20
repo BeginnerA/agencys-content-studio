@@ -9,6 +9,7 @@ import {
   refKindByExt,
 } from '../../lib/types'
 import type {
+  Asset,
   CreationDetail,
   CreationSessionListItem,
   CreationMode,
@@ -26,10 +27,11 @@ const RUNNING = new Set([
   'waiting_input',
 ])
 
-/** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl） */
+/** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl）。
+ *  [M31+] 两类来源：上传项持有 file；「从素材选取」项无 file，凭 sourceAssetId 走 from-asset 登记（改用途/重试同源）。 */
 export interface AttachmentItem {
   clientId: string
-  file: File
+  file?: File
   name: string
   kind: CreationRefKind
   role: CreationRefRole
@@ -38,6 +40,8 @@ export interface AttachmentItem {
   thumbUrl?: string | null
   uploading: boolean
   error?: string
+  /** 素材库源资产 id（仅从素材选取项；服务端去重后可能对应不同会话资产） */
+  sourceAssetId?: number
 }
 
 function isPollable(d: CreationDetail | null): boolean {
@@ -316,7 +320,7 @@ function leave(): void {
   state.attachments = []
 }
 
-// ===== [M31] 参考附件上传（composer：预校验 → 上传到当前会话项目；不计费、不触发规划） =====
+// ===== [M31] 参考附件登记（composer：上传或从素材选取 → 落当前会话项目；不计费、不触发规划） =====
 let attSeq = 0
 async function uploadItem(item: AttachmentItem): Promise<void> {
   const id = state.currentId
@@ -325,10 +329,17 @@ async function uploadItem(item: AttachmentItem): Promise<void> {
     item.uploading = false
     return
   }
+  if (!item.file && !item.sourceAssetId) {
+    item.error = '参考项缺少文件或素材来源，无法登记'
+    item.uploading = false
+    return
+  }
   item.uploading = true
   item.error = undefined
   try {
-    const res = await creationChatApi.uploadAttachment(id, item.file, item.role)
+    const res = item.file
+      ? await creationChatApi.uploadAttachment(id, item.file, item.role)
+      : await creationChatApi.attachAsset(id, item.sourceAssetId!, item.role)
     // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
     if (state.currentId === id && state.attachments.includes(item)) {
       item.assetId = res.assetId
@@ -378,7 +389,34 @@ async function addAttachment(file: File): Promise<void> {
   await uploadItem(state.attachments[state.attachments.length - 1]!)
 }
 
-/** 更改用途：已上传项按新 role 重传（同内容服务端按 sha256 去重，仅更新登记 role） */
+/** [M31+] 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
+async function addAssetReference(asset: Asset): Promise<void> {
+  const kind = asset.kind as CreationRefKind
+  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
+    state.error = `参考仅支持图片 / 视频 / 音频素材：${asset.name}`
+    return
+  }
+  if (state.attachments.some((a) => a.sourceAssetId === asset.id)) {
+    state.notice = `该素材已在参考托盘：${asset.name}`
+    return
+  }
+  if (state.attachments.length >= REF_MAX_COUNT) {
+    state.error = `参考素材最多 ${REF_MAX_COUNT} 个`
+    return
+  }
+  const item: AttachmentItem = {
+    clientId: `att${++attSeq}_${Date.now()}`,
+    name: asset.name,
+    kind,
+    role: REF_DEFAULT_ROLE[kind],
+    uploading: false,
+    sourceAssetId: asset.id,
+  }
+  state.attachments.push(item)
+  await uploadItem(state.attachments[state.attachments.length - 1]!)
+}
+
+/** 更改用途：已上传项按新 role 重新登记（上传项同内容按 sha256 去重；素材选取项凭 sourceAssetId 再次 attach，仅更新登记 role） */
 async function changeAttachmentRole(
   clientId: string,
   role: CreationRefRole,
@@ -439,6 +477,7 @@ export function useEasyCreate() {
     retry,
     leave,
     addAttachment,
+    addAssetReference,
     changeAttachmentRole,
     removeAttachment,
     retryAttachment,

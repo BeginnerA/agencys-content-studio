@@ -143,6 +143,9 @@ async function main(): Promise<void> {
         .sort((a, b) => b.n - a.n)
       log.warn(`[split-audit] 当前 >${LINE_LIMIT} 行文件 ${over.length} 个：${over.map((o) => `${basename(o.f)}(${o.n})`).join(' ') || '（无）'}`)
       // P4 收口门禁：红线存量必须归零（P1 拆 5 探针 + P3 拆 5 前端后，scripts + web/src 不得有任何 >800 文件）
+      // [待拆基线登记 2026-09] 存量 12 个均在前端：BrandSettings.vue(1095) use-inspector-form.ts(993) index.vue(974/955/917/860/816)
+      // ComposeSettingsModal.vue(949) ScheduleCalendar.vue(928) use-shot-board.ts(905) use-project-detail.ts(832)
+      // ConversationPanel.vue(817，含用户未提交 WIP)——待 WIP 提交后逐文件拆分立项，拆一个验一个（vue-tsc + build），本门禁保持红直至归零
       check(over.length === 0, `split-audit 红线存量归零（当前 ${over.length} 个 >${LINE_LIMIT}：${over.map((o) => basename(o.f)).join(' ') || '无'}）`)
     },
 
