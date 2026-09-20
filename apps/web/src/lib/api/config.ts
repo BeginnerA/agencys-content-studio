@@ -32,11 +32,14 @@ export const configApi = {
     api.get<VideoCapsResult>(
       `/api/v1/api-configs/video-caps?provider_key=${encodeURIComponent(providerKey)}&model=${encodeURIComponent(model)}`,
     ),
-  /** [M38] 查询扩展参数单一真源清单（前端据此按供应商动态渲染结构化表单） */
-  extraSchema: (providerKey: string, serviceType: string) =>
-    api.get<ExtraSchemaResult>(
-      `/api/v1/api-configs/extra-schema?provider_key=${encodeURIComponent(providerKey)}&service_type=${encodeURIComponent(serviceType)}`,
-    ),
+  /** [M38] 查询扩展参数单一真源清单（前端据此按供应商动态渲染结构化表单）；
+   * [M39] 可选 model：命中逐模型 profile 时返回模型级候选/默认，不传行为不变 */
+  extraSchema: (providerKey: string, serviceType: string, model?: string) => {
+    const m = (model || '').trim()
+    return api.get<ExtraSchemaResult>(
+      `/api/v1/api-configs/extra-schema?provider_key=${encodeURIComponent(providerKey)}&service_type=${encodeURIComponent(serviceType)}${m ? `&model=${encodeURIComponent(m)}` : ''}`,
+    )
+  },
   /** [M33] 跨通道「选中即生成」Tier A 建议：参考定价 + 视频能力 + 默认通道建议 */
   modelSuggest: (providerKey: string, serviceType: string, model: string) =>
     api.get<ModelSuggestResult>(

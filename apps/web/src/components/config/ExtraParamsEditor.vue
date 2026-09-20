@@ -10,6 +10,10 @@
  * - managedKeys：本组件托管的 key 列表（父组件据此从 JSON 框剥离，二者互不覆盖）。
  *
  * 纪律：仅渲染服务端登记的字段，不猜 key；未知透传参数仍留在父组件 JSON 框（高级兜底）。
+ *
+ * [M39] 逐模型联动防护：fields 会随实例所选模型重拉（音色的候选/默认是模型级事实）——
+ * - 脏值保护：用户手动改过的 key 在重建时保留现值，不被切模型冲掉；
+ * - select 回显保护：现值不在新候选集时动态追加「当前值」项，编辑既有实例不丢值、不误导。
  */
 import { computed, ref, watch } from 'vue'
 import type { ExtraField } from '../../lib/types'
@@ -26,7 +30,13 @@ const strVals = ref<Record<string, string>>({})
 const boolVals = ref<Record<string, boolean>>({})
 /** 回显时该 key 是否真实存在于 extra（区分「显式 false」与「未设置」） */
 const initialKeys = ref<Set<string>>(new Set())
+/** [M39] 用户手动改过的 key：fields 变化重建时保留现值（切模型不冲掉手选音色） */
+const dirtyKeys = ref<Set<string>>(new Set())
 const err = ref('')
+
+function markDirty(key: string): void {
+  dirtyKeys.value = new Set(dirtyKeys.value).add(key)
+}
 
 /** 归一化出控件初值（字符串侧）：initial 命中优先，否则 field.default，否则空 */
 function seedStr(f: ExtraField): string {
@@ -49,11 +59,17 @@ function reseed(): void {
   const keys = new Set<string>()
   const src = props.initial ?? {}
   for (const f of props.fields) {
+    // [M39] 脏值保护：用户改过的 key 保留现值（含空串），不按新 fields/initial 重建
+    const dirty = dirtyKeys.value.has(f.key)
     if (f.type === 'boolean') {
-      const raw = f.key in src ? src[f.key] : f.default
-      b[f.key] = typeof raw === 'boolean' ? raw : !!raw
+      if (dirty && f.key in boolVals.value) {
+        b[f.key] = boolVals.value[f.key] ?? false
+      } else {
+        const raw = f.key in src ? src[f.key] : f.default
+        b[f.key] = typeof raw === 'boolean' ? raw : !!raw
+      }
     } else {
-      s[f.key] = seedStr(f)
+      s[f.key] = dirty && f.key in strVals.value ? (strVals.value[f.key] ?? '') : seedStr(f)
     }
     if (f.key in src) keys.add(f.key)
   }
@@ -61,6 +77,14 @@ function reseed(): void {
   boolVals.value = b
   initialKeys.value = keys
   err.value = ''
+}
+
+/** [M39] select 回显保护：现值不在登记候选集时追加「当前值」项（不丢值、不误导；提交仍按现值写回） */
+function selectOptions(f: ExtraField): { value: string; label: string }[] {
+  const opts = f.options ?? []
+  const cur = String(strVals.value[f.key] ?? '').trim()
+  if (cur && !opts.some((o) => o.value === cur)) return [...opts, { value: cur, label: `${cur}（当前值）` }]
+  return opts
 }
 
 watch(() => [props.fields, props.initial], reseed, { immediate: true, deep: true })
@@ -129,35 +153,35 @@ defineExpose({ buildExtra, managedKeys })
     <div v-for="f in fields" :key="f.key" class="xfld">
       <!-- 开关 -->
       <label v-if="f.type === 'boolean'" class="xcheck">
-        <input v-model="boolVals[f.key]" type="checkbox" />
+        <input v-model="boolVals[f.key]" type="checkbox" @change="markDirty(f.key)" />
         <span>{{ f.label }}</span>
       </label>
 
       <!-- 下拉 -->
       <label v-else-if="f.type === 'select'" class="xin">
         <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
-        <select v-model="strVals[f.key]">
+        <select v-model="strVals[f.key]" @change="markDirty(f.key)">
           <option value="">—— 使用默认 ——</option>
-          <option v-for="o in f.options" :key="o.value" :value="o.value">{{ o.label }}</option>
+          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
       </label>
 
       <!-- 多行 URL -->
       <label v-else-if="f.type === 'url-list'" class="xin">
         <span class="xlab">{{ f.label }}</span>
-        <textarea v-model="strVals[f.key]" rows="2" spellcheck="false" placeholder="每行一个 URL"></textarea>
+        <textarea v-model="strVals[f.key]" rows="2" spellcheck="false" placeholder="每行一个 URL" @input="markDirty(f.key)"></textarea>
       </label>
 
       <!-- JSON -->
       <label v-else-if="f.type === 'json'" class="xin">
         <span class="xlab">{{ f.label }}</span>
-        <textarea v-model="strVals[f.key]" class="code" rows="2" spellcheck="false" :placeholder="f.placeholder || '{}'"></textarea>
+        <textarea v-model="strVals[f.key]" class="code" rows="2" spellcheck="false" :placeholder="f.placeholder || '{}'" @input="markDirty(f.key)"></textarea>
       </label>
 
       <!-- 数字 / 文本 -->
       <label v-else class="xin">
         <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
-        <input v-model="strVals[f.key]" :type="f.type === 'number' ? 'number' : 'text'" :placeholder="f.placeholder || ''" />
+        <input v-model="strVals[f.key]" :type="f.type === 'number' ? 'number' : 'text'" :placeholder="f.placeholder || ''" @input="markDirty(f.key)" />
       </label>
 
       <span v-if="f.help" class="note">{{ f.help }}</span>

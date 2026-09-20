@@ -166,14 +166,20 @@ const planning = () =>
             v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
             class="qs"
           >
+            <div class="qs-h">
+              <Icon name="chat" :size="12" /> 点击下方问题可直接作答
+            </div>
             <button
               v-for="(q, i) in m.payload.questions"
               :key="i"
-              class="chip q"
+              class="qs-item"
               type="button"
               @click="useQuestion(q)"
             >
-              {{ q }}
+              <span class="qs-ic" aria-hidden="true">
+                <Icon name="chevron-right" :size="14" />
+              </span>
+              <span class="qs-tx">{{ q }}</span>
             </button>
           </div>
         </div>
@@ -552,30 +558,93 @@ const planning = () =>
 }
 
 .qs {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
-.chip.q {
-  cursor: pointer;
+/* 追问区标题：点明“可点击直接作答”的交互预期 */
+.qs-h {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  padding-left: 2px;
+}
+
+.qs-h .ic {
+  color: var(--accent-h);
+}
+
+/* 建议卡：左对齐整宽卡片（替代旧胶囊 pill），前置动作图标 + 悬停反馈 */
+.qs-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: var(--raised);
   color: var(--text);
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  cursor: pointer;
   transition:
     border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
+    background 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
 }
 
-.chip.q:hover {
-  border-color: var(--accent);
-  color: #fff;
+.qs-ic {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--accent-weak);
+  border: 1px solid rgb(99 102 241 / 30%);
+  color: var(--accent-h);
+  margin-top: 1px;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.qs-tx {
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.qs-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: 0 6px 16px -12px rgb(79 70 229 / 70%);
+  transform: translateX(2px);
+}
+
+.qs-item:hover .qs-ic {
+  background: var(--grad-brand);
+  border-color: transparent;
+  color: #fff;
+}
+
+.qs-item:active {
+  transform: translateX(0);
+}
+
+.qs-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .pad {
@@ -736,6 +805,12 @@ const planning = () =>
 @media (prefers-reduced-motion: reduce) {
   .dot {
     animation: none;
+  }
+
+  .qs-item,
+  .qs-item:hover,
+  .qs-item:active {
+    transform: none;
   }
 }
 </style>

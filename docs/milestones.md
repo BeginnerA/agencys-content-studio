@@ -535,9 +535,23 @@ M32–M37 把「啥都让用户配」收敛为「默认自动推导 + 用户可�
 
 ---
 
-## 路线图（M32–M38 · **全部交付 · 收官**）
+## M39 能力速览（扩展参数逐模型能力下沉 · 承接 M38 收尾项）
 
-> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
+M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可用 / 默认是哪个 / 尺寸支持什么形态」实为**模型级事实**（qwen-tts 4 音色 vs qwen3-tts-flash 36 音色；CosyVoice2 官方 8 预置音色；qwen-image-max/plus 仅官方 5 档固定尺寸，1024x1024 对其非法）——对齐 Toonflow `voices[]` / `durationResolutionMap` 逐模型声明范式，把真正按模型区分的字段下沉为 profile 层。范围收敛：仅 audio.voice 与 image.size；video 时长/分辨率已由 M32 逐模型背书，vision / appid / 参考素材 / seed 等为账号级或无核实事实，不下沉。音色清单无法在线拉取（OpenAI 兼容 /models 仅返回 id；DashScope 原生语音行 fetch-models 短路回退 preset），单一真源仍是服务端注册表。
+
+- **G15.1 逐模型 profile 表（`adapters/extra-params.ts`）**：`AUDIO_VOICE_PROFILES`（aliyun_qwen_tts 2 / openai_audio 2 / siliconflow_audio 1 / pollinations_audio 3）与 `IMAGE_SIZE_PROFILES`（万相 4 / 千问图像 2），按序首个正则命中生效；SiliconFlow「模型:音色」以 `{model}` 占位合成为候选完整串（编辑器零新语义）。事实来源逐条行内标注（Step 0 官方文档 WebFetch 核实 + 本仓实测约束）；枚举未核实者（elevenlabs voice id / MOSS-TTSD）标 text 不猜不预置默认；未注册 profile 的模型（qwen-tts 老一代）回落 provider 级，行为不劣于 M38。
+- **G15.2 解析链与 model 参数贯穿**：`resolveExtraSchema(providerKey, serviceType, model?)` / `defaultVoice(providerKey, model?)` 签名向后兼容；profile 命中即**以模型级事实为准**（text 无默认→空，不继续回落 provider 级，防 elevenlabs 实例被注 pollinations 的 alloy 假默认）；新增 `defaultImageSize(providerKey, model?)`。`GET /api-configs/extra-schema` 加可选 query `model`（不传 = M38 现行为，旧调用兼容）。preflight：音色兜底传实例 model（空则 preset 首项）；尺寸合法性识别官方档位 `[1-4]K`（修复 M38 不认 wan2.7 的 `2K` 致静默回落），未配置兜底改逐模型默认（qwen-image-max/plus → 官方 1664x928，不再注入非法 1024x1024）。
+- **G15.3 前端联动与脏值保护**：`config.ts extraSchema` 透传 model；`ApiConfigForm.vue` watch 源扩为 `[provider, serviceType, model]`，切模型即重拉 schema（序号护栏防晚到响应覆盖）；`ExtraParamsEditor.vue` 逐控件 dirty 记录——重建时用户手改过的 key 保留现值（切模型不冲掉手选音色），select 现值不在新候选集时动态追加「当前值」项（编辑既有实例不丢值、不误导）。
+
+行为变化：SiliconFlow 实例选中 CosyVoice2 且未配 voice → 预检就绪并取模型级官方默认 `FunAudioLLM/CosyVoice2-0.5B:alex`（M38 时报 missing_voice）；无核实默认者（elevenlabs 实例等）仍显式要求配置（红线不降）。
+
+验证：`pnpm --filter @acs/server exec tsx scripts/probe-m39.ts`（**37 项断言全绿**：registry 26 + route 3 + preflight 8，零网络零计费）；**M30 / M32 / M33 / M37 / M38 回归全绿**（m30 一处 voice 空断言按 M38 已交付语义基线修正）；server `tsc`、`vue-tsc --noEmit`、`vite build` 全绿。全探针遗留失败 m3/m8/m11（mengbao-episode 模板本地升 v10 的历史基线漂移）、m13–m16（级联）、m26（split-audit 存量债）经 git stash 复验均与本交付无关。
+
+---
+
+## 路线图（M32–M39 · **全部交付 · 收官**）
+
+> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 
@@ -547,5 +561,6 @@ M32–M37 把「啥都让用户配」收敛为「默认自动推导 + 用户可�
 | **M36** | 运营配置自动化 | 平台预设/合规词/排期手工维护 | **已交付**（见上方 M36 能力速览）|
 | **M37** | 收尾与回归 | 自动值来源不可追溯（用户看不到「为何是这个值」） | **已交付**（见上方 M37 能力速览）|
 | **M38** | 扩展参数结构化与默认自动化 | AI 配置「扩展参数」仍是裸 JSON 天书框（用户不知能填啥/要填啥）；轻松创作音色假门禁逼手填 Tier A 已知项 | **已交付**（见上方 M38 能力速览）|
+| **M39** | 扩展参数逐模型能力下沉 | M38 注册表粒度停在 provider 级，音色/尺寸实为模型级事实（36 音色 vs 4、max/plus 仅固定 5 档）；切模型表单不联动 | **已交付**（见上方 M39 能力速览）|
 
-**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32–M38 已全部交付，G1–G14 缺口 + 收尾锁闭环**；遗留技术债候选：`probe-m26 split-audit` 要求的 11 个历史 >800 文件拆分（与本路线图表目无关，待另立专项）。
+**保留人工红线（不自动化）**：付费执行确认、`secrets.json` 密钥录入、合规/法务放行、跨项目引用。**M32–M39 已全部交付，G1–G14 + G15（逐模型下沉）+ 收尾锁闭环**；遗留技术债候选：`probe-m26 split-audit` 要求的 11 个历史 >800 文件拆分（与本路线图表目无关，待另立专项）。

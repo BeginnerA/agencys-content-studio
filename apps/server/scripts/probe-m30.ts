@@ -182,7 +182,10 @@ async function main(): Promise<void> {
       await seedEndpoints({ videoProvider: 'pollinations_video', videoModel: 'probe-v', videoCaps: { model: 'probe-v', verified: true, modes: ['i2v'], durations: [10], aspectRatios: ['9:16'], resolution: '720p' } }); check(await issue(dynPid, 'dynamic') === 'first_frame_unsupported', '适配器不支持首帧且未声明文生视频 → first_frame_unsupported')
       await seedEndpoints({ durations: [5, 10] }); check(await issue(dynPid, 'dynamic') === 'duration_unsupported', 'siliconflow 声明多档时长（不下发 duration）→ duration_unsupported')
       await seedEndpoints({ voice: 'clone:77' }); check(await issue(dynPid, 'dynamic') === 'missing_voice', '语音实例使用克隆音色 → 轻松创作拒绝 missing_voice')
-      await seedEndpoints({ voice: '' }); check(await issue(dynPid, 'dynamic') === 'missing_voice', '语音实例缺音色 → missing_voice')
+      // [M38 基线修正] voice 未配置已不再 missing_voice（Tier A 真源默认兜底）；断言改验默认生效
+      await seedEndpoints({ voice: '' })
+      const pfVoiceDefault = await preflightPlan(dynPid, creationPlanSchema.parse(makePlan('dynamic')))
+      check(pfVoiceDefault.ready && pfVoiceDefault.execution?.voice === 'alloy', '语音实例未配音色 → 按供应商真源默认兜底（M38 Tier A）')
 
       await seedEndpoints({ unpriced: ['image'] })
       const pfUn = await preflightPlan(dynPid, creationPlanSchema.parse(makePlan('dynamic')))

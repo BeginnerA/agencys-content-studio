@@ -4,7 +4,8 @@ import { getVideoAdapter } from '../../adapters/video'
 import { mapResolution, resolveVideoCaps } from '../../adapters/video-capabilities'
 import { loadTemplate } from '../../pipeline/loader'
 import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
-import { defaultVoice } from '../../adapters/extra-params'
+import { defaultVoice, defaultImageSize } from '../../adapters/extra-params'
+import { defaultTtsModel } from '../tts'
 import { checkBudget } from '../budget'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
 import { CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
@@ -55,9 +56,10 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
     const audio = await requiredEndpoint('audio')
     const configured = typeof audio.extra.voice === 'string' ? audio.extra.voice.trim() : ''
     // [M38] 音色 Tier A 收敛：未配置时按供应商真源默认兜底（不再强制用户手填裸 JSON）；
-    // 克隆音色（clone:）仍拒（轻松创作不用克隆声音，既定红线）；无安全默认供应商（如 SiliconFlow「模型:音色」）仍须显式配置（不猜）。
+    // [M39] 兜底升级为逐模型：命中 profile 用模型级默认（如 CosyVoice2→alex），未命中回落 provider 级；
+    // 克隆音色（clone:）仍拒（轻松创作不用克隆声音，既定红线）；两层均无安全默认（如 elevenlabs 未核实集）仍须显式配置（不猜）。
     if (configured.startsWith('clone:')) throw new CreationError('missing_voice', '轻松创作不使用克隆声音；请在语音实例选择现成音色', 422)
-    const voice = configured || defaultVoice(audio.providerKey)
+    const voice = configured || defaultVoice(audio.providerKey, audio.model || (await defaultTtsModel(audio.providerKey)))
     if (!voice) throw new CreationError('missing_voice', '该语音供应商无通用默认音色（需「模型:音色」格式），请在语音实例的「音色」中显式填写', 422)
     const execution: PreparedRecipe = {
       plan, endpoints: { audio: await snapshot(audio, 'tts', 'char') },
@@ -111,7 +113,11 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       const image = await requiredEndpoint('image')
       getImageAdapter(image.providerKey)
       execution.endpoints.image = await snapshot(image, 'image', 'image')
-      execution.imageSize = typeof image.extra.size === 'string' && /^\d{2,4}[x*]\d{2,4}$/.test(image.extra.size) ? image.extra.size : '1024x1024'
+      // [M39] 尺寸合法性扩展官方档位形态 [1-4]K（万相 2.7 系）；未配置/非法时兜底改逐模型默认（qwen-image-max/plus 仅固定 5 档，1024x1024 对其非法）
+      const rawSize = typeof image.extra.size === 'string' ? image.extra.size.trim() : ''
+      execution.imageSize = /^\d{2,4}[x*]\d{2,4}$/.test(rawSize) || /^[1-4]K$/i.test(rawSize)
+        ? rawSize
+        : defaultImageSize(image.providerKey, image.model)
       result.estimate.imageCount = plan.shots.length
     }
     // [M31] 图片主体/风格参考需图像端点消费（无图像端点时无法注入参考图 → 停机，不静默忽略）

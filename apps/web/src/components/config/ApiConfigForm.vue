@@ -189,18 +189,24 @@ function applyEcho(): void {
   extraErr.value = ''
 }
 
-/** [M38] 拉取本供应商 / 通道的扩展参数字段清单（失败 → 空，回退裸 JSON 透传） */
+/** [M38] 拉取本供应商 / 通道的扩展参数字段清单（失败 → 空，回退裸 JSON 透传）；
+ * [M39] 带上当前模型：命中逐模型 profile 时返回模型级候选/默认，切模型即重拉联动。
+ * 模型输入框逐字变更会连续触发，序号护栏防晚到响应覆盖新结果 */
+let extraSchemaSeq = 0
 async function loadExtraSchema(): Promise<void> {
+  const seq = ++extraSchemaSeq
   try {
-    const res = await configApi.extraSchema(props.provider.key, props.provider.serviceType)
+    const res = await configApi.extraSchema(props.provider.key, props.provider.serviceType, model.value.trim())
+    if (seq !== extraSchemaSeq) return
     extraFields.value = res.fields ?? []
   } catch {
+    if (seq !== extraSchemaSeq) return
     extraFields.value = []
   }
   applyEcho()
 }
 watch(
-  () => [props.provider.key, props.provider.serviceType],
+  () => [props.provider.key, props.provider.serviceType, model.value.trim()],
   () => void loadExtraSchema(),
   { immediate: true },
 )

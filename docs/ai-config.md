@@ -22,6 +22,7 @@
 - AI 配置「选中即生成」（M33·Tier A）：新建 / 编辑实例选供应商 + 模型后，系统按服务端「定价真源表」（`apps/server/src/adapters/pricing-capabilities.ts`）**自动带出参考定价**（命中→预填、可改、标注来源锚点；未命中→回落手填并提示核实），与 M32 视频能力档位背书 + 「该通道首个实例自动建议设为默认」共同实现「选模型即生成完整实例草稿」。跨通道建议端点：`GET /api/v1/api-configs/model-suggest?provider_key=&service_type=&model=`。纪律：参考定价**仅用于建实例预填**，不注入事后计价（计价仍是 实例 pricing → 全局 `settings.pricing` → 未计价）；表内只登记经供应商公开定价页核实的条目（首批 DeepSeek / 通义 / 万相图像），未核实一律回落手填、绝不塞通用默认价
 - 语音通道可声明情绪透传：实例 extra 设 `emotion_param`（如 `emotion`）+ `emotion_map`（基调词 → 供应商值）后，tts 按台词 `emotion_hint` 自动透传该参数；未声明则仅记录 `asset.params.emotion_key` 不透传
 - 扩展参数已结构化（M38·Tier A）：实例表单不再只有一个「鬼才知道配啥」的裸 JSON 框——系统按服务端「扩展参数单一真源表」（`apps/server/src/adapters/extra-params.ts`）为每个供应商**动态渲染已知字段**（音色下拉 / 出图尺寸 / 参考素材 URL 列表 / 生成音频·水印开关 / 随机种子 / 视觉理解勾选 / 火山 `appid`（标必填）等），带中文标签、默认预填、用途说明；前端经 `GET /api/v1/api-configs/extra-schema?provider_key=&service_type=` 拉取字段清单。裸 JSON 降级进「高级 · 其他透传参数」，仅用于真源表未覆盖的自定义网关参数，普通用户无需触碰。轻松创作音色：未配置时按供应商真源默认兜底（阿里→`Cherry`、OpenAI/Pollinations→`alloy`、火山→`BV700_streaming`），**不再强制手填**；SiliconFlow「模型:音色」无通用默认，仍需在「音色」字段显式填写（不猜测、不注入占位音色）
+- 音色/尺寸已逐模型化（M39·承接 M38）：扩展参数表单按实例**所选模型**给出专属候选与默认（对齐 Toonflow voices[] 声明范式）——如 qwen3-tts-flash 系 36 音色（含方言/美语）、gpt-4o-mini-tts 11 音色 vs tts-1 系 9、CosyVoice2 官方 8 预置（选后自动拼「模型:音色」存库，未配 voice 时预检直接取模型级默认 alex）；尺寸命中官方档位模型（wan2.7 系 1K/2K/4K、qwen-image-max/plus 仅固定 5 档）呈现下拉，**切换模型后自动联动重拉**（用户手改过的值不被冲掉）。枚举未核实的模型（如 Pollinations elevenlabs/kokoro 实例）仍为文本框且无默认，预检继续显式要求配置（不猜）；事实均逐条来源于供应商文档/实测核实，未注册模型回落 provider 级（行为同 M38）
 
 ## 记忆与模型
 

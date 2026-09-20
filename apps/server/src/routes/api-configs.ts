@@ -269,13 +269,15 @@ apiRoutes.get('/api-configs/video-caps', h(async (c) => {
   return c.json({ supported: true, providerKey, model, caps })
 }))
 
-// GET /api-configs/extra-schema?provider_key=&service_type= —— [M38] 扩展参数单一真源只读查询
+// GET /api-configs/extra-schema?provider_key=&service_type=&model= —— [M38] 扩展参数单一真源只读查询
 // 返回该实例可结构化配置的扩展参数清单（前端据此动态渲染表单，替代裸 JSON 天书框）。零网络、零计费、零写库。
+// [M39] 可选 model：命中逐模型 profile 时返回模型级候选/默认；不传或未命中回落 provider 级（旧调用行为不变）。
 apiRoutes.get('/api-configs/extra-schema', h(async (c) => {
   const providerKey = c.req.query('provider_key') ?? ''
   const serviceType = c.req.query('service_type') ?? ''
+  const model = c.req.query('model') ?? ''
   if (!providerKey || !serviceType) throw new HttpError(400, 'bad_provider', 'provider_key 与 service_type 必填')
-  return c.json({ providerKey, serviceType, fields: resolveExtraSchema(providerKey, serviceType) })
+  return c.json({ providerKey, serviceType, fields: resolveExtraSchema(providerKey, serviceType, model || undefined) })
 }))
 
 // GET /api-configs/model-suggest?provider_key=&model=&service_type= —— [M33] 选中即生成：跨通道 Tier A 只读建议
