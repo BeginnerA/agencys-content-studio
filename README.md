@@ -28,7 +28,7 @@ pnpm install    # 自动下载内置 ffmpeg/ffprobe 二进制（ffmpeg-static / 
 # 复制 .env.example 为 .env 并填入 AGENT_LLM_API_KEY（其余供应商密钥在 Web「AI 配置」页录入）
 pnpm dev    # 并行起双端：
             #   server  http://127.0.0.1:3001（API + Socket.IO + health）
-            #   web     http://127.0.0.1:5174（vite dev，/api 与 /socket.io 已代理）
+            #   web     http://127.0.0.1:5273（vite dev，/api 与 /socket.io 已代理）
 ```
 
 首次启动自动建库（drizzle migrate）与 seed（供应商目录）。密钥只存 `data/secrets.json`（0600），不入库不进 git。

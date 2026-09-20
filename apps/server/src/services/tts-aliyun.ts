@@ -3,9 +3,12 @@
  *
  * 官方协议（同步返回）：
  * - POST /api/v1/services/aigc/multimodal-generation/generation
- * - 请求体 { model, input: { text, voice } }
+ * - 请求体 { model, input: { text, voice } }；instruct 变体追加 input.instructions / optimize_instructions
  * - 响应 output.audio.url（临时下载地址）或 output.audio.data（base64）
- * - 音色为供应商枚举（Cherry / Serena / Ethan / Chelsie …）；不支持 speed / emotion 参数（下发会 400，不透传）
+ * - 音色为供应商枚举（Cherry / Serena / Ethan / Chelsie …）
+ * - 情绪：qwen-tts 不支持 emotion/speed（下发会 400）；qwen3-tts-instruct-flash 原生吃自然语言 instructions，
+ *   opts.emotion（resolveEmotionPayload 产物，完整六维 emotion_hint）→ 写入 input.instructions。
+ *   按模型名防呆：仅 model 含 'instruct' 时才下发（普通 qwen-tts 收到 instructions 会 400），用户换模型无需手动开关 emotion_param 门禁
  *
  * 声线链兜底：action 层全链未命中时给 'alloy'（OpenAI 系占位音色，DashScope 不认）→ 回退官方默认 'Cherry'。
  */
@@ -19,13 +22,21 @@ export async function synthAliyunQwenSpeech(
   ep: { baseUrl: string; apiKey: string; model: string },
   opts: SynthSpeechOptions = {},
 ): Promise<Uint8Array> {
+  const model = String(ep.model || '').trim() || DEFAULT_MODEL
   const voice = opts.voice && opts.voice !== 'alloy' ? opts.voice : DEFAULT_VOICE
   const timeoutMs = opts.timeoutMs ?? 120_000
+
+  // 情绪/风格指令：仅 instruct 变体吃 instructions（普通 qwen-tts 收到会 400 → 按模型名防呆）
+  const input: Record<string, unknown> = { text, voice }
+  if (opts.emotion?.value && /instruct/i.test(model)) {
+    input.instructions = opts.emotion.value
+    input.optimize_instructions = true
+  }
 
   const result = await postJson(
     joinApiUrl(ep.baseUrl, '/api/v1', '/services/aigc/multimodal-generation/generation'),
     ep.apiKey,
-    { model: String(ep.model || '').trim() || DEFAULT_MODEL, input: { text, voice } },
+    { model, input },
     timeoutMs,
   )
 

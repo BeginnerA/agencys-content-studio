@@ -11,6 +11,9 @@
  *   cluster 默认 volcano_tts，可 extra.cluster 覆盖
  * - 音色为供应商枚举（标准版 BV700_streaming …、大模型音色 zh_*_mars_bigtts 等）；
  *   声线链兜底 'alloy'（OpenAI 系占位音色，火山不认）→ 回退官方默认
+ * - 情绪：opts.emotion（resolveEmotionPayload 产物）→ 写入 audio.emotion（官方 V1 “音色情感”字段）。
+ *   火山只认枚举值（如 happy/sad/angry…，且部分大模型音色才有），需实例配 emotion_map 将基调词→枚举；
+ *   未配 map 直发自然语言六维 hint 会被上游忽略（非报错）
  */
 import { randomUUID } from 'node:crypto'
 import type { AudioEndpoint, SynthSpeechOptions } from './tts'
@@ -36,6 +39,10 @@ export async function synthVolcengineSpeech(
   if (typeof opts.speed === 'number' && opts.speed > 0) {
     // V1 语速范围 0.2 - 3.0
     audio.speed_ratio = Math.min(3, Math.max(0.2, opts.speed))
+  }
+  // 情绪（官方 V1 audio.emotion 音色情感）：只认枚举值，需实例配 emotion_map 将基调词→枚举（同 tts.ts 模式，门禁由 emotion_param 控制）
+  if (opts.emotion?.value) {
+    audio.emotion = opts.emotion.value
   }
 
   const timeoutMs = opts.timeoutMs ?? 120_000
