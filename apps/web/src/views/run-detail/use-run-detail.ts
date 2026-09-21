@@ -411,6 +411,8 @@ export function useRunDetail(deps: {
   function canCascadeStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
+    // easy-video（轻松创作）已完成的 run：级联=额外生成，后端守卫拦截 → 隐藏入口（failed 仍放行救援）
+    if (run.value?.templateKey === 'easy-video' && rs === 'completed') return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return steps.value.some((x) => x.seq > s.seq)
   }

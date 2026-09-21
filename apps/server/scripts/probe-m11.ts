@@ -292,8 +292,8 @@ async function main(): Promise<void> {
     const chainKeysList = ['make_storyboard', 'gen_images', 'voice', 'subtitle', 'compose_video']
     const actionOf = (k: string): string =>
       k === 'gen_images' ? 'ai_image' : k === 'voice' ? 'tts' : k === 'subtitle' ? 'subtitle' : k === 'compose_video' ? 'ffmpeg_merge' : 'ai_text'
-    const snap = JSON.stringify({
-      key: 'probe-cascade',
+    const snapOf = (key: string) => JSON.stringify({
+      key,
       version: 1,
       name: 'cascade probe',
       genre: 'other',
@@ -307,15 +307,17 @@ async function main(): Promise<void> {
      * → voice(FAILED) → subtitle(pending) → compose_video(pending)；run=failed。
      * 单步重跑 gen_images 因 voice failed 被禁（other_failed）；级联则把 voice 及下游纳入重置集合→放行。
      */
-    const seedChainRun = async (): Promise<{ runId: number; ms: number; gi: number; vo: number; sub: number; t1: number; t2: number; mst: number }> => {
+    const seedChainRun = async (opts?: { templateKey?: string; status?: string }): Promise<{ runId: number; ms: number; gi: number; vo: number; sub: number; t1: number; t2: number; mst: number }> => {
+      const templateKey = opts?.templateKey ?? 'probe-cascade'
+      const status = opts?.status ?? 'failed'
       const runId = (
         await db
           .insert(pipelineRuns)
           .values({
             projectId: pid,
-            templateKey: 'probe-cascade',
-            templateSnapshot: snap,
-            status: 'failed',
+            templateKey,
+            templateSnapshot: snapOf(templateKey),
+            status,
             input: JSON.stringify({ episode_number: 1 }),
             currentStepKey: 'voice',
             createdAt: T0,
@@ -393,11 +395,19 @@ async function main(): Promise<void> {
     const eD = await errOf(() => describeChainRerun(dRun.runId, 'gen_images', { resetTasks: false }))
     check(eD instanceof WorkbenchError && eD.code === 'upstream_not_ready', 'D 上游 make_storyboard pending（非终态）→ upstream_not_ready')
 
-    // ---- E. cancelled / running run 拒绝 + easy-video 守卫 ----
+    // ---- E. cancelled / running run 拒绝 + easy-video 守卫（仅 completed 拦、failed 放行）----
     const eRun = await seedChainRun()
     await setRunStatus(eRun.runId, 'cancelled')
     const eE = await errOf(() => describeChainRerun(eRun.runId, 'gen_images', {}))
     check(eE instanceof WorkbenchError && eE.code === 'run_cancelled', 'E cancelled run → run_cancelled（引导续跑）')
+    // E2：easy-video + failed → 守卫放行（用户真实卡点场景），级联集合正常解析
+    const evRun = await seedChainRun({ templateKey: 'easy-video' })
+    const dEV = await describeChainRerun(evRun.runId, 'gen_images', { resetTasks: true })
+    check(dEV.chain.length === 4 && dEV.chain[0]!.stepKey === 'gen_images', 'E2 easy-video+failed → 守卫放行，级联集合=目标+下游（4 步）')
+    // E3：easy-video + completed → 额外生成，creation_confirmation_required 拦截
+    const evcRun = await seedChainRun({ templateKey: 'easy-video', status: 'completed' })
+    const eE3 = await errOf(() => describeChainRerun(evcRun.runId, 'gen_images', {}))
+    check(eE3 instanceof WorkbenchError && eE3.code === 'creation_confirmation_required', 'E3 easy-video+completed → creation_confirmation_required（额外生成需重新确认）')
   }
 
   const sectionAlign = async (): Promise<void> => {
