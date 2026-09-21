@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, creationMessages, creationSessions, projects } from '../../db/schema'
 import { chatCompleteDetailed, loadPromptTemplate, type ChatContentPart, type ChatMessage } from '../llm'
@@ -10,34 +9,40 @@ import { resolveVideoCaps, type VideoModelCaps } from '../../adapters/video-capa
 import { clampPlanToCaps } from './clamp'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
-import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, requestKeySchema, type CreationPlan, type CreationRef } from './contract'
+import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
 import { resolveAttachmentRefs } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
-export const messageSchema = z.object({
-  content: z.string().trim().min(1).max(6000),
-  requestKey: requestKeySchema,
-  // [M31] 本条消息采纳的参考附件资产 id（规划前逐个核验归属本会话项目）
-  attachments: z.array(z.number().int().positive()).max(12).optional(),
-}).strict()
+import { jsonRecord } from './projection'
+export { messageSchema, createSessionSchema } from './contract'
 /**
  * 首次发送一句话：建 draft 影子项目 + 会话 + 规划（可能产生 LLM 费用）。
  * [M40] 项目以 status='draft' 落库：项目列表 / 统计 / 搜索一律不可见（规划记账与参考素材需归属，
  * 故行必须在），点「开始制作」确认时才填好立项信息并转正——用户不会再看到需要顺手改一的草稿项目。
  */
 export async function createSession(raw: unknown) {
-  const input = messageSchema.parse(raw)
+  const input = createSessionSchema.parse(raw)
+  const snapshot = { kind: 'initial_draft' as const, content: input.content, requestKey: input.requestKey, deferPlanning: input.deferPlanning === true, fingerprint: messageFingerprint(input) }
   const id = await creationWrite(() => db.transaction(async (tx) => {
     const [existing] = await tx.select().from(creationSessions).where(eq(creationSessions.requestKey, input.requestKey))
-    if (existing) return existing.id
+    if (existing) {
+      const metadata = await tx.select().from(creationMessages).where(and(eq(creationMessages.sessionId, existing.id), eq(creationMessages.role, 'system')))
+      const prior = metadata.map((m) => initialDraftSchema.safeParse(jsonRecord(m.payload))).find((p) => p.success)
+      if (prior?.success && (prior.data.fingerprint !== snapshot.fingerprint || prior.data.deferPlanning !== snapshot.deferPlanning)) throw new CreationError('idempotency_conflict', '同一创建键不能用于不同内容或创建模式', 409)
+      return existing.id
+    }
     const now = Date.now()
     const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'other', templateKey: 'easy-video', status: 'draft', tags: JSON.stringify(['轻松创作']), createdAt: now, updatedAt: now }).returning()
     const [session] = await tx.insert(creationSessions).values({ projectId: project!.id, requestKey: input.requestKey, createdAt: now, updatedAt: now }).returning()
+    await tx.insert(creationMessages).values({ sessionId: session!.id, role: 'system', content: '', payload: JSON.stringify(snapshot), createdAt: now })
     return session!.id
   }))
-  return sendCreationMessage(id, input)
+  await activeProject((await sessionRow(id)).projectId)
+  if (input.deferPlanning) return creationDetail(id)
+  const { deferPlanning: _deferPlanning, ...message } = input
+  return sendCreationMessage(id, message)
 }
 
 /** [M31] 规划前参考素材注入（有界、可核实、不编造）：
@@ -91,14 +96,15 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     return db.transaction(async (tx) => {
       const [duplicate] = await tx.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), eq(creationMessages.requestKey, input.requestKey)))
       if (duplicate) {
-        if (duplicate.content !== input.content) throw new CreationError('idempotency_conflict', '同一请求键不能用于不同消息', 409)
+        const prior = jsonRecord(duplicate.payload)
+        if (duplicate.content !== input.content || (prior.kind === 'input' && prior.fingerprint !== messageFingerprint(input))) throw new CreationError('idempotency_conflict', '同一请求键不能用于不同文字或附件', 409)
         return null
       }
       if (s.status === 'planning' || s.status === 'starting') throw new CreationError('busy', '上一条请求正在处理，请稍候', 409)
       const now = Date.now()
-      await tx.insert(creationMessages).values({ sessionId: id, role: 'user', content: input.content, requestKey: input.requestKey, createdAt: now })
+      await tx.insert(creationMessages).values({ sessionId: id, role: 'user', content: input.content, requestKey: input.requestKey, payload: JSON.stringify({ kind: 'input', fingerprint: messageFingerprint(input), attachments: [...new Set(input.attachments ?? [])] }), createdAt: now })
       if (s.runId) {
-        await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '已记为下一版建议，不会修改当前制作。精修请进入专业工作台；重新创作请复制需求并确认新方案。', payload: JSON.stringify({ kind: 'suggestion' }), createdAt: now })
+        await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '已记为下一版建议，不会修改当前制作。可查看制作详情；重新创作请复制需求并确认新方案。', payload: JSON.stringify({ kind: 'suggestion' }), createdAt: now })
         return null
       }
       const rows = await tx.update(creationSessions).set({ status: 'planning', preflight: null, error: null, updatedAt: now })
@@ -116,7 +122,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
     const effectiveRefs = thisTurnRefs.length ? thisTurnRefs : priorRefs
     const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
-    const recent = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, id)).orderBy(desc(creationMessages.id)).limit(12)
+    const recent = await db.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), ne(creationMessages.role, 'system'))).orderBy(desc(creationMessages.id)).limit(12)
     // [M35 G10] Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
     // 无 video 实例 → 提示使用 slideshow（不假称动态能力）。失败不阻断主流程，仅缺约束上下文。
     let caps: VideoModelCaps | null = null

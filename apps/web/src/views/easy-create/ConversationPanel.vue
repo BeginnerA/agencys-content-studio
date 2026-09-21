@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { confirmDialog } from '../../lib/confirm'
 import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
 import AssetPickerModal from './AssetPickerModal.vue'
@@ -31,44 +32,61 @@ watch(
 
 const uploading = () => props.s.uploadingAttachments.value
 
-function submit(): void {
+const started = computed(() => !!props.s.state.detail?.session.runId)
+const inputLocked = computed(() => props.s.first.locked.value || planning() || props.s.state.loadingDetail)
+watch(() => props.s.first.state.ticket?.content, (content, previous) => {
+  if (props.s.first.active.value && content !== undefined) draft.value = content
+  else if (previous !== undefined) draft.value = ''
+}, { immediate: true })
+watch(draft, (value) => props.s.first.setContent(value), { flush: 'sync' })
+watch(() => props.s.state.currentId, () => { draft.value = ''; previewAsset.value = null; showPicker.value = false; previewSeq++ })
+
+async function submit(): Promise<void> {
   const text = draft.value.trim()
-  if (!text || props.s.state.busySend || uploading()) return
-  draft.value = ''
-  void props.s.send(text)
+  const id = props.s.state.currentId
+  if (!text || planning() || props.s.first.busy.value || uploading() || props.s.state.loadingDetail) return
+  const replan = props.s.first.active.value && props.s.first.state.phase === 'failed'
+  if (replan && !await confirmDialog({ title: '重新规划', message: '上次规划失败。重新规划将再次调用模型，可能再次产生规划及参考解析费用。是否继续？', confirmText: '确认重新规划' })) return
+  if (id !== props.s.state.currentId) return
+  const ok = await props.s.send(text, replan)
+  if (ok && id === props.s.state.currentId && draft.value.trim() === text) draft.value = ''
 }
 
 // [M31+] 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
 async function onPickAssets(picked: Asset[]): Promise<void> {
   showPicker.value = false
-  for (const a of picked) await props.s.addAssetReference(a)
+  const id = props.s.state.currentId
+  for (const a of picked) { if (id !== props.s.state.currentId) break; await props.s.addAssetReference(a) }
 }
 
 // [M31+] 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现；
 // 展示元信息纯函数另拆 ref-utils，气泡组件另拆 MessageRefBubble）
 const previewAsset = ref<Asset | null>(null)
 const refLoading = ref<number | null>(null)
+let previewSeq = 0
 async function openRefPreview(m: CreationChatMessage): Promise<void> {
   const id = refAssetId(m)
   if (!id || refLoading.value === id) return
   refLoading.value = id
+  const token = ++previewSeq
   try {
     const { asset } = await assetApi.detail(id)
-    previewAsset.value = asset
+    if (token === previewSeq) previewAsset.value = asset
   } catch (e) {
-    props.s.state.error = `无法打开参考素材：${(e as Error).message}`
+    if (token === previewSeq) props.s.state.error = `无法打开参考素材：${(e as Error).message}`
   } finally {
-    refLoading.value = null
+    if (token === previewSeq) refLoading.value = null
   }
 }
 
 // 追问问题：点击填入输入框，便于用户直接作答
 function useQuestion(q: string): void {
+  if (inputLocked.value) return
   draft.value = draft.value.trim() ? `${draft.value.trim()}\n${q}` : q
 }
 
 const planning = () =>
-  props.s.state.detail?.session.status === 'planning' || props.s.state.busySend
+  props.s.state.detail?.session.status === 'planning' || props.s.state.busySend || props.s.first.state.phase === 'sending'
 
 // [M31] 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
 function pickFiles(): void {
@@ -78,7 +96,8 @@ async function onFiles(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
-  for (const f of files) await props.s.addAttachment(f)
+  const id = props.s.state.currentId
+  for (const f of files) { if (id !== props.s.state.currentId) break; await props.s.addAttachment(f) }
 }
 </script>
 
@@ -126,6 +145,7 @@ async function onFiles(e: Event): Promise<void> {
               :key="i"
               class="qs-item"
               type="button"
+              :disabled="inputLocked"
               @click="useQuestion(q)"
             >
               <span class="qs-ic" aria-hidden="true">
@@ -144,25 +164,29 @@ async function onFiles(e: Event): Promise<void> {
           <div class="who">策划助手</div>
           <div class="bubble wait">
             <span class="dot" /><span class="dot" /><span class="dot" />
-            正在理解需求并生成方案…（本步骤会调用大模型，产生少量费用）
+            正在理解需求并生成方案…（本步骤会调用模型，可能产生费用）
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="s.state.error" class="err-text pad">{{ s.state.error }}</div>
+    <div v-if="s.state.error || s.state.detail?.session.error" class="err-text pad" role="alert">{{ s.state.error || s.state.detail?.session.error }}</div>
+    <p v-if="s.first.state.warning" class="muted pad" role="status">{{ s.first.state.warning }}</p>
+    <p v-if="s.first.state.phase === 'uploading'" class="muted pad" role="status">正在核对会话并登记参考，全部成功后才提交规划。</p>
     <div v-if="s.state.notice && !s.state.error" class="muted pad note-text">
       {{ s.state.notice }}
     </div>
 
     <form class="composer" @submit.prevent="submit">
-      <AttachmentTray v-if="s.state.attachments.length" :s="s" />
+      <AttachmentTray v-if="!started && s.state.attachments.length" :s="s" />
+      <label class="ec-input-label" for="ec-detail-input">{{ started ? '记录下一版建议，不会修改当前制作' : '补充要求或修改方案' }}</label>
       <textarea
+        id="ec-detail-input"
         v-model="draft"
         rows="2"
         :maxlength="6000"
-        :disabled="planning()"
-        placeholder="补充要求或修改方案，例如：换成温暖风格 / 改成图文模式 / 时长 45 秒"
+        :disabled="inputLocked"
+        :placeholder="started ? '写下下一版想调整的内容' : '描述需求或回答助手的追问'"
         aria-label="创作需求"
         @keydown.enter.exact.prevent="submit"
       />
@@ -176,34 +200,37 @@ async function onFiles(e: Event): Promise<void> {
           @change="onFiles"
         />
         <button
+          v-if="!started"
           class="btn sm ghost att-btn"
           type="button"
-          :disabled="planning() || uploading()"
+          :disabled="s.attachmentsLocked.value"
           @click="pickFiles"
         >
           <Icon name="upload" :size="13" /> 添加参考
         </button>
         <button
+          v-if="!started"
           class="btn sm ghost att-btn"
           type="button"
-          :disabled="planning() || uploading()"
+          :disabled="s.attachmentsLocked.value"
           title="从各项目素材库选取存量图 / 视频 / 音频"
           @click="showPicker = true"
         >
           <Icon name="arrange" :size="13" /> 从素材选取
         </button>
-        <span class="muted cost-hint">
+        <span v-if="!started" class="muted cost-hint">
           <Icon name="alert" :size="12" />
           上传/选取参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
         </span>
         <button
           class="btn primary"
           type="submit"
-          :disabled="planning() || uploading() || !draft.trim()"
+          :disabled="planning() || s.first.busy.value || uploading() || s.state.loadingDetail || !draft.trim()"
         >
           <Icon name="send" :size="14" />
-          {{ uploading() ? '上传中…' : planning() ? '处理中…' : '发送' }}
+          {{ s.first.busy.value || uploading() ? '处理中…' : started ? '记录建议' : s.first.state.phase === 'failed' ? '重新规划' : s.first.state.phase === 'uncertain' ? '核对后继续' : s.first.active.value ? '继续生成方案' : '发送' }}
         </button>
+        <button v-if="!s.state.detail?.progress" class="btn ghost" type="button" :disabled="s.state.loadingDetail || s.first.busy.value" @click="s.refreshStatus">更新状态</button>
       </div>
     </form>
 
@@ -223,6 +250,8 @@ async function onFiles(e: Event): Promise<void> {
 </template>
 
 <style scoped>
+.ec-input-label { display: block; margin-bottom: 8px; color: var(--text-2); font-size: 13px; }
+.composer .btn { min-height: 44px; }
 .conv {
   display: flex;
   flex-direction: column;
@@ -478,7 +507,7 @@ async function onFiles(e: Event): Promise<void> {
 }
 
 .composer textarea {
-  font-size: 13.5px;
+  font-size: 16px;
   line-height: 1.6;
 }
 

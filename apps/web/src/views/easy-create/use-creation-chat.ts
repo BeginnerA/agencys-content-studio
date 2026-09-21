@@ -1,4 +1,5 @@
 import { computed, reactive } from 'vue'
+import { createFirstInput } from './use-first-input'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { studioOff, studioOn } from '../../lib/socket'
@@ -52,7 +53,7 @@ function isPollable(d: CreationDetail | null): boolean {
     !!d.progress &&
     (RUNNING.has(d.progress.status) || d.progress.status === 'processing')
   const starting = d.session.status === 'starting'
-  return (runActive || starting) && !d.result
+  return (runActive || starting || d.session.status === 'planning') && !d.result
 }
 
 const state = reactive({
@@ -69,8 +70,13 @@ const state = reactive({
   attachments: [] as AttachmentItem[],
 })
 
+const first = createFirstInput(state, { commit, upload: uploadItem, polling: ensurePolling })
+let viewEpoch = 0
+let autoFirstId = 0
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let wired = false
+let retryTicket = { signature: '', key: '' }
+let sendTicket = { signature: '', key: '' }
 
 function errText(e: unknown): string {
   if (e instanceof ApiError) return e.message
@@ -81,6 +87,7 @@ function errText(e: unknown): string {
 function commit(id: number, detail: CreationDetail): void {
   if (id !== state.currentId) return
   state.detail = detail
+  first.observe(detail)
   syncConfirmKey()
   syncProjectDraft()
 }
@@ -164,11 +171,13 @@ function projectOverrides(): Partial<CreationProjectMeta> | undefined {
 }
 
 async function fetchDetail(id: number): Promise<void> {
+  const token = viewEpoch
+  const prior = state.detail
   try {
     const detail = await creationChatApi.detail(id)
-    commit(id, detail)
+    if (token === viewEpoch && prior === state.detail && !first.busy.value) commit(id, detail)
   } catch (e) {
-    if (id === state.currentId) state.error = errText(e)
+    if (token === viewEpoch && id === state.currentId) state.error = errText(e)
   }
 }
 
@@ -224,69 +233,92 @@ async function loadSessions(): Promise<void> {
 
 async function open(id: number): Promise<void> {
   wireSocket()
-  state.currentId = id
-  state.detail = null
-  state.error = ''
-  state.notice = ''
-  confirmKey.hash = ''
-  projectDraft.dirty = false
-  state.attachments = []
+  if (id !== state.currentId) {
+    first.detach()
+    viewEpoch++
+    autoFirstId = 0
+    state.currentId = id
+    state.detail = null
+    state.attachments = []
+    state.busySend = false
+    state.busyAction = false
+    state.error = ''; state.notice = ''
+    confirmKey.hash = ''
+    retryTicket = { signature: '', key: '' }
+    sendTicket = { signature: '', key: '' }
+    projectDraft.dirty = false
+  }
+  const token = viewEpoch
+  const auto = autoFirstId === id
+  autoFirstId = 0
   state.loadingDetail = true
   try {
     const detail = await creationChatApi.detail(id)
+    if (token !== viewEpoch || id !== state.currentId) return
+    first.activate(detail)
     commit(id, detail)
+    if (auto && first.active.value) void first.submit(first.state.ticket!.content)
   } catch (e) {
-    if (id === state.currentId) state.error = errText(e)
+    if (token === viewEpoch && id === state.currentId) state.error = errText(e)
   } finally {
-    if (id === state.currentId) state.loadingDetail = false
+    if (token === viewEpoch && id === state.currentId) state.loadingDetail = false
     ensurePolling()
   }
 }
 
-/** 首次发送一句话：建会话 + 影子草稿项目（对用户隐身，不立项）并规划（会产生 LLM 费用） */
+/** 首页先取得零模型调用草稿；详情接收同一票据后才上传并提交规划。 */
 async function startIdea(content: string): Promise<number | null> {
-  state.busySend = true
-  state.error = ''
-  try {
-    const detail = await creationChatApi.create(content, newRequestKey('new'))
-    state.currentId = detail.session.id
-    state.detail = detail
-    syncConfirmKey()
-    wireSocket()
-    ensurePolling()
-    return detail.session.id
-  } catch (e) {
-    state.error = errText(e)
-    return null
-  } finally {
-    state.busySend = false
-  }
+  const id = await first.start(content)
+  if (id) autoFirstId = id
+  return id
 }
 
-async function send(content: string): Promise<void> {
+function enterHome(): void {
+  leave()
+  first.home()
+  state.detail = null
+  state.error = ''; state.notice = ''
+}
+
+async function send(content: string, replan = false): Promise<boolean> {
+  if (first.active.value) return first.submit(content, replan)
   const id = state.currentId
-  if (!id || state.busySend) return
+  const token = viewEpoch
+  if (!id || state.busySend) return false
+  if (!state.detail?.session.runId && state.attachments.some((a) => a.uploading || a.error || !a.assetId)) {
+    state.error = '请先重试失败的参考项，或明确移除后再发送。'
+    return false
+  }
   state.busySend = true
   state.error = ''
   // [M31] 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
-  const sentAssetIds = state.attachments
+  const sentAssetIds = state.detail?.session.runId ? [] : [...new Set(state.attachments
     .filter((a) => a.assetId && !a.error)
-    .map((a) => a.assetId!)
+    .map((a) => a.assetId!))]
+  const signature = JSON.stringify([id, content.trim(), sentAssetIds])
+  if (signature !== sendTicket.signature) sendTicket = { signature, key: newRequestKey('msg') }
   try {
     const detail = await creationChatApi.send(
       id,
       content,
-      newRequestKey('msg'),
+      sendTicket.key,
       sentAssetIds,
     )
+    if (token !== viewEpoch || id !== state.currentId) return false
     commit(id, detail)
-    if (id === state.currentId)
-      state.attachments = state.attachments.filter((a) => !a.assetId || a.error)
     ensurePolling()
+    if (detail.session.error || detail.session.status === 'planning') {
+      if (id === state.currentId) state.error = detail.session.error || '请求已接收，正在规划；请更新状态，不要重复发送。'
+      return false
+    }
+    if (id === state.currentId && (detail.session.plan || detail.session.runId)) state.attachments = []
+    sendTicket = { signature: '', key: '' }
+    return true
   } catch (e) {
     if (id === state.currentId) state.error = errText(e)
+    return false
   } finally {
-    state.busySend = false
+    if (token === viewEpoch) state.busySend = false
   }
 }
 
@@ -355,21 +387,28 @@ async function cancel(): Promise<void> {
   }
 }
 
-async function retry(verifiedFailedTaskIds: number[]): Promise<number | null> {
+async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false): Promise<number | null> {
   const s = state.detail?.session
   const p = state.detail?.progress
   const id = state.currentId
-  if (!s || !p || !id || !s.planHash || state.busyAction) return null
+  if (!s || !p || !id || !s.planHash || state.busyAction || !p.recovery.resumable) return null
+  if (p.recovery.requiredTaskIds.some((taskId) => !verifiedFailedTaskIds.includes(taskId)) || (p.recovery.unpriced.length && !acceptUnpriced)) {
+    state.error = '请完成任务核实及未计价确认后恢复。'
+    return null
+  }
+  const verified = [...new Set(verifiedFailedTaskIds)].sort((a, b) => a - b)
+  const signature = JSON.stringify([id, p.runId, s.planRevision, s.planHash, p.status, p.uncertainTasks, verified, acceptUnpriced])
+  if (signature !== retryTicket.signature) retryTicket = { signature, key: newRequestKey('rt') }
   state.busyAction = true
   state.error = ''
   try {
     const { runId } = await creationChatApi.retry(id, {
       planRevision: s.planRevision,
       planHash: s.planHash,
-      idempotencyKey: newRequestKey('rt'),
-      acceptUnpriced: true,
+      idempotencyKey: retryTicket.key,
+      acceptUnpriced,
       runId: p.runId,
-      verifiedFailedTaskIds,
+      verifiedFailedTaskIds: verified,
     })
     await fetchDetail(id)
     ensurePolling()
@@ -382,7 +421,22 @@ async function retry(verifiedFailedTaskIds: number[]): Promise<number | null> {
   }
 }
 
+async function refreshStatus(): Promise<void> {
+  const id = state.currentId
+  if (!id || state.loadingDetail) return
+  state.loadingDetail = true
+  try { await fetchDetail(id); ensurePolling() }
+  finally { if (id === state.currentId) state.loadingDetail = false }
+}
+
 function leave(): void {
+  first.detach()
+  viewEpoch++
+  autoFirstId = 0
+  state.busySend = false
+  state.busyAction = false
+  retryTicket = { signature: '', key: '' }
+  sendTicket = { signature: '', key: '' }
   stopPolling()
   state.currentId = 0
   state.attachments = []
@@ -397,6 +451,7 @@ async function removeSession(id: number): Promise<CreationDeleteResult | null> {
   state.error = ''
   try {
     const res = await creationChatApi.remove(id)
+    first.clear(id)
     state.sessions = state.sessions.filter((x) => x.id !== id)
     if (state.currentId === id) {
       stopPolling()
@@ -414,8 +469,9 @@ async function removeSession(id: number): Promise<CreationDeleteResult | null> {
 let attSeq = 0
 async function uploadItem(item: AttachmentItem): Promise<void> {
   const id = state.currentId
+  const token = viewEpoch
   if (!id) {
-    item.error = '请先发送一句话创建会话后再上传参考'
+    item.error = '请点击生成方案后登记参考' 
     item.uploading = false
     return
   }
@@ -431,7 +487,7 @@ async function uploadItem(item: AttachmentItem): Promise<void> {
       ? await creationChatApi.uploadAttachment(id, item.file, item.role)
       : await creationChatApi.attachAsset(id, item.sourceAssetId!, item.role)
     // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
-    if (state.currentId === id && state.attachments.includes(item)) {
+    if (token === viewEpoch && state.currentId === id && state.attachments.includes(item)) {
       item.assetId = res.assetId
       item.hash = res.hash
       item.thumbUrl = res.thumbUrl
@@ -448,6 +504,7 @@ async function uploadItem(item: AttachmentItem): Promise<void> {
 
 /** 选择文件：预校验类型/大小/数量 → 按 kind 默认用途上传 */
 async function addAttachment(file: File): Promise<void> {
+  if (attachmentsLocked.value) return
   const kind = refKindByExt(file.name)
   if (!kind) {
     state.error = `参考仅支持图片 / 视频 / 音频：${file.name}`
@@ -476,11 +533,12 @@ async function addAttachment(file: File): Promise<void> {
   }
   state.attachments.push(item)
   // 必须通过响应式代理回填上传态（push 后读回数组元素为 reactive 代理；直接改 push 前的 raw 引用不触发 set 陷阱，UI 会永久停在「上传中」）
-  await uploadItem(state.attachments[state.attachments.length - 1]!)
+  if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
 }
 
 /** [M31+] 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
 async function addAssetReference(asset: Asset): Promise<void> {
+  if (attachmentsLocked.value) return
   const kind = asset.kind as CreationRefKind
   if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
     state.error = `参考仅支持图片 / 视频 / 音频素材：${asset.name}`
@@ -503,7 +561,7 @@ async function addAssetReference(asset: Asset): Promise<void> {
     sourceAssetId: asset.id,
   }
   state.attachments.push(item)
-  await uploadItem(state.attachments[state.attachments.length - 1]!)
+  if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
 }
 
 /** 更改用途：已上传项按新 role 重新登记（上传项同内容按 sha256 去重；素材选取项凭 sourceAssetId 再次 attach，仅更新登记 role） */
@@ -511,27 +569,44 @@ async function changeAttachmentRole(
   clientId: string,
   role: CreationRefRole,
 ): Promise<void> {
+  if (attachmentsLocked.value) return
   const item = state.attachments.find((a) => a.clientId === clientId)
   if (!item || item.role === role) return
   item.role = role
   if (item.assetId) {
+    item.sourceAssetId ??= item.assetId
     item.assetId = undefined
     item.hash = undefined
     item.thumbUrl = null
-    await uploadItem(item)
+    if (state.currentId && !first.active.value) await uploadItem(item)
   }
 }
 
 function removeAttachment(clientId: string): void {
+  if (attachmentsLocked.value) return
   const i = state.attachments.findIndex((a) => a.clientId === clientId)
   if (i >= 0) state.attachments.splice(i, 1)
 }
 
 function retryAttachment(clientId: string): void {
+  if (attachmentsLocked.value || !state.currentId) return
   const item = state.attachments.find((a) => a.clientId === clientId)
   if (item) void uploadItem(item)
 }
 
+function replaceAttachmentFile(clientId: string, file: File): void {
+  if (attachmentsLocked.value) return
+  const item = state.attachments.find((a) => a.clientId === clientId)
+  if (!item) return
+  if (refKindByExt(file.name) !== item.kind || !file.size || file.size > REF_MAX_PER_KIND[item.kind]) {
+    item.error = '请选择同类型且大小符合限制的文件'
+    return
+  }
+  item.file = file; item.name = file.name; item.sourceAssetId = undefined
+  item.assetId = undefined; item.hash = undefined; item.error = undefined
+}
+
+const attachmentsLocked = computed(() => first.locked.value || state.busySend || state.attachments.some((a) => a.uploading) || !!state.detail?.session.runId || state.detail?.session.status === 'planning')
 const uploadingAttachments = computed(() =>
   state.attachments.some((a) => a.uploading),
 )
@@ -546,6 +621,10 @@ const modeLabel = computed<CreationMode | null>(
 export function useEasyCreate() {
   return {
     state,
+    first,
+    attachmentsLocked,
+    enterHome,
+    replaceAttachmentFile,
     confirmKey,
     projectDraft,
     projectEditable,
@@ -564,6 +643,7 @@ export function useEasyCreate() {
     startIdea,
     send,
     refreshPreflight,
+    refreshStatus,
     confirm,
     cancel,
     retry,

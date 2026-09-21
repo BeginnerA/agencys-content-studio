@@ -13,6 +13,7 @@ const props = defineProps<{
   assets: Asset[]
   index?: number
   removable?: boolean
+  readonly?: boolean
 }>()
 const emit = defineEmits<{
   close: []
@@ -93,6 +94,7 @@ const {
       <div
         v-if="cur"
         class="viewer panel"
+        :class="{ 'ec-readonly-preview': readonly }"
         role="dialog"
         aria-modal="true"
         :aria-label="`资产预览：${cur.name}`"
@@ -115,7 +117,7 @@ const {
           >
           <div class="ops">
             <button
-              v-if="cur.kind === 'image'"
+              v-if="!readonly && cur.kind === 'image'"
               class="btn sm"
               :disabled="checkBusy"
               title="重新检测图片有效性（黑图 / 纯色空白 / 损坏；结果写入资产元数据）"
@@ -179,7 +181,7 @@ const {
               <Icon name="external" :size="12" /> 新标签
             </a>
             <button
-              v-if="removable"
+              v-if="removable && !readonly"
               class="btn sm danger"
               :disabled="removeBusy"
               title="软删除该资产（回收空间前可回溯）"
@@ -251,7 +253,7 @@ const {
         <!-- 底栏：元信息 + 提示词快照 -->
         <footer class="foot">
           <div class="metaline mono">{{ metaLine }}</div>
-          <div class="tagedit">
+          <div v-if="!readonly" class="tagedit">
             <span class="tglb">标签</span>
             <span v-for="t in curTags" :key="t" class="tgchip">
               {{ t }}
@@ -293,7 +295,7 @@ const {
 
         <!-- [M29·R02] 右侧「历史 · 影响」抽屉（可编辑文本资产；覆盖舞台右缘） -->
         <div
-          v-if="showVersions && cur"
+          v-if="!readonly && showVersions && cur"
           class="vdraw"
           role="complementary"
           aria-label="版本历史与影响"
@@ -322,6 +324,10 @@ const {
 </template>
 
 <style scoped>
+.ec-readonly-preview .head { flex-wrap: wrap; }
+.ec-readonly-preview .ops { flex-wrap: wrap; }
+.ec-readonly-preview .ops .btn, .ec-readonly-preview .icon-btn { min-width: 44px; min-height: 44px; }
+.ec-readonly-preview button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mask {
   position: fixed;
   inset: 0;

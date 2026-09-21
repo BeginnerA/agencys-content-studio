@@ -24,6 +24,8 @@ export interface PreviewerProps {
   index?: number
   /** 开放顶栏「删除」入口（默认关闭；宿主需监听 removed 刷新列表，画布/挑图等引用宿主勿开） */
   removable?: boolean
+  /** 只读宿主不开放编辑、重检、标签与还原入口。 */
+  readonly?: boolean
 }
 
 export interface PreviewerEmits {
@@ -298,7 +300,7 @@ export function useAssetPreviewer(
 
   async function doCheck() {
     const a = cur.value
-    if (!a || a.kind !== 'image' || checkBusy.value) return
+    if (props.readonly || !a || a.kind !== 'image' || checkBusy.value) return
     checkBusy.value = true
     checkMsg.value = ''
     try {
@@ -331,7 +333,7 @@ export function useAssetPreviewer(
   /** 保存标签（覆盖式写入字符串数组）→ 同步本地基准 + 宿主 */
   async function saveTags(next: string[]) {
     const a = cur.value
-    if (!a || tagBusy.value) return
+    if (props.readonly || !a || tagBusy.value) return
     tagBusy.value = true
     tagErr.value = ''
     try {
@@ -365,7 +367,7 @@ export function useAssetPreviewer(
 
   async function doRemove() {
     const a = cur.value
-    if (!a || removeBusy.value) return
+    if (props.readonly || !a || removeBusy.value) return
     const ok = await confirmDialog({
       title: '删除资产',
       message: `将删除资产「${a.name}」：软删除（回收空间前可回溯；磁盘文件待 GC 回收）。确定删除？`,
@@ -408,7 +410,7 @@ export function useAssetPreviewer(
 
   const canEdit = computed(() => {
     const a = cur.value
-    if (!a) return false
+    if (props.readonly || !a) return false
     return (
       a.kind === 'text' &&
       !!a.purpose &&
@@ -445,7 +447,7 @@ export function useAssetPreviewer(
   /** 保存（后端守卫拒绝时留在编辑态展示错误；成功同步预览文本 + 宿主刷新） */
   async function saveEdit() {
     const a = cur.value
-    if (!a || editSaving.value) return
+    if (props.readonly || !a || editSaving.value) return
     editSaving.value = true
     editErr.value = ''
     try {

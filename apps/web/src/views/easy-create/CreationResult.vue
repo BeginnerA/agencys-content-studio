@@ -50,10 +50,7 @@ const coverUrl = computed(() =>
         <Icon name="download" :size="14" /> 下载 MP4
       </a>
       <RouterLink v-if="runId" class="btn" :to="`/runs/${runId}`">
-        <Icon name="external" :size="13" /> 发布包导出
-      </RouterLink>
-      <RouterLink v-if="runId" class="btn" :to="`/runs/${runId}`">
-        <Icon name="film" :size="13" /> 进入专业工作台精修
+        <Icon name="external" :size="13" /> 查看制作详情
       </RouterLink>
       <RouterLink v-if="projectId" class="btn sm" :to="`/projects/${projectId}`"
         >查看项目</RouterLink

@@ -1,17 +1,44 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import AttachmentTray from './AttachmentTray.vue'
+import AssetPickerModal from './AssetPickerModal.vue'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
 import { memoryApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { CreationSessionListItem, RecommendItem } from '../../lib/types'
+import type { Asset, CreationSessionListItem, RecommendItem } from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
 const router = useRouter()
 const idea = ref('')
+const showPicker = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+let departed = false
+let handoffPath = ''
+onBeforeRouteLeave((to) => {
+  departed = true
+  if (to.path !== handoffPath) s.leave()
+})
+onBeforeUnmount(() => { if (ideaRecTimer) clearTimeout(ideaRecTimer) })
+async function onFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  for (const file of files) { if (departed) break; await s.addAttachment(file) }
+}
+async function onPickAssets(assets: Asset[]) {
+  showPicker.value = false
+  for (const asset of assets) { if (departed) break; await s.addAssetReference(asset) }
+}
+async function abandonLocal() {
+  if (!await confirmDialog({ title: '放弃本地草稿', message: '清除本次本地文字与参考选择？已创建的服务端草稿仍可在创作记录中查看或删除。', confirmText: '放弃本地草稿' })) return
+  s.first.clear(0)
+  s.state.attachments = []
+  idea.value = ''
+}
 
 const EXAMPLES = [
   '做一条 30 秒的咖啡科普短视频，轻松一点。',
@@ -90,15 +117,21 @@ async function loadTopicChips(): Promise<void> {
 const STEPS = ['一句话', '方案', '确认', '成片']
 
 onMounted(() => {
+  s.enterHome()
+  idea.value = s.first.state.ticket?.content ?? ''
   void s.loadSessions()
   void loadTopicChips()
 })
 
 async function go(): Promise<void> {
   const text = idea.value.trim()
-  if (!text) return
+  if (!text || s.first.busy.value || departed) return
   const id = await s.startIdea(text)
-  if (id) void router.push(`/create/${id}`)
+  if (id && !departed) {
+    handoffPath = `/create/${id}`
+    const failed = await router.push(handoffPath)
+    if (failed) { s.first.pause(); s.state.error = '草稿已创建，请从创作记录进入并手动继续。' }
+  }
 }
 
 // [M35 G7] idea debounce → 模板推荐提示（仅展示，不预选、不路由）
@@ -186,7 +219,7 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
           v-model="idea"
           rows="4"
           :maxlength="6000"
-          :disabled="s.state.busySend"
+          :disabled="s.first.locked.value"
           placeholder="例如：做一条 30 秒的咖啡科普短视频，轻松一点。"
           @input="onIdeaInput"
           @keydown.enter.exact.prevent="go"
@@ -207,6 +240,7 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
           :title="
             hasTopics ? '来自「选题雷达」沉淀的选题库，点击填入' : '点击填入'
           "
+          :disabled="s.first.locked.value"
           @click="idea = e"
         >
           {{ e }}
@@ -222,30 +256,38 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         </button>
       </div>
 
-      <div v-if="s.state.error" class="err-text">{{ s.state.error }}</div>
+      <AttachmentTray v-if="s.state.attachments.length" :s="s" />
+      <div class="ec-first-tools">
+        <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
+        <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="fileInput?.click()"><Icon name="upload" :size="14" /> 添加参考</button>
+        <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="showPicker = true"><Icon name="arrange" :size="14" /> 从素材选取</button>
+        <button v-if="s.first.state.ticket" class="btn ghost" type="button" :disabled="s.first.busy.value" @click="abandonLocal">放弃本地草稿</button>
+      </div>
+      <p class="muted">参考仅保存在本地托盘，点击「生成方案」后才上传。上传中本批输入会锁定。</p>
+      <p v-if="s.first.state.warning" class="muted" role="status">{{ s.first.state.warning }}</p>
+      <div v-if="s.state.error" class="err-text" role="alert">{{ s.state.error }}</div>
 
       <!-- [M35 G7] 创意→模板推荐提示（零成本 embedding，仅展示不预选不自动路由） -->
       <div v-if="ideaRec" class="idea-rec" role="status">
         <Icon name="sparkles" :size="13" />
         <span>
           此创意接近模板「<b>{{ ideaRec.name }}</b>」（score
-          {{ ideaRec.score.toFixed(2) }}）——发送后助手会基于该模板风格推进规划。
+          {{ ideaRec.score.toFixed(2) }}）——仅供参考，不会自动选用该模板。
         </span>
       </div>
 
       <div class="pfoot">
         <span class="muted hint"
-          ><Icon name="alert" :size="13" /> 发送后开始规划（会产生
-          LLM 费用），确认前不生成媒体、不立项；点「开始制作」才创建项目，名称/载体/模板/标签/简介自动填好、可改。</span
+          ><Icon name="alert" :size="13" /> 上传不计模型费用；规划及参考视频解析可能计费。确认方案前不生成媒体、不立项；点「开始制作」才转为正式项目。</span
         >
         <button
           class="cta"
           type="button"
-          :disabled="s.state.busySend || !idea.trim()"
+          :disabled="s.first.busy.value || !idea.trim()"
           @click="go"
         >
           <Icon name="bolt" :size="16" />
-          {{ s.state.busySend ? '规划中…' : '开始创作' }}
+          {{ s.first.busy.value ? '创建草稿中…' : '生成方案' }}
         </button>
       </div>
     </section>
@@ -323,7 +365,12 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         <Icon name="alert" :size="13" /> {{ delError }}
       </div>
     </section>
+    <AssetPickerModal v-if="showPicker" @close="showPicker = false" @pick="onPickAssets" />
   </div>
 </template>
 
 <style scoped src="./easy-create-home.css"></style>
+<style scoped>
+.ec-first-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.ec-first-tools .btn { min-height: 44px; }
+</style>

@@ -29,8 +29,8 @@ export function newRequestKey(prefix = 'req'): string {
 
 export const creationChatApi = {
   list: () => api.get<Items<CreationSessionListItem>>(BASE),
-  create: (content: string, requestKey: string) =>
-    api.post<CreationDetail>(BASE, { content, requestKey }),
+  create: (content: string, requestKey: string, deferPlanning = false) =>
+    api.post<CreationDetail>(BASE, { content, requestKey, ...(deferPlanning ? { deferPlanning: true } : {}) }),
   detail: (id: number) => api.get<CreationDetail>(`${BASE}/${id}`),
   send: (
     id: number,

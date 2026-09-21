@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import { runStatus, stepStatus } from '../../lib/format'
 import type { useEasyCreate } from './use-creation-chat'
@@ -8,8 +8,9 @@ const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
 const detail = computed(() => props.s.state.detail)
 const prog = computed(() => detail.value?.progress ?? null)
-const plan = computed(() => detail.value?.session.plan ?? null)
-const total = computed(() => plan.value?.shots.length ?? 0)
+const stages = computed(() => prog.value?.stages ?? [])
+const total = computed(() => stages.value.filter((s) => s.applicable === true).length)
+const done = computed(() => stages.value.filter((s) => s.applicable === true && s.status === 'succeeded').length)
 const active = computed(
   () =>
     !!prog.value &&
@@ -18,12 +19,18 @@ const active = computed(
 const settledBad = computed(
   () => !!prog.value && ['failed', 'cancelled'].includes(prog.value.status),
 )
-const needsVerify = computed(() => prog.value?.needsVerification ?? false)
+const recovery = computed(() => prog.value?.recovery)
+const acceptUnpriced = ref(false)
+const canRetry = computed(() => !!recovery.value?.resumable && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value))
 // 运行态/步骤态文案（后端 status 为宽字符串，经映射兜底，未知态原样显示）
 const runMeta = computed(() => runStatus((prog.value?.status ?? '') as never))
-const stepMeta = (s: string) => stepStatus(s as never)
-// 无外部任务号且未成功的任务：默认仅恢复查询；勾选=用户已在供应商侧核实失败并授权重新提交
+const stepMeta = (s: string) => s === 'not_applicable' ? { text: '不适用' } : s === 'unknown' ? { text: '信息待核实' } : stepStatus(s as never)
+// 无编号的请求必须逐项核实；有编号的未完成任务默认恢复查询。
 const resubmitIds = ref<number[]>([])
+watch(() => `${detail.value?.session.id}:${prog.value?.runId}:${detail.value?.session.planRevision}:${detail.value?.session.planHash}`, () => {
+  resubmitIds.value = []
+  acceptUnpriced.value = false
+})
 
 function toggle(id: number): void {
   const i = resubmitIds.value.indexOf(id)
@@ -35,12 +42,7 @@ async function onCancel(): Promise<void> {
   await props.s.cancel()
 }
 async function onRetry(): Promise<void> {
-  resubmitIds.value = []
-  await props.s.retry([])
-}
-async function onRetryVerified(): Promise<void> {
-  await props.s.retry(resubmitIds.value)
-  resubmitIds.value = []
+  if (canRetry.value) await props.s.retry(resubmitIds.value, acceptUnpriced.value)
 }
 </script>
 
@@ -51,45 +53,28 @@ async function onRetryVerified(): Promise<void> {
       <span class="badge" :class="runMeta.cls">{{ runMeta.text }}</span>
     </header>
 
-    <div v-if="total" class="bar">
-      <div
-        class="bfill"
-        :style="{
-          width: Math.min(100, (prog.completedShots / total) * 100) + '%',
-        }"
-      />
-    </div>
-    <div class="shotn">
-      <span
-        >已完成镜头 <b class="mono">{{ prog.completedShots }}</b> /
-        {{ total }}</span
-      ><span class="mono pct"
-        >{{
-          total
-            ? Math.round(Math.min(100, (prog.completedShots / total) * 100))
-            : 0
-        }}%</span
-      >
-    </div>
+    <p class="ec-progress-summary" aria-live="polite">已完成 {{ done }}/{{ total }} 个适用阶段</p>
 
     <ol class="steps">
-      <li v-for="st in prog.steps" :key="st.key">
+      <li v-for="st in stages" :key="st.key">
         <span class="badge" :class="st.status"
           >{{ st.title }} · {{ stepMeta(st.status).text }}</span
         >
-        <span v-if="st.error" class="serr">{{ st.error }}</span>
+        <span v-if="st.total !== null" class="ec-progress-count">{{ st.completed }}/{{ st.total }} {{ st.key === 'voice' ? '句' : '镜' }}</span>
       </li>
     </ol>
 
-    <div v-if="prog.error" class="runerr" role="alert">
-      <Icon name="alert" :size="13" /> {{ prog.error }}
+    <div v-if="prog.issue" class="runerr" role="alert">
+      <Icon name="alert" :size="13" /> {{ prog.issue.summary }}
     </div>
+    <details v-if="prog.issue?.details.length" class="ec-progress-technical">
+      <summary>技术详情</summary>
+      <p v-for="d in prog.issue.details" :key="d.message">{{ d.scopes.join('、') }}：{{ d.message }}</p>
+    </details>
 
-    <div v-if="needsVerify" class="verify">
-      <p class="vt">
-        <Icon name="alert" :size="13" />
-        存在受理状态不明的任务，可能已计费。请先在供应商侧核验；不核实则仅恢复查询，不重复提交。
-      </p>
+    <div v-if="settledBad && recovery?.resumable" class="verify">
+      <p class="vt">恢复将复用成功产物；{{ recovery.queryTaskCount }} 个有编号的未完成任务默认恢复查询。后续制作及核实后重新提交可能产生费用，不承诺预算硬封顶。</p>
+      <p v-if="recovery.requiredTaskIds.length" class="vt">以下无编号请求必须先在供应商侧逐项核实失败，全部勾选后才可恢复。</p>
       <label
         v-for="t in prog.uncertainTasks.filter((x) => !x.hasExternalId)"
         :key="t.id"
@@ -98,10 +83,15 @@ async function onRetryVerified(): Promise<void> {
         <input
           type="checkbox"
           :checked="resubmitIds.includes(t.id)"
+          :disabled="s.state.busyAction"
           @change="toggle(t.id)"
         />
-        任务 #{{ t.id }}（{{ t.kind }} ·
-        {{ t.provider }}）已核实失败，授权重新提交
+        {{ t.label }} · 任务 #{{ t.id }}（{{ t.kind }} ·
+        {{ t.provider || '供应商未知' }}）已核实失败，授权重新提交
+      </label>
+      <label v-if="recovery.unpriced.length" class="vrow">
+        <input v-model="acceptUnpriced" type="checkbox" :disabled="s.state.busyAction" />
+        我接受未计价项目可能产生费用：{{ recovery.unpriced.join('、') }}
       </label>
     </div>
 
@@ -116,27 +106,20 @@ async function onRetryVerified(): Promise<void> {
         <Icon name="stop" :size="13" /> 取消制作
       </button>
       <button
-        v-else-if="settledBad"
-        class="btn sm"
-        type="button"
-        :disabled="s.state.busyAction"
-        @click="onRetry"
-      >
-        <Icon name="refresh" :size="13" /> 从断点恢复（复用成功产物）
-      </button>
-      <button
-        v-if="settledBad && resubmitIds.length"
+        v-else-if="recovery?.resumable"
         class="btn primary sm"
         type="button"
-        :disabled="s.state.busyAction"
-        @click="onRetryVerified"
+        :disabled="s.state.busyAction || !canRetry"
+        @click="onRetry"
       >
-        恢复并重新提交已核实任务（{{ resubmitIds.length }}）
+        <Icon name="refresh" :size="13" /> {{ s.state.busyAction ? '恢复中…' : '恢复制作' }}
       </button>
+      <button class="btn sm" type="button" :disabled="s.state.loadingDetail" @click="s.refreshStatus()">更新状态</button>
       <RouterLink class="btn sm" :to="`/runs/${prog.runId}`"
-        ><Icon name="external" :size="13" /> 专业工作台</RouterLink
+        ><Icon name="external" :size="13" /> 查看制作详情</RouterLink
       >
     </footer>
+    <small class="ec-progress-local">更新状态只重新读取本地记录，不主动查询供应商。</small>
   </div>
 </template>
 
@@ -163,33 +146,6 @@ async function onRetryVerified(): Promise<void> {
 .ph h2 .ic {
   color: var(--accent-h);
 }
-.bar {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--panel-2);
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-.bfill {
-  height: 100%;
-  background: var(--grad-brand);
-  box-shadow: 0 0 12px -2px rgb(99 102 241 / 60%);
-  transition: width 0.3s ease;
-}
-.shotn {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-size: 12.5px;
-  color: var(--text-2);
-}
-.shotn b {
-  color: #a5b4fc;
-}
-.shotn .pct {
-  color: var(--text-3);
-  font-size: 12px;
-}
 .steps {
   list-style: none;
   margin: 0;
@@ -203,10 +159,6 @@ async function onRetryVerified(): Promise<void> {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-.serr {
-  font-size: 12px;
-  color: var(--bad);
 }
 .runerr {
   font-size: 13px;
@@ -250,4 +202,10 @@ async function onRetryVerified(): Promise<void> {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
+.ec-progress-summary { margin: 0; font-weight: 600; }
+.ec-progress-technical { overflow-wrap: anywhere; color: var(--text-2); }
+.ec-progress-technical summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.ec-progress-count, .ec-progress-local { color: var(--text-2); }
+.vrow { min-height: 44px; font-size: 13px; }
+.pf .btn { min-height: 44px; }
 </style>

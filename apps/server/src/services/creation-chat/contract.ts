@@ -87,6 +87,23 @@ export const planningReplySchema = z.discriminatedUnion('kind', [
 ])
 export type PlanningReply = z.infer<typeof planningReplySchema>
 export const requestKeySchema = z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/)
+export const messageSchema = z.object({
+  content: z.string().trim().min(1).max(6000),
+  requestKey: requestKeySchema,
+  attachments: z.array(z.number().int().positive()).max(12).optional(),
+}).strict()
+export const createSessionSchema = messageSchema.extend({ deferPlanning: z.boolean().optional() }).strict()
+export const initialDraftSchema = z.object({
+  kind: z.literal('initial_draft'),
+  content: z.string().min(1).max(6000),
+  requestKey: requestKeySchema,
+  deferPlanning: z.boolean(),
+  fingerprint: z.string(),
+}).strict()
+export function messageFingerprint(input: z.infer<typeof messageSchema>): string {
+  return hashJson({ content: input.content.trim(), attachments: [...new Set(input.attachments ?? [])] })
+}
+
 export const confirmationSchema = z.object({
   planRevision: z.number().int().positive(),
   planHash: z.string().regex(/^[a-f0-9]{64}$/),

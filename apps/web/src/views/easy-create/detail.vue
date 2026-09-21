@@ -7,6 +7,7 @@ import ConversationPanel from './ConversationPanel.vue'
 import CreationPlanCard from './CreationPlanCard.vue'
 import CreationProgress from './CreationProgress.vue'
 import CreationResult from './CreationResult.vue'
+import CreationArtifacts from './CreationArtifacts.vue'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -87,6 +88,7 @@ onUnmounted(() => s.leave())
       <div class="col ec-side">
         <CreationResult :s="s" />
         <CreationProgress :s="s" />
+        <CreationArtifacts :s="s" />
         <CreationPlanCard v-if="hasPlan" :s="s" />
         <div
           v-if="!hasPlan && !detail?.progress && !detail?.result"

@@ -211,6 +211,8 @@ export interface CreationChatMessagePayload {
   revision?: number
   runId?: number
   verifiedFailedTaskIds?: number[]
+  fingerprint?: string
+  attachments?: number[]
   /** [M31] 附件消息：assetId + 冻结的 ref 指纹 */
   assetId?: number
   ref?: CreationRef
@@ -221,6 +223,7 @@ export interface CreationChatMessage {
   role: 'user' | 'assistant'
   content: string
   payload: CreationChatMessagePayload | null
+  requestKey: string | null
   createdAt: number
 }
 
@@ -238,6 +241,7 @@ export interface CreationSessionView {
   createdAt: number
   updatedAt: number
   projectDeleted: boolean
+  initialDraft: { content: string; requestKey: string } | null
   /** [M40] 立项预览：未确认时为 draft 影子项目（不进项目列表），确认后转正 */
   project: CreationProjectPreview | null
 }
@@ -252,8 +256,9 @@ export interface CreationProgressStep {
 export interface CreationUncertainTask {
   id: number
   kind: string
-  provider: string
+  provider: string | null
   hasExternalId: boolean
+  label: string
 }
 
 /** 制作状态从真实 run/step/task 投影（不另建生产状态机） */
@@ -266,6 +271,22 @@ export interface CreationProgress {
   uncertainTasks: CreationUncertainTask[]
   completedShots: number
   steps: CreationProgressStep[]
+  stages: Array<{ key: string; title: string; applicable: boolean | null; status: string; completed: number | null; total: number | null }>
+  recovery: { resumable: boolean; requiredTaskIds: number[]; queryTaskCount: number; unpriced: string[] }
+  issue: { summary: string; details: Array<{ message: string; scopes: string[] }> } | null
+}
+
+export interface CreationArtifact {
+  assetId: number
+  kind: string
+  name: string
+  available: boolean
+  sourceRunId: number | null
+  reused: boolean
+}
+export interface CreationArtifacts {
+  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifact | null; video: CreationArtifact | null; voices: CreationArtifact[] }>
+  documents: Array<CreationArtifact & { label: string }>
 }
 
 export interface CreationResult {
@@ -280,6 +301,7 @@ export interface CreationDetail {
   messages: CreationChatMessage[]
   planningUsage: { cost: number; unpriced: number }
   progress: CreationProgress | null
+  artifacts: CreationArtifacts
   result: CreationResult | null
 }
 
