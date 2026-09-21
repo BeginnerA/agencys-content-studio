@@ -2,15 +2,14 @@ import { eq } from 'drizzle-orm'
 import { resolveEndpoint, type EndpointPin } from '../adapters/provider'
 import { db } from '../db'
 import { apiProviders } from '../db/schema'
-import { synthAliyunQwenSpeech } from './tts-aliyun'
-import { synthVolcengineSpeech } from './tts-volcengine'
+import { synthAliyunQwenSpeech, synthVolcengineSpeech } from '@agencys/ai-provider-kit'
 
 /**
  * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech，spec §5.2）。
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
  * 模型默认取供应商目录预设首项（如 aliyun_bailian_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
- * aliyun_bailian_tts 为 DashScope 私有协议（tts-aliyun.ts）；
- * volcengine_audio 为火山 TTS V1 私有协议（tts-volcengine.ts，需 extra.appid）。
+ * aliyun_bailian_tts 为 DashScope 私有协议（kit protocols/speech/aliyun）；
+ * volcengine_audio 为火山 TTS V1 私有协议（kit protocols/speech/volcengine，需 extra.appid）。
  */
 
 export interface AudioEndpoint {

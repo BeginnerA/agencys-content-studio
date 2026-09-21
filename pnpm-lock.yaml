@@ -111,6 +111,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@agencys/ai-provider-kit':
+        specifier: file:../../../ai-provider-kit
+        version: file:../ai-provider-kit
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.7)
@@ -205,6 +208,9 @@ importers:
         version: 3.3.11(typescript@5.9.3)
 
 packages:
+
+  '@agencys/ai-provider-kit@file:../ai-provider-kit':
+    resolution: {directory: ../ai-provider-kit, type: directory}
 
   '@babel/helper-string-parser@7.29.7':
     resolution: {integrity: sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw==}
@@ -2202,6 +2208,8 @@ packages:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
 snapshots:
+
+  '@agencys/ai-provider-kit@file:../ai-provider-kit': {}
 
   '@babel/helper-string-parser@7.29.7': {}
 

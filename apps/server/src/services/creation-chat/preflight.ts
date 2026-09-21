@@ -31,7 +31,7 @@ export interface CreationPreflight {
 
 export async function requiredEndpoint(service: 'image' | 'video' | 'audio' | 'llm'): Promise<ResolvedEndpoint> {
   try {
-    const ep = await resolveEndpoint(service)
+    const ep = await resolveEndpoint(service === 'llm' ? 'chat' : service)
     if (!ep.model?.trim()) throw new Error('model')
     return ep
   } catch {

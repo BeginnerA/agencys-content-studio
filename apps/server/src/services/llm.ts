@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { asc, desc, eq, and } from 'drizzle-orm'
+import {
+  chatCompleteDetailed as kitChatCompleteDetailed,
+  type ChatContentPart,
+  type ChatMessage,
+  type ChatOptions,
+  type ChatUsage,
+} from '@agencys/ai-provider-kit'
 import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { env, PROMPTS_DIR } from '../env'
@@ -64,33 +71,15 @@ export async function resolveLlmEndpoint(): Promise<LlmEndpoint> {
   }
 }
 
-/** [M13] 多模态内容分片（OpenAI 兼容：文本 / 图片 data URI；messages 直通请求体） */
-export type ChatContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+/**
+ * 多模态内容分片 / 对话消息 / 调用选项：以 kit 的 OpenAI 兼容 Chat 协议为单一真源，
+ * 宿主侧仅 re-export 以保持既有 import 路径（services/llm）零改动。
+ */
+export type { ChatContentPart, ChatMessage, ChatOptions }
+/** 补全用量（OpenAI 兼容 usage 字段） */
+export type LlmUsage = ChatUsage
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  /** 纯文本或分片数组（视觉模型多图入参，M13） */
-  content: string | ChatContentPart[]
-}
-
-export interface ChatOptions {
-  temperature?: number
-  maxTokens?: number
-  timeoutMs?: number
-  /** 允许「仅推理无正文」视为成功（连通性测试用）：返回 reasoning 内容而不抛错 */
-  allowReasoningOnly?: boolean
-  /** 允许「choice 合法但无正文」视为成功（连通性测试用）：极短 max_tokens 下推理模型可能全部思考/被 length 截断 */
-  allowEmptyContent?: boolean
-}
-
-/** [M4] 补全用量（OpenAI 兼容 usage 字段） */
-export interface LlmUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-}
-
-/** [M4] 补全结果（含用量与来源；用量记录用） */
+/** [M4] 补全结果（含用量与来源；用量记录用）。provider/model 为宿主侧补充，kit 不携带来源信息 */
 export interface LlmResult {
   content: string
   usage: LlmUsage | null
@@ -111,7 +100,11 @@ export class LlmNotConfiguredError extends Error {
   }
 }
 
-/** 非流式 chat 补全（详细版）：内容 + usage + 来源（用量记录用） */
+/**
+ * 非流式 chat 补全（详细版）：内容 + usage + 来源（用量记录用）。
+ * 协议层 POST 委派给 kit（openai-compatible chat）；
+ * 宿主保留 resolveLlmEndpoint 兑底与 LlmNotConfiguredError 文案，并将结果映射为携带 provider/model 的 LlmResult。
+ */
 export async function chatCompleteDetailed(
   messages: ChatMessage[],
   endpoint?: LlmEndpoint,
@@ -122,54 +115,12 @@ export async function chatCompleteDetailed(
     throw new LlmNotConfiguredError('端点缺失：实例未填 base_url 且供应商目录无默认端点（或 .env 未设置 AGENT_LLM_BASE_URL）')
   if (!ep.apiKey) throw new LlmNotConfiguredError('API Key 缺失：请在 Settings → AI 配置检查实例密钥，或 .env 设置 AGENT_LLM_API_KEY')
 
-  const timeoutMs = opts.timeoutMs ?? 120_000
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(`${ep.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.apiKey}` },
-      body: JSON.stringify({
-        model: ep.model,
-        messages,
-        temperature: opts.temperature ?? 0.8,
-        max_tokens: opts.maxTokens ?? 12000,
-        stream: false,
-      }),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`LLM 调用失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
-    }
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string; reasoning_content?: string }; finish_reason?: string }[]
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-    }
-    const usage: LlmUsage | null = data.usage
-      ? {
-          promptTokens: data.usage.prompt_tokens ?? 0,
-          completionTokens: data.usage.completion_tokens ?? 0,
-          totalTokens: data.usage.total_tokens ?? 0,
-        }
-      : null
-    const choice = data.choices?.[0]
-    const content = data.choices?.[0]?.message?.content
-    const finishReason = choice?.finish_reason
-    if (!content) {
-      if (choice?.message?.reasoning_content) {
-        if (opts.allowReasoningOnly)
-          return { content: choice.message.reasoning_content, usage, provider: ep.providerKey, model: ep.model, finishReason }
-        throw new Error('LLM 响应为空：模型仅输出推理未产出正文（reasoning 模型请调大 max_tokens 预算）')
-      }
-      // 连通性测试放宽：choice 结构合法即视为链路可用（如 max_tokens 极小被 length 截断、未产出正文）
-      if (opts.allowEmptyContent && choice) return { content: '', usage, provider: ep.providerKey, model: ep.model, finishReason }
-      throw new Error('LLM 响应为空（choices/message/content 缺失）')
-    }
-    return { content, usage, provider: ep.providerKey, model: ep.model, finishReason }
-  } finally {
-    clearTimeout(timer)
-  }
+  const r = await kitChatCompleteDetailed(
+    messages,
+    { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.model },
+    opts,
+  )
+  return { content: r.content, usage: r.usage, provider: ep.providerKey, model: ep.model, finishReason: r.finishReason }
 }
 
 /** 非流式 chat 补全，返回完整文本（chatCompleteDetailed 薄封装；签名不变） */

@@ -10,11 +10,13 @@ import { db } from '../db'
 import { apiConfigs, pipelineRuns, settings, usageRecords } from '../db/schema'
 import { createLogger } from '../logger'
 import type { LlmUsage } from './llm'
+import type { UsageUnit } from '@agencys/ai-provider-kit'
 
 const log = createLogger('usage')
 
 export type UsageKind = 'llm' | 'image' | 'video' | 'tts'
-export type UsageUnit = 'tokens_in' | 'tokens_out' | 'image' | 'second' | 'char'
+// 计价单位唯一事实源已上收至 kit（pricing-capabilities）；此处透传保持既有引用点零改动
+export type { UsageUnit }
 export type UsageGroupBy = 'kind' | 'provider' | 'model' | 'provider_model' | 'unit' | 'day' | 'project' | 'run'
 
 export interface UsageInput {

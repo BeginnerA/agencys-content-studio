@@ -1,29 +1,23 @@
+/**
+ * 宿主 glue：@agencys/ai-provider-kit 的 Ports & Adapters 接线层。
+ *
+ * 协议实现与端点解析逻辑已抽包（注册表 + 策略 + createProvider 工厂，见 kit README）；
+ * 本文件只负责两件事：
+ * 1) 用 libsql/Drizzle 与 secrets.json 实现 kit 的两个端口（ConfigSource / SecretStore）；
+ * 2) 保持既有导出面（resolveEndpoint / buildImageRequest / LEGACY_PROVIDER_KEY_ALIASES …）
+ *    令全部下游调用点零感知迁移（错误文案与端点指纹哈希同源零漂移）。
+ */
 import { and, asc, desc, eq } from 'drizzle-orm'
-import { createHash } from 'node:crypto'
-import { AliyunBailianImageAdapter } from './aliyun-bailian-image'
-import { GeminiImageAdapter } from './gemini-image'
-import { OpenAIImageAdapter } from './openai-image'
-import { PollinationsImageAdapter } from './pollinations-image'
-import { SiliconFlowImageAdapter } from './siliconflow-image'
-import { VolcengineImageAdapter } from './volcengine-image'
-import type { ImageAdapter, ImageGenRequest } from './types'
+import {
+  createProvider,
+  type ConfigSource,
+  type ProviderCatalogRow,
+  type ProviderConfigRow,
+  type SecretStore,
+} from '@agencys/ai-provider-kit'
 import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
-import { resolveApiKey } from '../services/secrets'
-
-/**
- * 已注册图像适配器（openai_image 通用；pollinations_image / siliconflow_image 为其别名子类；
- * gemini_image 为 Google v1beta generateContent/interactions 协议；aliyun_bailian_image 为百炼统一入口
- * （按 model 前缀派发万相多代 / 千问同步直返协议）；volcengine_image 为方舟异步/同步双形态的自包含实现）。
- */
-const imageAdapters: Record<string, ImageAdapter> = {
-  openai_image: new OpenAIImageAdapter(),
-  pollinations_image: new PollinationsImageAdapter(),
-  siliconflow_image: new SiliconFlowImageAdapter(),
-  gemini_image: new GeminiImageAdapter(),
-  aliyun_bailian_image: new AliyunBailianImageAdapter(),
-  volcengine_image: new VolcengineImageAdapter(),
-}
+import { deleteSecret, resolveApiKey, writeSecret } from '../services/secrets'
 
 /**
  * 旧阿里目录 key 兼容映射（千问/万相家族行已收敛为百炼统一行）。
@@ -41,143 +35,98 @@ export function normalizeProviderKey(providerKey: string): string {
   return LEGACY_PROVIDER_KEY_ALIASES[providerKey] ?? providerKey
 }
 
-export class ProviderNotReadyError extends Error {
-  constructor(providerKey: string) {
-    super(
-      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image、gemini_image、aliyun_bailian_image、volcengine_image）。`,
-    )
-    this.name = 'ProviderNotReadyError'
+/** 目录行整形：api_providers → kit 的 ProviderCatalogRow（vendor 非空约束兜底空串） */
+function toCatalogRow(p: typeof apiProviders.$inferSelect): ProviderCatalogRow {
+  return {
+    key: p.key,
+    name: p.name,
+    serviceType: p.serviceType,
+    vendor: p.vendor ?? '',
+    description: p.description,
+    defaultUrl: p.defaultUrl,
+    presetModels: p.presetModels,
   }
 }
 
-export function getImageAdapter(providerKey: string): ImageAdapter {
-  const adapter = imageAdapters[providerKey]
-  if (!adapter) throw new ProviderNotReadyError(providerKey)
-  return adapter
-}
-
-export interface EndpointPin { configId: number; configHash?: string }
-
-export interface ResolvedEndpoint {
-  configId: number
-  configHash: string
-  providerKey: string
-  serviceType: string
-  baseUrl: string
-  apiKey: string
-  model?: string
-  extra: Record<string, unknown>
-}
-
-/**
- * 选择图像/视频/语音端点：service_type + providerKey（可选）；否则 is_default 优先。
- * 密钥解析优先级：credential_id → vendor_credentials.apiKeyRef → api_configs.apiKeyRef（fallback）。
- * Base URL 优先级：实例 baseUrl → 凭证 baseUrl → 目录 defaultUrl。
- * 端点配置缺失或 key 未填时抛错并附配置指引。
- */
-export async function resolveEndpoint(
-  serviceType: 'image' | 'video' | 'audio' | 'llm',
-  providerKey?: string,
-  pin?: EndpointPin,
-): Promise<ResolvedEndpoint> {
-  // 旧 key（如历史模板硬编码的 aliyun_wan_image）先归一到合并后的百炼 key，再查实例
-  if (providerKey) providerKey = normalizeProviderKey(providerKey)
-  const conds = [eq(apiConfigs.serviceType, serviceType), eq(apiConfigs.isActive, 1)]
-  if (providerKey) conds.push(eq(apiConfigs.providerKey, providerKey))
-  if (pin) conds.push(eq(apiConfigs.id, pin.configId))
-  const rows = await db
-    .select()
-    .from(apiConfigs)
-    .where(and(...conds))
-    .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
-    .limit(1)
-  const cfg = rows[0]
-  if (!cfg) {
-    throw new Error(
-      `未配置 ${serviceType} 类型 api_configs（Settings → AI 配置，providerKey=${providerKey ?? 'default'}）`,
-    )
-  }
-
-  // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
-  let apiKey = ''
-  let credBaseUrl = ''
-  let credentialRef: string | null = null
-  if (cfg.credentialId != null) {
-    const credRows = await db
+/** Drizzle 实现 kit 的 ConfigSource 端口：行数据整形为纯数据形态交给 kit 解析 */
+const source: ConfigSource = {
+  async listProviders() {
+    const rows = await db.select().from(apiProviders)
+    return rows.map(toCatalogRow)
+  },
+  async listConfigs(serviceType, providerKey) {
+    // kit 端点语义用 'chat'；宿主 DB service_type 历史约定存 'llm'——仅此一名不对齐，在此边界回映
+    const dbServiceType = serviceType === 'chat' ? 'llm' : serviceType
+    const conds = [eq(apiConfigs.serviceType, dbServiceType), eq(apiConfigs.isActive, 1)]
+    if (providerKey) conds.push(eq(apiConfigs.providerKey, providerKey))
+    // 返回全量活跃实例（isDefault 降序 → priority 升序）；configId 锁定由 kit 内部按 pin 过滤
+    const rows = await db
+      .select()
+      .from(apiConfigs)
+      .where(and(...conds))
+      .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
+    return rows.map((cfg): ProviderConfigRow => ({
+      id: cfg.id,
+      name: cfg.name,
+      providerKey: cfg.providerKey,
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      apiKeyRef: cfg.apiKeyRef,
+      credentialId: cfg.credentialId,
+      extra: cfg.extra,
+      pricing: cfg.pricing,
+      isDefault: cfg.isDefault,
+      priority: cfg.priority,
+    }))
+  },
+  async getCredential(id) {
+    const rows = await db
       .select()
       .from(vendorCredentials)
-      .where(eq(vendorCredentials.id, cfg.credentialId))
+      .where(eq(vendorCredentials.id, id))
       .limit(1)
-    const cred = credRows[0]
-    if (cred) {
-      credentialRef = cred.apiKeyRef
-      apiKey = resolveApiKey(cred.apiKeyRef)
-      credBaseUrl = cred.baseUrl?.trim() ?? ''
-    }
-  }
-  if (!apiKey) {
-    apiKey = resolveApiKey(cfg.apiKeyRef)
-  }
-  if (!apiKey) {
-    throw new Error(`api_configs「${cfg.name}」的 API Key 未解析（请配置供应商凭证或实例级 Key）`)
-  }
-
-  // Base URL 解析：实例 > 凭证 > 目录
-  const providerRow = await db
-    .select()
-    .from(apiProviders)
-    .where(eq(apiProviders.key, cfg.providerKey))
-    .limit(1)
-  const baseUrl = cfg.baseUrl?.trim() || credBaseUrl || providerRow[0]?.defaultUrl?.trim() || ''
-  if (!baseUrl) {
-    throw new Error(`api_configs「${cfg.name}」缺少 baseUrl，且供应商无 defaultUrl`)
-  }
-
-  let extra: Record<string, unknown> = {}
-  try {
-    extra = cfg.extra ? (JSON.parse(cfg.extra) as Record<string, unknown>) : {}
-  } catch {
-    extra = {}
-  }
-  // 只返回指纹，不持久化 URL、extra 或密钥；默认标记/优先级变化不影响已锁定实例。
-  const configHash = createHash('sha256').update(JSON.stringify({
-    id: cfg.id, provider: cfg.providerKey, serviceType, baseUrl, model: cfg.model,
-    extra, pricing: cfg.pricing, credentialId: cfg.credentialId, credentialRef, keyRef: cfg.apiKeyRef,
-  })).digest('hex')
-  if (pin?.configHash && pin.configHash !== configHash) throw new Error('已确认的供应商实例配置发生变化，请重新规划并确认')
-  return {
-    configId: cfg.id,
-    configHash,
-    providerKey: cfg.providerKey,
-    serviceType,
-    baseUrl,
-    apiKey,
-    model: cfg.model ?? undefined,
-    extra,
-  }
+    const cred = rows[0]
+    return cred ? { apiKeyRef: cred.apiKeyRef, baseUrl: cred.baseUrl } : null
+  },
+  async getProviderByKey(providerKey) {
+    const rows = await db
+      .select()
+      .from(apiProviders)
+      .where(eq(apiProviders.key, providerKey))
+      .limit(1)
+    const row = rows[0]
+    return row ? toCatalogRow(row) : null
+  },
 }
 
-/** 组装图像生成请求（image action 用） */
-export async function buildImageRequest(params: {
-  prompt: string
-  provider?: string
-  model?: string
-  size?: string
-  referenceImages?: string[]
-  pin?: EndpointPin
-}): Promise<{ adapter: ImageAdapter; request: ImageGenRequest }> {
-  const endpoint = await resolveEndpoint('image', params.provider, params.pin)
-  const adapter = getImageAdapter(endpoint.providerKey)
-  return {
-    adapter,
-    request: {
-      prompt: params.prompt,
-      size: params.size,
-      model: params.model ?? endpoint.model,
-      referenceImages: params.referenceImages,
-      baseUrl: endpoint.baseUrl,
-      apiKey: endpoint.apiKey,
-      extra: endpoint.extra,
-    },
-  }
+/** 实现 kit 的 SecretStore 端口（CRUD）：底层为 data/secrets.json + env 引用解析 */
+const secrets: SecretStore = {
+  get: (ref) => resolveApiKey(ref) || null,
+  set: (ref, value) => writeSecret(ref, value),
+  delete: (ref) => deleteSecret(ref),
 }
+
+/** 包级单例：全部导出经由同一实例（与旧模块级 imageAdapters 常量语义一致） */
+const provider = createProvider({
+  source,
+  secrets,
+  legacyAliases: LEGACY_PROVIDER_KEY_ALIASES,
+  // 错误文案保持宿主既有口径（含 Settings 指引）零漂移
+  messages: {
+    noConfig: (k) => `未配置 ${k ?? ''} 类型 api_configs（Settings → AI 配置）`,
+  },
+})
+
+export const resolveEndpoint = provider.resolveEndpoint
+export const buildImageRequest = provider.buildImageRequest
+export const buildVideoRequest = provider.buildVideoRequest
+export const defaultTtsModel = provider.defaultTtsModel
+
+// 注册表与适配器契约从包直接透传（宿主调用点保持 adapters/ 入口不变）
+export { getImageAdapter, ProviderNotReadyError } from '@agencys/ai-provider-kit'
+export type {
+  EndpointPin,
+  ImageAdapter,
+  ImageGenRequest,
+  ResolvedEndpoint,
+} from '@agencys/ai-provider-kit'

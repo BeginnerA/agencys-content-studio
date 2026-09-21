@@ -4,29 +4,18 @@ import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret } from '../services/secrets'
 import { vendorPriorityRank } from '../db/seed'
-import { chatComplete, providerDefaultUrl } from '../services/llm'
-import { resolveEndpoint, getImageAdapter } from '../adapters/provider'
+import { providerDefaultUrl } from '../services/llm'
 import { resolveVideoCaps } from '../adapters/video-capabilities'
 import { resolveExtraSchema } from '../adapters/extra-params'
 import { resolveModelPricing, type PricingServiceType } from '../adapters/pricing-capabilities'
-import { normalizeModelList, sortEntriesWithPreset, type ModelEntry } from '../adapters/model-metadata'
-import { probeAliyunWanVideoEndpoint } from '../adapters/aliyun-wan-video'
-import { probePollinationsVideoEndpoint } from '../adapters/pollinations-video'
-import { probeSiliconflowVideoEndpoint } from '../adapters/siliconflow-video'
-import { probeVolcengineVideoEndpoint } from '../adapters/volcengine-video'
+// 连通测试用例 + 模型目录拉取直连 kit（协议实现与用例服务已抽包，adapters/ 下不再有对应实现文件）
+import { fetchModelList, testConnection } from '@agencys/ai-provider-kit'
 import { defaultTtsModel, synthSpeech } from '../services/tts'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const apiRoutes = new Hono()
 
 const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
-
-/** DashScope 原生协议行（百炼图像/视频/语音）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
-const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_bailian_image', 'aliyun_bailian_video', 'aliyun_bailian_tts'])
-
-/** [M33.1] DashScope 原生列模型口根址与 providers 过滤映射（仅阿里百炼 LLM 走此口以带出参考定价） */
-const DASHSCOPE_NATIVE_ROOT = 'https://dashscope.aliyuncs.com/api/v1'
-const DASHSCOPE_PROVIDERS_BY_KEY: Record<string, string> = { aliyun_bailian_llm: 'qwen' }
 
 /**
  * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
@@ -165,11 +154,9 @@ apiRoutes.post('/api-configs', h(async (c) => {
   return c.json({ config: row[0] }, 201)
 }))
 
-// POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（[M33.1] 含参考定价，返回 ModelEntry[]）
+// POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（协议分派与预置回退由 kit services/fetch-models 承担）
 // body: { provider_key, base_url?, api_key?, config_id?, credential_id? }
-// 阿里千问 LLM 走 DashScope 原生 GET /api/v1/models（带 prices/context，谁给价谁带）；其余走 OpenAI 兼容 GET {baseUrl}/models（仅 id，不猜价）。
-// 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 凭证（credential_id）> 目录 defaultUrl。
-// 在线失败 / 为空 → 回退目录 presetModels（id-only），并在 note 中说明原因。零写库、不改事后计价口径。
+// 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 凭证（credential_id）> 目录 defaultUrl。零写库。
 apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const providerKey = body['provider_key']
@@ -177,21 +164,11 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   const providerRows = await db.select().from(apiProviders).where(eq(apiProviders.key, providerKey)).limit(1)
   const provider = providerRows[0]
   if (!provider) throw new HttpError(400, 'bad_provider', `供应商 ${providerKey} 不存在`)
-  const serviceType = provider.serviceType as PricingServiceType
   const preset = (safeJson(provider.presetModels, []) as unknown[]).filter(
     (m): m is string => typeof m === 'string' && !!m,
   )
-  const presetEntries: ModelEntry[] = preset.map((id) => ({ id }))
 
-  // DashScope 原生协议行在线拉取必 404（无 OpenAI 兼容 /models 端点），且图/视频/语音价按档不猜 → 直接回退预置
-  if (NATIVE_DASHSCOPE_PROVIDER_KEYS.has(providerKey)) {
-    return c.json({
-      models: presetEntries,
-      source: 'preset',
-      note: '该供应商为 DashScope 原生协议（无 /models 价格档），模型目录由平台预置',
-    })
-  }
-
+  // 端点/密钥优先级：显式传参 > 编辑实例存量（config_id）> 凭证（credential_id）> 目录 defaultUrl
   let baseUrl = typeof body['base_url'] === 'string' && body['base_url'].trim() ? body['base_url'].trim() : ''
   let apiKey = typeof body['api_key'] === 'string' && body['api_key'].trim() ? body['api_key'].trim() : ''
   const configId = typeof body['config_id'] === 'number' ? body['config_id'] : null
@@ -206,8 +183,7 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
       if (!baseUrl) baseUrl = await resolveConfigBaseUrl(cfg)
     }
   }
-  // 新建实例尚未落库（无 config_id）：Key 存于前端所选供应商凭证 → 直接按 credential_id 解析，
-  // 否则在线拉取无 Authorization 头 → 401（阿里千问等 compatible-mode 端点必现）。
+  // 新建实例尚未落库（无 config_id）：Key 存于前端所选供应商凭证 → 直接按 credential_id 解析。
   const credentialId = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
   if (credentialId !== null && (!apiKey || !baseUrl)) {
     const credRows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, credentialId)).limit(1)
@@ -219,43 +195,15 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   }
   if (!baseUrl) baseUrl = provider.defaultUrl?.trim() ?? ''
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 20_000)
-  let liveError = ''
-  let entries: ModelEntry[] = []
-  try {
-    if (providerKey === 'aliyun_bailian_llm') {
-      // [M33.1] 阿里百炼 LLM：走 DashScope 原生列模型口（带 prices/context），分页聚合
-      entries = await fetchDashscopeModels(providerKey, serviceType, apiKey, controller.signal)
-    } else if (!baseUrl) {
-      liveError = '端点未配置（实例与目录均无 baseUrl）'
-    } else {
-      const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        liveError = `HTTP ${res.status}${text ? ` ${text.slice(0, 160)}` : ''}`
-      } else {
-        entries = normalizeModelList(serviceType, providerKey, await res.json().catch(() => null))
-      }
-    }
-  } catch (e) {
-    liveError = e instanceof Error ? e.message : String(e)
-  } finally {
-    clearTimeout(timer)
-  }
-
-  if (entries.length > 0) {
-    // 预置模型置顶，其余字母序（网关混合目录下常用项优先可见）
-    return c.json({ models: sortEntriesWithPreset(entries, preset).slice(0, 800), source: 'live' })
-  }
-  return c.json({
-    models: presetEntries,
-    source: 'preset',
-    note: liveError ? `在线目录获取失败（${liveError.slice(0, 200)}），已回退预置列表` : '在线目录为空，已回退预置列表',
+  // 协议分派（DashScope 原生 / OpenAI 兼容）+ 归一 + 预置回退 + 排序上限：交由 kit fetchModelList 服务
+  const result = await fetchModelList({
+    providerKey,
+    serviceType: provider.serviceType,
+    baseUrl,
+    apiKey,
+    presetModels: preset,
   })
+  return c.json(result)
 }))
 
 // GET /api-configs/video-caps?provider_key=&model= —— [M32] 视频模型能力单一真源表只读查询
@@ -340,67 +288,20 @@ apiRoutes.delete('/api-configs/:id', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /api-configs/:id/test —— 连通性测试：llm 1 次最小对话；image 生成 1 张、audio 1 句（真实计费）；video 零计费探针
+// POST /api-configs/:id/test —— 连通测试：chat/image/video 派发至 kit testConnection（Template Method 探针 + 最小生成）；
+// audio 保留宿主 synthSpeech（覆盖 OpenAI 兼容 /audio/speech，kit 探针仅覆盖阿里/火山私有协议）
 apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, id)).limit(1)
   const cfg = rows[0]
   if (!cfg) return notFound(c, `配置 ${id}`)
   const t0 = Date.now()
-  // 密钥解析：credential 优先，fallback 到实例级 apiKeyRef
+  // 密钥/端点解析：credential 优先 fallback 实例级 apiKeyRef；baseUrl 实例 > 凭证 > 目录 defaultUrl
   const testApiKey = await resolveConfigApiKey(cfg)
   const testBaseUrl = await resolveConfigBaseUrl(cfg)
-  if (cfg.serviceType === 'llm') {
-    // model 留空 → 供应商目录预置首项兜底；无预置目录（自定义网关行）时报错提示填写
-    let model = cfg.model ?? ''
-    if (!model) {
-      const provRows = await db
-        .select({ preset: apiProviders.presetModels })
-        .from(apiProviders)
-        .where(eq(apiProviders.key, cfg.providerKey))
-        .limit(1)
-      const presets = safeJson(provRows[0]?.preset ?? null, []) as unknown[]
-      model = presets.find((m): m is string => typeof m === 'string' && !!m) ?? ''
-    }
-    if (!model) throw new HttpError(400, 'no_model', '实例未配置模型且该供应商无预置模型，请在实例中填写模型名')
-    await chatComplete([{ role: 'user', content: 'ping' }], {
-      baseUrl: testBaseUrl,
-      apiKey: testApiKey,
-      model,
-      providerKey: cfg.providerKey,
-    }, { maxTokens: 16, timeoutMs: 30_000, allowReasoningOnly: true, allowEmptyContent: true })
-    return c.json({ ok: true, ms: Date.now() - t0, note: 'llm 最小对话成功' })
-  }
-  if (cfg.serviceType === 'image') {
-    const endpoint = await resolveEndpoint('image', cfg.providerKey)
-    const adapter = getImageAdapter(endpoint.providerKey)
-    // 各家测试尺寸约束：百炼图像万相系最短边 512（256 会被调度拒绝）→ 用合法小尺寸，qwen 系 max/plus 仅固定枚举→不传；
-    // OpenAI 官方 gpt-image/dall-e 尺寸亦为固定枚举 → 不传用官方默认；
-    // 其余家（SiliconFlow/火山 Seedream/Pollinations/Gemini）256x256 实测可用或由适配器升级档位
-    const testSize =
-      cfg.providerKey === 'aliyun_bailian_image'
-        ? String(cfg.model ?? '')
-            .trim()
-            .toLowerCase()
-            .startsWith('qwen')
-          ? undefined
-          : '1024x1024'
-        : cfg.providerKey === 'openai_image'
-          ? undefined
-          : '256x256'
-    const img = await adapter.generate({
-      prompt: 'a tiny red square on white background, minimal test',
-      size: testSize,
-      model: cfg.model ?? undefined,
-      baseUrl: endpoint.baseUrl,
-      apiKey: endpoint.apiKey,
-      extra: endpoint.extra,
-    })
-    return c.json({ ok: true, ms: Date.now() - t0, kind: img.kind, note: 'image 生成成功（1 张，注意计费）' })
-  }
+  const extra = safeJson(cfg.extra, {}) as Record<string, unknown>
+
   if (cfg.serviceType === 'audio') {
-    // 真实合成 1 句最短音频（成本极低，等价 llm ping）；音色尊重实例 extra.voice（如 SiliconFlow "模型:音色" 格式）
-    const extra = safeJson(cfg.extra, {}) as Record<string, unknown>
     const voice = typeof extra['voice'] === 'string' && extra['voice'] ? extra['voice'] : undefined
     const buf = await synthSpeech('ping', {
       providerKey: cfg.providerKey,
@@ -412,29 +313,41 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     }, { voice, timeoutMs: 30_000 })
     return c.json({ ok: true, ms: Date.now() - t0, bytes: buf.byteLength, voice: voice ?? 'alloy', note: '语音合成成功（1 句，注意计费）' })
   }
-  if (cfg.serviceType === 'video') {
-    // 视频生成成本高，统一用零计费探针验证「端点+鉴权」（不创建任务）
-    const baseUrl = testBaseUrl
-    const apiKey = testApiKey
-    if (cfg.providerKey === 'aliyun_bailian_video') {
-      const note = await probeAliyunWanVideoEndpoint({ baseUrl, apiKey })
-      return c.json({ ok: true, ms: Date.now() - t0, note })
-    }
-    if (cfg.providerKey === 'volcengine_video') {
-      const note = await probeVolcengineVideoEndpoint({ baseUrl, apiKey })
-      return c.json({ ok: true, ms: Date.now() - t0, note })
-    }
-    if (cfg.providerKey === 'siliconflow_video') {
-      const note = await probeSiliconflowVideoEndpoint({ baseUrl, apiKey })
-      return c.json({ ok: true, ms: Date.now() - t0, note })
-    }
-    if (cfg.providerKey === 'pollinations_video') {
-      const note = await probePollinationsVideoEndpoint({ baseUrl, apiKey })
-      return c.json({ ok: true, ms: Date.now() - t0, note })
-    }
+
+  // 视频非探针供应商（如 minimax_video）无零计费探针 → 501（与 isConfigTestable 同口径，需真实 run 验证）
+  if (cfg.serviceType === 'video' && !TESTABLE_VIDEO_PROVIDER_KEYS.has(cfg.providerKey)) {
     throw new HttpError(501, 'no_test', '该视频供应商暂未提供连通探针（探针需实测验证后启用），请用真实 run 验证')
   }
-  throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
+
+  // chat / image / video 统一派发至 kit testConnection（宿主 DB service_type 'llm' → kit 'chat' 语义）
+  let serviceType: 'chat' | 'image' | 'video'
+  if (cfg.serviceType === 'llm') serviceType = 'chat'
+  else if (cfg.serviceType === 'image') serviceType = 'image'
+  else if (cfg.serviceType === 'video') serviceType = 'video'
+  else throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
+
+  // chat 且实例未填模型 → 传目录预置首项供 kit 兑底（仍无则 kit testConnection 报错）
+  let presetModels: string[] | undefined
+  if (serviceType === 'chat' && !cfg.model) {
+    const provRows = await db
+      .select({ preset: apiProviders.presetModels })
+      .from(apiProviders)
+      .where(eq(apiProviders.key, cfg.providerKey))
+      .limit(1)
+    const presets = safeJson(provRows[0]?.preset ?? null, []) as unknown[]
+    presetModels = presets.filter((m): m is string => typeof m === 'string' && !!m)
+  }
+
+  const res = await testConnection({
+    serviceType,
+    providerKey: cfg.providerKey,
+    baseUrl: testBaseUrl,
+    apiKey: testApiKey,
+    model: cfg.model ?? undefined,
+    extra,
+    presetModels,
+  })
+  return c.json({ ok: res.ok, ms: res.ms ?? Date.now() - t0, note: res.note, ...res.detail })
 }))
 
 /** 密钥解析：credential 优先，fallback 到实例级 apiKeyRef */
@@ -478,39 +391,4 @@ function maskKey(key: string): string {
 function safeJson(s: string | null, fallback: unknown): unknown {
   if (!s) return fallback
   try { return JSON.parse(s) } catch { return fallback }
-}
-
-/**
- * [M33.1] 拉取 DashScope 原生列模型目录（分页聚合，page_size=100，上限 5 页）→ 归一为 ModelEntry[]。
- * 仅阿里千问 LLM 使用；价格/上下文归一见 adapters/model-metadata（不猜价：非 token 全价档一律不带）。
- */
-async function fetchDashscopeModels(
-  providerKey: string,
-  serviceType: PricingServiceType,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<ModelEntry[]> {
-  const providerFilter = DASHSCOPE_PROVIDERS_BY_KEY[providerKey] ?? 'qwen'
-  const merged: unknown[] = []
-  for (let pageNo = 1; pageNo <= 5; pageNo++) {
-    const url = `${DASHSCOPE_NATIVE_ROOT}/models?providers=${encodeURIComponent(providerFilter)}&page_no=${pageNo}&page_size=100`
-    const res = await fetch(url, {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-      signal,
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}${text ? ` ${text.slice(0, 160)}` : ''}`)
-    }
-    const json = await res.json().catch(() => null)
-    const output = json && typeof json === 'object' ? (json as Record<string, unknown>)['output'] : null
-    const pageModels = output && typeof output === 'object' ? (output as Record<string, unknown>)['models'] : undefined
-    const list = Array.isArray(pageModels) ? pageModels : []
-    merged.push(...list)
-    const total = output && typeof output === 'object' && typeof (output as Record<string, unknown>)['total'] === 'number'
-      ? (output as Record<string, unknown>)['total'] as number
-      : merged.length
-    if (merged.length >= total || list.length === 0) break
-  }
-  return normalizeModelList(serviceType, providerKey, { output: { models: merged } })
 }

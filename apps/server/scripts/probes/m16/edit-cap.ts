@@ -3,12 +3,11 @@ import type { M16Ctx } from './ctx'
 
 export async function run(ctx: M16Ctx): Promise<void> {
   const { check, jsonRes, stubFetch, editCapabilityOf } = ctx
-  const { AliyunWanImageAdapter } = await import('../../../src/adapters/aliyun-wan-image')
-  const { AliyunQwenImageAdapter } = await import('../../../src/adapters/aliyun-qwen-image')
-  const wan = new AliyunWanImageAdapter()
+  const { AliyunBailianWanImageAdapter, AliyunBailianQwenImageAdapter } = await import('@agencys/ai-provider-kit')
+  const wan = new AliyunBailianWanImageAdapter()
   check(wan.editing?.inpaint === true && wan.editing?.outpaint === true, 'aliyun-wan editing 声明 {inpaint, outpaint}')
   check(typeof wan.edit === 'function', 'aliyun-wan edit 方法存在')
-  const qwen = new AliyunQwenImageAdapter()
+  const qwen = new AliyunBailianQwenImageAdapter()
   check((qwen as any).editing === undefined, '未声明适配器（aliyun-qwen）→ editing undefined')
 
   const capNone = await editCapabilityOf()
