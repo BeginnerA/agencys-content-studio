@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders, seedVendorCredentials, migrateCredentialsFromConfigs } from './seed'
+import { seedProviders, seedVendorCredentials, migrateCredentialsFromConfigs, migrateAliyunBailianRows } from './seed'
 
 const log = createLogger('db')
 
@@ -37,6 +37,8 @@ export async function initDb(): Promise<void> {
     log.warn(`migrate skipped (${(err as Error).message}) —— 请先执行 pnpm db:generate`)
   }
   await ensureSchemaColumns()
+  // 阿里千问/万相行收敛为百炼统一行：须在 seedProviders 前执行（旧行删除 → 新行补种）
+  await migrateAliyunBailianRows()
   await seedVendorCredentials()
   await seedProviders()
   await migrateCredentialsFromConfigs()

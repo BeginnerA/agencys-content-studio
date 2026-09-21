@@ -86,8 +86,8 @@ export interface VoiceCloneProviderSpec {
 }
 
 export const VOICE_CLONE_PROVIDERS: Record<string, VoiceCloneProviderSpec> = {
-  // Qwen3-TTS-VC：声音复刻 + 非实时合成（与既有 aliyun_qwen_tts 合成端点同源，clone 全链可跑通）
-  aliyun_qwen_tts: { protocol: 'dashscope-qwen-enrollment', defaultTargetModel: 'qwen3-tts-vc-2026-01-22' },
+  // Qwen3-TTS-VC：声音复刻 + 非实时合成（与既有 aliyun_bailian_tts 合成端点同源，clone 全链可跑通）
+  aliyun_bailian_tts: { protocol: 'dashscope-qwen-enrollment', defaultTargetModel: 'qwen3-tts-vc-2026-01-22' },
 }
 
 /** 供应商是否支持声音克隆（能力位；UI 下拉置灰依据） */

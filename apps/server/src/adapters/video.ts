@@ -14,14 +14,14 @@ import { resolveEndpoint, type EndpointPin } from './provider'
 const videoAdapters: Record<string, VideoAdapter> = {
   volcengine_video: new VolcEngineVideoAdapter(),
   minimax_video: new MiniMaxVideoAdapter(),
-  aliyun_wan_video: new AliyunWanVideoAdapter(),
+  aliyun_bailian_video: new AliyunWanVideoAdapter(),
   siliconflow_video: new SiliconFlowVideoAdapter(),
   pollinations_video: new PollinationsVideoAdapter(),
 }
 
 export class VideoProviderNotReadyError extends Error {
   constructor(providerKey: string) {
-    super(`视频供应商「${providerKey}」适配器未注册（可选：volcengine_video/minimax_video/aliyun_wan_video/siliconflow_video/pollinations_video）`)
+    super(`视频供应商「${providerKey}」适配器未注册（可选：volcengine_video/minimax_video/aliyun_bailian_video/siliconflow_video/pollinations_video）`)
     this.name = 'VideoProviderNotReadyError'
   }
 }

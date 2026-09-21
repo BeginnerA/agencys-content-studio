@@ -46,7 +46,7 @@ export interface ExtraField {
 /** 已核实音色枚举的语音供应商（枚举集有限、有安全默认） */
 const AUDIO_VOICE_ENUMS: Record<string, { options: string[]; default: string }> = {
   // DashScope qwen-tts 音色枚举（tts-aliyun.ts DEFAULT_VOICE='Cherry'）
-  aliyun_qwen_tts: { options: ['Cherry', 'Serena', 'Ethan', 'Chelsie'], default: 'Cherry' },
+  aliyun_bailian_tts: { options: ['Cherry', 'Serena', 'Ethan', 'Chelsie'], default: 'Cherry' },
   // OpenAI /audio/speech 标准音色集（tts.ts 兜底 'alloy'）
   openai_audio: { options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'], default: 'alloy' },
   // Pollinations 网关：OpenAI 系音色 + Qwen 原生中文音色 Cherry（跨供应商格式不兼容，见实测约束）
@@ -87,7 +87,7 @@ function composeVoice(value: string, model: string): string {
 
 const AUDIO_VOICE_PROFILES: Record<string, AudioVoiceProfile[]> = {
   // 阿里云百炼《Qwen-TTS音色列表》官方文档逐行核实（非实时口，即本仓 multimodal-generation 协议）
-  aliyun_qwen_tts: [
+  aliyun_bailian_tts: [
     {
       // qwen3-tts-instruct-flash（含快照版）：官方列表中标注支持该模型的全部音色（26 个，不含方言/美语专区）
       match: /^qwen3-tts-instruct-flash/i,
@@ -285,8 +285,8 @@ interface ImageSizeProfile {
  * 事实来源：阿里云《万相-文生图》《千问-文生图》API 文档（Step 0 WebFetch 核实）。
  */
 const IMAGE_SIZE_PROFILES: Record<string, ImageSizeProfile[]> = {
-  // 万相图像（DashScope 万相多代协议）
-  aliyun_wan_image: [
+  // 阿里百炼图像（万相多代 + 千问同步直返两族协议已收敛为一行，按 model 正则命中档位）
+  aliyun_bailian_image: [
     {
       // wan2.7-image-pro：文生图（无图片输入）支持 1K/2K/4K，其余场景仅 1K/2K；默认 2K
       match: /^wan2\.7-image-pro$/i,
@@ -317,9 +317,6 @@ const IMAGE_SIZE_PROFILES: Record<string, ImageSizeProfile[]> = {
       default: '1024x1024',
       help: '官方约束：宽、高均在 [512, 1440] 像素之间；填 WxH 如 1024x1024',
     },
-  ],
-  // 千问图像（DashScope qwen-image 同步直返协议）
-  aliyun_qwen_image: [
     {
       // qwen-image-max / qwen-image-plus：官方仅 5 档固定尺寸（1024x1024 对其为非法值）
       match: /^qwen-image-(max|plus)$/i,

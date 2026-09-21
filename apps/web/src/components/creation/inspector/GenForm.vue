@@ -388,7 +388,7 @@ const form = props.form
           <input
             v-model="form.fProvider"
             type="text"
-            placeholder="如 aliyun_wan_image（留空自动解析）"
+            placeholder="如 aliyun_bailian_image（留空自动解析）"
           />
         </div>
         <div class="frow">

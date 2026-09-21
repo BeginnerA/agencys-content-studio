@@ -42,12 +42,12 @@ const PRICING_TABLE: Record<string, Record<string, ModelPricing>> = {
     'deepseek-flash': { prices: { tokens_in: 2, tokens_out: 8 }, source: 'DeepSeek 官方定价页·高峰缓存未命中全价（谷时减半、缓存命中更低）' },
     'deepseek-v4-pro': { prices: { tokens_in: 9, tokens_out: 27 }, source: 'DeepSeek 官方定价页·高峰缓存未命中全价（谷时 4.5/13.5）' },
   },
-  aliyun_qwen_llm: {
+  aliyun_bailian_llm: {
     'qwen3.8-max': { prices: { tokens_in: 12, tokens_out: 36 }, source: '阿里云百炼定价页·≤1M 档标准价（Batch 半价 / 缓存折扣另计）' },
     'qwen3.7-plus': { prices: { tokens_in: 2, tokens_out: 8 }, source: '阿里云百炼定价页·基础档 ≤256K（256K–1M 6/24；限时 8 折另计）' },
     'qwen3.8-flash': { prices: { tokens_in: 0.8, tokens_out: 2.7 }, source: '阿里云百炼定价页·≤1M 档标准价' },
   },
-  aliyun_wan_image: {
+  aliyun_bailian_image: {
     'wan2.7-image': { prices: { image: 0.2 }, source: '阿里云百炼定价页·万相文生图' },
     'wan2.7-image-pro': { prices: { image: 0.5 }, source: '阿里云百炼定价页·万相文生图 Pro' },
   },

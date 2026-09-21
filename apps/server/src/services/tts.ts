@@ -8,8 +8,8 @@ import { synthVolcengineSpeech } from './tts-volcengine'
 /**
  * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech，spec §5.2）。
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
- * 模型默认取供应商目录预设首项（如 aliyun_qwen_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
- * aliyun_qwen_tts 为 DashScope 私有协议（tts-aliyun.ts）；
+ * 模型默认取供应商目录预设首项（如 aliyun_bailian_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
+ * aliyun_bailian_tts 为 DashScope 私有协议（tts-aliyun.ts）；
  * volcengine_audio 为火山 TTS V1 私有协议（tts-volcengine.ts，需 extra.appid）。
  */
 
@@ -26,7 +26,7 @@ export interface AudioEndpoint {
   extra: Record<string, unknown>
 }
 
-/** 模型兜底：实例未配置时取供应商目录预设首项（如 aliyun_qwen_tts → qwen-tts）；无目录则 OpenAI 系 'tts-1' */
+/** 模型兜底：实例未配置时取供应商目录预设首项（如 aliyun_bailian_tts → qwen-tts）；无目录则 OpenAI 系 'tts-1' */
 export async function defaultTtsModel(providerKey: string): Promise<string> {
   const rows = await db
     .select({ preset: apiProviders.presetModels })
@@ -105,8 +105,8 @@ export async function synthSpeech(
   opts: SynthSpeechOptions = {},
 ): Promise<Uint8Array> {
   if (!text.trim()) throw new Error('TTS 输入文本为空')
-  // 阿里云千问/火山为私有协议（各自派发）；其余统一 OpenAI 兼容 /audio/speech
-  if (ep.providerKey === 'aliyun_qwen_tts') return synthAliyunQwenSpeech(text, ep, opts)
+  // 阿里云百炼/火山为私有协议（各自派发）；其余统一 OpenAI 兼容 /audio/speech
+  if (ep.providerKey === 'aliyun_bailian_tts') return synthAliyunQwenSpeech(text, ep, opts)
   if (ep.providerKey === 'volcengine_audio') return synthVolcengineSpeech(text, ep, opts)
   const body: Record<string, unknown> = {
     model: ep.model,

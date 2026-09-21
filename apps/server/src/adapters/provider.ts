@@ -1,7 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
-import { AliyunQwenImageAdapter } from './aliyun-qwen-image'
-import { AliyunWanImageAdapter } from './aliyun-wan-image'
+import { AliyunBailianImageAdapter } from './aliyun-bailian-image'
 import { GeminiImageAdapter } from './gemini-image'
 import { OpenAIImageAdapter } from './openai-image'
 import { PollinationsImageAdapter } from './pollinations-image'
@@ -14,24 +13,38 @@ import { resolveApiKey } from '../services/secrets'
 
 /**
  * 已注册图像适配器（openai_image 通用；pollinations_image / siliconflow_image 为其别名子类；
- * gemini_image 为 Google v1beta generateContent/interactions 协议；aliyun_wan_image 为 DashScope
- * 万相多代协议（2.7 同步直返 / ≤2.6 异步任务）；aliyun_qwen_image 为千问图像同步直返协议；
- * volcengine_image 为方舟异步/同步双形态的自包含实现）。
+ * gemini_image 为 Google v1beta generateContent/interactions 协议；aliyun_bailian_image 为百炼统一入口
+ * （按 model 前缀派发万相多代 / 千问同步直返协议）；volcengine_image 为方舟异步/同步双形态的自包含实现）。
  */
 const imageAdapters: Record<string, ImageAdapter> = {
   openai_image: new OpenAIImageAdapter(),
   pollinations_image: new PollinationsImageAdapter(),
   siliconflow_image: new SiliconFlowImageAdapter(),
   gemini_image: new GeminiImageAdapter(),
-  aliyun_wan_image: new AliyunWanImageAdapter(),
-  aliyun_qwen_image: new AliyunQwenImageAdapter(),
+  aliyun_bailian_image: new AliyunBailianImageAdapter(),
   volcengine_image: new VolcengineImageAdapter(),
+}
+
+/**
+ * 旧阿里目录 key 兼容映射（千问/万相家族行已收敛为百炼统一行）。
+ * 历史模板 / 硬编码 provider 串传入时在端点解析入口归一，避免旧 key 查不到实例。
+ */
+export const LEGACY_PROVIDER_KEY_ALIASES: Record<string, string> = {
+  aliyun_qwen_llm: 'aliyun_bailian_llm',
+  aliyun_wan_image: 'aliyun_bailian_image',
+  aliyun_qwen_image: 'aliyun_bailian_image',
+  aliyun_wan_video: 'aliyun_bailian_video',
+  aliyun_qwen_tts: 'aliyun_bailian_tts',
+}
+
+export function normalizeProviderKey(providerKey: string): string {
+  return LEGACY_PROVIDER_KEY_ALIASES[providerKey] ?? providerKey
 }
 
 export class ProviderNotReadyError extends Error {
   constructor(providerKey: string) {
     super(
-      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image、gemini_image、aliyun_wan_image、aliyun_qwen_image、volcengine_image）。`,
+      `供应商「${providerKey}」适配器未就绪（已注册：openai_image、pollinations_image、siliconflow_image、gemini_image、aliyun_bailian_image、volcengine_image）。`,
     )
     this.name = 'ProviderNotReadyError'
   }
@@ -67,6 +80,8 @@ export async function resolveEndpoint(
   providerKey?: string,
   pin?: EndpointPin,
 ): Promise<ResolvedEndpoint> {
+  // 旧 key（如历史模板硬编码的 aliyun_wan_image）先归一到合并后的百炼 key，再查实例
+  if (providerKey) providerKey = normalizeProviderKey(providerKey)
   const conds = [eq(apiConfigs.serviceType, serviceType), eq(apiConfigs.isActive, 1)]
   if (providerKey) conds.push(eq(apiConfigs.providerKey, providerKey))
   if (pin) conds.push(eq(apiConfigs.id, pin.configId))

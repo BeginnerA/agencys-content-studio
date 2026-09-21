@@ -20,7 +20,8 @@ const DEFAULT_MODEL = 'qwen-image-3.0'
 const REQUEST_TIMEOUT_MS = 300_000
 
 export class AliyunQwenImageAdapter implements ImageAdapter {
-  readonly provider = 'aliyun_qwen_image'
+  /** 百炼统一目录 key；本类仅作千问同步直返协议实现由 AliyunBailianImageAdapter 委托调用 */
+  readonly provider = 'aliyun_bailian_image'
   /** 参考图注入能力：multimodal content 图片项（data URI） */
   readonly referenceImages = 'base64'
 

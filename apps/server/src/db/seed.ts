@@ -1,7 +1,7 @@
-import { eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from './index'
-import { apiConfigs, apiProviders, vendorCredentials } from './schema'
-import { resolveApiKey, writeSecret } from '../services/secrets'
+import { apiConfigs, apiProviders, vendorCredentials, voiceClones } from './schema'
+import { deleteSecret, resolveApiKey, writeSecret } from '../services/secrets'
 
 interface ProviderSeed {
   key: string
@@ -33,7 +33,7 @@ export function vendorPriorityRank(vendor: string | null | undefined): number {
 }
 
 export const VENDOR_SEEDS: VendorSeed[] = [
-  { vendor: 'aliyun', name: '阿里千问' },
+  { vendor: 'aliyun', name: '阿里百炼' },
   { vendor: 'deepseek', name: 'DeepSeek' },
   { vendor: 'openai', name: 'OpenAI' },
   { vendor: 'siliconflow', name: 'SiliconFlow' },
@@ -50,8 +50,8 @@ export const VENDOR_SEEDS: VendorSeed[] = [
  * 只在 description 里说明，不进入行名。同一厂商的每类能力各占一行
  * （如 siliconflow_* / pollinations_* / aliyun_* / volcengine_* 四类）。openai_* 行 = OpenAI 官方，
  * 亦承接任意 OpenAI 兼容的自定义网关；video 各家协议互不相通，天然一家一行。
- * 阿里 aliyun_* 行共享阿里千问平台凭证（DashScope/百炼），行名按模型家族分列
- * （千问 / 万相），与适配器拆分保持一致（万相图像 = 唯一编辑能力提供者）。
+ * 阿里 aliyun_* 行共享阿里百炼平台凭证（DashScope），不再按模型家族（千问/万相）拆行：
+ * 一行 = 一类能力，家族差异下沉到模型选择（图像行适配器按 model 前缀派发两族协议）。
  * vendor 字段将多行归组到同一厂商凭证（用户只配一次 Key）。
  */
 export const PROVIDER_SEEDS: ProviderSeed[] = [
@@ -60,7 +60,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'siliconflow_llm', name: 'SiliconFlow（LLM）', serviceType: 'llm', vendor: 'siliconflow', description: 'OpenAI Chat Completions 兼容（硅基流动，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['deepseek-ai/DeepSeek-V4-Flash']) },
   { key: 'pollinations_llm', name: 'Pollinations（LLM）', serviceType: 'llm', vendor: 'pollinations', description: 'gen.pollinations.ai/v1 OpenAI 兼容（模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['openai/gpt-5.4-nano', 'openai/gpt-5.4-mini', 'qwen/qwen3.8-flash']) },
   { key: 'google_llm', name: 'Google（LLM）', serviceType: 'llm', vendor: 'google', description: 'Gemini 官方 OpenAI 兼容（v1beta/openai，模型可在线获取）', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', presetModels: JSON.stringify(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) },
-  { key: 'aliyun_qwen_llm', name: '阿里千问（LLM）', serviceType: 'llm', vendor: 'aliyun', description: '千问官方 OpenAI 兼容（compatible-mode，模型可在线获取）', defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', presetModels: JSON.stringify(['qwen3.8-max', 'qwen3.7-plus', 'qwen3.8-flash']) },
+  { key: 'aliyun_bailian_llm', name: '阿里百炼（LLM）', serviceType: 'llm', vendor: 'aliyun', description: '百炼官方 OpenAI 兼容（compatible-mode，模型可在线获取）', defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', presetModels: JSON.stringify(['qwen3.8-max', 'qwen3.7-plus', 'qwen3.8-flash']) },
   { key: 'volcengine_llm', name: '火山方舟（LLM）', serviceType: 'llm', vendor: 'volcengine', description: '豆包 Seed 系列（Ark OpenAI 兼容 /api/v3；模型 ID 需带版本号并在方舟控制台开通）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seed-2-1-pro-260628', 'doubao-seed-2-1-turbo-260628']), overwritePresetModels: true },
   { key: 'ollama_llm', name: 'Ollama（LLM）', serviceType: 'llm', vendor: 'ollama', description: '本地 Ollama 服务（OpenAI 兼容 /v1；模型在线拉取 /v1/models；无需 API Key，密钥留空或任意占位符即可）', defaultUrl: 'http://localhost:11434/v1', presetModels: JSON.stringify(['qwen2.5', 'llama3.1']) },
   { key: 'volcengine_image', name: '火山方舟图像', serviceType: 'image', vendor: 'volcengine', description: '豆包 Seedream 系列文生图（Ark，同步直返或任务轮询）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedream-5-0-260128']) },
@@ -68,17 +68,16 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'siliconflow_image', name: 'SiliconFlow 图像', serviceType: 'image', vendor: 'siliconflow', description: 'OpenAI Images 兼容（含 images[] 镜像响应，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Tongyi-MAI/Z-Image-Turbo']) },
   { key: 'gemini_image', name: 'Gemini 图像', serviceType: 'image', vendor: 'google', description: 'Nano Banana（Gemini Image）系列文生图/改图（原生 v1beta generateContent 协议；base_url 填根域名或中转站原生镜像）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-3-pro-image-preview', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image']), overwriteDefaultUrl: true },
   { key: 'pollinations_image', name: 'Pollinations 图像', serviceType: 'image', vendor: 'pollinations', description: 'OpenAI Images 兼容（默认 b64_json，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['tongyi-mai/z-image-turbo', 'black-forest-labs/flux.1-schnell', 'google/gemini-3.1-flash-image']) },
-  { key: 'aliyun_wan_image', name: '阿里万相图像', serviceType: 'image', vendor: 'aliyun', description: '万相文生图与图像编辑（DashScope；wan2.7 同步直返，2.6 及以下异步任务轮询；画布涂抹重绘/扩图由此行提供）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan2.7-image', 'wan2.7-image-pro', 'wan2.6-t2i', 'wan2.5-t2i-preview', 'wan2.2-t2i-flash', 'wan2.2-t2i-plus']), overwritePresetModels: true },
-  { key: 'aliyun_qwen_image', name: '阿里千问图像', serviceType: 'image', vendor: 'aliyun', description: '千问图像 Qwen-Image（DashScope 同步直返；3.0/2.0 支持 512²~2048² 自定义尺寸，max/plus 用官方默认）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['qwen-image-3.0-pro', 'qwen-image-3.0', 'qwen-image-2.0-pro', 'qwen-image-max', 'qwen-image-plus']), overwritePresetModels: true },
+  { key: 'aliyun_bailian_image', name: '阿里百炼图像', serviceType: 'image', vendor: 'aliyun', description: '百炼文生图与图像编辑（DashScope；万相/千问两族协议按模型自动派发；画布涂抹重绘/扩图需 wan 系模型）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan2.7-image', 'wan2.7-image-pro', 'wan2.6-t2i', 'wan2.5-t2i-preview', 'wan2.2-t2i-flash', 'wan2.2-t2i-plus', 'qwen-image-3.0-pro', 'qwen-image-3.0', 'qwen-image-2.0-pro', 'qwen-image-max', 'qwen-image-plus']), overwritePresetModels: true },
   { key: 'volcengine_video', name: '火山方舟视频', serviceType: 'video', vendor: 'volcengine', description: '豆包 Seedance 2.x 系列视频生成（模型需在方舟控制台开通）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128']), overwritePresetModels: true },
   { key: 'minimax_video', name: 'MiniMax 视频', serviceType: 'video', vendor: 'minimax', description: 'MiniMax H3 系列视频生成', defaultUrl: 'https://api.minimax.chat/v2', presetModels: JSON.stringify(['MiniMax-H3']) },
-  { key: 'aliyun_wan_video', name: '阿里万相视频', serviceType: 'video', vendor: 'aliyun', description: '万相 Wan3.0 视频生成（DashScope）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan3.0-video-prime', 'wan3.0-video']) },
+  { key: 'aliyun_bailian_video', name: '阿里百炼视频', serviceType: 'video', vendor: 'aliyun', description: '百炼万相 Wan3.0 视频生成（DashScope）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan3.0-video-prime', 'wan3.0-video']) },
   { key: 'siliconflow_video', name: 'SiliconFlow 视频', serviceType: 'video', vendor: 'siliconflow', description: 'Wan2.2 系列视频生成（submit/status 轮询，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Wan-AI/Wan2.2-T2V-A14B', 'Wan-AI/Wan2.2-I2V-A14B']) },
   { key: 'pollinations_video', name: 'Pollinations 视频', serviceType: 'video', vendor: 'pollinations', description: 'veo/seedance/wan 系列（GET 同步长请求，无轮询，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['google/veo-3.1-fast', 'bytedance/seedance-2.0-fast', 'alibaba/wan-2.2-fast']) },
   { key: 'openai_audio', name: 'OpenAI 语音', serviceType: 'audio', vendor: 'openai', description: 'OpenAI 官方 / 任意 /audio/speech 兼容网关（模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
   { key: 'siliconflow_audio', name: 'SiliconFlow 语音', serviceType: 'audio', vendor: 'siliconflow', description: 'OpenAI /audio/speech 兼容 TTS（硅基流动，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['FunAudioLLM/CosyVoice2-0.5B']) },
   { key: 'pollinations_audio', name: 'Pollinations 语音', serviceType: 'audio', vendor: 'pollinations', description: 'OpenAI /audio/speech 兼容 TTS（ElevenLabs/Qwen 等，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['elevenlabs/eleven-flash-v2.5', 'qwen/qwen3-tts-flash', 'hexgrad/kokoro-82m']) },
-  { key: 'aliyun_qwen_tts', name: '阿里千问语音', serviceType: 'audio', vendor: 'aliyun', description: '千问 qwen-tts 语音合成（DashScope，音色如 Cherry / Serena / Ethan）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['qwen-tts']) },
+  { key: 'aliyun_bailian_tts', name: '阿里百炼语音', serviceType: 'audio', vendor: 'aliyun', description: '百炼 qwen-tts 语音合成（DashScope，音色如 Cherry / Serena / Ethan）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['qwen-tts']) },
   { key: 'volcengine_audio', name: '火山方舟语音', serviceType: 'audio', vendor: 'volcengine', description: '火山语音合成 TTS V1（音色如 BV700_streaming；需在实例扩展参数配置 appid）', defaultUrl: 'https://openspeech.bytedance.com/api/v3' },
 ]
 
@@ -194,7 +193,54 @@ export async function migrateCredentialsFromConfigs(): Promise<void> {
   }
 }
 
-/** 从 providerKey 提取 vendor 前缀（aliyun_qwen_llm → aliyun） */
+/** 旧阿里目录 key → 百炼统一 key（千问/万相家族行收敛；图像两行并一行） */
+const ALIYUN_BAILIAN_KEY_MAP: Record<string, string> = {
+  aliyun_qwen_llm: 'aliyun_bailian_llm',
+  aliyun_wan_image: 'aliyun_bailian_image',
+  aliyun_qwen_image: 'aliyun_bailian_image',
+  aliyun_wan_video: 'aliyun_bailian_video',
+  aliyun_qwen_tts: 'aliyun_bailian_tts',
+}
+
+/**
+ * 幂等迁移：阿里千问/万相家族目录行收敛为阿里百炼统一行（需在 seedProviders 之前执行）。
+ * 1) api_configs.provider_key 按映射改写；实例级密钥 ref（local:cfg:{service}:{providerKey}）
+ *    随改名，secrets.json 键同步搬迁并删旧键；
+ * 2) voice_clones.provider_key 同步改写；
+ * 3) 删除 api_providers 旧行（新行由 seedProviders 补种）；
+ * 4) 厂商凭证默认显示名「阿里千问」→「阿里百炼」（用户自改过的名字不动）。
+ */
+export async function migrateAliyunBailianRows(): Promise<void> {
+  const now = Date.now()
+  const configs = await db.select().from(apiConfigs)
+  for (const cfg of configs) {
+    const target = ALIYUN_BAILIAN_KEY_MAP[cfg.providerKey]
+    if (!target) continue
+    const patch: Record<string, unknown> = { providerKey: target, updatedAt: now }
+    const oldRef = `local:cfg:${cfg.serviceType}:${cfg.providerKey}`
+    if (cfg.apiKeyRef === oldRef) {
+      const secret = resolveApiKey(oldRef)
+      const newRef = `local:cfg:${cfg.serviceType}:${target}`
+      if (secret) {
+        writeSecret(newRef, secret)
+        deleteSecret(oldRef)
+        patch['apiKeyRef'] = newRef
+      }
+    }
+    await db.update(apiConfigs).set(patch).where(eq(apiConfigs.id, cfg.id))
+  }
+  await db
+    .update(voiceClones)
+    .set({ providerKey: 'aliyun_bailian_tts', updatedAt: now })
+    .where(eq(voiceClones.providerKey, 'aliyun_qwen_tts'))
+  await db.delete(apiProviders).where(inArray(apiProviders.key, Object.keys(ALIYUN_BAILIAN_KEY_MAP)))
+  await db
+    .update(vendorCredentials)
+    .set({ name: '阿里百炼', updatedAt: now })
+    .where(and(eq(vendorCredentials.vendor, 'aliyun'), eq(vendorCredentials.name, '阿里千问')))
+}
+
+/** 从 providerKey 提取 vendor 前缀（aliyun_bailian_llm → aliyun） */
 function extractVendor(providerKey: string): string | null {
   // 匹配已知 vendor 前缀
   for (const v of VENDOR_SEEDS) {

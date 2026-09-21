@@ -42,7 +42,8 @@ const SYNC_PROTOCOL_PATTERN = /^wan2\.7/
 const NEW_PROTOCOL_PATTERN = /^wan2\.6/
 
 export class AliyunWanImageAdapter implements ImageAdapter {
-  readonly provider = 'aliyun_wan_image'
+  /** 百炼统一目录 key；本类仅作万相协议实现由 AliyunBailianImageAdapter 委托调用 */
+  readonly provider = 'aliyun_bailian_image'
   /** 参考图注入能力：仅 wan2.7 同步分支（异步分支忽略 refs，不注入不报错） */
   readonly referenceImages = 'base64'
   /** [M16] 编辑能力：wanx2.1-imageedit 系（inpaint/erase = description_edit_with_mask；outpaint = expand） */

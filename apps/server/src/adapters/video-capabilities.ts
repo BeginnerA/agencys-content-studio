@@ -50,7 +50,7 @@ export function resolveVideoCaps(providerKey: string, model: string): VideoModel
     case 'volcengine_video':
       // 火山 Seedance 2.0：时长 4–15 秒；分辨率仅 480p / 720p（1080p 收敛 720p）
       return { modes: ['i2v', 't2v'], durations: secondsRange(4, 15), aspectRatios: ALL_ASPECTS, resolutions: ['480p', '720p'], defaultDuration: 5, defaultResolution: '720p' }
-    case 'aliyun_wan_video':
+    case 'aliyun_bailian_video':
       // 万相 3.0：时长 2–30 秒整数（或 -1 自适应）；分辨率 480P / 720P / 1080P
       return { modes: ['i2v', 't2v'], durations: secondsRange(2, 30), aspectRatios: ALL_ASPECTS, resolutions: ['480p', '720p', '1080p'], defaultDuration: 5, defaultResolution: '720p' }
     case 'pollinations_video': {

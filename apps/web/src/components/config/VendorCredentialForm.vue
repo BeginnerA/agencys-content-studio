@@ -60,7 +60,7 @@ async function submit() {
   >
     <label class="fld">
       显示名
-      <input v-model="name" type="text" placeholder="如：阿里千问" />
+      <input v-model="name" type="text" placeholder="如：阿里百炼" />
     </label>
     <label class="fld">
       API Key

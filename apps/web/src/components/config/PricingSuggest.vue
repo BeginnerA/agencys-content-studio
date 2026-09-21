@@ -18,7 +18,7 @@ const props = defineProps<{
   model: string
   /** 编辑回显：既有实例 pricing（无则 null）；有则尊重存量、不自动覆盖 */
   initial?: Record<string, number> | null
-  /** [M33.1] 在线目录带出的参考定价（供应商接口明确返回，如阿里千问 LLM）；优先级 live > 核实表 */
+  /** [M33.1] 在线目录带出的参考定价（供应商接口明确返回，如阿里百炼 LLM）；优先级 live > 核实表 */
   live?: ModelPricing | null
 }>()
 const emit = defineEmits<{

@@ -21,19 +21,19 @@ export const apiRoutes = new Hono()
 
 const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
 
-/** DashScope 原生协议行（万相文生图/视频、千问图像、千问 TTS）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
-const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_wan_image', 'aliyun_qwen_image', 'aliyun_wan_video', 'aliyun_qwen_tts'])
+/** DashScope 原生协议行（百炼图像/视频/语音）无 OpenAI 兼容 /models 端点，模型目录由预置提供 */
+const NATIVE_DASHSCOPE_PROVIDER_KEYS = new Set(['aliyun_bailian_image', 'aliyun_bailian_video', 'aliyun_bailian_tts'])
 
-/** [M33.1] DashScope 原生列模型口根址与 providers 过滤映射（仅阿里千问 LLM 走此口以带出参考定价） */
+/** [M33.1] DashScope 原生列模型口根址与 providers 过滤映射（仅阿里百炼 LLM 走此口以带出参考定价） */
 const DASHSCOPE_NATIVE_ROOT = 'https://dashscope.aliyuncs.com/api/v1'
-const DASHSCOPE_PROVIDERS_BY_KEY: Record<string, string> = { aliyun_qwen_llm: 'qwen' }
+const DASHSCOPE_PROVIDERS_BY_KEY: Record<string, string> = { aliyun_bailian_llm: 'qwen' }
 
 /**
  * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
  * /api-providers 的 testable 能力位与下方 /:id/test 视频分支的探针路由共用，需两处同步维护。
  */
 const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
-  'aliyun_wan_video',
+  'aliyun_bailian_video',
   'volcengine_video',
   'siliconflow_video',
   'pollinations_video',
@@ -224,8 +224,8 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   let liveError = ''
   let entries: ModelEntry[] = []
   try {
-    if (providerKey === 'aliyun_qwen_llm') {
-      // [M33.1] 阿里千问 LLM：走 DashScope 原生列模型口（带 prices/context），分页聚合
+    if (providerKey === 'aliyun_bailian_llm') {
+      // [M33.1] 阿里百炼 LLM：走 DashScope 原生列模型口（带 prices/context），分页聚合
       entries = await fetchDashscopeModels(providerKey, serviceType, apiKey, controller.signal)
     } else if (!baseUrl) {
       liveError = '端点未配置（实例与目录均无 baseUrl）'
@@ -374,13 +374,18 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
   if (cfg.serviceType === 'image') {
     const endpoint = await resolveEndpoint('image', cfg.providerKey)
     const adapter = getImageAdapter(endpoint.providerKey)
-    // 各家测试尺寸约束：万相最短边 512（256 会被调度拒绝）→ 用合法小尺寸；
-    // 千问图像 max/plus 仅固定枚举、OpenAI 官方 gpt-image/dall-e 尺寸亦为固定枚举 → 不传用官方默认；
+    // 各家测试尺寸约束：百炼图像万相系最短边 512（256 会被调度拒绝）→ 用合法小尺寸，qwen 系 max/plus 仅固定枚举→不传；
+    // OpenAI 官方 gpt-image/dall-e 尺寸亦为固定枚举 → 不传用官方默认；
     // 其余家（SiliconFlow/火山 Seedream/Pollinations/Gemini）256x256 实测可用或由适配器升级档位
     const testSize =
-      cfg.providerKey === 'aliyun_wan_image'
-        ? '1024x1024'
-        : cfg.providerKey === 'aliyun_qwen_image' || cfg.providerKey === 'openai_image'
+      cfg.providerKey === 'aliyun_bailian_image'
+        ? String(cfg.model ?? '')
+            .trim()
+            .toLowerCase()
+            .startsWith('qwen')
+          ? undefined
+          : '1024x1024'
+        : cfg.providerKey === 'openai_image'
           ? undefined
           : '256x256'
     const img = await adapter.generate({
@@ -411,7 +416,7 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     // 视频生成成本高，统一用零计费探针验证「端点+鉴权」（不创建任务）
     const baseUrl = testBaseUrl
     const apiKey = testApiKey
-    if (cfg.providerKey === 'aliyun_wan_video') {
+    if (cfg.providerKey === 'aliyun_bailian_video') {
       const note = await probeAliyunWanVideoEndpoint({ baseUrl, apiKey })
       return c.json({ ok: true, ms: Date.now() - t0, note })
     }

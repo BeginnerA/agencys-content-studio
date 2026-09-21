@@ -128,7 +128,7 @@ export interface VendorCredential {
 
 /**
  * [M33.1] 在线模型目录条目（fetch-models 归一结果）。
- * pricing 仅供应商接口明确返回且可归一时给出（阿里千问 LLM 走 DashScope 原生带价口）；
+ * pricing 仅供应商接口明确返回且可归一时给出（阿里百炼 LLM 走 DashScope 原生带价口）；
  * 给不了则缺席 → 前端回落 model-suggest 核实表 / 手填 / 未计价（绝不猜价）。context 供展示，不参与计价。
  */
 export interface ModelEntry {

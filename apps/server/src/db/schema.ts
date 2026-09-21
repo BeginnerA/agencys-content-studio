@@ -482,7 +482,7 @@ export const workflows = sqliteTable(
 export const voiceClones = sqliteTable('voice_clones', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(), // 音色名（用户可读；唯一）
-  providerKey: text('provider_key').notNull(), // 克隆供应商（api_providers.key，如 aliyun_qwen_tts）
+  providerKey: text('provider_key').notNull(), // 克隆供应商（api_providers.key，如 aliyun_bailian_tts）
   model: text('model').notNull(), // 克隆目标模型（如 cosyvoice-v1；合成时需同模型使用）
   voiceId: text('voice_id').notNull(), // 供应商返回的克隆 voice 标识
   status: text('status').notNull().default('ready'), // v1 同步协议仅落成功行（ready）；预留异步协议
