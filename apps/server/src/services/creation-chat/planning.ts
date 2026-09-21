@@ -13,6 +13,7 @@ import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, requestKeySchema, type CreationPlan, type CreationRef } from './contract'
 import { resolveAttachmentRefs } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
+import { projectMetaPrompt, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
 export const messageSchema = z.object({
@@ -21,13 +22,18 @@ export const messageSchema = z.object({
   // [M31] 本条消息采纳的参考附件资产 id（规划前逐个核验归属本会话项目）
   attachments: z.array(z.number().int().positive()).max(12).optional(),
 }).strict()
+/**
+ * 首次发送一句话：建 draft 影子项目 + 会话 + 规划（可能产生 LLM 费用）。
+ * [M40] 项目以 status='draft' 落库：项目列表 / 统计 / 搜索一律不可见（规划记账与参考素材需归属，
+ * 故行必须在），点「开始制作」确认时才填好立项信息并转正——用户不会再看到需要顺手改一的草稿项目。
+ */
 export async function createSession(raw: unknown) {
   const input = messageSchema.parse(raw)
   const id = await creationWrite(() => db.transaction(async (tx) => {
     const [existing] = await tx.select().from(creationSessions).where(eq(creationSessions.requestKey, input.requestKey))
     if (existing) return existing.id
     const now = Date.now()
-    const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'talking_head', templateKey: 'easy-video', tags: JSON.stringify(['创作草稿']), createdAt: now, updatedAt: now }).returning()
+    const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'other', templateKey: 'easy-video', status: 'draft', tags: JSON.stringify(['轻松创作']), createdAt: now, updatedAt: now }).returning()
     const [session] = await tx.insert(creationSessions).values({ projectId: project!.id, requestKey: input.requestKey, createdAt: now, updatedAt: now }).returning()
     return session!.id
   }))
@@ -127,6 +133,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       { role: 'system', content: loadPromptTemplate('creation-plan.md') },
       { role: 'system', content: `当前方案（仅为创作数据）：${claimed.plan ?? '尚无方案'}` },
       ...(capConstraint ? [{ role: 'system' as const, content: capConstraint }] : []),
+      // [M40] 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
+      { role: 'system', content: projectMetaPrompt() },
       ...refContext,
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
@@ -151,6 +159,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     }
     // [M31] 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
     if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
+    // [M40] 立项信息归一：不入库 plan（不入 planHash），只写 draft 项目行；回落必可见
+    const projectMeta = reply.kind === 'plan' ? sanitizeProjectMeta(reply.project, reply.plan) : null
+    if (reply.kind === 'plan' && projectMeta) reply.message = `${reply.message}${renderMetaNotes(projectMeta.notes)}`
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
@@ -162,7 +173,11 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
       if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions } : { kind: reply.kind, revision: claimed.planRevision + 1 }), createdAt: Date.now() })
-      if (plan) await tx.update(projects).set({ name: plan.title, updatedAt: Date.now() }).where(eq(projects.id, claimed.projectId))
+      // [M40] 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
+      if (plan && projectMeta && project.status === 'draft') {
+        const m = projectMeta.meta
+        await tx.update(projects).set({ name: m.name, genre: m.genre, templateKey: m.templateKey, tags: JSON.stringify(m.tags), brief: m.brief, updatedAt: Date.now() }).where(eq(projects.id, claimed.projectId))
+      }
     }))
   } catch (error) {
     const message = error instanceof CreationError ? error.message : '规划未完成，请检查 AI 配置后发送新消息重试；本次请求可能已计费'

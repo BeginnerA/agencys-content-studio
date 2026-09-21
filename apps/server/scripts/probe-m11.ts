@@ -49,7 +49,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['rerun', 'align', 'bgm', 'transition', 'template', 'regression'] as const
+const SECTIONS = ['rerun', 'cascade', 'align', 'bgm', 'transition', 'template', 'regression'] as const
 
 async function main(): Promise<void> {
   // src 模块全部动态加载（环境变量已隔离）
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const { assets, genTasks, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { absPathOf, ensureProjectDirs, registerAsset, relPathOf } = await import('../src/services/storage')
-  const { WorkbenchError, resetStepForRerun } = await import('../src/services/shot')
+  const { WorkbenchError, resetStepForRerun, describeChainRerun, resetChainForRerun } = await import('../src/services/shot')
 
   const log = createLogger('probe-m11')
   let failed = 0
@@ -285,6 +285,119 @@ async function main(): Promise<void> {
     await setRunStatus(s5.runId, 'weird')
     const eBad = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
     check(eBad instanceof WorkbenchError && eBad.code === 'bad_status', '未知 run 状态 → bad_status')
+  }
+
+  const sectionCascade = async (): Promise<void> => {
+    // 线性快照模板（无 after → 默认依赖前一步），与种子步骤键一一对应；templateForRun 采用快照
+    const chainKeysList = ['make_storyboard', 'gen_images', 'voice', 'subtitle', 'compose_video']
+    const actionOf = (k: string): string =>
+      k === 'gen_images' ? 'ai_image' : k === 'voice' ? 'tts' : k === 'subtitle' ? 'subtitle' : k === 'compose_video' ? 'ffmpeg_merge' : 'ai_text'
+    const snap = JSON.stringify({
+      key: 'probe-cascade',
+      version: 1,
+      name: 'cascade probe',
+      genre: 'other',
+      inputs: [],
+      defaults: {},
+      steps: chainKeysList.map((k) => ({ key: k, action: actionOf(k), title: k, inputs: {} })),
+    })
+
+    /**
+     * 种子（用户真实卡点）：make_storyboard(succ) → gen_images(succ, t1 succ + t2 failed)
+     * → voice(FAILED) → subtitle(pending) → compose_video(pending)；run=failed。
+     * 单步重跑 gen_images 因 voice failed 被禁（other_failed）；级联则把 voice 及下游纳入重置集合→放行。
+     */
+    const seedChainRun = async (): Promise<{ runId: number; ms: number; gi: number; vo: number; sub: number; t1: number; t2: number; mst: number }> => {
+      const runId = (
+        await db
+          .insert(pipelineRuns)
+          .values({
+            projectId: pid,
+            templateKey: 'probe-cascade',
+            templateSnapshot: snap,
+            status: 'failed',
+            input: JSON.stringify({ episode_number: 1 }),
+            currentStepKey: 'voice',
+            createdAt: T0,
+            updatedAt: T0,
+          })
+          .returning()
+      )[0]!.id
+      const ms = await mkStep(runId, 1, 'make_storyboard', 'ai_text')
+      const gi = await mkStep(runId, 2, 'gen_images', 'ai_image')
+      const vo = await mkStep(runId, 3, 'voice', 'tts', 'failed')
+      const sub = await mkStep(runId, 4, 'subtitle', 'subtitle', 'pending')
+      await mkStep(runId, 5, 'compose_video', 'ffmpeg_merge', 'pending')
+      const mkT = async (stepId: number, status: string, params: Record<string, unknown>): Promise<number> =>
+        (
+          await db
+            .insert(genTasks)
+            .values({ projectId: pid, runId, stepId, kind: 'image', provider: 'probe', params: JSON.stringify(params), status, attempts: 1, createdAt: T0, updatedAt: T0 })
+            .returning()
+        )[0]!.id
+      const t1 = await mkT(gi, 'succeeded', { shotId: 's01' })
+      const t2 = await mkT(gi, 'failed', { shotId: 's02' })
+      const mst = await mkT(ms, 'succeeded', {})
+      await mkT(vo, 'failed', {})
+      // 预置旧产物（级联清 output 断言）
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [999] }) }).where(eq(pipelineSteps.id, gi))
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [998] }) }).where(eq(pipelineSteps.id, vo))
+      return { runId, ms, gi, vo, sub, t1, t2, mst }
+    }
+
+    // ---- A. 对比：单步重跑被禁、级联放行 ----
+    const a = await seedChainRun()
+    const eSingle = await errOf(() => resetStepForRerun(a.runId, 'gen_images', {}))
+    check(eSingle instanceof WorkbenchError && eSingle.code === 'other_failed', 'A 单步重跑 gen_images（下游 voice failed）→ other_failed（现状死角）')
+    const dA = await describeChainRerun(a.runId, 'gen_images', { resetTasks: true })
+    const chainA = dA.chain.map((c) => c.stepKey)
+    check(
+      JSON.stringify(chainA) === JSON.stringify(['gen_images', 'voice', 'subtitle', 'compose_video']),
+      `A 级联集合=目标+传递下游（实际 ${chainA.join('/')}）`,
+    )
+    check(!chainA.includes('make_storyboard'), 'A 上游 make_storyboard 不入级联集合')
+    check(dA.chargedSteps === 2 && dA.totalTasksToRun === 5, `A 预览计数（charged=${dA.chargedSteps} totalToRun=${dA.totalTasksToRun}，gen_images2+voice1+subtitle1整体+compose1整体）`)
+    const rA = await resetChainForRerun(a.runId, 'gen_images', { resetTasks: true })
+    check(rA.chain.length === 4 && (await getRun(a.runId)).status === 'queued', 'A 执行：4 步入 pending、run → queued')
+    const giA = await getStep(a.gi)
+    const voA = await getStep(a.vo)
+    check(giA.status === 'pending' && giA.output === null && voA.status === 'pending' && voA.output === null, 'A 级联步清 output 并置 pending')
+    const t1A = await getTask(a.t1)
+    const t2A = await getTask(a.t2)
+    check(t1A.status === 'pending' && t2A.status === 'pending', 'A 目标步 reset_tasks=true：gen_images 全量任务归零')
+    const msA = await getStep(a.ms)
+    const mstA = await getTask(a.mst)
+    check(msA.status === 'succeeded' && mstA.status === 'succeeded', 'A 防重复扣费：上游 make_storyboard 步骤/任务保持 succeeded 未动')
+
+    // ---- B. 目标复用（resetTasks=false）：仅重置非 succeeded，下游仍全量 ----
+    const b = await seedChainRun()
+    const rB = await resetChainForRerun(b.runId, 'gen_images', { resetTasks: false })
+    const giB = rB.chain.find((c) => c.isTarget)!
+    const voB = rB.chain.find((c) => c.stepKey === 'voice')!
+    check(giB.tasksToRun === 1 && giB.tasksTotal === 2, 'B 目标复用：gen_images tasksToRun=非succeeded数（1/2）')
+    check(voB.tasksToRun === voB.tasksTotal && voB.tasksTotal === 1, 'B 下游 voice 一律全量重置（1/1）')
+    const t1B = await getTask(b.t1)
+    const t2B = await getTask(b.t2)
+    check(t1B.status === 'succeeded' && t2B.status === 'pending', 'B 复用：succeeded 任务不动、failed 归零')
+
+    // ---- C. 级联范围外 failed 拒绝：从 subtitle 起级联（voice failed 在上游、不在集合）----
+    const cRun = await seedChainRun()
+    await setStepStatus(cRun.sub, 'succeeded') // 使目标步合法（succeeded），专测范围外 failed 判定
+    const eC = await errOf(() => describeChainRerun(cRun.runId, 'subtitle', { resetTasks: false }))
+    check(eC instanceof WorkbenchError && eC.code === 'other_failed', 'C 级联范围外存在 failed（voice）→ other_failed')
+
+    // ---- D. 上游未就绪拒绝：make_storyboard 非 failed 但 pending ----
+    const dRun = await seedChainRun()
+    await setStepStatus(dRun.ms, 'pending')
+    await setStepStatus(dRun.vo, 'succeeded') // 消除 in-chain failed，使失败收敛不干扰，专测上游判定
+    const eD = await errOf(() => describeChainRerun(dRun.runId, 'gen_images', { resetTasks: false }))
+    check(eD instanceof WorkbenchError && eD.code === 'upstream_not_ready', 'D 上游 make_storyboard pending（非终态）→ upstream_not_ready')
+
+    // ---- E. cancelled / running run 拒绝 + easy-video 守卫 ----
+    const eRun = await seedChainRun()
+    await setRunStatus(eRun.runId, 'cancelled')
+    const eE = await errOf(() => describeChainRerun(eRun.runId, 'gen_images', {}))
+    check(eE instanceof WorkbenchError && eE.code === 'run_cancelled', 'E cancelled run → run_cancelled（引导续跑）')
   }
 
   const sectionAlign = async (): Promise<void> => {
@@ -685,6 +798,7 @@ async function main(): Promise<void> {
 
   const runners: Record<string, () => Promise<void>> = {
     rerun: sectionRerun,
+    cascade: sectionCascade,
     align: sectionAlign,
     bgm: sectionBgm,
     transition: sectionTransition,

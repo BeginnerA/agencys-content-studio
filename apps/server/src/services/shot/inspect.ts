@@ -1,6 +1,9 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, pipelineSteps, type Asset, type PipelineRun, type PipelineStep } from '../../db/schema'
+import { stepDeps } from '../../pipeline/dag'
+import { templateForRun } from '../../pipeline/loader'
+import type { Template } from '../../pipeline/types'
 import { readTextAsset } from '../storage'
 import { WorkbenchError, getRunOrThrow, getStepOrThrow, outputIdsOf, type ShotSpec } from './helpers'
 
@@ -49,6 +52,116 @@ export async function assertRepairable(
     throw new WorkbenchError('other_failed', `存在其他失败步骤（${others.map((r) => r.stepKey).join('、')}），请先修复后再操作`)
   }
   return { run, step }
+}
+
+/** 模板步骤图（run 快照优先，缺失/损坏 → null；与引擎执行图同源，避免快照漂移） */
+function chainTemplate(run: PipelineRun): { template: Template; orderByKey: Map<string, number> } | null {
+  try {
+    const template = templateForRun(run)
+    return { template, orderByKey: new Map(template.steps.map((s, i) => [s.key, i] as const)) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 级联集合：目标步 ∪ 传递下游（对 stepDeps 建反向图后自 target 的可达闭包）。
+ * 与 assertRepairable 单步重跑的关键差异：这里主动把下游 failed 步纳入待重置集合，
+ * 从而消解引擎「失败收敛先于执行」约束（重置后 run 内不再有 failed，startRun 从 target 依次重做）。
+ * target 不在模板内 / 快照损坏 → null。
+ */
+export function computeChainKeys(run: PipelineRun, targetKey: string): string[] | null {
+  const g = chainTemplate(run)
+  if (!g || !g.orderByKey.has(targetKey)) return null
+  const { template, orderByKey } = g
+  const children = new Map<string, string[]>()
+  for (const def of template.steps) {
+    for (const dep of stepDeps(def, template, orderByKey)) {
+      const arr = children.get(dep) ?? []
+      arr.push(def.key)
+      children.set(dep, arr)
+    }
+  }
+  const chain = new Set<string>([targetKey])
+  const stack = [targetKey]
+  while (stack.length) {
+    const k = stack.pop()!
+    for (const c of children.get(k) ?? []) if (!chain.has(c)) (chain.add(c), stack.push(c))
+  }
+  return [...chain]
+}
+
+/** 目标的传递上游闭包（不含 target 自身）：级联重跑要求这些步全部终态非 failed，否则 target 不会就绪 */
+export function computeUpstreamKeys(run: PipelineRun, targetKey: string): string[] | null {
+  const g = chainTemplate(run)
+  if (!g || !g.orderByKey.has(targetKey)) return null
+  const { template, orderByKey } = g
+  const defByKey = new Map(template.steps.map((s) => [s.key, s] as const))
+  const up = new Set<string>()
+  const stack = [targetKey]
+  while (stack.length) {
+    const k = stack.pop()!
+    const def = defByKey.get(k)
+    if (!def) continue
+    for (const dep of stepDeps(def, template, orderByKey)) if (!up.has(dep)) (up.add(dep), stack.push(dep))
+  }
+  up.delete(targetKey)
+  return [...up]
+}
+
+/**
+ * 级联重跑写门禁（新语义，不改 assertRepairable）：
+ * run ∈ {completed, failed}；目标步 ∈ {succeeded, failed}；级联集合外无 failed；目标全部传递上游 ∈ {succeeded, skipped}。
+ * 返回级联 stepKey 集合（含目标），供 reset 层逐重置。
+ */
+export async function assertChainRepairable(
+  runId: number,
+  stepKey: string,
+): Promise<{ run: PipelineRun; step: PipelineStep; chainKeys: string[] }> {
+  const run = await getRunOrThrow(runId)
+  if (run.status === 'running' || run.status === 'queued' || run.status === 'waiting_input') {
+    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再操作`)
+  }
+  if (run.status === 'cancelled') {
+    throw new WorkbenchError('run_cancelled', 'run 已取消，请走「断点续跑」创建续跑 run')
+  }
+  if (run.status !== 'completed' && run.status !== 'failed') {
+    throw new WorkbenchError('bad_status', `run 状态 ${run.status} 不支持级联重跑`)
+  }
+  if (run.templateKey === 'easy-video') {
+    throw new WorkbenchError('creation_confirmation_required', '已批准制作链请在轻松创作中恢复；级联重跑需新方案确认', 409)
+  }
+  const step = await getStepOrThrow(runId, stepKey)
+  if (step.status !== 'succeeded' && step.status !== 'failed') {
+    throw new WorkbenchError('bad_step_status', `步骤「${step.title ?? stepKey}」状态为 ${step.status}，仅 succeeded/failed 可级联重跑`)
+  }
+  const chainKeys = computeChainKeys(run, stepKey)
+  if (!chainKeys) throw new WorkbenchError('bad_chain', '无法解析模板依赖图（模板快照缺失或步骤不在模板内）')
+  const chain = new Set(chainKeys)
+  const rows = await db
+    .select({ id: pipelineSteps.id, status: pipelineSteps.status, stepKey: pipelineSteps.stepKey })
+    .from(pipelineSteps)
+    .where(eq(pipelineSteps.runId, runId))
+  const statusByKey = new Map(rows.map((r) => [r.stepKey, r.status] as const))
+  const outsideFailed = rows.filter((r) => r.status === 'failed' && !chain.has(r.stepKey)).map((r) => r.stepKey)
+  if (outsideFailed.length > 0) {
+    throw new WorkbenchError(
+      'other_failed',
+      `存在级联范围外的失败步骤（${outsideFailed.join('、')}），请改从该步骤起级联或先修复后再操作`,
+    )
+  }
+  const upstream = computeUpstreamKeys(run, stepKey) ?? []
+  const badUpstream = upstream.filter((k) => {
+    const st = statusByKey.get(k)
+    return st !== 'succeeded' && st !== 'skipped'
+  })
+  if (badUpstream.length > 0) {
+    throw new WorkbenchError(
+      'upstream_not_ready',
+      `上游步骤（${badUpstream.join('、')}）未成功，请改从更早步骤起级联`,
+    )
+  }
+  return { run, step, chainKeys }
 }
 
 /** 只读判定版（shot-board 用）：不抛错 → { ok, reason } */

@@ -7,6 +7,7 @@
  *   · 开关关闭保存 → brand.subtitle = null（清除 run 级覆盖，回落项目/平台/默认）
  * - 水印/片头/片尾：复用 BrandSettings scope='run'（三态覆盖 + 继承值与来源摘要）
  * - [M19] 镜头音效（SFX）：汇总条数 + 全局音量（绑定入口在工作台镜头卡片）
+ * - [M26-split] 字幕样式节拆至 SubtitleStyleSection.vue（提交经共享 wrap）
  * - [M19] 多画幅原生渲染（B 路径）：勾选启用 + 画幅多选（≤3）+ 策略；关闭 = 清除配置（合成链逐字节不变）
  * - 全部操作不触发执行：提示「重新合成后生效」；操作成功 emit changed
  */
@@ -26,6 +27,7 @@ import type {
 import BrandSettings from '../brand/BrandSettings.vue'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
+import SubtitleStyleSection from './SubtitleStyleSection.vue'
 
 const props = defineProps<{ runId: number; projectId: number }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -53,71 +55,8 @@ const maStrategy = ref<AspectStrategy>('crop')
 /** run 级是否已持久化 multi_aspect（决定「清除」按钮可用态） */
 const maPersisted = ref(false)
 
-// ---------- [M19] 字幕样式（run 级覆盖） ----------
-
-/** 表单缺省值（与服务端 buildSubtitleStyle 公式基线一致；仅展示用） */
-const SUB_DEFAULTS = {
-  font: 'Noto Sans CJK SC',
-  size: 1.8, // %
-  color: '#FFFFFF',
-  outlineColor: '#000000',
-  outline: 0.09, // %
-  shadow: 0,
-  marginV: 2, // %
-  alignment: 2 as 2 | 5 | 8,
-  bold: false,
-}
-
-const subOn = ref(false)
-const subFont = ref(SUB_DEFAULTS.font)
-const subSize = ref(SUB_DEFAULTS.size)
-const subColor = ref(SUB_DEFAULTS.color)
-const subOutlineColor = ref(SUB_DEFAULTS.outlineColor)
-const subOutline = ref(SUB_DEFAULTS.outline)
-const subShadow = ref(SUB_DEFAULTS.shadow)
-const subMarginV = ref(SUB_DEFAULTS.marginV)
-const subAlign = ref<2 | 5 | 8>(SUB_DEFAULTS.alignment)
-const subBold = ref(SUB_DEFAULTS.bold)
-/** run 级是否已持久化字幕配置（决定「清除」按钮可用态） */
-const subPersisted = ref(false)
-
-/** 存储值 → 显示百分比（0.018 → 1.8；容忍脏数据） */
-function showPct(v: unknown, fallback: number): number {
-  return typeof v === 'number' && Number.isFinite(v)
-    ? +(v * 100).toFixed(3)
-    : fallback
-}
-
-/** 显示百分比 → 存储值（1.8 → 0.018；前端温和 clamp，服务端硬 clamp 兜底） */
-function storePct(v: number, lo: number, hi: number): number {
-  const c = Math.min(hi, Math.max(lo, Number(v) || 0))
-  return Number((c / 100).toFixed(5))
-}
-
-/** run 级配置回填（缺省字段用展示默认值；null/undefined → 开关关） */
-function fillSubForm(s: SubtitleStyleConfig | null | undefined) {
-  const cfg = s && typeof s === 'object' ? s : undefined
-  subPersisted.value = !!cfg
-  subOn.value = !!cfg
-  subFont.value =
-    typeof cfg?.font === 'string' && cfg.font ? cfg.font : SUB_DEFAULTS.font
-  subSize.value = showPct(cfg?.size_pct, SUB_DEFAULTS.size)
-  subColor.value =
-    typeof cfg?.color === 'string' ? cfg.color : SUB_DEFAULTS.color
-  subOutlineColor.value =
-    typeof cfg?.outline_color === 'string'
-      ? cfg.outline_color
-      : SUB_DEFAULTS.outlineColor
-  subOutline.value = showPct(cfg?.outline_pct, SUB_DEFAULTS.outline)
-  subShadow.value =
-    typeof cfg?.shadow === 'number' && Number.isFinite(cfg.shadow)
-      ? cfg.shadow
-      : SUB_DEFAULTS.shadow
-  subMarginV.value = showPct(cfg?.margin_v_pct, SUB_DEFAULTS.marginV)
-  subAlign.value =
-    cfg?.alignment === 5 || cfg?.alignment === 8 ? cfg.alignment : 2
-  subBold.value = cfg?.bold === true
-}
+/** 字幕样式节初值（M26-split：状态真源已拆至 SubtitleStyleSection，此处仅下发 config 拉取结果） */
+const brandSub = ref<SubtitleStyleConfig | null | undefined>(undefined)
 
 onMounted(async () => {
   try {
@@ -129,7 +68,8 @@ onMounted(async () => {
     const sv = c.config.sfx_volume
     sfxVolume.value = Math.round((typeof sv === 'number' ? sv : 1) * 100)
     const brand = c.config.brand
-    fillSubForm(brand && typeof brand === 'object' ? brand.subtitle : undefined)
+    brandSub.value =
+      brand && typeof brand === 'object' ? brand.subtitle : undefined
     const ma = c.config.multi_aspect
     maPersisted.value = !!ma && typeof ma === 'object'
     maOn.value = ma?.enabled === true
@@ -261,45 +201,6 @@ function saveMultiAspect() {
       ? '多画幅原生渲染已保存（重新合成后生效）'
       : '多画幅原生渲染已关闭（重新合成后回落单路）',
   )
-}
-
-/** 保存字幕样式：开关开 → 提交 patch；开关关 → 清除 run 级覆盖（null 回落继承） */
-function saveSubtitle() {
-  void wrap(
-    async () => {
-      if (!subOn.value) {
-        await composeApi.updateConfig(props.runId, {
-          brand: { subtitle: null },
-        })
-        fillSubForm(undefined)
-        return
-      }
-      const patch: SubtitleStyleConfig = {
-        font: subFont.value.trim() || undefined,
-        size_pct: storePct(subSize.value, 0.8, 6),
-        color: subColor.value,
-        outline_color: subOutlineColor.value,
-        outline_pct: storePct(subOutline.value, 0, 0.5),
-        shadow: Math.round(
-          Math.min(8, Math.max(0, Number(subShadow.value) || 0)),
-        ),
-        margin_v_pct: storePct(subMarginV.value, 0, 10),
-        alignment: subAlign.value,
-        bold: subBold.value,
-      }
-      await composeApi.updateConfig(props.runId, { brand: { subtitle: patch } })
-      fillSubForm(patch)
-    },
-    subOn.value
-      ? '字幕样式已保存（重新合成后生效）'
-      : '字幕样式覆盖已清除（回落项目/平台配置）',
-  )
-}
-
-/** 恢复表单为默认基线（不提交；保存后生效） */
-function resetSubForm() {
-  fillSubForm(undefined)
-  subOn.value = true
 }
 
 function togglePreview(a: Asset) {
@@ -458,141 +359,13 @@ function fmtDur(sec: number | null): string {
 
         <div class="bg-sep" />
 
-        <!-- ===== 字幕样式 [M19] ===== -->
-        <div class="bg-sec">
-          <label class="bg-ck">
-            <input v-model="subOn" type="checkbox" :disabled="busy" />
-            <span class="bg-lb"
-              >自定义字幕样式<span class="muted bg-lb-tip"
-                >run 级覆盖；未启用时继承项目/平台配置或默认（字号 1.8% 高 /
-                底边距 2%）</span
-              ></span
-            >
-          </label>
-
-          <div class="st-grid" :class="{ off: !subOn }">
-            <div class="st-row">
-              <span class="st-lb">字体</span>
-              <input
-                v-model="subFont"
-                type="text"
-                class="st-txt grow"
-                spellcheck="false"
-                placeholder="Noto Sans CJK SC"
-                :disabled="busy || !subOn"
-              />
-            </div>
-            <div class="st-row">
-              <span class="st-lb">字号</span>
-              <input
-                v-model.number="subSize"
-                type="number"
-                class="st-num"
-                min="0.8"
-                max="6"
-                step="0.1"
-                :disabled="busy || !subOn"
-              />
-              <span class="muted">%</span>
-              <span class="st-lb st-lb-2">描边</span>
-              <input
-                v-model.number="subOutline"
-                type="number"
-                class="st-num"
-                min="0"
-                max="0.5"
-                step="0.01"
-                :disabled="busy || !subOn"
-              />
-              <span class="muted">%</span>
-              <span class="st-lb st-lb-2">阴影</span>
-              <input
-                v-model.number="subShadow"
-                type="number"
-                class="st-num"
-                min="0"
-                max="8"
-                step="1"
-                :disabled="busy || !subOn"
-              />
-            </div>
-            <div class="st-row">
-              <span class="st-lb">字色</span>
-              <input
-                v-model="subColor"
-                type="color"
-                class="st-color"
-                :disabled="busy || !subOn"
-              />
-              <span class="muted mono">{{ subColor.toUpperCase() }}</span>
-              <span class="st-lb st-lb-2">描边色</span>
-              <input
-                v-model="subOutlineColor"
-                type="color"
-                class="st-color"
-                :disabled="busy || !subOn"
-              />
-              <span class="muted mono">{{
-                subOutlineColor.toUpperCase()
-              }}</span>
-            </div>
-            <div class="st-row">
-              <span class="st-lb">底边距</span>
-              <input
-                v-model.number="subMarginV"
-                type="number"
-                class="st-num"
-                min="0"
-                max="10"
-                step="0.5"
-                :disabled="busy || !subOn"
-              />
-              <span class="muted">%</span>
-              <span class="st-lb st-lb-2">对齐</span>
-              <select
-                v-model.number="subAlign"
-                class="st-sel"
-                :disabled="busy || !subOn"
-              >
-                <option :value="2">底部居中</option>
-                <option :value="5">中部居中</option>
-                <option :value="8">顶部居中</option>
-              </select>
-            </div>
-            <div class="st-row">
-              <label class="bg-ck">
-                <input
-                  v-model="subBold"
-                  type="checkbox"
-                  :disabled="busy || !subOn"
-                />
-                <span class="muted">加粗</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="bg-row">
-            <button
-              class="btn sm"
-              :class="{ primary: subOn }"
-              :disabled="busy || (!subOn && !subPersisted)"
-              @click="saveSubtitle"
-            >
-              <Icon name="check" :size="12" />
-              {{ subOn ? '保存样式' : '清除覆盖（用继承）' }}
-            </button>
-            <button
-              class="btn sm"
-              :disabled="busy || !subOn"
-              @click="resetSubForm"
-            >
-              恢复默认
-            </button>
-            <span class="muted bg-lb-tip"
-              >保存后重新合成生效；字号占成片高度百分比</span
-            >
-          </div>
-        </div>
+        <!-- ===== 字幕样式 [M19]（M26-split：拆至 SubtitleStyleSection.vue；提交经共享 wrap，busy/notice/changed 同源） ===== -->
+        <SubtitleStyleSection
+          :run-id="runId"
+          :busy="busy"
+          :wrap="wrap"
+          :subtitle="brandSub"
+        />
 
         <div class="bg-sep" />
 
@@ -838,51 +611,11 @@ function fmtDur(sec: number | null): string {
   font-size: 11.5px;
 }
 
-/* ===== [M19] 字幕样式表单 ===== */
-
-.st-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  transition: opacity 0.15s;
-}
-
-.st-grid.off {
-  opacity: 0.55;
-}
-
-.st-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* 多画幅节沿用（字幕节已拆出，其 .st-* 副本在 SubtitleStyleSection.vue 自带） */
 .st-lb {
   min-width: 44px;
   font-size: 12px;
   color: var(--text-2);
-}
-
-.st-lb-2 {
-  margin-left: 10px;
-}
-
-.st-txt {
-  /* 覆盖全局 input width:100%（行内伸缩布局） */
-  width: auto;
-  min-width: 180px;
-  padding: 3px 8px;
-  font-size: 12.5px;
-}
-
-.st-num {
-  /* 覆盖全局 input width:100% */
-  width: 68px;
-  padding: 3px 7px;
-  font-size: 12.5px;
 }
 
 .st-sel {
@@ -891,16 +624,6 @@ function fmtDur(sec: number | null): string {
   max-width: 140px;
   padding: 3px 8px;
   font-size: 12.5px;
-}
-
-.st-color {
-  width: 34px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
 }
 
 /* ===== [M19] 多画幅勾选 chips ===== */

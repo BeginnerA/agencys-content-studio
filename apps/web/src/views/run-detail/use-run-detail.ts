@@ -7,7 +7,6 @@ import { useStudio } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
 import type {
   Asset,
-  RerunResult,
   RunDetail,
   RunStep,
   ShotBoardCompose,
@@ -396,8 +395,11 @@ export function useRunDetail(deps: {
   // ===== [M11] 引擎级单步重跑（显示条件对齐服务端 assertRepairable） =====
   const rerunStep = ref<RunStep | null>(null)
   const notice = ref('')
+  // 弹窗内级联/单步两个入口的可用性（openRerun 时快照，避免模板对可空 rerunStep 的窄化问题）
+  const rerunAllowSingle = ref(false)
+  const rerunAllowCascade = ref(false)
 
-  /** 可重跑：run 收敛（completed/failed）+ 目标步 succeeded/failed + 除目标外无 failed */
+  /** 可单步重跑：run 收敛（completed/failed）+ 目标步 succeeded/failed + 除目标外无 failed */
   function canRerunStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
@@ -405,13 +407,23 @@ export function useRunDetail(deps: {
     return !steps.value.some((x) => x.id !== s.id && x.status === 'failed')
   }
 
+  /** 可级联重跑（入口可见性启发式）：run 收敛 + 目标步 succeeded/failed + 存在下游步；真实门禁（范围外 failed / 上游未就绪）以服务端 preview 为准 */
+  function canCascadeStep(s: RunStep): boolean {
+    const rs = run.value?.status
+    if (rs !== 'completed' && rs !== 'failed') return false
+    if (s.status !== 'succeeded' && s.status !== 'failed') return false
+    return steps.value.some((x) => x.seq > s.seq)
+  }
+
   function openRerun(s: RunStep) {
     notice.value = ''
     rerunStep.value = s
+    rerunAllowSingle.value = canRerunStep(s)
+    rerunAllowCascade.value = canCascadeStep(s)
   }
 
   /** 弹窗提交成功：关闭 + 展示服务端 note + 刷新（run 已重新入队） */
-  function onRerunDone(result: RerunResult) {
+  function onRerunDone(result: { note: string }) {
     rerunStep.value = null
     notice.value = result.note
     void loadDetail()
@@ -469,8 +481,11 @@ export function useRunDetail(deps: {
     onComposeInfo,
     recomposeStep,
     rerunStep,
+    rerunAllowSingle,
+    rerunAllowCascade,
     notice,
     canRerunStep,
+    canCascadeStep,
     openRerun,
     onRerunDone,
   }

@@ -6,7 +6,9 @@
 
 输出严格 JSON，不使用 Markdown 围栏，不附带其它正文。仅两种形态：
 1. 需要澄清：{"kind":"clarify","message":"简短说明","questions":["问题一","问题二"]}
-2. 方案：{"kind":"plan","message":"简短说明，提醒确认后才制作","plan":{...}}
+2. 方案：{"kind":"plan","message":"简短说明，提醒确认后才制作","project":{...},"plan":{...}}
+
+project 为立项信息（系统与用户都看得到，不入方案哈希）：name、genre、templateKey、tags、brief 五项，取值字典与候选模板由系统随消息注入；拿不准或信息不足时可整个省略 project，由系统自动补全。不得为凑字段编造事实。
 
 plan 必须且只能包含以下字段：
 - title：1–100 字符。

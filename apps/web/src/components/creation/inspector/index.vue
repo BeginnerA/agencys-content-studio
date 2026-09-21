@@ -7,6 +7,7 @@
  * - 边选中：端点信息 + 断开
  * - 蒙版编辑器（EditBrushModal）内联；「设为实体参考图」内联面板；所有操作 emit refresh 由父级全量重拉
  * ---- [M28] 已拆分：internals / use-inspector-form / 7 面板子组件（行为零变更；状态经 useInspectorForm 装配）----
+ * ---- [M26-split] 扩写弹窗另拆 ExpandModal.vue（模板/样式原样搬出，行为零变更）----
  */
 
 import { nextTick, ref } from 'vue'
@@ -14,9 +15,9 @@ import type { Asset, CanvasDocEdge, CanvasDocNode } from '../../../lib/types'
 import { assetApi, type CanvasNodePatch } from '../../../lib/api'
 import { fmtTime } from '../../../lib/format'
 import Icon from '../../common/Icon.vue'
-import Modal from '../../common/Modal.vue'
 import AssetPreviewer from '../../asset/previewer/index.vue'
 import EditBrushModal from '../EditBrushModal.vue'
+import ExpandModal from './ExpandModal.vue'
 import {
   EDIT_MODE_TEXT,
   PORT_TEXT,
@@ -469,61 +470,19 @@ function onPreviewChanged(updated: Asset): void {
       </section>
     </template>
 
-    <!-- AI 扩写（对照弹窗：原文 / 可编辑草稿） -->
-    <Modal
+    <!-- AI 扩写（对照弹窗：[M26-split] 另拆 ExpandModal，状态仍归 composable） -->
+    <ExpandModal
       v-if="expandOpen && node"
-      title="AI 扩写"
-      :width="720"
+      :src="expandSrc"
+      :err="expandErr"
+      :busy="expandBusy"
+      :op-busy="opBusy"
+      v-model:draft="expandDraft"
+      v-model:instruction="expandInstruction"
       @close="expandOpen = false"
-    >
-      <div class="exp-body">
-        <div class="exp-col">
-          <div class="exp-h">原文</div>
-          <pre class="exp-pre">{{ expandSrc }}</pre>
-        </div>
-        <div class="exp-col">
-          <div class="exp-h">扩写结果（可编辑后应用）</div>
-          <textarea
-            v-model="expandDraft"
-            class="exp-ta"
-            rows="10"
-            placeholder="点击「开始扩写」生成…"
-          />
-        </div>
-      </div>
-      <div class="frow">
-        <label class="flabel">补充要求（可选）</label>
-        <input
-          v-model="expandInstruction"
-          type="text"
-          placeholder="如：更电影感、补充光影细节、控制在 120 字内…"
-          @keydown.enter="doExpand"
-        />
-      </div>
-      <div v-if="expandErr" class="err-text">{{ expandErr }}</div>
-      <template #footer>
-        <button type="button" class="btn" @click="expandOpen = false">
-          关闭
-        </button>
-        <button
-          type="button"
-          class="btn"
-          :disabled="expandBusy"
-          @click="doExpand"
-        >
-          <Icon name="sparkles" :size="12" />
-          {{ expandBusy ? '扩写中…' : expandDraft ? '重新扩写' : '开始扩写' }}
-        </button>
-        <button
-          type="button"
-          class="btn primary"
-          :disabled="expandBusy || opBusy || !expandDraft.trim()"
-          @click="applyExpand"
-        >
-          <Icon name="check" :size="12" /> 应用
-        </button>
-      </template>
-    </Modal>
+      @expand="doExpand"
+      @apply="applyExpand"
+    />
     <!-- 蒙版编辑器（自持） -->
     <EditBrushModal
       v-if="showBrush && genSpec?.edit && sourceAsset"
@@ -659,24 +618,6 @@ function onPreviewChanged(updated: Asset): void {
   letter-spacing: 0.4px;
 }
 
-.frow {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.flabel {
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-
-.frow select,
-.frow input,
-.frow textarea {
-  font-size: 12.5px;
-  padding: 6px 9px;
-}
-
 .ops {
   display: flex;
   align-items: center;
@@ -770,46 +711,5 @@ function onPreviewChanged(updated: Asset): void {
 .vsel select {
   font-size: 12px;
   padding: 4px 6px;
-}
-
-.exp-body {
-  display: flex;
-  gap: 12px;
-}
-
-.exp-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.exp-h {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.exp-pre {
-  margin: 0;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--code-bg);
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 340px;
-  overflow-y: auto;
-}
-
-.exp-ta {
-  font-size: 12.5px;
-  min-height: 264px;
-  resize: vertical;
 }
 </style>

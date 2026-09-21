@@ -11,7 +11,14 @@ import { checkBudget } from '../budget'
 import { confirmationSchema, creationPlanSchema, CreationError, hashJson } from './contract'
 import { assertRecipeSources, recipeOf, recipeSchema, type CreationRecipe } from './recipe'
 import { preflightPlan, type CreationPreflight } from './preflight'
+import { projectMetaFromRow, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationWrite, parseJson, sessionRow } from './store'
+
+/**
+ * [M40] 确认即立项：点「开始制作」前项目一直为 draft 影子态，本函数在同一事务里
+ * 把立项信息（名称/载体/模板/标签/简介）按「用户覆盖 > 草稿行现值 > 规则派生」写入并转 active。
+ * 覆盖值不改 planHash（立项信息不是执行数据），因此改项目名称不会作废已确认的方案。
+ */
 
 export async function confirmCreation(id: number, raw: unknown): Promise<{ runId: number }> {
   const request = confirmationSchema.parse(raw)
@@ -29,6 +36,10 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     return db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
+      // [M40] 立项：智能填写（已含规划时写入的草稿行值）+ 用户覆盖，逐项过真源校验；非法值回落且可见
+      const base = projectMetaFromRow({ name: project.name, genre: project.genre, templateKey: project.templateKey, tags: parseJson<string[]>(project.tags, []), brief: project.brief }, plan)
+      const { meta, notes } = sanitizeProjectMeta(request.project, plan, base)
+      await tx.update(projects).set({ name: meta.name, genre: meta.genre, templateKey: meta.templateKey, tags: JSON.stringify(meta.tags), brief: meta.brief, status: 'active', updatedAt: Date.now() }).where(eq(projects.id, project.id))
       const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
         .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.planHash, request.planHash), eq(creationSessions.planRevision, request.planRevision), isNull(creationSessions.runId))).returning()
       if (!claimed.length) throw new CreationError('conflict', '方案已被确认或修改，请刷新', 409)
@@ -46,6 +57,9 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
       await tx.update(assets).set({ runId: run.id }).where(eq(assets.id, sources[0]!.id))
       await tx.update(creationSessions).set({ approvedPlan: JSON.stringify(recipe), status: 'started', runId: run.id, updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '方案已确认，正在自动制作。取消只停止后续提交，在途请求仍可能计费。', payload: JSON.stringify({ kind: 'run', runId: run.id }), createdAt: Date.now() })
+      // [M40] 立项字段被真源修正过 → 补一条可见消息（不静默降级；无调整不打扰）
+      if (notes.length) await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: `已创建项目《${meta.name}》。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'project', projectId: project.id, notes }), createdAt: Date.now() })
+      else await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: `已创建项目《${meta.name}》（载体：${meta.genre} · 模板：${meta.templateKey}），可在项目页随时调整。`, payload: JSON.stringify({ kind: 'project', projectId: project.id, notes: [] }), createdAt: Date.now() })
       return { runId: run.id, start: true }
     })
   })

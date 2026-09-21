@@ -2,6 +2,7 @@ import { api, ApiError, type Items } from './core'
 import type {
   CreationAttachmentResult,
   CreationConfirmBody,
+  CreationDeleteResult,
   CreationDetail,
   CreationRefRole,
   CreationRetryBody,
@@ -47,6 +48,8 @@ export const creationChatApi = {
   confirm: (id: number, body: CreationConfirmBody) =>
     api.post<{ runId: number }>(`${BASE}/${id}/confirm`, body),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
+  /** [M40+] 删除会话：未立项时一并回收影子项目；已立项只删记录（项目原样保留） */
+  remove: (id: number) => api.del<CreationDeleteResult>(`${BASE}/${id}`),
   retry: (id: number, body: CreationRetryBody) =>
     api.post<{ runId: number }>(`${BASE}/${id}/retry`, body),
   /** [M31] 上传参考素材（multipart file+role）：落会话项目、不计费、不触发规划 */

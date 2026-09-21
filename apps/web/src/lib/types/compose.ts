@@ -110,3 +110,36 @@ export interface RerunResult {
   tasks_succeeded: number
   note: string
 }
+
+/** 级联重跑：单步信息（GET/POST rerun-cascade chain 元素；后端 snake 保持 camel 原样） */
+export interface ChainStepInfo {
+  stepKey: string
+  title: string
+  actionKey: string
+  isTarget: boolean
+  tasksTotal: number
+  tasksToRun: number
+  charged: boolean
+}
+
+/** 级联重跑预览（GET /runs/:id/steps/:stepKey/rerun-cascade） */
+export interface ChainRerunPreview {
+  runId: number
+  stepKey: string
+  run_id: number
+  step_key: string
+  chain: ChainStepInfo[]
+  totalTasksToRun: number
+  chargedSteps: number
+}
+
+/** 级联重跑执行结果（POST /runs/:id/steps/:stepKey/rerun-cascade） */
+export interface ChainRerunResult {
+  ok: boolean
+  run_id: number
+  step_key: string
+  chain: ChainStepInfo[]
+  total_tasks_to_run: number
+  charged_steps: number
+  note: string
+}

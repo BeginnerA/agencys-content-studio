@@ -10,7 +10,7 @@ import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
-import { resetStepForRerun } from '../services/shot'
+import { resetStepForRerun, describeChainRerun, resetChainForRerun } from '../services/shot'
 import { mapRunToEpisode } from '../services/series'
 
 export const runsRoutes = new Hono()
@@ -239,6 +239,44 @@ runsRoutes.post('/runs/:id/steps/:stepKey/rerun', h(async (c) => {
     tasks_succeeded: result.tasksSucceeded,
     note,
   })
+}))
+
+// GET /runs/:id/steps/:stepKey/rerun-cascade —— 级联重跑预览（只读：级联步骤清单 + 预估计费子任务数；?reset_tasks=1 影响目标步复用/全量口径）
+runsRoutes.get('/runs/:id/steps/:stepKey/rerun-cascade', h(async (c) => {
+  const runId = idParam(c)
+  const stepKey = c.req.param('stepKey')
+  if (!stepKey) throw new HttpError(400, 'bad_step_key', 'stepKey 路径参数缺失')
+  const resetTasks = c.req.query('reset_tasks') === '1' || c.req.query('reset_tasks') === 'true'
+  const view = await wb(() => describeChainRerun(runId, stepKey, { resetTasks }))
+  return c.json({ ...view, run_id: view.runId, step_key: view.stepKey })
+}))
+
+// POST /runs/:id/steps/:stepKey/rerun-cascade —— 级联重跑（从该步起重跑到末尾：目标步尊重 reset_tasks，下游一律全量重置后 startRun）
+runsRoutes.post('/runs/:id/steps/:stepKey/rerun-cascade', h(async (c) => {
+  const runId = idParam(c)
+  const stepKey = c.req.param('stepKey')
+  if (!stepKey) throw new HttpError(400, 'bad_step_key', 'stepKey 路径参数缺失')
+  let body: Record<string, unknown> = {}
+  const raw = await c.req.text()
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+    }
+  }
+  const resetTasks = body['reset_tasks'] === true
+  const result = await wb(() => resetChainForRerun(runId, stepKey, { resetTasks }))
+  engine.startRun(runId)
+  return c.json({
+    ok: true,
+    run_id: result.runId,
+    step_key: result.stepKey,
+    chain: result.chain,
+    total_tasks_to_run: result.totalTasksToRun,
+    charged_steps: result.chargedSteps,
+    note: result.note,
+  }, 202)
 }))
 
 // GET /runs/:id/steps/:stepKey/revisions —— [M21] 步骤文本产物版本链（倒序 + current 标记）

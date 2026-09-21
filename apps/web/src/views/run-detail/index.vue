@@ -60,6 +60,8 @@ const {
   previewOpen,
   previewStart,
   rerunStep,
+  rerunAllowSingle,
+  rerunAllowCascade,
   notice,
   onRerunDone,
 } = u
@@ -240,11 +242,13 @@ const {
       @close="showPublish = false"
     />
 
-    <!-- [M11] 单步重跑弹窗 -->
+    <!-- [M11] 重跑弹窗（单步 / 级联到末尾；级联携预估计费明细） -->
     <RerunModal
       v-if="rerunStep"
       :run-id="runId"
       :step="rerunStep"
+      :allow-single="rerunAllowSingle"
+      :allow-cascade="rerunAllowCascade"
       @close="rerunStep = null"
       @done="onRerunDone"
     />

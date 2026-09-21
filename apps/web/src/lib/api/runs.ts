@@ -4,6 +4,8 @@ import type {
   AspectStrategy,
   AspectValue,
   Asset,
+  ChainRerunPreview,
+  ChainRerunResult,
   CleanupResult,
   ComposeConfig,
   ComposeSfxItem,
@@ -67,6 +69,25 @@ export const stepApi = {
   ) =>
     api.post<RerunResult>(
       `/api/v1/runs/${runId}/steps/${encodeURIComponent(stepKey)}/rerun`,
+      opts,
+    ),
+  /** 级联重跑预览（只读：从该步到末尾的级联步骤清单 + 预估计费子任务数；?reset_tasks=1 影响目标步口径） */
+  describeCascade: (
+    runId: number,
+    stepKey: string,
+    opts: { reset_tasks?: boolean } = {},
+  ) =>
+    api.get<ChainRerunPreview>(
+      `/api/v1/runs/${runId}/steps/${encodeURIComponent(stepKey)}/rerun-cascade${opts.reset_tasks ? '?reset_tasks=1' : ''}`,
+    ),
+  /** 级联重跑执行（从该步起重跑到末尾：目标步尊重 reset_tasks，下游一律全量重置） */
+  rerunCascade: (
+    runId: number,
+    stepKey: string,
+    opts: { reset_tasks?: boolean } = {},
+  ) =>
+    api.post<ChainRerunResult>(
+      `/api/v1/runs/${runId}/steps/${encodeURIComponent(stepKey)}/rerun-cascade`,
       opts,
     ),
 }

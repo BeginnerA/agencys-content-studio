@@ -52,9 +52,38 @@ export const creationPlanSchema = z.object({
 })
 export type CreationPlan = z.infer<typeof creationPlanSchema>
 
+// ===== [M40] 立项信息（名称 / 载体 / 模板 / 标签 / 简介）=====
+// 项目行在「发送一句话」时即以 draft 影子态存在（规划记账与参考素材需归属），
+// 但项目列表 / 统计 / 搜索一律不可见；点「开始制作」确认时才智能填写并转正。
+// 载体字典与 web/src/lib/scene PROJECT_GENRES 同源（新增取值两端同改）。
+export const PROJECT_GENRE_VALUES = ['drama_short', 'note', 'article', 'talking_head', 'other'] as const
+export type ProjectGenre = (typeof PROJECT_GENRE_VALUES)[number]
+export const PROJECT_NAME_MAX = 60
+export const PROJECT_BRIEF_MAX = 500
+export const PROJECT_TAG_MAX = 20
+export const PROJECT_TAG_COUNT_MAX = 6
+
+/** 立项信息严格形（入库前必过此 schema） */
+export const projectMetaSchema = z.object({
+  name: text(PROJECT_NAME_MAX),
+  genre: z.enum(PROJECT_GENRE_VALUES),
+  templateKey: z.string().trim().min(1).max(60),
+  tags: z.array(z.string().trim().min(1).max(PROJECT_TAG_MAX)).min(1).max(PROJECT_TAG_COUNT_MAX),
+  brief: z.string().trim().min(1).max(PROJECT_BRIEF_MAX),
+}).strict()
+export type ProjectMeta = z.infer<typeof projectMetaSchema>
+
+/** LLM / 前端提交的立项信息为「建议值」：缺项与越界不致命（catchall 忽略多余键，
+ *  避免一个标签超长就把已花钱的整份方案判为 invalid_plan），由 sanitizeProjectMeta 归一。 */
+export const projectMetaInputSchema = z
+  .object({ name: z.unknown().optional(), genre: z.unknown().optional(), templateKey: z.unknown().optional(), tags: z.unknown().optional(), brief: z.unknown().optional() })
+  .catchall(z.unknown())
+export type ProjectMetaInput = z.infer<typeof projectMetaInputSchema>
+
 export const planningReplySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('clarify'), message: text(1200), questions: z.array(text(300)).min(1).max(2) }).strict(),
-  z.object({ kind: z.literal('plan'), message: text(1200), plan: creationPlanSchema }).strict(),
+  // [M40] project 与 plan 同级（LLM 建议值；不入 planHash → 改立项信息不会作废已确认的方案）
+  z.object({ kind: z.literal('plan'), message: text(1200), plan: creationPlanSchema, project: projectMetaInputSchema.optional() }).strict(),
 ])
 export type PlanningReply = z.infer<typeof planningReplySchema>
 export const requestKeySchema = z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/)
@@ -63,6 +92,8 @@ export const confirmationSchema = z.object({
   planHash: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: requestKeySchema,
   acceptUnpriced: z.boolean().default(false),
+  // [M40] 确认即立项：前端「将创建的项目」可覆盖值（缺项沿用草稿行现值）
+  project: projectMetaInputSchema.optional(),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
 

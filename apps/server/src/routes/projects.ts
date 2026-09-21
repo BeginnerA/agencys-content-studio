@@ -37,7 +37,8 @@ export const projectsRoutes = new Hono()
 
 // GET /projects —— 项目列表（?status= 过滤；含最近 run 与资产计数）
 projectsRoutes.get('/projects', h(async (c) => {
-  const status = c.req.query('status') ?? 'active'
+  // [M40] 只开放 active|archived：轻松创作未立项的 draft 影子项目一律不出列表（其余值归 active）
+  const status = c.req.query('status') === 'archived' ? 'archived' : 'active'
   const rows = await db
     .select()
     .from(projects)

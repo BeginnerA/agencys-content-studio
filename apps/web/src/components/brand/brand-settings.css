@@ -1,0 +1,177 @@
+.bs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.bs-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+
+.bs-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.bs-tip {
+  font-weight: 400;
+  font-size: 11.5px;
+}
+
+.bs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bs-row.dim {
+  opacity: 0.5;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.bs-lb {
+  min-width: 44px;
+  font-size: 12px;
+  color: var(--text-2);
+  flex: none;
+}
+
+.bs-lb-2 {
+  margin-left: 10px;
+}
+
+.bs-ck {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.bs-ck-in {
+  margin-left: 10px;
+}
+
+.bs-radios {
+  gap: 16px;
+}
+
+.bs-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.bs-file {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.bs-wm {
+  width: 46px;
+  height: 26px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: repeating-conic-gradient(
+      rgb(148 163 184 / 18%) 0% 25%,
+      transparent 0% 50%
+    )
+    0 0 / 10px 10px;
+  flex: none;
+}
+
+.bs-video {
+  width: 150px;
+  height: 84px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #000;
+  flex: none;
+}
+
+.bs-txt {
+  /* 覆盖全局 input width:100%（行内伸缩布局） */
+  width: auto;
+  min-width: 180px;
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+
+.bs-num {
+  /* 覆盖全局 input width:100% */
+  width: 68px;
+  padding: 3px 7px;
+  font-size: 12.5px;
+  flex: none;
+}
+
+.bs-sel {
+  /* 覆盖全局 select width:100%：按内容宽收缩（grow 时占满） */
+  width: auto;
+  max-width: 260px;
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+
+.bs-color {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.bs-fileinput {
+  display: none;
+}
+
+.bs-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--ok-weak);
+  color: var(--ok);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+
+/* 字幕样式表单（与合成弹窗同构） */
+.st-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: opacity 0.15s;
+}
+
+.st-grid.off {
+  opacity: 0.55;
+}
+
+.bs-sel.grow {
+  max-width: none;
+}

@@ -10,7 +10,9 @@ import {
 } from '../../lib/types'
 import type {
   Asset,
+  CreationDeleteResult,
   CreationDetail,
+  CreationProjectMeta,
   CreationSessionListItem,
   CreationMode,
   CreationRefKind,
@@ -80,6 +82,7 @@ function commit(id: number, detail: CreationDetail): void {
   if (id !== state.currentId) return
   state.detail = detail
   syncConfirmKey()
+  syncProjectDraft()
 }
 
 // 确认幂等键：同一 planHash+revision 复用，重试点击不新起 run；方案变化后重置
@@ -99,6 +102,65 @@ function syncConfirmKey(): void {
   confirmKey.hash = hash
   confirmKey.revision = s?.planRevision ?? 0
   confirmKey.key = hash ? newRequestKey('cfm') : ''
+}
+
+// ===== [M40] 立项信息可编辑态：默认用平台智能填写值（Tier A），用户改过的字段确认后随 confirm 提交（Tier B 可覆盖） =====
+export const projectDraft = reactive({
+  name: '',
+  genre: '',
+  templateKey: '',
+  tagsText: '',
+  brief: '',
+  /** 用户改过任一项 → true：服务端回读不再覆盖本地编辑；确认成功后重置 */
+  dirty: false,
+})
+
+/** 标签文本 → 数组（支持中英文逗号/顿号分隔；去空去重） */
+export function parseTagsText(text: string): string[] {
+  const out: string[] = []
+  for (const t of text.split(/[,，、]/)) {
+    const v = t.trim()
+    if (v && !out.includes(v)) out.push(v)
+  }
+  return out
+}
+
+/** 服务端智能填写值回同步到编辑态（用户未改动时才覆盖，避免冲掉正在输入的内容） */
+function syncProjectDraft(): void {
+  const p = state.detail?.session.project
+  if (!p) {
+    projectDraft.dirty = false
+    return
+  }
+  if (projectDraft.dirty) return
+  projectDraft.name = p.name
+  projectDraft.genre = p.genre
+  projectDraft.templateKey = p.templateKey
+  projectDraft.tagsText = p.tags.join('，')
+  projectDraft.brief = p.brief
+}
+
+/** 可编辑窗口：仅未立项（draft 影子态）且方案就绪时展示编辑区 */
+const projectEditable = computed(
+  () => state.detail?.session.project?.isDraft === true,
+)
+
+/** 确认时携带的覆盖值：只提交与平台智能填写值不同的字段；全无改动 → undefined（沿用服务端值） */
+function projectOverrides(): Partial<CreationProjectMeta> | undefined {
+  const p = state.detail?.session.project
+  if (!p || !p.isDraft || !projectDraft.dirty) return undefined
+  const o: Partial<CreationProjectMeta> = {}
+  if (projectDraft.name.trim() && projectDraft.name.trim() !== p.name)
+    o.name = projectDraft.name.trim()
+  if (projectDraft.genre && projectDraft.genre !== p.genre)
+    o.genre = projectDraft.genre
+  if (projectDraft.templateKey && projectDraft.templateKey !== p.templateKey)
+    o.templateKey = projectDraft.templateKey
+  const tags = parseTagsText(projectDraft.tagsText)
+  if (tags.length && tags.join(',') !== p.tags.join(',')) o.tags = tags
+  if (projectDraft.brief.trim() && projectDraft.brief.trim() !== p.brief)
+    o.brief = projectDraft.brief.trim()
+  return Object.keys(o).length ? o : undefined
 }
 
 async function fetchDetail(id: number): Promise<void> {
@@ -167,6 +229,7 @@ async function open(id: number): Promise<void> {
   state.error = ''
   state.notice = ''
   confirmKey.hash = ''
+  projectDraft.dirty = false
   state.attachments = []
   state.loadingDetail = true
   try {
@@ -180,7 +243,7 @@ async function open(id: number): Promise<void> {
   }
 }
 
-/** 首次发送一句话：自动建草稿项目 + 会话 + 规划（可能产生 LLM 费用） */
+/** 首次发送一句话：建会话 + 影子草稿项目（对用户隐身，不立项）并规划（会产生 LLM 费用） */
 async function startIdea(content: string): Promise<number | null> {
   state.busySend = true
   state.error = ''
@@ -260,8 +323,13 @@ async function confirm(acceptUnpriced: boolean): Promise<number | null> {
       planHash: s.planHash,
       idempotencyKey: confirmKey.key,
       acceptUnpriced,
+      // [M40] 确认才立项：携带用户覆盖过的立项字段（不入 planHash，非法值服务端回落真源并在对话中说明）
+      ...(projectOverrides() ? { project: projectOverrides() } : {}),
     })
     await fetchDetail(id)
+    // [M40] 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
+    projectDraft.dirty = false
+    syncProjectDraft()
     ensurePolling()
     return runId
   } catch (e) {
@@ -318,6 +386,28 @@ function leave(): void {
   stopPolling()
   state.currentId = 0
   state.attachments = []
+}
+
+/**
+ * [M40+] 删除会话（清理「聊了一半放弃」的记录）。
+ * 服务端判定删除范围：未立项 → 连同影子项目一并回收（不留不可见行）；已立项 → 只删对话记录，项目保留。
+ * 返回服务端结果供页面如实转告（失败时写 state.error，不假称已删）。
+ */
+async function removeSession(id: number): Promise<CreationDeleteResult | null> {
+  state.error = ''
+  try {
+    const res = await creationChatApi.remove(id)
+    state.sessions = state.sessions.filter((x) => x.id !== id)
+    if (state.currentId === id) {
+      stopPolling()
+      state.currentId = 0
+      state.detail = null
+    }
+    return res
+  } catch (e) {
+    state.error = errText(e)
+    return null
+  }
 }
 
 // ===== [M31] 参考附件登记（composer：上传或从素材选取 → 落当前会话项目；不计费、不触发规划） =====
@@ -457,6 +547,8 @@ export function useEasyCreate() {
   return {
     state,
     confirmKey,
+    projectDraft,
+    projectEditable,
     modeLabel,
     canConfirm: computed(
       () =>
@@ -476,6 +568,7 @@ export function useEasyCreate() {
     cancel,
     retry,
     leave,
+    removeSession,
     addAttachment,
     addAssetReference,
     changeAttachmentRole,

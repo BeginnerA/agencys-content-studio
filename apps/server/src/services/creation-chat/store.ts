@@ -46,6 +46,14 @@ export async function creationDetail(id: number) {
       planRevision: session.planRevision, planHash: session.planHash, preflight: parseJson(session.preflight, null),
       runId: session.runId, runHistory: parseJson(session.runHistory, []), error: session.error,
       createdAt: session.createdAt, updatedAt: session.updatedAt, projectDeleted: !project || project.deletedAt !== null,
+      // [M40] 立项预览：未转正项目以 draft 影子态存在（不进项目列表），确认时才写入完整信息并转正
+      project: project
+        ? {
+            id: project.id, name: project.name, genre: project.genre, templateKey: project.templateKey,
+            tags: parseJson<string[]>(project.tags, []), brief: project.brief ?? '',
+            status: project.status, isDraft: project.status === 'draft' && project.deletedAt === null,
+          }
+        : null,
     },
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, payload: parseJson(m.payload, null), createdAt: m.createdAt })),
     planningUsage: { cost: planning.reduce((n, u) => n + (u.cost ?? 0), 0), unpriced: planning.filter((u) => u.cost === null).length },

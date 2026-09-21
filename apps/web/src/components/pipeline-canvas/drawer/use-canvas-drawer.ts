@@ -6,7 +6,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type {
   Asset,
   GenTask,
-  RerunResult,
   RunCanvasNode,
   RunStep,
   TemplateCanvasNode,
@@ -146,7 +145,7 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     }
   })
 
-  function onRerunDone(res: RerunResult): void {
+  function onRerunDone(res: { note: string }): void {
     showRerun.value = false
     notice.value = res.note || '已提交单步重跑'
     emit('refresh')

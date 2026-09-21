@@ -547,22 +547,33 @@ export function useEntitiesPage() {
     refWasLive = false
   }
 
-  async function openRefGen() {
-    refErr.value = ''
+  /**
+   * [M19 P6] 打开批量出图弹窗前的门禁校验。
+   * 失败原因写入 err（页级可见）而非 refErr：refErr 仅渲染在弹窗内，
+   * 而校验不通过时弹窗不会打开 → 若只写 refErr 会造成「点击无反应」的静默失败。
+   */
+  function guardRefGenSelection(): boolean {
     const list = selItems.value
     if (!list.length) {
-      refErr.value = '先勾选素材卡片（左上角复选框）'
-      return
+      err.value = '先勾选素材卡片（左上角复选框）'
+      return false
     }
     if (list.length > REFGEN_MAX_ITEMS) {
-      refErr.value = `单次最多 ${REFGEN_MAX_ITEMS} 个素材（当前已选 ${list.length} 个）`
-      return
+      err.value = `单次最多 ${REFGEN_MAX_ITEMS} 个素材（当前已选 ${list.length} 个）`
+      return false
     }
+    if (!selProjectId.value) {
+      err.value = '所选素材须同属一个项目（全局素材不参与批量生成，请在右上「按归属」筛选到具体项目后再勾选）'
+      return false
+    }
+    err.value = ''
+    return true
+  }
+
+  async function openRefGen() {
+    refErr.value = ''
+    if (!guardRefGenSelection()) return
     const pid = selProjectId.value
-    if (!pid) {
-      refErr.value = '所选素材须同属一个项目（全局素材不参与批量生成）'
-      return
-    }
     refPid.value = pid
     refVariants.value = 1
     showRefGen.value = true

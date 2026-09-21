@@ -147,6 +147,22 @@ export interface CreationPreflight {
 export type CreationSessionStatus =
   'draft' | 'planning' | 'ready' | 'starting' | 'started'
 
+// ===== [M40] 立项信息：确认方案后才转正建项目，此前以 draft 影子态隐藏于项目列表 =====
+/** 将创建项目的 5 项信息（与服务端 project-meta 真源对齐；用户可逐项覆盖） */
+export interface CreationProjectMeta {
+  name: string
+  genre: string
+  templateKey: string
+  tags: string[]
+  brief: string
+}
+/** 会话详情透出的立项预览（服务端 creationDetail.session.project） */
+export type CreationProjectPreview = CreationProjectMeta & {
+  id: number
+  status: string
+  isDraft: boolean
+}
+
 /** 会话状态 → 中文标签（列表与详情共用，避免两处映射漂移） */
 export const CREATION_STATUS_LABELS: Record<CreationSessionStatus, string> = {
   draft: '草稿',
@@ -222,6 +238,8 @@ export interface CreationSessionView {
   createdAt: number
   updatedAt: number
   projectDeleted: boolean
+  /** [M40] 立项预览：未确认时为 draft 影子项目（不进项目列表），确认后转正 */
+  project: CreationProjectPreview | null
 }
 
 export interface CreationProgressStep {
@@ -265,6 +283,15 @@ export interface CreationDetail {
   result: CreationResult | null
 }
 
+/** [M40+] 删除会话结果：未立项时连影子项目一并回收；已立项只删记录（项目保留，reason 说明原因） */
+export interface CreationDeleteResult {
+  ok: true
+  mode: 'draft_purged' | 'session_only'
+  projectId: number | null
+  reason: string
+  purged: Record<string, number>
+}
+
 export interface CreationSessionListItem {
   id: number
   projectId: number
@@ -284,6 +311,8 @@ export interface CreationConfirmBody {
   planHash: string
   idempotencyKey: string
   acceptUnpriced: boolean
+  /** [M40] 立项覆盖值：只带用户改过的字段，缺项沿用平台智能填写（不入 planHash） */
+  project?: Partial<CreationProjectMeta>
 }
 
 export interface CreationRetryBody extends CreationConfirmBody {

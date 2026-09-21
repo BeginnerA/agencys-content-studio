@@ -3,14 +3,11 @@ import { nextTick, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
 import AssetPickerModal from './AssetPickerModal.vue'
+import MessageRefBubble from './MessageRefBubble.vue'
+import AttachmentTray from './AttachmentTray.vue'
 import { assetApi } from '../../lib/api'
-import { REF_ROLE_LABELS, REF_VALID_ROLES } from '../../lib/types'
-import type {
-  Asset,
-  CreationChatMessage,
-  CreationRefKind,
-  CreationRefRole,
-} from '../../lib/types'
+import { isAttachment, refAssetId } from './ref-utils'
+import type { Asset, CreationChatMessage } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
@@ -41,48 +38,16 @@ function submit(): void {
   void props.s.send(text)
 }
 
-// [M31] 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
-function pickFiles(): void {
-  fileInput.value?.click()
-}
-async function onFiles(e: Event): Promise<void> {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  for (const f of files) await props.s.addAttachment(f)
-}
 // [M31+] 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
 async function onPickAssets(picked: Asset[]): Promise<void> {
   showPicker.value = false
   for (const a of picked) await props.s.addAssetReference(a)
 }
-function onRoleChange(clientId: string, role: string): void {
-  void props.s.changeAttachmentRole(clientId, role as CreationRefRole)
-}
-function kindIcon(kind: CreationRefKind): string {
-  return kind === 'image' ? 'photo' : kind === 'video' ? 'film' : 'doc'
-}
 
-// [M31+] 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现）
+// [M31+] 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现；
+// 展示元信息纯函数另拆 ref-utils，气泡组件另拆 MessageRefBubble）
 const previewAsset = ref<Asset | null>(null)
 const refLoading = ref<number | null>(null)
-const isAttachment = (m: CreationChatMessage): boolean =>
-  m.payload?.kind === 'attachment' && typeof m.payload.assetId === 'number'
-const refAssetId = (m: CreationChatMessage): number => m.payload?.assetId ?? 0
-const refKind = (m: CreationChatMessage): CreationRefKind =>
-  m.payload?.ref?.kind ?? 'image'
-const refRoleLabel = (m: CreationChatMessage): string => {
-  const role = m.payload?.ref?.role
-  return role ? REF_ROLE_LABELS[role] : '参考'
-}
-// 文件名：剥离服务端消息前缀「已上传参考素材：」，回退整句
-const refName = (m: CreationChatMessage): string =>
-  m.content.replace(/^已上传参考素材：/, '').trim() || m.content
-// 图片/视频走后端缩略图端点（与方案卡同源 ?v=2 破缓存）；音频无缩略图 → 图标
-const refThumb = (m: CreationChatMessage): string | null =>
-  refKind(m) === 'image' || refKind(m) === 'video'
-    ? `/api/v1/assets/${refAssetId(m)}/thumb?v=2`
-    : null
 async function openRefPreview(m: CreationChatMessage): Promise<void> {
   const id = refAssetId(m)
   if (!id || refLoading.value === id) return
@@ -104,6 +69,17 @@ function useQuestion(q: string): void {
 
 const planning = () =>
   props.s.state.detail?.session.status === 'planning' || props.s.state.busySend
+
+// [M31] 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
+function pickFiles(): void {
+  fileInput.value?.click()
+}
+async function onFiles(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  for (const f of files) await props.s.addAttachment(f)
+}
 </script>
 
 <template>
@@ -131,44 +107,12 @@ const planning = () =>
         </span>
         <div class="mcol">
           <div class="who">{{ m.role === 'user' ? '我' : '策划助手' }}</div>
-          <div
+          <MessageRefBubble
             v-if="isAttachment(m)"
-            class="bubble ref-bubble"
-            role="button"
-            tabindex="0"
-            :aria-label="'查看参考素材：' + refName(m)"
-            :aria-busy="refLoading === refAssetId(m)"
-            @click="openRefPreview(m)"
-            @keydown.enter.prevent="openRefPreview(m)"
-            @keydown.space.prevent="openRefPreview(m)"
-          >
-            <span class="ref-thumb">
-              <img
-                v-if="refThumb(m)"
-                :src="refThumb(m) ?? ''"
-                :alt="refName(m)"
-                loading="lazy"
-              />
-              <Icon v-else :name="kindIcon(refKind(m))" :size="18" />
-              <span class="ref-view" aria-hidden="true">
-                <Icon name="eye" :size="11" />
-              </span>
-              <span
-                v-if="refLoading === refAssetId(m)"
-                class="ref-load"
-                aria-hidden="true"
-              >
-                <Icon name="refresh" :size="16" />
-              </span>
-            </span>
-            <span class="ref-meta">
-              <span class="ref-tag">
-                <Icon :name="kindIcon(refKind(m))" :size="10" /> 参考 ·
-                {{ refRoleLabel(m) }}
-              </span>
-              <span class="ref-file" :title="refName(m)">{{ refName(m) }}</span>
-            </span>
-          </div>
+            :m="m"
+            :loading="refLoading === refAssetId(m)"
+            @open="openRefPreview(m)"
+          />
           <div v-else class="bubble">{{ m.content }}</div>
           <div
             v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
@@ -212,70 +156,7 @@ const planning = () =>
     </div>
 
     <form class="composer" @submit.prevent="submit">
-      <div v-if="s.state.attachments.length" class="atts">
-        <div class="att-h">
-          <Icon name="photo" :size="12" /> 参考素材 · 发送后编译进方案并影响制作
-        </div>
-        <div
-          v-for="a in s.state.attachments"
-          :key="a.clientId"
-          class="att"
-          :class="{ 'att-errored': a.error }"
-        >
-          <span class="att-thumb">
-            <img
-              v-if="a.thumbUrl"
-              :src="a.thumbUrl"
-              :alt="a.name"
-              loading="lazy"
-            />
-            <Icon v-else :name="kindIcon(a.kind)" :size="16" />
-          </span>
-          <span class="att-main">
-            <span class="att-name" :title="a.name">{{ a.name }}</span>
-            <span class="att-sub">
-              <span v-if="a.uploading" class="muted">上传中…</span>
-              <span v-else-if="a.error" class="att-err">{{ a.error }}</span>
-              <span v-else-if="a.assetId" class="ok">已就绪</span>
-            </span>
-          </span>
-          <select
-            class="att-role"
-            :value="a.role"
-            :disabled="a.uploading"
-            :aria-label="'参考用途：' + a.name"
-            @change="
-              onRoleChange(
-                a.clientId,
-                ($event.target as HTMLSelectElement).value,
-              )
-            "
-          >
-            <option v-for="r in REF_VALID_ROLES[a.kind]" :key="r" :value="r">
-              {{ REF_ROLE_LABELS[r] }}
-            </option>
-          </select>
-          <button
-            v-if="a.error && !a.uploading"
-            class="icobtn"
-            type="button"
-            title="重试上传"
-            aria-label="重试上传"
-            @click="s.retryAttachment(a.clientId)"
-          >
-            <Icon name="refresh" :size="14" />
-          </button>
-          <button
-            class="icobtn"
-            type="button"
-            title="移除参考"
-            aria-label="移除参考"
-            @click="s.removeAttachment(a.clientId)"
-          >
-            <Icon name="x" :size="14" />
-          </button>
-        </div>
-      </div>
+      <AttachmentTray v-if="s.state.attachments.length" :s="s" />
       <textarea
         v-model="draft"
         rows="2"
@@ -464,101 +345,6 @@ const planning = () =>
   box-shadow: 0 6px 18px -12px rgb(79 70 229 / 70%);
 }
 
-/* [M31+] 参考素材卡片气泡：缩略图 + 文件名 + 查看角标（整卡可点，键盘可达） */
-.ref-bubble {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  max-width: 100%;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.ref-bubble:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 8px 20px -12px rgb(79 70 229 / 85%);
-}
-
-.ref-bubble:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-
-.ref-thumb {
-  position: relative;
-  flex: none;
-  width: 46px;
-  height: 46px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgb(0 0 0 / 22%);
-  border: 1px solid rgb(255 255 255 / 28%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-}
-
-.ref-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.ref-view {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 17px;
-  height: 17px;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 55%);
-  color: #fff;
-  pointer-events: none;
-}
-
-.ref-load {
-  position: absolute;
-  inset: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 45%);
-  color: #fff;
-}
-
-.ref-meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ref-tag {
-  font-size: 10.5px;
-  opacity: 0.92;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.ref-file {
-  font-size: 12.5px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 190px;
-}
-
 .msg.assistant .bubble.wait {
   color: var(--text-2);
   display: inline-flex;
@@ -724,114 +510,6 @@ const planning = () =>
 
 .att-btn {
   flex: none;
-}
-
-.atts {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel-2);
-  padding: 9px 11px;
-  margin-bottom: 9px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.att-h {
-  font-size: 11.5px;
-  color: var(--text-3);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.att-h .ic {
-  color: var(--accent-h);
-}
-
-.att {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.att-thumb {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 7px;
-  overflow: hidden;
-  background: var(--raised);
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-}
-
-.att-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.att-main {
-  min-width: 0;
-  /* 全局 select{width:100%} 曾把用途下拉撑满整行、文件名挤成竖排；下方 .att-role width:auto 修正后，这里再给最小可读宽度兜底 */
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.att-name {
-  font-size: 12.5px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.att-sub {
-  font-size: 11px;
-}
-
-.att-sub .ok {
-  color: var(--run);
-}
-
-.att-err {
-  color: var(--bad);
-}
-
-.att-role {
-  flex: none;
-  width: auto; /* 覆盖全局 select{width:100%}，防止撑满 .att 行挤没文件名 */
-  font-size: 12px;
-  padding: 3px 6px;
-  border-radius: 7px;
-  background: var(--raised);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-}
-
-.icobtn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: none;
-  border: 1px solid transparent;
-  color: var(--text-3);
-  cursor: pointer;
-}
-
-.icobtn:hover {
-  border-color: var(--border-strong);
-  color: #fff;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import { templateApi } from '../../lib/api'
+import { PROJECT_GENRES } from '../../lib/scene'
 import { fmtCost } from '../../lib/format'
-import { REF_ROLE_LABELS } from '../../lib/types'
-import type { CreationRef } from '../../lib/types'
+import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
+import PlanRefs from './PlanRefs.vue'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
@@ -16,30 +18,6 @@ const est = computed(() => pf.value?.estimate ?? null)
 
 // [M31] 已采纳参考素材（来自服务端编译的 plan.refs）
 const refs = computed(() => plan.value?.refs ?? [])
-const thumbFor = (r: CreationRef): string | null =>
-  r.kind === 'image' || r.kind === 'video'
-    ? `/api/v1/assets/${r.assetId}/thumb?v=2`
-    : null
-const refKindIcon = (k: CreationRef['kind']): string =>
-  k === 'image' ? 'photo' : k === 'video' ? 'film' : 'doc'
-function roleHint(r: CreationRef): string {
-  switch (r.role) {
-    case 'style':
-      return '作为画风 / 主体参考注入图像生成'
-    case 'first_frame':
-      return r.shotId
-        ? `作为镜头 ${r.shotId} 的图生视频首帧`
-        : '作为图生视频首帧'
-    case 'subject':
-      return '用于主体 / 角色跨镜一致性'
-    case 'content':
-      return '解析视频可见/可听内容以约束方案'
-    case 'bgm':
-      return '合成期作为背景乐混入（仅用户素材，不额外生成）'
-    default:
-      return ''
-  }
-}
 
 const modeText = computed(() =>
   plan.value?.mode === 'dynamic' ? '动态视频镜头' : '多图配音（静态画面）',
@@ -96,6 +74,33 @@ const confirmed = computed(
     !!detail.value &&
     ['starting', 'started'].includes(detail.value.session.status),
 )
+
+// ===== [M40] 「将创建的项目」：默认智能填写，确认前可逐项覆盖；点开始制作才真正立项 =====
+const proj = computed(() => detail.value?.session.project ?? null)
+const showProject = computed(() => !!proj.value?.isDraft && !confirmed.value)
+const templates = ref<TemplateMeta[]>([])
+let templatesLoaded = false
+async function ensureTemplates(): Promise<void> {
+  if (templatesLoaded) return
+  try {
+    templates.value = (await templateApi.list()).items
+    templatesLoaded = true
+  } catch {
+    /* 拉取失败不阻断：下拉仍保留当前值（下方兼容项） */
+  }
+}
+watch(showProject, (v) => void (v && ensureTemplates()), { immediate: true })
+const templateOptions = computed(() => {
+  const list = templates.value.map((t) => ({ key: t.key, name: t.name }))
+  const cur = props.s.projectDraft.templateKey
+  if (cur && !list.some((t) => t.key === cur))
+    list.unshift({ key: cur, name: `${cur}（当前）` })
+  return list
+})
+/** 任一字段的本地编辑都要置 dirty，阻止后续服务端回读冲掉正在输入的内容 */
+function touchProject(): void {
+  props.s.projectDraft.dirty = true
+}
 
 async function onConfirm(): Promise<void> {
   await props.s.confirm(acceptUnpriced.value)
@@ -178,39 +183,74 @@ async function onConfirm(): Promise<void> {
       </div>
     </div>
 
-    <div v-if="refs.length" class="refs">
+    <div v-if="showProject && proj" class="project">
       <div class="bl">
-        参考素材（已冻结进方案 · 确认即执行 · 编辑/删除会使旧确认失效）
+        <Icon name="folder" :size="13" /> 将创建的项目
+        <span class="bl-hint muted"
+          >默认已按方案智能填写 —— 点「开始制作」时才立项，在此之前不进项目列表；任何一项都可改</span
+        >
       </div>
-      <ul class="reft">
-        <li v-for="r in refs" :key="r.assetId + ':' + r.role" class="refi">
-          <span class="ref-thumb">
-            <img
-              v-if="thumbFor(r)"
-              :src="thumbFor(r) ?? ''"
-              :alt="REF_ROLE_LABELS[r.role]"
-              loading="lazy"
-            />
-            <Icon v-else :name="refKindIcon(r.kind)" :size="15" />
-          </span>
-          <span class="ref-body">
-            <span class="ref-role">
-              <Icon name="check" :size="11" /> {{ REF_ROLE_LABELS[r.role]
-              }}<span v-if="r.shotId" class="ref-shot mono">
-                · {{ r.shotId }}</span
-              >
-            </span>
-            <span class="ref-hint muted">{{ roleHint(r) }}</span>
-          </span>
-          <span class="ref-kind mono">{{ r.kind }}</span>
-        </li>
-      </ul>
-      <p v-if="est && est.videoAnalysisCount > 0" class="ref-note">
-        <Icon name="alert" :size="11" /> 含
-        {{ est.videoAnalysisCount }} 段参考视频解析（多模态 +
-        转写），价格依供应商，见上方未计价项。
+      <div class="pj-grid">
+        <label class="pj-f"
+          ><span>名称</span>
+          <input
+            v-model="s.projectDraft.name"
+            type="text"
+            :maxlength="60"
+            placeholder="项目名称"
+            @input="touchProject"
+          />
+        </label>
+        <label class="pj-f"
+          ><span>载体</span>
+          <select v-model="s.projectDraft.genre" @change="touchProject">
+            <option v-for="g in PROJECT_GENRES" :key="g.value" :value="g.value">
+              {{ g.label }}
+            </option>
+          </select>
+        </label>
+        <label class="pj-f"
+          ><span>模板</span>
+          <select
+            v-model="s.projectDraft.templateKey"
+            @change="touchProject"
+          >
+            <option v-for="t in templateOptions" :key="t.key" :value="t.key">
+              {{ t.name }}
+            </option>
+          </select>
+        </label>
+        <label class="pj-f pj-wide"
+          ><span>标签</span>
+          <input
+            v-model="s.projectDraft.tagsText"
+            type="text"
+            placeholder="多个标签用逗号分隔，≤ 6 个"
+            @input="touchProject"
+          />
+        </label>
+        <label class="pj-f pj-wide"
+          ><span>简介</span>
+          <textarea
+            v-model="s.projectDraft.brief"
+            rows="2"
+            :maxlength="500"
+            placeholder="项目简介（默认取方案摘要）"
+            @input="touchProject"
+          />
+        </label>
+      </div>
+      <p class="pj-note muted">
+        <Icon name="alert" :size="11" />
+        确认时才会创建项目并出现在项目列表；非法值（如模板不存在、超字数）会回落平台校验的合理值并在对话中说明，不阻断制作。
       </p>
     </div>
+
+    <PlanRefs
+      v-if="refs.length"
+      :refs="refs"
+      :video-analysis-count="est?.videoAnalysisCount ?? 0"
+    />
 
     <div class="fold">
       <button
@@ -634,103 +674,90 @@ async function onConfirm(): Promise<void> {
   background: var(--accent-weak);
 }
 
-.refs {
+/* ---------- [M40] 将创建的项目（立项预览 + 可覆盖） ---------- */
+.project {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 11px;
   padding: 12px 14px;
-}
-
-.refs > .bl {
-  font-size: 12px;
-  color: var(--text-2);
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.reft {
-  margin: 0;
-  padding: 0;
-  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-}
-
-.refi {
-  display: flex;
-  align-items: center;
   gap: 10px;
 }
 
-.ref-thumb {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--raised);
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-}
-
-.ref-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.ref-body {
-  min-width: 0;
-  flex: 1;
+.project > .bl {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
 }
 
-.ref-role {
-  font-size: 12.5px;
-  color: var(--text);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.project > .bl .ic {
+  color: var(--accent-h);
+  align-self: center;
 }
 
-.ref-role .ic {
-  color: var(--run);
-}
-
-.ref-shot {
-  color: var(--text-3);
-}
-
-.ref-hint {
-  font-size: 11.5px;
+.bl-hint {
+  font-size: 11px;
+  font-weight: 400;
   line-height: 1.5;
 }
 
-.ref-kind {
-  flex: none;
-  font-size: 11px;
+.pj-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 12px;
+}
+
+.pj-wide {
+  grid-column: 1 / -1;
+}
+
+.pj-f {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pj-f > span {
+  font-size: 11.5px;
   color: var(--text-3);
 }
 
-.ref-note {
-  margin: 10px 0 0;
+.pj-f input,
+.pj-f select,
+.pj-f textarea {
+  font-size: 12.5px;
+  border-radius: 8px;
+}
+
+.pj-f textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.pj-note {
+  margin: 0;
   font-size: 11.5px;
-  color: var(--warn);
   display: flex;
   gap: 5px;
   align-items: flex-start;
   line-height: 1.5;
 }
 
-.ref-note .ic {
+.pj-note .ic {
   color: var(--warn);
   flex: none;
-  margin-top: 1px;
+  margin-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .pj-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

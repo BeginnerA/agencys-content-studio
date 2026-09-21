@@ -6,9 +6,11 @@
  * - [M23] template 态 + 编辑模式：画布内编辑区（标题 / 输入字段；本地草稿，patch 经 emit('edit') 回流）
  * - node.key / status / assetIds 变化重载各分区；操作后 emit refresh 由父级全量重拉（REST 对账）
  * ---- [M28] 已拆分：交互逻辑经 use-canvas-drawer.ts 装配（行为零变更）----
+ * ---- [M26-split] [M23] 编辑区拆至 EditSection.vue（行为零变更）----
  */
 import type { DrawerSel } from './use-canvas-drawer'
 import { useCanvasDrawer } from './use-canvas-drawer'
+import EditSection from './EditSection.vue'
 import {
   fmtMs,
   fmtTime,
@@ -82,20 +84,6 @@ const {
   sendItems,
   onSendDone,
 } = useCanvasDrawer(props, emit)
-
-// ---- [M23] 编辑区输入转交（受控：值经父级 useCanvasEdit overlay 回流） ----
-function onEditTitle(e: Event): void {
-  if (!props.editNode) return
-  emit('edit', props.editNode.key, {
-    title: (e.target as HTMLInputElement).value,
-  })
-}
-function onEditText(fieldKey: string, e: Event): void {
-  if (!props.editNode) return
-  emit('edit', props.editNode.key, {
-    texts: { [fieldKey]: (e.target as HTMLInputElement).value },
-  })
-}
 </script>
 
 <template>
@@ -263,57 +251,12 @@ function onEditText(fieldKey: string, e: Event): void {
       <div v-if="taskErr" class="err-text">{{ taskErr }}</div>
     </section>
 
-    <!-- ===== [M23] template 态：画布内编辑（本地草稿；E3） ===== -->
-    <section v-if="editNode" class="sec">
-      <div class="sec-h sh-row">
-        <span>画布内编辑</span>
-        <span class="sp" />
-        <span class="etag">草稿</span>
-      </div>
-      <div class="efld">
-        <label class="efl" :for="`edt-title-${editNode.key}`">
-          步骤标题
-          <em v-if="editNode.titleDirty" class="edot" title="已修改" />
-        </label>
-        <input
-          :id="`edt-title-${editNode.key}`"
-          type="text"
-          :class="{ ebad: editNode.title.trim() === '' }"
-          :value="editNode.title"
-          placeholder="标题不能为空"
-          @input="onEditTitle"
-        />
-        <div v-if="editNode.title.trim() === ''" class="err-text eerr">
-          标题不能为空
-        </div>
-      </div>
-      <div class="efld">
-        <div class="efl">输入字段</div>
-        <div v-if="editNode.fields.length" class="eflist">
-          <div v-for="f in editNode.fields" :key="f.key" class="efrow">
-            <label class="efk mono" :for="`edt-${editNode.key}-${f.key}`">
-              {{ f.key }}
-              <em v-if="f.dirty" class="edot" title="已修改" />
-            </label>
-            <input
-              v-if="f.editable"
-              :id="`edt-${editNode.key}-${f.key}`"
-              type="text"
-              :value="f.value"
-              @input="onEditText(f.key, $event)"
-            />
-            <div v-else class="efro" :title="f.value">
-              <span class="efro-t mono">{{ f.value }}</span>
-              <span class="efro-tag">只读</span>
-            </div>
-          </div>
-        </div>
-        <div v-else class="muted">该步骤无输入字段</div>
-      </div>
-      <div class="muted hint">
-        编辑为本地草稿，不改动原模板文件；重置与退出编辑在顶栏操作。
-      </div>
-    </section>
+    <!-- ===== [M23] template 态：画布内编辑（本地草稿；E3；M26-split 拆至 EditSection） ===== -->
+    <EditSection
+      v-if="editNode"
+      :edit-node="editNode"
+      @edit="(k, p) => emit('edit', k, p)"
+    />
 
     <!-- ===== template 态：设计信息 ===== -->
     <section v-if="tn" class="sec">
@@ -768,92 +711,4 @@ function onEditText(fieldKey: string, e: Event): void {
   font-size: 11.5px;
 }
 
-/* ---- [M23] 画布内编辑区 ---- */
-.etag {
-  font-size: 10.5px;
-  color: var(--warn);
-  border: 1px solid rgb(251 191 36 / 35%);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-weight: 400;
-}
-
-.efld {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.efl {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--text-2);
-}
-
-.edot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--warn);
-  flex: none;
-}
-
-input.ebad {
-  border-color: var(--bad);
-}
-
-.eerr {
-  font-size: 11px;
-}
-
-.eflist {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.efrow {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.efk {
-  font-size: 11px;
-  color: var(--accent-h);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.efro {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 5px 8px;
-  min-width: 0;
-}
-
-.efro-t {
-  flex: 1;
-  font-size: 11px;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.efro-tag {
-  flex: none;
-  font-size: 10px;
-  color: var(--text-3);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 6px;
-}
 </style>

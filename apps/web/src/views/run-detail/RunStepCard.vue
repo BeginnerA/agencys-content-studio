@@ -28,6 +28,7 @@ const {
   onComposeInfo,
   recomposeStep,
   canRerunStep,
+  canCascadeStep,
   openRerun,
 } = props.u
 const { badges, deriveOpen, hasFinalVideo } = props.e
@@ -128,15 +129,15 @@ const { badges, deriveOpen, hasFinalVideo } = props.e
         </button>
       </div>
 
-      <!-- [M11] 单步重跑（显示条件对齐服务端 assertRepairable：run 收敛 + 目标步收敛 + 无其他 failed） -->
-      <div v-if="canRerunStep(s)" class="rerun-ops">
+      <!-- [M11] 重跑（单步或级联任一可用即展示；弹窗内再细分范围，真实门禁以服务端为准） -->
+      <div v-if="canRerunStep(s) || canCascadeStep(s)" class="rerun-ops">
         <button
           class="btn sm"
           :disabled="busy"
-          title="重跑该步骤：可复用成功子任务（0 调用）或全量重跑（计费）"
+          title="重跑该步骤：可仅本步（复用/全量）或级联到末尾（下游按新产物依次重做）"
           @click="openRerun(s)"
         >
-          <Icon name="refresh" :size="12" /> 重跑
+          <Icon name="refresh" :size="12" /> 重跑…
         </button>
       </div>
 

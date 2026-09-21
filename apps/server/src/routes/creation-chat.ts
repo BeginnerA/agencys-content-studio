@@ -4,6 +4,7 @@ import { CreationError } from '../services/creation-chat/contract'
 import { createSession, refreshPreflight, sendCreationMessage } from '../services/creation-chat/planning'
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
+import { deleteCreationSession } from '../services/creation-chat/session-delete'
 import { creationDetail, listCreationSessions } from '../services/creation-chat/store'
 
 export const creationChatRoutes = new Hono()
@@ -53,3 +54,5 @@ creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await
 creationChatRoutes.post(`${path}/:id/confirm`, route(async (c) => c.json(await confirmCreation(id(c), await body(c)), 202)))
 creationChatRoutes.post(`${path}/:id/cancel`, route(async (c) => { await cancelCreation(id(c)); return c.json(await creationDetail(id(c))) }))
 creationChatRoutes.post(`${path}/:id/retry`, route(async (c) => c.json(await retryCreation(id(c), await body(c)), 202)))
+// [M40+] 删除会话：未立项时连影子项目一并清除；已立项只删会话记录（项目保留），mode/reason 如实回传。
+creationChatRoutes.delete(`${path}/:id`, route(async (c) => c.json(await deleteCreationSession(id(c)))))

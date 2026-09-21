@@ -5,7 +5,8 @@ import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
 import { memoryApi, templateApi } from '../../lib/api'
-import type { RecommendItem } from '../../lib/types'
+import { confirmDialog } from '../../lib/confirm'
+import type { CreationSessionListItem, RecommendItem } from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -122,6 +123,38 @@ function onIdeaInput(): void {
 }
 
 // 状态 → 卡片左侧强调条 + 徽标色（走共享 creationStatusTone；started 控制态按 run 真实状态派生已完成/失败/取消）
+
+// ===== [M40+] 删除创作记录：未立项时一并回收影子项目，已立项只删对话（项目保留） =====
+const delBusy = ref(0)
+const delNotice = ref('')
+const delError = ref('')
+
+async function removeItem(c: CreationSessionListItem): Promise<void> {
+  const launched = c.status === 'started' || !!c.runId
+  const ok = await confirmDialog({
+    title: '删除创作记录',
+    message: launched
+      ? `删除「${c.name}」这条创作记录？\n已立项的作品会原样保留在项目列表（含全部产物），只删这次对话记录。`
+      : `删除「${c.name}」？\n还没点「开始制作」，删掉不会留任何项目。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
+  delBusy.value = c.id
+  delNotice.value = ''
+  delError.value = ''
+  const res = await s.removeSession(c.id)
+  delBusy.value = 0
+  // 失败就当场说清（在途制作/规划未结束会被服务端拒），不假称已删
+  if (!res) {
+    delError.value = s.state.error
+    return
+  }
+  delNotice.value =
+    res.mode === 'draft_purged'
+      ? '已删除（尚未立项，没留任何项目）'
+      : res.reason || '已删除创作记录（项目保留）'
+}
 </script>
 
 <template>
@@ -202,8 +235,8 @@ function onIdeaInput(): void {
 
       <div class="pfoot">
         <span class="muted hint"
-          ><Icon name="alert" :size="13" /> 发送后自动创建草稿并开始规划（会产生
-          LLM 费用）；确认方案前不会生成任何媒体。</span
+          ><Icon name="alert" :size="13" /> 发送后开始规划（会产生
+          LLM 费用），确认前不生成媒体、不立项；点「开始制作」才创建项目，名称/载体/模板/标签/简介自动填好、可改。</span
         >
         <button
           class="cta"
@@ -260,7 +293,22 @@ function onIdeaInput(): void {
             >
               {{ creationStatusLabel(c.status, c.confirmable, c.runStatus) }}
             </span>
-            <span class="it-time muted">{{ fmtTime(c.updatedAt) }}</span>
+            <span class="it-meta">
+              <span class="it-time muted">{{ fmtTime(c.updatedAt) }}</span>
+              <button
+                class="it-del"
+                type="button"
+                title="删除这条创作记录"
+                aria-label="删除这条创作记录"
+                :disabled="delBusy > 0"
+                @click.prevent.stop="removeItem(c)"
+              >
+                <Icon
+                  :name="delBusy === c.id ? 'refresh' : 'trash'"
+                  :size="13"
+                />
+              </button>
+            </span>
           </div>
           <div class="it-name">{{ c.name }}</div>
           <div class="it-go">
@@ -268,428 +316,14 @@ function onIdeaInput(): void {
           </div>
         </RouterLink>
       </div>
+      <div v-if="delNotice" class="del-notice" role="status">
+        <Icon name="check" :size="13" /> {{ delNotice }}
+      </div>
+      <div v-if="delError" class="del-notice err" role="alert">
+        <Icon name="alert" :size="13" /> {{ delError }}
+      </div>
     </section>
   </div>
 </template>
 
-<style scoped>
-.ec {
-  width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
-}
-
-/* ---------- Hero ---------- */
-.hero {
-  position: relative;
-  padding: 30px 0 26px;
-}
-.hero-glow {
-  position: absolute;
-  top: -60px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(720px, 90%);
-  height: 240px;
-  pointer-events: none;
-  background: radial-gradient(
-    60% 60% at 50% 40%,
-    rgb(99 102 241 / 26%),
-    transparent 72%
-  );
-  filter: blur(6px);
-}
-.hero-in {
-  position: relative;
-  text-align: center;
-}
-.title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  background: linear-gradient(120deg, #8b5cf6, #a5b4fc 55%, #e0e7ff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.title .ic {
-  color: var(--accent-h);
-}
-.tagline {
-  margin: 8px 0 20px;
-  color: var(--text-2);
-  font-size: 14px;
-}
-
-.steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-.step {
-  display: inline-flex;
-  align-items: center;
-}
-.step .dot {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #dbe3ff;
-  background: var(--accent-weak);
-  border: 1px solid rgb(99 102 241 / 45%);
-}
-.st-t {
-  margin: 0 8px;
-  font-size: 13px;
-  color: var(--text-2);
-  font-weight: 500;
-}
-.step .link {
-  width: 30px;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgb(99 102 241 / 45%),
-    rgb(148 163 184 / 16%)
-  );
-}
-
-/* ---------- Prompt 卡 ---------- */
-.prompt {
-  position: relative;
-  padding: 22px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow:
-    var(--shadow-lg),
-    0 0 0 1px rgb(99 102 241 / 8%) inset;
-  background:
-    linear-gradient(180deg, rgb(99 102 241 / 5%), transparent 42%), var(--panel);
-}
-.hl {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13.5px;
-  color: var(--text);
-  font-weight: 600;
-}
-.hl .ic {
-  color: var(--accent-h);
-}
-.field {
-  position: relative;
-}
-.field textarea {
-  font-size: 15px;
-  line-height: 1.7;
-  padding-bottom: 26px;
-  resize: vertical;
-  min-height: 108px;
-}
-.count {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  font-size: 11px;
-  color: var(--text-3);
-  pointer-events: none;
-}
-
-.ex {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.ex-l {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.ex-l .ic {
-  color: var(--text-3);
-}
-.chip.q {
-  cursor: pointer;
-  border: 1px solid var(--border-strong);
-  background: var(--raised);
-  color: var(--text-2);
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
-}
-.chip.q:hover {
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent-weak);
-}
-.chip.q.roll {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--accent-h);
-  border-color: rgb(99 102 241 / 40%);
-}
-
-.pfoot {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
-/* [M35 G7] 创意→模板推荐提示条 */
-.idea-rec {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 2px;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  border: 1px dashed rgb(99 102 241 / 35%);
-  border-radius: 10px;
-  background: rgb(99 102 241 / 6%);
-  color: var(--text-2);
-}
-.idea-rec .ic {
-  color: var(--accent-h, #6366f1);
-  flex: none;
-}
-.idea-rec b {
-  color: var(--text);
-  font-weight: 600;
-}
-.hint {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  flex: 1;
-  min-width: 240px;
-  line-height: 1.5;
-}
-.hint .ic {
-  color: var(--warn);
-  flex: none;
-}
-.cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: none;
-  cursor: pointer;
-  background: var(--grad-brand);
-  color: #fff;
-  font-size: 14.5px;
-  font-weight: 600;
-  padding: 11px 24px;
-  border-radius: 11px;
-  box-shadow: 0 8px 22px -10px rgb(79 70 229 / 75%);
-  transition:
-    filter 0.15s,
-    transform 0.1s,
-    box-shadow 0.15s;
-}
-.cta:hover:not(:disabled) {
-  filter: brightness(1.08);
-  box-shadow: 0 10px 26px -10px rgb(79 70 229 / 85%);
-}
-.cta:active:not(:disabled) {
-  transform: translateY(1px);
-}
-.cta:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ---------- 我的创作 ---------- */
-.recent {
-  margin-top: 34px;
-}
-.rh {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 0 14px;
-}
-.rt {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  margin: 0;
-  color: var(--text);
-  font-weight: 700;
-}
-.rt .ic {
-  color: var(--accent-h);
-}
-.rcnt {
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: var(--chip-bg);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-
-.empty-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  text-align: center;
-  border: 1px dashed var(--border-strong);
-  border-radius: 14px;
-  padding: 40px 20px;
-  color: var(--text-2);
-  background: var(--hover);
-}
-.empty-card .ic {
-  color: var(--text-3);
-  margin-bottom: 6px;
-}
-.empty-card p {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-.empty-card span {
-  font-size: 12.5px;
-}
-.guide {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 10px;
-  font-size: 12.5px;
-  color: var(--accent-h);
-  text-decoration: none;
-  border: 1px solid rgb(99 102 241 / 35%);
-  background: var(--accent-weak);
-  padding: 6px 14px;
-  border-radius: 999px;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-.guide:hover {
-  border-color: var(--accent);
-  color: #fff;
-  text-decoration: none;
-}
-.guide .flip {
-  transform: rotate(180deg);
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
-}
-.item {
-  position: relative;
-  overflow: hidden;
-  padding: 15px 16px 15px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  text-decoration: none;
-  color: inherit;
-  transition:
-    border-color 0.16s,
-    background 0.16s,
-    transform 0.16s,
-    box-shadow 0.16s;
-}
-.item:hover {
-  border-color: rgb(99 102 241 / 55%);
-  background: var(--panel-2);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-  text-decoration: none;
-}
-.item .bar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-}
-.bar.running {
-  background: linear-gradient(180deg, #8b5cf6, #6366f1);
-}
-.bar.pending {
-  background: linear-gradient(180deg, #fbbf24, #f59e0b);
-}
-.bar.completed {
-  background: linear-gradient(180deg, #22c55e, #16a34a);
-}
-.bar.failed {
-  background: linear-gradient(180deg, #f87171, #dc2626);
-}
-.bar.cancelled {
-  background: rgb(148 163 184 / 40%);
-}
-.it-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.it-name {
-  font-size: 14.5px;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.it-time {
-  font-size: 11.5px;
-  flex: none;
-}
-.it-go {
-  font-size: 12px;
-  color: var(--accent-h);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.it-go .flip {
-  transform: rotate(180deg);
-}
-
-@media (max-width: 640px) {
-  .title {
-    font-size: 24px;
-  }
-  .step .link {
-    width: 18px;
-  }
-  .prompt {
-    padding: 18px;
-  }
-}
-</style>
+<style scoped src="./easy-create-home.css"></style>
