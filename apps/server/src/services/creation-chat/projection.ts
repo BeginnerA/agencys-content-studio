@@ -31,6 +31,16 @@ export interface CreationArtifact {
   reused: boolean
 }
 
+/**
+ * [M42] 每镜每模态的多版本视图：selected = 正在用的那一个（与旧单值口径完全一致），
+ * candidates = 同镜头全部候选（含缺文件/已删除的不可选占位）。候选序确定性：
+ * 在用优先 → 本步任务产物优先 → id 倒序（同优先级下最新版在前）。
+ */
+export interface CreationArtifactChoice {
+  selected: CreationArtifact | null
+  candidates: CreationArtifact[]
+}
+
 function readable(a: Asset): boolean {
   try { return !!a.relPath && statSync(absPathOf(a.relPath)).isFile() } catch { return false }
 }
@@ -69,7 +79,8 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     return { assetId: id, kind, name: valid ? a.name : label, available: valid && available(a), sourceRunId: valid ? a.runId : null, reused: valid && a.runId !== null && a.runId !== run.id }
   }
   const eligibleTasks = tasks.filter((t) => t.projectId === session.projectId && t.runId === run.id)
-  const pick = (stageKey: string, kind: string, field: 'shotId' | 'lineId', key: string): CreationArtifact | null => {
+  /** [M42] 候选集投影：候选来源与原 pick 同口径（同 shotId 的 succeeded 任务 resultAssetId ∪ output/本步资产） */
+  const pickSet = (stageKey: string, kind: string, field: 'shotId' | 'lineId', key: string): CreationArtifactChoice => {
     const output = outputByKey.get(stageKey) ?? new Set<number>()
     const step = stepByKey.get(stageKey)
     const related = eligibleTasks.filter((t) => t.stepId === step?.id && t.kind === kind && t.status === 'succeeded' && jsonRecord(t.params)[field] === key)
@@ -82,14 +93,17 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     }).map((a) => a.id)
     // 任务已成功但文件/资产行丢失时仍给出不可用占位，不回退到无关历史版本。
     const ordered = [...new Set([...candidates, ...taskIds])].sort((a, b) => Number(output.has(b)) - Number(output.has(a)) || Number(taskIds.has(b)) - Number(taskIds.has(a)) || b - a)
-    const chosen = ordered[0]
-    if (!chosen) return null
-    const a = byId.get(chosen)
-    const association = a ? jsonRecord(a.params)[field] : undefined
-    const artifact = view(chosen, kind, '素材不可用')
-    if (association !== undefined && association !== key) return { ...artifact, name: '素材关联不一致', available: false }
-    return artifact
+    const of = (id: number): CreationArtifact => {
+      const a = byId.get(id)
+      const association = a ? jsonRecord(a.params)[field] : undefined
+      const artifact = view(id, kind, '素材不可用')
+      if (association !== undefined && association !== key) return { ...artifact, name: '素材关联不一致', available: false }
+      return artifact
+    }
+    const list = ordered.map(of)
+    return { selected: list[0] ?? null, candidates: list }
   }
+  const pick = (stageKey: string, kind: string, field: 'shotId' | 'lineId', key: string): CreationArtifact | null => pickSet(stageKey, kind, field, key).selected
   const newest = (purpose: string, kind: string, strict = false) => [...byId.values()]
     .filter((a) => a.deletedAt === null && a.purpose === purpose && a.kind === kind && (!strict || jsonRecord(a.params).delivery_checked === true))
     .sort((a, b) => b.id - a.id)[0]
@@ -138,18 +152,27 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   if (subtitle) documents.push({ ...view(subtitle, 'text', '字幕不可用'), label: '字幕' })
   const artifacts = {
     shots: (plan?.shots ?? []).map((s, i) => ({ shotId: s.id, index: i + 1, duration: s.duration, text: s.lines.map((id) => plan?.lines.find((l) => l.id === id)?.text ?? '').join(' '),
-      image: pick(plan?.mode === 'slideshow' ? 'images' : 'frames', 'image', 'shotId', s.id), video: pick('motion', 'video', 'shotId', s.id),
+      image: pickSet(plan?.mode === 'slideshow' ? 'images' : 'frames', 'image', 'shotId', s.id), video: pickSet('motion', 'video', 'shotId', s.id),
       voices: s.lines.map((id) => pick('voice', 'audio', 'lineId', id)).filter((v): v is CreationArtifact => v !== null),
     })), documents,
   }
-  const savedCount = [...new Set([...artifacts.shots.flatMap((s) => [s.image, s.video, ...s.voices]), ...documents].filter((a): a is CreationArtifact => !!a?.available).map((a) => a.assetId))].length
+  const savedCount = [...new Set([...artifacts.shots.flatMap((s) => [s.image.selected, s.video.selected, ...s.voices]), ...documents].filter((a): a is CreationArtifact => !!a?.available).map((a) => a.assetId))].length
   const settledBad = ['failed', 'cancelled'].includes(status)
   const failedStage = stages.find((s) => s.status === 'failed')
   const preflight = jsonRecord(session.preflight)
   const estimate = preflight.estimate as { unpriced?: unknown } | undefined
   const unpriced = Array.isArray(estimate?.unpriced) ? estimate.unpriced.filter((x): x is string => typeof x === 'string') : []
+  // [M42] 中途审阅：等待闸门时把挂起步与模板 gate 文案透出，前端据此渲染审阅面板（不改引擎语义，仅投影）
+  const waitingStep = run.status === 'waiting_input' ? steps.find((s) => s.status === 'waiting_input') : undefined
+  const gateMessage = (() => {
+    if (!waitingStep || !Array.isArray(snapshot.steps)) return null
+    const def = snapshot.steps.find((s) => s && typeof s === 'object' && (s as { key?: unknown }).key === waitingStep.stepKey) as { gate?: { message?: unknown } } | undefined
+    const text = typeof def?.gate?.message === 'string' ? def.gate.message.trim() : ''
+    return text || null
+  })()
+  const review = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。' } : null
   return {
-    progress: { runId: run.id, status, currentStep: run.currentStepKey, error,
+    progress: { runId: run.id, status, currentStep: run.currentStepKey, error, review,
       needsVerification: settledBad && uncertainTasks.length > 0, uncertainTasks,
       completedShots: stages.find((s) => s.key === (plan?.mode === 'dynamic' ? 'motion' : 'images'))?.completed ?? 0,
       steps: steps.map((s) => ({ key: s.stepKey, title: s.title, status: s.status, error: s.error })), stages,

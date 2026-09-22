@@ -111,8 +111,73 @@ export const confirmationSchema = z.object({
   acceptUnpriced: z.boolean().default(false),
   // [M40] 确认即立项：前端「将创建的项目」可覆盖值（缺项沿用草稿行现值）
   project: projectMetaInputSchema.optional(),
+  // [M42] 审阅闸：true 时本次 run 用 easy-video-review 变体模板（画面/首帧完成后挂起等审阅）；
+  // 不入 planHash（与立项覆盖同理：是启动方式而非执行数据），恢复/重试沿用 run 自身模板键。
+  reviewGate: z.boolean().default(false),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
+
+// [M42] 闸门决策（会话侧代理）：仅 approve/reject——skip 需模板声明 skip_label，审阅变体不提供免审。
+export const gateDecisionSchema = z.object({
+  stepKey: text(40),
+  decision: z.enum(['approve', 'reject']),
+  note: z.string().trim().max(500).optional(),
+  idempotencyKey: requestKeySchema,
+}).strict()
+export type GateDecision = z.infer<typeof gateDecisionSchema>
+
+// [M42] 候选版本可视化只放开这三个生成步（配音/字幕/合成无多版本选片语义）。
+export const CREATION_CANDIDATE_STEPS = ['images', 'frames', 'motion'] as const
+export const candidateStepSchema = z.enum(CREATION_CANDIDATE_STEPS)
+
+/**
+ * [M42] 选片提交：前端只报「这一镜我要哪一个」，服务端把未提及镜头按当前在用补全为全量
+ * （底层 applyShotSelection 是子集替换语义，漏提即剔除——不能交给前端裸拼）。
+ */
+export const shotSelectionSchema = z.object({
+  stepKey: candidateStepSchema,
+  picks: z.array(z.object({ shot_id: id, asset_id: z.number().int().positive() }).strict()).min(1).max(12),
+  idempotencyKey: requestKeySchema,
+}).strict()
+export type ShotSelection = z.infer<typeof shotSelectionSchema>
+
+/** [M42] 本地重新合成：只重置 ffmpeg_merge 步，不调用任何付费模型 */
+export const recomposeSchema = z.object({ idempotencyKey: requestKeySchema }).strict()
+
+/**
+ * [M42] 局部返修——第一步：自然语言指令解析（只花文本模型小额费用，零媒体计费）。
+ * 与消息输入框完全独立：默认发信「记录下一版建议」的语义不得被劫持成返修费用。
+ */
+export const reworkRequestSchema = z.object({
+  instruction: z.string().trim().min(2).max(2000),
+  requestKey: requestKeySchema,
+}).strict()
+export type ReworkRequest = z.infer<typeof reworkRequestSchema>
+
+/** 返修单项（= 解析预览的 targets，前端确认时原样回传；服务端仍按当前方案重算） */
+export const reworkOpSchema = z.object({
+  shot_id: id,
+  image_prompt: text(1600).optional(),
+  motion_prompt: text(1200).optional(),
+}).strict().refine((op) => op.image_prompt !== undefined || op.motion_prompt !== undefined, { message: '每个返修镜头至少需给出一个提示词改动' })
+export type ReworkOp = z.infer<typeof reworkOpSchema>
+
+/** 返修——第二步：确认执行（带 planRevision/planHash 复核与显式费用接受） */
+export const reworkApplySchema = z.object({
+  planRevision: z.number().int().positive(),
+  planHash: z.string().regex(/^[a-f0-9]{64}$/),
+  idempotencyKey: requestKeySchema,
+  acceptUnpriced: z.boolean().default(false),
+  ops: z.array(reworkOpSchema).min(1).max(12),
+}).strict()
+export type ReworkApply = z.infer<typeof reworkApplySchema>
+
+/**
+ * [M42] LLM 返修解析回复 = 建议值（与 projectMetaInputSchema 同先例：多余键忽略、
+ * 单字段坏不致整次已花钱解析作废），逐字段在 rework.ts 归一后再进客户端契约。
+ */
+export const reworkReplySchema = z.object({ targets: z.unknown().optional(), unclear: z.unknown().optional() }).catchall(z.unknown())
+export type ReworkReplyInput = z.infer<typeof reworkReplySchema>
 
 export function hashJson(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')

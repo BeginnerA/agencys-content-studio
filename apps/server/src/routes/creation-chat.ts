@@ -4,6 +4,9 @@ import { CreationError } from '../services/creation-chat/contract'
 import { createSession, refreshPreflight, sendCreationMessage } from '../services/creation-chat/planning'
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
+import { decideCreationGate } from '../services/creation-chat/gate'
+import { creationShotBoard, recomposeCreation, selectCreationShots } from '../services/creation-chat/candidates'
+import { applyRework, planRework } from '../services/creation-chat/rework'
 import { deleteCreationSession } from '../services/creation-chat/session-delete'
 import { creationDetail, listCreationSessions } from '../services/creation-chat/store'
 
@@ -54,5 +57,14 @@ creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await
 creationChatRoutes.post(`${path}/:id/confirm`, route(async (c) => c.json(await confirmCreation(id(c), await body(c)), 202)))
 creationChatRoutes.post(`${path}/:id/cancel`, route(async (c) => { await cancelCreation(id(c)); return c.json(await creationDetail(id(c))) }))
 creationChatRoutes.post(`${path}/:id/retry`, route(async (c) => c.json(await retryCreation(id(c), await body(c)), 202)))
+// [M42] 中途审阅：approve 继续制作 / reject 整阶段重做（会再次计费，前端已二次确认）。幂等由 idempotencyKey 保证。
+creationChatRoutes.post(`${path}/:id/gate`, route(async (c) => { await decideCreationGate(id(c), await body(c)); return c.json(await creationDetail(id(c))) }))
+// [M42] 候选版本：看板只读聚合 / 选定在用版本（零计费）/ 本地重新合成（不调用付费模型，但会重跑合成）。
+creationChatRoutes.get(`${path}/:id/board`, route(async (c) => c.json(await creationShotBoard(id(c), c.req.query('step')))))
+creationChatRoutes.post(`${path}/:id/selection`, route(async (c) => { await selectCreationShots(id(c), await body(c)); return c.json(await creationDetail(id(c))) }))
+creationChatRoutes.post(`${path}/:id/recompose`, route(async (c) => { await recomposeCreation(id(c), await body(c)); return c.json(await creationDetail(id(c)), 202) }))
+// [M42] 局部返修：第一步只解析（零媒体计费，返回预览 + 当前会话快照）；第二步用户显式确认后才重置目标镜并续跑。
+creationChatRoutes.post(`${path}/:id/rework/plan`, route(async (c) => c.json({ ...(await creationDetail(id(c))), reworkPreview: await planRework(id(c), await body(c)) })))
+creationChatRoutes.post(`${path}/:id/rework`, route(async (c) => { await applyRework(id(c), await body(c)); return c.json(await creationDetail(id(c)), 202) }))
 // [M40+] 删除会话：未立项时连影子项目一并清除；已立项只删会话记录（项目保留），mode/reason 如实回传。
 creationChatRoutes.delete(`${path}/:id`, route(async (c) => c.json(await deleteCreationSession(id(c)))))

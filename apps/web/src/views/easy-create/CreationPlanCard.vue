@@ -7,6 +7,7 @@ import { fmtCost } from '../../lib/format'
 import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
+import CreationReviewGate from './CreationReviewGate.vue'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
@@ -65,6 +66,8 @@ const providers = computed(() => {
 const showScript = ref(false)
 const showShots = ref(false)
 const acceptUnpriced = ref(false)
+// [M42] 中途审阅：勾选即本次用带闸门的同构变体模板（easy-video-review），不勾选 = 免审（不声明 skip_label）
+const reviewGate = ref(false)
 
 const ready = computed(() => !!pf.value?.ready)
 const blockers = computed(() => pf.value?.issues ?? [])
@@ -103,7 +106,7 @@ function touchProject(): void {
 }
 
 async function onConfirm(): Promise<void> {
-  await props.s.confirm(acceptUnpriced.value)
+  await props.s.confirm(acceptUnpriced.value, reviewGate.value)
   acceptUnpriced.value = false
 }
 </script>
@@ -314,6 +317,7 @@ async function onConfirm(): Promise<void> {
     </div>
 
     <footer v-else-if="!confirmed" class="cf">
+      <CreationReviewGate v-model="reviewGate" :dynamic="plan?.mode === 'dynamic'" />
       <label v-if="s.hasUnpriced.value" class="acc">
         <input v-model="acceptUnpriced" type="checkbox" />
         我已了解并接受上述未计价项的实际扣费

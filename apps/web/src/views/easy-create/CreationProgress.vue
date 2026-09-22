@@ -19,12 +19,19 @@ const active = computed(
 const settledBad = computed(
   () => !!prog.value && ['failed', 'cancelled'].includes(prog.value.status),
 )
+// [M42] 挂起在人工闸：等的是用户决策（上方审阅面板），不是失败也不是「默默运行中」
+const waiting = computed(() => prog.value?.status === 'waiting_input')
 const recovery = computed(() => prog.value?.recovery)
 const acceptUnpriced = ref(false)
 const canRetry = computed(() => !!recovery.value?.resumable && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value))
 // 运行态/步骤态文案（后端 status 为宽字符串，经映射兜底，未知态原样显示）
-const runMeta = computed(() => runStatus((prog.value?.status ?? '') as never))
-const stepMeta = (s: string) => s === 'not_applicable' ? { text: '不适用' } : s === 'unknown' ? { text: '信息待核实' } : stepStatus(s as never)
+// [M42] waiting_input 在轻松创作里说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）；徽章复用全局 .waiting_input 色类
+const runMeta = computed(() =>
+  prog.value?.status === 'waiting_input'
+    ? { text: '等待审阅', cls: 'waiting_input' }
+    : runStatus((prog.value?.status ?? '') as never),
+)
+const stepMeta = (s: string) => s === 'not_applicable' ? { text: '不适用' } : s === 'unknown' ? { text: '信息待核实' } : s === 'waiting_input' ? { text: '等待审阅' } : stepStatus(s as never)
 // 无编号的请求必须逐项核实；有编号的未完成任务默认恢复查询。
 const resubmitIds = ref<number[]>([])
 watch(() => `${detail.value?.session.id}:${prog.value?.runId}:${detail.value?.session.planRevision}:${detail.value?.session.planHash}`, () => {
@@ -54,6 +61,7 @@ async function onRetry(): Promise<void> {
     </header>
 
     <p class="ec-progress-summary" aria-live="polite">已完成 {{ done }}/{{ total }} 个适用阶段</p>
+    <p v-if="waiting" class="ec-progress-summary">已按你勾选的审阅在画面生成后暂停，请在上方审阅面板确认是否继续。</p>
 
     <ol class="steps">
       <li v-for="st in stages" :key="st.key">

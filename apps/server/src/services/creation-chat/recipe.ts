@@ -30,8 +30,13 @@ export const recipeSchema = z.object({
 export type CreationRecipe = z.infer<typeof recipeSchema>
 export type { CreationRef }
 
+/** [M42] 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
+ *  执行期守卫、恢复校验与专业端阻断一律按集合判定，不逐处硬编码单键。 */
+export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review'])
+export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
+
 export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): CreationRecipe | null {
-  if (run.templateKey !== 'easy-video') return null
+  if (!isCreationTemplate(run.templateKey)) return null
   const input = JSON.parse(run.input)
   return recipeSchema.parse(JSON.parse(input.recipe))
 }
@@ -74,7 +79,7 @@ export async function assertRecipeSources(run: PipelineRun, recipe: CreationReci
   if (!project) throw new Error('项目不存在或已删除，禁止继续制作')
   const [session] = await db.select().from(creationSessions).where(eq(creationSessions.id, recipe.sessionId))
   if (!session || session.projectId !== run.projectId || session.runId !== run.id || !session.approvedPlan || hashJson(JSON.parse(session.approvedPlan)) !== hashJson(recipe)) throw new Error('运行未关联当前已批准方案，禁止执行')
-  if (!run.templateSnapshot || hashJson(JSON.parse(run.templateSnapshot)) !== recipe.templateHash || hashJson(loadTemplate('easy-video')) !== recipe.templateHash) throw new Error('已批准模板版本发生变化，请重新规划')
+  if (!run.templateSnapshot || hashJson(JSON.parse(run.templateSnapshot)) !== recipe.templateHash || hashJson(loadTemplate(run.templateKey)) !== recipe.templateHash) throw new Error('已批准模板版本发生变化，请重新规划')
   const input = JSON.parse(run.input)
   if (input.motion !== (recipe.plan.mode === 'dynamic') || input.i2v !== (recipe.videoMode === 'i2v') || input._params) throw new Error('执行模式与批准方案不符')
   for (const [i, field] of ['script', 'lines', 'shots'].entries()) if (JSON.stringify(input[field]) !== JSON.stringify([recipe.sources[i]!.id])) throw new Error('执行素材与批准方案不符')

@@ -1,0 +1,68 @@
+key: easy-video-review
+version: 1
+name: 轻松创作 · 首帧审阅后成片
+description: 与「轻松创作」同链，仅画面/首帧生成后挂人工审阅闸：确认画面后才开始动态镜头等高费用生成。
+genre: talking_head
+scene: produce
+inputs:
+  - { key: script, label: 已批准脚本, kind: files, required: true, accept: [text] }
+  - { key: lines, label: 已批准旁白, kind: files, required: true, accept: [text] }
+  - { key: shots, label: 已批准分镜, kind: files, required: true, accept: [text] }
+  - { key: recipe, label: 已批准执行快照, kind: text, required: true }
+  - { key: motion, label: 动态模式, kind: bool, required: false, default: true }
+  - { key: i2v, label: 图生视频, kind: bool, required: false, default: true }
+steps:
+  - key: voice
+    action: tts
+    title: 配音与逐镜时长核验
+    inputs:
+      lines: input.lines
+    params: { retry: 0, strict_delivery: true }
+  - key: captions
+    action: subtitle
+    title: 按真实旁白生成字幕
+    inputs:
+      lines: input.lines
+      voices: steps.voice.assets
+    params: { mode: measured, strict_delivery: true }
+  - key: images
+    action: ai_image
+    title: 生成图文画面
+    after: [captions]
+    when: input.motion != true
+    inputs:
+      shots: input.shots
+    batch: { field: shots, max_concurrent: 2, retry: 0 }
+    params: { use_character_refs: false, use_style_preset: false }
+    gate: { mode: required, message: '图文画面已生成，请审阅后继续（继续才会进入合成与交付检查）' }
+  - key: frames
+    action: ai_image
+    title: 生成动态镜头首帧
+    after: [captions]
+    when: [input.motion == true, input.i2v == true]
+    inputs:
+      shots: input.shots
+    batch: { field: shots, max_concurrent: 2, retry: 0 }
+    params: { use_character_refs: false, use_style_preset: false }
+    gate: { mode: required, message: '首帧画面已生成，请审阅后继续（继续将开始动态镜头等高费用生成）' }
+  - key: motion
+    action: ai_video
+    title: 生成 AI 动态镜头
+    after: [captions, frames]
+    when: input.motion == true
+    inputs:
+      shots: input.shots
+      first_frame: steps.frames.assets
+    batch: { field: shots, max_concurrent: 2, retry: 0 }
+    params: { prompt_field: motion_prompt }
+  - key: compose
+    action: ffmpeg_merge
+    title: 严格合成与基础交付检查
+    after: [captions, images, motion]
+    inputs:
+      shots: input.shots
+      images: steps.images.assets
+      motion_clips: steps.motion.assets
+      voices: steps.voice.assets
+      subtitle: steps.captions.assets
+    params: { fps: 25, strict_delivery: true, transition: none, cover: true }

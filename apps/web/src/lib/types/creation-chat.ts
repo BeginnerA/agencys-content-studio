@@ -183,6 +183,8 @@ export function creationStatusLabel(
     if (runStatus === 'completed') return '已完成'
     if (runStatus === 'failed') return '制作失败'
     if (runStatus === 'cancelled') return '已取消'
+    // [M42] 闸门挂起：对普通用户说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）
+    if (runStatus === 'waiting_input') return '等待审阅'
     return '制作中'
   }
   return CREATION_STATUS_LABELS[status]
@@ -196,6 +198,8 @@ export function creationStatusTone(
     if (runStatus === 'completed') return 'completed'
     if (runStatus === 'failed') return 'failed'
     if (runStatus === 'cancelled') return 'cancelled'
+    // [M42] 等待审阅复用全局 .badge.waiting_input（与专业工作台同色语义，非仅色编码：另有文字标签）
+    if (runStatus === 'waiting_input') return 'waiting_input'
     return 'running'
   }
   return status === 'planning'
@@ -216,11 +220,31 @@ export interface CreationChatMessagePayload {
   /** [M31] 附件消息：assetId + 冻结的 ref 指纹 */
   assetId?: number
   ref?: CreationRef
+  /** [M42] 审阅决策消息（kind='gate'）：步骤、决策与驳回意见 */
+  stepKey?: string
+  decision?: CreationGateDecision
+  note?: string | null
+}
+
+/** system 角色（[M42] 审阅决策留痕）：进对话流展示，但不进后续规划的 LLM 上下文 */
+export type CreationChatRole = 'user' | 'assistant' | 'system'
+
+export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
+  user: '我',
+  assistant: '策划助手',
+  system: '审阅记录',
+}
+
+/** [M42] system 留痕按类型给来源标签（审阅 / 返修 / 合成），不与策划助手的话混同 */
+export function creationSystemLabel(kind?: string | null): string {
+  if (kind === 'rework' || kind === 'rework_plan') return '返修记录'
+  if (kind === 'recompose') return '合成记录'
+  return '审阅记录'
 }
 
 export interface CreationChatMessage {
   id: number
-  role: 'user' | 'assistant'
+  role: CreationChatRole
   content: string
   payload: CreationChatMessagePayload | null
   requestKey: string | null
@@ -246,6 +270,13 @@ export interface CreationSessionView {
   project: CreationProjectPreview | null
 }
 
+/** [M42] 中途审阅：run 挂在闸门上的那一步（服务端从模板快照 gate.message 透出，非引擎状态） */
+export interface CreationReview {
+  stepKey: string
+  title: string
+  message: string
+}
+
 export interface CreationProgressStep {
   key: string
   title: string
@@ -267,6 +298,8 @@ export interface CreationProgress {
   status: string
   currentStep: string | null
   error: string | null
+  /** [M42] 等待审阅时为待审步骤，否则 null（前端据此置顶审阅面板） */
+  review: CreationReview | null
   needsVerification: boolean
   uncertainTasks: CreationUncertainTask[]
   completedShots: number
@@ -284,8 +317,17 @@ export interface CreationArtifact {
   sourceRunId: number | null
   reused: boolean
 }
+
+/**
+ * [M42] 某镜某模态的多版本视图（服务端投影）：selected = 正在用的那一个（可能为 null = 尚未生成），
+ * candidates = 全部候选（含文件已丢 / 已删除的不可选占位），序为在用优先 → 最新在前。
+ */
+export interface CreationArtifactChoice {
+  selected: CreationArtifact | null
+  candidates: CreationArtifact[]
+}
 export interface CreationArtifacts {
-  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifact | null; video: CreationArtifact | null; voices: CreationArtifact[] }>
+  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifactChoice; video: CreationArtifactChoice; voices: CreationArtifact[] }>
   documents: Array<CreationArtifact & { label: string }>
 }
 
@@ -335,9 +377,81 @@ export interface CreationConfirmBody {
   acceptUnpriced: boolean
   /** [M40] 立项覆盖值：只带用户改过的字段，缺项沿用平台智能填写（不入 planHash） */
   project?: Partial<CreationProjectMeta>
+  /** [M42] 勾选「首帧后暂停审阅」：本次改用带闸门的同构变体模板（同样不入 planHash） */
+  reviewGate?: boolean
 }
+
+/** [M42] 审阅决策：approve=继续制作；reject=该阶段整体重做（会再次调用生成，可能计费） */
+export type CreationGateDecision = 'approve' | 'reject'
+
+export interface CreationGateBody {
+  stepKey: string
+  decision: CreationGateDecision
+  note?: string
+  idempotencyKey: string
+}
+
+/** [M42] 候选版本步（与服务端 CREATION_CANDIDATE_STEPS 同源） */
+export type CreationCandidateStep = 'images' | 'frames' | 'motion'
+
+export interface CreationSelectionBody {
+  stepKey: CreationCandidateStep
+  picks: Array<{ shot_id: string; asset_id: number }>
+  idempotencyKey: string
+}
+
+/** [M42] 候选看板不另建形：服务端直返专业工作台同一份聚合，契约复用 ShotBoardData（见 ./shot.ts） */
 
 export interface CreationRetryBody extends CreationConfirmBody {
   runId: number
   verifiedFailedTaskIds?: number[]
+}
+
+// ===== [M42] 自然语言局部返修（第一步解析预览 → 第二步显式确认执行） =====
+
+/**
+ * 单个返修镜头（服务端 rework.ts ReworkTarget 逐字段对齐）：本模式可落地的一侧给新提示词与费用，
+ * 另一侧为 null（表示该侧不改动，不是「改成空」）。费用 null = 该生成项单价未知（同步进 estimate.unpriced）。
+ */
+export interface CreationReworkTarget {
+  shotId: string
+  index: number
+  imageFrom: string | null
+  imagePrompt: string | null
+  motionFrom: string | null
+  motionPrompt: string | null
+  imageCost: number | null
+  motionCost: number | null
+}
+
+/** 解析预览：unclear 非空表示本入口做不到（不猜、不给可确认的计费出口） */
+export interface CreationReworkPreview {
+  instruction: string
+  unclear: string | null
+  targets: CreationReworkTarget[]
+  /** 解析期提示（越界字段被忽略等）：不静默丢弃用户的任何诉求 */
+  notes: string[]
+  estimate: { knownCost: number; unpriced: string[] }
+  planRevision: number
+  planHash: string
+}
+
+/** 确认载荷单项 = 解析预览的 targets 原样回传（金额与版本由服务端按当前方案重算） */
+export interface CreationReworkOp {
+  shot_id: string
+  image_prompt?: string
+  motion_prompt?: string
+}
+
+export interface CreationReworkApplyBody {
+  planRevision: number
+  planHash: string
+  idempotencyKey: string
+  acceptUnpriced: boolean
+  ops: CreationReworkOp[]
+}
+
+/** POST /:id/rework/plan 返回体：会话快照 + 本次解析预览 */
+export type CreationReworkPlanResult = CreationDetail & {
+  reworkPreview?: CreationReworkPreview
 }

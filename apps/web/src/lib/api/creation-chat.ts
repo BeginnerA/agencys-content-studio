@@ -1,12 +1,18 @@
 import { api, ApiError, type Items } from './core'
 import type {
   CreationAttachmentResult,
+  CreationCandidateStep,
   CreationConfirmBody,
   CreationDeleteResult,
   CreationDetail,
+  CreationGateBody,
   CreationRefRole,
   CreationRetryBody,
+  CreationReworkApplyBody,
+  CreationReworkPlanResult,
+  CreationSelectionBody,
   CreationSessionListItem,
+  ShotBoardData,
 } from '../types'
 import type { ApiErrorBody } from '../types'
 
@@ -52,6 +58,24 @@ export const creationChatApi = {
   remove: (id: number) => api.del<CreationDeleteResult>(`${BASE}/${id}`),
   retry: (id: number, body: CreationRetryBody) =>
     api.post<{ runId: number }>(`${BASE}/${id}/retry`, body),
+  /** [M42] 中途审阅决策（仅 approve/reject）：幂等由 idempotencyKey 保证，重复提交不重复决策 */
+  gate: (id: number, body: CreationGateBody) =>
+    api.post<CreationDetail>(`${BASE}/${id}/gate`, body),
+  /** [M42] 候选看板（只读）：直返专业工作台同一份版本聚合，不另建投影 */
+  board: (id: number, step: CreationCandidateStep) =>
+    api.get<ShotBoardData>(`${BASE}/${id}/board?step=${step}`),
+  /** [M42] 选定在用版本：只报改动镜头，服务端补全为全量；不触发执行、零计费 */
+  selectShots: (id: number, body: CreationSelectionBody) =>
+    api.post<CreationDetail>(`${BASE}/${id}/selection`, body),
+  /** [M42] 本地重新合成：仅重置合成步（不调用付费模型），回 202 + 最新快照 */
+  recompose: (id: number, body: { idempotencyKey: string }) =>
+    api.post<CreationDetail>(`${BASE}/${id}/recompose`, body),
+  /** [M42] 返修第一步 · 解析指令：只调用一次文本模型（小额费用），零媒体计费，不启动任何生成 */
+  reworkPlan: (id: number, body: { instruction: string; requestKey: string }) =>
+    api.post<CreationReworkPlanResult>(`${BASE}/${id}/rework/plan`, body),
+  /** [M42] 返修第二步 · 确认执行：重置目标镜并续跑（会重新生成、可能计费），回 202 + 快照 */
+  reworkApply: (id: number, body: CreationReworkApplyBody) =>
+    api.post<CreationDetail>(`${BASE}/${id}/rework`, body),
   /** [M31] 上传参考素材（multipart file+role）：落会话项目、不计费、不触发规划 */
   uploadAttachment: async (
     id: number,

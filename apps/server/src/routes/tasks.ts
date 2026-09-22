@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
 import { engine } from '../pipeline/engine'
+import { isCreationTemplate } from '../services/creation-chat/recipe'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const tasksRoutes = new Hono()
@@ -57,7 +58,7 @@ tasksRoutes.post('/tasks/:id/retry', h(async (c) => {
   const runRows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, t.runId)).limit(1)
   const run = runRows[0]
   if (!run) return notFound(c, `run ${t.runId}`)
-  if (run.templateKey === 'easy-video') throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
+  if (isCreationTemplate(run.templateKey)) throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
   if (run.status === 'completed') throw new HttpError(400, 'bad_status', '所属 run 已完成，无需重试')
   if (run.status === 'waiting_input') throw new HttpError(400, 'bad_status', '所属 run 正等待闸门，先处理闸门')
   if (run.status === 'running') throw new HttpError(400, 'bad_status', '所属 run 正在执行，无法重试')

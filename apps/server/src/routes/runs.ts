@@ -5,6 +5,7 @@ import { genTasks, pipelineRuns, pipelineSteps, projects, assets } from '../db/s
 import { engine, recoverInterruptedState } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
+import { isCreationTemplate } from '../services/creation-chat/recipe'
 import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
@@ -143,7 +144,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
-  if (src.templateKey === 'easy-video') throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
+  if (isCreationTemplate(src.templateKey)) throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
   if (!['failed', 'cancelled'].includes(src.status)) {
     throw new HttpError(400, 'bad_status', `仅 failed/cancelled 可续跑（当前 ${src.status}）；如需重跑请直接新建 run`)
   }

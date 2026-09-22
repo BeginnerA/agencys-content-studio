@@ -5,6 +5,7 @@ import { stepDeps } from '../../pipeline/dag'
 import { templateForRun } from '../../pipeline/loader'
 import type { Template } from '../../pipeline/types'
 import { readTextAsset } from '../storage'
+import { isCreationTemplate } from '../creation-chat/recipe'
 import { WorkbenchError, getRunOrThrow, getStepOrThrow, outputIdsOf, type ShotSpec } from './helpers'
 
 export interface StoryboardSource {
@@ -128,7 +129,7 @@ export async function assertChainRepairable(
   if (run.status !== 'completed' && run.status !== 'failed') {
     throw new WorkbenchError('bad_status', `run 状态 ${run.status} 不支持级联重跑`)
   }
-  if (run.templateKey === 'easy-video' && run.status === 'completed') {
+  if (isCreationTemplate(run.templateKey) && run.status === 'completed') {
     // 轻松创作已批准制作链「已完成」后再级联重跑=额外生成，须回轻松创作重新确认方案；
     // 但 run=failed 表示批准链路尚未跑完，级联救援只是完成既定方案（执行期 assertRecipeSources 仍独立守方案/素材一致性），故放行。
     throw new WorkbenchError('creation_confirmation_required', '已批准制作链已完成；额外生成请在轻松创作中重新确认方案', 409)

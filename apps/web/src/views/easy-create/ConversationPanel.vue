@@ -7,6 +7,7 @@ import AssetPickerModal from './AssetPickerModal.vue'
 import MessageRefBubble from './MessageRefBubble.vue'
 import AttachmentTray from './AttachmentTray.vue'
 import { assetApi } from '../../lib/api'
+import { CREATION_ROLE_LABELS, creationSystemLabel } from '../../lib/types'
 import { isAttachment, refAssetId } from './ref-utils'
 import type { Asset, CreationChatMessage } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
@@ -40,6 +41,17 @@ watch(() => props.s.first.state.ticket?.content, (content, previous) => {
 }, { immediate: true })
 watch(draft, (value) => props.s.first.setContent(value), { flush: 'sync' })
 watch(() => props.s.state.currentId, () => { draft.value = ''; previewAsset.value = null; showPicker.value = false; previewSeq++ })
+
+// [M42] system 留痕按类型给来源标签与图标（审阅 / 返修 / 合成）：机器记录不伪装成策划助手的话
+function whoLabel(m: CreationChatMessage): string {
+  return m.role === 'system' ? creationSystemLabel(m.payload?.kind) : CREATION_ROLE_LABELS[m.role]
+}
+function avatarIcon(m: CreationChatMessage): string {
+  if (m.role === 'user') return 'users'
+  if (m.role !== 'system') return 'wand'
+  const kind = m.payload?.kind
+  return kind === 'rework' || kind === 'rework_plan' || kind === 'recompose' ? 'pencil' : 'eye'
+}
 
 async function submit(): Promise<void> {
   const text = draft.value.trim()
@@ -122,10 +134,10 @@ async function onFiles(e: Event): Promise<void> {
         :class="m.role"
       >
         <span class="avatar" :class="m.role" aria-hidden="true">
-          <Icon :name="m.role === 'user' ? 'users' : 'wand'" :size="15" />
+          <Icon :name="avatarIcon(m)" :size="15" />
         </span>
         <div class="mcol">
-          <div class="who">{{ m.role === 'user' ? '我' : '策划助手' }}</div>
+          <div class="who">{{ whoLabel(m) }}</div>
           <MessageRefBubble
             v-if="isAttachment(m)"
             :m="m"
@@ -186,7 +198,7 @@ async function onFiles(e: Event): Promise<void> {
         rows="2"
         :maxlength="6000"
         :disabled="inputLocked"
-        :placeholder="started ? '写下下一版想调整的内容' : '描述需求或回答助手的追问'"
+        :placeholder="started ? (s.rework.canUse.value ? '写下下一版想调整的内容；只想改个别镜头？用成果面板的局部返修' : '写下下一版想调整的内容') : '描述需求或回答助手的追问'"
         aria-label="创作需求"
         @keydown.enter.exact.prevent="submit"
       />
@@ -332,6 +344,19 @@ async function onFiles(e: Event): Promise<void> {
   background: var(--grad-brand);
   color: #fff;
   box-shadow: 0 4px 12px -6px rgb(79 70 229 / 60%);
+}
+
+/* [M42] 审阅决策留痕：系统记录与助手回复视觉区分（虚线 + 弱化色），不伪装成策划助手的话 */
+.avatar.system {
+  background: var(--raised);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-2);
+}
+
+.msg.system .bubble {
+  background: var(--panel-2);
+  border-style: dashed;
+  color: var(--text-2);
 }
 
 .mcol {

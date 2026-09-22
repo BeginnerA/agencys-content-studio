@@ -3,7 +3,11 @@ import { db } from '../../db'
 import { genTasks, pipelineRuns, pipelineSteps, type PipelineStep } from '../../db/schema'
 import { cleanupVersions, type CleanupResult } from '../version-cleanup'
 import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, selectedMapOf, sameIds, toIdArray, type ShotSpec } from './helpers'
+import { isCreationTemplate } from '../creation-chat/recipe'
 import { assertRepairable, assertChainRepairable } from './inspect'
+
+/** [M42] 返修可重置的步骤形态（生成步按镜重置 + 合成步整步重置） */
+const REWORK_ACTIONS = ['ai_image', 'ai_video', 'ffmpeg_merge']
 
 // ---------- 重新合成 ----------
 
@@ -20,6 +24,110 @@ export async function resetStepForRecompose(runId: number, stepKey: string): Pro
     .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
     .where(eq(pipelineRuns.id, run.id))
   return { runId: run.id }
+}
+
+// ---------- [M42] 局部返修：多镜批量重置（轻松创作内部允许通道） ----------
+
+/** 返修重置的单镜条目：prompt = 重新批准后的提示词（同步进任务快照，见下注释） */
+export interface ReworkShotReset {
+  shotId: string
+  prompt: string
+}
+
+/** 返修重置的单个步骤；shots 为空 = 无子任务步骤（合成步）整步重置 */
+export interface ReworkStepReset {
+  stepKey: string
+  shots: ReworkShotReset[]
+}
+
+function shotIdOfTask(t: { params: string | null }): string | null {
+  try {
+    const p = JSON.parse(String(t.params)) as { shotId?: unknown }
+    return typeof p.shotId === 'string' ? p.shotId : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * [M42] 局部返修的批量状态重置（与批准链改写同事务，由 creation 层 rework 传入 allowCreation）：
+ * - 门禁与 assertRepairable 同语义，但 failed 判定按「本次全部目标步」整体做（逐单步复用会把兄弟目标步误判成 other_failed）；
+ * - 只重置目标镜任务（attempts 归零、resultAssetId 保留作历史候选），同镜其他任务仍 succeeded → 被引擎跳过；
+ * - 一并把任务 prompt 同步为重新批准后的提示词：ai_image/ai_video 的「已批准任务参数发生变化」守卫比对的是任务快照，
+ *   不同步会让返修一执行即失败；提示词由用户在确认闸上显式批准且已写入 approvedPlan/recipe，不是静默漂移；
+ * - 步骤保留 output（历史候选与 gate 决策痕迹继续可见），run 回 queued，startRun 由调用方在服务返回后执行。
+ */
+export async function resetShotsForRework(
+  runId: number,
+  steps: ReworkStepReset[],
+  opts: { allowCreation: boolean },
+  executor: Pick<typeof db, 'select' | 'update'> = db,
+): Promise<{ runId: number; resetTaskIds: number[]; resetStepKeys: string[] }> {
+  if (steps.length === 0) throw new WorkbenchError('bad_plan', '返修未指定任何步骤')
+  const [run] = await executor.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1)
+  if (!run) throw new WorkbenchError('not_found', `run ${runId} 不存在`, 404)
+  if (run.status === 'cancelled') throw new WorkbenchError('run_cancelled', 'run 已取消，请走「断点续跑」创建续跑 run', 409)
+  if (run.status !== 'completed' && run.status !== 'failed') {
+    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再返修`)
+  }
+  if (isCreationTemplate(run.templateKey) && !opts.allowCreation) {
+    throw new WorkbenchError('creation_confirmation_required', '轻松创作批准链的镜头返修须经会话内费用确认通道，不能从工作台直接重置', 409)
+  }
+  const rows = await executor.select().from(pipelineSteps).where(eq(pipelineSteps.runId, runId))
+  const byKey = new Map(rows.map((r) => [r.stepKey, r] as const))
+  for (const target of steps) {
+    const row = byKey.get(target.stepKey)
+    if (!row) throw new WorkbenchError('not_found', `步骤 ${target.stepKey} 不存在`, 404)
+    if (!REWORK_ACTIONS.includes(row.actionKey)) {
+      throw new WorkbenchError('bad_action', `步骤「${row.title ?? target.stepKey}」不支持返修重置（action=${row.actionKey}）`)
+    }
+    if (row.status !== 'succeeded' && row.status !== 'failed') {
+      throw new WorkbenchError('bad_step_status', `步骤「${row.title ?? target.stepKey}」状态为 ${row.status}，仅 succeeded/failed 可返修`)
+    }
+    if (target.shots.length === 0 && row.actionKey !== 'ffmpeg_merge') {
+      throw new WorkbenchError('bad_plan', `步骤「${row.title ?? target.stepKey}」需指明返修镜头`)
+    }
+  }
+  const wanted = new Set(steps.map((s) => s.stepKey))
+  const outsideFailed = rows.filter((r) => r.status === 'failed' && !wanted.has(r.stepKey)).map((r) => r.stepKey)
+  if (outsideFailed.length > 0) {
+    throw new WorkbenchError('other_failed', `存在返修范围外的失败步骤（${outsideFailed.join('、')}），请先修复后再返修`)
+  }
+  // 校验全部先于写入：镜头无任务时不产生半途重置（整批要么全部可执行，要么不动）
+  const plan: Array<{ step: PipelineStep; tasks: Array<{ id: number; prompt: string }> }> = []
+  for (const target of steps) {
+    const step = byKey.get(target.stepKey)!
+    const tasks: Array<{ id: number; prompt: string }> = []
+    if (target.shots.length > 0) {
+      const rowsOfStep = await executor.select().from(genTasks).where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id)))
+      for (const shot of target.shots) {
+        const task = rowsOfStep.find((t) => shotIdOfTask(t) === shot.shotId)
+        if (!task) throw new WorkbenchError('no_task', `镜头 ${shot.shotId} 无对应「${step.title ?? target.stepKey}」生成任务`)
+        tasks.push({ id: task.id, prompt: shot.prompt })
+      }
+    }
+    plan.push({ step, tasks })
+  }
+  const now = Date.now()
+  const resetTaskIds: number[] = []
+  for (const { step, tasks } of plan) {
+    for (const t of tasks) {
+      await executor
+        .update(genTasks)
+        .set({ status: 'pending', prompt: t.prompt, attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
+        .where(eq(genTasks.id, t.id))
+      resetTaskIds.push(t.id)
+    }
+    await executor
+      .update(pipelineSteps)
+      .set({ status: 'pending', error: null, completedAt: null, updatedAt: now })
+      .where(eq(pipelineSteps.id, step.id))
+  }
+  await executor
+    .update(pipelineRuns)
+    .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
+    .where(eq(pipelineRuns.id, runId))
+  return { runId, resetTaskIds, resetStepKeys: steps.map((s) => s.stepKey) }
 }
 
 // ---------- [M12] 版本清理 ----------
@@ -59,7 +167,7 @@ export async function resetStepForRerun(
   tasksReset: number
 }> {
   const { run, step } = await assertRepairable(runId, stepKey)
-  if (run.templateKey === 'easy-video') throw new WorkbenchError('creation_confirmation_required', '已批准制作链请在轻松创作中恢复；额外生成需新方案确认', 409)
+  if (isCreationTemplate(run.templateKey)) throw new WorkbenchError('creation_confirmation_required', '已批准制作链请在轻松创作中恢复；额外生成需新方案确认', 409)
   const tasks = await db
     .select({ id: genTasks.id, status: genTasks.status })
     .from(genTasks)

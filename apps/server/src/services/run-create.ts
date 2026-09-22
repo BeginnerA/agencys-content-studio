@@ -8,6 +8,7 @@ import { pipelineRuns, type PipelineRun } from '../db/schema'
 import { loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
 import type { Template, TemplateInputDef } from '../pipeline/types'
+import { isCreationTemplate } from './creation-chat/recipe'
 import { RunParamsError, normalizeRunParamsOrThrow, type RunParams } from './run-params'
 
 /** 输入/模板非法（路由层转 400；与 HttpError 解耦，services 不依赖路由层） */
@@ -60,7 +61,7 @@ export async function createRunRow(p: {
   /** 仅会话确认服务传入；普通 run/batch/workflow 不得启动批准模板。 */
   creationSessionId?: number
 }, executor: Pick<typeof db, 'insert'> = db): Promise<PipelineRun> {
-  if (p.templateKey === 'easy-video' && !p.creationSessionId) throw new InvalidRunInputError('bad_input', '请从轻松创作确认方案后启动制作')
+  if (isCreationTemplate(p.templateKey) && !p.creationSessionId) throw new InvalidRunInputError('bad_input', '请从轻松创作确认方案后启动制作')
   const template = loadTemplateOrThrow(p.templateKey)
   const norm = prepareRunInput(template, p.input)
   const t = Date.now()

@@ -50,8 +50,11 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
         const a = await writeTextAsset(s.projectId, { ...specs[i]!, content: contents[i]!, params: { creationSessionId: id, revision: s.planRevision } }, tx)
         sources.push({ id: a.id, hash: hashJson(contents[i]) })
       }
-      const recipe = recipeSchema.parse({ ...pf.execution, sessionId: id, sources })
-      const run = await createRunRow({ projectId: s.projectId, templateKey: 'easy-video', creationSessionId: id, input: {
+      // [M42] 审阅闸：勾选即用变体模板（同构步骤 + 画面/首帧后 gate）；模板哈希随所选键重算，
+      // planHash 不受该标志影响（启动方式不是执行数据，与立项覆盖同一先例）。
+      const templateKey = request.reviewGate ? 'easy-video-review' : 'easy-video'
+      const recipe = recipeSchema.parse({ ...pf.execution, sessionId: id, sources, templateHash: hashJson(loadTemplate(templateKey)) })
+      const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',
       } }, tx)
       await tx.update(assets).set({ runId: run.id }).where(eq(assets.id, sources[0]!.id))
@@ -98,7 +101,8 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       try { await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, pin) }
       catch { throw new CreationError('configuration_changed', '已批准实例不可用或配置已变化，请复制需求重新规划', 409) }
     }
-    if (recipe.templateHash !== hashJson(loadTemplate('easy-video'))) throw new CreationError('template_changed', '模板已变化，请复制需求重新规划', 409)
+    // [M42] 模板哈希按 run 自身模板键校验（review 变体恢复不被误拦；原 easy-video 会话因模板未变仍通过）
+    if (recipe.templateHash !== hashJson(loadTemplate(src.templateKey))) throw new CreationError('template_changed', '模板已变化，请复制需求重新规划', 409)
     const tasks = await db.select().from(genTasks).where(eq(genTasks.runId, src.id))
     const uncertain = tasks.filter((t) => t.status !== 'succeeded' && t.attempts > 0)
     if (request.verifiedFailedTaskIds.some((tid) => !uncertain.some((t) => t.id === tid))) throw new CreationError('bad_task', '核验任务不属于当前待恢复任务', 422)

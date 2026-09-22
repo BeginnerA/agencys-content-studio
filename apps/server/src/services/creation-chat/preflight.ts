@@ -17,7 +17,7 @@ export const videoCapabilitiesSchema = z.object({
   modes: z.array(z.enum(['i2v', 't2v'])).min(1),
   durations: z.array(z.number().int().min(1).max(30)).min(1).max(30),
   aspectRatios: z.array(z.enum(['9:16', '16:9', '1:1'])).min(1),
-  resolution: z.enum(['480p', '720p', '1080p', '768P', '2K']),
+  resolution: z.enum(['480p', '720p', '1080p', '480P', '768P', '2K']),
 }).strict()
 type DeclaredCaps = z.infer<typeof videoCapabilitiesSchema>
 export type PreparedRecipe = Omit<CreationRecipe, 'sessionId' | 'sources'>
@@ -98,8 +98,8 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       if (video.providerKey === 'siliconflow_video' && execution.videoMode === 'i2v' && !/i2v/i.test(video.model!)) throw new CreationError('first_frame_unsupported', '当前硅基流动适配器要求明确的 I2V 模型', 422)
       // [M31] 首帧参考不可用即停机：能力不支持图生视频首帧时，绝不静默降级为文生
       if (execution.videoMode !== 'i2v' && plan.refs.some((r) => r.role === 'first_frame')) throw new CreationError('first_frame_unsupported', '方案含首帧参考但当前能力不支持图生视频首帧，请改用图文模式或更换支持 i2v 的实例', 422)
-      // [M32] 实际下发分辨率由单一真源表归一（minimax/volcengine 收敛档位，其余透传）——与适配器 normalize 同源
-      execution.resolution = mapResolution(video.providerKey, c.resolution) || c.resolution
+      // [M32] 实际下发分辨率由单一真源表归一（minimax 按 H3/H3-Max 分档、volcengine 收敛档位，其余透传）——与适配器 normalize 同源
+      execution.resolution = mapResolution(video.providerKey, c.resolution, video.model) || c.resolution
       const durations = [...c.durations].sort((a, b) => a - b)
       for (const shot of plan.shots) {
         const duration = durations.find((n) => n >= shot.duration)

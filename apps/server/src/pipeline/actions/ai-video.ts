@@ -18,7 +18,7 @@ import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
-import { pinOf, recipeOf, mediaFailure, recipeFirstFrameId } from '../../services/creation-chat/recipe'
+import { pinOf, recipeOf, mediaFailure, recipeFirstFrameId, isCreationTemplate } from '../../services/creation-chat/recipe'
 
 interface ShotSpec {
   id: string
@@ -475,7 +475,7 @@ async function pollVideoTask(
       res = await adapter.query(taskId, { baseUrl: request.baseUrl, apiKey: request.apiKey })
     } catch (err) {
       // 单次查询网络抖动：记日志继续轮询，累计超时兜底
-      ctx.log(`shot 轮询查询异常（继续等待）: ${mediaFailure(err, ctx.run.templateKey === 'easy-video')}`)
+      ctx.log(`shot 轮询查询异常（继续等待）: ${mediaFailure(err, isCreationTemplate(ctx.run.templateKey))}`)
       res = { status: 'processing' }
     }
     if (res.status === 'completed') return res.url ?? null

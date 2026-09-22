@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import { createFirstInput } from './use-first-input'
+import { createRework } from './use-rework'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { studioOff, studioOn } from '../../lib/socket'
@@ -11,8 +12,10 @@ import {
 } from '../../lib/types'
 import type {
   Asset,
+  CreationCandidateStep,
   CreationDeleteResult,
   CreationDetail,
+  CreationGateDecision,
   CreationProjectMeta,
   CreationSessionListItem,
   CreationMode,
@@ -22,13 +25,8 @@ import type {
 
 // ===== [M30] 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
 
-const RUNNING = new Set([
-  'queued',
-  'running',
-  'pending',
-  'processing',
-  'waiting_input',
-])
+// [M42] waiting_input 不在本集合内：它是「等用户决策」而不是「等在途请求」，已挂起闸门时继续 4s 轮询只会空转（见 isPollable 的 parked 分支）
+const RUNNING = new Set(['queued', 'running', 'pending', 'processing'])
 
 /** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl）。
  *  [M31+] 两类来源：上传项持有 file；「从素材选取」项无 file，凭 sourceAssetId 走 from-asset 登记（改用途/重试同源）。 */
@@ -49,9 +47,13 @@ export interface AttachmentItem {
 
 function isPollable(d: CreationDetail | null): boolean {
   if (!d) return false
+  const p = d.progress
+  // [M42] 投影带 review = 闸门真的在等用户点按钮 → 不轮询；waiting_input 但无待审步骤 = 决策后的瞬时态（run 行比步骤行晚一步更新），继续轮询至收敛
+  const parked = !!p && p.status === 'waiting_input' && !!p.review
   const runActive =
-    !!d.progress &&
-    (RUNNING.has(d.progress.status) || d.progress.status === 'processing')
+    !!p &&
+    !parked &&
+    (RUNNING.has(p.status) || p.status === 'processing' || p.status === 'waiting_input')
   const starting = d.session.status === 'starting'
   return (runActive || starting || d.session.status === 'planning') && !d.result
 }
@@ -66,17 +68,24 @@ const state = reactive({
   busyAction: false,
   error: '',
   notice: '',
+  // [M42] 已改选版本但还未重新合成（选片零计费、不改成片，需提示用户再走一次本地合成）
+  selectionDirty: false,
   // [M31] 参考附件托盘（仅当前会话；切会话/离开即清空，避免旧素材错挂新会话）
   attachments: [] as AttachmentItem[],
 })
 
 const first = createFirstInput(state, { commit, upload: uploadItem, polling: ensurePolling })
+// [M42] 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
+const rework = createRework(state, { commit, polling: ensurePolling })
 let viewEpoch = 0
 let autoFirstId = 0
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let wired = false
 let retryTicket = { signature: '', key: '' }
 let sendTicket = { signature: '', key: '' }
+let gateTicket = { signature: '', key: '' }
+let selectionTicket = { signature: '', key: '' }
+let recomposeTicket = { signature: '', key: '' }
 
 function errText(e: unknown): string {
   if (e instanceof ApiError) return e.message
@@ -87,6 +96,8 @@ function errText(e: unknown): string {
 function commit(id: number, detail: CreationDetail): void {
   if (id !== state.currentId) return
   state.detail = detail
+  // [M42] run 一旦重新推进（含本地重合成），选定版本正在落到新成片上 → 摘掉「待重新合成」提示
+  if (RUNNING.has(detail.progress?.status ?? '')) state.selectionDirty = false
   first.observe(detail)
   syncConfirmKey()
   syncProjectDraft()
@@ -214,6 +225,8 @@ function wireSocket(): void {
   studioOn('run.completed', onRunEvent)
   studioOn('run.failed', onRunEvent)
   studioOn('run.step', onRunEvent)
+  // [M42] 闸门挂起：不靠下一轮轮询，事件到达即重拉（审阅面板即时出现）
+  studioOn('run.gate', onRunEvent)
   studioOn('task.updated', onRunEvent)
 }
 
@@ -235,6 +248,7 @@ async function open(id: number): Promise<void> {
   wireSocket()
   if (id !== state.currentId) {
     first.detach()
+    rework.reset()
     viewEpoch++
     autoFirstId = 0
     state.currentId = id
@@ -246,6 +260,10 @@ async function open(id: number): Promise<void> {
     confirmKey.hash = ''
     retryTicket = { signature: '', key: '' }
     sendTicket = { signature: '', key: '' }
+    gateTicket = { signature: '', key: '' }
+    selectionTicket = { signature: '', key: '' }
+    recomposeTicket = { signature: '', key: '' }
+    state.selectionDirty = false
     projectDraft.dirty = false
   }
   const token = viewEpoch
@@ -336,7 +354,7 @@ async function refreshPreflight(): Promise<void> {
   }
 }
 
-async function confirm(acceptUnpriced: boolean): Promise<number | null> {
+async function confirm(acceptUnpriced: boolean, reviewGate = false): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
   if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction)
@@ -357,6 +375,8 @@ async function confirm(acceptUnpriced: boolean): Promise<number | null> {
       acceptUnpriced,
       // [M40] 确认才立项：携带用户覆盖过的立项字段（不入 planHash，非法值服务端回落真源并在对话中说明）
       ...(projectOverrides() ? { project: projectOverrides() } : {}),
+      // [M42] 勾选审阅 → 服务端改用同构变体模板；不勾选不传该键（缺省 false，请求体与旧版逐字一致）
+      ...(reviewGate ? { reviewGate: true } : {}),
     })
     await fetchDetail(id)
     // [M40] 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
@@ -421,6 +441,101 @@ async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false): P
   }
 }
 
+/**
+ * [M42] 审阅决策：approve 继续制作；reject = 该阶段整体重做（再次调用图片/视频生成，调用方必须已二次确认费用）。
+ * 同签名（会话+run+步骤+决策+意见）复用幂等键：连点不重复决策；改意见或改决策即新键（与 retry 同一先例）。
+ */
+async function decideGate(
+  stepKey: string,
+  decision: CreationGateDecision,
+  note?: string,
+): Promise<boolean> {
+  const p = state.detail?.progress
+  const id = state.currentId
+  if (!id || !p?.review || state.busyAction) return false
+  const signature = JSON.stringify([id, p.runId, stepKey, decision, note?.trim() ?? ''])
+  if (signature !== gateTicket.signature) gateTicket = { signature, key: newRequestKey('gate') }
+  state.busyAction = true
+  state.error = ''
+  try {
+    commit(id, await creationChatApi.gate(id, {
+      stepKey,
+      decision,
+      ...(note?.trim() ? { note: note.trim() } : {}),
+      idempotencyKey: gateTicket.key,
+    }))
+    // 决策后 run 已转 queued/running（驳回重跑同理）：恢复轮询把新进度接回来
+    ensurePolling()
+    gateTicket = { signature: '', key: '' }
+    return true
+  } catch (e) {
+    if (id === state.currentId) state.error = errText(e)
+    return false
+  } finally {
+    state.busyAction = false
+  }
+}
+
+/**
+ * [M42] 选定某镜的在用版本（零计费、不触发执行）：只提交这一镜的改动，
+ * 未提及镜头由服务端按在用值补全（子集替换语义不外露）；成功后需再走重新合成才落到成片。
+ */
+async function applySelection(
+  stepKey: CreationCandidateStep,
+  shotId: string,
+  assetId: number,
+): Promise<boolean> {
+  const id = state.currentId
+  const runId = state.detail?.progress?.runId
+  if (!id || !runId || state.busyAction) return false
+  const signature = JSON.stringify([id, runId, stepKey, shotId, assetId])
+  if (signature !== selectionTicket.signature) selectionTicket = { signature, key: newRequestKey('sel') }
+  state.busyAction = true
+  state.error = ''
+  try {
+    commit(id, await creationChatApi.selectShots(id, {
+      stepKey,
+      picks: [{ shot_id: shotId, asset_id: assetId }],
+      idempotencyKey: selectionTicket.key,
+    }))
+    if (id === state.currentId) state.selectionDirty = true
+    state.notice = '已选定该版本；重新合成后成片才会用上这一版。'
+    selectionTicket = { signature: '', key: '' }
+    return true
+  } catch (e) {
+    if (id === state.currentId) state.error = errText(e)
+    return false
+  } finally {
+    state.busyAction = false
+  }
+}
+
+/**
+ * [M42] 本地重新合成：仅重置合成步（不调用任何付费生成模型），但会重跑一段本地处理。
+ * 成功后作废幂等键：下一次主动重合成必须是真的再次执行（与审阅决策同一先例）。
+ */
+async function recompose(): Promise<boolean> {
+  const id = state.currentId
+  const runId = state.detail?.progress?.runId
+  if (!id || !runId || state.busyAction) return false
+  const signature = JSON.stringify([id, runId, 'recompose'])
+  if (signature !== recomposeTicket.signature) recomposeTicket = { signature, key: newRequestKey('rec') }
+  state.busyAction = true
+  state.error = ''
+  try {
+    commit(id, await creationChatApi.recompose(id, { idempotencyKey: recomposeTicket.key }))
+    if (id === state.currentId) state.selectionDirty = false
+    ensurePolling()
+    recomposeTicket = { signature: '', key: '' }
+    return true
+  } catch (e) {
+    if (id === state.currentId) state.error = errText(e)
+    return false
+  } finally {
+    state.busyAction = false
+  }
+}
+
 async function refreshStatus(): Promise<void> {
   const id = state.currentId
   if (!id || state.loadingDetail) return
@@ -431,12 +546,17 @@ async function refreshStatus(): Promise<void> {
 
 function leave(): void {
   first.detach()
+  rework.reset()
   viewEpoch++
   autoFirstId = 0
   state.busySend = false
   state.busyAction = false
   retryTicket = { signature: '', key: '' }
   sendTicket = { signature: '', key: '' }
+  gateTicket = { signature: '', key: '' }
+  selectionTicket = { signature: '', key: '' }
+  recomposeTicket = { signature: '', key: '' }
+  state.selectionDirty = false
   stopPolling()
   state.currentId = 0
   state.attachments = []
@@ -622,6 +742,7 @@ export function useEasyCreate() {
   return {
     state,
     first,
+    rework,
     attachmentsLocked,
     enterHome,
     replaceAttachmentFile,
@@ -647,6 +768,9 @@ export function useEasyCreate() {
     confirm,
     cancel,
     retry,
+    decideGate,
+    applySelection,
+    recompose,
     leave,
     removeSession,
     addAttachment,

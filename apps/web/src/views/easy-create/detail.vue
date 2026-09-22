@@ -6,6 +6,7 @@ import { creationStatusLabel, creationStatusTone } from '../../lib/types'
 import ConversationPanel from './ConversationPanel.vue'
 import CreationPlanCard from './CreationPlanCard.vue'
 import CreationProgress from './CreationProgress.vue'
+import CreationReview from './CreationReview.vue'
 import CreationResult from './CreationResult.vue'
 import CreationArtifacts from './CreationArtifacts.vue'
 import { useEasyCreate } from './use-creation-chat'
@@ -86,6 +87,8 @@ onUnmounted(() => s.leave())
     <div v-else class="cols">
       <ConversationPanel class="col conv" :s="s" />
       <div class="col ec-side">
+        <!-- [M42] 等待审阅时置顶决策面板（其余时候自身 v-if 隐藏，不影响原有顺序） -->
+        <CreationReview :s="s" />
         <CreationResult :s="s" />
         <CreationProgress :s="s" />
         <CreationArtifacts :s="s" />
