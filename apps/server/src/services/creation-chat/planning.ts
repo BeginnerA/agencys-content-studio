@@ -154,9 +154,13 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
     const prices = await Promise.all(['tokens_in', 'tokens_out'].map((unit) => resolveUnitPrice({ configId: ep.configId, provider: ep.providerKey, model: ep.model, kind: 'llm', unit: unit as 'tokens_in' | 'tokens_out' })))
-    const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 10000 * (prices[1] ?? 0) })
+    // 预算估算取 reasoning+正文 的典型用量（24000）而非上限——上限只用于防 provider 拒单，不该把预算内规划硬挡
+    const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 24000 * (prices[1] ?? 0) })
     if (budget) throw new CreationError(budget.code, budget.message, 409)
-    const result = await chatCompleteDetailed(messages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 10000, temperature: 0.5, allowEmptyContent: true })
+    // [截断修复] 与 ai-text 同源实测：deepseek-flash 等推理模型先产 reasoning_content 挤占输出预算，
+    // 10000 上限在方案正文写出前即 finish_reason=length（表层报「方案输出被截断」，缩短要求也无法规避）；
+    // 放宽到 64000（deepseek 可用上限），并把超时从默认 120s 放宽到 10 分钟（长思维链下 2 分钟会被 abort）
+    const result = await chatCompleteDetailed(messages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 64000, temperature: 0.5, allowEmptyContent: true, timeoutMs: 600_000 })
     for (const [index, unit] of (['tokens_in', 'tokens_out'] as const).entries()) await recordUsage({
       projectId: claimed.projectId, kind: 'llm', provider: ep.providerKey, model: ep.model,
       quantity: result.usage ? (index === 0 ? result.usage.promptTokens : result.usage.completionTokens) : 0,

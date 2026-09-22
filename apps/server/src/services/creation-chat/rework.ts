@@ -279,7 +279,9 @@ export async function planRework(id: number, raw: unknown): Promise<ReworkPrevie
   })))
   const budget = await checkBudget({ projectId: session.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 2000 * (prices[1] ?? 0) })
   if (budget) throw new CreationError(budget.code, budget.message, 409)
-  const result = await chatCompleteDetailed(messages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 4000, temperature: 0.2, allowEmptyContent: true })
+  // [截断修复] 同 planning：推理模型 reasoning_content 挤占输出预算，4000 上限易 finish_reason=length
+  // 报「返修解析被截断」；放宽到 24000（返修回复很小，不需 64000）并放宽超时到 10 分钟
+  const result = await chatCompleteDetailed(messages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 24000, temperature: 0.2, allowEmptyContent: true, timeoutMs: 600_000 })
   for (const [index, unit] of (['tokens_in', 'tokens_out'] as const).entries()) await recordUsage({
     projectId: session.projectId, kind: 'llm', provider: ep.providerKey, model: ep.model,
     quantity: result.usage ? (index === 0 ? result.usage.promptTokens : result.usage.completionTokens) : 0,

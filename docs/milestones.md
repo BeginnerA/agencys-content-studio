@@ -575,6 +575,20 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 
 ---
 
+## M45 能力速览（轻松创作第四批：成品品牌贯通 · G18 水印/片头尾/字幕样式 · 混合方案）
+
+差距评估落地的第 18 项：轻松创作成片此前在严格引擎门（`ffmpeg-merge` `strict ? {}`）被整体跳过品牌叠加，用户在平台/项目配好的水印、片头尾、字幕样式对轻松创作成片**完全不生效**。拍板（混合）：`isCreationTemplate` 的严格 run **默认继承**平台/项目已配 `settings.brand`（`resolveBrandConfig` 三层合并原样复用），确认卡提供逐次「应用品牌风格」开关可关；未配品牌 → `resolveBrandConfig` 返回 `{}` → 输出**逐字节不变**。BGM 澄清：经源码核实 BGM 早已端到端贯通（`attachments.ts` 音频默认 `role:'bgm'` → refs → `ffmpeg-merge` 严格分支消费，M31 交付），本批不改 BGM 机制，仅在品牌卡补一行可发现性提示。
+
+- **G18.1 契约与启动开关**：`contract.ts` `confirmationSchema` 加 `brandApply: z.boolean().default(true)`——与 reviewGate / M43 resolution 同类「启动方式」，**不入 planHash**（缺省 true 时请求体与旧版逐字一致）。`compose-config.ts` `ComposeConfig` 加 `brandApply?: boolean`（与 `_compose.brand` 对象同级不同键，`readComposeBrand` 无碰撞）。
+- **G18.2 落库链修正（计划前提的必要偏离）**：实施发现 `createRunRow → prepareRunInput → normalizeInput` **只保留模板声明 inputs 与 `_params`**（`easy-video.yaml` 无 `_compose`），计划原案「把 `_compose` 塞进 createRunRow input」会被静默丢弃、retry 克隆同样丢失。修正：`execution.ts` `confirmCreation` 仅当 `brandApply === false` 时在**同事务内 createRunRow 之后直写** `run.input._compose`（镜像工作台 `updateComposeConfig` 先例，默认 true 不写任何键 → run.input 与旧版逐字一致）；`retryCreation` 显式克隆 `src.input._compose` 回新 run（开关随续跑保留）。否决「让 prepareRunInput 携带 `_compose`」方案：专业 run 创建 API 将可注入 compose 配置、绕过工作台 `requireEditableRun` 状态门（特权升级）。
+- **G18.3 引擎门翻转（爆炸半径限定）**：`ffmpeg-merge/index.ts` 品牌闸改为 `(!strict || (isCreationTemplate(templateKey) && composeCfg.brandApply !== false)) ? resolveBrandConfig(...) : {}`——非严格（专业）不变；严格 + 创建模板 + 未关 → 继承（新默认）；关 → `{}`；严格 + **非**创建模板 → `{}`（其它严格 run 维持现状）。零新表零新列（开关存 `run.input._compose` JSON）、零付费媒体（纯 ffmpeg 合成期叠加）、不动引擎调度、不改 `easy-video.yaml`。
+- **G18.4 预检透出**：`preflight.ts` `CreationPreflight` **顶层**新增 `brandSummary: { available, watermark, intro, outro, subtitle } | null`（run 层传 null 取平台+项目合并真值；仅顶层不进 `execution` → 不改 planHash，镜像 resolutionOptions 口径）。
+- **G18.5 Web**：新组件 `CreationBrand.vue`（100 行，比照 CreationResolution：默认 on 开关、`min-height:44px`、SVG palette 图标、`aria-label`；`brandSummary.available` 为假整块不渲染；副文案按槽位如实列出将应用项，关闭切「本次成片不含品牌水印/片头尾与自定义字幕」；附 BGM 段数提示）；新 wrapper `CreationStartupOptions.vue`（42 行）收编 reviewGate/resolution/brand 三启动选项，`CreationPlanCard.vue` 经净减回落 **787 行 ≤800**；`use-creation-chat.ts` `confirm` 第 4 参 `brandApply` 仅 false 传键（请求体默认与旧版逐字一致）。
+
+验证：`probe-m45`（**3 节 30 断言全绿**，isolatedEnv + 品牌夹具（字幕样式纯配置，零文件系统）+ stub startRun + fetch 阻断计 mediaCalls=0：门真值表四组合 / brandSummary 与 planHash 逐字节相等 / 默认确认 run.input 无 `_compose`、false 直写落库且 recipe·planHash·refs 零污染、真跑 retryCreation 开关保留、schema 缺省 true + `.strict` 拒未知键、HTTP 202 受理）；定向 9 探针（m11/m19/m30/m31/m40/m41/m42/m43/m45）934 断言 / 3 失败——3 项均为 `probe-m19` voice-clone 存量（git 溯源 9df03c6 aliyun 合并重构、M43 提交祖先，非本批引入）；全量 `run-probes` **3867 断言 / 43 失败 / 3824 通过**，与 M43 收尾基线（3604/49 存量失败）逐项比对**零新增失败**（43 项失败全部存量归因，含 m26 唯一失败 = 历史红线债 probe-m11.ts 851 行）；server `tsc`、web `vue-tsc --noEmit`、`vite build` 全 EXIT=0；`m26 split-audit` 无新增 >800 文件。浏览器验收（`accept-m45.ts` 一次性脚手架，隔离库 + 假 LLM + fetch 阻断 + 单端口 :4145 静态托管，验收后已删除）：品牌会话开关联动（默认 on、副文案「成片将叠加…」切换、aria-label）、`.ec-brand-row` 实测 44px、无横向溢出、提交后 scaffold 日志实锤 `run.input._compose={"brandApply":false}` 落库、未配品牌会话不渲染开关、console 仅 socket.io 存量噪音；390px 设备仿真在验收环境不可用（无 resize 能力），按计划以 DOM 取证代偿并如实标注（组件 flex column 无固定 min-width）。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
