@@ -4,6 +4,12 @@ import { z } from 'zod'
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/)
 const text = (max: number) => z.string().trim().min(1).max(max)
 
+// [M43] 视频分辨率档位（与 @agencys/ai-provider-kit CapsResolution 六档同源，预检 videoCapabilitiesSchema 同引用）。
+// 确认级可选但不入 planHash 的成立前提：价格注册表无 resolution 维度（视频按秒单价，档位不改变预估）；
+// 若未来注册表加分档定价，此字段必须改随方案入 hash（改档位即改价格，旧确认必须作废）。
+export const CREATION_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p', '480P', '768P', '2K'] as const
+export type CreationVideoResolution = (typeof CREATION_VIDEO_RESOLUTIONS)[number]
+
 // [M31] 对话式参考输入：受方案约束的参考素材（上传后编译进 refs → 进 planHash，确认即执行）。
 // role 语义：style 风格参考 / first_frame 首帧 / subject 主体一致性 / content 视频内容解析 / bgm 背景乐。
 export const refRoleSchema = z.enum(['style', 'first_frame', 'subject', 'content', 'bgm'])
@@ -114,6 +120,9 @@ export const confirmationSchema = z.object({
   // [M42] 审阅闸：true 时本次 run 用 easy-video-review 变体模板（画面/首帧完成后挂起等审阅）；
   // 不入 planHash（与立项覆盖同理：是启动方式而非执行数据），恢复/重试沿用 run 自身模板键。
   reviewGate: z.boolean().default(false),
+  // [M43] 画质选择：仅 ∈ 预检透出的已背书档位（resolutionOptions.choices）可确认；缺省 = 模型默认档，
+  // 请求体与旧版逐字一致。与 reviewGate 的先例差异：画质是执行数据，但不作废方案的唯一理由是预估不随档变（见文件头注）。
+  resolution: z.enum(CREATION_VIDEO_RESOLUTIONS).optional(),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
 
@@ -141,8 +150,19 @@ export const shotSelectionSchema = z.object({
 }).strict()
 export type ShotSelection = z.infer<typeof shotSelectionSchema>
 
-/** [M42] 本地重新合成：只重置 ffmpeg_merge 步，不调用任何付费模型 */
+/** [M42] 本地重新合成：仅重置 ffmpeg_merge 步，不调用任何付费模型 */
 export const recomposeSchema = z.object({ idempotencyKey: requestKeySchema }).strict()
+
+/**
+ * [M43] 参考登记变更（用途 + 逐镜绑定共用一个写入口）：role 缺省不改；
+ * shotId：null = 回到整片级，缺省不改，字符串 = 绑到该镜（仅 image 类可带）。
+ * 至少给一个变更键，否则拒绝（空 PATCH 不刷哈希、不抬 revision）。
+ */
+export const refBindSchema = z.object({
+  role: refRoleSchema.optional(),
+  shotId: id.nullable().optional(),
+}).strict().refine((v) => v.role !== undefined || v.shotId !== undefined, { message: 'role 与 shotId 至少提供一项' })
+export type RefBind = z.infer<typeof refBindSchema>
 
 /**
  * [M42] 局部返修——第一步：自然语言指令解析（只花文本模型小额费用，零媒体计费）。

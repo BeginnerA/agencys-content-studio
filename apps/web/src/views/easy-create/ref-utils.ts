@@ -3,7 +3,7 @@
  * 消息 → 参考素材展示元信息（类型图标 / 角色标签 / 文件名 / 缩略图端点）判定。
  */
 import { REF_ROLE_LABELS } from '../../lib/types'
-import type { CreationChatMessage, CreationRefKind } from '../../lib/types'
+import type { CreationChatMessage, CreationRefKind, CreationShot } from '../../lib/types'
 
 export function kindIcon(kind: CreationRefKind): string {
   return kind === 'image' ? 'photo' : kind === 'video' ? 'film' : 'doc'
@@ -21,6 +21,17 @@ export const refKind = (m: CreationChatMessage): CreationRefKind =>
 export const refRoleLabel = (m: CreationChatMessage): string => {
   const role = m.payload?.ref?.role
   return role ? REF_ROLE_LABELS[role] : '参考'
+}
+
+/** [M43] 逐镜绑定徽标文案：shotId 按当前方案镜序→「第 N 镜」；方案未命中/未就绪回退裸 id（不隐藏绑定事实） */
+export const refShotLabel = (
+  m: CreationChatMessage,
+  shots?: CreationShot[] | null,
+): string | null => {
+  const shotId = m.payload?.ref?.shotId
+  if (!shotId) return null
+  const i = shots?.findIndex((s) => s.id === shotId) ?? -1
+  return i >= 0 ? `第 ${i + 1} 镜` : shotId
 }
 
 // 文件名：剥离服务端消息前缀「已上传参考素材：」，回退整句

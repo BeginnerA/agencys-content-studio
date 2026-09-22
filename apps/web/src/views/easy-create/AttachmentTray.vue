@@ -2,8 +2,10 @@
 /**
  * [M26-split] 输入区上方「参考素材托盘」（自 ConversationPanel.vue 原样搬出，行为零变更）：
  * 缩略图 / 上传状态 / 用途下拉 / 重试 / 移除。状态与操作真源在 useEasyCreate（s 透传），本组件纯展示 + 直连。
+ * [M43] 图片行新增「用于」逐镜绑定下拉：整片（默认）+ 当前方案逐镜；变更即 PATCH（零计费），
+ * 方案未生成时只有「整片」一项（服务端无 plan 可校验镜头，绑镜要等方案就绪）。
  */
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import { REF_ROLE_LABELS, REF_VALID_ROLES } from '../../lib/types'
 import type { CreationRefRole } from '../../lib/types'
@@ -23,6 +25,19 @@ function onFile(event: Event) {
 
 function onRoleChange(clientId: string, role: string): void {
   void props.s.changeAttachmentRole(clientId, role as CreationRefRole)
+}
+
+// [M43] 可绑镜头候选：当前方案逐镜（镜序 + 提示词摘要）；无方案 → 只剩「整片」
+const shotOptions = computed(() => {
+  const shots = props.s.state.detail?.session.plan?.shots ?? []
+  return shots.map((sh, i) => ({
+    id: sh.id,
+    label: `第 ${i + 1} 镜 · ${sh.image_prompt.slice(0, 18)}${sh.image_prompt.length > 18 ? '…' : ''}`,
+  }))
+})
+
+function onShotChange(clientId: string, shotId: string): void {
+  void props.s.setAttachmentShot(clientId, shotId)
 }
 </script>
 
@@ -69,6 +84,21 @@ function onRoleChange(clientId: string, role: string): void {
         <option v-for="r in REF_VALID_ROLES[a.kind]" :key="r" :value="r">
           {{ REF_ROLE_LABELS[r] }}
         </option>
+      </select>
+      <!-- [M43] 逐镜绑定（仅图片；读链 recipeRefImageIds/recipeFirstFrameId 只消费 image 的 shotId） -->
+      <select
+        v-if="a.kind === 'image'"
+        class="att-role att-shot"
+        :value="a.shotId ?? ''"
+        :disabled="s.attachmentsLocked.value || !a.assetId"
+        :aria-label="'用于哪一镜：' + a.name"
+        title="选择这张参考图用于整片还是某个镜头"
+        @change="
+          onShotChange(a.clientId, ($event.target as HTMLSelectElement).value)
+        "
+      >
+        <option value="">用于整片</option>
+        <option v-for="sh in shotOptions" :key="sh.id" :value="sh.id">{{ sh.label }}</option>
       </select>
       <button
         v-if="a.error && !a.uploading && (a.file || a.sourceAssetId) && s.state.currentId"

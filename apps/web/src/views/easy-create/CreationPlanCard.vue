@@ -8,6 +8,7 @@ import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
 import CreationReviewGate from './CreationReviewGate.vue'
+import CreationResolution from './CreationResolution.vue'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
@@ -68,6 +69,14 @@ const showShots = ref(false)
 const acceptUnpriced = ref(false)
 // [M42] 中途审阅：勾选即本次用带闸门的同构变体模板（easy-video-review），不勾选 = 免审（不声明 skip_label）
 const reviewGate = ref(false)
+// [M43] 画质档位：'' = 模型默认（confirm 不传键）。预检重建后所选档不在新 choices 内 → 清空选择，不拿旧档撞 422
+const resolution = ref('')
+watch(
+  () => pf.value?.resolutionOptions,
+  (o) => {
+    if (resolution.value && (!o || !o.choices.includes(resolution.value))) resolution.value = ''
+  },
+)
 
 const ready = computed(() => !!pf.value?.ready)
 const blockers = computed(() => pf.value?.issues ?? [])
@@ -106,7 +115,7 @@ function touchProject(): void {
 }
 
 async function onConfirm(): Promise<void> {
-  await props.s.confirm(acceptUnpriced.value, reviewGate.value)
+  await props.s.confirm(acceptUnpriced.value, reviewGate.value, resolution.value || undefined)
   acceptUnpriced.value = false
 }
 </script>
@@ -318,6 +327,12 @@ async function onConfirm(): Promise<void> {
 
     <footer v-else-if="!confirmed" class="cf">
       <CreationReviewGate v-model="reviewGate" :dynamic="plan?.mode === 'dynamic'" />
+      <!-- [M43] 画质选择：仅 dynamic 且预检透出了已背书档位时展示（slideshow / 无视频实例不现） -->
+      <CreationResolution
+        v-if="plan?.mode === 'dynamic' && pf?.resolutionOptions"
+        v-model="resolution"
+        :options="pf.resolutionOptions"
+      />
       <label v-if="s.hasUnpriced.value" class="acc">
         <input v-model="acceptUnpriced" type="checkbox" />
         我已了解并接受上述未计价项的实际扣费

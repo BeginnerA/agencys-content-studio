@@ -5,13 +5,15 @@
  * 注意：`.bubble` 基础样式与 `.msg.user .bubble` 反色仍留在父级 scoped（子组件根元素同承父作用域）。
  */
 import Icon from '../../components/common/Icon.vue'
-import type { CreationChatMessage } from '../../lib/types'
-import { kindIcon, refKind, refName, refRoleLabel, refThumb } from './ref-utils'
+import type { CreationChatMessage, CreationShot } from '../../lib/types'
+import { kindIcon, refKind, refName, refRoleLabel, refShotLabel, refThumb } from './ref-utils'
 
 defineProps<{
   m: CreationChatMessage
   /** 该素材详情拉取中（refLoading 命中） */
   loading: boolean
+  /** [M43] 当前方案镜头（镜号徽标按镜序派生；无方案回退裸 id） */
+  shots?: CreationShot[] | null
 }>()
 const emit = defineEmits<{ open: [] }>()
 </script>
@@ -46,6 +48,7 @@ const emit = defineEmits<{ open: [] }>()
       <span class="ref-tag">
         <Icon :name="kindIcon(refKind(m))" :size="10" /> 参考 ·
         {{ refRoleLabel(m) }}
+        <span v-if="refShotLabel(m, shots)" class="ref-shot-badge">{{ refShotLabel(m, shots) }}</span>
       </span>
       <span class="ref-file" :title="refName(m)">{{ refName(m) }}</span>
     </span>
@@ -137,6 +140,16 @@ const emit = defineEmits<{ open: [] }>()
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+/* [M43] 镜号徽标：不靠颜色单独表意（文本「第 N 镜」即语义） */
+.ref-shot-badge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  background: rgb(0 0 0 / 25%);
 }
 
 .ref-file {

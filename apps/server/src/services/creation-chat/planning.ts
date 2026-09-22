@@ -10,7 +10,7 @@ import { clampPlanToCaps } from './clamp'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
-import { resolveAttachmentRefs } from './attachments'
+import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
@@ -117,10 +117,12 @@ export async function sendCreationMessage(id: number, raw: unknown) {
   try {
     const ep = await requiredEndpoint('llm')
     const vision = ep.extra.vision === true
-    // [M31] 参考素材：本条消息附件→核验编译；无新附件时沿用上版已采纳 refs（ refinement 不丢参考）
+    // [M31] 参考素材：本条消息附件→核验编译；[M43] 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
+    // 替换致旧参考静默丢失属缺陷）：同资产本轮覆盖（保位；role/hash 取新，编译链保留已绑 shotId），
+    // prior 其余保序保留，新资产追加；合并超上限服务端权威拒绝，不静默截断。
     const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
-    const effectiveRefs = thisTurnRefs.length ? thisTurnRefs : priorRefs
+    const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
     const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
     const recent = await db.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), ne(creationMessages.role, 'system'))).orderBy(desc(creationMessages.id)).limit(12)
     // [M35 G10] Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
@@ -193,6 +195,18 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
   }
   return creationDetail(id)
+}
+
+/** [M43] 跨轮参考合并：thisTurn 为空 → 沿用 prior（既有 refinement 行为逐字不变）；
+ *  否则同 assetId 以本轮为准并占据 prior 原位，本轮新资产追加末尾；合并后 >12 拒绝（不截断）。 */
+function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[] {
+  if (!thisTurn.length) return prior
+  const byId = new Map(thisTurn.map((r) => [r.assetId, r]))
+  const merged = prior.map((r) => byId.get(r.assetId) ?? r)
+  const added = thisTurn.filter((r) => !prior.some((p) => p.assetId === r.assetId))
+  const all = [...merged, ...added]
+  if (all.length > MAX_REFS) throw new CreationError('too_many_refs', `参考素材最多 ${MAX_REFS} 个（含历轮已采纳的），请先减少后重试`, 422)
+  return all
 }
 
 /**

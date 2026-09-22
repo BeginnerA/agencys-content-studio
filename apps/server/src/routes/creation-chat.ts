@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 import { CreationError } from '../services/creation-chat/contract'
 import { createSession, refreshPreflight, sendCreationMessage } from '../services/creation-chat/planning'
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
+import { bindCreationRef } from '../services/creation-chat/ref-bind'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
 import { decideCreationGate } from '../services/creation-chat/gate'
 import { creationShotBoard, recomposeCreation, selectCreationShots } from '../services/creation-chat/candidates'
@@ -51,6 +52,13 @@ creationChatRoutes.post(`${path}/:id/attachments/from-asset`, route(async (c) =>
   const req = (await body(c)) as { assetId?: unknown; role?: unknown }
   if (typeof req.assetId !== 'number') throw new CreationError('bad_asset', 'assetId 需为数字', 400)
   return c.json(await addAttachmentFromAsset(sessionId, req.assetId, typeof req.role === 'string' ? req.role : undefined), 201)
+}))
+// [M43] 参考绑定：用途 + 逐镜 shotId 共用写入口（双写 payload + plan.refs，hash 变则需重新确认）；零 LLM、零计费。
+creationChatRoutes.patch(`${path}/:id/attachments/:assetId/ref`, route(async (c) => {
+  const sessionId = id(c)
+  const assetId = Number(c.req.param('assetId'))
+  if (!Number.isInteger(assetId) || assetId <= 0) throw new CreationError('bad_asset', '素材编号非法', 400)
+  return c.json(await bindCreationRef(sessionId, assetId, await body(c)))
 }))
 creationChatRoutes.post(`${path}/:id/messages`, route(async (c) => c.json(await sendCreationMessage(id(c), await body(c)))))
 creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await refreshPreflight(id(c)))))

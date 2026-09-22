@@ -8,7 +8,7 @@ import { defaultVoice, defaultImageSize } from '../../adapters/extra-params'
 import { defaultTtsModel } from '../tts'
 import { checkBudget } from '../budget'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
-import { CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
+import { CREATION_VIDEO_RESOLUTIONS, CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
 import type { CreationRecipe, EndpointSnapshot } from './recipe'
 
 /** 声明绑定精确模型；仅记录经供应商文档/实测核实的能力，不按名称推测。 */
@@ -17,7 +17,7 @@ export const videoCapabilitiesSchema = z.object({
   modes: z.array(z.enum(['i2v', 't2v'])).min(1),
   durations: z.array(z.number().int().min(1).max(30)).min(1).max(30),
   aspectRatios: z.array(z.enum(['9:16', '16:9', '1:1'])).min(1),
-  resolution: z.enum(['480p', '720p', '1080p', '480P', '768P', '2K']),
+  resolution: z.enum(CREATION_VIDEO_RESOLUTIONS),
 }).strict()
 type DeclaredCaps = z.infer<typeof videoCapabilitiesSchema>
 export type PreparedRecipe = Omit<CreationRecipe, 'sessionId' | 'sources'>
@@ -27,6 +27,10 @@ export interface CreationPreflight {
   execution: PreparedRecipe | null
   estimate: { knownCost: number; unpriced: string[]; imageCount: number; videoSeconds: number; voiceChars: number; refCount: number; videoAnalysisCount: number }
   planningModel: { provider: string; model: string } | null
+  /** [M43] 确认卡画质候选：仅 dynamic 且视频档位可背书时非 null。
+   *  只在 pf 顶层透出（planHash = hashJson({plan, execution}) 仅含 execution）：顶层加法不改任何现存会话哈希。
+   *  档位越界不猜：无真源表且无显式声明 → null（无可选，维持现状）。 */
+  resolutionOptions: { choices: string[]; default: string } | null
 }
 
 export async function requiredEndpoint(service: 'image' | 'video' | 'audio' | 'llm'): Promise<ResolvedEndpoint> {
@@ -46,7 +50,7 @@ async function snapshot(ep: ResolvedEndpoint, kind: UsageKind, unit: UsageUnit):
 
 export async function preflightPlan(projectId: number, plan: CreationPlan): Promise<CreationPreflight> {
   const result: CreationPreflight = {
-    ready: false, issues: [], execution: null, planningModel: null,
+    ready: false, issues: [], execution: null, planningModel: null, resolutionOptions: null,
     estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length },
   }
   try {
@@ -100,6 +104,11 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       if (execution.videoMode !== 'i2v' && plan.refs.some((r) => r.role === 'first_frame')) throw new CreationError('first_frame_unsupported', '方案含首帧参考但当前能力不支持图生视频首帧，请改用图文模式或更换支持 i2v 的实例', 422)
       // [M32] 实际下发分辨率由单一真源表归一（minimax 按 H3/H3-Max 分档、volcengine 收敛档位，其余透传）——与适配器 normalize 同源
       execution.resolution = mapResolution(video.providerKey, c.resolution, video.model) || c.resolution
+      // [M43] 画质候选：自动背书时取真源表全档；实例显式声明（model 匹配命中上行分支）即固定档位（越界已在上方 422），仅本档可选。
+      // default = 归一后的实际下发值（诚实展示）；各档经 mapResolution 仍落在 choices 内（表形态即归一形态）
+      result.resolutionOptions = stored.success && stored.data.model === video.model
+        ? { choices: [c.resolution], default: execution.resolution }
+        : { choices: declared ? [...declared.resolutions] : [c.resolution], default: execution.resolution }
       const durations = [...c.durations].sort((a, b) => a - b)
       for (const shot of plan.shots) {
         const duration = durations.find((n) => n >= shot.duration)

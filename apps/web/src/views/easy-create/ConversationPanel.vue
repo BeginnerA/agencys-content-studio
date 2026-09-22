@@ -142,6 +142,7 @@ async function onFiles(e: Event): Promise<void> {
             v-if="isAttachment(m)"
             :m="m"
             :loading="refLoading === refAssetId(m)"
+            :shots="s.state.detail?.session.plan?.shots ?? null"
             @open="openRefPreview(m)"
           />
           <div v-else class="bubble">{{ m.content }}</div>

@@ -563,6 +563,18 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 
 ---
 
+## M43 能力速览（轻松创作第三批：画质选择、逐镜参考绑定、跨轮参考合并）
+
+差距评估（相对即梦 / Coze）八项剩余候选经源码核实落三件，共同红线：**预算门禁 / planHash / 配置冻结 / 归属校验全部保持，0 新表新列、0 新依赖、不改 `easy-video.yaml`、不动引擎调度、画质与绑定全程零计费**。
+
+- **G17.1 画质档位入口贯通（模块一）**：`preflight.ts` 顶层新增 `resolutionOptions`（dynamic 取 `resolveVideoCaps` 真源档位，实例显式声明取交集；**planHash = `hashJson({plan, execution})` 仅含 execution，顶层加法不改任何现存哈希**）。`contract.ts` `confirmationSchema` 加可选 `resolution`（成立前提：视频按秒计价、价格注册表无 resolution 维度 → 预估金额不变；登记 edge：若未来分档定价则必须入 hash）。`execution.ts` `confirmCreation` 保持既有 hash 防篡改校验先执行，通过后按 `resolutionOptions.choices` 校验越界（422 `resolution_unsupported`）再覆写 `pf.execution.resolution = mapResolution(...)`；缺省 = 现行为逐字不变，retry/rework/recompose 天然沿用 run 冻结 recipe。前端 `CreationPlanCard.vue` 抽出 `CreationResolution.vue`（82 行）子组件、未选择不传键。**文案红线：确认卡与对话流不承诺「更高画质不加价」，只展示所选档位 + 诚实标注实际计费以供应商对所选档位定价为准**。
+- **G17.2 逐镜参考绑定（模块二）**：读侧 `recipeRefImageIds`/`recipeFirstFrameId` 早已完整消费 `ref.shotId`（shot 级优先→全局回退），唯写侧全断。新端点 `PATCH /creation-sessions/:id/attachments/:assetId/ref`（新建 `ref-bind.ts`，84 行）：归属校验 + `attachmentsLocked` 同源状态门（run active → 409）、仅 image 类可带 shotId（video/audio → 422）、ready 态真源校验 shotId ∈ `plan.shots`；**payload 与 plan.refs 双写**（payload 是再规划编译权威源），patch 进 plan 后重跑 `preflightPlan`，hash 变则 `planRevision+1` 令旧确认键自然 `stale_plan`（用户须重新确认，零 LLM、零计费）。`attachments.ts` `resolveAttachmentRefs` 编译时保留 `shotId` 修复写链断点。前端 `AttachmentTray.vue` 图片行「用于」下拉（整片 + 当前方案逐镜，规划前仅整片），`use-creation-chat.ts` 抽出 `use-creation-attachments.ts`（249 行）附件 composable（PATCH epoch 晚到保护 + 失败回滚 prevRole/prevShot + 不计费提示），`MessageRefBubble.vue`/`ref-utils.ts` 补「第 N 镜」徽标。
+- **G17.3 跨轮参考合并（模块三）**：`planning.ts` `effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)` 修复「带新附件再规划即整体替换、旧参考丢失」——同 assetId 以本轮覆盖（role/hash 取新值、本轮未重传则保留已绑 shotId）、prior 其余保序保留、新资产追加；合并后 >12 → `too_many_refs` 服务端权威拒绝，**不静默截断**。
+
+验证：`probe-m43`（**52 断言全绿**，isolatedEnv + stubFetch + stub startRun，quality / binding / carry / 零副作用四节，全程零媒体零 LLM 调用）；**M30 / M31 / M35 / M40 / M41 / M42 定向回归 468 断言全绿**；server `tsc`、web `vue-tsc --noEmit`、`vite build`、`validate:templates`（16 份 / 113 步 / 0 错，模板零改动）全绿；全量 `run-probes --jobs=2` 与 M42 收尾基线逐项比对**零新增失败**。`m26 split-audit`：本批把 `use-creation-chat.ts`（曾 835 行）按 createRework 依赖注入先例拆分回落到 ≤800。浏览器验收（隔离 stub 单端口环境，不点真实付费生成）：清晰度下拉展示与选择、逐镜绑定下拉 ready 态逐镜候选、绑定后 revision 抬升 + 不计费提示 + 镜号徽标、44px 触控目标实测达标。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。

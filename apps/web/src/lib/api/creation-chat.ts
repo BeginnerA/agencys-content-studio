@@ -6,6 +6,7 @@ import type {
   CreationDeleteResult,
   CreationDetail,
   CreationGateBody,
+  CreationRefBindBody,
   CreationRefRole,
   CreationRetryBody,
   CreationReworkApplyBody,
@@ -116,4 +117,7 @@ export const creationChatApi = {
       `${BASE}/${id}/attachments/from-asset`,
       { assetId, ...(role ? { role } : {}) },
     ),
+  /** [M43] 参考绑定（用途 + 逐镜）：双写 payload + plan.refs，hash 变则需重新确认；零 LLM、零计费 */
+  bindRef: (id: number, assetId: number, body: CreationRefBindBody) =>
+    api.patch<CreationDetail>(`${BASE}/${id}/attachments/${assetId}/ref`, body),
 }

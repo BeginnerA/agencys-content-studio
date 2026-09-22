@@ -1,17 +1,11 @@
 import { computed, reactive } from 'vue'
 import { createFirstInput } from './use-first-input'
 import { createRework } from './use-rework'
+import { createAttachments, type AttachmentItem } from './use-creation-attachments'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { studioOff, studioOn } from '../../lib/socket'
-import {
-  REF_DEFAULT_ROLE,
-  REF_MAX_COUNT,
-  REF_MAX_PER_KIND,
-  refKindByExt,
-} from '../../lib/types'
 import type {
-  Asset,
   CreationCandidateStep,
   CreationDeleteResult,
   CreationDetail,
@@ -19,31 +13,15 @@ import type {
   CreationProjectMeta,
   CreationSessionListItem,
   CreationMode,
-  CreationRefKind,
-  CreationRefRole,
 } from '../../lib/types'
+
+// [M43] 附件视图模型迁移至 use-creation-attachments；此处再导出保持 use-first-input 等既有 import 路径不变
+export type { AttachmentItem } from './use-creation-attachments'
 
 // ===== [M30] 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
 
 // [M42] waiting_input 不在本集合内：它是「等用户决策」而不是「等在途请求」，已挂起闸门时继续 4s 轮询只会空转（见 isPollable 的 parked 分支）
 const RUNNING = new Set(['queued', 'running', 'pending', 'processing'])
-
-/** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl）。
- *  [M31+] 两类来源：上传项持有 file；「从素材选取」项无 file，凭 sourceAssetId 走 from-asset 登记（改用途/重试同源）。 */
-export interface AttachmentItem {
-  clientId: string
-  file?: File
-  name: string
-  kind: CreationRefKind
-  role: CreationRefRole
-  assetId?: number
-  hash?: string
-  thumbUrl?: string | null
-  uploading: boolean
-  error?: string
-  /** 素材库源资产 id（仅从素材选取项；服务端去重后可能对应不同会话资产） */
-  sourceAssetId?: number
-}
 
 function isPollable(d: CreationDetail | null): boolean {
   if (!d) return false
@@ -74,9 +52,11 @@ const state = reactive({
   attachments: [] as AttachmentItem[],
 })
 
-const first = createFirstInput(state, { commit, upload: uploadItem, polling: ensurePolling })
+// [M43] 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
+const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling })
 // [M42] 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
+const attachments = createAttachments(state, { viewEpoch: () => viewEpoch, commit, first, errText })
 let viewEpoch = 0
 let autoFirstId = 0
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -354,7 +334,7 @@ async function refreshPreflight(): Promise<void> {
   }
 }
 
-async function confirm(acceptUnpriced: boolean, reviewGate = false): Promise<number | null> {
+async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?: string): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
   if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction)
@@ -377,6 +357,8 @@ async function confirm(acceptUnpriced: boolean, reviewGate = false): Promise<num
       ...(projectOverrides() ? { project: projectOverrides() } : {}),
       // [M42] 勾选审阅 → 服务端改用同构变体模板；不勾选不传该键（缺省 false，请求体与旧版逐字一致）
       ...(reviewGate ? { reviewGate: true } : {}),
+      // [M43] 画质选择：不选不传键（服务端用模型默认档，请求体与旧版逐字一致）；不入 planHash，改档不触发重新规划
+      ...(resolution ? { resolution } : {}),
     })
     await fetchDetail(id)
     // [M40] 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
@@ -585,154 +567,7 @@ async function removeSession(id: number): Promise<CreationDeleteResult | null> {
   }
 }
 
-// ===== [M31] 参考附件登记（composer：上传或从素材选取 → 落当前会话项目；不计费、不触发规划） =====
-let attSeq = 0
-async function uploadItem(item: AttachmentItem): Promise<void> {
-  const id = state.currentId
-  const token = viewEpoch
-  if (!id) {
-    item.error = '请点击生成方案后登记参考' 
-    item.uploading = false
-    return
-  }
-  if (!item.file && !item.sourceAssetId) {
-    item.error = '参考项缺少文件或素材来源，无法登记'
-    item.uploading = false
-    return
-  }
-  item.uploading = true
-  item.error = undefined
-  try {
-    const res = item.file
-      ? await creationChatApi.uploadAttachment(id, item.file, item.role)
-      : await creationChatApi.attachAsset(id, item.sourceAssetId!, item.role)
-    // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
-    if (token === viewEpoch && state.currentId === id && state.attachments.includes(item)) {
-      item.assetId = res.assetId
-      item.hash = res.hash
-      item.thumbUrl = res.thumbUrl
-      item.name = res.name
-      item.kind = res.kind
-      item.role = res.role
-    }
-  } catch (e) {
-    if (state.attachments.includes(item)) item.error = errText(e)
-  } finally {
-    if (state.attachments.includes(item)) item.uploading = false
-  }
-}
-
-/** 选择文件：预校验类型/大小/数量 → 按 kind 默认用途上传 */
-async function addAttachment(file: File): Promise<void> {
-  if (attachmentsLocked.value) return
-  const kind = refKindByExt(file.name)
-  if (!kind) {
-    state.error = `参考仅支持图片 / 视频 / 音频：${file.name}`
-    return
-  }
-  if (file.size === 0) {
-    state.error = `参考文件为空：${file.name}`
-    return
-  }
-  if (file.size > REF_MAX_PER_KIND[kind]) {
-    const label = kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频'
-    state.error = `${label}参考超过 ${Math.floor(REF_MAX_PER_KIND[kind] / 1024 / 1024)}MB 上限：${file.name}`
-    return
-  }
-  if (state.attachments.length >= REF_MAX_COUNT) {
-    state.error = `参考素材最多 ${REF_MAX_COUNT} 个`
-    return
-  }
-  const item: AttachmentItem = {
-    clientId: `att${++attSeq}_${Date.now()}`,
-    file,
-    name: file.name,
-    kind,
-    role: REF_DEFAULT_ROLE[kind],
-    uploading: false,
-  }
-  state.attachments.push(item)
-  // 必须通过响应式代理回填上传态（push 后读回数组元素为 reactive 代理；直接改 push 前的 raw 引用不触发 set 陷阱，UI 会永久停在「上传中」）
-  if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
-}
-
-/** [M31+] 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
-async function addAssetReference(asset: Asset): Promise<void> {
-  if (attachmentsLocked.value) return
-  const kind = asset.kind as CreationRefKind
-  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
-    state.error = `参考仅支持图片 / 视频 / 音频素材：${asset.name}`
-    return
-  }
-  if (state.attachments.some((a) => a.sourceAssetId === asset.id)) {
-    state.notice = `该素材已在参考托盘：${asset.name}`
-    return
-  }
-  if (state.attachments.length >= REF_MAX_COUNT) {
-    state.error = `参考素材最多 ${REF_MAX_COUNT} 个`
-    return
-  }
-  const item: AttachmentItem = {
-    clientId: `att${++attSeq}_${Date.now()}`,
-    name: asset.name,
-    kind,
-    role: REF_DEFAULT_ROLE[kind],
-    uploading: false,
-    sourceAssetId: asset.id,
-  }
-  state.attachments.push(item)
-  if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
-}
-
-/** 更改用途：已上传项按新 role 重新登记（上传项同内容按 sha256 去重；素材选取项凭 sourceAssetId 再次 attach，仅更新登记 role） */
-async function changeAttachmentRole(
-  clientId: string,
-  role: CreationRefRole,
-): Promise<void> {
-  if (attachmentsLocked.value) return
-  const item = state.attachments.find((a) => a.clientId === clientId)
-  if (!item || item.role === role) return
-  item.role = role
-  if (item.assetId) {
-    item.sourceAssetId ??= item.assetId
-    item.assetId = undefined
-    item.hash = undefined
-    item.thumbUrl = null
-    if (state.currentId && !first.active.value) await uploadItem(item)
-  }
-}
-
-function removeAttachment(clientId: string): void {
-  if (attachmentsLocked.value) return
-  const i = state.attachments.findIndex((a) => a.clientId === clientId)
-  if (i >= 0) state.attachments.splice(i, 1)
-}
-
-function retryAttachment(clientId: string): void {
-  if (attachmentsLocked.value || !state.currentId) return
-  const item = state.attachments.find((a) => a.clientId === clientId)
-  if (item) void uploadItem(item)
-}
-
-function replaceAttachmentFile(clientId: string, file: File): void {
-  if (attachmentsLocked.value) return
-  const item = state.attachments.find((a) => a.clientId === clientId)
-  if (!item) return
-  if (refKindByExt(file.name) !== item.kind || !file.size || file.size > REF_MAX_PER_KIND[item.kind]) {
-    item.error = '请选择同类型且大小符合限制的文件'
-    return
-  }
-  item.file = file; item.name = file.name; item.sourceAssetId = undefined
-  item.assetId = undefined; item.hash = undefined; item.error = undefined
-}
-
-const attachmentsLocked = computed(() => first.locked.value || state.busySend || state.attachments.some((a) => a.uploading) || !!state.detail?.session.runId || state.detail?.session.status === 'planning')
-const uploadingAttachments = computed(() =>
-  state.attachments.some((a) => a.uploading),
-)
-const readyAttachmentCount = computed(
-  () => state.attachments.filter((a) => a.assetId && !a.error).length,
-)
+// [M43] 参考附件登记与逐镜绑定域已抽至 use-creation-attachments.ts（createAttachments）；本文件仅经 attachments.* 转发，行为逐字不变
 
 const modeLabel = computed<CreationMode | null>(
   () => state.detail?.session.plan?.mode ?? null,
@@ -743,9 +578,9 @@ export function useEasyCreate() {
     state,
     first,
     rework,
-    attachmentsLocked,
+    attachmentsLocked: attachments.attachmentsLocked,
     enterHome,
-    replaceAttachmentFile,
+    replaceAttachmentFile: attachments.replaceAttachmentFile,
     confirmKey,
     projectDraft,
     projectEditable,
@@ -773,13 +608,14 @@ export function useEasyCreate() {
     recompose,
     leave,
     removeSession,
-    addAttachment,
-    addAssetReference,
-    changeAttachmentRole,
-    removeAttachment,
-    retryAttachment,
-    uploadingAttachments,
-    readyAttachmentCount,
+    addAttachment: attachments.addAttachment,
+    addAssetReference: attachments.addAssetReference,
+    changeAttachmentRole: attachments.changeAttachmentRole,
+    setAttachmentShot: attachments.setAttachmentShot,
+    removeAttachment: attachments.removeAttachment,
+    retryAttachment: attachments.retryAttachment,
+    uploadingAttachments: attachments.uploadingAttachments,
+    readyAttachmentCount: attachments.readyAttachmentCount,
     ensurePolling,
     stopPolling,
     errText,

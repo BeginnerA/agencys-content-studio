@@ -142,6 +142,8 @@ export interface CreationPreflight {
     videoAnalysisCount: number
   }
   planningModel: { provider: string; model: string } | null
+  /** [M43] 画质候选（仅 dynamic 且视频档位可背书时非 null）；pf 顶层字段，不入 planHash */
+  resolutionOptions: { choices: string[]; default: string } | null
 }
 
 export type CreationSessionStatus =
@@ -379,6 +381,14 @@ export interface CreationConfirmBody {
   project?: Partial<CreationProjectMeta>
   /** [M42] 勾选「首帧后暂停审阅」：本次改用带闸门的同构变体模板（同样不入 planHash） */
   reviewGate?: boolean
+  /** [M43] 画质选择：仅在 ∈ preflight.resolutionOptions.choices 时可确认；不选不传键（缺省 = 模型默认档，请求体与旧版逐字一致） */
+  resolution?: string
+}
+
+/** [M43] 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */
+export interface CreationRefBindBody {
+  role?: CreationRefRole
+  shotId?: string | null
 }
 
 /** [M42] 审阅决策：approve=继续制作；reject=该阶段整体重做（会再次调用生成，可能计费） */

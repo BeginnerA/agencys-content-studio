@@ -15,10 +15,12 @@ import { sessionRow } from './store'
 const IMAGE_MAX = 20 * 1024 * 1024
 const VIDEO_MAX = 512 * 1024 * 1024
 const AUDIO_MAX = 100 * 1024 * 1024
-const MAX_REFS = 12
+// [M43] 导出供跨轮合并上限校验复用（planning.mergeRefs）
+export const MAX_REFS = 12
 
 const ROLE_BY_KIND: Record<string, CreationRefRole> = { image: 'style', video: 'content', audio: 'bgm' }
-const VALID_ROLES: Record<string, CreationRefRole[]> = {
+// [M43] 导出供绑定端点复用（与 web REF_VALID_ROLES 同源，新增取值两端同改）
+export const VALID_ROLES: Record<string, CreationRefRole[]> = {
   image: ['style', 'first_frame', 'subject'],
   video: ['content'],
   audio: ['bgm'],
@@ -195,7 +197,8 @@ export async function resolveAttachmentRefs(sessionId: number, projectId: number
     if (!(VALID_ROLES[a.kind] ?? []).includes(role)) throw new CreationError('ref_role_mismatch', '参考素材用途与类型不匹配', 422)
     const hash = rec?.hash ?? a.sha256
     if (!hash) throw new CreationError('ref_no_hash', '参考素材缺少内容摘要，无法冻结', 422)
-    refs.push(refSchema.parse({ assetId, kind: a.kind, role, hash }))
+    // [M43] 逐镜绑定：编译时保留登记里的 shotId（写链断点修复——此前丢弃导致绑定只存在于 payload 永远进不了方案）
+    refs.push(refSchema.parse({ assetId, kind: a.kind, role, hash, ...(rec?.shotId ? { shotId: rec.shotId } : {}) }))
   }
   return refs
 }

@@ -3,6 +3,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, creationMessages, creationSessions, genTasks, pipelineRuns, pipelineSteps, projects } from '../../db/schema'
 import { resolveEndpoint } from '../../adapters/provider'
+import { mapResolution } from '../../adapters/video-capabilities'
 import { engine } from '../../pipeline/engine'
 import { loadTemplate } from '../../pipeline/loader'
 import { createRunRow } from '../run-create'
@@ -33,6 +34,14 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     if (!pf.ready || !pf.execution) throw new CreationError(pf.issues[0]?.code ?? 'preflight_failed', pf.issues[0]?.message ?? '预检未通过', 409)
     if (hashJson({ plan, execution: pf.execution }) !== s.planHash) throw new CreationError('configuration_changed', '配置或价格已变化，请重新预检并确认最新方案', 409)
     if (pf.estimate.unpriced.length && !request.acceptUnpriced) throw new CreationError('unpriced', '存在未知价格，请显式接受未计价项后再确认', 409)
+    // [M43] 画质选择：防篡改 hash 校验（默认档位）之后才覆写——选档不豁免配置漂移复查；
+    // 仅预检透出的已背书档可选（无视频能力/越界一律拒绝，不静默回落），经适配器同源归一后随 recipe 冻结执行。
+    if (request.resolution) {
+      const opts = pf.resolutionOptions
+      const vp = pf.execution.endpoints.video
+      if (!opts || !vp || !opts.choices.includes(request.resolution)) throw new CreationError('resolution_unsupported', '该画质档不在当前视频模型的已背书档位内，请刷新后重选', 422)
+      pf.execution.resolution = mapResolution(vp.provider, request.resolution, vp.model)
+    }
     return db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)

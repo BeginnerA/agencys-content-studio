@@ -24,7 +24,7 @@ interface VendorSeed {
 }
 
 /** 优先展示厂商（AI 配置页供应商列表 / 厂商凭证靠前显示），按数组顺序排前 */
-export const VENDOR_PRIORITY: string[] = ['volcengine', 'aliyun']
+export const VENDOR_PRIORITY: string[] = ['volcengine', 'aliyun', 'minimax', 'kling']
 
 /** 厂商展示优先级：名单内按序取 0/1/…，名单外统一取末尾值（配合稳定排序保持原有相对顺序） */
 export function vendorPriorityRank(vendor: string | null | undefined): number {
@@ -40,6 +40,7 @@ export const VENDOR_SEEDS: VendorSeed[] = [
   { vendor: 'google', name: 'Google' },
   { vendor: 'volcengine', name: '火山方舟' },
   { vendor: 'minimax', name: 'MiniMax' },
+  { vendor: 'kling', name: '可灵' },
   { vendor: 'pollinations', name: 'Pollinations' },
   { vendor: 'ollama', name: 'Ollama（本地）' },
 ]
@@ -66,6 +67,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'ollama_llm', name: 'Ollama（LLM）', serviceType: 'llm', vendor: 'ollama', description: '本地 Ollama 服务（OpenAI 兼容 /v1；模型在线拉取 /v1/models；无需 API Key，密钥留空或任意占位符即可）', defaultUrl: 'http://localhost:11434/v1', presetModels: JSON.stringify(['qwen2.5', 'llama3.1']) },
   { key: 'volcengine_image', name: '火山方舟图像', serviceType: 'image', vendor: 'volcengine', description: '豆包 Seedream 系列文生图（Ark，同步直返或任务轮询）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedream-5-0-260128']) },
   { key: 'minimax_image', name: 'MiniMax 图像', serviceType: 'image', vendor: 'minimax', description: 'MiniMax image-01 系文生图（同步直返 data.image_urls，私有协议不提供在线模型拉取；尺寸 WxH 需 [512,2048] 且 8 倍数）', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['image-01', 'image-01-live']), overwritePresetModels: true },
+    { key: 'kling_image', name: '可灵图像', serviceType: 'image', vendor: 'kling', description: '可灵（快手）文生图/图生图（kling-v1/v1-5 系；OpenAPI 私有异步任务协议，无在线模型拉取。API Key 直接填控制台「新建 API Key」复制的密钥（也兼容旧 AccessKey:SecretKey，适配器自动签发 JWT）；默认域名 api-beijing.klingai.com）', defaultUrl: 'https://api-beijing.klingai.com', presetModels: JSON.stringify(['kling-v2-1', 'kling-v1-5', 'kling-v1']), overwritePresetModels: true },
   { key: 'openai_image', name: 'OpenAI 图像', serviceType: 'image', vendor: 'openai', description: 'DALL·E / gpt-image 官方；/images/generations 兼容网关亦可指向' },
   { key: 'siliconflow_image', name: 'SiliconFlow 图像', serviceType: 'image', vendor: 'siliconflow', description: 'OpenAI Images 兼容（含 images[] 镜像响应，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Tongyi-MAI/Z-Image-Turbo']) },
   { key: 'gemini_image', name: 'Gemini 图像', serviceType: 'image', vendor: 'google', description: 'Nano Banana（Gemini Image）系列文生图/改图（原生 v1beta generateContent 协议；base_url 填根域名或中转站原生镜像）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-3-pro-image-preview', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image']), overwriteDefaultUrl: true },
@@ -73,6 +75,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'aliyun_bailian_image', name: '阿里百炼图像', serviceType: 'image', vendor: 'aliyun', description: '百炼文生图与图像编辑（DashScope；按模型→协议档案派发信封；画布涂抹重绘/扩图需 wan 系模型；可灵/Vidu/z-image 等第三方托管模型须用业务空间专属域 Base URL，公共域 2026-09-30 起维护）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan2.7-image', 'wan2.7-image-pro', 'wan2.6-t2i', 'wan2.5-t2i-preview', 'wan2.2-t2i-flash', 'wan2.2-t2i-plus', 'qwen-image-3.0-pro', 'qwen-image-3.0', 'qwen-image-2.0-pro', 'qwen-image-max', 'qwen-image-plus']), overwritePresetModels: true },
   { key: 'volcengine_video', name: '火山方舟视频', serviceType: 'video', vendor: 'volcengine', description: '豆包 Seedance 2.x 系列视频生成（模型需在方舟控制台开通）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128']), overwritePresetModels: true },
   { key: 'minimax_video', name: 'MiniMax 视频', serviceType: 'video', vendor: 'minimax', description: 'MiniMax H3 系列视频生成（H3：768P/2K、4–15s；H3-Max：480P/768P、5–15s；官方域名 api.minimax.cn，旧实例 baseUrl 含 /v2 尾缀已兼容不再双拼）', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['MiniMax-H3', 'MiniMax-H3-Max']), overwritePresetModels: true },
+    { key: 'kling_video', name: '可灵视频', serviceType: 'video', vendor: 'kling', description: '可灵（快手）视频生成（官方枚举 kling-v3/v2-6/v2-5-turbo/v2-1-master/v2-master/v1-6/v1；OpenAPI 私有异步任务协议，文生/图生视频，无在线模型拉取。API Key 直接填控制台「新建 API Key」复制的密钥（也兼容旧 AccessKey:SecretKey，适配器自动签发 JWT）；默认域名 api-beijing.klingai.com，国际站可改 baseUrl 为 https://api-singapore.klingai.com）', defaultUrl: 'https://api-beijing.klingai.com', presetModels: JSON.stringify(['kling-v2-6', 'kling-v2-5-turbo', 'kling-v2-1-master', 'kling-v2-master', 'kling-v1-6', 'kling-v1']), overwritePresetModels: true },
   { key: 'aliyun_bailian_video', name: '阿里百炼视频', serviceType: 'video', vendor: 'aliyun', description: '百炼视频生成（DashScope；wan/可灵/Vidu 等按协议档案派发；第三方托管模型须用业务空间专属域 Base URL，公共域 2026-09-30 起维护）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan3.0-video-prime', 'wan3.0-video']) },
   { key: 'siliconflow_video', name: 'SiliconFlow 视频', serviceType: 'video', vendor: 'siliconflow', description: 'Wan2.2 系列视频生成（submit/status 轮询，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Wan-AI/Wan2.2-T2V-A14B', 'Wan-AI/Wan2.2-I2V-A14B']) },
   { key: 'pollinations_video', name: 'Pollinations 视频', serviceType: 'video', vendor: 'pollinations', description: 'veo/seedance/wan 系列（GET 同步长请求，无轮询，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['google/veo-3.1-fast', 'bytedance/seedance-2.0-fast', 'alibaba/wan-2.2-fast']) },
