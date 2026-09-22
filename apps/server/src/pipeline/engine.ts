@@ -245,6 +245,17 @@ class PipelineEngine {
       asset_ids: doc.asset_ids,
       gate: { decision: 'reject', note: opts.note, at: now() },
     }
+    if (templateForRun(run).steps.find((s) => s.key === stepKey)?.gate?.reject === 'stop') {
+      const t = now()
+      const error = '人工审阅未接受；成果已保留，请选择局部返修或本地重合成后重新审阅'
+      await db.transaction(async (tx) => {
+        await tx.update(pipelineSteps).set({ status: 'failed', output: JSON.stringify(output), error, completedAt: t, updatedAt: t }).where(eq(pipelineSteps.id, step.id))
+        await tx.update(pipelineRuns).set({ status: 'failed', currentStepKey: stepKey, error, completedAt: t, updatedAt: t }).where(eq(pipelineRuns.id, runId))
+      })
+      emitStudioEvent({ type: 'run.failed', runId, stepKey, error })
+      notifySettled(runId)
+      return
+    }
     await db
       .update(pipelineSteps)
       .set({ status: 'pending', output: JSON.stringify(output), error: null, updatedAt: now() })
@@ -262,6 +273,7 @@ class PipelineEngine {
     if (step.status !== 'waiting_input') {
       throw new Error(`步骤 ${stepKey} 不在等待状态（当前 ${step.status}）`)
     }
+    if (templateForRun(run).steps.find((s) => s.key === stepKey)?.gate?.reject === 'stop') throw new Error('本轮审阅必须人工接受，不能免审跳过')
     const doc = this.parseOutput(step.output)
     const output: StepOutputDoc = {
       asset_ids: doc.asset_ids,
@@ -369,7 +381,7 @@ class PipelineEngine {
             if (depKeys.length === 0) continue
             const depRows = depKeys.map((k) => rowsByKey.get(k))
             if (depRows.some((r) => !r || ['pending', 'running', 'waiting_input'].includes(r.status))) continue
-            if (!depRows.every((r) => r?.status === 'skipped')) continue
+            if (!depRows.every((r) => r?.status === 'skipped') || def.after_skipped === 'continue') continue
             await this.markStepSkipped(row, 'upstream_skipped')
             rowsByKey.set(def.key, { ...row, status: 'skipped' })
             propagated = true
@@ -567,7 +579,7 @@ class PipelineEngine {
 
       const output: StepOutputDoc = { asset_ids: result.assetIds }
       // [M2] gate 条件门：gate.when 不满足 → 免审直过（正常 succeeded 不挂起）
-      const gateHang = !!def.gate && !review && this.gateShouldHang(def, runInput, stepOutputs)
+      const gateHang = !!def.gate && (!review || def.gate.reject === 'stop') && this.gateShouldHang(def, runInput, stepOutputs)
 
       if (gateHang) {
         await db

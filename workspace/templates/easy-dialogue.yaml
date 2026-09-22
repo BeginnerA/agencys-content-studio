@@ -1,0 +1,49 @@
+key: easy-dialogue
+version: 1
+name: 轻松创作 · 原生人物对白
+description: 原生音画人物交谈，逐镜严格转写核验后使用原声音轨合成，最终须人工确认角色与口型。
+genre: story
+scene: produce
+inputs:
+  - { key: script, label: 已批准脚本, kind: files, required: true, accept: [text] }
+  - { key: lines, label: 已批准人物台词, kind: files, required: true, accept: [text] }
+  - { key: shots, label: 已批准分镜, kind: files, required: true, accept: [text] }
+  - { key: recipe, label: 已批准执行快照, kind: text, required: true }
+  - { key: motion, label: 动态模式, kind: bool, required: false, default: true }
+  - { key: i2v, label: 图生视频, kind: bool, required: false, default: true }
+steps:
+  - key: frames
+    action: ai_image
+    title: 生成人物对白首帧
+    after: []
+    when: input.i2v == true
+    inputs:
+      shots: input.shots
+    batch: { field: shots, max_concurrent: 2, retry: 0 }
+    params: { use_character_refs: false, use_style_preset: false }
+  - key: motion
+    action: ai_video
+    title: 生成原生人物对白视频
+    after: [frames]
+    after_skipped: continue
+    inputs:
+      shots: input.shots
+      first_frame: steps.frames.assets
+    batch: { field: shots, max_concurrent: 2, retry: 0 }
+    params: { prompt_field: motion_prompt }
+  - key: captions
+    action: dialogue_subtitle
+    title: 逐镜原声音轨核验与实测字幕
+    after: [motion]
+    inputs:
+      motion_clips: steps.motion.assets
+  - key: compose
+    action: ffmpeg_merge
+    title: 原声合成与人物对白审阅
+    after: [captions]
+    inputs:
+      shots: input.shots
+      motion_clips: steps.motion.assets
+      subtitle: steps.captions.assets
+    params: { fps: 25, strict_delivery: true, transition: none, cover: true }
+    gate: { mode: required, reject: stop, message: '请播放本轮成片，核对台词、角色与口型。确认内容、角色和口型可接受后交付；不接受可保留成果并局部返修。ASR 仅验证文字和时序，不证明说话人或口型。' }

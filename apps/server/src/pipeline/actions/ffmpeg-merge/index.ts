@@ -22,7 +22,10 @@ import type { AlignPlan } from './align'
 import type { StepContext } from '../../context'
 import type { StepResult } from '../../types'
 import type { Asset } from '../../../db/schema'
-import { recipeOf } from '../../../services/creation-chat/recipe'
+import { recipeOf, isCreationTemplate } from '../../../services/creation-chat/recipe'
+import { hashJson } from '../../../services/creation-chat/contract'
+import { validatedDialogueClip } from '../../../services/creation-chat/dialogue-cache'
+import { dialogueSrt, inspectDialogueMedia } from '../../../services/creation-chat/dialogue-media'
 import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } from './strict'
 
 /**
@@ -55,6 +58,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const strict = params['strict_delivery'] === true
   const recipe = strict ? recipeOf(ctx.run) : null
+  const dialogue = recipe?.plan.performance === 'dialogue'
   if (strict && !recipe) throw new Error('严格合成缺少批准方案')
   const vidCfg = (ctx.settings.video ?? {}) as Record<string, unknown>
   const fps = numParam(params['fps'] ?? vidCfg['fps'], 25)
@@ -86,6 +90,9 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const { segments, skipped, warnings } = recipe
     ? { segments: strictSegments(recipe.plan, rows, ctx.run.projectId), skipped: [] as number[], warnings: [] as string[] }
     : computeShotSegments(rows, mode, perShotDur, durationPerShot)
+  const dialogueClips = dialogue && recipe
+    ? await Promise.all(recipe.plan.shots.map((shot, i) => validatedDialogueClip(recipe, shot.id, rows[i]!, ctx.run.projectId)))
+    : null
   for (const w of warnings) ctx.log(w)
   if (skipped.length > 0) {
     for (const id of skipped) {
@@ -149,7 +156,17 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   let alignPlan: AlignPlan | null = null
   // 回退原因：motion_mode / no_voices / no_lineid / 计划 reason / mapping_incomplete（成功路径该值不参与 params）
   let alignReason = 'not_applicable'
-  if (recipe) {
+  if (dialogueClips && recipe) {
+    if (voiceIds.length || !srtRelPath || subtitleIds.length !== 1) throw new Error('人物对白必须使用原声和实测字幕，禁止混入 TTS')
+    const [subtitle] = await ctx.assetsOf(subtitleIds)
+    const expected = dialogueSrt(dialogueClips)
+    const validationHash = hashJson({ policy: recipe.asr!.policy, clips: dialogueClips })
+    if (!subtitle || subtitle.projectId !== ctx.run.projectId || subtitle.deletedAt !== null || subtitle.kind !== 'text'
+      || JSON.parse(subtitle.params ?? '{}').validationHash !== validationHash || readFileSync(absPathOf(srtRelPath), 'utf8') !== expected) {
+      throw new Error('实测字幕与当前原声核验不匹配，禁止使用陈旧字幕')
+    }
+    alignReason = 'native_dialogue'
+  } else if (recipe) {
     alignPlan = strictVoicePlan(recipe.plan, await ctx.assetsOf(voiceIds), ctx.run.projectId)
     if (!srtRelPath || subtitleIds.length !== 1) throw new Error('严格交付缺少字幕')
     assertStrictSrt(absPathOf(srtRelPath), recipe.plan, alignPlan, await ctx.assetsOf(voiceIds))
@@ -276,7 +293,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
   // [M11] BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
-  const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], 0.25), 0, 1)
+  const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], dialogue ? 0.1 : 0.25), 0, dialogue ? 0.12 : 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
   // [M31] 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM；
   // 默认（无 bgm ref）仍无 BGM（逐字节不变，不违反 M30「不生成 BGM」——此处为使用用户素材）
@@ -303,7 +320,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   )
   if (voicePaths.length > 0) ctx.log(`混流 ${voicePaths.length} 句配音轨（连续拼接${needStretch ? '' : `，对齐总时长 ${total}s`}）`)
   // [M19] 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
-  const brand = strict ? {} : await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
+  // [M45] 严格合成本向不叠加品牌（brand={}）；现仅对轻松创作模板放开“默认继承”，
+  // 且确认卡可逐次关（_compose.brandApply=false）；非创建类严格 run 维持 brand={} 不变；未配品牌→{} 逐字节不变。
+  const brand = (!strict || (isCreationTemplate(ctx.run.templateKey) && composeCfg.brandApply !== false))
+    ? await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
+    : {}
   // 字幕样式采用链：结构化优先（brand.subtitle 非空 → 接管）；否则旧链逐字节不变
   const legacyStyle = (typeof params['subtitle_style'] === 'string' && params['subtitle_style'])
     || (typeof vidCfg['subtitle_style'] === 'string' && vidCfg['subtitle_style'])
@@ -466,9 +487,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   // 组装 filter_complex 与编码参数（[M19] 提炼 buildComposeArgs 纯函数；无水印/片头尾 → 与 M11 逐字节一致）
-  const hasAudio = voicePaths.length > 0
+  const hasAudio = voicePaths.length > 0 || !!dialogueClips
   const { args, cwd, totalAll, derived } = buildComposeArgs({
     strictDelivery: strict,
+    ...(dialogueClips ? { nativeAudio: dialogueClips.map((clip) => clip.timing) } : {}),
     segments,
     width,
     height,
@@ -518,6 +540,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
   if (recipe) assertStrictOutput(outAbs, recipe.plan.duration)
+  if (dialogueClips && recipe) {
+    const timing = inspectDialogueMedia(outAbs)
+    if (Math.abs(timing.videoDuration - recipe.plan.duration) > 0.15 || Math.abs(timing.audioDuration - recipe.plan.duration) > 0.15
+      || Math.abs(timing.audioStart - timing.videoStart) > 0.05) throw new Error('原声成片音画时长或时间基准检查失败')
+  }
   const size = statSync(outAbs).size
 
   const tags = ['final']
@@ -537,6 +564,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     duration: Math.round(totalAll),
     params: {
       ...(strict ? { strict_delivery: true, delivery_checked: true } : {}),
+      ...(dialogueClips ? { performance: 'dialogue', dialogue_review_required: true, dialogue_clips: dialogueClips } : {}),
       fps,
       resolution,
       images: segments.filter((s) => s.kind === 'image').length,

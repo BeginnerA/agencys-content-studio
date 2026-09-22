@@ -26,6 +26,8 @@ export interface ComposeSfxInput {
 /** [M19] buildComposeArgs 输入（主链解析后的纯数据） */
 export interface ComposeArgsInput {
   strictDelivery?: boolean
+  /** 已通过逐镜原声与台词核验的流起点；缺省保持历史参数逐字不变。 */
+  nativeAudio?: Array<{ videoStart: number; audioStart: number }>
   segments: Segment[]
   width: number
   height: number
@@ -93,6 +95,12 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     segments, width, height, fps, xfadePlan, voicePaths, lineIds, alignPlan, total,
     srtAbs, style, bgmPath, bgmVolume, bgmFade, watermark, intro, outro, outAbs,
   } = input
+  const nativeAudio = input.nativeAudio
+  if (nativeAudio && (!input.strictDelivery || nativeAudio.length !== segments.length || !segments.length ||
+    segments.some((s) => s.kind !== 'video') || voicePaths.length || alignPlan || xfadePlan.enabled || intro || outro ||
+    nativeAudio.some((t) => !Number.isFinite(t.audioStart) || !Number.isFinite(t.videoStart)))) {
+    throw new Error('原生对白合成输入不合法，不能混入旁白、转场或片头尾')
+  }
   const sfxList = input.sfx ?? []
   const sfxCount = sfxList.length
   const sfxVolume = input.sfxVolume ?? 1
@@ -118,7 +126,9 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     } else {
       inputArgs.push('-i', seg.path)
     }
-    const strictTiming = input.strictDelivery
+    const strictTiming = nativeAudio
+      ? `setpts=PTS-STARTPTS,trim=duration=${seg.durSec},`
+      : input.strictDelivery
       ? `${seg.kind === 'video' ? 'tpad=stop_mode=clone:stop_duration=0.5,' : ''}trim=duration=${seg.durSec},setpts=PTS-STARTPTS,`
       : ''
     fcParts.push(
@@ -126,8 +136,16 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     )
   })
   const segIn = segments.map((_, i) => `[v${i}]`).join('')
-  const hasAudio = voicePaths.length > 0
-  if (hasAudio) {
+  const hasAudio = voicePaths.length > 0 || !!nativeAudio
+  if (nativeAudio) {
+    nativeAudio.forEach((timing, i) => {
+      const offset = timing.audioStart - timing.videoStart
+      // 与视频归零轴共用实测偏移；只裁掉经核验无对白的头尾，绝不拉伸人声。
+      const trim = offset < 0 ? `atrim=start=${-offset},` : ''
+      const delay = offset > 0 ? `adelay=${Math.round(offset * 44100)}S:all=1,` : ''
+      fcParts.push(`[${i}:a]${trim}asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,${delay}apad=whole_dur=${segments[i]!.durSec},atrim=duration=${segments[i]!.durSec}[native${i}]`)
+    })
+  } else if (hasAudio) {
     voicePaths.forEach((p, i) => {
       inputArgs.push('-i', p)
       const srcIdx = segments.length + i
@@ -234,6 +252,8 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       )
       prev = outLabel
     }
+  } else if (nativeAudio) {
+    fcParts.push(`${segments.map((_, i) => `[v${i}][native${i}]`).join('')}concat=n=${segments.length}:v=1:a=1[basev][outa]`)
   } else {
     fcParts.push(`${segIn}concat=n=${segments.length}:v=1:a=0[basev]`)
   }

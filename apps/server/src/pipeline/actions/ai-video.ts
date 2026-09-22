@@ -19,6 +19,9 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
 import { pinOf, recipeOf, mediaFailure, recipeFirstFrameId, isCreationTemplate } from '../../services/creation-chat/recipe'
+import { compileDialogueShot, dialogueAudioOptions } from '../../services/creation-chat/dialogue'
+import { dialogueSource } from '../../services/creation-chat/dialogue-cache'
+import { inspectDialogueMedia } from '../../services/creation-chat/dialogue-media'
 
 interface ShotSpec {
   id: string
@@ -130,6 +133,8 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   const frameIds = ctx.assetIdsOf('first_frame')
   const frameIndex = await buildFirstFrameIndex(frameIds)
   const recipe = recipeOf(ctx.run)
+  const audioOptions = recipe?.plan.performance === 'dialogue' ? dialogueAudioOptions(provider!, model!) : null
+  if (audioOptions && (voiceIds.length || JSON.stringify(shots) !== JSON.stringify(recipe!.plan.shots))) throw new Error('对白视频输入必须与批准分镜一致且不能混入 TTS')
   const frameCap = recipe ? getVideoAdapter(provider!).firstFrame ?? 'none' : await videoFirstFrameCapability(provider)
   // [M31] 首帧参考覆盖：用户上传 first_frame ref 优先于 gen_frames 产物；本镜“有首帧”= 分镜直传/ref/gen_frames 任一
   const shotHasFirstFrame = (s: ShotSpec): boolean => shotFirstFrameOf(s) !== null || recipeFirstFrameId(recipe, s.id) !== null || frameIndex.has(s.id)
@@ -170,7 +175,8 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of shots) {
-    const promptText = pickPromptText(shot as unknown as Record<string, unknown>, promptFields)
+    const compiled = audioOptions ? compileDialogueShot(recipe!.plan, shot.id) : null
+    const promptText = compiled?.prompt ?? pickPromptText(shot as unknown as Record<string, unknown>, promptFields)
     const paramsJson = JSON.stringify({
       shotId: shot.id,
       duration: recipe?.requestDurations[shot.id] ?? audioDurByShot?.get(shot.id) ?? shotDurationSec(shot) ?? fallbackDuration ?? null,
@@ -178,7 +184,8 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
       aspectRatio: aspectRatio ?? null,
       episode: episode ?? null,
       firstFrameAssetId: shotFirstFrameOf(shot) ?? recipeFirstFrameId(recipe, shot.id) ?? frameIndex.get(shot.id) ?? null,
-      setRefAssetIds: normalizePositiveIds([...(shot.ref_asset_ids ?? []), ...collectSetRefAssetIds(shot, sceneIndex, propIndex)]),
+      setRefAssetIds: audioOptions ? [] : normalizePositiveIds([...(shot.ref_asset_ids ?? []), ...collectSetRefAssetIds(shot, sceneIndex, propIndex)]),
+      ...(compiled ? { dialogueHash: compiled.dialogueHash, audioOptions } : {}),
     })
     const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
@@ -262,6 +269,14 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
   if (assetIds.length !== shots.length) {
     throw new Error(`产物与镜头数不符（${assetIds.length}/${shots.length}），请重试`)
   }
+  if (audioOptions && recipe) {
+    if (shots.some((s) => taskByShotId.get(s.id)?.status !== 'succeeded')) throw new Error('原声视频核验未通过，已有产物保留，请返修对应镜头')
+    const outputs = await ctx.assetsOf(assetIds)
+    for (const [i, asset] of outputs.entries()) {
+      dialogueSource(recipe, shots[i]!.id, asset, ctx.run.projectId)
+      inspectDialogueMedia(absPathOf(asset.relPath!))
+    }
+  }
   ctx.log(`视频生成完成：${assetIds.length} 段 → ${assetIds.join(', ')}`)
   return { assetIds }
 }
@@ -335,6 +350,7 @@ async function runOneTask(
       .set({ status: 'processing', attempts, errorMsg: null, updatedAt: nowMs() })
       .where(eq(genTasks.id, task.id))
     emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'processing' })
+    let localValidationError: string | null = null
     try {
       // 首帧注入：能力支持且有图 → data URI（单图失败跳过 + 记日志，不使任务失败）
       let ffUri: string | undefined
@@ -362,6 +378,7 @@ async function runOneTask(
         }
       }
       if (setRefUris.length > 0) ctx.log(`shot ${shotId} 场景/道具参考图注入 ${setRefUris.length} 张`)
+      const native = recipe?.plan.performance === 'dialogue' ? dialogueAudioOptions(cfg.provider!, cfg.model!) : null
       const { adapter, request } = await buildVideoRequest({
         prompt: task.prompt ?? '',
         provider: cfg.provider,
@@ -371,7 +388,8 @@ async function runOneTask(
         aspectRatio: parsed.aspectRatio ?? undefined,
         firstFrameUrl: ffUri,
         pin: pinOf(ctx.settings.video),
-        ...(setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
+        ...(native ? { extra: { ...native, referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] } }
+          : setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
       })
       const gen = recipe && task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
       let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
@@ -407,17 +425,17 @@ async function runOneTask(
           taskId: thirdPartyTaskId,
           duration: parsed.duration ?? null,
           resolution: parsed.resolution ?? null,
+          ...(native ? { dialogueHash: compileDialogueShot(recipe!.plan, shotId).dialogueHash, audioOptions: native } : {}),
         },
         source,
         duration: parsed.duration ?? undefined,
       })
-      await db
-        .update(genTasks)
-        .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
-        .where(eq(genTasks.id, task.id))
-      task.status = 'succeeded'
+      await db.update(genTasks).set({ resultAssetId: asset.id, ...(native ? {} : { status: 'succeeded', completedAt: nowMs() }), updatedAt: nowMs() }).where(eq(genTasks.id, task.id))
       task.resultAssetId = asset.id
-      emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
+      if (!native) {
+        task.status = 'succeeded'
+        emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
+      }
       // [M4] 用量记录：视频按请求时长（秒）计；duration 缺省不记录
       const secs = typeof parsed.duration === 'number' && parsed.duration > 0 ? parsed.duration : null
       if (secs)
@@ -434,10 +452,21 @@ async function runOneTask(
           model: request.model ?? null,
           ...(recipe ? { unitPrice: recipe.endpoints.video!.unitPrice } : {}),
         })
+      // 原视频与费用先留存，原声缺失/损坏不能用成功状态掩盖。
+      if (native) {
+        try { inspectDialogueMedia(absPathOf(asset.relPath!)) }
+        catch (error) {
+          localValidationError = error instanceof Error ? error.message : '原声音轨核验失败'
+          throw error
+        }
+        await db.update(genTasks).set({ status: 'succeeded', completedAt: nowMs(), updatedAt: nowMs() }).where(eq(genTasks.id, task.id))
+        task.status = 'succeeded'
+        emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
+      }
       ctx.log(`shot ${shotId} 视频生成完成 → asset#${asset.id}`)
       return null
     } catch (err) {
-      const msg = mediaFailure(err, !!recipe)
+      const msg = localValidationError ?? mediaFailure(err, !!recipe)
       if (attempts >= maxAttempts) {
         await db
           .update(genTasks)

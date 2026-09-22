@@ -4,6 +4,8 @@ import { creationMessages, pipelineRuns, pipelineSteps } from '../../db/schema'
 import { engine } from '../../pipeline/engine'
 import { CreationError, gateDecisionSchema } from './contract'
 import { creationWrite, sessionRow } from './store'
+import { assertRecipeSources, recipeOf } from './recipe'
+import { loadCreationProjection } from './projection'
 
 /**
  * [M42] 会话侧闸门决策代理（中途审阅暂停，配合 easy-video-review 变体模板）。
@@ -28,7 +30,14 @@ export async function decideCreationGate(id: number, raw: unknown): Promise<void
     if (run.status !== 'waiting_input' || step?.status !== 'waiting_input') {
       throw new CreationError('not_waiting', `步骤「${request.stepKey}」不在等待审阅状态（当前 ${run.status}），请刷新核对最新进度`, 409)
     }
-    return { runId: run.id, stepTitle: step.title ?? request.stepKey }
+    const recipe = recipeOf(run)
+    const finalDialogue = recipe?.plan.performance === 'dialogue' && step.stepKey === 'compose'
+    if (finalDialogue && request.decision === 'approve') {
+      await assertRecipeSources(run, recipe)
+      const projected = await loadCreationProjection(s, run, [step], [])
+      if (!projected.progress.review?.videoId) throw new CreationError('delivery_missing', '本轮成片缺失或未通过对白技术检查，不能批准交付', 409)
+    }
+    return { runId: run.id, stepTitle: step.title ?? request.stepKey, finalDialogue }
   })
   if (!prepared) return
   try {
@@ -39,7 +48,9 @@ export async function decideCreationGate(id: number, raw: unknown): Promise<void
   }
   const content = request.decision === 'approve'
     ? `已按你的审阅继续制作（「${prepared.stepTitle}」通过）。`
-    : `已驳回「${prepared.stepTitle}」：该阶段将整体重做，会再次调用图片/视频生成，可能产生费用。`
+    : prepared.finalDialogue
+      ? `未接受本轮人物对白：成片和原声已保留，未发起任何生成。可选择局部返修或本地重合成，之后仍需重新审阅。`
+      : `已驳回「${prepared.stepTitle}」：该阶段将整体重做，会再次调用图片/视频生成，可能产生费用。`
   await creationWrite(() => db.insert(creationMessages).values({
     sessionId: id, role: 'system', content, requestKey: request.idempotencyKey,
     payload: JSON.stringify({ kind: 'gate', runId: prepared.runId, stepKey: request.stepKey, decision: request.decision, note: request.note ?? null }),

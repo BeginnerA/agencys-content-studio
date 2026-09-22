@@ -7,9 +7,12 @@ import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
 import { defaultVoice, defaultImageSize } from '../../adapters/extra-params'
 import { defaultTtsModel } from '../tts'
 import { checkBudget } from '../budget'
+import { resolveBrandConfig } from '../brand-config'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
 import { CREATION_VIDEO_RESOLUTIONS, CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
 import type { CreationRecipe, EndpointSnapshot } from './recipe'
+import { snapshotStrictAsr } from '../strict-asr'
+import { assertDialogueCapacity, dialogueAudioOptions } from './dialogue'
 
 /** 声明绑定精确模型；仅记录经供应商文档/实测核实的能力，不按名称推测。 */
 export const videoCapabilitiesSchema = z.object({
@@ -25,12 +28,15 @@ export interface CreationPreflight {
   ready: boolean
   issues: Array<{ code: string; message: string }>
   execution: PreparedRecipe | null
-  estimate: { knownCost: number; unpriced: string[]; imageCount: number; videoSeconds: number; voiceChars: number; refCount: number; videoAnalysisCount: number }
+  estimate: { knownCost: number; unpriced: string[]; imageCount: number; videoSeconds: number; voiceChars: number; refCount: number; videoAnalysisCount: number; asrSeconds?: number }
   planningModel: { provider: string; model: string } | null
   /** [M43] 确认卡画质候选：仅 dynamic 且视频档位可背书时非 null。
    *  只在 pf 顶层透出（planHash = hashJson({plan, execution}) 仅含 execution）：顶层加法不改任何现存会话哈希。
    *  档位越界不猜：无真源表且无显式声明 → null（无可选，维持现状）。 */
   resolutionOptions: { choices: string[]; default: string } | null
+  /** [M45] 品牌叠加摘要（仅确认卡信息透出）：available = 平台/项目已配任一叠加（水印/片头/片尾/字幕）。
+   *  与 resolutionOptions 同一先例：只在 pf 顶层透出，不进 execution → 不改 planHash；未配品牌 available=false。 */
+  brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
 }
 
 export async function requiredEndpoint(service: 'image' | 'video' | 'audio' | 'llm'): Promise<ResolvedEndpoint> {
@@ -49,31 +55,36 @@ async function snapshot(ep: ResolvedEndpoint, kind: UsageKind, unit: UsageUnit):
 }
 
 export async function preflightPlan(projectId: number, plan: CreationPlan): Promise<CreationPreflight> {
+  const dialogue = plan.performance === 'dialogue'
   const result: CreationPreflight = {
-    ready: false, issues: [], execution: null, planningModel: null, resolutionOptions: null,
-    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length },
+    ready: false, issues: [], execution: null, planningModel: null, resolutionOptions: null, brandSummary: null,
+    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: dialogue ? 0 : plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length, ...(dialogue ? { asrSeconds: 0 } : {}) },
   }
   try {
+    if (dialogue) assertDialogueCapacity(plan)
     const llm = await requiredEndpoint('llm')
     result.planningModel = { provider: llm.providerKey, model: llm.model! }
     if (!resolveFfmpeg() || !resolveFfprobe()) throw new CreationError('missing_ffmpeg', '请安装可用的 ffmpeg 和 ffprobe 后重新预检', 422)
-    const audio = await requiredEndpoint('audio')
-    const configured = typeof audio.extra.voice === 'string' ? audio.extra.voice.trim() : ''
+    const audio = dialogue ? null : await requiredEndpoint('audio')
+    const asr = dialogue ? await snapshotStrictAsr() : undefined
+    const configured = typeof audio?.extra.voice === 'string' ? audio.extra.voice.trim() : ''
     // [M38] 音色 Tier A 收敛：未配置时按供应商真源默认兜底（不再强制用户手填裸 JSON）；
     // [M39] 兜底升级为逐模型：命中 profile 用模型级默认（如 CosyVoice2→alex），未命中回落 provider 级；
     // 克隆音色（clone:）仍拒（轻松创作不用克隆声音，既定红线）；两层均无安全默认（如 elevenlabs 未核实集）仍须显式配置（不猜）。
     if (configured.startsWith('clone:')) throw new CreationError('missing_voice', '轻松创作不使用克隆声音；请在语音实例选择现成音色', 422)
-    const voice = configured || defaultVoice(audio.providerKey, audio.model || (await defaultTtsModel(audio.providerKey)))
-    if (!voice) throw new CreationError('missing_voice', '该语音供应商无通用默认音色（需「模型:音色」格式），请在语音实例的「音色」中显式填写', 422)
+    const voice = audio ? configured || defaultVoice(audio.providerKey, audio.model || (await defaultTtsModel(audio.providerKey))) : undefined
+    if (!dialogue && !voice) throw new CreationError('missing_voice', '该语音供应商无通用默认音色（需「模型:音色」格式），请在语音实例的「音色」中显式填写', 422)
     const execution: PreparedRecipe = {
-      plan, endpoints: { audio: await snapshot(audio, 'tts', 'char') },
-      videoMode: 'none', requestDurations: {}, voice, imageSize: '1024x1024', resolution: '720p',
-      templateHash: hashJson(loadTemplate('easy-video')),
+      plan, endpoints: audio ? { audio: await snapshot(audio, 'tts', 'char') } : {},
+      videoMode: 'none', requestDurations: {}, ...(dialogue ? {} : { voice }), imageSize: '1024x1024', resolution: '720p',
+      templateHash: hashJson(loadTemplate(dialogue ? 'easy-dialogue' : 'easy-video')),
+      ...(asr ? { asr } : {}),
       // [M31] 参考素材随方案进入执行快照（进 planHash → 确认即执行）；缺失项不编造，仅按现有能力核验
       refs: plan.refs as CreationRef[],
     }
     if (plan.mode === 'dynamic') {
       const video = await requiredEndpoint('video')
+      if (dialogue) dialogueAudioOptions(video.providerKey, video.model!)
       // [M32] Tier A：优先采用实例显式声明的 creationCapabilities（后向兼容既有 run 与探针）；
       // 缺失/未背书时按单一真源表自动背书——系统负责核实，用户仅在预览卡确认。
       const declared = resolveVideoCaps(video.providerKey, video.model ?? '')
@@ -120,7 +131,11 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
     }
     if (plan.mode === 'slideshow' || execution.videoMode === 'i2v') {
       const image = await requiredEndpoint('image')
-      getImageAdapter(image.providerKey)
+      const adapter = getImageAdapter(image.providerKey)
+      if (dialogue && plan.shots.some((s) => {
+        const count = plan.refs.filter((r) => r.kind === 'image' && ['style', 'subject', 'first_frame'].includes(r.role) && (!r.shotId || r.shotId === s.id)).length
+        return count > 6 || (count > 0 && adapter.referenceImages !== 'base64')
+      })) throw new CreationError('ref_image_unsupported', '批准参考图无法完整注入首帧，请减少每镜参考到 6 张以内或配置支持参考图的实例', 422)
       execution.endpoints.image = await snapshot(image, 'image', 'image')
       // [M39] 尺寸合法性扩展官方档位形态 [1-4]K（万相 2.7 系）；未配置/非法时兜底改逐模型默认（qwen-image-max/plus 仅固定 5 档，1024x1024 对其非法）
       const rawSize = typeof image.extra.size === 'string' ? image.extra.size.trim() : ''
@@ -139,6 +154,11 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       if (ep.unitPrice === null) result.estimate.unpriced.push(`${ep.provider} / ${ep.model}（${key}）`)
       else result.estimate.knownCost += qty * ep.unitPrice
     }
+    if (asr) {
+      result.estimate.asrSeconds = result.estimate.videoSeconds
+      if (asr.unitPrice === null) result.estimate.unpriced.push(`${asr.provider} / ${asr.model}（ASR）`)
+      else result.estimate.knownCost += result.estimate.asrSeconds * asr.unitPrice
+    }
     result.estimate.knownCost = Math.round(result.estimate.knownCost * 1e6) / 1e6
     // [M31] 视频内容解析 = 多模态 token + ASR，离线不可定价 → 显式列入未计价（不按零元），确认时须接受
     if (result.estimate.videoAnalysisCount > 0) result.estimate.unpriced.push(`参考视频解析 × ${result.estimate.videoAnalysisCount}（多模态 + 语音转写，价格依供应商）`)
@@ -149,5 +169,14 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
   } catch (error) {
     result.issues.push(error instanceof CreationError ? { code: error.code, message: error.message } : { code: 'preflight_failed', message: '模板或供应商参数不可用，请检查 AI 配置后重新预检' })
   }
+  // [M45] 品牌叠加摘要：仅取平台+项目两层合并真值（run 层传 null）；resolveBrandConfig 全链宽容降级（无配→{}）。
+  // 信息性透出：解析异常不左摇预检结论（不 push issues），保持 brandSummary=null。
+  try {
+    const b = await resolveBrandConfig(projectId, null)
+    result.brandSummary = {
+      available: !!(b.watermark || b.intro || b.outro || b.subtitle),
+      watermark: !!b.watermark, intro: !!b.intro, outro: !!b.outro, subtitle: !!b.subtitle,
+    }
+  } catch { /* brandSummary 仅信息透出，失败不影响预检 */ }
   return result
 }

@@ -3,6 +3,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, creationMessages, creationSessions, genTasks, pipelineRuns, pipelineSteps, projects } from '../../db/schema'
 import { resolveEndpoint } from '../../adapters/provider'
+import { resolveStrictAsrEndpoint } from '../strict-asr'
 import { mapResolution } from '../../adapters/video-capabilities'
 import { engine } from '../../pipeline/engine'
 import { loadTemplate } from '../../pipeline/loader'
@@ -30,6 +31,8 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     await activeProject(s.projectId)
     if (s.status !== 'ready' || !s.plan || !s.preflight) throw new CreationError('not_ready', '请先完成有效方案和预检', 409)
     const plan = creationPlanSchema.parse(JSON.parse(s.plan))
+    // 对白恢复与人工审阅闭环就绪前不开放真实提交。
+    if (plan.performance === 'dialogue') throw new CreationError('dialogue_unavailable', '人物对白执行链正在接线，尚未开放制作', 422)
     const pf = await preflightPlan(s.projectId, plan)
     if (!pf.ready || !pf.execution) throw new CreationError(pf.issues[0]?.code ?? 'preflight_failed', pf.issues[0]?.message ?? '预检未通过', 409)
     if (hashJson({ plan, execution: pf.execution }) !== s.planHash) throw new CreationError('configuration_changed', '配置或价格已变化，请重新预检并确认最新方案', 409)
@@ -61,11 +64,19 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
       }
       // [M42] 审阅闸：勾选即用变体模板（同构步骤 + 画面/首帧后 gate）；模板哈希随所选键重算，
       // planHash 不受该标志影响（启动方式不是执行数据，与立项覆盖同一先例）。
-      const templateKey = request.reviewGate ? 'easy-video-review' : 'easy-video'
+      const baseTemplate = plan.performance === 'dialogue' ? 'easy-dialogue' : 'easy-video'
+      const templateKey = request.reviewGate ? `${baseTemplate}-review` : baseTemplate
       const recipe = recipeSchema.parse({ ...pf.execution, sessionId: id, sources, templateHash: hashJson(loadTemplate(templateKey)) })
       const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',
       } }, tx)
+      // [M45] 品牌开关：仅逐次关闭时落 _compose.brandApply=false（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
+      // createRunRow→normalizeInput 只保留模板声明 inputs 与 _params（非声明的 _compose 会被静默丢弃），
+      // 故与工作台 updateComposeConfig 同法在建好后直接落库该内部键；合成期 ffmpeg-merge 读取；retryCreation 显式克隆 _compose → 开关随续跑保留。
+      if (request.brandApply === false) {
+        const cur = JSON.parse(run.input) as Record<string, unknown>
+        await tx.update(pipelineRuns).set({ input: JSON.stringify({ ...cur, _compose: { brandApply: false } }), updatedAt: Date.now() }).where(eq(pipelineRuns.id, run.id))
+      }
       await tx.update(assets).set({ runId: run.id }).where(eq(assets.id, sources[0]!.id))
       await tx.update(creationSessions).set({ approvedPlan: JSON.stringify(recipe), status: 'started', runId: run.id, updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '方案已确认，正在自动制作。取消只停止后续提交，在途请求仍可能计费。', payload: JSON.stringify({ kind: 'run', runId: run.id }), createdAt: Date.now() })
@@ -110,12 +121,16 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       try { await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, pin) }
       catch { throw new CreationError('configuration_changed', '已批准实例不可用或配置已变化，请复制需求重新规划', 409) }
     }
+    // [M44] 对白的严格 ASR 同样是批准快照：恢复前独立按 pin 重解析，配置漂移即阻止，不偷偷换模型或协议。
+    if (recipe.asr) await resolveStrictAsrEndpoint(recipe.asr)
     // [M42] 模板哈希按 run 自身模板键校验（review 变体恢复不被误拦；原 easy-video 会话因模板未变仍通过）
     if (recipe.templateHash !== hashJson(loadTemplate(src.templateKey))) throw new CreationError('template_changed', '模板已变化，请复制需求重新规划', 409)
     const tasks = await db.select().from(genTasks).where(eq(genTasks.runId, src.id))
     const uncertain = tasks.filter((t) => t.status !== 'succeeded' && t.attempts > 0)
     if (request.verifiedFailedTaskIds.some((tid) => !uncertain.some((t) => t.id === tid))) throw new CreationError('bad_task', '核验任务不属于当前待恢复任务', 422)
-    if (uncertain.some((t) => !t.taskId && !request.verifiedFailedTaskIds.includes(t.id))) throw new CreationError('needs_verification', '存在受理状态不明的请求，请先在供应商侧核验，不能自动重复提交', 409)
+    // 已存原始响应/产物的失败任务（如严格 ASR 转写落库但台词或时间戳校验未过）恢复时会确定性复用缓存、不重复付费，
+    // 不属于「受理状态不明」；只有既无外部任务号又无已捕获产物的请求才需人工核验后授权重发。
+    if (uncertain.some((t) => !t.taskId && !t.resultAssetId && !request.verifiedFailedTaskIds.includes(t.id))) throw new CreationError('needs_verification', '存在受理状态不明的请求，请先在供应商侧核验，不能自动重复提交', 409)
     const pf = parseJson<CreationPreflight>(s.preflight, {} as CreationPreflight)
     if (pf.estimate.unpriced.length && !request.acceptUnpriced) throw new CreationError('unpriced', '恢复仍有未计价项，请显式接受', 409)
     const budget = await checkBudget({ projectId: s.projectId, estimatedCost: remainingCost(recipe, tasks) })
@@ -127,6 +142,12 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       const claim = await tx.update(creationSessions).set({ status: 'starting' }).where(and(eq(creationSessions.id, id), eq(creationSessions.runId, src.id), eq(creationSessions.status, 'started'))).returning()
       if (!claim.length) throw new CreationError('conflict', '会话已被恢复，请刷新', 409)
       const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: JSON.parse(src.input), creationSessionId: id }, tx)
+      // [M45] 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
+      const srcCompose = (JSON.parse(src.input) as Record<string, unknown>)['_compose']
+      if (srcCompose && typeof srcCompose === 'object' && !Array.isArray(srcCompose)) {
+        const cur = JSON.parse(newRun.input) as Record<string, unknown>
+        await tx.update(pipelineRuns).set({ input: JSON.stringify({ ...cur, _compose: srcCompose }), updatedAt: Date.now() }).where(eq(pipelineRuns.id, newRun.id))
+      }
       for (const step of steps) {
         const keep = ['succeeded', 'skipped'].includes(step.status)
         const [created] = await tx.insert(pipelineSteps).values({ runId: newRun.id, seq: step.seq, stepKey: step.stepKey, actionKey: step.actionKey, title: step.title,
@@ -150,10 +171,11 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
 
 function remainingCost(recipe: CreationRecipe, tasks: Array<{ kind: string; status: string; params: string | null }>): number {
   const done = (kind: string, key: string, id: string) => tasks.some((t) => t.kind === kind && t.status === 'succeeded' && parseJson<Record<string, unknown>>(t.params, {})[key] === id)
-  let cost = recipe.plan.lines.filter((l) => !done('audio', 'lineId', l.id)).reduce((n, l) => n + l.text.length * (recipe.endpoints.audio.unitPrice ?? 0), 0)
+  let cost = recipe.plan.lines.filter((l) => !done('audio', 'lineId', l.id)).reduce((n, l) => n + l.text.length * (recipe.endpoints.audio?.unitPrice ?? 0), 0)
   for (const s of recipe.plan.shots) {
     if (!done('image', 'shotId', s.id)) cost += recipe.endpoints.image?.unitPrice ?? 0
     if (!done('video', 'shotId', s.id)) cost += (recipe.endpoints.video?.unitPrice ?? 0) * (recipe.requestDurations[s.id] ?? 0)
+    if (recipe.asr && !done('asr', 'shotId', s.id)) cost += (recipe.asr.unitPrice ?? 0) * (recipe.requestDurations[s.id] ?? 0)
   }
   return cost
 }

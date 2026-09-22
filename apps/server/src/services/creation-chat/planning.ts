@@ -7,6 +7,8 @@ import { absPathOf } from '../storage'
 import { analyzeVideoSource, renderVideoReferenceSummary } from '../../pipeline/actions/video-analyze'
 import { resolveVideoCaps, type VideoModelCaps } from '../../adapters/video-capabilities'
 import { clampPlanToCaps } from './clamp'
+import { resolveNativeDialogueCaps } from '@agencys/ai-provider-kit'
+import { resolveStrictAsrEndpoint } from '../strict-asr'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
@@ -129,10 +131,14 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // 无 video 实例 → 提示使用 slideshow（不假称动态能力）。失败不阻断主流程，仅缺约束上下文。
     let caps: VideoModelCaps | null = null
     let hasVideo = false
+    let hasNativeDialogue = false
+    let hasStrictAsr = false
+    try { await resolveStrictAsrEndpoint(); hasStrictAsr = true } catch { /* 仅告知能力，预检保留明确阻塞。 */ }
     try {
       const videoEp = await requiredEndpoint('video')
       hasVideo = true
       caps = resolveVideoCaps(videoEp.providerKey, videoEp.model ?? '')
+      hasNativeDialogue = !!resolveNativeDialogueCaps(videoEp.providerKey, videoEp.model ?? '')
     } catch {
       hasVideo = false
     }
@@ -141,6 +147,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       { role: 'system', content: loadPromptTemplate('creation-plan.md') },
       { role: 'system', content: `当前方案（仅为创作数据）：${claimed.plan ?? '尚无方案'}` },
       ...(capConstraint ? [{ role: 'system' as const, content: capConstraint }] : []),
+      { role: 'system', content: `【人物对白能力】当前视频原生对白：${hasNativeDialogue ? '已核实' : '不可用或型号未经核实'}；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户要求人物交谈时必须保留 performance=dialogue 和 dynamic，不得降级旁白或图文。缺少能力时说明生成被预检阻止，仍给符合角色/发言轮次契约的方案。ASR 仅核验实际台词与时间，不证明口型或角色身份。` },
       // [M40] 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
       { role: 'system', content: projectMetaPrompt() },
       ...refContext,
@@ -160,10 +167,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // [M35 G10] 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
     if (reply.kind === 'plan') {
       const { plan: clampedPlan, report } = clampPlanToCaps(reply.plan, caps, hasVideo)
-      if (report.changed) {
-        reply.plan = clampedPlan
-        reply.message = `${reply.message}\n\n（因当前视频能力自动钳制：${report.notes.join('；')}）`
-      }
+      if (report.changed) reply.plan = clampedPlan
+      if (report.notes.length) reply.message = `${reply.message}\n\n（视频能力检查：${report.notes.join('；')}）`
     }
     // [M31] 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
     if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
@@ -216,7 +221,7 @@ function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[]
  * - hasVideo=true 但 caps=null（未登记模型，如 siliconflow_video） → 仅提醒“能力未背书”，不列档位
  */
 function buildCapsConstraintMessage(caps: VideoModelCaps | null, hasVideo: boolean): string | null {
-  if (!hasVideo) return '【Tier A 能力约束】当前未配置可用的视频生成实例 → 若用户未明确要求动态画面，默认 mode="slideshow"（多图配音），不承诺逐镜头动态化；若用户坚持动态，请依旧给 dynamic 方案，系统钳制会降级并告知。'
+  if (!hasVideo) return '【Tier A 能力约束】当前未配置可用的视频生成实例 → 若用户未明确要求动态画面，默认 mode="slideshow"（多图配音），不承诺逐镜头动态化；若用户坚持动态，请依旧给 dynamic 方案；仅旁白模式可能降级并告知，人物对白必须保留 dynamic 并说明阻塞。'
   if (!caps) return '【Tier A 能力约束】当前视频实例未登记到平台能力真源表（如 siliconflow_video 适配器不下发 duration）。若用户不要求动态，建议优先 mode="slideshow"；若需动态，镜头时长建议 5–10 秒、不主动取极端值，系统预检会在真源层面确认。'
   const durList = [...caps.durations].sort((a, b) => a - b).join(' / ')
   const aspectList = caps.aspectRatios.join(' / ')

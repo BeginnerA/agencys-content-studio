@@ -16,6 +16,7 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
   const recipe = recipeOf(ctx.run)
   if (!recipe) throw new Error('严格配音缺少批准方案')
   const pin = recipe.endpoints.audio
+  if (recipe.plan.performance === 'dialogue' || !pin || !recipe.voice) throw new Error('人物对白禁止进入 TTS 旁白流程')
   const assetIds: number[] = []
   const existing = await db.select().from(genTasks).where(and(eq(genTasks.runId, ctx.run.id), eq(genTasks.stepId, ctx.step.id)))
   for (const line of recipe.plan.lines) {

@@ -17,7 +17,8 @@
  * - **clamp 后仍走 preflightPlan**：若还有病态（如 `caps.aspectRatios=[]`），走原 throw 路径。
  */
 import type { VideoModelCaps } from '../../adapters/video-capabilities'
-import type { CreationPlan } from './contract'
+import { creationPlanSchema, type CreationPlan } from './contract'
+import { assertDialogueCapacity } from './dialogue'
 
 export interface ClampReport {
   /** 每镜钳制明细（LLM 输出 → 钳后值）；未钳制的镜头不列 */
@@ -53,6 +54,35 @@ export function clampPlanToCaps(
 ): { plan: CreationPlan; report: ClampReport } {
   const report: ClampReport = { shotDurations: [], notes: [], changed: false }
   let next: CreationPlan = { ...plan, shots: plan.shots.map((s) => ({ ...s })), lines: [...plan.lines] }
+
+  if (plan.performance === 'dialogue') {
+    if (!hasVideo || !caps) {
+      report.notes.push('人物对白需求已保留，当前视频能力未就绪，请检查配置；不会改为旁白或图文')
+      return { plan, report }
+    }
+    const durations = [...caps.durations].sort((a, b) => a - b)
+    for (const shot of next.shots) {
+      const duration = durations.find((d) => d >= shot.duration)
+      if (!duration) {
+        report.notes.push(`人物对白镜头 ${shot.id} 超出支持镜长，请调整方案；不能缩短或截断对白`)
+        return { plan, report }
+      }
+      shot.duration = duration
+    }
+    next.duration = next.shots.reduce((sum, s) => sum + s.duration, 0)
+    try {
+      creationPlanSchema.parse(next)
+      assertDialogueCapacity(next)
+    } catch {
+      report.notes.push('人物对白镜长调整后总时长或台词容量不合法，请修改方案后重新确认')
+      return { plan, report }
+    }
+    report.shotDurations = next.shots.filter((s, i) => s.duration !== plan.shots[i]!.duration)
+      .map((s, i) => ({ id: s.id, from: plan.shots.find((p) => p.id === s.id)!.duration, to: s.duration }))
+    report.changed = report.shotDurations.length > 0
+    if (report.changed) report.notes.push(`人物对白镜长向上调整，总时长 ${plan.duration}→${next.duration}s`)
+    return { plan: next, report }
+  }
 
   // ① 无 video 实例 → 强制降级 slideshow（有 caps 也不改，因为 hasVideo=false 意味着无 video endpoint）
   if (!hasVideo && next.mode === 'dynamic') {

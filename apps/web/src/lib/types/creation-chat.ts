@@ -3,6 +3,10 @@
 export interface CreationLine {
   id: string
   text: string
+  /** 情绪提示（audio 实例声明 emotion_param 时透传）；旧方案无此键 */
+  emotion_hint?: string
+  /** [M44] 对白发言角色 id（仅人物对白；旁白方案缺省） */
+  speaker?: string
 }
 
 export interface CreationShot {
@@ -11,6 +15,16 @@ export interface CreationShot {
   image_prompt: string
   motion_prompt: string
   lines: string[]
+  /** [M44] 本镜出场角色 id（仅人物对白，一镜一发言者；旁白缺省） */
+  characters?: string[]
+}
+
+/** [M44] 人物对白角色表项（与对白契约 cast 逐字段对齐） */
+export interface CreationCast {
+  id: string
+  name: string
+  appearance: string
+  voice: string
 }
 
 export type CreationGenre = 'science' | 'story' | 'product'
@@ -98,6 +112,10 @@ export interface CreationPlan {
   shots: CreationShot[]
   /** [M31] 已采纳参考素材（缺省空数组，旧方案向后兼容） */
   refs: CreationRef[]
+  /** [M44] 表演形态：缺省视为 narration（历史旁白方案逐字兼容） */
+  performance?: 'narration' | 'dialogue'
+  /** [M44] 人物对白角色表（仅对白；2-4 名） */
+  cast?: CreationCast[]
 }
 
 /** 冻结的不含密钥供应商实例快照 */
@@ -113,13 +131,16 @@ export interface CreationEndpointSnapshot {
 export interface CreationPreparedRecipe {
   plan: CreationPlan
   endpoints: {
-    audio: CreationEndpointSnapshot
+    /** [M44] 对白无独立 TTS 配音端点（原声由视频生成），旁白方案必带 */
+    audio?: CreationEndpointSnapshot
     image?: CreationEndpointSnapshot
     video?: CreationEndpointSnapshot
   }
+  /** [M44] 严格逐镜原声转写端点快照（仅对白）；与 TTS 不串价 */
+  asr?: CreationEndpointSnapshot
   videoMode: 'i2v' | 't2v' | 'none'
   requestDurations: Record<string, number>
-  voice: string
+  voice?: string
   imageSize: string
   resolution: string
   templateHash: string
@@ -140,10 +161,14 @@ export interface CreationPreflight {
     /** [M31] 已采纳参考数量与需解析视频数 */
     refCount: number
     videoAnalysisCount: number
+    /** [M44] 逐镜原声转写秒数（仅对白，等于视频时长）；旁白缺省 */
+    asrSeconds?: number
   }
   planningModel: { provider: string; model: string } | null
   /** [M43] 画质候选（仅 dynamic 且视频档位可背书时非 null）；pf 顶层字段，不入 planHash */
   resolutionOptions: { choices: string[]; default: string } | null
+  /** [M45] 品牌叠加摘要（平台/项目已配水印/片头/片尾/字幕）；pf 顶层字段，不入 planHash；未配品牌 available=false */
+  brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
 }
 
 export type CreationSessionStatus =
@@ -277,6 +302,14 @@ export interface CreationReview {
   stepKey: string
   title: string
   message: string
+  /** [M44] 对白最终审阅：kind='dialogue' 时展示待审成片与实测字幕，且驳回为停机（不自动重做） */
+  kind?: 'dialogue'
+  /** [M44] 待审成片视频资产 id（无合格成片时 null） */
+  videoId?: number | null
+  /** [M44] 全片实测字幕资产 id（无则 null） */
+  subtitleId?: number | null
+  /** [M44] 驳回不自动重做、仅挂起停机（compose gate reject='stop'） */
+  rejectStops?: boolean
 }
 
 export interface CreationProgressStep {
@@ -329,8 +362,16 @@ export interface CreationArtifactChoice {
   candidates: CreationArtifact[]
 }
 export interface CreationArtifacts {
-  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifactChoice; video: CreationArtifactChoice; voices: CreationArtifact[] }>
+  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifactChoice; video: CreationArtifactChoice; voices: CreationArtifact[]; speaker?: CreationCast | null; verification?: CreationDialogueVerification[] }>
   documents: Array<CreationArtifact & { label: string }>
+}
+
+/** [M44] 逐镜原声转写核验任务投影（仅对白）：展示核验状态与失败诊断，不伪造成功 */
+export interface CreationDialogueVerification {
+  taskId: number
+  status: string
+  error: string | null
+  transcriptId: number | null
 }
 
 export interface CreationResult {
@@ -383,6 +424,8 @@ export interface CreationConfirmBody {
   reviewGate?: boolean
   /** [M43] 画质选择：仅在 ∈ preflight.resolutionOptions.choices 时可确认；不选不传键（缺省 = 模型默认档，请求体与旧版逐字一致） */
   resolution?: string
+  /** [M45] 品牌叠加开关：缺省/true = 继承品牌；仅逐次关闭时传 false（不入 planHash，缺省不传键 → 请求体与旧版逐字一致） */
+  brandApply?: boolean
 }
 
 /** [M43] 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */

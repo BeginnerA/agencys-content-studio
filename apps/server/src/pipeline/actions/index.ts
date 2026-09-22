@@ -19,6 +19,7 @@ import { memorySummary } from './memory-summary'
 import { memoryWrite } from './memory-write'
 import { tts } from './tts'
 import { subtitle } from './subtitle'
+import { dialogueSubtitle } from './dialogue-subtitle'
 import { textSplit } from './text-split'
 import { videoAnalyze } from './video-analyze'
 
@@ -38,6 +39,7 @@ const registry: Record<string, ActionFn> = {
   ai_video: aiVideo,
   tts,
   subtitle,
+  dialogue_subtitle: dialogueSubtitle,
   memory_write: memoryWrite,
   memory_recall: memoryRecall,
   memory_summary: memorySummary,

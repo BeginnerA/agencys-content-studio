@@ -20,6 +20,24 @@ const note = ref('')
 const rejecting = ref(false)
 const MAX_NOTE = 500
 
+// [M44] 对白最终审阅：待审对象是带原声的成片视频与实测字幕，而非逐镜首帧；驳回为停机不自动重做
+const dialogue = computed(() => review.value?.kind === 'dialogue')
+const dialogueVideoUrl = computed(() =>
+  review.value?.videoId ? `/api/v1/assets/${review.value.videoId}/file` : '',
+)
+const subtitleUrl = computed(() =>
+  review.value?.subtitleId ? `/api/v1/assets/${review.value.subtitleId}/file` : '',
+)
+// 逐镜原声核验未通过的镜头（无原声 / 转写失败）：审阅卡必须点名，不能笼统放行
+const verificationIssues = computed(() =>
+  (props.s.state.detail?.artifacts.shots ?? [])
+    .flatMap((shot) =>
+      (shot.verification ?? [])
+        .filter((v) => v.status !== 'succeeded')
+        .map((v) => ({ index: shot.index, speaker: shot.speaker?.name ?? null, status: v.status, error: v.error })),
+    ),
+)
+
 // 切会话/换闸门步即收起驳回态，避免把上一阶段的意见误提交到新的等待步
 watch(
   () => `${props.s.state.currentId}:${review.value?.stepKey ?? ''}`,
@@ -60,14 +78,16 @@ async function onApprove(): Promise<void> {
   await props.s.decideGate(review.value.stepKey, 'approve', note.value)
 }
 
-/** 驳回＝该阶段整体重做（可能再次计费）+ 重跑轮不再二次暂停：两条后果都必须先让用户看到 */
+/** 驳回后果按闸门语义如实说明：旁白阶段闸 = 整阶段重做（可能再次计费）；对白最终审阅 = 停机不自动重做 */
 async function onReject(): Promise<void> {
   const r = review.value
   if (!r) return
   const ok = await confirmDialog({
-    title: '驳回并重做该阶段',
-    message: `「${r.title}」的全部产物都会重新生成，会再次调用图片生成，可能产生费用。重做完成后制作会自动继续，不会再暂停等你确认。确认驳回？`,
-    confirmText: '确认驳回并重做',
+    title: dialogue.value ? '驳回人物对白成片' : '驳回并重做该阶段',
+    message: dialogue.value
+      ? '驳回后成片将保持待修状态并停止交付，不会自动重新生成。请用「局部返修」逐镜修正问题镜头、重新合成后再来审阅。'
+      : `「${r.title}」的全部产物都会重新生成，会再次调用图片生成，可能产生费用。重做完成后制作会自动继续，不会再暂停等你确认。确认驳回？`,
+    confirmText: dialogue.value ? '确认驳回（停机待修）' : '确认驳回并重做',
   })
   if (!ok) return
   await props.s.decideGate(r.stepKey, 'reject', note.value)
@@ -83,10 +103,35 @@ async function onReject(): Promise<void> {
     </header>
     <p class="rm" role="status">{{ review.message }}</p>
 
-    <p v-if="frames.length" class="muted">
+    <!-- [M44] 对白最终审阅：播放带原声的待审成片 + 实测字幕入口 + 逐镜原声核验问题 -->
+    <div v-if="dialogue" class="ec-dlg">
+      <video
+        v-if="dialogueVideoUrl"
+        class="ec-dlg-video"
+        :src="dialogueVideoUrl"
+        controls
+        preload="metadata"
+        playsinline
+      />
+      <p v-else class="warnline">
+        <Icon name="alert" :size="13" /> 尚无带原声且可读取的待审成片，不能通过交付。
+      </p>
+      <p class="ec-dlg-tools">
+        <a v-if="subtitleUrl" class="btn sm" :href="subtitleUrl" target="_blank" rel="noopener"
+          ><Icon name="doc" :size="13" /> 查看实测字幕（来自真实音轨）</a
+        >
+        <span v-if="verificationIssues.length" class="warnline">
+          <Icon name="alert" :size="13" />
+          {{ verificationIssues.length }} 个镜头原声未通过核验（{{ verificationIssues.map((v) => `第 ${v.index} 镜${v.speaker ? '·' + v.speaker : ''}`).join('、') }}），请核对台词与时间戳。
+        </span>
+        <span v-else class="muted">逐镜原声均已通过核验。</span>
+      </p>
+    </div>
+
+    <p v-if="!dialogue && frames.length" class="muted">
       本阶段已生成 {{ usableCount }}/{{ frames.length }} 镜画面，点开可放大查看。
     </p>
-    <ul v-if="frames.length" class="thumbs">
+    <ul v-if="!dialogue && frames.length" class="thumbs">
       <li v-for="f in frames" :key="f.artifact.assetId">
         <button
           class="thumb"
@@ -122,7 +167,7 @@ async function onReject(): Promise<void> {
 
     <div class="rf">
       <button class="btn ok big" type="button" :disabled="busy" @click="onApprove">
-        <Icon name="bolt" :size="15" /> {{ busy ? '处理中…' : '继续制作' }}
+        <Icon name="bolt" :size="15" /> {{ busy ? '处理中…' : dialogue ? '通过并交付成片' : '继续制作' }}
       </button>
       <button
         v-if="!rejecting"
@@ -131,16 +176,16 @@ async function onReject(): Promise<void> {
         :disabled="busy"
         @click="rejecting = true"
       >
-        <Icon name="refresh" :size="13" /> 驳回重做该阶段
+        <Icon name="refresh" :size="13" /> {{ dialogue ? '驳回（停机待修）' : '驳回重做该阶段' }}
       </button>
       <template v-else>
         <span class="warnline">
           <Icon name="alert" :size="13" />
-          将重新生成该阶段全部画面并自动继续制作，可能再次计费。
+          {{ dialogue ? '驳回将停止交付并保持成片待修，不会自动重做；请逐镜返修后重新合成。' : '将重新生成该阶段全部画面并自动继续制作，可能再次计费。' }}
         </span>
         <div class="rrow">
           <button class="btn danger sm" type="button" :disabled="busy" @click="onReject">
-            确认驳回并重做
+            {{ dialogue ? '确认驳回（停机待修）' : '确认驳回并重做' }}
           </button>
           <button class="btn sm" type="button" :disabled="busy" @click="rejecting = false">
             取消
@@ -325,6 +370,30 @@ async function onReject(): Promise<void> {
 .ec-review :is(button, textarea, a):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* [M44] 对白最终审阅：待审成片与字幕入口 */
+.ec-dlg {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.ec-dlg-video {
+  width: 100%;
+  max-height: 60vh;
+  border-radius: 12px;
+  background: #000;
+  border: 1px solid var(--border-strong);
+  object-fit: contain;
+}
+
+.ec-dlg-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
 }
 
 @media (max-width: 600px) {

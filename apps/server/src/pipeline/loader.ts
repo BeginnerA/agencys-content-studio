@@ -19,6 +19,7 @@ export const KNOWN_ACTIONS = [
   'ai_video',
   'tts',
   'subtitle',
+  'dialogue_subtitle',
   'memory_write',
   'memory_recall',
   'memory_summary',
@@ -121,6 +122,8 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       if (g['skip_label'] !== undefined && typeof g['skip_label'] !== 'string') {
         return fail(`步骤 ${key} 的 gate.skip_label 需为字符串`)
       }
+      if (g['reject'] !== undefined && g['reject'] !== 'stop') return fail(`步骤 ${key} 的 gate.reject 仅支持 stop`)
+      if (g['reject'] === 'stop' && g['skip_label']) return fail(`步骤 ${key} 的停止型审阅不允许免审跳过`)
       if (g['when'] !== undefined && !isExprList(g['when'])) {
         return fail(`步骤 ${key} 的 gate.when 需为字符串或字符串数组`)
       }
@@ -149,6 +152,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
     if (after !== undefined && (!Array.isArray(after) || after.some((x) => typeof x !== 'string'))) {
       return fail(`步骤 ${key} 的 after 需为字符串数组（步骤 key 列表）`)
     }
+    if (sRaw['after_skipped'] !== undefined && sRaw['after_skipped'] !== 'continue') return fail(`步骤 ${key} 的 after_skipped 仅支持 continue`)
     steps.push({
       key,
       action,
@@ -161,6 +165,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       when: when as TemplateStepDef['when'],
       when_any: whenAny as TemplateStepDef['when_any'],
       after: after as TemplateStepDef['after'],
+      ...(sRaw['after_skipped'] === 'continue' ? { after_skipped: 'continue' as const } : {}),
     })
     order.set(key, steps.length - 1)
   }

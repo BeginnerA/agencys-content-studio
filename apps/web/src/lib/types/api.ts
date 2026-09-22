@@ -10,7 +10,7 @@ export interface ProviderConfigLite {
   baseUrl?: string | null
   /** 编辑回显：Key 脱敏尾 4 位（未配置密钥为 null/undefined） */
   apiKeyMasked?: string | null
-  /** 编辑回显：实例扩展参数（供适配器透传，如火山 TTS 的 appid；后端默认 {}） */
+  /** 编辑回显：实例扩展参数（供适配器透传，如火山 TTS 的 resource_id；后端默认 {}） */
   extra?: Record<string, unknown> | null
   /** 实例级定价 JSON */
   pricing?: Record<string, number> | null
@@ -163,6 +163,8 @@ export interface ExtraField {
   options?: ExtraFieldOption[]
   default?: string | number | boolean | string[] | Record<string, unknown>
   required?: boolean
+  /** select 是否「可选可输」（datalist）：候选为核实常用款，仍允许手输目录外当前/克隆值（如火山 speaker） */
+  allowCustom?: boolean
   placeholder?: string
   help?: string
 }

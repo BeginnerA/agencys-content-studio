@@ -21,6 +21,8 @@ export interface TemplateGate {
   message: string
   /** [M2] 声明后挂起态显示「跳过」按钮（免审放行、产物保留） */
   skip_label?: string
+  /** 拒绝后保留产物并停止；缺省仍沿用历史整步重跑语义。 */
+  reject?: 'stop'
   /** [M2] 条件门：不满足 → 步骤自动 succeeded（免审直过、不挂起） */
   when?: string | string[]
 }
@@ -48,6 +50,8 @@ export interface TemplateStepDef {
   when_any?: string[]
   /** [M2] 显式前置依赖 keys；缺省=[前一步骤 key]；[] = 无依赖 */
   after?: string[]
+  /** 显式允许可选上游全部跳过后继续；缺省保留历史跳过传播。 */
+  after_skipped?: 'continue'
 }
 
 export interface Template {

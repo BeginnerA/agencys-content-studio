@@ -50,7 +50,7 @@ export async function loadCreationProjection(session: CreationSession, run: Pipe
   const recipe = jsonRecord(String(jsonRecord(run.input).recipe ?? ''))
   const sourceIds = Array.isArray(recipe.sources)
     ? recipe.sources.flatMap((s) => s && typeof s === 'object' && positiveId((s as { id?: unknown }).id) ? [(s as { id: number }).id] : []) : []
-  const ids = [...new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.filter((t) => t.status === 'succeeded').map((t) => t.resultAssetId).filter(positiveId), ...sourceIds])]
+  const ids = [...new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.map((t) => t.resultAssetId).filter(positiveId), ...sourceIds])]
   const media = await db.select().from(assets).where(and(eq(assets.projectId, session.projectId), ids.length ? or(eq(assets.runId, run.id), inArray(assets.id, ids)) : eq(assets.runId, run.id)))
   return projectCreation(session, run, steps, tasks, media, readable)
 }
@@ -62,11 +62,12 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   tasks = tasks.filter((t) => t.projectId === session.projectId && t.runId === run.id)
   const parsed = creationPlanSchema.safeParse(recipe.plan ?? jsonRecord(session.approvedPlan))
   const plan = parsed.success ? parsed.data : null
+  const dialogue = plan?.performance === 'dialogue'
   const videoMode = ['i2v', 't2v', 'none'].includes(String(recipe.videoMode)) ? recipe.videoMode : null
   const stepByKey = new Map(steps.map((s) => [s.stepKey, s]))
   const outputByKey = new Map(steps.map((s) => [s.stepKey, new Set(outputAssetIds(s.output))]))
   const sourceIds = Array.isArray(recipe.sources) ? recipe.sources.map((s) => s && typeof s === 'object' ? (s as { id?: unknown }).id : null).filter(positiveId) : []
-  const linked = new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.filter((t) => t.status === 'succeeded').map((t) => t.resultAssetId).filter(positiveId), ...sourceIds])
+  const linked = new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.map((t) => t.resultAssetId).filter(positiveId), ...sourceIds])
   const byId = new Map(media.filter((a) => a.projectId === session.projectId && (a.runId === run.id || linked.has(a.id))).map((a) => [a.id, a]))
   const availability = new Map<number, boolean>()
   const available = (a: Asset) => {
@@ -107,19 +108,23 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const newest = (purpose: string, kind: string, strict = false) => [...byId.values()]
     .filter((a) => a.deletedAt === null && a.purpose === purpose && a.kind === kind && (!strict || jsonRecord(a.params).delivery_checked === true))
     .sort((a, b) => b.id - a.id)[0]
-  const finalCandidate = newest('final_video', 'video', true)
+  const finalCandidate = dialogue
+    ? [...(outputByKey.get('compose') ?? [])].map((id) => byId.get(id)).find((a) => a?.kind === 'video' && a.purpose === 'final_video' && jsonRecord(a.params).delivery_checked === true && jsonRecord(a.params).performance === 'dialogue' && jsonRecord(a.params).dialogue_review_required === true)
+    : newest('final_video', 'video', true)
   const final = finalCandidate && available(finalCandidate) ? finalCandidate : undefined
   const coverCandidate = newest('thumbnail', 'image')
   const cover = coverCandidate && available(coverCandidate) ? coverCandidate : undefined
-  const status = run.status === 'completed' && !final ? 'failed' : run.status
-  const error = run.status === 'completed' && !final ? '缺少通过基础交付检查且可读取的成片' : run.error
+  const accepted = !dialogue || (stepByKey.get('compose')?.status === 'succeeded' && jsonRecord(JSON.stringify(jsonRecord(stepByKey.get('compose')?.output).gate)).decision === 'approve')
+  const delivered = !!final && accepted
+  const status = run.status === 'completed' && !delivered ? 'failed' : run.status
+  const error = run.status === 'completed' && !delivered ? !final ? '缺少通过基础交付检查且可读取的成片' : '人物对白尚未通过本轮人工审阅' : run.error
   const definitions: Array<{ key: string; title: string; applicable: boolean | null; kind?: string; field?: 'shotId' | 'lineId' }> = [
-    { key: 'voice', title: '配音', applicable: true, kind: 'audio', field: 'lineId' },
-    { key: 'captions', title: '字幕', applicable: true },
+    { key: 'voice', title: '配音', applicable: !dialogue, kind: 'audio', field: 'lineId' },
+    { key: 'captions', title: dialogue ? '原声音轨核验与实测字幕' : '字幕', applicable: true, ...(dialogue ? { kind: 'asr', field: 'shotId' as const } : {}) },
     { key: 'images', title: '图文画面', applicable: plan ? plan.mode === 'slideshow' : null, kind: 'image', field: 'shotId' },
     { key: 'frames', title: '动态首帧', applicable: plan?.mode === 'slideshow' ? false : videoMode ? videoMode === 'i2v' : null, kind: 'image', field: 'shotId' },
-    { key: 'motion', title: '动态镜头', applicable: plan ? plan.mode === 'dynamic' : null, kind: 'video', field: 'shotId' },
-    { key: 'compose', title: '合成与交付检查', applicable: true },
+    { key: 'motion', title: dialogue ? '原生人物对白视频' : '动态镜头', applicable: plan ? plan.mode === 'dynamic' : null, kind: 'video', field: 'shotId' },
+    { key: 'compose', title: dialogue ? '原声合成与人物对白审阅' : '合成与交付检查', applicable: true },
   ]
   const snapshot = jsonRecord(run.templateSnapshot)
   const templateKeys = Array.isArray(snapshot.steps) ? new Set(snapshot.steps.flatMap((s) => s && typeof s === 'object' && typeof s.key === 'string' ? [s.key] : [])) : null
@@ -134,7 +139,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     const stageStatus = applicable === false ? 'not_applicable' : applicable === null ? 'unknown' : d.key === 'compose' && (run.status === 'completed' || step?.status === 'succeeded') && !final ? 'failed' : step?.status ?? 'pending'
     return { key: d.key, title: d.title, applicable, status: stageStatus, completed: counted ? done.size : null, total: counted ? knownIds.length : null }
   })
-  const uncertainTasks = eligibleTasks.filter((t) => t.attempts > 0 && t.status !== 'succeeded').map((t) => {
+  const uncertainTasks = eligibleTasks.filter((t) => t.attempts > 0 && t.status !== 'succeeded' && !(dialogue && t.resultAssetId)).map((t) => {
     const params = jsonRecord(t.params)
     const shotIndex = plan?.shots.findIndex((s) => s.id === params.shotId) ?? -1
     const lineIndex = plan?.lines.findIndex((l) => l.id === params.lineId) ?? -1
@@ -154,6 +159,8 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     shots: (plan?.shots ?? []).map((s, i) => ({ shotId: s.id, index: i + 1, duration: s.duration, text: s.lines.map((id) => plan?.lines.find((l) => l.id === id)?.text ?? '').join(' '),
       image: pickSet(plan?.mode === 'slideshow' ? 'images' : 'frames', 'image', 'shotId', s.id), video: pickSet('motion', 'video', 'shotId', s.id),
       voices: s.lines.map((id) => pick('voice', 'audio', 'lineId', id)).filter((v): v is CreationArtifact => v !== null),
+      ...(dialogue ? { speaker: plan?.cast?.find((c) => c.id === plan.lines.find((l) => l.id === s.lines[0])?.speaker) ?? null,
+        verification: eligibleTasks.filter((t) => t.kind === 'asr' && jsonRecord(t.params).shotId === s.id).map((t) => ({ taskId: t.id, status: t.status, error: t.errorMsg, transcriptId: t.resultAssetId })) } : {}),
     })), documents,
   }
   const savedCount = [...new Set([...artifacts.shots.flatMap((s) => [s.image.selected, s.video.selected, ...s.voices]), ...documents].filter((a): a is CreationArtifact => !!a?.available).map((a) => a.assetId))].length
@@ -170,7 +177,9 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     const text = typeof def?.gate?.message === 'string' ? def.gate.message.trim() : ''
     return text || null
   })()
-  const review = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。' } : null
+  const review = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。',
+    ...(dialogue && waitingStep.stepKey === 'compose' ? { kind: 'dialogue' as const, videoId: final?.id ?? null, subtitleId: subtitle ?? null, rejectStops: true } : {}),
+  } : null
   return {
     progress: { runId: run.id, status, currentStep: run.currentStepKey, error, review,
       needsVerification: settledBad && uncertainTasks.length > 0, uncertainTasks,
@@ -179,6 +188,6 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
       recovery: { resumable: settledBad && ['failed', 'cancelled'].includes(run.status), requiredTaskIds: uncertainTasks.filter((t) => !t.hasExternalId).map((t) => t.id), queryTaskCount: uncertainTasks.filter((t) => t.hasExternalId).length, unpriced },
       issue: settledBad ? { summary: `${failedStage ? `${failedStage.title}未完成` : status === 'cancelled' ? '制作已取消' : '制作未完成'}；已有 ${savedCount} 项成果可查看。${uncertainTasks.length ? `有 ${uncertainTasks.length} 个请求的受理或完成状态需核实，是否已计费尚不确定。` : '请查看阶段状态后决定是否恢复。'}`, details: [...technical].map(([message, scopes]) => ({ message, scopes })) } : null,
     }, artifacts,
-    result: run.status === 'completed' && final ? { videoId: final.id, coverId: cover?.id ?? null, duration: final.duration } : null,
+    result: run.status === 'completed' && delivered && final ? { videoId: final.id, coverId: cover?.id ?? null, duration: final.duration } : null,
   }
 }

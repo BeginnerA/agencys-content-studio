@@ -15,6 +15,7 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
 import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services/creation-chat/recipe'
+import { compileDialogueShot } from '../../services/creation-chat/dialogue'
 
 interface ShotSpec {
   id: string
@@ -93,9 +94,13 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   // 锚定注入（E3/M8，快照即一致性硬证据）：角色 → 场景/道具 → 风格，逐段叠加
-  const charIndex = await loadEntityIndex(ctx.run.projectId, 'character')
-  const sceneIndex = await loadEntityIndex(ctx.run.projectId, 'scene')
-  const propIndex = await loadEntityIndex(ctx.run.projectId, 'prop')
+  const recipe = recipeOf(ctx.run)
+  const dialogue = recipe?.plan.performance === 'dialogue'
+  if (dialogue && JSON.stringify(shots) !== JSON.stringify(recipe.plan.shots)) throw new Error('对白首帧输入必须与批准分镜一致')
+  // 对白只消费批准角色与参考，不从同名项目实体补入未批准外貌。
+  const charIndex = dialogue ? new Map<string, CharacterRow>() : await loadEntityIndex(ctx.run.projectId, 'character')
+  const sceneIndex = dialogue ? new Map<string, CharacterRow>() : await loadEntityIndex(ctx.run.projectId, 'scene')
+  const propIndex = dialogue ? new Map<string, CharacterRow>() : await loadEntityIndex(ctx.run.projectId, 'prop')
   const indexes = { characters: charIndex, scenes: sceneIndex, props: propIndex }
   const { shots: charShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
   ctx.log(`角色锚定注入 ${injected} 镜${missing.length > 0 ? `（未命中角色：${missing.join('、')}）` : ''}`)
@@ -114,11 +119,11 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const model = typeof imgCfg['model'] === 'string' ? imgCfg['model'] : undefined
   const size = typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248'
   const stepParams = (ctx.def.params ?? {}) as Record<string, unknown>
-  const useRefs = stepParams['use_character_refs'] !== false // M8 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
+  const useRefs = dialogue || stepParams['use_character_refs'] !== false // M8 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'
   // 风格锚定注入（M8；[M13] 多预设叠加）：项目绑定预设（可多个）→ 运行时解析 → 逐块拼接尾追「视觉风格：…」；未绑定/停用 → 零注入 + 日志
-  const useStylePreset = stepParams['use_style_preset'] !== false
+  const useStylePreset = !dialogue && stepParams['use_style_preset'] !== false
   const styleResolved = useStylePreset ? await resolveProjectStyleSnippets(ctx.run.projectId) : []
   if (useStylePreset && styleResolved.length === 0) ctx.log('项目未绑定风格预设 / 预设已停用，跳过风格注入')
   const finalShots = injectStyleAnchor(setShots, combineStyleSnippets(styleResolved.map((s) => s.snippet)))
@@ -127,8 +132,11 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
   // [M31] 批准的参考图片（风格/主体/首帧）并入本镜参考图通道（确定性、可幂等：recipe 固定 → params 稳定）
-  const recipe = recipeOf(ctx.run)
   const refCap = pinOf(imgCfg) ? getImageAdapter(provider!).referenceImages ?? 'none' : await imageRefCapability(provider)
+  if (dialogue && shots.some((s) => {
+    const count = recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length
+    return count > MAX_REFS_PER_SHOT || (count > 0 && refCap !== 'base64')
+  })) throw new Error('对白批准参考图无法完整传递，请调整参考数量或图像实例')
   const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
@@ -152,7 +160,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of finalShots) {
-    const promptText = shot.image_prompt.trim()
+    const promptText = dialogue ? compileDialogueShot(recipe.plan, shot.id).imagePrompt : shot.image_prompt.trim()
     const refAssetIds = mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), collectRefAssetIds(shot, indexes))
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
     const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, MAX_REFS_PER_SHOT) : 0
@@ -308,6 +316,7 @@ async function runOneTask(
             uris.push(await assetToDataUri(id, cfg.uriCache))
             refInputs.push(await assetInput('reference', id, { shotId, port: 'reference', ordinal: ordinal++ }))
           } catch (err) {
+            if (recipe?.plan.performance === 'dialogue') throw new Error('对白批准参考图读取失败，禁止静默跳过')
             ctx.log(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
             refInputs.push(await assetInput('reference', id, { used: false, skipReason: (err as Error).message, shotId, port: 'reference', ordinal: ordinal++ }))
           }

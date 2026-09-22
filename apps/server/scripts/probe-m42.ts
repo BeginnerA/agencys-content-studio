@@ -147,7 +147,7 @@ async function main(): Promise<void> {
       engine.engine.startRun = ((runId: number) => { void runId; started += 1; return 'started' }) as typeof engine.engine.startRun
 
       try {
-        check(isCreationTemplate('easy-video') && isCreationTemplate('easy-video-review') && CREATION_TEMPLATE_KEYS.size === 2 && !isCreationTemplate('quick-video') && !isCreationTemplate('talking-clip'), '创作模板键集合含原模板与审阅变体，且不误伤其它模板')
+        check(isCreationTemplate('easy-video') && isCreationTemplate('easy-video-review') && isCreationTemplate('easy-dialogue') && isCreationTemplate('easy-dialogue-review') && CREATION_TEMPLATE_KEYS.size === 4 && !isCreationTemplate('quick-video') && !isCreationTemplate('talking-clip'), '创作模板键集合含旁白/对白原模板与审阅变体，且不误伤其它模板')
         const base = loadTemplate('easy-video')
         const variant = loadTemplate('easy-video-review')
         check(JSON.stringify(variant.steps.map((s) => ({ ...s, gate: undefined }))) === JSON.stringify(base.steps), '变体除 gate 外步骤定义逐字同构（inputs/params/batch/when/after 零漂移）')

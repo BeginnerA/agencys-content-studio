@@ -14,7 +14,7 @@ import type { UsageUnit } from '@agencys/ai-provider-kit'
 
 const log = createLogger('usage')
 
-export type UsageKind = 'llm' | 'image' | 'video' | 'tts'
+export type UsageKind = 'llm' | 'image' | 'video' | 'tts' | 'asr'
 // 计价单位唯一事实源已上收至 kit（pricing-capabilities）；此处透传保持既有引用点零改动
 export type { UsageUnit }
 export type UsageGroupBy = 'kind' | 'provider' | 'model' | 'provider_model' | 'unit' | 'day' | 'project' | 'run'
@@ -94,7 +94,7 @@ export function priceOf(
     const entry = table[key]
     if (typeof entry !== 'object' || entry === null) continue
     const value = (entry as Record<string, unknown>)[unit]
-    if (typeof value === 'number' && Number.isFinite(value)) return value / unitBase(unit)
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value / unitBase(unit)
   }
   return null
 }
@@ -112,7 +112,7 @@ export async function resolveUnitPrice(q: {
 }): Promise<number | null> {
   let unitPrice: number | null = null
   // 1) 实例级定价：按 providerKey + model 查找匹配的活跃实例
-  if (q.provider) {
+  if (q.provider && (q.kind !== 'asr' || q.configId)) {
     const cfgRows = await db
       .select({ pricing: apiConfigs.pricing })
       .from(apiConfigs)
@@ -120,14 +120,18 @@ export async function resolveUnitPrice(q: {
         eq(apiConfigs.providerKey, q.provider),
         eq(apiConfigs.isActive, 1),
         ...(q.configId ? [eq(apiConfigs.id, q.configId)] : []),
-        ...(q.model ? [eq(apiConfigs.model, q.model)] : []),
+        ...(q.kind === 'asr' ? [eq(apiConfigs.serviceType, 'audio')] : q.model ? [eq(apiConfigs.model, q.model)] : []),
       ))
       .orderBy(desc(apiConfigs.isDefault), asc(apiConfigs.priority))
       .limit(1)
     if (cfgRows[0]?.pricing) {
       try {
         const instPricing = JSON.parse(cfgRows[0].pricing) as Record<string, unknown>
-        const val = instPricing[q.unit]
+        // ASR 与宿主 TTS 共享实例但不共享单价，必须显式绑定实际转写模型。
+        const asr = instPricing.asr as Record<string, unknown> | undefined
+        const val = q.kind === 'asr'
+          ? asr && asr.model === q.model && q.unit === 'second' ? asr.second : undefined
+          : instPricing[q.unit]
         if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
           unitPrice = val / unitBase(q.unit)
         }

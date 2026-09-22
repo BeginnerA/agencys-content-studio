@@ -18,21 +18,35 @@ export type EndpointSnapshot = z.infer<typeof endpointSnapshotSchema>
 export const recipeSchema = z.object({
   sessionId: z.number().int().positive(),
   plan: creationPlanSchema,
-  endpoints: z.object({ image: endpointSnapshotSchema.optional(), video: endpointSnapshotSchema.optional(), audio: endpointSnapshotSchema }),
+  endpoints: z.object({ image: endpointSnapshotSchema.optional(), video: endpointSnapshotSchema.optional(), audio: endpointSnapshotSchema.optional() }),
   videoMode: z.enum(['i2v', 't2v', 'none']),
   requestDurations: z.record(z.string(), z.number().positive()),
-  voice: z.string().min(1), imageSize: z.string(), resolution: z.string(),
+  voice: z.string().min(1).optional(), imageSize: z.string(), resolution: z.string(),
   templateHash: z.string().length(64),
   sources: z.array(z.object({ id: z.number().int().positive(), hash: z.string().length(64) })).min(3).max(3),
   // [M31] 参考素材指纹（PreparedRecipe 随之携带 → hashJson({plan,execution}) 天然含参考 → 编辑/删除即停机）
   refs: z.array(refSchema).max(12).default([]),
-}).strict()
+  asr: endpointSnapshotSchema.extend({
+    model: z.literal('whisper-1'), protocol: z.literal('openai_verbose_json'), policy: z.literal('verbatim-segments-v1'),
+  }).strict().optional(),
+}).strict().superRefine((recipe, ctx) => {
+  const issue = (message: string): void => ctx.addIssue({ code: 'custom', message })
+  if (recipe.plan.performance !== 'dialogue') {
+    if (!recipe.endpoints.audio || !recipe.voice) issue('旁白必须包含 TTS 实例和音色')
+    if (recipe.asr) issue('旁白不得携带对白 ASR 快照')
+    return
+  }
+  if (!recipe.asr || !recipe.endpoints.video || recipe.videoMode === 'none') issue('对白必须包含原生视频与严格 ASR 快照')
+  if (recipe.endpoints.audio || recipe.voice) issue('对白不得使用独立 TTS 或旁白音色')
+  if (recipe.videoMode === 'i2v' && !recipe.endpoints.image) issue('图生对白缺少首帧图像实例')
+  if (recipe.plan.shots.some((s) => !recipe.requestDurations[s.id] || recipe.requestDurations[s.id]! < s.duration)) issue('对白请求镜长不得小于批准镜长')
+})
 export type CreationRecipe = z.infer<typeof recipeSchema>
 export type { CreationRef }
 
 /** [M42] 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
  *  执行期守卫、恢复校验与专业端阻断一律按集合判定，不逐处硬编码单键。 */
-export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review'])
+export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue', 'easy-dialogue-review'])
 export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
 
 export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): CreationRecipe | null {
@@ -104,6 +118,11 @@ export async function frozenSettings(run: PipelineRun, action: string): Promise<
   const recipe = recipeOf(run)
   if (!recipe) return null
   await assertRecipeSources(run, recipe)
+  if (action === 'dialogue_subtitle') {
+    if (!recipe.asr || recipe.plan.performance !== 'dialogue') throw new Error('严格对白字幕缺少 ASR 批准快照')
+    const { resolveStrictAsrEndpoint } = await import('../strict-asr')
+    await resolveStrictAsrEndpoint(recipe.asr)
+  }
   const service = action === 'ai_image' ? 'image' : action === 'ai_video' ? 'video' : action === 'tts' ? 'audio' : null
   if (service) {
     const pin = recipe.endpoints[service]

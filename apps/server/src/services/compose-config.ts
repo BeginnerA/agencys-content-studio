@@ -53,6 +53,9 @@ export interface ComposeConfig {
   sfx_volume?: number
   /** [M19] 品牌 run 级覆盖（字段级合并到平台/项目层） */
   brand?: BrandConfig
+  /** [M45] 轻松创作成片是否应用品牌叠加（水印/片头尾/字幕）：缺省/true = 继承平台/项目品牌；
+   *  仅 false 时确认卡逐次关闭 → 严格合成分支 brand={}（与 _compose.brand 同级不同键，无碰撞）。 */
+  brandApply?: boolean
   /** [M19] 多画幅原生渲染（合成内多路输出） */
   multi_aspect?: MultiAspectConfig
 }

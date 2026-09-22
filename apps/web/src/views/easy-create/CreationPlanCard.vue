@@ -7,8 +7,8 @@ import { fmtCost } from '../../lib/format'
 import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
-import CreationReviewGate from './CreationReviewGate.vue'
-import CreationResolution from './CreationResolution.vue'
+import CreationStartupOptions from './CreationStartupOptions.vue'
+import CreationDialogueCast from './CreationDialogueCast.vue'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
@@ -22,12 +22,18 @@ const est = computed(() => pf.value?.estimate ?? null)
 const refs = computed(() => plan.value?.refs ?? [])
 
 const modeText = computed(() =>
-  plan.value?.mode === 'dynamic' ? '动态视频镜头' : '多图配音（静态画面）',
+  plan.value?.performance === 'dialogue'
+    ? '人物原生对白（动态视频）'
+    : plan.value?.mode === 'dynamic'
+      ? '动态视频镜头'
+      : '多图配音（静态画面）',
 )
 const modeHint = computed(() =>
-  plan.value?.mode === 'dynamic'
-    ? '每条镜头为真实 AI 生成视频；不会静默降级为静态图。'
-    : '本模式使用静态画面 + 旁白字幕，非动态视频，已明确标注。',
+  plan.value?.performance === 'dialogue'
+    ? '人物在剧情内以原生音画开口交谈，台词随实际音轨逐镜转写为字幕；不使用旁白配音或多角色朗读冒充对白。'
+    : plan.value?.mode === 'dynamic'
+      ? '每条镜头为真实 AI 生成视频；不会静默降级为静态图。'
+      : '本模式使用静态画面 + 旁白字幕，非动态视频，已明确标注。',
 )
 const videoModeText = computed(() =>
   exec.value?.videoMode === 'i2v'
@@ -40,12 +46,18 @@ const videoModeText = computed(() =>
 const providers = computed(() => {
   const e = exec.value
   if (!e) return [] as Array<{ k: string; v: string }>
-  const rows: Array<{ k: string; v: string }> = [
-    {
+  const dialogue = plan.value?.performance === 'dialogue'
+  const rows: Array<{ k: string; v: string }> = []
+  // [M44] 对白无独立 TTS 配音端点：不展示虚构的「配音」行，改展示严格逐镜原声转写（ASR）端点
+  if (dialogue) {
+    if (e.asr)
+      rows.push({ k: '原声转写核验', v: `${e.asr.provider} · ${e.asr.model}` })
+  } else if (e.endpoints.audio) {
+    rows.push({
       k: '配音',
       v: `${e.endpoints.audio.provider} · ${e.endpoints.audio.model}`,
-    },
-  ]
+    })
+  }
   if (e.endpoints.image)
     rows.push({
       k: '画面',
@@ -53,7 +65,7 @@ const providers = computed(() => {
     })
   if (e.endpoints.video)
     rows.push({
-      k: '视频',
+      k: dialogue ? '原生对白视频' : '视频',
       v: `${e.endpoints.video.provider} · ${e.endpoints.video.model}（${videoModeText.value}）`,
     })
   if (pf.value?.planningModel)
@@ -67,16 +79,8 @@ const providers = computed(() => {
 const showScript = ref(false)
 const showShots = ref(false)
 const acceptUnpriced = ref(false)
-// [M42] 中途审阅：勾选即本次用带闸门的同构变体模板（easy-video-review），不勾选 = 免审（不声明 skip_label）
-const reviewGate = ref(false)
-// [M43] 画质档位：'' = 模型默认（confirm 不传键）。预检重建后所选档不在新 choices 内 → 清空选择，不拿旧档撞 422
-const resolution = ref('')
-watch(
-  () => pf.value?.resolutionOptions,
-  (o) => {
-    if (resolution.value && (!o || !o.choices.includes(resolution.value))) resolution.value = ''
-  },
-)
+// [M45] 启动方式选项（审阅闸 + 画质 + 品牌）收敛进 CreationStartupOptions（令本卡守 ≤800 行）；父持模板 ref，confirm 时读回三值
+const optBox = ref<InstanceType<typeof CreationStartupOptions> | null>(null)
 
 const ready = computed(() => !!pf.value?.ready)
 const blockers = computed(() => pf.value?.issues ?? [])
@@ -115,7 +119,12 @@ function touchProject(): void {
 }
 
 async function onConfirm(): Promise<void> {
-  await props.s.confirm(acceptUnpriced.value, reviewGate.value, resolution.value || undefined)
+  await props.s.confirm(
+    acceptUnpriced.value,
+    optBox.value?.reviewGate ?? false,
+    optBox.value?.resolution || undefined,
+    optBox.value?.brandApply ?? true,
+  )
   acceptUnpriced.value = false
 }
 </script>
@@ -151,6 +160,8 @@ async function onConfirm(): Promise<void> {
         <Icon name="photo" :size="12" /> {{ refs.length }} 项参考
       </span>
     </div>
+
+    <CreationDialogueCast v-if="plan.performance === 'dialogue' && plan" :plan="plan" />
 
     <div class="sections">
       <div class="sec">
@@ -326,13 +337,7 @@ async function onConfirm(): Promise<void> {
     </div>
 
     <footer v-else-if="!confirmed" class="cf">
-      <CreationReviewGate v-model="reviewGate" :dynamic="plan?.mode === 'dynamic'" />
-      <!-- [M43] 画质选择：仅 dynamic 且预检透出了已背书档位时展示（slideshow / 无视频实例不现） -->
-      <CreationResolution
-        v-if="plan?.mode === 'dynamic' && pf?.resolutionOptions"
-        v-model="resolution"
-        :options="pf.resolutionOptions"
-      />
+      <CreationStartupOptions ref="optBox" :pf="pf" :plan="plan" />
       <label v-if="s.hasUnpriced.value" class="acc">
         <input v-model="acceptUnpriced" type="checkbox" />
         我已了解并接受上述未计价项的实际扣费

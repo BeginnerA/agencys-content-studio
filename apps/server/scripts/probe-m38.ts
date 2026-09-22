@@ -7,7 +7,7 @@
  * preflightPlan 为只读函数（仅读 api_configs + 计算预估，绝不触发生成）。
  *
  * 分节：
- *   - registry：resolveExtraSchema 逐供应商字段完整/类型正确（voice 枚举+默认、volcengine appid.required、
+ *   - registry：resolveExtraSchema 逐供应商字段完整/类型正确（voice 枚举+默认、volcengine 无 appid/cluster 旧版死字段、
  *     llm vision=boolean、video 不含 creationCapabilities、未知 → []）；defaultVoice 逐 provider 命中，
  *     无安全默认（siliconflow/未知）→ 空串（不猜）；
  *   - preflight：audio 实例 extra.voice 为空 → 按真源默认兜底（ready、execution.voice=默认），
@@ -32,19 +32,19 @@ async function main(): Promise<void> {
   const registry = async (): Promise<void> => {
     const { resolveExtraSchema, defaultVoice } = await import('../src/adapters/extra-params')
 
-    const aliyun = resolveExtraSchema('aliyun_qwen_tts', 'audio')
+    const aliyun = resolveExtraSchema('aliyun_bailian_tts', 'audio')
     const aVoice = aliyun.find((f) => f.key === 'voice')
     check(!!aVoice && aVoice.type === 'select' && aVoice.default === 'Cherry' && (aVoice.options ?? []).some((o) => o.value === 'Cherry'), 'aliyun voice：select + 默认 Cherry + 枚举含 Cherry')
     check(aliyun.some((f) => f.key === 'emotion_param') && aliyun.some((f) => f.key === 'emotion_map'), 'aliyun 含情绪透传字段（emotion_param/emotion_map）')
-    check(!aliyun.some((f) => f.key === 'appid'), 'aliyun 无 appid（仅火山需要）')
+    check(!aliyun.some((f) => f.key === 'appid'), 'aliyun 无 appid（旧版鉴权字段已全部下线，仅火山历史存量兼容）')
 
     const volc = resolveExtraSchema('volcengine_audio', 'audio')
-    const vAppid = volc.find((f) => f.key === 'appid')
-    const vCluster = volc.find((f) => f.key === 'cluster')
+    const vResourceId = volc.find((f) => f.key === 'resource_id')
     const vVoice = volc.find((f) => f.key === 'voice')
-    check(!!vAppid && vAppid.required === true, 'volcengine appid：required=true（无默认，适配器强依赖）')
-    check(!!vCluster && vCluster.default === 'volcano_tts', 'volcengine cluster：默认 volcano_tts')
-    check(!!vVoice && vVoice.type === 'text' && vVoice.default === 'BV700_streaming', 'volcengine voice：text + 默认 BV700_streaming（对齐适配器）')
+    check(!volc.some((f) => f.key === 'appid'), 'volcengine 无 appid（旧版控制台鉴权字段已从配置页下线，鉴权仅需 API Key）')
+    check(!volc.some((f) => f.key === 'cluster'), 'volcengine 无 cluster（V1 死字段已随 V3 迁移移除）')
+    check(!!vResourceId, 'volcengine 含 resource_id 逃生舱（显式覆盖 X-Api-Resource-Id）')
+    check(!!vVoice && vVoice.type === 'select' && vVoice.allowCustom === true && vVoice.default === 'zh_female_vv_uranus_bigtts' && (vVoice.options ?? []).some((o) => o.value.includes('_uranus_')), 'volcengine voice：select 可选可输 + 默认 2.0 音色 + 候选含 uranus（官方核实款）')
 
     const openai = resolveExtraSchema('openai_audio', 'audio').find((f) => f.key === 'voice')
     check(!!openai && openai.type === 'select' && openai.default === 'alloy', 'openai voice：select + 默认 alloy')
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     check(miniVideo.every((f) => f.type === 'url-list') && miniVideo.length === 3, 'minimax video：仅三类参考 URL 列表（无 generateAudio/watermark）')
     check(resolveExtraSchema('unknown_provider', 'weird').length === 0, '未知供应商/通道 → 空（回退裸 JSON 透传，不猜）')
 
-    check(defaultVoice('aliyun_qwen_tts') === 'Cherry' && defaultVoice('openai_audio') === 'alloy' && defaultVoice('pollinations_audio') === 'alloy' && defaultVoice('volcengine_audio') === 'BV700_streaming', 'defaultVoice：aliyun→Cherry / openai·pollinations→alloy / volcengine→BV700_streaming')
+    check(defaultVoice('aliyun_bailian_tts') === 'Cherry' && defaultVoice('openai_audio') === 'alloy' && defaultVoice('pollinations_audio') === 'alloy' && defaultVoice('volcengine_audio') === 'zh_female_vv_uranus_bigtts', 'defaultVoice：aliyun→Cherry / openai·pollinations→alloy / volcengine→zh_female_vv_uranus_bigtts（V3）')
     check(defaultVoice('siliconflow_audio') === '' && defaultVoice('unknown_audio') === '', 'defaultVoice：siliconflow/未知 → 空（无安全默认，不注入占位音色）')
   }
 
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
       return preflightPlan(await mkProject(name), plan as never)
     }
 
-    const pfAliyun = await run({ providerKey: 'aliyun_qwen_tts' }, 'm38-pf-aliyun-nodefault')
+    const pfAliyun = await run({ providerKey: 'aliyun_bailian_tts' }, 'm38-pf-aliyun-nodefault')
     check(pfAliyun.ready, `aliyun 未配 voice：预检就绪（Tier A 默认兜底，不再强制手填）${pfAliyun.issues.length ? ' 实际 issues=' + JSON.stringify(pfAliyun.issues) : ''}`)
     check(pfAliyun.execution?.voice === 'Cherry', '兜底执行音色 = 供应商真源默认 Cherry')
 

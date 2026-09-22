@@ -1,4 +1,4 @@
-import { and, asc, eq, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks, pipelineRuns, pipelineSteps, type PipelineStep } from '../../db/schema'
 import { cleanupVersions, type CleanupResult } from '../version-cleanup'
@@ -26,7 +26,21 @@ export async function resetStepForRecompose(runId: number, stepKey: string): Pro
   return { runId: run.id }
 }
 
-// ---------- [M42] 局部返修：多镜批量重置（轻松创作内部允许通道） ----------
+/**
+ * [M44] 对白本地重合成零模型重置：同时失效逐镜转写步与合成步（从选中镜头的已校验缓存重建全片字幕、
+ * 旧最终审阅作废），但绝不归零或删除 ASR 任务——保留 succeeded 任务以复用原声转写缓存，保证零付费。
+ * 若只重置合成会残留陈旧字幕，违反「重新合成不暗改字幕/不暗中付费 ASR」红线，故对白走本专用通道。
+ */
+export async function resetDialogueForRecompose(runId: number): Promise<{ runId: number }> {
+  const { run, step: compose } = await assertRepairable(runId, 'compose', ['ffmpeg_merge'])
+  const rows = await db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, runId))
+  const captions = rows.find((r) => r.actionKey === 'dialogue_subtitle')
+  if (!captions) throw new WorkbenchError('bad_plan', '对白重合成缺少严格原声转写步骤，不能仅重置合成')
+  const now = Date.now()
+  await db.update(pipelineSteps).set({ status: 'pending', error: null, output: null, completedAt: null, updatedAt: now }).where(inArray(pipelineSteps.id, [captions.id, compose.id]))
+  await db.update(pipelineRuns).set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now }).where(eq(pipelineRuns.id, run.id))
+  return { runId: run.id }
+}
 
 /** 返修重置的单镜条目：prompt = 重新批准后的提示词（同步进任务快照，见下注释） */
 export interface ReworkShotReset {
@@ -38,6 +52,12 @@ export interface ReworkShotReset {
 export interface ReworkStepReset {
   stepKey: string
   shots: ReworkShotReset[]
+  /**
+   * [M44] 对白局部返修专用通道：该步为严格逐镜转写（dialogue_subtitle），按镜删除已存 ASR 任务，
+   * 令其随重做后的新原声重新转写；清空本步产出使全片字幕重建。未列入的镜头任务原样保留（复用零重付费）。
+   * 这是对白独有的依赖失效，不改 REWORK_ACTIONS 白名单语义、不把 ASR 塞进通用重置遗漏任务状态。
+   */
+  asrInvalid?: boolean
 }
 
 function shotIdOfTask(t: { params: string | null }): string | null {
@@ -61,7 +81,7 @@ export async function resetShotsForRework(
   runId: number,
   steps: ReworkStepReset[],
   opts: { allowCreation: boolean },
-  executor: Pick<typeof db, 'select' | 'update'> = db,
+  executor: Pick<typeof db, 'select' | 'update' | 'delete'> = db,
 ): Promise<{ runId: number; resetTaskIds: number[]; resetStepKeys: string[] }> {
   if (steps.length === 0) throw new WorkbenchError('bad_plan', '返修未指定任何步骤')
   const [run] = await executor.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1)
@@ -78,7 +98,11 @@ export async function resetShotsForRework(
   for (const target of steps) {
     const row = byKey.get(target.stepKey)
     if (!row) throw new WorkbenchError('not_found', `步骤 ${target.stepKey} 不存在`, 404)
-    if (!REWORK_ACTIONS.includes(row.actionKey)) {
+    // [M44] 对白转写失效只认 dialogue_subtitle 步，且必须显式登记 asrInvalid；不借道通用白名单
+    if (target.asrInvalid && row.actionKey !== 'dialogue_subtitle') {
+      throw new WorkbenchError('bad_action', `步骤「${row.title ?? target.stepKey}」不是严格转写步，不能按对白失效处理`)
+    }
+    if (!REWORK_ACTIONS.includes(row.actionKey) && !(target.asrInvalid && row.actionKey === 'dialogue_subtitle')) {
       throw new WorkbenchError('bad_action', `步骤「${row.title ?? target.stepKey}」不支持返修重置（action=${row.actionKey}）`)
     }
     if (row.status !== 'succeeded' && row.status !== 'failed') {
@@ -94,7 +118,7 @@ export async function resetShotsForRework(
     throw new WorkbenchError('other_failed', `存在返修范围外的失败步骤（${outsideFailed.join('、')}），请先修复后再返修`)
   }
   // 校验全部先于写入：镜头无任务时不产生半途重置（整批要么全部可执行，要么不动）
-  const plan: Array<{ step: PipelineStep; tasks: Array<{ id: number; prompt: string }> }> = []
+  const plan: Array<{ step: PipelineStep; tasks: Array<{ id: number; prompt: string }>; asrInvalid: boolean }> = []
   for (const target of steps) {
     const step = byKey.get(target.stepKey)!
     const tasks: Array<{ id: number; prompt: string }> = []
@@ -106,21 +130,27 @@ export async function resetShotsForRework(
         tasks.push({ id: task.id, prompt: shot.prompt })
       }
     }
-    plan.push({ step, tasks })
+    plan.push({ step, tasks, asrInvalid: target.asrInvalid === true })
   }
   const now = Date.now()
   const resetTaskIds: number[] = []
-  for (const { step, tasks } of plan) {
+  for (const { step, tasks, asrInvalid } of plan) {
     for (const t of tasks) {
-      await executor
-        .update(genTasks)
-        .set({ status: 'pending', prompt: t.prompt, attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
-        .where(eq(genTasks.id, t.id))
+      if (asrInvalid) {
+        // 删除该镜旧转写任务：视频将重做 → 新原声需重新转写（合法新计费），旧转写诊断资产保留可回溯
+        await executor.delete(genTasks).where(eq(genTasks.id, t.id))
+      } else {
+        // 归零重排队并清空外部任务号：提示词已变 → 必须重新提交生成，绝不轮询旧第三方任务返回旧成片
+        await executor
+          .update(genTasks)
+          .set({ status: 'pending', prompt: t.prompt, attempts: 0, taskId: null, errorMsg: null, completedAt: null, updatedAt: now })
+          .where(eq(genTasks.id, t.id))
+      }
       resetTaskIds.push(t.id)
     }
     await executor
       .update(pipelineSteps)
-      .set({ status: 'pending', error: null, completedAt: null, updatedAt: now })
+      .set({ status: 'pending', error: null, completedAt: null, ...(asrInvalid ? { output: null } : {}), updatedAt: now })
       .where(eq(pipelineSteps.id, step.id))
   }
   await executor

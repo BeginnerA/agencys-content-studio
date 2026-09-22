@@ -157,6 +157,21 @@ defineExpose({ buildExtra, managedKeys })
         <span>{{ f.label }}</span>
       </label>
 
+      <!-- 可选可输（allowCustom）：候选为核实常用款，仍可手输目录外当前/克隆值（如火山 speaker 数百款 + S_ 克隆） -->
+      <label v-else-if="f.type === 'select' && f.allowCustom" class="xin">
+        <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
+        <input
+          v-model="strVals[f.key]"
+          type="text"
+          :list="`xd-${f.key}`"
+          :placeholder="f.placeholder || '选择或输入完整 ID'"
+          @input="markDirty(f.key)"
+        />
+        <datalist :id="`xd-${f.key}`">
+          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </datalist>
+      </label>
+
       <!-- 下拉 -->
       <label v-else-if="f.type === 'select'" class="xin">
         <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>

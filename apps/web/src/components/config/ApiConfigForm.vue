@@ -270,7 +270,7 @@ async function submit() {
     try {
       const parsed: unknown = JSON.parse(extraRaw)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        extraErr.value = '需为 JSON 对象，如 {"appid":"..."}'
+        extraErr.value = '需为 JSON 对象，如 {"resource_id":"seed-tts-2.0"}'
         return
       }
       baseExtra = parsed as Record<string, unknown>

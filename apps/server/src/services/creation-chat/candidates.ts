@@ -1,13 +1,15 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
-import { creationMessages, pipelineRuns, type PipelineRun, type CreationSession } from '../../db/schema'
+import { assets, creationMessages, pipelineRuns, type PipelineRun, type CreationSession } from '../../db/schema'
 import { engine } from '../../pipeline/engine'
 import { buildShotBoard } from '../shot/board'
 import { applyShotSelection } from '../shot/selection'
-import { resetStepForRecompose } from '../shot/reset'
+import { resetStepForRecompose, resetDialogueForRecompose } from '../shot/reset'
 import { WorkbenchError } from '../shot/helpers'
 import type { ShotBoard } from '../shot/board'
 import { CreationError, candidateStepSchema, recomposeSchema, shotSelectionSchema } from './contract'
+import { recipeOf, type CreationRecipe } from './recipe'
+import { validatedDialogueClip } from './dialogue-cache'
 import { creationWrite, sessionRow } from './store'
 
 /**
@@ -34,12 +36,43 @@ async function ownedRun(id: number): Promise<{ session: CreationSession; run: Pi
   return { session, run }
 }
 
+/**
+ * [M44] 安全读取本 run 的对白方案：仅当方案确为对白时返回，供候选指纹/重合成失效判定使用。
+ * 旁白旧方案（如 easy-video）run.input 可能没有 recipe 快照，recipeOf 解析会抛错；此处按旁白处理返回 null，
+ * 保证新的对白通道绝不把既有的选片/重合成路径打断（历史兼容，非静默吞异常：非对白本就不走对白分支）。
+ */
+function dialogueRecipeOf(run: PipelineRun): CreationRecipe | null {
+  try {
+    const recipe = recipeOf(run)
+    return recipe && recipe.plan.performance === 'dialogue' ? recipe : null
+  } catch {
+    return null
+  }
+}
+
 /** 候选看板（只读聚合）：版本 × 任务 × 在用选中 × 合成新鲜度，直返工作台同一份投影 */
 export async function creationShotBoard(id: number, rawStep: unknown): Promise<ShotBoard> {
   const parsed = candidateStepSchema.safeParse(rawStep)
   if (!parsed.success) throw new CreationError('bad_step', '该步骤没有镜头候选（仅图文画面 / 动态首帧 / 动态镜头可查）')
   const { run } = await ownedRun(id)
   return await throughShotLayer(() => buildShotBoard(run.id, parsed.data))
+}
+
+/**
+ * [M44] 对白候选指纹：每段选中视频必须已有匹配当前批准台词与角色、且经严格校验的原声转写缓存；
+ * 否则拒绝选入——本地重合成绝不暗中调用付费 ASR，也不能把无声/错台词/其他角色/未验证历史版本送进成片。
+ */
+export async function assertDialogueCandidates(recipe: CreationRecipe, picks: Array<{ shot_id: string; asset_id: number }>, projectId: number): Promise<void> {
+  const rows = await db.select().from(assets).where(inArray(assets.id, picks.map((p) => p.asset_id)))
+  const byId = new Map(rows.map((a) => [a.id, a] as const))
+  for (const p of picks) {
+    const asset = byId.get(p.asset_id)
+    if (!asset) throw new CreationError('bad_asset', `资产 #${p.asset_id} 不存在`, 422)
+    try { await validatedDialogueClip(recipe, p.shot_id, asset, projectId) }
+    catch (error) {
+      throw new CreationError('dialogue_candidate_invalid', `镜头 ${p.shot_id} 的候选没有匹配的已校验原声转写，不能选入无声、错台词、其他角色或未验证的历史版本，本地重合成也不会暗中调用付费 ASR：${error instanceof Error ? error.message : '未知原因'}`, 409)
+    }
+  }
 }
 
 /**
@@ -60,6 +93,9 @@ export async function selectCreationShots(id: number, raw: unknown): Promise<{ r
       .filter((s) => wanted.has(s.shotId) || s.selectedAssetId != null)
       .map((s) => ({ shot_id: s.shotId, asset_id: wanted.get(s.shotId) ?? s.selectedAssetId! }))
     if (!picks.length) throw new CreationError('empty_selection', '该步骤还没有可用版本，请等待画面生成完成后再选', 409)
+    // [M44] 对白交付视频改选先过指纹缓存校验（写入前），避免选中陈旧版本后重合成暗改字幕或暗中付费 ASR
+    const dialogueRecipe = dialogueRecipeOf(run)
+    if (dialogueRecipe && request.stepKey === 'motion') await assertDialogueCandidates(dialogueRecipe, picks, run.projectId)
     const result = await throughShotLayer(() => applyShotSelection(run.id, request.stepKey, { picks }))
     return { runId: run.id, stepKey: request.stepKey, assetIds: result.assetIds }
   })
@@ -76,7 +112,9 @@ export async function recomposeCreation(id: number, raw: unknown): Promise<{ run
     const prior = await db.select().from(creationMessages)
       .where(and(eq(creationMessages.sessionId, id), eq(creationMessages.requestKey, request.idempotencyKey)))
     if (prior.length) return null
-    await throughShotLayer(() => resetStepForRecompose(run.id, 'compose'))
+    // [M44] 对白重合成同时失效逐镜转写与合成（从选中版本的已校验缓存重建全片字幕、旧审阅作废），仍零模型调用
+    const dialogue = dialogueRecipeOf(run) !== null
+    await throughShotLayer(() => (dialogue ? resetDialogueForRecompose(run.id) : resetStepForRecompose(run.id, 'compose')))
     return { runId: run.id }
   })
   if (!prepared) return { runId: null }

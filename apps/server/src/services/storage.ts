@@ -32,7 +32,7 @@ export function projectAbsDir(projectId: number): string {
 }
 
 /** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
-export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'chapter-manifest-json'] as const
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'chapter-manifest-json', 'dialogue-transcript-json'] as const
 
 /** 文本 JSON 格式判定 */
 export function isJsonTextFormat(format?: string): boolean {
@@ -45,6 +45,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'script':
     case 'storyboard':
     case 'subtitle':
+    case 'dialogue_transcript':
     case 'memory':
     case 'memory_log':
     case 'character_log':
@@ -75,6 +76,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'creation_compose':
       return 'video'
     case 'voice':
+    case 'dialogue_audio':
     case 'creation_audio':
     case 'sfx':
       return 'audio'

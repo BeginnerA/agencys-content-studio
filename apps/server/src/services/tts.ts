@@ -9,8 +9,8 @@ import { synthAliyunQwenSpeech, synthGeminiSpeech, synthMiniMaxSpeech, synthVolc
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
  * 模型默认取供应商目录预设首项（如 aliyun_bailian_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
  * aliyun_bailian_tts 为 DashScope 私有协议（kit protocols/speech/aliyun）；
- * volcengine_audio 为豆包语音大模型 V3 私有协议（kit protocols/speech/volcengine，需 extra.appid）；
- * minimax_audio 为 MiniMax T2A V2 同步私有协议（kit protocols/speech/minimax，voice_id 音色，无需 appid）；
+ * volcengine_audio 为豆包语音大模型 V3 私有协议（kit protocols/speech/volcengine，仅需 API Key）；
+ * minimax_audio 为 MiniMax T2A V2 同步私有协议（kit protocols/speech/minimax，voice_id 音色）；
  * google_audio 为 Gemini 原生 TTS（kit protocols/speech/gemini，/v1beta generateContent responseModalities=AUDIO，音色 voiceName prebuilt 枚举，PCM 包 WAV）。
  */
 
@@ -23,7 +23,7 @@ export interface AudioEndpoint {
   voice?: string
   /** 实例级情绪透传声明（config.extra.emotion_param / emotion_map，E4） */
   emotion?: { param: string; map?: Record<string, string> }
-  /** 实例原始扩展参数（api_configs.extra 解析产物；私有协议供应商自取，如火山 TTS 的 appid/cluster） */
+  /** 实例原始扩展参数（api_configs.extra 解析产物；私有协议供应商自取，如火山 TTS 的 resource_id） */
   extra: Record<string, unknown>
 }
 

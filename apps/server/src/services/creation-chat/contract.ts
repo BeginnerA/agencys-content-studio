@@ -34,16 +34,20 @@ export const creationPlanSchema = z.object({
   style: text(300),
   script: text(6000),
   // emotion_hint 可选：`基调词——六维细节`，供 audio 实例声明 emotion_param 时透传（缺省 → 不带情绪，旧方案不受影响）
-  lines: z.array(z.object({ id, text: text(300), emotion_hint: z.string().trim().min(1).max(200).optional() }).strict()).min(1).max(36),
+  lines: z.array(z.object({ id, text: text(300), emotion_hint: z.string().trim().min(1).max(200).optional(), speaker: id.optional() }).strict()).min(1).max(36),
   shots: z.array(z.object({
     id,
     duration: z.number().min(1).max(15),
     image_prompt: text(1600),
     motion_prompt: text(1200),
     lines: z.array(id).max(12),
+    characters: z.array(id).min(1).max(4).optional(),
   }).strict()).min(2).max(12),
   // [M31] 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
   refs: z.array(refSchema).max(12).default([]),
+  // 缺省字段不补值：历史批准 JSON 与哈希保持逐字一致。
+  performance: z.enum(['narration', 'dialogue']).optional(),
+  cast: z.array(z.object({ id, name: text(40), appearance: text(400), voice: text(200) }).strict()).min(2).max(4).optional(),
 }).strict().superRefine((plan, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message })
   if (new Set(plan.shots.map((s) => s.id)).size !== plan.shots.length) issue('镜头 ID 必须唯一')
@@ -55,8 +59,31 @@ export const creationPlanSchema = z.object({
   }
   if (mapped.join('|') !== plan.lines.map((l) => l.id).join('|')) issue('台词顺序必须与镜头播放顺序一致')
   if (Math.abs(plan.shots.reduce((n, s) => n + s.duration, 0) - plan.duration) > 0.01) issue('镜头时长总和必须等于成片时长')
+  if (plan.performance !== 'dialogue') {
+    if (plan.cast || plan.lines.some((l) => l.speaker !== undefined) || plan.shots.some((s) => s.characters !== undefined)) issue('角色与说话人字段仅适用于人物对白')
+    return
+  }
+  if (plan.mode !== 'dynamic') issue('人物对白必须使用动态视频，不可降级为图文')
+  if (!plan.cast) issue('人物对白必须包含角色表')
+  const castIds = new Set(plan.cast?.map((c) => c.id) ?? [])
+  if (castIds.size !== plan.cast?.length) issue('角色 ID 必须唯一')
+  if (plan.lines.some((l) => !l.speaker || !castIds.has(l.speaker))) issue('每句对白必须指定已登记角色')
+  if (new Set(plan.lines.map((l) => l.speaker)).size < 2) issue('人物对白至少需要两名角色实际发言')
+  const turns = plan.lines.filter((l, i) => i === 0 || l.speaker !== plan.lines[i - 1]!.speaker).length
+  if (turns < 3) issue('人物对白至少需要三次交替发言')
+  for (const shot of plan.shots) {
+    const present = new Set(shot.characters ?? [])
+    if (!present.size || present.size !== shot.characters?.length || [...present].some((c) => !castIds.has(c))) issue(`镜头 ${shot.id} 的出场角色缺失、重复或未登记`)
+    const lines = plan.lines.filter((l) => shot.lines.includes(l.id))
+    if (!lines.length || new Set(lines.map((l) => l.speaker)).size !== 1) issue(`镜头 ${shot.id} 必须且只能有一名发言角色`)
+    if (lines.some((l) => !l.speaker || !present.has(l.speaker))) issue(`镜头 ${shot.id} 的发言角色必须出场`)
+  }
 })
 export type CreationPlan = z.infer<typeof creationPlanSchema>
+
+export function isDialoguePlan(plan: CreationPlan): boolean {
+  return plan.performance === 'dialogue'
+}
 
 // ===== [M40] 立项信息（名称 / 载体 / 模板 / 标签 / 简介）=====
 // 项目行在「发送一句话」时即以 draft 影子态存在（规划记账与参考素材需归属），
@@ -123,6 +150,10 @@ export const confirmationSchema = z.object({
   // [M43] 画质选择：仅 ∈ 预检透出的已背书档位（resolutionOptions.choices）可确认；缺省 = 模型默认档，
   // 请求体与旧版逐字一致。与 reviewGate 的先例差异：画质是执行数据，但不作废方案的唯一理由是预估不随档变（见文件头注）。
   resolution: z.enum(CREATION_VIDEO_RESOLUTIONS).optional(),
+  // [M45] 品牌叠加开关：默认 true = 轻松创作成片继承平台/项目已配品牌（水印/片头尾/字幕样式）；
+  // 仅显式传 false 时确认卡逐次关闭。与 reviewGate/resolution 同一先例：是启动方式而非执行数据，
+  // 不入 planHash（改开关不作废已确认方案）；缺省 true 时请求体与旧版逐字一致。
+  brandApply: z.boolean().default(true),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
 
