@@ -169,6 +169,8 @@ export interface CreationPreflight {
   resolutionOptions: { choices: string[]; default: string } | null
   /** [M45] 品牌叠加摘要（平台/项目已配水印/片头/片尾/字幕）；pf 顶层字段，不入 planHash；未配品牌 available=false */
   brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
+  /** [M47] 对白执行路线（pf 顶层信息透出，不入 planHash）：strict = 严格 ASR（执行链仍冻结）；estimated = 免核验原生出声 + 估算字幕；null = 非对白 */
+  dialogueMode: 'strict' | 'estimated' | null
 }
 
 export type CreationSessionStatus =
@@ -310,6 +312,8 @@ export interface CreationReview {
   subtitleId?: number | null
   /** [M44] 驳回不自动重做、仅挂起停机（compose gate reject='stop'） */
   rejectStops?: boolean
+  /** [M47] 免核验路线：待审字幕为按批准台词估算（非实测），审阅时必须收听原声比对发声 */
+  subtitlesEstimated?: boolean
 }
 
 export interface CreationProgressStep {

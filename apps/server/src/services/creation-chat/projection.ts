@@ -63,6 +63,8 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const parsed = creationPlanSchema.safeParse(recipe.plan ?? jsonRecord(session.approvedPlan))
   const plan = parsed.success ? parsed.data : null
   const dialogue = plan?.performance === 'dialogue'
+  // [M47] 免核验对白路线标记（随 run 冻结的 recipe 透传，不重新解析策略）：字幕为估算非实测，展示层诚实区分
+  const estimatedDialogue = dialogue && recipe.estimatedDialogue === true
   const videoMode = ['i2v', 't2v', 'none'].includes(String(recipe.videoMode)) ? recipe.videoMode : null
   const stepByKey = new Map(steps.map((s) => [s.stepKey, s]))
   const outputByKey = new Map(steps.map((s) => [s.stepKey, new Set(outputAssetIds(s.output))]))
@@ -120,7 +122,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const error = run.status === 'completed' && !delivered ? !final ? '缺少通过基础交付检查且可读取的成片' : '人物对白尚未通过本轮人工审阅' : run.error
   const definitions: Array<{ key: string; title: string; applicable: boolean | null; kind?: string; field?: 'shotId' | 'lineId' }> = [
     { key: 'voice', title: '配音', applicable: !dialogue, kind: 'audio', field: 'lineId' },
-    { key: 'captions', title: dialogue ? '原声音轨核验与实测字幕' : '字幕', applicable: true, ...(dialogue ? { kind: 'asr', field: 'shotId' as const } : {}) },
+    { key: 'captions', title: dialogue ? (estimatedDialogue ? '原声字幕生成（估算）' : '原声音轨核验与实测字幕') : '字幕', applicable: true, ...(dialogue ? { kind: 'asr', field: 'shotId' as const } : {}) },
     { key: 'images', title: '图文画面', applicable: plan ? plan.mode === 'slideshow' : null, kind: 'image', field: 'shotId' },
     { key: 'frames', title: '动态首帧', applicable: plan?.mode === 'slideshow' ? false : videoMode ? videoMode === 'i2v' : null, kind: 'image', field: 'shotId' },
     { key: 'motion', title: dialogue ? '原生人物对白视频' : '动态镜头', applicable: plan ? plan.mode === 'dynamic' : null, kind: 'video', field: 'shotId' },
@@ -154,7 +156,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const documents: Array<CreationArtifact & { label: string }> = sourceIds.slice(0, 3).map((id, i) => ({ ...view(id, 'text', '批准文本不可用'), label: ['批准脚本', '批准台词', '批准分镜'][i]! }))
   const subtitleIds = [...(outputByKey.get('captions') ?? [])]
   const subtitle = subtitleIds[0] ?? newest('subtitle', 'text')?.id
-  if (subtitle) documents.push({ ...view(subtitle, 'text', '字幕不可用'), label: '字幕' })
+  if (subtitle) documents.push({ ...view(subtitle, 'text', '字幕不可用'), label: estimatedDialogue ? '字幕（估算，非实测）' : '字幕' })
   const artifacts = {
     shots: (plan?.shots ?? []).map((s, i) => ({ shotId: s.id, index: i + 1, duration: s.duration, text: s.lines.map((id) => plan?.lines.find((l) => l.id === id)?.text ?? '').join(' '),
       image: pickSet(plan?.mode === 'slideshow' ? 'images' : 'frames', 'image', 'shotId', s.id), video: pickSet('motion', 'video', 'shotId', s.id),
@@ -178,7 +180,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     return text || null
   })()
   const review = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。',
-    ...(dialogue && waitingStep.stepKey === 'compose' ? { kind: 'dialogue' as const, videoId: final?.id ?? null, subtitleId: subtitle ?? null, rejectStops: true } : {}),
+    ...(dialogue && waitingStep.stepKey === 'compose' ? { kind: 'dialogue' as const, videoId: final?.id ?? null, subtitleId: subtitle ?? null, rejectStops: true, ...(estimatedDialogue ? { subtitlesEstimated: true } : {}) } : {}),
   } : null
   return {
     progress: { runId: run.id, status, currentStep: run.currentStepKey, error, review,

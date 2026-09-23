@@ -31,10 +31,11 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     await activeProject(s.projectId)
     if (s.status !== 'ready' || !s.plan || !s.preflight) throw new CreationError('not_ready', '请先完成有效方案和预检', 409)
     const plan = creationPlanSchema.parse(JSON.parse(s.plan))
-    // 对白恢复与人工审阅闭环就绪前不开放真实提交。
-    if (plan.performance === 'dialogue') throw new CreationError('dialogue_unavailable', '人物对白执行链正在接线，尚未开放制作', 422)
     const pf = await preflightPlan(s.projectId, plan)
     if (!pf.ready || !pf.execution) throw new CreationError(pf.issues[0]?.code ?? 'preflight_failed', pf.issues[0]?.message ?? '预检未通过', 409)
+    // [M47] 路 B 分流：预检已按策略判定免核验（estimatedDialogue）的对白放行启动；
+    // strict 对白（逐字 ASR 路线）执行链仍冻结（需真实配置合格 whisper-1 后另立项解冻），不可达路径不假开放。
+    if (plan.performance === 'dialogue' && !pf.execution.estimatedDialogue) throw new CreationError('dialogue_unavailable', '严格 ASR 对白执行链正在接线，尚未开放制作；如需立即创作请在设置中关闭「人物对白严格 ASR 核验」（需视频模型支持原生对白）', 422)
     if (hashJson({ plan, execution: pf.execution }) !== s.planHash) throw new CreationError('configuration_changed', '配置或价格已变化，请重新预检并确认最新方案', 409)
     if (pf.estimate.unpriced.length && !request.acceptUnpriced) throw new CreationError('unpriced', '存在未知价格，请显式接受未计价项后再确认', 409)
     // [M43] 画质选择：防篡改 hash 校验（默认档位）之后才覆写——选档不豁免配置漂移复查；

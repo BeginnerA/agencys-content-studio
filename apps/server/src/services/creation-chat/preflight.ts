@@ -12,6 +12,7 @@ import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../usage'
 import { CREATION_VIDEO_RESOLUTIONS, CreationError, hashJson, type CreationPlan, type CreationRef } from './contract'
 import type { CreationRecipe, EndpointSnapshot } from './recipe'
 import { snapshotStrictAsr } from '../strict-asr'
+import { resolveDialogueAsrPolicy } from '../dialogue-asr-policy'
 import { assertDialogueCapacity, dialogueAudioOptions } from './dialogue'
 
 /** 声明绑定精确模型；仅记录经供应商文档/实测核实的能力，不按名称推测。 */
@@ -37,6 +38,9 @@ export interface CreationPreflight {
   /** [M45] 品牌叠加摘要（仅确认卡信息透出）：available = 平台/项目已配任一叠加（水印/片头/片尾/字幕）。
    *  与 resolutionOptions 同一先例：只在 pf 顶层透出，不进 execution → 不改 planHash；未配品牌 available=false。 */
   brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
+  /** [M47] 对白执行路线（仅信息透出，仿 resolutionOptions 顶层加法先例：不进 execution → 不改 planHash）：
+   *  strict = 严格 ASR 路线（执行链仍冻结）；estimated = 免核验原生出声 + 估算字幕；null = 非对白。 */
+  dialogueMode: 'strict' | 'estimated' | null
 }
 
 export async function requiredEndpoint(service: 'image' | 'video' | 'audio' | 'llm'): Promise<ResolvedEndpoint> {
@@ -56,9 +60,13 @@ async function snapshot(ep: ResolvedEndpoint, kind: UsageKind, unit: UsageUnit):
 
 export async function preflightPlan(projectId: number, plan: CreationPlan): Promise<CreationPreflight> {
   const dialogue = plan.performance === 'dialogue'
+  // [M47] 路 B 入口：仅当用户显式关闭「人物对白严格 ASR 核验」（全局/项目三层解析）时，对白改走
+  // 免核验路线（原生出声 + 估算字幕，不取 ASR 快照、零 ASR 计费）；默认 ON 逐字维持现状 strict 路线。
+  // 硬闸不放宽：下方 dialogueAudioOptions 仍要求命中原生对白背书型号，未命中照常 422 可行动拒绝。
+  const estimatedDialogue = dialogue && (await resolveDialogueAsrPolicy(projectId)).strict === false
   const result: CreationPreflight = {
-    ready: false, issues: [], execution: null, planningModel: null, resolutionOptions: null, brandSummary: null,
-    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: dialogue ? 0 : plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length, ...(dialogue ? { asrSeconds: 0 } : {}) },
+    ready: false, issues: [], execution: null, planningModel: null, resolutionOptions: null, brandSummary: null, dialogueMode: dialogue ? (estimatedDialogue ? 'estimated' : 'strict') : null,
+    estimate: { knownCost: 0, unpriced: [], imageCount: 0, videoSeconds: 0, voiceChars: dialogue ? 0 : plan.lines.reduce((n, l) => n + l.text.length, 0), refCount: plan.refs.length, videoAnalysisCount: plan.refs.filter((r) => r.role === 'content').length, ...(dialogue && !estimatedDialogue ? { asrSeconds: 0 } : {}) },
   }
   try {
     if (dialogue) assertDialogueCapacity(plan)
@@ -66,7 +74,7 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
     result.planningModel = { provider: llm.providerKey, model: llm.model! }
     if (!resolveFfmpeg() || !resolveFfprobe()) throw new CreationError('missing_ffmpeg', '请安装可用的 ffmpeg 和 ffprobe 后重新预检', 422)
     const audio = dialogue ? null : await requiredEndpoint('audio')
-    const asr = dialogue ? await snapshotStrictAsr() : undefined
+    const asr = dialogue && !estimatedDialogue ? await snapshotStrictAsr() : undefined
     const configured = typeof audio?.extra.voice === 'string' ? audio.extra.voice.trim() : ''
     // [M38] 音色 Tier A 收敛：未配置时按供应商真源默认兜底（不再强制用户手填裸 JSON）；
     // [M39] 兜底升级为逐模型：命中 profile 用模型级默认（如 CosyVoice2→alex），未命中回落 provider 级；
@@ -79,6 +87,7 @@ export async function preflightPlan(projectId: number, plan: CreationPlan): Prom
       videoMode: 'none', requestDurations: {}, ...(dialogue ? {} : { voice }), imageSize: '1024x1024', resolution: '720p',
       templateHash: hashJson(loadTemplate(dialogue ? 'easy-dialogue' : 'easy-video')),
       ...(asr ? { asr } : {}),
+      ...(estimatedDialogue ? { estimatedDialogue: true as const } : {}),
       // [M31] 参考素材随方案进入执行快照（进 planHash → 确认即执行）；缺失项不编造，仅按现有能力核验
       refs: plan.refs as CreationRef[],
     }

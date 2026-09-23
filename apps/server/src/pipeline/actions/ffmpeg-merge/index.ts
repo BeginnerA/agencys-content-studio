@@ -25,7 +25,7 @@ import type { Asset } from '../../../db/schema'
 import { recipeOf, isCreationTemplate } from '../../../services/creation-chat/recipe'
 import { hashJson } from '../../../services/creation-chat/contract'
 import { validatedDialogueClip } from '../../../services/creation-chat/dialogue-cache'
-import { dialogueSrt, inspectDialogueMedia } from '../../../services/creation-chat/dialogue-media'
+import { dialogueSrt, estimateDialogueClip, estimatedDialogueSrt, estimatedValidationHash, inspectDialogueMedia, type EstimatedDialogueClip } from '../../../services/creation-chat/dialogue-media'
 import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } from './strict'
 
 /**
@@ -90,8 +90,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const { segments, skipped, warnings } = recipe
     ? { segments: strictSegments(recipe.plan, rows, ctx.run.projectId), skipped: [] as number[], warnings: [] as string[] }
     : computeShotSegments(rows, mode, perShotDur, durationPerShot)
-  const dialogueClips = dialogue && recipe
-    ? await Promise.all(recipe.plan.shots.map((shot, i) => validatedDialogueClip(recipe, shot.id, rows[i]!, ctx.run.projectId)))
+  // [M47] 对白 clips 双路线：strict = ASR 逐字核验缓存复用（validatedDialogueClip）；estimated = 本步实测视频 + 来源校验同源重算（零付费）
+  const dialogueClips: Array<Awaited<ReturnType<typeof validatedDialogueClip>> | EstimatedDialogueClip> | null = dialogue && recipe
+    ? recipe.estimatedDialogue
+      ? recipe.plan.shots.map((shot, i) => estimateDialogueClip(recipe.plan, shot.id, rows[i]!, ctx.run.projectId))
+      : await Promise.all(recipe.plan.shots.map((shot, i) => validatedDialogueClip(recipe, shot.id, rows[i]!, ctx.run.projectId)))
     : null
   for (const w of warnings) ctx.log(w)
   if (skipped.length > 0) {
@@ -157,13 +160,19 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 回退原因：motion_mode / no_voices / no_lineid / 计划 reason / mapping_incomplete（成功路径该值不参与 params）
   let alignReason = 'not_applicable'
   if (dialogueClips && recipe) {
-    if (voiceIds.length || !srtRelPath || subtitleIds.length !== 1) throw new Error('人物对白必须使用原声和实测字幕，禁止混入 TTS')
+    if (voiceIds.length || !srtRelPath || subtitleIds.length !== 1) throw new Error('人物对白必须使用原声和配套字幕，禁止混入 TTS')
     const [subtitle] = await ctx.assetsOf(subtitleIds)
-    const expected = dialogueSrt(dialogueClips)
-    const validationHash = hashJson({ policy: recipe.asr!.policy, clips: dialogueClips })
+    // [M47] expected 与 validationHash 均按路线同源重算：陈旧/跨路线字幕一律拒绝（语义与 strict 现状一致）
+    const estimated = recipe.estimatedDialogue === true
+    const expected = estimated
+      ? estimatedDialogueSrt(recipe.plan, dialogueClips as EstimatedDialogueClip[])
+      : dialogueSrt(dialogueClips as Awaited<ReturnType<typeof validatedDialogueClip>>[])
+    const validationHash = estimated
+      ? estimatedValidationHash(dialogueClips as EstimatedDialogueClip[])
+      : hashJson({ policy: recipe.asr!.policy, clips: dialogueClips })
     if (!subtitle || subtitle.projectId !== ctx.run.projectId || subtitle.deletedAt !== null || subtitle.kind !== 'text'
       || JSON.parse(subtitle.params ?? '{}').validationHash !== validationHash || readFileSync(absPathOf(srtRelPath), 'utf8') !== expected) {
-      throw new Error('实测字幕与当前原声核验不匹配，禁止使用陈旧字幕')
+      throw new Error('对白字幕与当前原声不匹配，禁止使用陈旧字幕')
     }
     alignReason = 'native_dialogue'
   } else if (recipe) {
@@ -564,7 +573,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     duration: Math.round(totalAll),
     params: {
       ...(strict ? { strict_delivery: true, delivery_checked: true } : {}),
-      ...(dialogueClips ? { performance: 'dialogue', dialogue_review_required: true, dialogue_clips: dialogueClips } : {}),
+      ...(dialogueClips ? { performance: 'dialogue', dialogue_review_required: true, ...(recipe?.estimatedDialogue ? { dialogue_subtitles_estimated: true } : {}), dialogue_clips: dialogueClips } : {}),
       fps,
       resolution,
       images: segments.filter((s) => s.kind === 'image').length,

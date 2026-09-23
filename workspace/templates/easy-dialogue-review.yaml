@@ -1,7 +1,7 @@
 key: easy-dialogue-review
 version: 1
 name: 轻松创作 · 首帧审阅后人物对白
-description: 首帧确认后生成原生音画，逐镜转写核验并保留原声合成，最终仍须人工审阅台词、角色与口型。
+description: 首帧确认后生成原生音画并保留原声合成；按设置走严格 ASR 逐字核验或免核验估算字幕，最终仍须人工审阅台词、角色与口型。
 genre: story
 scene: produce
 inputs:
@@ -21,7 +21,7 @@ steps:
       shots: input.shots
     batch: { field: shots, max_concurrent: 2, retry: 0 }
     params: { use_character_refs: false, use_style_preset: false }
-    gate: { mode: required, message: '请检查角色外貌和同框关系；确认后将开始原生对白视频及 ASR 等付费生成。' }
+    gate: { mode: required, message: '请检查角色外貌和同框关系；确认后将开始原生对白视频生成（按设置可能包含 ASR 核验等后续付费环节）。' }
   - key: motion
     action: ai_video
     title: 生成原生人物对白视频
@@ -34,7 +34,7 @@ steps:
     params: { prompt_field: motion_prompt }
   - key: captions
     action: dialogue_subtitle
-    title: 逐镜原声音轨核验与实测字幕
+    title: 逐镜原声字幕生成（实测或估算）
     after: [motion]
     inputs:
       motion_clips: steps.motion.assets
@@ -47,4 +47,4 @@ steps:
       motion_clips: steps.motion.assets
       subtitle: steps.captions.assets
     params: { fps: 25, strict_delivery: true, transition: none, cover: true }
-    gate: { mode: required, reject: stop, message: '请播放本轮成片，核对台词、角色与口型。确认内容、角色和口型可接受后交付；不接受可保留成果并局部返修。ASR 仅验证文字和时序，不证明说话人或口型。' }
+    gate: { mode: required, reject: stop, message: '请播放本轮成片，核对台词、角色与口型。严格核验路线字幕为音轨实测；免核验路线字幕按批准台词估算（非实测），请务必收听原声比对实际发声。确认内容、角色和口型可接受后交付；不接受可保留成果并局部返修。' }

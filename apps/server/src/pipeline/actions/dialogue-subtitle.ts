@@ -3,21 +3,25 @@ import { randomUUID } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
 import { requestTimestampedTranscription } from '@agencys/ai-provider-kit'
 import { db } from '../../db'
-import { assets, genTasks, pipelineRuns, usageRecords } from '../../db/schema'
+import { assets, genTasks, usageRecords } from '../../db/schema'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, sha256Hex, writeTextAsset } from '../../services/storage'
-import { recipeOf } from '../../services/creation-chat/recipe'
+import { recipeOf, type CreationRecipe } from '../../services/creation-chat/recipe'
 import { hashJson } from '../../services/creation-chat/contract'
 import { dialogueSource, findDialogueResponse, validatedDialogueClip } from '../../services/creation-chat/dialogue-cache'
-import { dialogueSrt, extractDialogueAudio } from '../../services/creation-chat/dialogue-media'
+import { assertEstimatedClipSource, dialogueSrt, estimatedDialogueSrt, estimatedValidationHash, ESTIMATED_DIALOGUE_POLICY, extractDialogueAudio, type EstimatedDialogueClip } from '../../services/creation-chat/dialogue-media'
 import { resolveStrictAsrEndpoint } from '../../services/strict-asr'
 import { emitStudioEvent } from '../../services/events'
 import { RunCancelledError, type StepResult } from '../types'
+import { runCancelled } from '../cancel'
 import type { StepContext } from '../context'
 
 /** 逐镜原声转写：付费结果与计费同事务保存，校验失败也保留原始诊断，永不自动重发。 */
 export async function dialogueSubtitle(ctx: StepContext): Promise<StepResult> {
   const recipe = recipeOf(ctx.run)
-  if (!recipe?.asr || recipe.plan.performance !== 'dialogue') throw new Error('严格对白字幕缺少批准方案')
+  if (!recipe || recipe.plan.performance !== 'dialogue') throw new Error('严格对白字幕缺少批准方案')
+  // [M47] 路 B 分流：免核验方案（estimatedDialogue）走零付费估算分支，strict 路线逐字不变。
+  if (recipe.estimatedDialogue) return estimatedSubtitle(ctx, recipe)
+  if (!recipe.asr) throw new Error('严格对白字幕缺少 ASR 批准快照')
   const pin = recipe.asr
   await resolveStrictAsrEndpoint(pin)
   const ids = ctx.assetIdsOf('motion_clips')
@@ -31,8 +35,7 @@ export async function dialogueSubtitle(ctx: StepContext): Promise<StepResult> {
   })
   const verified: Array<Awaited<ReturnType<typeof validatedDialogueClip>>> = []
   for (const { asset, source } of sources) {
-    const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, ctx.run.id))
-    if (!run || run.status === 'cancelled') throw new RunCancelledError()
+    if (await runCancelled(ctx.run.id)) throw new RunCancelledError()
     const task = await db.transaction(async (tx) => {
       const existing = await tx.select().from(genTasks).where(and(eq(genTasks.stepId, ctx.step.id), eq(genTasks.kind, 'asr')))
       // 按镜 + 原声摘要 + 批准台词指纹精确匹配：候选改选到同镜的另一段已转写版本时复用其任务，
@@ -99,5 +102,44 @@ export async function dialogueSubtitle(ctx: StepContext): Promise<StepResult> {
   const subtitle = await writeTextAsset(ctx.run.projectId, { name: `${randomUUID()}-dialogue`, content, purpose: 'subtitle', format: 'srt', runId: ctx.run.id, stepId: ctx.step.id,
     params: { performance: 'dialogue', validationHash, clips: verified, durationMs: recipe.plan.duration * 1000 } })
   ctx.log('逐镜原声台词与时间戳校验通过；说话角色和口型仍需人工审阅')
+  return { assetIds: [subtitle.id] }
+}
+
+/**
+ * [M47] 免核验字幕步骤（路 B，零网络零付费）：逐镜抽音轨实测 + 非静音守卫（保留原声轨资产供溯源），
+ * 字幕按批准台词估算（非实测）；不建 genTasks、不写 usageRecords、不发任何请求。
+ */
+async function estimatedSubtitle(ctx: StepContext, recipe: CreationRecipe): Promise<StepResult> {
+  const ids = ctx.assetIdsOf('motion_clips')
+  const rows = await ctx.assetsOf(ids)
+  if (ids.length !== recipe.plan.shots.length || new Set(ids).size !== ids.length || rows.length !== ids.length) throw new Error('对白视频镜头数量不匹配')
+  ensureProjectDirs(ctx.run.projectId)
+  const clips: EstimatedDialogueClip[] = []
+  for (const shot of recipe.plan.shots) {
+    if (await runCancelled(ctx.run.id)) throw new RunCancelledError()
+    const matched = rows.filter((a) => JSON.parse(a.params ?? '{}').shotId === shot.id)
+    if (matched.length !== 1) throw new Error(`镜头 ${shot.id} 缺少唯一原声视频`)
+    const asset = matched[0]!
+    if (asset.projectId !== ctx.run.projectId) throw new Error(`镜头 ${shot.id} 视频不属于本项目`)
+    assertEstimatedClipSource(recipe.plan, shot.id, asset)
+    const relPath = relPathOf(ctx.run.projectId, 'dialogue_audio', `${randomUUID()}.wav`)
+    const timing = extractDialogueAudio(absPathOf(asset.relPath!), absPathOf(relPath))
+    const audio = readFileSync(absPathOf(relPath))
+    await registerAsset(ctx.run.projectId, { name: `${shot.id} 原声音轨`, kind: 'audio', purpose: 'dialogue_audio', relPath,
+      mime: 'audio/wav', ext: 'wav', fileSize: audio.length, sha256: sha256Hex(audio), duration: timing.audioDuration,
+      runId: ctx.run.id, stepId: ctx.step.id, params: { shotId: shot.id, timing, estimated: true } })
+    clips.push({ shotId: shot.id, duration: shot.duration, videoDuration: timing.videoDuration, timing })
+  }
+  const content = estimatedDialogueSrt(recipe.plan, clips)
+  const validationHash = estimatedValidationHash(clips)
+  const old = await db.select().from(assets).where(and(eq(assets.runId, ctx.run.id), eq(assets.purpose, 'subtitle'), isNull(assets.deletedAt)))
+  for (const asset of old) {
+    if (JSON.parse(asset.params ?? '{}').validationHash !== validationHash) continue
+    if (!asset.relPath || sha256Hex(readFileSync(absPathOf(asset.relPath))) !== sha256Hex(Buffer.from(content))) throw new Error('估算字幕缓存内容已变化')
+    return { assetIds: [asset.id] }
+  }
+  const subtitle = await writeTextAsset(ctx.run.projectId, { name: `${randomUUID()}-dialogue`, content, purpose: 'subtitle', format: 'srt', runId: ctx.run.id, stepId: ctx.step.id,
+    params: { performance: 'dialogue', estimated: true, policy: ESTIMATED_DIALOGUE_POLICY, validationHash, clips: clips.map(({ shotId, duration, videoDuration }) => ({ shotId, duration, videoDuration })), durationMs: recipe.plan.duration * 1000 } })
+  ctx.log('免核验对白：字幕按批准台词估算（非实测），模型实际发声未逐字核验，请在审阅闸收听原声比对台词')
   return { assetIds: [subtitle.id] }
 }

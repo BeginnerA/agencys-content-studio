@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import Icon from '../../components/common/Icon.vue'
 import type { CreationPlan, CreationPreflight } from '../../lib/types'
 import CreationReviewGate from './CreationReviewGate.vue'
 import CreationResolution from './CreationResolution.vue'
@@ -29,6 +30,8 @@ watch(
 
 const dynamic = computed(() => props.plan?.mode === 'dynamic')
 const bgmCount = computed(() => props.plan?.refs.filter((r) => r.role === 'bgm').length ?? 0)
+// [M47] 免核验对白路线提示：仅预检判定当前对白方案走 estimated 时展示（诚实告知字幕非实测）
+const dialogueEstimated = computed(() => props.plan?.performance === 'dialogue' && props.pf?.dialogueMode === 'estimated')
 
 defineExpose({ reviewGate, resolution, brandApply })
 </script>
@@ -39,4 +42,26 @@ defineExpose({ reviewGate, resolution, brandApply })
   <CreationResolution v-if="dynamic && pf?.resolutionOptions" v-model="resolution" :options="pf.resolutionOptions" />
   <!-- [M45] 品牌风格：仅平台/项目已配品牌（brandSummary.available）时展示；未配品牌不打扰 -->
   <CreationBrand v-if="pf?.brandSummary?.available" v-model="brandApply" :summary="pf.brandSummary" :bgm-count="bgmCount" />
+  <!-- [M47] 免核验对白告知条：模型原生出声、字幕按台词估算（非实测），交付前强制人工审阅 -->
+  <p v-if="dialogueEstimated" class="ec-est-hint">
+    <Icon name="alert" :size="13" /> 免核验对白：由视频模型原生生成人声与口型，字幕按批准台词估算（非实测），成片必须经你收听审阅后才会交付；如需逐字核验可在设置中恢复「严格 ASR 核验」。
+  </p>
 </template>
+
+<style scoped>
+.ec-est-hint {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.ec-est-hint .ic {
+  color: var(--accent-h);
+  vertical-align: -2px;
+}
+</style>

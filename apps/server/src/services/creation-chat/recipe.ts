@@ -29,14 +29,21 @@ export const recipeSchema = z.object({
   asr: endpointSnapshotSchema.extend({
     model: z.literal('whisper-1'), protocol: z.literal('openai_verbose_json'), policy: z.literal('verbatim-segments-v1'),
   }).strict().optional(),
+  // [M47] 免核验对白标记（路 B）：仅当用户显式关闭严格 ASR（dialogue_asr.strict=false）且视频模型命中原生对白背书时
+  // 由预检写入；无默认值 → 存量 recipe（narration/旧会话）序列化不增键，hashJson 重算逐字不变（零回归）。
+  estimatedDialogue: z.literal(true).optional(),
 }).strict().superRefine((recipe, ctx) => {
   const issue = (message: string): void => ctx.addIssue({ code: 'custom', message })
   if (recipe.plan.performance !== 'dialogue') {
     if (!recipe.endpoints.audio || !recipe.voice) issue('旁白必须包含 TTS 实例和音色')
     if (recipe.asr) issue('旁白不得携带对白 ASR 快照')
+    if (recipe.estimatedDialogue) issue('旁白不得携带免核验对白标记')
     return
   }
-  if (!recipe.asr || !recipe.endpoints.video || recipe.videoMode === 'none') issue('对白必须包含原生视频与严格 ASR 快照')
+  if (!recipe.endpoints.video || recipe.videoMode === 'none') issue('对白必须包含原生视频实例')
+  // [M47] 对白两条路线互斥：strict（逐字 ASR 快照，执行链仍冻结）或 estimated（原生出声 + 估算字幕）
+  if (!recipe.asr && !recipe.estimatedDialogue) issue('对白必须携带严格 ASR 快照或显式免核验标记')
+  if (recipe.asr && recipe.estimatedDialogue) issue('严格 ASR 快照与免核验标记互斥')
   if (recipe.endpoints.audio || recipe.voice) issue('对白不得使用独立 TTS 或旁白音色')
   if (recipe.videoMode === 'i2v' && !recipe.endpoints.image) issue('图生对白缺少首帧图像实例')
   if (recipe.plan.shots.some((s) => !recipe.requestDurations[s.id] || recipe.requestDurations[s.id]! < s.duration)) issue('对白请求镜长不得小于批准镜长')
@@ -119,9 +126,13 @@ export async function frozenSettings(run: PipelineRun, action: string): Promise<
   if (!recipe) return null
   await assertRecipeSources(run, recipe)
   if (action === 'dialogue_subtitle') {
-    if (!recipe.asr || recipe.plan.performance !== 'dialogue') throw new Error('严格对白字幕缺少 ASR 批准快照')
-    const { resolveStrictAsrEndpoint } = await import('../strict-asr')
-    await resolveStrictAsrEndpoint(recipe.asr)
+    if (recipe.plan.performance !== 'dialogue') throw new Error('对白字幕仅适用对白方案')
+    // [M47] estimated 分支零 ASR：字幕由批准台词估算，不需也不解析 ASR 端点
+    if (!recipe.estimatedDialogue) {
+      if (!recipe.asr) throw new Error('严格对白字幕缺少 ASR 批准快照')
+      const { resolveStrictAsrEndpoint } = await import('../strict-asr')
+      await resolveStrictAsrEndpoint(recipe.asr)
+    }
   }
   const service = action === 'ai_image' ? 'image' : action === 'ai_video' ? 'video' : action === 'tts' ? 'audio' : null
   if (service) {

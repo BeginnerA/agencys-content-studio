@@ -291,7 +291,7 @@ async function saveCreation() {
     await settingsApi.put('dialogue_asr', { strict: asrStrict.value })
     asrHint.value = asrStrict.value
       ? '已保存（人物对白维持严格 ASR 核验）'
-      : '已保存（已允许无 ASR 创作，对白将免逐字核验）'
+      : '已保存（免核验对白已放行：模型原生出声 + 估算字幕，需视频模型命中原生对白背书）'
     window.setTimeout(() => {
       if (asrHint.value.startsWith('已保存')) asrHint.value = ''
     }, 2500)
@@ -476,11 +476,11 @@ loadCreation()
         <div class="rc-head">
           <h3>人物对白严格 ASR 核验</h3>
           <span class="muted">
-            开启时：人物对白必须由已核实的 whisper-1 分段时间戳 ASR
-            逐字核验、并据真实音轨生成字幕（无匹配 ASR
-            后端则无法创作对白）。关闭后作为逃生阀：无
-            ASR
-            也能创作，对白改用模型原生出声、字幕按批准台词估算（非实测），但仍强制视频自带原声。
+            开启时：人物对白必须由已核实的 whisper-1
+            分段时间戳 ASR
+            逐字核验并据真实音轨生成字幕（该核验执行链仍在接线，暂不可开始制作）。
+            关闭后作为逃生阀（M47 免核验对白）：对白由视频模型原生生成人声与口型、字幕按批准台词估算（非实测），仍强制视频自带原声，交付前必须人工收听审阅；要求当前视频模型命中原生对白背书（如
+            Seedance 2.0 / 万相 3.0 系），未命中时规划自动改走旁白。
           </span>
         </div>
 

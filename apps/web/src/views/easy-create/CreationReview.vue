@@ -20,8 +20,10 @@ const note = ref('')
 const rejecting = ref(false)
 const MAX_NOTE = 500
 
-// [M44] 对白最终审阅：待审对象是带原声的成片视频与实测字幕，而非逐镜首帧；驳回为停机不自动重做
+// [M44] 对白最终审阅：待审对象是带原声的成片视频与字幕，而非逐镜首帧；驳回为停机不自动重做
 const dialogue = computed(() => review.value?.kind === 'dialogue')
+// [M47] 免核验路线：字幕按批准台词估算（非实测），发声只能靠人工收听比对，文案必须如实区分
+const subtitlesEstimated = computed(() => review.value?.subtitlesEstimated === true)
 const dialogueVideoUrl = computed(() =>
   review.value?.videoId ? `/api/v1/assets/${review.value.videoId}/file` : '',
 )
@@ -103,8 +105,11 @@ async function onReject(): Promise<void> {
     </header>
     <p class="rm" role="status">{{ review.message }}</p>
 
-    <!-- [M44] 对白最终审阅：播放带原声的待审成片 + 实测字幕入口 + 逐镜原声核验问题 -->
+    <!-- [M44] 对白最终审阅：播放带原声的待审成片 + 字幕入口（实测/估算如实标注）+ 逐镜原声核验问题 -->
     <div v-if="dialogue" class="ec-dlg">
+      <p v-if="subtitlesEstimated" class="warnline">
+        <Icon name="alert" :size="13" /> 免核验路线：字幕按批准台词估算（非实测），模型实际发声未经逐字核验，请务必收听原声比对台词、说话人与口型后再交付。
+      </p>
       <video
         v-if="dialogueVideoUrl"
         class="ec-dlg-video"
@@ -118,12 +123,13 @@ async function onReject(): Promise<void> {
       </p>
       <p class="ec-dlg-tools">
         <a v-if="subtitleUrl" class="btn sm" :href="subtitleUrl" target="_blank" rel="noopener"
-          ><Icon name="doc" :size="13" /> 查看实测字幕（来自真实音轨）</a
+          ><Icon name="doc" :size="13" /> {{ subtitlesEstimated ? '查看估算字幕（按批准台词，非实测）' : '查看实测字幕（来自真实音轨）' }}</a
         >
         <span v-if="verificationIssues.length" class="warnline">
           <Icon name="alert" :size="13" />
           {{ verificationIssues.length }} 个镜头原声未通过核验（{{ verificationIssues.map((v) => `第 ${v.index} 镜${v.speaker ? '·' + v.speaker : ''}`).join('、') }}），请核对台词与时间戳。
         </span>
+        <span v-else-if="subtitlesEstimated" class="muted">免核验路线不产生逐字核验记录，发声一致性以本轮人工审阅为准。</span>
         <span v-else class="muted">逐镜原声均已通过核验。</span>
       </p>
     </div>
