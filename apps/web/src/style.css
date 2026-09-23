@@ -244,6 +244,7 @@ a:hover {
     transform 0.1s;
   line-height: 1.4;
   user-select: none;
+  white-space: nowrap; /* 按钮标签禁止换行：CJK 文本在窄 flex 容器内会逐字断行导致按钮竖排塌陷 */
 }
 
 .btn:hover {
