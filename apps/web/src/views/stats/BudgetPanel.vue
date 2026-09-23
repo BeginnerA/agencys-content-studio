@@ -358,66 +358,72 @@ const warnCount = computed(
         </div>
         <div class="edit-section">
           <h4>全局预算（元）</h4>
-          <div class="edit-row">
-            <label
-              >月度上限
+          <div class="edit-fields">
+            <label class="edit-field">
+              <span class="ef-label">月度上限</span>
               <input
                 v-model="editGlobalMonthly"
                 type="number"
                 min="0"
                 step="100"
                 placeholder="不限"
-            /></label>
-            <label
-              >总上限
+              />
+            </label>
+            <label class="edit-field">
+              <span class="ef-label">总额上限</span>
               <input
                 v-model="editGlobalTotal"
                 type="number"
                 min="0"
                 step="100"
                 placeholder="不限"
-            /></label>
+              />
+            </label>
           </div>
         </div>
         <div class="edit-section">
           <h4>告警阈值</h4>
-          <label class="edit-threshold"
-            >使用率达到此比例时告警（0.1–1，默认 0.8）
+          <label class="edit-field">
+            <span class="ef-label">使用率达到此比例时告警（0.1–1，默认 0.8）</span>
             <input
               v-model="editAlertRatio"
               type="number"
               min="0.1"
               max="1"
               step="0.05"
-          /></label>
+            />
+          </label>
         </div>
         <div class="edit-section">
           <h4>项目级预算（元）</h4>
           <div class="edit-proj-grid">
+            <div class="ep-row ep-head">
+              <span class="ep-name">项目</span>
+              <span class="ep-col">月度上限</span>
+              <span class="ep-col">总额上限</span>
+            </div>
             <div
               v-for="pb in editProjectBudgets"
               :key="pb.projectId"
-              class="edit-proj-row"
+              class="ep-row"
             >
               <span class="ep-name">{{ projName(pb.projectId) }}</span>
-              <label
-                >月度
-                <input
-                  v-model="pb.monthly"
-                  type="number"
-                  min="0"
-                  step="100"
-                  placeholder="不限"
-              /></label>
-              <label
-                >总计
-                <input
-                  v-model="pb.total"
-                  type="number"
-                  min="0"
-                  step="100"
-                  placeholder="不限"
-              /></label>
+              <input
+                class="ep-input"
+                v-model="pb.monthly"
+                type="number"
+                min="0"
+                step="100"
+                placeholder="不限"
+              />
+              <input
+                class="ep-input"
+                v-model="pb.total"
+                type="number"
+                min="0"
+                step="100"
+                placeholder="不限"
+              />
             </div>
           </div>
         </div>
@@ -637,6 +643,9 @@ const warnCount = computed(
 }
 
 /* ── 编辑表单 ── */
+.budget-edit {
+  max-width: 720px;
+}
 .edit-section {
   margin-bottom: 18px;
 }
@@ -648,58 +657,68 @@ const warnCount = computed(
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.edit-row {
+.edit-fields {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
-.edit-row label,
-.edit-section > label,
-.edit-proj-row label {
+.edit-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  flex: 1;
+  min-width: 200px;
   font-size: 12px;
   color: var(--text-3);
 }
-.edit-threshold {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-3);
-  max-width: 260px;
+.edit-section > .edit-field {
+  max-width: 320px;
 }
-.edit-row input,
-.edit-section input,
-.edit-proj-row input {
+.budget-edit input {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  padding: 7px 10px;
   color: var(--text);
   font-size: 13px;
-  width: 130px;
+  width: 100%;
+  box-sizing: border-box;
 }
+.budget-edit input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+/* 项目预算表格 */
 .edit-proj-grid {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
-.edit-proj-row {
-  display: flex;
+.ep-row {
+  display: grid;
+  grid-template-columns: 1fr 170px 170px;
   align-items: center;
-  gap: 14px;
-  padding: 6px 0;
+  gap: 16px;
+  padding: 8px 0;
   border-top: 1px solid var(--border);
 }
-.edit-proj-row:first-child {
+.ep-head {
   border-top: none;
+  padding: 0 0 6px;
+}
+.ep-head .ep-name,
+.ep-head .ep-col {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 .ep-name {
-  flex: 1;
   font-size: 13px;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .edit-foot {
   display: flex;
