@@ -1,0 +1,36 @@
+key: image-reverse
+version: 1
+name: 图片反推·画面→提示词→文案
+description: 适合：把一批参考图片（png/jpg/webp/gif/bmp，可多张）反推为可直接复用的 AI 生成提示词包与发布文案。流程：图片解析（等比缩宽 ≤1280 临时编码〔失败回退原图内联〕→ 多模态 LLM 逐图反推主体/风格/构图/光线/色板 + 可投产 image_prompt/negative_prompt）→ 反推审阅 → 文案包（标题/描述/话题/逐图配文）。原图只读不改；解析产物为机读 json + 人读报告双资产，image_prompt 直通文生图/图文链。
+genre: note
+scene: plan
+inputs:
+  - key: images
+    label: 参考图片（png/jpg/webp/gif/bmp，可多张按序编号）
+    kind: files
+    required: true
+    accept: [.png, .jpg, .jpeg, .webp, .gif, .bmp]
+defaults:
+  llm: { temperature: 0.4, max_tokens: 24000 }
+steps:
+  - key: analyze
+    action: image_analyze
+    title: 图片解析（多模态逐图反推提示词）
+    inputs:
+      images: input.images
+    params:
+      max_images: 8
+    gate:
+      mode: required
+      message: 请审阅反推提示词包（逐图 image_prompt/负向词/风格要素）；认可通过后生成文案包；可驳回附修改意见重跑
+      skip_label: 反推认可
+  - key: copy
+    action: ai_text
+    title: 文案包生成（标题/描述/话题/逐图配文）
+    after: [analyze]
+    inputs:
+      reverse: steps.analyze.asset
+    params:
+      prompt_tpl: image-copy.md
+      output_purpose: text
+      name_tpl: 反推文案.md

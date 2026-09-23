@@ -556,6 +556,25 @@ async function main(): Promise<void> {
     check(vRes.ok === true, `video-reverse 模板校验 ok（errors=${JSON.stringify(vRes.errors)}）`)
     check(vRes.template?.steps.map((s) => s.action).join(',') === 'video_analyze,ai_text,ai_text', '步骤链：analyze→storyboard→copy（actions 全在 KNOWN_ACTIONS）')
     check(vRes.template?.steps[1]?.gate?.mode === 'required', 'storyboard 挂 required 审阅门控（spec §2.9 gate）')
+
+    // —— image-reverse：图片反推契约 + clamp + 模板合法性（video_analyze 同源图片形态）——
+    const { parseImageReverseJson, renderImageReverseReportMd, clampImageCount, IMAGE_COUNT_RANGE, ANALYSIS_IMAGE_WIDTH } = await import('../src/pipeline/actions/image-analyze')
+    check(IMAGE_COUNT_RANGE.min === 1 && IMAGE_COUNT_RANGE.max === 12 && IMAGE_COUNT_RANGE.default === 8, '图片数常量 1–12 默认 8（params.max_images）')
+    check(clampImageCount(0) === 1 && clampImageCount(99) === 12, 'clampImageCount：0→1 / 99→12（越界 clamp）')
+    check(clampImageCount(undefined) === 8 && clampImageCount('x') === 8 && clampImageCount(8.6) === 9, 'clampImageCount：非法/缺失→默认 8 / 小数 round 8.6→9')
+    const ir = parseImageReverseJson('{"images":[{"index":1,"file":"a.png","subject":"girl","style":"watercolor","palette":["#fff",""," "],"image_prompt":"girl, watercolor","negative_prompt":"blurry"}]}')
+    check(ir?.length === 1 && ir[0]!.image_prompt === 'girl, watercolor' && ir[0]!.file === 'a.png', '反推 JSON 解析（核心字段 image_prompt + file 保真）')
+    check(ir?.[0]?.palette.length === 1 && ir[0]!.palette[0] === '#fff', 'palette 清洗：空白项丢弃')
+    const irDrop = parseImageReverseJson('{"images":[{"subject":"缺提示词"},{"index":9,"image_prompt":"ok"}]}')
+    check(irDrop?.length === 1 && irDrop[0]!.image_prompt === 'ok' && irDrop[0]!.index === 9, 'image_prompt 空项丢弃；index 取模型所给')
+    check(parseImageReverseJson('garbage') === null && parseImageReverseJson('{"images":[]}') === null && parseImageReverseJson('{"no_images":1}') === null, '非 JSON / 空 images / 缺数组 → null（宽容契约）')
+    const irMd = renderImageReverseReportMd(ir!, { included: 1, width: ANALYSIS_IMAGE_WIDTH })
+    check(irMd.includes('girl, watercolor') && irMd.includes('#fff') && ANALYSIS_IMAGE_WIDTH === 1280, '人读报告含提示词与色板；缩宽 1280')
+    const irText = readFileSync(resolve(REPO_ROOT, 'workspace', 'templates', 'image-reverse.yaml'), 'utf8')
+    const irRes = validateTemplateText(irText, 'image-reverse')
+    check(irRes.ok === true, `image-reverse 模板校验 ok（errors=${JSON.stringify(irRes.errors)}）`)
+    check(irRes.template?.steps.map((s) => s.action).join(',') === 'image_analyze,ai_text', '步骤链：analyze→copy（actions 全在 KNOWN_ACTIONS）')
+    check(irRes.template?.steps[0]?.gate?.mode === 'required', 'image_analyze 挂 required 反推审阅门控')
   }
 
   const runners: Record<string, () => Promise<void>> = {
@@ -581,8 +600,10 @@ async function main(): Promise<void> {
     console.log(`\n──── section: registry ────`)
     check(KNOWN_ACTIONS.includes('adapt_audit'), 'KNOWN_ACTIONS 含 adapt_audit')
     check(KNOWN_ACTIONS.includes('video_analyze'), 'KNOWN_ACTIONS 含 video_analyze')
+    check(KNOWN_ACTIONS.includes('image_analyze'), 'KNOWN_ACTIONS 含 image_analyze')
     const keys = listActionKeys()
     check(keys.includes('adapt_audit') && keys.includes('video_analyze'), 'registry 同步注册两新 action')
+    check(keys.includes('image_analyze'), 'registry 同步注册 image_analyze（image-reverse 链）')
     for (const name of wanted === 'all' ? SECTIONS : [wanted]) {
       console.log(`\n──── section: ${name} ────`)
       await runners[name]!()

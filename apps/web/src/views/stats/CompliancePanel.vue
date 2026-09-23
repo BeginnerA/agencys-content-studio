@@ -142,8 +142,8 @@ onMounted(async () => {
               <option value="">全域项目</option>
               <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
-            <button class="btn sm" :disabled="loadingSuggest" @click="loadSuggest">
-              {{ loadingSuggest ? '聚合中…' : '生成建议' }}
+            <button class="btn primary sm" :disabled="loadingSuggest" @click="loadSuggest">
+              <Icon name="sparkles" :size="12" /> {{ loadingSuggest ? '聚合中…' : '生成建议' }}
             </button>
           </div>
         </div>
@@ -255,8 +255,9 @@ onMounted(async () => {
 .cp-tools select {
   background: var(--code-bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 7px;
+  padding: 2px 10px;
+  line-height: 1.4;
   color: var(--text);
   font-size: 12px;
 }

@@ -73,8 +73,8 @@ export const projectApi = {
 }
 
 export const templateApi = {
-  /** 模板清单；params 可传 `?picker=1`（专业端「启动流水线」选卡：剔除轻松创作批准链模板） */
-  list: (params = '') => api.get<Items<TemplateMeta>>(`/api/v1/templates${params}`),
+  /** 模板清单（全量，含 conversationOnly 标记；选择器自行过滤，展示方直接用） */
+  list: () => api.get<Items<TemplateMeta>>('/api/v1/templates'),
   detail: (key: string) =>
     api.get<{ template: TemplateDetail; yaml: string }>(
       `/api/v1/templates/${encodeURIComponent(key)}`,

@@ -10,6 +10,7 @@ import { characterSync } from './character-sync'
 import { complianceCheck } from './compliance-check'
 import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
+import { imageAnalyze } from './image-analyze'
 import { literal } from './literal'
 import { manualIngest } from './manual-ingest'
 // [整改] 复盘回灌专用：发布记录直接入库（取代导出 CSV 再上传）
@@ -49,6 +50,7 @@ const registry: Record<string, ActionFn> = {
   text_split: textSplit,
   adapt_audit: adaptAudit,
   video_analyze: videoAnalyze,
+  image_analyze: imageAnalyze,
 }
 
 export function getAction(key: string): ActionFn {

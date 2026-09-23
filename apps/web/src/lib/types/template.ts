@@ -50,6 +50,8 @@ export interface TemplateMeta {
   scene?: string
   /** 展示元数据：推荐下游模板 key 列表 */
   next?: string[]
+  /** [入口收口] 轻松创作批准链专用（easy-*）：选择器应过滤掉，展示反查方忽略（服务端 isCreationTemplate 真源注入） */
+  conversationOnly?: boolean
 }
 
 /** POST /templates/validate 响应（纯校验不落盘） */

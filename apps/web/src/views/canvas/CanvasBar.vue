@@ -5,8 +5,10 @@
  * —— 装配约定：状态真源在页面 index；操作函数经 props 直传（M28 shot-board 同约定）；
  * 三个目标下拉以 v-model 传父级 writable computed（get 回显 / set 路由跳转均留父级）。
  */
+import { computed } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime, runStatus } from '../../lib/format'
+import { filterSelectable } from '../../lib/scene'
 import type {
   CanvasOverview,
   Project,
@@ -17,7 +19,7 @@ import type {
 
 type TabKey = 'run' | 'template' | 'overview'
 
-defineProps<{
+const props = defineProps<{
   tab: TabKey
   runs: Run[]
   tplMetas: TemplateMeta[]
@@ -52,6 +54,8 @@ defineProps<{
 const selRunId = defineModel<string>('runId', { required: true })
 const selTplKey = defineModel<string>('tplSel', { required: true })
 const selProject = defineModel<string>('project', { required: true })
+// [入口收口] 顶栏「选模板→启动运行」不呈现轻松创作批准链模板（无 recipe 无法启动）；CanvasGuide 浏览设计不受影响
+const selectableTpls = computed(() => filterSelectable(props.tplMetas))
 </script>
 
 <template>
@@ -142,10 +146,10 @@ const selProject = defineModel<string>('project', { required: true })
         v-model="selTplKey"
         class="sel"
         aria-label="选择模板"
-        :disabled="!tplMetas.length"
+        :disabled="!selectableTpls.length"
       >
         <option value="" disabled>选择模板…</option>
-        <option v-for="t in tplMetas" :key="t.key" :value="t.key">
+        <option v-for="t in selectableTpls" :key="t.key" :value="t.key">
           {{ t.name }}（v{{ t.version }}）
         </option>
       </select>

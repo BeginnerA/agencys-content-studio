@@ -13,6 +13,7 @@ import type {
   VideoOverride,
 } from '../../lib/types'
 import { projectApi, publicationApi, runApi, templateApi } from '../../lib/api'
+import { filterSelectable } from '../../lib/scene'
 
 const props = defineProps<{
   projectId: number
@@ -232,11 +233,12 @@ async function init() {
   loading.value = true
   try {
     const [tRes, aRes, pubRes] = await Promise.all([
-      templateApi.list('?picker=1'),
+      templateApi.list(),
       projectApi.assets(props.projectId, '?limit=100'),
       publicationApi.list(`?project_id=${props.projectId}`),
     ])
-    templates.value = tRes.items
+    // [入口收口] 启动选卡不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
+    templates.value = filterSelectable(tRes.items)
     assets.value = aRes.items
     publications.value = pubRes.items
     // 接力入口（initialTemplateKey 命中）直达表单；否则停在选卡段（不再自动选中字母序第一个）

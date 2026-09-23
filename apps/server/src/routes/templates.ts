@@ -27,13 +27,11 @@ import { HttpError, h } from './helpers'
 export const templatesRoutes = new Hono()
 
 // GET /templates —— 模板清单（扫描 workspace/templates；promptsDirty=引用体检提示）
-// ?picker=1：专业端「启动流水线」选卡用，剔除轻松创作批准链模板（easy-*）——它们只接受对话页
+// 全量返回（含 easy-*，供编辑器查改与按 key 反查名字）；每项依 isCreationTemplate 真源打 conversationOnly 标记，
+// 由各「选择器」消费方自行过滤（启动/批量/建项目/画布/排程），展示方忽略该标记即可。
 templatesRoutes.get('/templates', (c) => {
-  // 生成的 recipe 快照、手动启动缺 script/lines/shots/recipe 入参无法运行，故不在手动入口呈现；
-  // 其余消费方（编辑器、按 key 反查名字展示）不带 picker，仍取全量。真源判据 = isCreationTemplate。
-  const picker = c.req.query('picker') === '1'
-  const items = listTemplates()
-  return c.json({ items: picker ? items.filter((t) => !isCreationTemplate(t.key)) : items })
+  const items = listTemplates().map((t) => ({ ...t, conversationOnly: isCreationTemplate(t.key) }))
+  return c.json({ items })
 })
 
 // [M35 G7] GET /templates/recommend?text=&top=3 —— 自然语言→模板推荐（embedding 零成本，失败回落关键词）

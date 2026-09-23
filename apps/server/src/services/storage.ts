@@ -58,6 +58,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'plan':
     case 'regex':
     case 'video_analysis': // [M25·G9] 视频时间轴 json + 人读 md 报告
+    case 'image_analysis': // 图片反推 json + 人读 md 报告（image-reverse 链，同源形态）
     case 'audit_report': // [M25·G4] 改编一致性回查报告
       return 'texts'
     case 'export':

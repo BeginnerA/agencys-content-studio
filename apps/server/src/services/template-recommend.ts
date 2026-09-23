@@ -26,7 +26,7 @@ import { cosine, embed, embeddingStatus } from './embedding'
 import { isCreationTemplate } from './creation-chat/recipe'
 
 /** 可推荐模板 = 全量模板剔除轻松创作批准链（easy-*）：它们只接受对话页 recipe 快照，
- *  手动建项目/启动无法运行，推荐出去只会把用户引向死路（与专业端选卡 `?picker=1` 同一判据）。 */
+ *  手动建项目/启动无法运行，推荐出去只会把用户引向死路（与专业端各选择器 conversationOnly 过滤同一真源 isCreationTemplate）。 */
 function selectableTemplates(): TemplateMeta[] {
   return listTemplates().filter((m) => !isCreationTemplate(m.key))
 }

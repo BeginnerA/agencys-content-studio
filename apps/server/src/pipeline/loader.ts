@@ -29,6 +29,7 @@ export const KNOWN_ACTIONS = [
   'text_split',
   'adapt_audit', // [M25·G4] 一致性回查（批 2 接线）
   'video_analyze', // [M25·G9] 视频解析含 ASR（批 3 接线）
+  'image_analyze', // 图片反推：多模态逐图反推生成提示词（image-reverse 链，video_analyze 同源形态）
 ] as const
 
 const cache = new Map<string, Template>()

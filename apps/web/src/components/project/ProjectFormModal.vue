@@ -19,6 +19,7 @@ import type {
   TemplateMeta,
 } from '../../lib/types'
 import {
+  filterSelectable,
   GENRE_DEFAULT_TPL,
   PROJECT_GENRES,
   groupTemplates,
@@ -30,7 +31,12 @@ const emit = defineEmits<{ done: []; close: [] }>()
 
 const isEdit = computed(() => !!props.project)
 const templates = ref<TemplateMeta[]>([])
-const tplGroups = computed(() => groupTemplates(templates.value))
+// [入口收口] 下拉选项只列可手动启动的模板（剔除 conversationOnly）；templates 仍存全量供反查名字/回填
+const tplGroups = computed(() => groupTemplates(filterSelectable(templates.value)))
+// 当前绑定项为轻松创作专用（不在选项内）→ 单列一条如实标注的选项，避免被误标「已失效」
+const boundConversationTpl = computed(() =>
+  templates.value.find((t) => t.key === tplKey.value && t.conversationOnly),
+)
 
 const name = ref('')
 const genre = ref('drama_short')
@@ -120,10 +126,9 @@ function onGenreChange() {
 
 onMounted(async () => {
   // 模板列表自加载（失败不阻塞：新建回退空模板，编辑保留原值）
-  // [入口收口] 仅新建模式过滤轻松创作批准链模板（easy-*）：它们只由对话页调度、手动启动无 recipe 无法运行；
-  // 编辑模式保持全量，否则老项目默认模板 easy-video 会匹配不到、被误标「已失效」。真源判据 = 服务端 ?picker=1。
+  // [入口收口] 全量拉取（含 conversationOnly 标记）：下拉选项由 tplGroups 过滤，但保留全量以正确反查名字/回填老项目的 easy-* 默认模板。
   try {
-    const t = await templateApi.list(isEdit.value ? '' : '?picker=1')
+    const t = await templateApi.list()
     templates.value = t.items
   } catch {
     // 静默：模板列表失败不影响基本提交
@@ -230,6 +235,12 @@ async function submit() {
       <select v-model="tplKey" @change="tplTouched = true">
         <option v-if="tplMissing" :value="tplKey">
           {{ tplKey }}（已失效）
+        </option>
+        <option
+          v-if="boundConversationTpl"
+          :value="boundConversationTpl.key"
+        >
+          {{ boundConversationTpl.name }}（轻松创作专用·由对话页管理）
         </option>
         <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">
           <option v-for="t in g.items" :key="t.key" :value="t.key">

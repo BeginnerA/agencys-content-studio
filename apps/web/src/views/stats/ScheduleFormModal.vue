@@ -4,16 +4,18 @@
  * 表单状态与提交逻辑真源留父级（watch 模板加载 / submitForm 校验 / err 同源），本组件纯装配：
  * v-model 透传六个表单字段，操作经 emit 转交；复用全局 Modal（Teleport + backdrop + Esc）。
  */
+import { computed } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import Modal from '../../components/common/Modal.vue'
 import DatePicker from '../../components/common/DatePicker.vue'
+import { filterSelectable } from '../../lib/scene'
 import type {
   Project,
   TemplateDetail,
   TemplateMeta,
 } from '../../lib/types'
 
-defineProps<{
+const props = defineProps<{
   projects: Project[]
   templates: TemplateMeta[]
   formTemplateDetail: TemplateDetail | null
@@ -21,6 +23,8 @@ defineProps<{
   err: string
   creating: boolean
 }>()
+// [入口收口] 排程选模板不呈现轻松创作批准链模板（无 recipe、到点必失败）
+const selectableTpls = computed(() => filterSelectable(props.templates))
 
 const emit = defineEmits<{
   close: []
@@ -67,7 +71,7 @@ const formInputs = defineModel<Array<Record<string, unknown>>>('formInputs', {
         <label class="fld">
           模板
           <select v-model="formTemplateKey">
-            <option v-for="t in templates" :key="t.key" :value="t.key">
+            <option v-for="t in selectableTpls" :key="t.key" :value="t.key">
               {{ t.name }}
             </option>
           </select>
