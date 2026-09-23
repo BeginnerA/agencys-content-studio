@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, nextTick, ref } from 'vue'
+import { onMounted, onBeforeUnmount, nextTick, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import AttachmentTray from './AttachmentTray.vue'
 import AssetPickerModal from './AssetPickerModal.vue'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
-import { memoryApi, templateApi } from '../../lib/api'
+import { memoryApi, templateApi, stylePresetApi, entityApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { Asset, CreationSessionListItem, RecommendItem } from '../../lib/types'
+import type { Asset, CreationSessionListItem, RecommendItem, StylePresetItem, EntityItem } from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -25,6 +25,23 @@ function grow(): void {
 }
 const showPicker = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// ===== [batch5] 首轮「风格 / 角色预设」多选下拉（软提示基线，零计费）=====
+// 选项复用现有 style-presets / entities?kind=character 列表（零新端点）；选中 id 同步进共享 state，
+// 由 startIdea→首提时随 body 下发。截断到 cap（风格 6 / 角色 4）与后端契约一致；超出的选中项自动取消。
+const MAX_STYLE = 6
+const MAX_CAST = 4
+const styleOptions = ref<StylePresetItem[]>([])
+const castOptions = ref<EntityItem[]>([])
+const selStyle = ref<string[]>([])
+const selCast = ref<string[]>([])
+async function loadPresets(): Promise<void> {
+  try { styleOptions.value = (await stylePresetApi.list('?active=1')).items } catch { /* 无预设不阻断创作 */ }
+  try { castOptions.value = (await entityApi.list('character')).items } catch { /* 同上 */ }
+}
+watch(selStyle, (v) => { s.state.stylePresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_STYLE) })
+watch(selCast, (v) => { s.state.characterPresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_CAST) })
+
 let departed = false
 let handoffPath = ''
 onBeforeRouteLeave((to) => {
@@ -145,6 +162,7 @@ onMounted(() => {
   void nextTick(grow)
   void s.loadSessions()
   void loadTopicChips()
+  void loadPresets()
 })
 
 async function go(): Promise<void> {
@@ -256,6 +274,25 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         </div>
 
         <AttachmentTray v-if="s.state.attachments.length" :s="s" />
+
+        <!-- [batch5] 风格 / 角色预设：作为规划软提示基线，零计费、不进幂等 -->
+        <div class="preset-row">
+          <label class="preset">
+            <span class="preset-l">画风预设 <em class="mono preset-cnt">{{ selStyle.length }}/{{ MAX_STYLE }}</em></span>
+            <select v-model="selStyle" multiple size="3" class="preset-select" :disabled="s.first.locked.value" aria-label="选择画风预设（可多选，作为画风基线）">
+              <option v-for="p in styleOptions" :key="p.id" :value="String(p.id)" :title="p.description || p.snippet">{{ p.name }}</option>
+            </select>
+            <span v-if="!styleOptions.length" class="preset-empty muted">暂无启用的画风预设，可在工作台创建</span>
+          </label>
+          <label class="preset">
+            <span class="preset-l">角色预设 <em class="mono preset-cnt">{{ selCast.length }}/{{ MAX_CAST }}</em></span>
+            <select v-model="selCast" multiple size="3" class="preset-select" :disabled="s.first.locked.value" aria-label="选择可复用角色（可多选，作为角色基线）">
+              <option v-for="c in castOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+            </select>
+            <span v-if="!castOptions.length" class="preset-empty muted">暂无角色，可先在工作台新建</span>
+          </label>
+          <p class="preset-tip muted">软提示：预选会作为画风 / 角色的基线喂给规划模型，可在其上细化，不会凭空替换风格或丢弃已选角色特征。</p>
+        </div>
 
         <div class="crow">
           <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />

@@ -50,6 +50,9 @@ const state = reactive({
   selectionDirty: false,
   // [M31] 参考附件托盘（仅当前会话；切会话/离开即清空，避免旧素材错挂新会话）
   attachments: [] as AttachmentItem[],
+  // [batch5] 首轮预设选择（风格 ≤6 / 角色 ≤4）：项目级软提示旁信道，切会话 / 回首页即清
+  stylePresetIds: [] as number[],
+  characterPresetIds: [] as number[],
 })
 
 // [M43] 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
@@ -234,6 +237,8 @@ async function open(id: number): Promise<void> {
     state.currentId = id
     state.detail = null
     state.attachments = []
+    state.stylePresetIds = []
+    state.characterPresetIds = []
     state.busySend = false
     state.busyAction = false
     state.error = ''; state.notice = ''
@@ -301,6 +306,7 @@ async function send(content: string, replan = false): Promise<boolean> {
       content,
       sendTicket.key,
       sentAssetIds,
+      { stylePresetIds: state.stylePresetIds, characterPresetIds: state.characterPresetIds },
     )
     if (token !== viewEpoch || id !== state.currentId) return false
     commit(id, detail)
@@ -544,6 +550,8 @@ function leave(): void {
   stopPolling()
   state.currentId = 0
   state.attachments = []
+  state.stylePresetIds = []
+  state.characterPresetIds = []
 }
 
 /**

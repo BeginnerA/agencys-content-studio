@@ -34,21 +34,36 @@ export function newRequestKey(prefix = 'req'): string {
   )
 }
 
+/** [batch5] 首轮预选的风格 / 角色预设 id（项目级软提示旁信道，不进幂等指纹） */
+export interface CreationPresetSelection {
+  stylePresetIds?: number[]
+  characterPresetIds?: number[]
+}
+/** 仅在非空时携带对应键（缺省不下发 → 请求体与旧版逐字一致） */
+function presetBody(presets?: CreationPresetSelection): Record<string, number[]> {
+  return {
+    ...(presets?.stylePresetIds?.length ? { stylePresetIds: presets.stylePresetIds } : {}),
+    ...(presets?.characterPresetIds?.length ? { characterPresetIds: presets.characterPresetIds } : {}),
+  }
+}
+
 export const creationChatApi = {
   list: () => api.get<Items<CreationSessionListItem>>(BASE),
-  create: (content: string, requestKey: string, deferPlanning = false) =>
-    api.post<CreationDetail>(BASE, { content, requestKey, ...(deferPlanning ? { deferPlanning: true } : {}) }),
+  create: (content: string, requestKey: string, deferPlanning = false, presets?: CreationPresetSelection) =>
+    api.post<CreationDetail>(BASE, { content, requestKey, ...(deferPlanning ? { deferPlanning: true } : {}), ...presetBody(presets) }),
   detail: (id: number) => api.get<CreationDetail>(`${BASE}/${id}`),
   send: (
     id: number,
     content: string,
     requestKey: string,
     attachments?: number[],
+    presets?: CreationPresetSelection,
   ) =>
     api.post<CreationDetail>(`${BASE}/${id}/messages`, {
       content,
       requestKey,
       ...(attachments && attachments.length ? { attachments } : {}),
+      ...presetBody(presets),
     }),
   preflight: (id: number) =>
     api.post<CreationDetail>(`${BASE}/${id}/preflight`),

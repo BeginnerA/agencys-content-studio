@@ -16,6 +16,10 @@ interface Host {
   attachments: AttachmentItem[]
   error: string
   notice: string
+  // [batch5] 首轮预选的风格 / 角色预设 id：项目级旁信道，只随首次下发给服务端落 settings，
+  // 不写入票据 sent（不进幂等比对）；改预选不触发「结果不明提交不能改输入」闸。
+  stylePresetIds: number[]
+  characterPresetIds: number[]
 }
 type Phase = 'idle' | 'creating' | 'uploading' | 'sending' | 'paused' | 'uncertain' | 'failed' | 'clarify'
 type StoragePort = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -169,7 +173,7 @@ export function createFirstInput(host: Host, hooks: {
     const token = epoch
     state.phase = 'creating'; host.error = ''; save()
     try {
-      const detail = await api.create(t.content, t.createKey, true)
+      const detail = await api.create(t.content, t.createKey, true, { stylePresetIds: host.stylePresetIds, characterPresetIds: host.characterPresetIds })
       if (!live(token, t)) return null
       removeRecord(0)
       t.sessionId = detail.session.id
@@ -216,7 +220,7 @@ export function createFirstInput(host: Host, hooks: {
       }
       t.sent = { content: t.content, attachments: ids }
       state.phase = 'sending'; save()
-      const detail = await api.send(t.sessionId, t.sent.content, t.messageKey, t.sent.attachments)
+      const detail = await api.send(t.sessionId, t.sent.content, t.messageKey, t.sent.attachments, { stylePresetIds: host.stylePresetIds, characterPresetIds: host.characterPresetIds })
       if (!live(token, t)) return false
       hooks.commit(t.sessionId, detail)
       return settle(detail)
