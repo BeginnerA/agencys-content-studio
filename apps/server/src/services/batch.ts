@@ -8,6 +8,7 @@ import { db } from '../db'
 import { batches, pipelineRuns, usageRecords, type PipelineRun } from '../db/schema'
 import { createLogger } from '../logger'
 import { engine } from '../pipeline/engine'
+import { BudgetBlockedError, checkBudget } from './budget'
 import { emitStudioEvent } from './events'
 import { createRunRow, loadTemplateOrThrow, prepareRunInput, InvalidRunInputError } from './run-create'
 
@@ -47,35 +48,42 @@ export async function createBatch(p: {
   // 阶段 B：落批行 → 逐条落 run → 首轮 pump
   const t = Date.now()
   const fallbackName = `${template.name} × ${p.inputs.length}`
-  const batch = (
-    await db
-      .insert(batches)
-      .values({
+  // [审计G3] 预算闸门：批次 = 一组新付费承诺；在 service 层单一真源拦截（同时覆盖 REST 直建与排产触发）
+  const budgetHit = await checkBudget({ projectId: p.projectId })
+  if (budgetHit) throw new BudgetBlockedError(budgetHit.code, budgetHit.message)
+  // [审计G4] 批行 + N 条 run 行单事务原子落库（中途失败不留「批存在但缺 run」的半成品；pump 在事务提交后）
+  const { batch, runIds } = await db.transaction(async (tx) => {
+    const batchRow = (
+      await tx
+        .insert(batches)
+        .values({
+          projectId: p.projectId,
+          templateKey: p.templateKey,
+          name: (p.name ?? '').trim() || fallbackName,
+          status: 'running',
+          schedule: JSON.stringify({ max_concurrent: clampConcurrent(p.schedule?.max_concurrent) }),
+          total: p.inputs.length,
+          finished: 0,
+          succeeded: 0,
+          failed: 0,
+          createdAt: t,
+          updatedAt: t,
+        })
+        .returning()
+    )[0]!
+    const ids: number[] = []
+    for (const [i, raw] of p.inputs.entries()) {
+      const run = await createRunRow({
         projectId: p.projectId,
         templateKey: p.templateKey,
-        name: (p.name ?? '').trim() || fallbackName,
-        status: 'running',
-        schedule: JSON.stringify({ max_concurrent: clampConcurrent(p.schedule?.max_concurrent) }),
-        total: p.inputs.length,
-        finished: 0,
-        succeeded: 0,
-        failed: 0,
-        createdAt: t,
-        updatedAt: t,
-      })
-      .returning()
-  )[0]!
-  const runIds: number[] = []
-  for (const [i, raw] of p.inputs.entries()) {
-    const run = await createRunRow({
-      projectId: p.projectId,
-      templateKey: p.templateKey,
-      input: raw,
-      batchId: batch.id,
-      batchSeq: i + 1,
-    })
-    runIds.push(run.id)
-  }
+        input: raw,
+        batchId: batchRow.id,
+        batchSeq: i + 1,
+      }, tx)
+      ids.push(run.id)
+    }
+    return { batch: batchRow, runIds: ids }
+  })
   await pump(batch.id)
   const fresh = (await db.select().from(batches).where(eq(batches.id, batch.id)).limit(1))[0]!
   return { batch: fresh, runIds }

@@ -450,6 +450,16 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // [审计G2] pipeline_runs +1 可空列（resumed_from_run_id；存量行 NULL = 非续跑派生）
+  if (!has.has('resumed_from_run_id')) {
+    try {
+      await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN resumed_from_run_id integer')
+      log.info('ensureColumn: pipeline_runs.resumed_from_run_id 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
   // [M29·R02] 通用追溯层三表建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(

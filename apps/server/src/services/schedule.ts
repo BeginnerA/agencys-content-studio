@@ -54,11 +54,21 @@ async function tick(): Promise<void> {
   }
 }
 
-/** 幂等触发单条计划：pending → 创建 batch → triggered */
-async function triggerSchedule(scheduleId: number): Promise<void> {
-  // 幂等锁：先查再 CAS（pending → triggering 语义用 updatedAt 时间戳防并发）
+/** 幂等触发单条计划：pending → 创建 batch → triggered（导出供探针验证 CAS 语义） */
+export async function triggerSchedule(scheduleId: number): Promise<void> {
+  // [审计G1] CAS claim：条件 UPDATE（pending+active → triggered）原子翻转，单赢家。
+  // 原「先查再写」在 tick 异步链交错（setInterval 允许重叠）时可双建批次 = 无人值守双扣费；
+  // 与 dialogue-subtitle 的 ASR claim 同一收口模式
+  const t0 = Date.now()
+  const claimed = await db
+    .update(schedules)
+    .set({ status: 'triggered', lastTriggeredAt: t0, updatedAt: t0 })
+    .where(and(eq(schedules.id, scheduleId), eq(schedules.status, 'pending'), eq(schedules.isActive, 1)))
+    .returning({ id: schedules.id })
+  if (!claimed.length) return
+
   const row = (await db.select().from(schedules).where(eq(schedules.id, scheduleId)).limit(1))[0]
-  if (!row || row.status !== 'pending' || !row.isActive) return
+  if (!row) return
 
   // 解析输入模板
   let inputs: Array<Record<string, unknown>>
@@ -74,22 +84,31 @@ async function triggerSchedule(scheduleId: number): Promise<void> {
     return
   }
   if (!inputs.length) {
-    log.warn(`schedule ${scheduleId} input_template 为空数组，跳过`)
+    // [审计G1附带] 空数组定终态 failed：原实现悬 pending 会被每轮 tick 重复扫到（永远 claim→回滚风暴）
+    log.warn(`schedule ${scheduleId} input_template 为空数组，置 failed 不再重试`)
+    await db
+      .update(schedules)
+      .set({ status: 'failed', updatedAt: Date.now() })
+      .where(eq(schedules.id, scheduleId))
     return
   }
 
-  // 校验项目存在
+  // 校验项目存在（不存在 → 回拨 pending 保持原重试语义，项目恢复/重建后下轮可触发）
   const projRows = await db
     .select()
     .from(projects)
     .where(and(eq(projects.id, row.projectId), isNull(projects.deletedAt)))
     .limit(1)
   if (!projRows[0]) {
-    log.warn(`schedule ${scheduleId} 项目 ${row.projectId} 不存在或已删除`)
+    log.warn(`schedule ${scheduleId} 项目 ${row.projectId} 不存在或已删除，回拨 pending 待下轮重试`)
+    await db
+      .update(schedules)
+      .set({ status: 'pending', lastTriggeredAt: null, updatedAt: Date.now() })
+      .where(eq(schedules.id, scheduleId))
     return
   }
 
-  // 创建 batch（复用 batch 服务全链校验）
+  // 创建 batch（复用 batch 服务全链校验；[审计G3] 预算闸门已在 createBatch 单一真源接入）
   try {
     const { batch } = await createBatch({
       projectId: row.projectId,
@@ -98,9 +117,10 @@ async function triggerSchedule(scheduleId: number): Promise<void> {
       inputs,
     })
     const t = Date.now()
+    // claim 已置 triggered + lastTriggeredAt；此处只补批次指向
     await db
       .update(schedules)
-      .set({ status: 'triggered', lastTriggeredAt: t, lastBatchId: batch.id, updatedAt: t })
+      .set({ lastBatchId: batch.id, updatedAt: t })
       .where(eq(schedules.id, scheduleId))
     emitStudioEvent({
       type: 'schedule.triggered',

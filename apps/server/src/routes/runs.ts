@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm'
 import { db } from '../db'
 import { genTasks, pipelineRuns, pipelineSteps, projects, assets } from '../db/schema'
-import { engine, recoverInterruptedState } from '../pipeline/engine'
+import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { checkBudget } from '../services/budget'
@@ -152,61 +152,81 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   if (!['failed', 'cancelled'].includes(src.status)) {
     throw new HttpError(400, 'bad_status', `仅 failed/cancelled 可续跑（当前 ${src.status}）；如需重跑请直接新建 run`)
   }
+  // [审计G2] resume 去重：同一源 run 只允许存在一个进行中的派生 run——gen_tasks 已整体迁移到
+  // 首个派生 run，第二个派生 run 重跑付费步骤会全量重新提交（二次扣费）；派生均已终态则允许再次续跑
+  // [审计G4] 闸门复查刷新全局上限：startRun 同步读缓存，陈旧缓存会把本应 defer 的 run 拉起真实执行链
+  await refreshGlobalConcurrency()
+  const activeResume = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.resumedFromRunId, runId), notInArray(pipelineRuns.status, ['completed', 'failed', 'cancelled'])))
+    .limit(1)
+  if (activeResume.length) {
+    throw new HttpError(409, 'already_resumed', `该 run 已有进行中的续跑派生 run（#${activeResume[0]!.id}），请等待其结束或先取消，避免重复计费`)
+  }
+  // [审计G3] 预算闸门：resume 创建新 run 并重新提交失败步骤 = 新付费承诺，与 POST /projects/:id/runs 同源拦截
+  const budgetHit = await checkBudget({ projectId: src.projectId })
+  if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
   const t = Date.now()
-  const newRun = (
-    await db
-      .insert(pipelineRuns)
-      .values({
-        projectId: src.projectId,
-        templateKey: src.templateKey,
-        status: 'queued',
-        input: src.input,
-        // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
-        templateSnapshot: src.templateSnapshot,
-        createdAt: t,
-        updatedAt: t,
-      })
-      .returning()
-  )[0]!
-  const steps = await db
-    .select()
-    .from(pipelineSteps)
-    .where(eq(pipelineSteps.runId, src.id))
-    .orderBy(asc(pipelineSteps.seq))
-  for (const s of steps) {
-    // 断点续跑：succeeded/skipped（含免审放行痕迹）保留终态直接跳过；其余重置 pending 续跑
-    const keep = s.status === 'succeeded' || s.status === 'skipped'
-    const newStep = (
-      await db
-        .insert(pipelineSteps)
+  // [审计G4] 新 run + 步骤复制 + gen_tasks 迁移单事务原子落库（中途崩溃不留缺步孤儿 run；创作线事务先例同源）
+  const newRun = await db.transaction(async (tx) => {
+    const run = (
+      await tx
+        .insert(pipelineRuns)
         .values({
-          runId: newRun.id,
-          seq: s.seq,
-          stepKey: s.stepKey,
-          actionKey: s.actionKey,
-          title: s.title,
-          status: keep ? s.status : 'pending',
-          input: keep ? s.input : null,
-          output: keep ? s.output : null,
-          attempts: keep ? s.attempts : 0,
+          projectId: src.projectId,
+          templateKey: src.templateKey,
+          status: 'queued',
+          input: src.input,
+          // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
+          templateSnapshot: src.templateSnapshot,
+          resumedFromRunId: src.id,
           createdAt: t,
           updatedAt: t,
         })
         .returning()
     )[0]!
-    // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——终态步骤保留产物
-    // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
-    if (!keep) {
-      await db
+    const steps = await tx
+      .select()
+      .from(pipelineSteps)
+      .where(eq(pipelineSteps.runId, src.id))
+      .orderBy(asc(pipelineSteps.seq))
+    for (const s of steps) {
+      // 断点续跑：succeeded/skipped（含免审放行痕迹）保留终态直接跳过；其余重置 pending 续跑
+      const keep = s.status === 'succeeded' || s.status === 'skipped'
+      const newStep = (
+        await tx
+          .insert(pipelineSteps)
+          .values({
+            runId: run.id,
+            seq: s.seq,
+            stepKey: s.stepKey,
+            actionKey: s.actionKey,
+            title: s.title,
+            status: keep ? s.status : 'pending',
+            input: keep ? s.input : null,
+            output: keep ? s.output : null,
+            attempts: keep ? s.attempts : 0,
+            createdAt: t,
+            updatedAt: t,
+          })
+          .returning()
+      )[0]!
+      // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——终态步骤保留产物
+      // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
+      if (!keep) {
+        await tx
+          .update(genTasks)
+          .set({ runId: run.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
+          .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), ne(genTasks.status, 'succeeded')))
+      }
+      await tx
         .update(genTasks)
-        .set({ runId: newRun.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
-        .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), ne(genTasks.status, 'succeeded')))
+        .set({ runId: run.id, stepId: newStep.id, updatedAt: t })
+        .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
     }
-    await db
-      .update(genTasks)
-      .set({ runId: newRun.id, stepId: newStep.id, updatedAt: t })
-      .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
-  }
+    return run
+  })
   engine.startRun(newRun.id)
   // [M14] 续跑同款联动（latest_run_id 指向本集最新 run）
   await linkEpisode(newRun.projectId, newRun.input, newRun.id)

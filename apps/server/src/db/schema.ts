@@ -45,6 +45,7 @@ export const pipelineRuns = sqliteTable(
     batchSeq: integer('batch_seq'), // [M4] 批内序号（从 1 起）
     workflowId: integer('workflow_id'), // [M27] 归属编排链（NULL = 非编排 run）
     workflowSeq: integer('workflow_seq'), // [M27] 链内段序（从 0 起）
+    resumedFromRunId: integer('resumed_from_run_id'), // [审计G2] 断点续跑派生自哪个源 run（NULL = 非续跑派生；防双击 resume 并行双扣费）
   },
   (t) => [
     index('idx_runs_project').on(t.projectId),

@@ -77,6 +77,18 @@ async function getSpent(q: { projectId?: number; monthly: boolean }): Promise<nu
 }
 
 /**
+ * 预算拦截错误（service 层创建新付费承诺入口抛出；路由层转 409）
+ * [审计G3] 与 runs POST / workflow 同源：凡「创建新 run/批」的入口超阈即拦。
+ * 携带 checkBudget 返回的 code，便于前端按熔断类型差异化提示。
+ */
+export class BudgetBlockedError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message)
+    this.name = 'BudgetBlockedError'
+  }
+}
+
+/**
  * 预算预检（run 创建前调用）
  * - 返回 null = 通过；返回 { code, message } = 拦截
  */

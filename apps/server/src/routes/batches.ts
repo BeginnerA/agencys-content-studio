@@ -8,6 +8,7 @@ import { db } from '../db'
 import { batches, projects } from '../db/schema'
 import { cancelBatch, createBatch, summarizeBatch, toBatchView } from '../services/batch'
 import { InvalidRunInputError } from '../services/run-create'
+import { BudgetBlockedError } from '../services/budget'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const batchesRoutes = new Hono()
@@ -47,6 +48,8 @@ batchesRoutes.post('/projects/:id/batches', h(async (c) => {
     return c.json({ batch: toBatchView(batch), runIds }, 201)
   } catch (err) {
     if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    // [审计G3] 预算闸门拦截（createBatch 单一真源抛出）→ 409，与 runs POST / resume 同口径
+    if (err instanceof BudgetBlockedError) throw new HttpError(409, err.code, err.message)
     throw err
   }
 }))
