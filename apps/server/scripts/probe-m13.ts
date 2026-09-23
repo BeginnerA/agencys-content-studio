@@ -172,7 +172,7 @@ async function main(): Promise<void> {
 
   /** ① ② 风格多预设：解析矩阵 + DB 顺序/停用跳过 + M8 单值注入等价 */
   const sectionStyleMulti = async (): Promise<void> => {
-    const { stylePresetIdsOf, combineStyleSnippets, resolveProjectStyleSnippets, resolveProjectStyleSnippet } =
+    const { stylePresetIdsOf, combineStyleSnippets, resolveProjectStyleSnippets, resolveProjectStyleSnippet, stripStyleWrapper } =
       await import('../src/services/style-preset')
     const { injectStyleAnchor } = await import('../src/pipeline/actions/ai-image')
 
@@ -191,6 +191,15 @@ async function main(): Promise<void> {
     check(combineStyleSnippets(['x']) === 'x', '单词块原样')
     check(combineStyleSnippets([]) === null, '空数组 → null')
     check(combineStyleSnippets(['  ', '']) === null, '全空白 → null')
+
+    // ---- stripStyleWrapper：展示壳剥离（出图注入前）----
+    check(stripStyleWrapper('（画风：日系二次元赛璐璐,japanese anime style, cel shading）') === 'japanese anime style, cel shading', '全角壳+半角逗号 → 取英文段')
+    check(stripStyleWrapper('(画风:2D动漫风格,2d animation style)') === '2d animation style', '半角壳+半角冒号 → 取英文段')
+    check(stripStyleWrapper('（画风：水墨国风，ink painting）') === 'ink painting', '全角逗号亦可分隔')
+    check(stripStyleWrapper('（画风：纯中文无英文）') === '纯中文无英文', '无逗号（纯中文壳）→ 壳内全文')
+    check(stripStyleWrapper('flat anime style, soft colors') === 'flat anime style, soft colors', '无壳纯词块 → 原样（零副作用）')
+    check(stripStyleWrapper('   ') === '', '空白 → 空')
+    check(combineStyleSnippets(['（画风：赛博霓虹,cyberpunk, neon）', 'ink wash']) === 'cyberpunk, neon；ink wash', 'combine 逐块剥壳后拼接')
 
     // ---- resolveProjectStyleSnippets：DB 造数（绑定顺序 / 停用跳过 / 不存在跳过 / 空白词块跳过）----
     const pB = await mkPreset('探针B（后绑定先顺序）', 'B style block')
@@ -217,6 +226,8 @@ async function main(): Promise<void> {
 
     // ---- injectStyleAnchor：单值行为与 M8 逐字等价 ----
     const shots = [{ id: 's1', image_prompt: ' 日出 ' }]
+    const rWrap = injectStyleAnchor(shots, combineStyleSnippets(['（画风：日系动漫,anime style, cel shading）']))
+    check(rWrap[0]!.image_prompt === '日出\n视觉风格：anime style, cel shading', '端到端：带壳预设经注入链→图像 prompt 不含「画风」/括号')
     const r1 = injectStyleAnchor(shots, 'ink wash')
     check(r1[0]!.image_prompt === '日出\n视觉风格：ink wash', '单值注入逐字「视觉风格：{snippet}」（M8 等价）')
     check(injectStyleAnchor(shots, null) === shots && injectStyleAnchor(shots, '  ') === shots, '空/未绑定 → 原引用零注入')

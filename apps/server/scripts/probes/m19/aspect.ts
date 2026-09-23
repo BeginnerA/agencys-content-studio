@@ -178,7 +178,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(/\[bm\]subtitles='ep\.srt':force_style='FontName=Legacy,FontSize=18'/.test(f3), '主路沿用上游定型的 style（仅派生路重算）')
     check(f3.includes('[dv0]subtitles=') && f3.includes('FontSize=19'), '派生路 1（1:1，h=1080）结构化重算字号 19')
     check(f3.includes('[dv1]subtitles=') && f3.includes('FontSize=16'), '派生路 2（16:9，h=608 → 10.9）最小字号兜底 16')
-    check(f3.includes('[dsub0][wm]overlay=') && f3.includes('[dsub1][wm]overlay='), '同一 [wm] 分流至两派生路（字幕之后；表达式自适应各链 W/H）')
+    check(f3.includes('[dsub0][wm]overlay=') && f3.includes('[dsub1][wm]overlay='), '同一 [wm] 分流至两派生路（字幕之后；ffmpeg 允许一个滤镜输出作多路 overlay 输入，实测合法）')
     check(d3.args.filter((t) => t === '-map').length === 3 && d3.args[d3.args.indexOf('-map') + 1] === '[outv]', '三路输出×无音轨 → 3 个 -map；主路仍为 [outv]')
     check(d3.derived[1]!.height === 608 && d3.derived[1]!.width === 1080, 'derived 第 2 路尺寸 1080x608')
     const d4 = buildComposeArgs(mkArgsInput({

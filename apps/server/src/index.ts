@@ -42,8 +42,8 @@ async function main(): Promise<void> {
   onRunSettled((runId) => { void notifyCreationSettled(runId).catch(() => log.warn('创作会话时间更新失败，可通过 HTTP 重拉状态')) })
 
   const httpServer = serve(
-    { fetch: app.fetch, port: env.port },
-    (info) => log.info(`server listening on http://127.0.0.1:${info.port}`),
+    { fetch: app.fetch, port: env.port, hostname: env.host },
+    (info) => log.info(`server listening on http://${env.host}:${info.port}`),
   )
 
   const io = new Server(httpServer as HttpServer, { cors: { origin: true } })

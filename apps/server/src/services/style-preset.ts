@@ -82,9 +82,29 @@ export function stylePresetIdOf(settingsJson: string): number | null {
   }
 }
 
-/** [M13] 多词块拼接（trim 过滤空 → 「A；B」；全空 → null）；注入处调用，injectStyleAnchor 签名不破 */
+/**
+ * 展示壳剥离（纯函数，供探针 import 断言）：
+ * 「画风提取」与内置 seed 的 snippet 带展示壳 `（画风：中文描述,english prompt）`——
+ * 中文供人读、英文供图像模型用；但注入出图提示词时整串直拼会把「画风」二字 + 中文 + 全角括号
+ * 一起喂给图像模型（噪音）。此函数在**拼接注入前**剥壳：仅当整串恰好是展示壳时取首个逗号后的英文段，
+ * 无逗号（纯中文壳）则取壳内全文；**不整体命中壳（如用户手写纯词块）→ 原样返回**（零副作用）。
+ * 仅作用于出图注入；规划软提示（presets.ts）仍用带壳原文，人/LLM 阅读更友好。
+ */
+const STYLE_WRAPPER_RE = /^[（(]\s*画风[：:]\s*([^）)\n]+)[）)]$/
+export function stripStyleWrapper(snippet: string): string {
+  const s = typeof snippet === 'string' ? snippet.trim() : ''
+  if (!s) return s
+  const m = s.match(STYLE_WRAPPER_RE)
+  if (!m || !m[1]) return s
+  const inner = m[1].trim()
+  const comma = inner.search(/[,，]/)
+  const english = comma >= 0 ? inner.slice(comma + 1).trim() : inner
+  return english || inner || s
+}
+
+/** [M13] 多词块拼接（trim → 剥展示壳 → 过滤空 → 「A；B」；全空 → null）；出图注入处调用，injectStyleAnchor 签名不破 */
 export function combineStyleSnippets(snippets: string[]): string | null {
-  const parts = snippets.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean)
+  const parts = snippets.map((s) => stripStyleWrapper(typeof s === 'string' ? s : '')).filter(Boolean)
   return parts.length > 0 ? parts.join('；') : null
 }
 

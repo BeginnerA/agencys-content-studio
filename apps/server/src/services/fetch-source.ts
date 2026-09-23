@@ -32,14 +32,33 @@ export function isPrivateIpv4(host: string): boolean {
   return false
 }
 
-/** IPv6 回环 / 链路本地 / ULA 判定（简化：::1、fe80*、fc/fd 开头） */
+/**
+ * IPv4-mapped IPv6 展开为点分 IPv4（供私有判定复用）。
+ * WHATWG new URL() 会将 [::ffff:127.0.0.1] 规范化为 [::ffff:7f00:1]（IPv4 段转十六进制），
+ * 故需同时兼容点分形态与十六进制双段形态。
+ */
+function expandIpv4Mapped(h: string): string | null {
+  const m = /^::ffff:(.+)$/.exec(h)
+  if (!m) return null
+  const rest = m[1]!
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(rest)) return rest
+  const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(rest)
+  if (hex) {
+    const hi = Number.parseInt(hex[1]!, 16)
+    const lo = Number.parseInt(hex[2]!, 16)
+    return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
+  }
+  return null
+}
+
+/** IPv6 回环 / 链路本地 / ULA / IPv4-mapped 私有 判定（纯函数） */
 export function isPrivateIpv6(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, '')
   if (h === '::1') return true
   if (h.startsWith('fe80') || h.startsWith('fc') || h.startsWith('fd')) return true
-  // IPv4-mapped ::ffff:127.0.0.1
-  const mapped = /^::ffff:(.+)$/.exec(h)
-  if (mapped && isPrivateIpv4(mapped[1]!)) return true
+  // IPv4-mapped：兼容 ::ffff:127.0.0.1 与规范化后的 ::ffff:7f00:1 两种形态
+  const mapped = expandIpv4Mapped(h)
+  if (mapped && isPrivateIpv4(mapped)) return true
   return false
 }
 
@@ -58,17 +77,19 @@ export function assertSafeUrl(raw: string): URL {
     throw new FetchGuardError('bad_protocol', `仅支持 http/https：${u.protocol}`)
   }
   let host = u.hostname.toLowerCase()
-  if (host.startsWith('[') || host.includes(':')) {
+  const isIpv6 = host.startsWith('[') || host.includes(':')
+  if (isIpv6) {
     if (isPrivateIpv6(host)) throw new FetchGuardError('private_host', `拒绝 IPv6 私有/回环地址：${host}`)
-    return u
+  } else {
+    if (host.endsWith('.')) host = host.slice(0, -1)
+    if (!host) throw new FetchGuardError('bad_host', 'URL 缺主机名')
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+      throw new FetchGuardError('private_host', `拒绝本机/管理域主机：${host}`)
+    }
+    if (/^\d+$/.test(host)) throw new FetchGuardError('private_host', `拒绝裸数字主机：${host}`) // 十进制单标签 IPv4 形态
+    if (isPrivateIpv4(host)) throw new FetchGuardError('private_host', `拒绝 IPv4 私有/保留地址：${host}`)
   }
-  if (host.endsWith('.') ) host = host.slice(0, -1)
-  if (!host) throw new FetchGuardError('bad_host', 'URL 缺主机名')
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new FetchGuardError('private_host', `拒绝本机/管理域主机：${host}`)
-  }
-  if (/^\d+$/.test(host)) throw new FetchGuardError('private_host', `拒绝裸数字主机：${host}`) // 十进制单标签 IPv4 形态
-  if (isPrivateIpv4(host)) throw new FetchGuardError('private_host', `拒绝 IPv4 私有/保留地址：${host}`)
+  // [F08-fix] 端口限制对 IPv4/IPv6 统一施加（旧代码 IPv6 分支提前 return 会跳过此检查）
   if (u.port && u.port !== '80' && u.port !== '443') {
     throw new FetchGuardError('bad_port', `仅允许 80/443 端口：${u.port}`)
   }

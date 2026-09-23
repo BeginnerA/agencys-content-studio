@@ -55,6 +55,9 @@ export function getEnv(name: string, fallback = ''): string {
 }
 
 export const env = {
+  /** 本地单用户默认仅绑定回环，避免「日志谎报 127.0.0.1、实际监听 0.0.0.0」的暴露；
+   *  需局域网/远程访问时显式设 CSTUDIO_HOST=0.0.0.0（并自行加认证/防火墙） */
+  host: getEnv('CSTUDIO_HOST', '127.0.0.1'),
   port: Number(getEnv('CSTUDIO_PORT', '3001')),
   logLevel: getEnv('CSTUDIO_LOG_LEVEL', 'info'),
   llm: {
