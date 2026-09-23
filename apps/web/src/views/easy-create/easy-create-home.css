@@ -93,13 +93,13 @@
   );
 }
 
-/* ---------- Prompt 卡 ---------- */
+/* ---------- Prompt 卡（Composer 一体式输入台） ---------- */
 .prompt {
   position: relative;
   padding: 22px 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   box-shadow:
     var(--shadow-lg),
     0 0 0 1px rgb(99 102 241 / 8%) inset;
@@ -117,30 +117,114 @@
 .hl .ic {
   color: var(--accent-h);
 }
+
+/* Composer 容器：输入 + 工具 + CTA 收进一个「卯槽」承接口 */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--code-bg);
+  transition: border-color 0.16s;
+}
+.composer:focus-within {
+  border-color: rgb(99 102 241 / 55%);
+}
 .field {
   position: relative;
 }
 .field textarea {
+  width: 100%;
   font-size: 15px;
   line-height: 1.7;
-  padding-bottom: 26px;
-  resize: vertical;
-  min-height: 108px;
+  padding: 10px 12px 26px;
+  resize: none;
+  overflow-y: auto;
+  min-height: 84px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.field textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 .count {
   position: absolute;
   right: 12px;
-  bottom: 10px;
+  bottom: 8px;
   font-size: 11px;
   color: var(--text-3);
   pointer-events: none;
 }
 
-.ex {
+/* 工具行：左工具簇 / 右主操作两端对齐（与详情页 composer 两行收敛同构） */
+.crow {
   display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+}
+.crow-tools {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+.crow-tools .btn {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.crow .cta {
+  margin-left: auto;
+}
+
+/* 长提示收纳：默认收起，点击展开（progressive disclosure） */
+.notes {
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+.notes summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-3);
+  list-style: none;
+  user-select: none;
+}
+.notes summary::-webkit-details-marker {
+  display: none;
+}
+.notes summary .ic {
+  color: var(--warn);
+  flex: none;
+}
+.notes summary:hover {
+  color: var(--text-2);
+}
+.notes p {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-3);
+}
+
+/* ---------- 选题推荐卡片 ---------- */
+.topics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.topics-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .ex-l {
   display: inline-flex;
@@ -150,38 +234,79 @@
 .ex-l .ic {
   color: var(--text-3);
 }
-.chip.q {
-  cursor: pointer;
-  border: 1px solid var(--border-strong);
-  background: var(--raised);
-  color: var(--text-2);
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
-}
-.chip.q:hover {
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent-weak);
-}
-.chip.q.roll {
+.roll {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
   color: var(--accent-h);
-  border-color: rgb(99 102 241 / 40%);
+  border: 1px solid rgb(99 102 241 / 40%);
+  background: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
-
-.pfoot {
+.roll:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.topic-grid {
+  display: grid;
+  /* auto-fit：不足一行的空轨道自动坍缩，3 张推荐卡等分整行不留白 */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.topic-card {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 2px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  text-align: left;
+  cursor: pointer;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--raised);
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+.topic-card:hover:not(:disabled) {
+  border-color: rgb(99 102 241 / 55%);
+  background: var(--img-ph);
+  transform: translateY(-1px);
+}
+.topic-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.t-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #a5b4fc;
+  background: var(--accent-weak);
+  border: 1px solid rgb(99 102 241 / 30%);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.t-title {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.topic-card:hover:not(:disabled) .t-title {
+  color: var(--text);
 }
 
 /* [M35 G7] 创意→模板推荐提示条 */
@@ -221,15 +346,15 @@
 .cta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: none;
   cursor: pointer;
   background: var(--grad-brand);
   color: #fff;
-  font-size: 14.5px;
+  font-size: 13.5px;
   font-weight: 600;
-  padding: 11px 24px;
-  border-radius: 11px;
+  padding: 8px 18px;
+  border-radius: 10px;
   box-shadow: 0 8px 22px -10px rgb(79 70 229 / 75%);
   transition:
     filter 0.15s,
@@ -471,5 +596,16 @@
   }
   .prompt {
     padding: 18px;
+  }
+  .composer {
+    padding: 10px;
+  }
+  .crow .cta {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+  .topic-grid {
+    grid-template-columns: 1fr;
   }
 }

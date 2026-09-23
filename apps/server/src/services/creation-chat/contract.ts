@@ -124,6 +124,10 @@ export const messageSchema = z.object({
   content: z.string().trim().min(1).max(6000),
   requestKey: requestKeySchema,
   attachments: z.array(z.number().int().positive()).max(12).optional(),
+  // [batch5] 风格 / 角色预设 id：项目级软提示旁信道，仅实时落 projects.settings，
+  // 不进入 messageFingerprint（幂等指纹）/票据——改预选不作废已确认方案、不改计费不变量。
+  stylePresetIds: z.array(z.number().int().positive()).max(6).optional(),
+  characterPresetIds: z.array(z.number().int().positive()).max(4).optional(),
 }).strict()
 export const createSessionSchema = messageSchema.extend({ deferPlanning: z.boolean().optional() }).strict()
 export const initialDraftSchema = z.object({

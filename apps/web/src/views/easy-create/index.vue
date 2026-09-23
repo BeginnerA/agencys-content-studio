@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, nextTick, ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import AttachmentTray from './AttachmentTray.vue'
 import AssetPickerModal from './AssetPickerModal.vue'
@@ -14,6 +14,15 @@ import { useEasyCreate } from './use-creation-chat'
 const s = useEasyCreate()
 const router = useRouter()
 const idea = ref('')
+const areaEl = ref<HTMLTextAreaElement | null>(null)
+
+// Composer 输入台：textarea 随内容自动扩高（上限 280px，超出后内部滚动）
+function grow(): void {
+  const el = areaEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight + 2, 280)}px`
+}
 const showPicker = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 let departed = false
@@ -38,6 +47,7 @@ async function abandonLocal() {
   s.first.clear(0)
   s.state.attachments = []
   idea.value = ''
+  void nextTick(grow)
 }
 
 const EXAMPLES = [
@@ -48,9 +58,12 @@ const EXAMPLES = [
 
 // ===== 「试试」智能推荐：读「选题雷达」沉淀的选题库（memory type=topics），零新端点零计费 =====
 // 无选题沉淀 / 接口失败 / 解析为空 → 静默回退静态 EXAMPLES（不编造原则）。
-const topicPool = ref<string[]>([])
+// 推荐以「短标题 + 形态标签」卡片展示，点击才把完整一句话填入输入台（避免长句胶囊换行乱）。
+type TopicChip = { title: string; tag: string; sentence: string }
+const FALLBACK_CHIPS: TopicChip[] = EXAMPLES.map((e) => ({ title: e, tag: '示例', sentence: e }))
+const topicPool = ref<TopicChip[]>([])
 const hasTopics = ref(false)
-const chips = ref<string[]>([...EXAMPLES])
+const chips = ref<TopicChip[]>([...FALLBACK_CHIPS])
 const rollSeq = ref(0)
 
 /** 解析选题清单标题行：契约格式「## T01｜{选题方向}（{content_format}…，{type}）」（见 prompts/topic-radar.md） */
@@ -66,24 +79,31 @@ function parseTopicLines(md: string): { title: string; format: string }[] {
   return out
 }
 
-/** 选题 → 轻松创作一句话：按内容形态给贴合的句式（视频/短剧/口播/图文长文） */
-function topicSentence(t: { title: string; format: string }): string {
-  const title = t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title
+/** 选题 → 推荐卡片：短标题 + 形态标签；完整一句话保留在 sentence（点击填入，句式与原契约一致） */
+function topicChip(t: { title: string; format: string }): TopicChip {
+  const full = t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title
+  const title = t.title.length > 36 ? `${t.title.slice(0, 36)}…` : t.title
   const f = t.format
   if (f.startsWith('drama') || f.startsWith('anime'))
-    return `用 45 秒把「${title}」拍成有故事感的短剧视频，竖屏。`
+    return { title, tag: '短剧 · 45秒 · 竖屏', sentence: `用 45 秒把「${full}」拍成有故事感的短剧视频，竖屏。` }
   if (f.startsWith('talking'))
-    return `口播一条 30 秒的短视频：「${title}」，轻松一点。`
+    return { title, tag: '口播 · 30秒', sentence: `口播一条 30 秒的短视频：「${full}」，轻松一点。` }
   if (f === 'article' || f === 'note')
-    return `把「${title}」做成 30 秒短视频，图文配音即可。`
-  return `做一条 30 秒的短视频：「${title}」，竖屏，轻松一点。`
+    return { title, tag: '图文 · 30秒', sentence: `把「${full}」做成 30 秒短视频，图文配音即可。` }
+  return { title, tag: '视频 · 30秒 · 竖屏', sentence: `做一条 30 秒的短视频：「${full}」，竖屏，轻松一点。` }
+}
+
+/** 点击推荐卡：把完整一句话填入输入台 */
+function useChip(t: TopicChip): void {
+  idea.value = t.sentence
+  void nextTick(grow)
 }
 
 /** 从候选池随机取 3 条（不足全取）；池为空则回退静态示例 */
 function rollChips(): void {
   const pool = topicPool.value
   if (!pool.length) {
-    chips.value = [...EXAMPLES]
+    chips.value = [...FALLBACK_CHIPS]
     return
   }
   const idx = pool.map((_, i) => i).sort(() => Math.random() - 0.5)
@@ -94,17 +114,20 @@ function rollChips(): void {
 async function loadTopicChips(): Promise<void> {
   try {
     const res = await memoryApi.list('?type=topics&limit=3')
-    const sentences: string[] = []
+    const seen = new Set<string>()
+    const list: TopicChip[] = []
     for (const mem of res.items ?? []) {
       for (const t of parseTopicLines(mem.content ?? '')) {
-        const sent = topicSentence(t)
-        if (!sentences.includes(sent)) sentences.push(sent)
-        if (sentences.length >= 12) break
+        const c = topicChip(t)
+        if (seen.has(c.sentence)) continue
+        seen.add(c.sentence)
+        list.push(c)
+        if (list.length >= 12) break
       }
-      if (sentences.length >= 12) break
+      if (list.length >= 12) break
     }
-    if (sentences.length) {
-      topicPool.value = sentences
+    if (list.length) {
+      topicPool.value = list
       hasTopics.value = true
       rollChips()
     }
@@ -119,6 +142,7 @@ const STEPS = ['一句话', '方案', '确认', '成片']
 onMounted(() => {
   s.enterHome()
   idea.value = s.first.state.ticket?.content ?? ''
+  void nextTick(grow)
   void s.loadSessions()
   void loadTopicChips()
 })
@@ -151,6 +175,7 @@ async function fireIdeaRecommend(text: string): Promise<void> {
   }
 }
 function onIdeaInput(): void {
+  grow()
   if (ideaRecTimer) clearTimeout(ideaRecTimer)
   ideaRecTimer = setTimeout(() => void fireIdeaRecommend(idea.value), 800)
 }
@@ -208,62 +233,55 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
       </div>
     </header>
 
-    <!-- ===== Prompt 卡 ===== -->
+    <!-- ===== Prompt 卡：Composer 一体式输入台 ===== -->
     <section class="prompt panel">
       <label class="hl" for="idea">
         <Icon name="wand" :size="15" /> 描述你想要的视频
       </label>
-      <div class="field">
-        <textarea
-          id="idea"
-          v-model="idea"
-          rows="4"
-          :maxlength="6000"
-          :disabled="s.first.locked.value"
-          placeholder="例如：做一条 30 秒的咖啡科普短视频，轻松一点。"
-          @input="onIdeaInput"
-          @keydown.enter.exact.prevent="go"
-        />
-        <span class="count mono">{{ idea.length }} / 6000</span>
+
+      <div class="composer">
+        <div class="field">
+          <textarea
+            id="idea"
+            ref="areaEl"
+            v-model="idea"
+            rows="3"
+            :maxlength="6000"
+            :disabled="s.first.locked.value"
+            placeholder="例如：做一条 30 秒的咖啡科普短视频，轻松一点。"
+            @input="onIdeaInput"
+            @keydown.enter.exact.prevent="go"
+          />
+          <span class="count mono">{{ idea.length }} / 6000</span>
+        </div>
+
+        <AttachmentTray v-if="s.state.attachments.length" :s="s" />
+
+        <div class="crow">
+          <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
+          <div class="crow-tools">
+            <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="fileInput?.click()"><Icon name="upload" :size="14" /> 添加参考</button>
+            <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="showPicker = true"><Icon name="arrange" :size="14" /> 从素材选取</button>
+            <button v-if="s.first.state.ticket" class="btn ghost" type="button" :disabled="s.first.busy.value" @click="abandonLocal">放弃本地草稿</button>
+          </div>
+          <button
+            class="cta"
+            type="button"
+            :disabled="s.first.busy.value || !idea.trim()"
+            @click="go"
+          >
+            <Icon name="bolt" :size="15" />
+            {{ s.first.busy.value ? '创建草稿中…' : '生成方案' }}
+          </button>
+        </div>
+
+        <details class="notes">
+          <summary><Icon name="alert" :size="12" /> 费用与立项说明</summary>
+          <p>参考仅保存在本地托盘，点击「生成方案」后才上传；上传中本批输入会锁定。</p>
+          <p>上传不计模型费用；规划及参考视频解析可能计费。确认方案前不生成媒体、不立项；点「开始制作」才转为正式项目。</p>
+        </details>
       </div>
 
-      <div class="ex">
-        <span class="ex-l muted"
-          ><Icon :name="hasTopics ? 'sparkles' : 'chat'" :size="13" />
-          {{ hasTopics ? '选题库推荐：' : '试试：' }}</span
-        >
-        <button
-          v-for="(e, i) in chips"
-          :key="`${rollSeq}-${i}`"
-          class="chip q"
-          type="button"
-          :title="
-            hasTopics ? '来自「选题雷达」沉淀的选题库，点击填入' : '点击填入'
-          "
-          :disabled="s.first.locked.value"
-          @click="idea = e"
-        >
-          {{ e }}
-        </button>
-        <button
-          v-if="hasTopics"
-          class="chip q roll"
-          type="button"
-          title="从选题库再随机换一批"
-          @click="rollChips"
-        >
-          <Icon name="refresh" :size="12" /> 换一批
-        </button>
-      </div>
-
-      <AttachmentTray v-if="s.state.attachments.length" :s="s" />
-      <div class="ec-first-tools">
-        <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
-        <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="fileInput?.click()"><Icon name="upload" :size="14" /> 添加参考</button>
-        <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="showPicker = true"><Icon name="arrange" :size="14" /> 从素材选取</button>
-        <button v-if="s.first.state.ticket" class="btn ghost" type="button" :disabled="s.first.busy.value" @click="abandonLocal">放弃本地草稿</button>
-      </div>
-      <p class="muted">参考仅保存在本地托盘，点击「生成方案」后才上传。上传中本批输入会锁定。</p>
       <p v-if="s.first.state.warning" class="muted" role="status">{{ s.first.state.warning }}</p>
       <div v-if="s.state.error" class="err-text" role="alert">{{ s.state.error }}</div>
 
@@ -276,19 +294,41 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         </span>
       </div>
 
-      <div class="pfoot">
-        <span class="muted hint"
-          ><Icon name="alert" :size="13" /> 上传不计模型费用；规划及参考视频解析可能计费。确认方案前不生成媒体、不立项；点「开始制作」才转为正式项目。</span
-        >
-        <button
-          class="cta"
-          type="button"
-          :disabled="s.first.busy.value || !idea.trim()"
-          @click="go"
-        >
-          <Icon name="bolt" :size="16" />
-          {{ s.first.busy.value ? '创建草稿中…' : '生成方案' }}
-        </button>
+      <!-- 选题推荐：短标题 + 形态标签卡片，点击填入完整一句话 -->
+      <div class="topics">
+        <div class="topics-h">
+          <span class="ex-l muted"
+            ><Icon :name="hasTopics ? 'sparkles' : 'chat'" :size="13" />
+            {{ hasTopics ? '选题库推荐' : '试试' }}</span
+          >
+          <button
+            v-if="hasTopics"
+            class="roll"
+            type="button"
+            title="从选题库再随机换一批"
+            @click="rollChips"
+          >
+            <Icon name="refresh" :size="12" /> 换一批
+          </button>
+        </div>
+        <div class="topic-grid">
+          <button
+            v-for="(t, i) in chips"
+            :key="`${rollSeq}-${i}`"
+            class="topic-card"
+            type="button"
+            :title="
+              hasTopics
+                ? `${t.sentence}\n（来自「选题雷达」沉淀的选题库，点击填入）`
+                : '点击填入'
+            "
+            :disabled="s.first.locked.value"
+            @click="useChip(t)"
+          >
+            <span class="t-tag">{{ t.tag }}</span>
+            <span class="t-title">{{ t.title }}</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -370,7 +410,3 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
 </template>
 
 <style scoped src="./easy-create-home.css"></style>
-<style scoped>
-.ec-first-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.ec-first-tools .btn { min-height: 44px; }
-</style>

@@ -120,8 +120,10 @@ function onGenreChange() {
 
 onMounted(async () => {
   // 模板列表自加载（失败不阻塞：新建回退空模板，编辑保留原值）
+  // [入口收口] 仅新建模式过滤轻松创作批准链模板（easy-*）：它们只由对话页调度、手动启动无 recipe 无法运行；
+  // 编辑模式保持全量，否则老项目默认模板 easy-video 会匹配不到、被误标「已失效」。真源判据 = 服务端 ?picker=1。
   try {
-    const t = await templateApi.list()
+    const t = await templateApi.list(isEdit.value ? '' : '?picker=1')
     templates.value = t.items
   } catch {
     // 静默：模板列表失败不影响基本提交

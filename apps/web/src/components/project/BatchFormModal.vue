@@ -133,7 +133,7 @@ async function init() {
   loading.value = true
   try {
     const [tRes, aRes] = await Promise.all([
-      templateApi.list(),
+      templateApi.list('?picker=1'),
       projectApi.assets(props.projectId, '?limit=200'),
     ])
     templates.value = tRes.items

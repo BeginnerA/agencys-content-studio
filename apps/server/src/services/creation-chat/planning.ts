@@ -16,6 +16,7 @@ import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, create
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
+import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
 import { jsonRecord } from './projection'
@@ -118,6 +119,10 @@ export async function sendCreationMessage(id: number, raw: unknown) {
   })
   if (!claimed) return creationDetail(id)
   try {
+    // [batch5] 预设软提示：把本次输入携带的风格/角色预选 id 落项目 settings（旁信道，不进幂等指纹），
+    // 再据项目绑定构建基线软提示喂给规划模型。未携带且未绑定 → 零变更（applyCreationPresets 空转、hint 为 null）。
+    await applyCreationPresets(claimed.projectId, input.stylePresetIds, input.characterPresetIds)
+    const presetHint = await resolveCreationPresetHint(claimed.projectId)
     const ep = await requiredEndpoint('llm')
     const vision = ep.extra.vision === true
     // [M31] 参考素材：本条消息附件→核验编译；[M43] 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
@@ -158,6 +163,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
         : `【人物对白能力】当前视频原生对白：${hasNativeDialogue ? '已核实' : '不可用或型号未经核实'}；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户要求人物交谈时必须保留 performance=dialogue 和 dynamic，不得降级旁白或图文。缺少能力时说明生成被预检阻止，仍给符合角色/发言轮次契约的方案。ASR 仅核验实际台词与时间，不证明口型或角色身份。` },
       // [M40] 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
       { role: 'system', content: projectMetaPrompt() },
+      ...(presetHint ? [{ role: 'system' as const, content: presetHint }] : []),
       ...refContext,
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]

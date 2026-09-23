@@ -23,6 +23,13 @@
 import { listTemplates } from '../pipeline/loader'
 import type { TemplateMeta } from '../pipeline/types'
 import { cosine, embed, embeddingStatus } from './embedding'
+import { isCreationTemplate } from './creation-chat/recipe'
+
+/** 可推荐模板 = 全量模板剔除轻松创作批准链（easy-*）：它们只接受对话页 recipe 快照，
+ *  手动建项目/启动无法运行，推荐出去只会把用户引向死路（与专业端选卡 `?picker=1` 同一判据）。 */
+function selectableTemplates(): TemplateMeta[] {
+  return listTemplates().filter((m) => !isCreationTemplate(m.key))
+}
 
 export interface RecommendItem {
   key: string
@@ -52,7 +59,6 @@ let lastError: string | null = null
 /** 关键词回退表（embedding 未 ready 或加载失败时使用；命中数 = 输入 text 出现的关键词个数） */
 const KEYWORDS: Record<string, string[]> = {
   'mengbao-episode': ['短剧成片', '分集成片', '萌宝', '剧本成片', '带配音字幕', '分镜出图', '短剧单集'],
-  'easy-video': ['轻松创作', '一句话成片', '对话式方案', '方案确认自动制作'],
   'quick-video': ['快速出片', '免审直出', '快脚本', '30 秒成片'],
   'talking-clip': ['口播', '对白', '口播视频', '配音文案'],
   'topic-radar': ['选题', '雷达', '找选题', '选题清单', '选题库'],
@@ -81,7 +87,7 @@ async function doRefresh(): Promise<void> {
       vectors.clear()
       return
     }
-    const metas = listTemplates()
+    const metas = selectableTemplates()
     const next = new Map<string, TemplateVector>()
     for (const m of metas) {
       const vector = await embed(embedTextOf(m))
@@ -122,7 +128,7 @@ export async function refreshTemplateVectors(): Promise<void> {
 /** 关键词匹配打分：每命中一个关键词 +1；命中密度 = 命中数 / 关键词表长度（避免长表模板天然高分） */
 function keywordMatch(text: string, top: number): RecommendItem[] {
   const lower = text.toLowerCase()
-  const metas = listTemplates()
+  const metas = selectableTemplates()
   const metaByKey = new Map(metas.map((m) => [m.key, m]))
   const scored: RecommendItem[] = []
   for (const [key, words] of Object.entries(KEYWORDS)) {
