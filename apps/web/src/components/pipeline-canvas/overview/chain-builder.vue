@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue'
 import Modal from '../../common/Modal.vue'
 import Icon from '../../common/Icon.vue'
 import { workflowApi } from '../../../lib/api'
+import { filterSelectable } from '../../../lib/scene'
 import type { TemplateMeta } from '../../../lib/types'
 
 const props = defineProps<{ projectId: number; templates: TemplateMeta[] }>()
@@ -23,6 +24,9 @@ const err = ref('')
 
 const byKey = computed(() => new Map(props.templates.map((t) => [t.key, t])))
 const nameOf = (k: string) => byKey.value.get(k)?.name ?? k
+// [入口收口] 「追加为段」选择器不呈现轻松创作批准链模板（无 recipe，启动首段/到点必失败）；
+// byKey/nameOf 仍用全量，保证存量链里已引用的 easy-* 段能正常反查名字展示。真源为服务端 isCreationTemplate。
+const selectableTemplates = computed(() => filterSelectable(props.templates))
 
 /** 下一段建议：末段 template.next 命中项（无末段 / 无 next → 空） */
 const suggestions = computed<string[]>(() => {
@@ -139,7 +143,7 @@ async function save(startAfter: boolean) {
 
         <select v-model="pick" class="picker" aria-label="选择模板添加为段">
           <option value="">＋ 选择模板追加为段…</option>
-          <option v-for="t in templates" :key="t.key" :value="t.key">
+          <option v-for="t in selectableTemplates" :key="t.key" :value="t.key">
             {{ t.name }}（{{ t.key }}）
           </option>
         </select>

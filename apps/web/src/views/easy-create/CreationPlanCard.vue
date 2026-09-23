@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import { templateApi } from '../../lib/api'
-import { PROJECT_GENRES } from '../../lib/scene'
+import { filterSelectable, PROJECT_GENRES } from '../../lib/scene'
 import { fmtCost } from '../../lib/format'
 import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
@@ -107,7 +107,10 @@ async function ensureTemplates(): Promise<void> {
 }
 watch(showProject, (v) => void (v && ensureTemplates()), { immediate: true })
 const templateOptions = computed(() => {
-  const list = templates.value.map((t) => ({ key: t.key, name: t.name }))
+  // [入口收口] 与专业端「新建项目·默认模板」同源：本字段=「后续到专业工作台可跑的默认模板」，
+  // 剔除轻松创作批准链模板（conversationOnly，无 recipe 到工作台跑不动）；本次自动派生的当前值
+  // （多为 easy-video）若被剔除，以「（当前）」单列如实保留，不静默丢失选中项。真源为服务端 isCreationTemplate。
+  const list = filterSelectable(templates.value).map((t) => ({ key: t.key, name: t.name }))
   const cur = props.s.projectDraft.templateKey
   if (cur && !list.some((t) => t.key === cur))
     list.unshift({ key: cur, name: `${cur}（当前）` })
