@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     const { projects } = await import('../src/db/schema')
     await initDb()
     const t = Date.now()
-    return (await db.insert(projects).values({ name, genre: 'talking_head', templateKey: 'easy-video', status: 'draft', settings: '{}', tags: '[]', createdAt: t, updatedAt: t }).returning())[0]!.id
+    return (await db.insert(projects).values({ name, genre: 'talking_head', templateKey: 'talking-clip', status: 'draft', settings: '{}', tags: '[]', createdAt: t, updatedAt: t }).returning())[0]!.id
   }
 
   type SeedOpts = { unpriced?: ('image' | 'video' | 'audio')[]; videoModel?: string; durations?: number[]; aspectRatios?: string[] }
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
         check(JSON.parse(String(runA.templateSnapshot)).steps.some((s: { key: string; gate?: unknown }) => s.key === 'images' && !!s.gate), 'run 模板快照固化 gate（执行期不读在线模板）')
         check((await errOf(() => assertRecipeSources(runA, recipeA))) === null, '审阅变体 run 的执行期自校验通过（recipe/快照/源资产三重一致）')
         const [projA] = await db.select().from(projects).where(eq(projects.id, a.projectId))
-        check(projA!.templateKey === 'easy-video' && projA!.status === 'active', '项目模板键仍为 easy-video（专业工作台可跑），与 run 模板键解耦')
+        check(projA!.templateKey === 'talking-clip' && projA!.status === 'active', '项目专业默认模板（talking-clip）与 run 执行模板（easy-video-review）解耦；确认不会把 easy-* 写回项目默认字段')
         check(sA.planHash === hashJson({ plan: a.plan, execution: a.pf.execution }), '审阅勾选不入 planHash（确认沿用原方案哈希）')
 
         // —— 不勾选 → 原模板零改动（与 M41 行为一致） ——

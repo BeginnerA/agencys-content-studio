@@ -15,7 +15,7 @@ import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
-import { projectMetaPrompt, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
+import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
@@ -38,7 +38,7 @@ export async function createSession(raw: unknown) {
       return existing.id
     }
     const now = Date.now()
-    const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'other', templateKey: 'easy-video', status: 'draft', tags: JSON.stringify(['轻松创作']), createdAt: now, updatedAt: now }).returning()
+    const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'other', templateKey: resolveDefaultTemplateKey('other'), status: 'draft', tags: JSON.stringify(['轻松创作']), createdAt: now, updatedAt: now }).returning()
     const [session] = await tx.insert(creationSessions).values({ projectId: project!.id, requestKey: input.requestKey, createdAt: now, updatedAt: now }).returning()
     await tx.insert(creationMessages).values({ sessionId: session!.id, role: 'system', content: '', payload: JSON.stringify(snapshot), createdAt: now })
     return session!.id

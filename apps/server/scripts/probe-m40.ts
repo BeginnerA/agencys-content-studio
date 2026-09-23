@@ -93,7 +93,7 @@ async function main(): Promise<void> {
       check(deriveProjectMeta(slide).genre === 'note', '规则派生：slideshow（静态多图配音）→ 载体图文')
       check(dScience.name === dynamic.title && dScience.brief === dynamic.summary, '规则派生：名称取方案标题、简介取方案摘要')
       check(dScience.tags[0] === '轻松创作' && new Set(dScience.tags).size === dScience.tags.length && dScience.tags.length <= 6, '规则派生：标签含来源标记且去重、不超 6 个')
-      check(dScience.templateKey === 'easy-video', '规则派生：模板回落本次真实执行模板 easy-video')
+      check(dScience.templateKey === 'talking-clip', '规则派生：模板按载体取专业默认模板（口播→talking-clip），与本次执行模板解耦')
       const longTitle = creationPlanSchema.parse({ ...makePlan('dynamic'), title: 'x'.repeat(100) })
       check(deriveProjectMeta(longTitle).name.length === 60, '规则派生：超长标题截断到 60 字')
 
@@ -104,7 +104,9 @@ async function main(): Promise<void> {
       const badGenre = sanitizeProjectMeta(suggestion({ genre: 'documentary' }) as never, dynamic)
       check(badGenre.meta.genre === 'talking_head' && badGenre.notes.some((n) => n.includes('不在平台字典')), '载体不在字典 → 回落规则派生值并产出可见调整说明')
       const badTpl = sanitizeProjectMeta(suggestion({ templateKey: 'no-such-template' }) as never, dynamic)
-      check(badTpl.meta.templateKey === 'easy-video' && badTpl.notes.some((n) => n.includes('在平台不存在')), '模板 key 不存在 → 回落 easy-video 并明告（不静默降级）')
+      check(badTpl.meta.templateKey === 'talking-clip' && badTpl.notes.some((n) => n.includes('在平台不存在')), '模板 key 不存在 → 按载体回落专业默认模板并明告（不静默降级）')
+      const creationTpl = sanitizeProjectMeta(suggestion({ templateKey: 'easy-video' }) as never, dynamic)
+      check(creationTpl.meta.templateKey === 'talking-clip' && creationTpl.notes.some((n) => n.includes('批准链专用')), '建议值为批准链模板（easy-*）→ 服务端真源拒绝并改选专业默认模板（与前端过滤双保险）')
       const longName = sanitizeProjectMeta(suggestion({ name: 'y'.repeat(90) }) as never, dynamic)
       check(longName.meta.name.length === 60 && longName.notes.some((n) => n.includes('超过 60 字')), '名称超上限 → 截断并明告')
       const manyTags = sanitizeProjectMeta(suggestion({ tags: Array.from({ length: 9 }, (_, i) => `标签${i}`) }) as never, dynamic)
@@ -115,7 +117,7 @@ async function main(): Promise<void> {
       const partial = sanitizeProjectMeta({ genre: 'note' } as never, story, base)
       check(partial.meta.name === base.name && partial.meta.genre === 'note' && partial.notes.length === 0, '已有基准值（草稿行现值）优先规则派生，且缺项静默不产噪音')
       const prompt = projectMetaPrompt()
-      check(prompt.includes('与 plan 同级') && PROJECT_GENRES.every((g) => prompt.includes(g.value)) && prompt.includes('easy-video（轻松创作') && prompt.includes('mengbao-episode'), '立项注入消息：含同级位置说明 + 载体字典 + 真实模板候选')
+      check(prompt.includes('与 plan 同级') && PROJECT_GENRES.every((g) => prompt.includes(g.value)) && prompt.includes('mengbao-episode') && !prompt.includes('easy-video'), '立项注入消息：含同级位置说明 + 载体字典 + 专业模板候选（已剔除批准链 easy-* 模板）')
       check(renderMetaNotes([]) === '' && renderMetaNotes(['a']).includes('立项信息已按平台真源调整'), 'notes 渲染：空则不打扰、非空则统一前缀')
       check(projectGenreLabel('note') === '图文' && projectGenreLabel('unknown_x') === 'unknown_x', '载体标签：字典内中文、字典外原样回落')
     },
@@ -225,7 +227,7 @@ async function main(): Promise<void> {
         const [p2] = await db.select().from(projects).where(eq(projects.id, first.projectId))
         const msgs2 = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, first.sessionId))
         const assistant2 = msgs2.filter((m) => m.role === 'assistant').map((m) => m.content).find((c) => c.includes('立项信息已按平台真源调整'))
-        check(detail2.session.status === 'ready' && p2!.templateKey === 'easy-video' && p2!.genre === 'talking_head', '越界建议 → 逐项回落真源值')
+        check(detail2.session.status === 'ready' && p2!.templateKey === 'talking-clip' && p2!.genre === 'talking_head', '越界建议 → 逐项回落真源值（模板按载体回落专业默认 talking-clip）')
         check(!!assistant2 && assistant2.includes('在平台不存在') && assistant2.includes('不在平台字典'), '回落过程随回复可见（不静默降级）')
         check(p2!.name === '咖啡冲煮进阶', '同批次内合法字段照常采纳（只回退出问题的那一项）')
         const [s2] = await db.select().from(creationSessions).where(eq(creationSessions.id, first.sessionId))
@@ -236,7 +238,7 @@ async function main(): Promise<void> {
         const second = await mkDraftSession('draft', '把长文做成图文配音视频')
         await sendCreationMessage(second.sessionId, { content: '把长文做成图文配音视频。', requestKey: `m40msg3${Date.now()}` })
         const [p3] = await db.select().from(projects).where(eq(projects.id, second.projectId))
-        check(p3!.genre === 'note' && p3!.templateKey === 'easy-video' && JSON.parse(p3!.tags).includes('轻松创作'), 'LLM 未给 project → 规则派生兜底填写（不留脏值）')
+        check(p3!.genre === 'note' && p3!.templateKey === 'note-clip' && JSON.parse(p3!.tags).includes('轻松创作'), 'LLM 未给 project → 规则派生兜底填写（图文→note-clip，不留脏值）')
 
         // 已立项项目不被后续规划覆写
         stubReply = () => llmReply(JSON.stringify({ kind: 'plan', message: '方案已生成', project: suggestion({ name: '不该覆盖' }), plan: makePlan('dynamic') }))
@@ -314,7 +316,7 @@ async function main(): Promise<void> {
         const resC = await confirmCreation(c.sessionId, { planRevision: c.planRevision, planHash: c.planHash, idempotencyKey: 'm40confirmC1', acceptUnpriced: false, project: { templateKey: 'ghost-template', genre: 'meme' } })
         const [pc] = await db.select().from(projects).where(eq(projects.id, c.projectId))
         const msgsC = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, c.sessionId))
-        check(resC.runId > 0 && pc!.templateKey === 'easy-video' && pc!.genre === 'talking_head', '非法覆盖 → 真源回落且照常启动（不因元信息 nit 打断制作）')
+        check(resC.runId > 0 && pc!.templateKey === 'talking-clip' && pc!.genre === 'talking_head', '非法覆盖 → 真源回落且照常启动（不因元信息 nit 打断制作）')
         check(msgsC.some((m) => m.content.includes('立项信息已按平台真源调整')), '非法覆盖的调整说明落进对话流（可见）')
 
         const d = await makeReadyDraftSession({ name: '咖啡冲煮三分钟', genre: 'talking_head', tags: ['轻松创作'] })

@@ -21,9 +21,33 @@ import {
   type ProjectMeta,
   type ProjectMetaInput,
 } from './contract'
+import { isCreationTemplate } from './recipe'
 
-/** 轻松创作本次真实执行的模板（真源：execution.ts 固定以 easy-video 建 run） */
-export const DEFAULT_PROJECT_TEMPLATE_KEY = 'easy-video'
+/** 载体 → 项目「专业工作台默认模板」映射（与 web/src/lib/scene GENRE_DEFAULT_TPL 同源）。
+ *  注意：此值只决定项目之后到专业工作台可跑的默认模板，与本次轻松创作执行模板
+ *  （execution.ts 硬编码 easy-video / easy-dialogue ±review）完全解耦。 */
+const GENRE_DEFAULT_TPL: Record<string, string> = {
+  drama_short: 'mengbao-episode',
+  note: 'note-clip',
+  article: 'article-clip',
+  talking_head: 'talking-clip',
+  other: 'talking-clip',
+}
+/** 映射项不可用时的最终兜底专业模板 */
+const FALLBACK_PROJECT_TEMPLATE_KEY = 'talking-clip'
+
+/** 可作为项目专业默认模板：文件存在且非轻松创作批准链模板（conversationOnly）；真源为服务端 isCreationTemplate。 */
+function isSelectableProjectTemplate(key: string): boolean {
+  return !!key && templateFileOf(key) != null && !isCreationTemplate(key)
+}
+
+/** 按载体解析项目专业默认模板：映射命中且可用 → 用；否则兜底模板可用 → 用；再否则取列表首个非批准链模板；全无 → 空串。 */
+export function resolveDefaultTemplateKey(genre: string): string {
+  const mapped = GENRE_DEFAULT_TPL[genre]
+  if (mapped && isSelectableProjectTemplate(mapped)) return mapped
+  if (isSelectableProjectTemplate(FALLBACK_PROJECT_TEMPLATE_KEY)) return FALLBACK_PROJECT_TEMPLATE_KEY
+  return listTemplates().find((t) => !isCreationTemplate(t.key))?.key ?? ''
+}
 
 /** 载体字典（值 + 中文标签；与 web/src/lib/scene PROJECT_GENRES 同源） */
 export const PROJECT_GENRES: Array<{ value: ProjectGenre; label: string }> = [
@@ -57,7 +81,7 @@ export function deriveProjectMeta(plan: CreationPlan): ProjectMeta {
   return {
     name,
     genre,
-    templateKey: DEFAULT_PROJECT_TEMPLATE_KEY,
+    templateKey: resolveDefaultTemplateKey(genre),
     tags,
     brief: (plan.summary.trim() || plan.title.trim()).slice(0, PROJECT_BRIEF_MAX),
   }
@@ -116,10 +140,14 @@ export function sanitizeProjectMeta(
   let templateKey = fb.templateKey
   if (input?.templateKey !== undefined && input.templateKey !== null) {
     const k = typeof input.templateKey === 'string' ? input.templateKey.trim() : ''
-    if (k && templateFileOf(k)) templateKey = k
-    else {
-      templateKey = DEFAULT_PROJECT_TEMPLATE_KEY
-      notes.push(`模板「${k || '空'}」在平台不存在，已回落本次实际执行的「${DEFAULT_PROJECT_TEMPLATE_KEY}」`)
+    if (k && templateFileOf(k) && !isCreationTemplate(k)) templateKey = k
+    else if (k && isCreationTemplate(k)) {
+      // [B 收口] 服务端真源拒绝批准链模板进「项目专业默认」字段（与前端 filterSelectable 双保险）
+      templateKey = resolveDefaultTemplateKey(genre)
+      notes.push(`模板「${k}」是轻松创作批准链专用（不能在专业工作台启动），已按载体改选「${templateKey}」`)
+    } else {
+      templateKey = resolveDefaultTemplateKey(genre)
+      notes.push(`模板「${k || '空'}」在平台不存在，已按载体回落专业默认模板「${templateKey}」`)
     }
   }
 
@@ -144,13 +172,14 @@ export function sanitizeProjectMeta(
  */
 export function projectMetaPrompt(): string {
   const tpls = listTemplates()
+    .filter((t) => !isCreationTemplate(t.key))
     .map((t) => `${t.key}（${t.name}）`)
     .join('、')
   return [
     '【立项信息 project】给出方案时，请与 plan 同级再输出一个 project 对象（不要写进 plan 内部）：',
     '{"name":"≤60字项目名称","genre":"drama_short | note | article | talking_head | other","templateKey":"候选模板 key 之一","tags":["1-6个中文短标签，每个≤20字"],"brief":"≤500字项目简介"}',
     `- genre 是内容载体（${PROJECT_GENRES.map((g) => `${g.value}=${g.label}`).join('、')}），按内容形态选，不按题材风格选；成片为静态多图配音时选 note。`,
-    `- templateKey 只决定该项目后续到专业工作台可跑的模板，本次制作固定用 ${DEFAULT_PROJECT_TEMPLATE_KEY}；候选：${tpls}。拿不准就填 ${DEFAULT_PROJECT_TEMPLATE_KEY}。`,
+    `- templateKey 是该项目「之后到专业工作台可跑的默认模板」（本次制作由系统按方案固定执行，与此字段无关），只能从下列专业模板候选中选（不含轻松创作批准链模板）：${tpls}。拿不准就按载体选一个通用产出模板。`,
     '- name 用方案标题（不加书名号、不照抄用户原句）；tags/brief 只写方案中真实存在的信息，不得编造事实、平台或数据。',
     '- 立项信息由系统校验后写入项目库，不影响方案结构与费用；字段缺失时系统会自动补全。',
   ].join('\n')

@@ -112,8 +112,14 @@ const templateOptions = computed(() => {
   // （多为 easy-video）若被剔除，以「（当前）」单列如实保留，不静默丢失选中项。真源为服务端 isCreationTemplate。
   const list = filterSelectable(templates.value).map((t) => ({ key: t.key, name: t.name }))
   const cur = props.s.projectDraft.templateKey
-  if (cur && !list.some((t) => t.key === cur))
-    list.unshift({ key: cur, name: `${cur}（当前）` })
+  if (cur && !list.some((t) => t.key === cur)) {
+    // 当前值多为 easy-video（批准链模板，已被上面过滤）：从全量列表反查真名 + 清晰标注，与专业端 boundConversationTpl 同源（不显裸 key）
+    const curTpl = templates.value.find((t) => t.key === cur)
+    list.unshift({
+      key: cur,
+      name: curTpl ? `${curTpl.name}（本次执行·由对话管理）` : `${cur}（当前）`,
+    })
+  }
   return list
 })
 /** 任一字段的本地编辑都要置 dirty，阻止后续服务端回读冲掉正在输入的内容 */
