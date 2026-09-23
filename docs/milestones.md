@@ -563,6 +563,30 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 
 ---
 
+## M41 能力速览（轻松创作第一批：进度真实投影 · 成果预览 · 首轮带素材 · 补录）
+
+> 补录：第一批交付时未入本表，据源码与 `probe-m41` 回查。痛点：轻松创作立项后只显示「进行中」，看不到真实进度与已生成素材，且第一句话就触发规划扣费、想先传参考素材再规划做不到。
+
+- **M41.1 进度真实投影（`creation-chat/projection.ts` `projectCreation`）**：三阶段完成计数由 run/steps/tasks/assets 真实派生，**无子任务时显示步骤真实失败、不编造比例**；`progress.issue` 对相同原始错误去重并保留作用阶段（`details[].scopes`）；阶段适用性（images/frames/motion）取自 run 冻结输入而非可变会话方案（损坏冻结元数据不借用旁证编造）；严格交付状态——最新合格成片丢失时不回退旧版、完成 run 无合格成片不得误报成功、列表沿用同一投影；展示 DTO 硬红线：不暴露 `relPath` / 完整任务参数 / 外部编号。
+- **M41.2 成果预览（`CreationArtifacts.vue`）**：逐镜 `image/voices` 可用性投影（新 run 显式复用旧素材仍可预览、跨项目引用以「素材不可用」占位不泄露资产元信息、已删除/文件丢失以不可用占位不使详情崩溃、任务结果与资产镜头冲突时不可预览、候选只来自本镜头不扫描无关项目历史）。
+- **M41.3 首轮带素材（`deferPlanning` 草稿模式 + 固定创建键）**：首句只建草稿、**零模型调用**，元数据不显示为已发送消息、可从服务端安全快照恢复；同创建键同输入返回原会话（幂等）、不同文字 / 不同模式一律 **409** 冲突；附件登记零调用、部分上传失败不触发无参考规划、全部参考就绪后一次规划；消息去重靠稳定附件指纹（传输重试不重复规划），同消息键不同附件 / 不同文字 **409**；规划解析失败以详情 `error` 回传不误报成功、失败同键重试不自动再调模型；前端 `use-first-input.ts` 只用草稿模式与固定创建键，创建结果不明不上传、不收费规划。
+
+验证：`probe-m41`（**3 节 57 断言全绿**：projection / first-input / first-input-client；isolatedEnv 独立库 + 素材目录，`globalThis.fetch` 全阻断，零网络零计费）。
+
+---
+
+## M42 能力速览（轻松创作第二批：中途审阅暂停 · 候选版本选择 · 自然语言局部返修 · 补录）
+
+> 补录：第二批交付时未入本表，据源码与 `probe-m42` 回查。共同红线：**现存会话恢复路径零破坏、审阅勾选不入 planHash、局部重合成零模型调用、创作模板键集合精确不误伤专业 run**。
+
+- **M42.1 中途审阅暂停（`gate.ts` + 变体模板 `easy-video-review.yaml`）**：以「变体模板键 + 快照固化 gate」实现，**审阅闸只挂图文画面（images）与动态首帧（frames）两步**，变体除 gate 外步骤定义与原 `easy-video` 逐字同构（inputs/params/batch/when/after 零漂移），首帧闸文案明告「继续后才开始高费用生成」，变体不声明 `skip_label`（免审＝不勾选、不给跳过入口）；勾选 → run 以变体键启动、`recipe.templateHash` 按所选变体重算、快照固化 gate（执行期不读在线模板）、执行期 `assertRecipeSources` 三重自校验通过；未勾选 → 原模板原哈希零回归；`CREATION_TEMPLATE_KEYS` 精确集合（含旁白/对白原模板与审阅变体 = 4），非创作模板不解析 recipe（不越界接管专业 run）；项目 `templateKey` 仍 `easy-video`（专业工作台可跑），与 run 模板键解耦。前端 `CreationReview.vue`。
+- **M42.2 候选版本选择（`candidates.ts` + `CreationCandidates.vue`）**：多版本候选投影——同镜多版本全部可见、在用者为 run output 指向那一版，缺文件候选以不可用占位保留（不静默消失），无多版本镜头只有一个候选（不虚构选择），候选视图只含安全元信息不外泄本地路径；选定补全走本地重合成提交（零模型调用），重合成后详情指向最新合格成片不回退旧版。
+- **M42.3 自然语言局部返修（`rework.ts` `planRework` + `use-rework.ts` + `CreationRework.vue`）**：一句话定位镜头 → LLM 解析预览逐镜给出「原提示词 → 新提示词 + 单价」（**确认前可审、成本可见**）→ 显式确认 → 批准链同事务改写方案、只重置目标镜；决策 / 返修 / 重合成消息以 `system` 角色落库被历史查询排除，不污染后续规划（规划请求仍带用户真实对话上下文）。
+
+验证：`probe-m42`（**6 节 128 断言全绿**：review-template / review-chain / review-api / candidates / rework / messages；模板目录只读拷入隔离区、LLM/媒体 fetch 全阻断，引擎执行链只在离线 literal 模板上真跑）。
+
+---
+
 ## M43 能力速览（轻松创作第三批：画质选择、逐镜参考绑定、跨轮参考合并）
 
 差距评估（相对即梦 / Coze）八项剩余候选经源码核实落三件，共同红线：**预算门禁 / planHash / 配置冻结 / 归属校验全部保持，0 新表新列、0 新依赖、不改 `easy-video.yaml`、不动引擎调度、画质与绑定全程零计费**。
@@ -572,6 +596,19 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 - **G17.3 跨轮参考合并（模块三）**：`planning.ts` `effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)` 修复「带新附件再规划即整体替换、旧参考丢失」——同 assetId 以本轮覆盖（role/hash 取新值、本轮未重传则保留已绑 shotId）、prior 其余保序保留、新资产追加；合并后 >12 → `too_many_refs` 服务端权威拒绝，**不静默截断**。
 
 验证：`probe-m43`（**52 断言全绿**，isolatedEnv + stubFetch + stub startRun，quality / binding / carry / 零副作用四节，全程零媒体零 LLM 调用）；**M30 / M31 / M35 / M40 / M41 / M42 定向回归 468 断言全绿**；server `tsc`、web `vue-tsc --noEmit`、`vite build`、`validate:templates`（16 份 / 113 步 / 0 错，模板零改动）全绿；全量 `run-probes --jobs=2` 与 M42 收尾基线逐项比对**零新增失败**。`m26 split-audit`：本批把 `use-creation-chat.ts`（曾 835 行）按 createRework 依赖注入先例拆分回落到 ≤800。浏览器验收（隔离 stub 单端口环境，不点真实付费生成）：清晰度下拉展示与选择、逐镜绑定下拉 ready 态逐镜候选、绑定后 revision 抬升 + 不计费提示 + 镜号徽标、44px 触控目标实测达标。
+
+---
+
+## M44 能力速览（对白模式：多角色人物对白 · 原生对白引擎背书 · 严格 ASR 逐字核验 · 补录）
+
+> 补录：对白模式为差距评估批次序列外的插入批（M43 第三批与 M45 第四批之间），交付时未入本表，据源码与 `probe-m44` 回查。痛点：轻松创作此前只有旁白（一人配音读全程），做不出「两个及以上角色你一句我一句」的人物对白短视频。
+
+- **M44.1 对白契约（`creation-chat/contract.ts`）**：`creationPlanSchema` 加 `performance: 'dialogue'` + `cast[]`（id/name/appearance/voice）+ `lines[].speaker` + `shots[].characters`；权威校验——至少两名角色、拒重复角色 ID、拒幽灵说话人、单人朗读不能冒充对白、说话角色必须出场、旁白不得携带未消费对白字段、对白不得缺失说话人、对白拒绝图文（slideshow）模式；**历史旁白方案序列化逐字不变**（不插入 performance 默认值）。
+- **M44.2 原生对白能力背书（`@agencys/ai-provider-kit` `resolveNativeDialogueCaps`）**：volcengine seedance 逐型号 `generateAudio=true`、aliyun wan3.0 `promptExtend=false`（关闭台词扩写）；**未来型号 / 同供应商第三方型号 / 未知对白协议一律不自动背书返回 null** → 回落「逐镜配音 + ASR 逐字核验」路线；`dialogue.ts` `dialogueAudioOptions` 保证实例 extra 不可覆盖强制原声与禁扩写参数，完整音频选项进任务快照。
+- **M44.3 严格 ASR 与逐字核验（`services/strict-asr.ts` `resolveStrictAsrEndpoint`）**：独立于参考分析的宽容 ASR，**仅接受显式启用的 `whisper-1` + `openai_verbose_json` 分段时间戳协议**，缺配置抛 `CreationError('missing_asr', 422)`（人物对白不能无 ASR 执行）；配套 `dialogue-asr-policy.ts`（verbatim-segments 策略）、`creation-chat/dialogue-media.ts`（抽音轨 + SRT + 逐字核验）、`dialogue-cache.ts`（响应缓存复用）、`pipeline/actions/dialogue-subtitle.ts`（字幕 action）。
+- **M44.4 模板与前端**：`easy-dialogue.yaml` + 审阅变体 `easy-dialogue-review.yaml`；`CreationDialogueCast.vue` 角色 / 说话人编排。
+
+验证：`probe-m44`（**14 节 232 断言全绿**：contract / providers / asr / recipe / asr-config / planning / media / asr-tasks / preflight / engine / review / recovery / rework / recompose；已按 `scripts/probes/m44/*` 模块化拆分，isolatedEnv + fetch 阻断零联网，重合成决策阶段零联网）。
 
 ---
 
