@@ -203,6 +203,7 @@ async function onFiles(e: Event): Promise<void> {
         aria-label="创作需求"
         @keydown.enter.exact.prevent="submit"
       />
+      <!-- [布局重设计] 按钮行只放按钮：左工具簇 / 右动作簇两端对齐；计费提示降为下方独立 helper 行 -->
       <div class="crow">
         <input
           ref="fileInput"
@@ -212,39 +213,49 @@ async function onFiles(e: Event): Promise<void> {
           multiple
           @change="onFiles"
         />
-        <button
-          v-if="!started"
-          class="btn sm ghost att-btn"
-          type="button"
-          :disabled="s.attachmentsLocked.value"
-          @click="pickFiles"
-        >
-          <Icon name="upload" :size="13" /> 添加参考
-        </button>
-        <button
-          v-if="!started"
-          class="btn sm ghost att-btn"
-          type="button"
-          :disabled="s.attachmentsLocked.value"
-          title="从各项目素材库选取存量图 / 视频 / 音频"
-          @click="showPicker = true"
-        >
-          <Icon name="arrange" :size="13" /> 从素材选取
-        </button>
-        <span v-if="!started" class="muted cost-hint">
-          <Icon name="alert" :size="12" />
-          上传/选取参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
-        </span>
-        <button
-          class="btn primary"
-          type="submit"
-          :disabled="planning() || s.first.busy.value || uploading() || s.state.loadingDetail || !draft.trim()"
-        >
-          <Icon name="send" :size="14" />
-          {{ s.first.busy.value || uploading() ? '处理中…' : started ? '记录建议' : s.first.state.phase === 'failed' ? '重新规划' : s.first.state.phase === 'uncertain' ? '核对后继续' : s.first.active.value ? '继续生成方案' : '发送' }}
-        </button>
-        <button v-if="!s.state.detail?.progress" class="btn ghost" type="button" :disabled="s.state.loadingDetail || s.first.busy.value" @click="s.refreshStatus">更新状态</button>
+        <div v-if="!started" class="crow-tools">
+          <button
+            class="btn sm ghost att-btn"
+            type="button"
+            :disabled="s.attachmentsLocked.value"
+            @click="pickFiles"
+          >
+            <Icon name="upload" :size="13" /> 添加参考
+          </button>
+          <button
+            class="btn sm ghost att-btn"
+            type="button"
+            :disabled="s.attachmentsLocked.value"
+            title="从各项目素材库选取存量图 / 视频 / 音频"
+            @click="showPicker = true"
+          >
+            <Icon name="arrange" :size="13" /> 从素材选取
+          </button>
+        </div>
+        <div class="crow-actions">
+          <button
+            v-if="!s.state.detail?.progress"
+            class="btn sm ghost"
+            type="button"
+            :disabled="s.state.loadingDetail || s.first.busy.value"
+            @click="s.refreshStatus"
+          >
+            <Icon name="refresh" :size="13" /> 更新状态
+          </button>
+          <button
+            class="btn primary"
+            type="submit"
+            :disabled="planning() || s.first.busy.value || uploading() || s.state.loadingDetail || !draft.trim()"
+          >
+            <Icon name="send" :size="13" />
+            {{ s.first.busy.value || uploading() ? '处理中…' : started ? '记录建议' : s.first.state.phase === 'failed' ? '重新规划' : s.first.state.phase === 'uncertain' ? '核对后继续' : s.first.active.value ? '继续生成方案' : '发送' }}
+          </button>
+        </div>
       </div>
+      <p v-if="!started" class="muted cost-hint">
+        <Icon name="alert" :size="12" />
+        上传/选取参考本身不计费；参考视频解析会额外调用多模态/转写，媒体制作在确认方案后进行。
+      </p>
     </form>
 
     <AssetPreviewer
@@ -264,7 +275,12 @@ async function onFiles(e: Event): Promise<void> {
 
 <style scoped>
 .ec-input-label { display: block; margin-bottom: 8px; color: var(--text-2); font-size: 13px; }
-.composer .btn { min-height: 44px; }
+.composer .btn {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
 .conv {
   display: flex;
   flex-direction: column;
@@ -540,23 +556,40 @@ async function onFiles(e: Event): Promise<void> {
 .crow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-top: 9px;
   flex-wrap: wrap;
 }
 
-.cost-hint {
-  display: inline-flex;
+/* 左工具簇（参考附件）与右动作簇（状态/发送）：两端对齐，簇内 8px 间距 */
+.crow-tools {
+  display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.crow-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-  text-align: right;
-  line-height: 1.4;
+}
+
+/* 计费提示：输入行下方独立 helper 行，整行换行不挤按钮 */
+.cost-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 8px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 .cost-hint .ic {
   color: var(--warn);
   flex: none;
+  align-self: center;
 }
 
 .file-in {
