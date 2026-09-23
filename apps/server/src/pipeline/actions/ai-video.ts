@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
-import { assets, genTasks, pipelineRuns, type CharacterRow, type GenTask } from '../../db/schema'
+import { assets, genTasks, type CharacterRow, type GenTask } from '../../db/schema'
 import { buildVideoRequest, getVideoAdapter } from '../../adapters/video'
 import { resolveEndpoint } from '../../adapters/provider'
 import type { VideoAdapter, VideoGenRequest } from '../../adapters/types'
@@ -18,6 +18,7 @@ import { normalizePositiveIds } from '../refs'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
+import { runCancelled } from '../cancel'
 import { pinOf, recipeOf, mediaFailure, recipeFirstFrameId, isCreationTemplate } from '../../services/creation-chat/recipe'
 import { compileDialogueShot, dialogueAudioOptions } from '../../services/creation-chat/dialogue'
 import { dialogueSource } from '../../services/creation-chat/dialogue-cache'
@@ -221,12 +222,15 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
           .set({
             prompt: promptText,
             params: paramsJson,
+            // [F03] 内容变更 → 旧第三方受理失效：无条件清空 task_id，令续跑/重跑重新提交（而非轮询变更前旧结果）
+            taskId: null,
             ...(requeue ? { status: 'pending', attempts: 0, errorMsg: null } : {}),
             updatedAt: nowMs(),
           })
           .where(eq(genTasks.id, existingTask.id))
         existingTask.prompt = promptText
         existingTask.params = paramsJson
+        existingTask.taskId = null
         if (requeue) {
           existingTask.status = 'pending'
           existingTask.attempts = 0
@@ -391,7 +395,9 @@ async function runOneTask(
         ...(native ? { extra: { ...native, referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] } }
           : setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
       })
-      const gen = recipe && task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
+      // [F03] 续跑复用已受理第三方任务：存在 task_id（轮询型供应商提交后落库、内容未变更）→ 只查询不重复提交，
+      // 覆盖普通运行（原仅 recipe 分支复用，普通 run 断点续跑会对已受理镜头二次计费）
+      const gen = task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
       let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
       let thirdPartyTaskId: string | null = gen.kind === 'poll' ? gen.taskId : null
       if (gen.kind === 'poll') {
@@ -512,15 +518,6 @@ async function pollVideoTask(
     if (Date.now() > deadline) throw new Error(`视频任务轮询超时（>10 分钟，task_id=${taskId}）`)
     await sleep(POLL_INTERVAL_MS)
   }
-}
-
-async function runCancelled(runId: number): Promise<boolean> {
-  const rows = await db
-    .select({ status: pipelineRuns.status })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1)
-  return rows[0]?.status === 'cancelled'
 }
 
 /** 首帧能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none'（不阻断主线） */

@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
-import { genTasks, pipelineRuns, type GenTask } from '../../db/schema'
+import { genTasks, type GenTask } from '../../db/schema'
 import { emitStudioEvent } from '../../services/events'
 import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
 import { isJsonTextFormat, readTextAsset, writeTextAsset } from '../../services/storage'
@@ -8,6 +8,7 @@ import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../se
 import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { interpolate } from '../refs'
+import { runCancelled } from '../cancel'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
 
@@ -728,15 +729,6 @@ export function buildItemPrompt(opts: {
   const parts = [...opts.staticSections, `--- item ---\n${opts.itemJson}`]
   if (opts.itemAssetSection) parts.push(opts.itemAssetSection)
   return `${opts.templateText}\n\n===== 输入资料 =====\n${parts.join('\n\n')}`
-}
-
-async function runCancelled(runId: number): Promise<boolean> {
-  const rows = await db
-    .select({ status: pipelineRuns.status })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1)
-  return rows[0]?.status === 'cancelled'
 }
 
 /** 简易并发池：all 结束后统一返回（任务内部已捕获失败） */

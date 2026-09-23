@@ -317,6 +317,9 @@ export async function startWorkflow(id: number): Promise<{ workflow: Workflow; r
     if (missingRequired.length) {
       throw new WorkflowError('bad_input', `首段必填输入未满足：${missingRequired.join(', ')}`)
     }
+    // [F06] 预算闸门：首段启动与 advanceWorkflowCore ⑦ 同源拦截（此前首段绕过熔断，仅后续段受检）
+    const budgetHit = await checkBudget({ projectId: wf.projectId })
+    if (budgetHit) throw new WorkflowError('budget_exceeded', budgetHit.message)
     const run = await createRunRow({
       projectId: wf.projectId,
       templateKey: first.templateKey,

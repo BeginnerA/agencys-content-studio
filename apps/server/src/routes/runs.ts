@@ -5,6 +5,7 @@ import { genTasks, pipelineRuns, pipelineSteps, projects, assets } from '../db/s
 import { engine, recoverInterruptedState } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
+import { checkBudget } from '../services/budget'
 import { isCreationTemplate } from '../services/creation-chat/recipe'
 import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
@@ -45,6 +46,9 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
     throw new HttpError(400, 'bad_input', 'input 需为对象（brief 文本 / setting_docs 资产 id 数组 / episode_number 整数）')
   }
   let run
+  // [F06] 预算闸门：与 creation-chat / workflow advance 同源，超阈即拦截（避免普通运行入口绕过熔断）
+  const budgetHit = await checkBudget({ projectId })
+  if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
   try {
     run = await createRunRow({ projectId, templateKey, input: input as Record<string, unknown> })
   } catch (err) {

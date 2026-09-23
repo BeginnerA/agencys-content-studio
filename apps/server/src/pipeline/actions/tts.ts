@@ -3,14 +3,39 @@ import { strictTts } from './strict-tts'
 import { loadCharacterIndex } from '../../services/character'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { cloneEndpoint, loadCloneIndex, parseCloneRef, validCloneRef } from '../../services/tts-clone'
-import type { VoiceClone } from '../../db/schema'
+import { and, eq } from 'drizzle-orm'
+import { db } from '../../db'
+import { genTasks, type GenTask, type VoiceClone } from '../../db/schema'
 import type { AudioEndpoint } from '../../services/tts'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
 import { recordUsage } from '../../services/usage'
+import { runCancelled } from '../cancel'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
+import { RunCancelledError } from '../types'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+const nowMs = (): number => Date.now()
+
+/** 台词内容指纹（续跑幂等判定用）：文本/说话人/音色·情绪提示/语速/lang 任一变化 → 旧音频失效重合成 */
+function lineFingerprint(line: LineItem, speed?: number, lang?: string): string {
+  return JSON.stringify({
+    t: line.text,
+    s: line.speaker ?? null,
+    v: line.voiceHint ?? null,
+    e: line.emotionHint ?? null,
+    sp: speed ?? null,
+    l: lang ?? '',
+  })
+}
+
+function fingerprintOf(task: GenTask): string | null {
+  try {
+    return (JSON.parse(task.params) as { fingerprint?: string }).fingerprint ?? null
+  } catch {
+    return null
+  }
+}
 
 interface LineItem {
   id: string
@@ -79,13 +104,100 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
     }）`,
   )
 
-  const assetIds: number[] = []
+  // [F02+F03] 逐句纳入 gen_tasks 生命周期（与 ai_text / ai_image / ai_video 同源，修复 tts 唯一未接入的缺口）：
+  //  - 取消协作：每句合成前 + 每次重试前查 runCancelled → 抛 RunCancelledError，引擎据此停后续句计费（F02）
+  //  - 续跑幂等：已 succeeded 句复用既有音频资产（resultAssetId）不再二次合成；内容指纹变更 → 归零重排队（F03-TTS）
   const cloneSkipped = new Set<string>()
-  let failed = 0
   const retryRaw = typeof params['retry'] === 'number' ? params['retry'] : 1
   const maxAttempts = Math.max(0, Math.floor(retryRaw)) + 1
+
+  const existing = await db
+    .select()
+    .from(genTasks)
+    .where(and(eq(genTasks.runId, ctx.run.id), eq(genTasks.stepId, ctx.step.id)))
+  const taskByLine = new Map<string, GenTask>()
+  for (const t of existing) {
+    try {
+      const p = JSON.parse(t.params) as { lineId?: string }
+      if (p.lineId) taskByLine.set(p.lineId, t)
+    } catch {
+      // 参数损坏任务：跳过（不参与复用也不视为成功）
+    }
+  }
+
+  // 逐句建行 / 内容变更失效（入队前统一，令复用判定与执行基于同一快照）
+  const lineTasks: GenTask[] = []
+  for (const line of lines) {
+    const fp = lineFingerprint(line, speed, lang)
+    const task = taskByLine.get(line.id)
+    if (!task) {
+      const t = nowMs()
+      const row = (
+        await db
+          .insert(genTasks)
+          .values({
+            projectId: ctx.run.projectId,
+            runId: ctx.run.id,
+            stepId: ctx.step.id,
+            kind: 'audio',
+            provider: ep.providerKey,
+            model: ep.model,
+            prompt: line.text,
+            params: JSON.stringify({ lineId: line.id, fingerprint: fp }),
+            status: 'pending',
+            attempts: 0,
+            createdAt: t,
+            updatedAt: t,
+          })
+          .returning()
+      )[0]!
+      taskByLine.set(line.id, row)
+      lineTasks.push(row)
+      continue
+    }
+    if (task.status !== 'succeeded' && task.status !== 'cancelled' && fingerprintOf(task) !== fp) {
+      await db
+        .update(genTasks)
+        .set({
+          prompt: line.text,
+          params: JSON.stringify({ lineId: line.id, fingerprint: fp }),
+          status: 'pending',
+          attempts: 0,
+          errorMsg: null,
+          resultAssetId: null,
+          taskId: null,
+          updatedAt: nowMs(),
+        })
+        .where(eq(genTasks.id, task.id))
+      task.status = 'pending'
+      task.attempts = 0
+      task.errorMsg = null
+      task.resultAssetId = null
+      task.taskId = null
+    }
+    lineTasks.push(task)
+  }
+
+  const assetIds: number[] = []
+  let reused = 0
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
+    const task = lineTasks[i]!
+    // 续跑复用：已成功句直接取回音频资产，不重复计费
+    if (task.status === 'succeeded' && task.resultAssetId) {
+      assetIds.push(task.resultAssetId)
+      reused += 1
+      continue
+    }
+    // [F02] 提交前取消检查
+    if (await runCancelled(ctx.run.id)) {
+      await db
+        .update(genTasks)
+        .set({ status: 'cancelled', errorMsg: 'run cancelled', updatedAt: nowMs() })
+        .where(eq(genTasks.id, task.id))
+      throw new RunCancelledError()
+    }
+    const idx = String(i + 1).padStart(2, '0')
     try {
       const charVoice = line.speaker ? charIndex.get(line.speaker)?.voice ?? undefined : undefined
       const hit = resolveVoiceChain({
@@ -108,7 +220,12 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       const emotionKey = parseEmotionKey(line.emotionHint ?? '')
       // 下发透传完整 emotion_hint（六维细节不再截断）；emotionKey 仅保留作审计基调词
       const emotionPayload = resolveEmotionPayload(line.emotionHint ?? '', lineEp.emotion)
-      // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出
+      await db
+        .update(genTasks)
+        .set({ status: 'processing', attempts: task.attempts + 1, errorMsg: null, updatedAt: nowMs() })
+        .where(eq(genTasks.id, task.id))
+      task.attempts += 1
+      // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出；每次重试前复查取消（F02）
       let data: Uint8Array
       for (let attempt = 1; ; attempt++) {
         try {
@@ -116,17 +233,24 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
           break
         } catch (err) {
           if (attempt >= maxAttempts) throw err
+          if (await runCancelled(ctx.run.id)) {
+            await db
+              .update(genTasks)
+              .set({ status: 'cancelled', errorMsg: 'run cancelled', updatedAt: nowMs() })
+              .where(eq(genTasks.id, task.id))
+            throw new RunCancelledError()
+          }
           ctx.log(`句 ${line.id} 第 ${attempt}/${maxAttempts} 次失败，1.5s 后重试：${(err as Error).message}`)
           await sleep(1500)
         }
       }
-      const idx = String(i + 1).padStart(2, '0')
       const fileName = `${Date.now()}-voice-${idx}-${sanitizeName(line.id)}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', fileName)
       ensureProjectDirs(ctx.run.projectId)
       writeFileSync(absPathOf(relPath), data)
       const asset = await registerAsset(ctx.run.projectId, {
         stepId: ctx.step.id,
+        taskId: task.id,
         runId: ctx.run.id,
         kind: 'audio',
         purpose: 'voice',
@@ -156,11 +280,18 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         },
         tags: ['voice'],
       })
+      await db
+        .update(genTasks)
+        .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
+        .where(eq(genTasks.id, task.id))
+      task.status = 'succeeded'
+      task.resultAssetId = asset.id
       // [M4] 用量记录：逐句按字符数计（元/千字符）
       await recordUsage({
         projectId: ctx.run.projectId,
         runId: ctx.run.id,
         stepId: ctx.step.id,
+        taskId: task.id,
         assetId: asset.id,
         kind: 'tts',
         unit: 'char',
@@ -171,12 +302,16 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       assetIds.push(asset.id)
       ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${data.byteLength} 字节）`)
     } catch (err) {
-      failed += 1
+      if (err instanceof RunCancelledError) throw err
+      await db
+        .update(genTasks)
+        .set({ status: 'failed', errorMsg: (err as Error).message, completedAt: nowMs(), updatedAt: nowMs() })
+        .where(eq(genTasks.id, task.id))
       ctx.log(`句 ${line.id} 配音失败（已尝试 ${maxAttempts} 次）：${(err as Error).message}`)
-      if (failed === 1) throw err
+      throw err
     }
   }
-  if (failed > 0) throw new Error(`配音失败 ${failed} 句（未配置 audio 实例请到 Settings → 语音合成）`)
+  if (reused > 0) ctx.log(`续跑复用已配音 ${reused} 句（不重复计费）`)
   ctx.log(`配音完成：${assetIds.length} 句 → ${assetIds.join(', ')}`)
   return { assetIds }
 }

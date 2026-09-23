@@ -1,8 +1,9 @@
 import { writeFileSync } from 'node:fs'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
-import { genTasks, pipelineRuns } from '../../db/schema'
+import { genTasks } from '../../db/schema'
 import { recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
+import { runCancelled } from '../cancel'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { recordUsage } from '../../services/usage'
@@ -20,8 +21,7 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
   const assetIds: number[] = []
   const existing = await db.select().from(genTasks).where(and(eq(genTasks.runId, ctx.run.id), eq(genTasks.stepId, ctx.step.id)))
   for (const line of recipe.plan.lines) {
-    const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, ctx.run.id))
-    if (run?.status === 'cancelled') throw new RunCancelledError()
+    if (await runCancelled(ctx.run.id)) throw new RunCancelledError()
     let task = existing.find((t) => JSON.parse(t.params).lineId === line.id)
     if (task?.status === 'succeeded' && task.resultAssetId) {
       assetIds.push(task.resultAssetId)

@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
-import { genTasks, pipelineRuns, type CharacterRow, type GenTask } from '../../db/schema'
+import { genTasks, type CharacterRow, type GenTask } from '../../db/schema'
 import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../../adapters/provider'
 import { assetToDataUri } from '../../services/asset-ref'
 import { loadEntityIndex } from '../../services/character'
@@ -14,6 +14,7 @@ import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } f
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { RunCancelledError } from '../types'
+import { runCancelled } from '../cancel'
 import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services/creation-chat/recipe'
 import { compileDialogueShot } from '../../services/creation-chat/dialogue'
 
@@ -410,15 +411,6 @@ async function runOneTask(
       await sleep(1500)
     }
   }
-}
-
-async function runCancelled(runId: number): Promise<boolean> {
-  const rows = await db
-    .select({ status: pipelineRuns.status })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1)
-  return rows[0]?.status === 'cancelled'
 }
 
 /** 参考图能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none'（不阻断主线） */
