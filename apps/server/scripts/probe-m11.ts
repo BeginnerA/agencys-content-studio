@@ -1,4 +1,4 @@
-/**
+﻿/**
  * M11 探针（引擎级单步重跑 + 镜头级音字对齐 + BGM·转场）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m11.ts [--section=rerun|align|bgm|transition|template|regression]
  *
@@ -18,13 +18,16 @@
  *   regression M7 零回归：computeShotSegments（均分/显式/估算）+ parseShotDurations 双口径 +
  *              对齐回退形态正交
  *
+ * [红线拆分 2026-09] rerun/cascade → scripts/probes/m11/modules/cascade.ts、
+ * bgm → modules/bgm.ts、regression → modules/regression.ts（断言逐字保留，行为零变更）；
+ * 本入口保留隔离环境/setup/行级 helpers 与 align/transition/template 三节，经 ctx 注入共享。
+ *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Asset } from '../src/db/schema'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '..', '..', '..') // apps/server/scripts -> 仓库根
@@ -58,7 +61,7 @@ async function main(): Promise<void> {
   const { assets, genTasks, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { absPathOf, ensureProjectDirs, registerAsset, relPathOf } = await import('../src/services/storage')
-  const { WorkbenchError, resetStepForRerun, describeChainRerun, resetChainForRerun } = await import('../src/services/shot')
+  const { WorkbenchError } = await import('../src/services/shot') // [M11 split] rerun/cascade/bgm/regression live in probes/m11/modules/* (dynamic-import their own services)
 
   const log = createLogger('probe-m11')
   let failed = 0
@@ -221,194 +224,8 @@ async function main(): Promise<void> {
   }
 
   // ================= sections =================
-
-  const sectionRerun = async (): Promise<void> => {
-    // ---- 复用模式（默认）：succeeded 任务不动、tasksReset = 非 succeeded 数 ----
-    const s1 = await seedRun()
-    const r1 = await resetStepForRerun(s1.runId, 'gen_images', {})
-    check(
-      r1.hasTasks && r1.tasksTotal === 2 && r1.tasksSucceeded === 1 && r1.tasksReset === 1,
-      `复用模式计数（total=${r1.tasksTotal} succ=${r1.tasksSucceeded} reset=${r1.tasksReset}）`,
-    )
-    const t1r = await getTask(s1.t1)
-    check(t1r.status === 'succeeded' && t1r.attempts === 3, '复用模式：succeeded 任务未动（status/attempts）')
-    const t2r = await getTask(s1.t2)
-    check(t2r.status === 'failed' && t2r.attempts === 2 && t2r.errorMsg === '生成失败', '复用模式：failed 任务未动（执行期幂等段归零）')
-    const st1 = await getStep(s1.imgStepId)
-    const ru1 = await getRun(s1.runId)
-    check(st1.status === 'pending' && st1.error === null && st1.completedAt === null, 'step → pending（清 error/completedAt）')
-    check(
-      ru1.status === 'queued' && ru1.error === null && ru1.completedAt === null && ru1.currentStepKey === null,
-      'run → queued（清 error/completedAt/currentStepKey）',
-    )
-
-    // ---- reset_tasks=true：全量归零 + resultAssetId 保留 ----
-    const s2 = await seedRun()
-    const r2 = await resetStepForRerun(s2.runId, 'gen_images', { resetTasks: true })
-    check(r2.tasksTotal === 2 && r2.tasksSucceeded === 1 && r2.tasksReset === 2, `全量：tasksReset=total（${r2.tasksReset}）`)
-    const t1r2 = await getTask(s2.t1)
-    check(
-      t1r2.status === 'pending' && t1r2.attempts === 0 && t1r2.completedAt === null && t1r2.errorMsg === null,
-      '全量：succeeded 任务归零（pending/attempts/errorMsg/completedAt）',
-    )
-    check(t1r2.resultAssetId === s2.imgA, `全量：resultAssetId 保留（${t1r2.resultAssetId}）`)
-    const t2r2 = await getTask(s2.t2)
-    check(t2r2.status === 'pending' && t2r2.attempts === 0, '全量：failed 任务归零')
-
-    // ---- 无任务步骤（ffmpeg_merge）：hasTasks=false 选项忽略 ----
-    const s3 = await seedRun()
-    const r3 = await resetStepForRerun(s3.runId, 'compose_video', {})
-    check(!r3.hasTasks && r3.tasksTotal === 0 && r3.tasksReset === 0, '无任务步骤：hasTasks=false / tasksReset=0')
-    const s4 = await seedRun()
-    const r4 = await resetStepForRerun(s4.runId, 'compose_video', { resetTasks: true })
-    check(!r4.hasTasks && r4.tasksReset === 0 && (await getRun(s4.runId)).status === 'queued', '无任务 + reset_tasks=true：不报错（选项忽略）')
-
-    // ---- 校验拒绝矩阵 ----
-    const s5 = await seedRun()
-    const eNf = await errOf(() => resetStepForRerun(s5.runId, 'nope', {}))
-    check(eNf instanceof WorkbenchError && eNf.code === 'not_found', '未知步骤 → not_found')
-    const eSkip = await errOf(() => resetStepForRerun(s5.runId, 'subtitle', {}))
-    check(eSkip instanceof WorkbenchError && eSkip.code === 'bad_step_status', 'skipped 目标 → bad_step_status')
-    await setStepStatus(s5.voiceStepId, 'failed')
-    const eOther = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
-    check(eOther instanceof WorkbenchError && eOther.code === 'other_failed', '存在其他失败步骤 → other_failed')
-    await setStepStatus(s5.voiceStepId, 'succeeded')
-    await setRunStatus(s5.runId, 'running')
-    const eAct = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
-    check(eAct instanceof WorkbenchError && eAct.code === 'run_active', 'run running → run_active')
-    await setRunStatus(s5.runId, 'queued')
-    const eAct2 = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
-    check(eAct2 instanceof WorkbenchError && eAct2.code === 'run_active', 'run queued → run_active')
-    await setRunStatus(s5.runId, 'cancelled')
-    const eCan = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
-    check(eCan instanceof WorkbenchError && eCan.code === 'run_cancelled', 'run cancelled → run_cancelled')
-    await setRunStatus(s5.runId, 'weird')
-    const eBad = await errOf(() => resetStepForRerun(s5.runId, 'gen_images', {}))
-    check(eBad instanceof WorkbenchError && eBad.code === 'bad_status', '未知 run 状态 → bad_status')
-  }
-
-  const sectionCascade = async (): Promise<void> => {
-    // 线性快照模板（无 after → 默认依赖前一步），与种子步骤键一一对应；templateForRun 采用快照
-    const chainKeysList = ['make_storyboard', 'gen_images', 'voice', 'subtitle', 'compose_video']
-    const actionOf = (k: string): string =>
-      k === 'gen_images' ? 'ai_image' : k === 'voice' ? 'tts' : k === 'subtitle' ? 'subtitle' : k === 'compose_video' ? 'ffmpeg_merge' : 'ai_text'
-    const snapOf = (key: string) => JSON.stringify({
-      key,
-      version: 1,
-      name: 'cascade probe',
-      genre: 'other',
-      inputs: [],
-      defaults: {},
-      steps: chainKeysList.map((k) => ({ key: k, action: actionOf(k), title: k, inputs: {} })),
-    })
-
-    /**
-     * 种子（用户真实卡点）：make_storyboard(succ) → gen_images(succ, t1 succ + t2 failed)
-     * → voice(FAILED) → subtitle(pending) → compose_video(pending)；run=failed。
-     * 单步重跑 gen_images 因 voice failed 被禁（other_failed）；级联则把 voice 及下游纳入重置集合→放行。
-     */
-    const seedChainRun = async (opts?: { templateKey?: string; status?: string }): Promise<{ runId: number; ms: number; gi: number; vo: number; sub: number; t1: number; t2: number; mst: number }> => {
-      const templateKey = opts?.templateKey ?? 'probe-cascade'
-      const status = opts?.status ?? 'failed'
-      const runId = (
-        await db
-          .insert(pipelineRuns)
-          .values({
-            projectId: pid,
-            templateKey,
-            templateSnapshot: snapOf(templateKey),
-            status,
-            input: JSON.stringify({ episode_number: 1 }),
-            currentStepKey: 'voice',
-            createdAt: T0,
-            updatedAt: T0,
-          })
-          .returning()
-      )[0]!.id
-      const ms = await mkStep(runId, 1, 'make_storyboard', 'ai_text')
-      const gi = await mkStep(runId, 2, 'gen_images', 'ai_image')
-      const vo = await mkStep(runId, 3, 'voice', 'tts', 'failed')
-      const sub = await mkStep(runId, 4, 'subtitle', 'subtitle', 'pending')
-      await mkStep(runId, 5, 'compose_video', 'ffmpeg_merge', 'pending')
-      const mkT = async (stepId: number, status: string, params: Record<string, unknown>): Promise<number> =>
-        (
-          await db
-            .insert(genTasks)
-            .values({ projectId: pid, runId, stepId, kind: 'image', provider: 'probe', params: JSON.stringify(params), status, attempts: 1, createdAt: T0, updatedAt: T0 })
-            .returning()
-        )[0]!.id
-      const t1 = await mkT(gi, 'succeeded', { shotId: 's01' })
-      const t2 = await mkT(gi, 'failed', { shotId: 's02' })
-      const mst = await mkT(ms, 'succeeded', {})
-      await mkT(vo, 'failed', {})
-      // 预置旧产物（级联清 output 断言）
-      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [999] }) }).where(eq(pipelineSteps.id, gi))
-      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [998] }) }).where(eq(pipelineSteps.id, vo))
-      return { runId, ms, gi, vo, sub, t1, t2, mst }
-    }
-
-    // ---- A. 对比：单步重跑被禁、级联放行 ----
-    const a = await seedChainRun()
-    const eSingle = await errOf(() => resetStepForRerun(a.runId, 'gen_images', {}))
-    check(eSingle instanceof WorkbenchError && eSingle.code === 'other_failed', 'A 单步重跑 gen_images（下游 voice failed）→ other_failed（现状死角）')
-    const dA = await describeChainRerun(a.runId, 'gen_images', { resetTasks: true })
-    const chainA = dA.chain.map((c) => c.stepKey)
-    check(
-      JSON.stringify(chainA) === JSON.stringify(['gen_images', 'voice', 'subtitle', 'compose_video']),
-      `A 级联集合=目标+传递下游（实际 ${chainA.join('/')}）`,
-    )
-    check(!chainA.includes('make_storyboard'), 'A 上游 make_storyboard 不入级联集合')
-    check(dA.chargedSteps === 2 && dA.totalTasksToRun === 5, `A 预览计数（charged=${dA.chargedSteps} totalToRun=${dA.totalTasksToRun}，gen_images2+voice1+subtitle1整体+compose1整体）`)
-    const rA = await resetChainForRerun(a.runId, 'gen_images', { resetTasks: true })
-    check(rA.chain.length === 4 && (await getRun(a.runId)).status === 'queued', 'A 执行：4 步入 pending、run → queued')
-    const giA = await getStep(a.gi)
-    const voA = await getStep(a.vo)
-    check(giA.status === 'pending' && giA.output === null && voA.status === 'pending' && voA.output === null, 'A 级联步清 output 并置 pending')
-    const t1A = await getTask(a.t1)
-    const t2A = await getTask(a.t2)
-    check(t1A.status === 'pending' && t2A.status === 'pending', 'A 目标步 reset_tasks=true：gen_images 全量任务归零')
-    const msA = await getStep(a.ms)
-    const mstA = await getTask(a.mst)
-    check(msA.status === 'succeeded' && mstA.status === 'succeeded', 'A 防重复扣费：上游 make_storyboard 步骤/任务保持 succeeded 未动')
-
-    // ---- B. 目标复用（resetTasks=false）：仅重置非 succeeded，下游仍全量 ----
-    const b = await seedChainRun()
-    const rB = await resetChainForRerun(b.runId, 'gen_images', { resetTasks: false })
-    const giB = rB.chain.find((c) => c.isTarget)!
-    const voB = rB.chain.find((c) => c.stepKey === 'voice')!
-    check(giB.tasksToRun === 1 && giB.tasksTotal === 2, 'B 目标复用：gen_images tasksToRun=非succeeded数（1/2）')
-    check(voB.tasksToRun === voB.tasksTotal && voB.tasksTotal === 1, 'B 下游 voice 一律全量重置（1/1）')
-    const t1B = await getTask(b.t1)
-    const t2B = await getTask(b.t2)
-    check(t1B.status === 'succeeded' && t2B.status === 'pending', 'B 复用：succeeded 任务不动、failed 归零')
-
-    // ---- C. 级联范围外 failed 拒绝：从 subtitle 起级联（voice failed 在上游、不在集合）----
-    const cRun = await seedChainRun()
-    await setStepStatus(cRun.sub, 'succeeded') // 使目标步合法（succeeded），专测范围外 failed 判定
-    const eC = await errOf(() => describeChainRerun(cRun.runId, 'subtitle', { resetTasks: false }))
-    check(eC instanceof WorkbenchError && eC.code === 'other_failed', 'C 级联范围外存在 failed（voice）→ other_failed')
-
-    // ---- D. 上游未就绪拒绝：make_storyboard 非 failed 但 pending ----
-    const dRun = await seedChainRun()
-    await setStepStatus(dRun.ms, 'pending')
-    await setStepStatus(dRun.vo, 'succeeded') // 消除 in-chain failed，使失败收敛不干扰，专测上游判定
-    const eD = await errOf(() => describeChainRerun(dRun.runId, 'gen_images', { resetTasks: false }))
-    check(eD instanceof WorkbenchError && eD.code === 'upstream_not_ready', 'D 上游 make_storyboard pending（非终态）→ upstream_not_ready')
-
-    // ---- E. cancelled / running run 拒绝 + easy-video 守卫（仅 completed 拦、failed 放行）----
-    const eRun = await seedChainRun()
-    await setRunStatus(eRun.runId, 'cancelled')
-    const eE = await errOf(() => describeChainRerun(eRun.runId, 'gen_images', {}))
-    check(eE instanceof WorkbenchError && eE.code === 'run_cancelled', 'E cancelled run → run_cancelled（引导续跑）')
-    // E2：easy-video + failed → 守卫放行（用户真实卡点场景），级联集合正常解析
-    const evRun = await seedChainRun({ templateKey: 'easy-video' })
-    const dEV = await describeChainRerun(evRun.runId, 'gen_images', { resetTasks: true })
-    check(dEV.chain.length === 4 && dEV.chain[0]!.stepKey === 'gen_images', 'E2 easy-video+failed → 守卫放行，级联集合=目标+下游（4 步）')
-    // E3：easy-video + completed → 额外生成，creation_confirmation_required 拦截
-    const evcRun = await seedChainRun({ templateKey: 'easy-video', status: 'completed' })
-    const eE3 = await errOf(() => describeChainRerun(evcRun.runId, 'gen_images', {}))
-    check(eE3 instanceof WorkbenchError && eE3.code === 'creation_confirmation_required', 'E3 easy-video+completed → creation_confirmation_required（额外生成需重新确认）')
-  }
+  // rerun / cascade / bgm / regression 四节因 ≤800 行红线拆至 scripts/probes/m11/modules/*（断言逐字保留），
+  // 经下方 m11Ctx 注入共享 helpers；align / transition / template 留在本文件。
 
   const sectionAlign = async (): Promise<void> => {
     const { parseShotLines, planVoiceAlignedSegments, planAudioDrivenShotDurations, planSrtShifts, shiftSrtText, srtTsToSec, secToSrtTs } = await import(
@@ -544,103 +361,6 @@ async function main(): Promise<void> {
     check(secToSrtTs(-5) === '00:00:00,000', 'secToSrtTs 负值收敛 0')
   }
 
-  const sectionBgm = async (): Promise<void> => {
-    const compose = await import('../src/services/compose-config')
-    const s = await seedRun()
-    const MP3 = new Uint8Array(Buffer.from('probe-m11-mp3'))
-
-    // ---- 上传绑定：落盘 + 行属性 ----
-    const r1 = await compose.bindBgmFromUpload(s.runId, { name: 'theme.mp3', data: MP3 })
-    check(r1.kind === 'audio' && r1.purpose === 'bgm' && r1.runId === s.runId && r1.stepId === null, '上传绑定行属性（kind/purpose/runId/stepId=null）')
-    check(!!r1.relPath && existsSync(absPathOf(r1.relPath)), '上传落盘存在')
-    check((JSON.parse(r1.params ?? '{}') as Record<string, unknown>)['source'] === 'upload', 'params.source=upload')
-    check((await compose.loadBgmAsset(s.runId))?.id === r1.id, 'loadBgmAsset 返回当前行')
-
-    // ---- 复制行绑定：relPath 复用 + 源行不污染 ----
-    const r2 = await compose.bindBgmFromAsset(s.runId, s.audioSrc)
-    const srcRow = await getAsset(s.audioSrc)
-    check(r2.relPath === srcRow.relPath && r2.name === srcRow.name, '复制行：relPath/name 复用源资产')
-    const p2 = JSON.parse(r2.params ?? '{}') as Record<string, unknown>
-    check(p2['source'] === 'asset' && p2['source_asset_id'] === s.audioSrc, 'params.source=asset + source_asset_id 回指')
-    check((await getAsset(r1.id)).deletedAt !== null, '绑定替换：旧行软删')
-    check((await getAsset(s.audioSrc)).deletedAt === null, '源资产行不被污染')
-    check((await compose.loadBgmAsset(s.runId))?.id === r2.id, 'loadBgmAsset 最新有效行')
-
-    // ---- 隔离：另一 run 不可见 ----
-    const s2 = await seedRun()
-    check((await compose.loadBgmAsset(s2.runId)) === null, 'run 隔离：另一 run 无 BGM')
-
-    // ---- 移除：软删保留审计 ----
-    await compose.removeBgm(s.runId)
-    check((await compose.loadBgmAsset(s.runId)) === null, 'removeBgm → loadBgmAsset=null')
-    check((await getAsset(r2.id)).deletedAt !== null, 'removeBgm 软删行（审计保留）')
-
-    // ---- 校验拒绝矩阵 ----
-    const eKind = await errOf(() => compose.bindBgmFromUpload(s.runId, { name: 'a.txt', data: MP3 }))
-    check(eKind instanceof WorkbenchError && eKind.code === 'bad_kind', '非音频扩展名 → bad_kind')
-    const eNo = await errOf(() => compose.bindBgmFromAsset(s.runId, 999999))
-    check(eNo instanceof WorkbenchError && eNo.code === 'bad_asset', '不存在资产 → bad_asset')
-    const eImg = await errOf(() => compose.bindBgmFromAsset(s.runId, s.imgA))
-    check(eImg instanceof WorkbenchError && eImg.code === 'bad_asset', '非 audio 资产 → bad_asset')
-    const pid2 = (
-      await db
-        .insert(projects)
-        .values({ name: 'M11 探针项目2', genre: 'other', templateKey: 'mengbao-episode', settings: '{}', tags: '[]', createdAt: T0, updatedAt: T0 })
-        .returning()
-    )[0]!.id
-    ensureProjectDirs(pid2)
-    const crossRel = relPathOf(pid2, 'voice', 'm11-cross.mp3')
-    writeFileSync(absPathOf(crossRel), MP3)
-    const crossAudio = (await registerAsset(pid2, { name: 'cross.mp3', kind: 'audio', purpose: 'voice', relPath: crossRel, ext: 'mp3' })).id
-    const eCross = await errOf(() => compose.bindBgmFromAsset(s.runId, crossAudio))
-    check(eCross instanceof WorkbenchError && eCross.code === 'bad_asset', '跨项目资产 → bad_asset')
-    const delRel = relPathOf(pid, 'voice', 'm11-del.mp3')
-    writeFileSync(absPathOf(delRel), MP3)
-    const delAudio = (await registerAsset(pid, { name: 'del.mp3', kind: 'audio', purpose: 'voice', relPath: delRel, ext: 'mp3' })).id
-    await db.update(assets).set({ deletedAt: Date.now() }).where(eq(assets.id, delAudio))
-    const eDel = await errOf(() => compose.bindBgmFromAsset(s.runId, delAudio))
-    check(eDel instanceof WorkbenchError && eDel.code === 'bad_asset', '已删除资产 → bad_asset')
-    await setRunStatus(s.runId, 'running')
-    const eAct = await errOf(() => compose.bindBgmFromUpload(s.runId, { name: 'x.mp3', data: MP3 }))
-    check(eAct instanceof WorkbenchError && eAct.code === 'run_active', '活跃 run → run_active')
-    await setRunStatus(s.runId, 'completed')
-
-    // ---- updateComposeConfig：合并写 / clamp / 白名单 / 枚举 ----
-    const u1 = await compose.updateComposeConfig(s.runId, { transition: 'fade', transition_duration: 0.5, bgm_volume: 0.25 })
-    check(u1.transition === 'fade' && u1.transition_duration === 0.5 && u1.bgm_volume === 0.25, '三键写入')
-    const inputObj = JSON.parse((await getRun(s.runId)).input) as Record<string, unknown>
-    check(inputObj['episode_number'] === 7 && inputObj['with_voice'] === true, '合并写：他键不丢（episode_number/with_voice）')
-    check((inputObj['_compose'] as { transition?: string }).transition === 'fade', 'run.input._compose 已写入')
-    const u2 = await compose.updateComposeConfig(s.runId, { transition_duration: 9, bgm_volume: 1.5, bgm_fade: 5 })
-    check(u2.transition_duration === 2 && u2.bgm_volume === 1 && u2.bgm_fade === 2, 'clamp 上限（2/1/2）')
-    const u3 = await compose.updateComposeConfig(s.runId, { transition_duration: 0, bgm_volume: -1, bgm_fade: -1 })
-    check(u3.transition_duration === 0.1 && u3.bgm_volume === 0 && u3.bgm_fade === 0, 'clamp 下限（0.1/0/0）')
-    check(u3.transition === 'fade', '部分 patch 合并保留未提及键（transition）')
-    const eEnum = await errOf(() => compose.updateComposeConfig(s.runId, { transition: 'wipe' }))
-    check(eEnum instanceof WorkbenchError && eEnum.code === 'bad_field', 'transition 枚举拒绝')
-    const eKey = await errOf(() => compose.updateComposeConfig(s.runId, { foo: 1 }))
-    check(eKey instanceof WorkbenchError && eKey.code === 'bad_field', '未知键拒绝（白名单）')
-    const eType = await errOf(() => compose.updateComposeConfig(s.runId, { bgm_volume: 'x' }))
-    check(eType instanceof WorkbenchError && eType.code === 'bad_field', '非数字拒绝')
-    const eNaN = await errOf(() => compose.updateComposeConfig(s.runId, { bgm_volume: Number.NaN }))
-    check(eNaN instanceof WorkbenchError && eNaN.code === 'bad_field', 'NaN 拒绝（非有限数）')
-
-    // ---- readComposeConfig 容错 + 聚合读 ----
-    check(JSON.stringify(compose.readComposeConfig(null)) === '{}', 'null → {}')
-    check(JSON.stringify(compose.readComposeConfig('junk')) === '{}', '坏 JSON → {}')
-    check(JSON.stringify(compose.readComposeConfig('{"_compose":[]}')) === '{}', '数组形态 → {}')
-    check(compose.readComposeConfig('{"_compose":{"bgm_fade":1}}').bgm_fade === 1, '合法解析')
-    const gc = await compose.getComposeConfig(s.runId)
-    check(gc.config.transition === 'fade' && gc.bgm === null, '聚合读（config=已写 / bgm=已移除）')
-    await setRunStatus(s2.runId, 'running')
-    const eGc = await errOf(() => compose.getComposeConfig(s2.runId))
-    check(eGc instanceof WorkbenchError && eGc.code === 'run_active', 'getComposeConfig 活跃拒绝')
-    await setRunStatus(s2.runId, 'completed')
-
-    // ---- 枚举 ----
-    check(compose.TRANSITIONS.length === 6 && (compose.TRANSITIONS as readonly string[]).includes('dissolve'), 'TRANSITIONS 六枚举')
-  }
-
   const sectionTransition = async (): Promise<void> => {
     const { buildTransitionPlan } = await import('../src/pipeline/actions/ffmpeg-merge')
 
@@ -740,80 +460,23 @@ async function main(): Promise<void> {
     check(badSnap.version === 10, '损坏快照 → 回退文件加载')
   }
 
-  const sectionRegression = async (): Promise<void> => {
-    const { computeShotSegments, parseShotDurations, planVoiceAlignedSegments } = await import('../src/pipeline/actions/ffmpeg-merge')
-
-    // 真实文件（images 不读内容；clips 空文件探测必失败 → 估算路径）
-    const okRel1 = relPathOf(pid, 'shot_image', 'm11-plan-1.png')
-    const okRel2 = relPathOf(pid, 'shot_image', 'm11-plan-2.png')
-    const okRel3 = relPathOf(pid, 'motion_clip', 'm11-plan-3.mp4')
-    const okRel4 = relPathOf(pid, 'motion_clip', 'm11-plan-4.mp4')
-    const missingRel = relPathOf(pid, 'shot_image', 'm11-plan-missing.png')
-    for (const rel of [okRel1, okRel2, okRel3, okRel4]) writeFileSync(absPathOf(rel), Buffer.from('m11'))
-
-    const row = (id: number, kind: string, relPath: string | null, shotId: string | null, duration?: number): Asset =>
-      ({ id, kind, relPath, duration: duration ?? null, params: shotId ? JSON.stringify({ shotId }) : null }) as unknown as Asset
-
-    // ---- 均分场景（无 per-shot 覆盖；fit_voice 均分基线）----
-    const imgA = row(201, 'image', okRel1, 's01')
-    const imgB = row(202, 'image', okRel2, 's02')
-    const r1 = computeShotSegments([imgA, imgB], 'images', new Map(), 4)
-    check(r1.segments.length === 2 && r1.segments.every((s) => s.durSec === 4 && !s.explicit), '均分：全镜 duration_per_shot=4（非 explicit）')
-
-    // ---- 显式场景（per-shot 覆盖 + 容错；fit_voice explicit 分区输入）----
-    const noRel = row(203, 'image', null, 's03')
-    const miss = row(204, 'image', missingRel, 's04')
-    const wrongKind = row(205, 'video', okRel3, 's05')
-    const r2 = computeShotSegments([imgA, imgB, noRel, miss, wrongKind], 'images', new Map([['s01', 6.5]]), 4)
-    check(r2.segments.length === 2 && r2.skipped.length === 3, `显式：2 段 / 3 跳过（实际 ${r2.segments.length}/${r2.skipped.length}）`)
-    check(
-      JSON.stringify(r2.skipped) === JSON.stringify([203, 204, 205]),
-      `skipped 顺序（缺 relPath → 缺文件 → kind 不符；实际 [${r2.skipped}]）`,
-    )
-    check(
-      r2.segments[0]!.durSec === 6.5 && r2.segments[0]!.explicit === true && r2.segments[1]!.durSec === 4 && !r2.segments[1]!.explicit,
-      'explicit 标记与 M7 一致（fit_voice 分区输入）',
-    )
-
-    // ---- clips：DB duration 优先 → 探测失败估算 ----
-    const v1 = row(206, 'video', okRel3, 's06', 5)
-    const v2 = row(207, 'video', okRel4, 's07')
-    const r3 = computeShotSegments([v1, v2], 'clips', new Map(), 4)
-    check(r3.segments[0]!.durSec === 5 && !r3.segments[0]!.estimated, 'DB duration 优先（非估算）')
-    check(r3.segments[1]!.durSec === 4 && r3.segments[1]!.estimated === true, '探测失败 → duration_per_shot 估算（estimated）')
-
-    // ---- 空输入 ----
-    const r4 = computeShotSegments([], 'images', new Map(), 4)
-    check(r4.segments.length === 0 && r4.skipped.length === 0, '空输入 → 空结果')
-
-    // ---- parseShotDurations：双口径回退 + 形态容错 ----
-    const pd = parseShotDurations(
-      JSON.stringify({ shots: [{ id: 's01', duration: 3 }, { id: 's02', duration_sec: 2.5 }, { id: 5, duration: 2 }, null] }),
-    )
-    check(pd.size === 2 && pd.get('s01') === 3 && pd.get('s02') === 2.5, 'parseShotDurations 双口径（duration 优先 / duration_sec 回退）')
-    const pdArr = parseShotDurations(JSON.stringify([{ id: 'a', duration_sec: 1.5 }]))
-    check(pdArr.size === 1 && pdArr.get('a') === 1.5, '裸数组形态')
-    const ePd = await errOf(async () => parseShotDurations('not-json'))
-    check(ePd instanceof SyntaxError, '坏 JSON 抛错（调用侧兜底）')
-
-    // ---- 对齐回退正交：fail 形态不产生段/句（主路径仅 aligned 才赋值 durSec）----
-    const failPlan = planVoiceAlignedSegments([{ id: 's01', durationSec: null, lineIds: [] }], new Map(), 4, { hasLinesField: true })
-    check(
-      !failPlan.aligned && failPlan.segments.length === 0 && failPlan.lines.length === 0 && failPlan.totalDur === 0,
-      '对齐回退形态（segments/lines 空、totalDur=0——computeShotSegments 输出不受影响）',
-    )
-  }
-
   // ================= 分发 =================
 
+  // [M11 split] 行级 helpers 经 ctx 注入拆出的四节（probes/m11/modules/*，断言逐字保留）
+  const m11Ctx = {
+    db, pid, T0, REPO_ROOT, check, errOf,
+    getRun, getStep, getAsset, getTask,
+    setRunStatus, setStepStatus, mkStep, seedRun,
+    absPathOf, ensureProjectDirs, registerAsset, relPathOf,
+  }
   const runners: Record<string, () => Promise<void>> = {
-    rerun: sectionRerun,
-    cascade: sectionCascade,
+    rerun: async () => (await import('./probes/m11/modules/cascade')).sectionRerun(m11Ctx),
+    cascade: async () => (await import('./probes/m11/modules/cascade')).sectionCascade(m11Ctx),
     align: sectionAlign,
-    bgm: sectionBgm,
+    bgm: async () => (await import('./probes/m11/modules/bgm')).sectionBgm(m11Ctx),
     transition: sectionTransition,
     template: sectionTemplate,
-    regression: sectionRegression,
+    regression: async () => (await import('./probes/m11/modules/regression')).sectionRegression(m11Ctx),
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'

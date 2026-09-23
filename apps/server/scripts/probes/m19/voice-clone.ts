@@ -9,7 +9,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
   {
     await db.insert(voiceClones).values({
       name: '探针音色',
-      providerKey: 'aliyun_qwen_tts',
+      providerKey: 'aliyun_bailian_tts',
       model: 'cosyvoice-v1',
       voiceId: 'voice-probe-1',
       status: 'ready',
@@ -54,7 +54,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const { upsertEntity } = await import('../../../src/services/character')
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-    check(cloneCapabilityOf('aliyun_qwen_tts') === true, '能力位：aliyun_qwen_tts 已登记克隆协议')
+    check(cloneCapabilityOf('aliyun_bailian_tts') === true, '能力位：aliyun_bailian_tts 已登记克隆协议')
     check(
       cloneCapabilityOf('siliconflow_audio') === false && cloneCapabilityOf('openai_audio') === false && cloneCapabilityOf('volcengine_audio') === false,
       '能力位：未登记供应商 = 不支持（UI 下拉置灰依据；v1 不伪接未验证协议）',
@@ -64,7 +64,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       '能力位表自洽：协议均在协议族登记 + 均携默认目标模型',
     )
     const provs = await listCloneProviders()
-    check(provs.some((p) => p.key === 'aliyun_qwen_tts' && p.available === true), 'listCloneProviders：audio 目录内 aliyun 标记 available')
+    check(provs.some((p) => p.key === 'aliyun_bailian_tts' && p.available === true), 'listCloneProviders：audio 目录内 aliyun 标记 available')
     check(
       provs.length > 0 && provs.every((p) => p.available === cloneCapabilityOf(p.key)),
       `listCloneProviders 全量矩阵与能力位一致（${provs.length} 家 audio 供应商）`,
@@ -83,7 +83,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const mkClone = (over: Partial<VoiceClone>): VoiceClone => ({
       id: 901,
       name: '索引音色',
-      providerKey: 'aliyun_qwen_tts',
+      providerKey: 'aliyun_bailian_tts',
       model: 'qwen3-tts-vc-2026-01-22',
       voiceId: 'vc-901',
       status: 'ready',
@@ -182,7 +182,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
         updatedAt: T0,
       },
       {
-        providerKey: 'aliyun_qwen_tts',
+        providerKey: 'aliyun_bailian_tts',
         serviceType: 'audio',
         name: '探针克隆语音',
         baseUrl: 'http://probe-clone.local/api/v1',
@@ -225,7 +225,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     let cloneB!: VoiceClone
     let warningsA: string[] = []
     try {
-      const created = await createVoiceClone('aliyun_qwen_tts', { name: '克隆甲', sample: WAV_BYTES, mime: 'audio/wav' })
+      const created = await createVoiceClone('aliyun_bailian_tts', { name: '克隆甲', sample: WAV_BYTES, mime: 'audio/wav' })
       cloneA = created.clone
       warningsA = created.warnings
       const enroll = reqs.find((r) => r.url.includes('/customization'))!
@@ -238,7 +238,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       )
       check(typeof inA.preferred_name === 'string' && inA.preferred_name === 'voice', '中文音色名 → 前缀清洗为协议合法值（实际 ' + String(inA.preferred_name) + '）')
       check(String((inA.audio as { data?: string }).data).startsWith('data:audio/wav;base64,'), '本地样本以 Data URL 内联下发（无需公网地址）')
-      check(cloneA.id > 0 && cloneA.voiceId === 'qwen-vc-probe-1' && cloneA.status === 'ready' && cloneA.providerKey === 'aliyun_qwen_tts', '克隆成功 → 落行（供应商音色标识 + ready + 供应商归口）')
+      check(cloneA.id > 0 && cloneA.voiceId === 'qwen-vc-probe-1' && cloneA.status === 'ready' && cloneA.providerKey === 'aliyun_bailian_tts', '克隆成功 → 落行（供应商音色标识 + ready + 供应商归口）')
       check(cloneA.model === 'qwen3-tts-vc-2026-01-22', '落行 model = 目标克隆模型（合成时必须同模型）')
       const metaA = JSON.parse(cloneA.meta) as { protocol?: string; target_model?: string; transport?: string }
       check(metaA.protocol === 'dashscope-qwen-enrollment' && metaA.transport === 'data-uri' && metaA.target_model === 'qwen3-tts-vc-2026-01-22', 'meta 留痕协议/承载/模型（不含有敏感信息）')
@@ -253,12 +253,12 @@ export async function run(ctx: M19Ctx): Promise<void> {
         return e instanceof Error && 'code' in e ? String((e as { code: unknown }).code) : e instanceof Error ? `nocode:${e.message.slice(0, 20)}` : 'no-error'
       }
       check((await codeOf(() => createVoiceClone('siliconflow_audio', { name: 'X', sample: WAV_BYTES, mime: 'audio/wav' }))) === 'unsupported_provider', '拦截族：未登记供应商 → unsupported_provider')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: '  ', sample: WAV_BYTES, mime: 'audio/wav' }))) === 'bad_name', '拦截族：空音色名 → bad_name')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: 'Y', sample: WAV_BYTES, mime: 'audio/wav', targetModel: 'bad model!' }))) === 'bad_target_model', '拦截族：target_model 非法字符 → bad_target_model')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: 'Y', sample: new Uint8Array(), mime: 'audio/wav' }))) === 'empty_sample', '拦截族：空样本 → empty_sample')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: 'Y', sample: WAV_BYTES, mime: 'video/mp4' }))) === 'bad_sample_mime', '拦截族：非 wav/mp3 → bad_sample_mime')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: 'Y', sample: new Uint8Array(CLONE_SAMPLE_MAX_BYTES + 1), mime: 'audio/wav' }))) === 'too_large', '拦截族：>10MB → too_large')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: '克隆甲', sample: WAV_BYTES, mime: 'audio/wav' }))) === 'dup_name', '拦截族：重名 → dup_name（唯一约束在落库阶段暴露）')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: '  ', sample: WAV_BYTES, mime: 'audio/wav' }))) === 'bad_name', '拦截族：空音色名 → bad_name')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: 'Y', sample: WAV_BYTES, mime: 'audio/wav', targetModel: 'bad model!' }))) === 'bad_target_model', '拦截族：target_model 非法字符 → bad_target_model')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: 'Y', sample: new Uint8Array(), mime: 'audio/wav' }))) === 'empty_sample', '拦截族：空样本 → empty_sample')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: 'Y', sample: WAV_BYTES, mime: 'video/mp4' }))) === 'bad_sample_mime', '拦截族：非 wav/mp3 → bad_sample_mime')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: 'Y', sample: new Uint8Array(CLONE_SAMPLE_MAX_BYTES + 1), mime: 'audio/wav' }))) === 'too_large', '拦截族：>10MB → too_large')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: '克隆甲', sample: WAV_BYTES, mime: 'audio/wav' }))) === 'dup_name', '拦截族：重名 → dup_name（唯一约束在落库阶段暴露）')
       check(
         reqs.filter((r) => r.url.includes('/customization')).length === 2,
         '前置拦截零外发：除重名（唯一约束需真插入才能触发）外，6 项校验均未调供应商端点',
@@ -267,7 +267,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
 
       // ---- 供应商错误族 ----
       enrollNext = () => ({ status: 500, json: { code: 'InvalidParameter', message: 'audio sample unreachable' } })
-      const eHttp = (await errOf(() => createVoiceClone('aliyun_qwen_tts', { name: '丙', sample: WAV_BYTES, mime: 'audio/wav' }))) as {
+      const eHttp = (await errOf(() => createVoiceClone('aliyun_bailian_tts', { name: '丙', sample: WAV_BYTES, mime: 'audio/wav' }))) as {
         code?: string
         status?: number
         message?: string
@@ -276,7 +276,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       check(/InvalidParameter/.test(String(eHttp?.message)) && /audio sample unreachable/.test(String(eHttp?.message)), `错误体详情透传（${String(eHttp?.message)}）`)
       check((await listVoiceClones()).length === before, '供应商失败不落行（克隆与入库同生同灭）')
       enrollNext = () => ({ status: 200, json: {} })
-      const eNoVoice = (await errOf(() => createVoiceClone('aliyun_qwen_tts', { name: '丙', sample: WAV_BYTES, mime: 'audio/wav' }))) as {
+      const eNoVoice = (await errOf(() => createVoiceClone('aliyun_bailian_tts', { name: '丙', sample: WAV_BYTES, mime: 'audio/wav' }))) as {
         code?: string
         status?: number
       } | null
@@ -284,9 +284,9 @@ export async function run(ctx: M19Ctx): Promise<void> {
       enrollNext = () => ({ status: 200, json: { output: { voice_id: 'cosy-vc-2' } } })
 
       // ---- 公网 URL 协议（voice-enrollment）----
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: '乙', sample: WAV_BYTES, mime: 'audio/wav', protocol: 'dashscope-enrollment' }))) === 'bad_sample_transport', '公网协议下传本地样本 → bad_sample_transport（不误当 url）')
-      check((await codeOf(() => createVoiceClone('aliyun_qwen_tts', { name: '乙', sampleUrl: 'ftp://a/b.wav', protocol: 'dashscope-enrollment' }))) === 'bad_sample_url', '公网协议下非 http(s) 地址 → bad_sample_url')
-      const pub = await createVoiceClone('aliyun_qwen_tts', {
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: '乙', sample: WAV_BYTES, mime: 'audio/wav', protocol: 'dashscope-enrollment' }))) === 'bad_sample_transport', '公网协议下传本地样本 → bad_sample_transport（不误当 url）')
+      check((await codeOf(() => createVoiceClone('aliyun_bailian_tts', { name: '乙', sampleUrl: 'ftp://a/b.wav', protocol: 'dashscope-enrollment' }))) === 'bad_sample_url', '公网协议下非 http(s) 地址 → bad_sample_url')
+      const pub = await createVoiceClone('aliyun_bailian_tts', {
         name: 'Cosy Public',
         sampleUrl: 'https://cdn.example.com/a.wav',
         protocol: 'dashscope-enrollment',
@@ -323,7 +323,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       // ---- [P8] cloneEndpoint：provider 换端点 + 模型联动（克隆与合成必须同模型）----
       const epCache = new Map<string, Awaited<ReturnType<typeof cloneEndpoint>>>()
       const epA = await cloneEndpoint(cloneA, epCache)
-      check(epA.providerKey === 'aliyun_qwen_tts' && epA.baseUrl === 'http://probe-clone.local/api/v1', `cloneEndpoint 按克隆行换 provider 端点（${epA.baseUrl}）`)
+      check(epA.providerKey === 'aliyun_bailian_tts' && epA.baseUrl === 'http://probe-clone.local/api/v1', `cloneEndpoint 按克隆行换 provider 端点（${epA.baseUrl}）`)
       check(epA.model === cloneA.model && epA.model !== 'qwen-tts', `cloneEndpoint 覆盖 model 为克隆绑定模型（${epA.model}；实例原值 qwen-tts 被替换）`)
       const epA2 = await cloneEndpoint(cloneA, epCache)
       check(epCache.size === 1 && epA2.model === cloneA.model, '同 provider+模型复用缓存（一次查库，多句配音不重复解析）')
@@ -417,7 +417,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
           vp1.clone_name === cloneA.name &&
           vp1.clone_level === 'character' &&
           vp1.model === cloneA.model &&
-          vp1.provider === 'aliyun_qwen_tts',
+          vp1.provider === 'aliyun_bailian_tts',
         '溯源入 asset.params：voiceSource=clone + clone_id/clone_name/clone_level + 实际 model/provider',
       )
       check(vp1.voice === cloneA.voiceId, 'params.voice 记真实下发音色（可复现可替换）')
@@ -428,7 +428,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       )
       const usC = await db.select().from(usageRecords).where(eq(usageRecords.projectId, pidC))
       check(
-        usC.length === 3 && usC.filter((u) => u.provider === 'aliyun_qwen_tts' && u.model === cloneA.model).length === 1,
+        usC.length === 3 && usC.filter((u) => u.provider === 'aliyun_bailian_tts' && u.model === cloneA.model).length === 1,
         `用量逐句记录且按克隆 provider/模型归口（${usC.length} 行）`,
       )
       const logTxtC = existsSync(join(RUN_LOGS_DIR, `${runC.id}.log`)) ? readFileSync(join(RUN_LOGS_DIR, `${runC.id}.log`), 'utf8') : ''

@@ -3,12 +3,18 @@ import type { M16Ctx } from './ctx'
 
 export async function run(ctx: M16Ctx): Promise<void> {
   const { check, jsonRes, stubFetch, editCapabilityOf } = ctx
-  const { AliyunBailianWanImageAdapter, AliyunBailianQwenImageAdapter } = await import('@agencys/ai-provider-kit')
-  const wan = new AliyunBailianWanImageAdapter()
-  check(wan.editing?.inpaint === true && wan.editing?.outpaint === true, 'aliyun-wan editing 声明 {inpaint, outpaint}')
-  check(typeof wan.edit === 'function', 'aliyun-wan edit 方法存在')
-  const qwen = new AliyunBailianQwenImageAdapter()
-  check((qwen as any).editing === undefined, '未声明适配器（aliyun-qwen）→ editing undefined')
+  const { AliyunBailianImageAdapter } = await import('@agencys/ai-provider-kit')
+  const wan = new AliyunBailianImageAdapter()
+  check(wan.editing?.inpaint === true && wan.editing?.outpaint === true, '百炼图像统一适配器 editing 声明 {inpaint, outpaint}（wanx 编辑通道提供）')
+  check(typeof wan.edit === 'function', '百炼图像统一适配器 edit 方法存在')
+  // 编辑通道能力按模型系门控（阿里百炼合并后单一适配器）：非 wan/wanx 模型在 edit 内显式拒绝，本地抛错零请求
+  let qwenRejected = false
+  try {
+    await wan.edit({ mode: 'inpaint', baseImage: 'data:image/png;base64,AA', mask: 'data:image/png;base64,BB', model: 'qwen-image', baseUrl: 'http://probe.local', apiKey: 'k' })
+  } catch (e) {
+    qwenRejected = /万相|wan/i.test(String((e as Error).message))
+  }
+  check(qwenRejected, '非万相模型（qwen-image）进 edit → 显式拒绝（不再有独立 qwen 适配器，能力由 edit 内模型系门控）')
 
   const capNone = await editCapabilityOf()
   check(capNone.inpaint === false && capNone.erase === false && capNone.outpaint === false, 'editCapabilityOf 无端点配置 → 全 false')

@@ -14,10 +14,11 @@ export async function run(ctx: M16Ctx): Promise<void> {
   delete childEnv.CSTUDIO_ROOT
   delete childEnv.CSTUDIO_DATA
   delete childEnv.CSTUDIO_WORKSPACE
-  const r = spawnSync('npm', ['run', 'probe:m15'], {
+  // 直接以 tsx 运行前序探针脚本（M26 runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
+  const script = join(REPO_ROOT, 'apps', 'server', 'scripts', 'probe-m15.ts')
+  const r = spawnSync(process.execPath, ['--import', 'tsx', script], {
     cwd: join(REPO_ROOT, 'apps', 'server'),
     env: childEnv,
-    shell: true,
     encoding: 'utf8',
     timeout: 15 * 60_000,
   })
