@@ -3,7 +3,8 @@
  * - 发布包 zip（store 不压缩）+ manifest.json 首 entry（包内路径为准）
  * - 任何状态的 run 均可导出已有产物；串行流式写，失败清理临时文件
  */
-import { createReadStream, createWriteStream, renameSync, statSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, renameSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { Zip, ZipPassThrough } from 'fflate'
@@ -115,12 +116,21 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
   }
   ensureProjectDirs(run.projectId)
   const zipName = `${pkgName}.zip`
-  const relPath = join(String(run.projectId), 'exports', sanitizeName(zipName))
+  // [F05] 交付包唯一不可变身份：存储路径带 run id + 时间戳 + 去重后缀，绝不覆盖历史包；
+  // 显示名仍为 zipName（下载文件名不变），每条 archive 资产指向各自独立、字节稳定的文件
+  const dirRel = join(String(run.projectId), 'exports')
+  const base = sanitizeName(pkgName)
+  const stamp = Date.now()
+  let relPath = join(dirRel, `${base}__run${run.id}__${stamp}.zip`)
+  for (let n = 1; existsSync(absPathOf(relPath)); n++) {
+    relPath = join(dirRel, `${base}__run${run.id}__${stamp}-${n}.zip`)
+  }
   const absFinal = absPathOf(relPath)
-  const absTmp = `${absFinal}.tmp-${Date.now()}`
+  const absTmp = `${absFinal}.tmp-${stamp}-${process.pid}`
   await writeZip(absTmp, manifest, entries)
   renameSync(absTmp, absFinal)
   const fileSize = statSync(absFinal).size
+  const sha256 = await sha256File(absFinal)
   log.info(`导出包生成: ${zipName}（${entries.length} 文件, ${fileSize} bytes）`)
   return registerAsset(run.projectId, {
     runId: run.id,
@@ -131,7 +141,19 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
     mime: 'application/zip',
     ext: 'zip',
     fileSize,
+    sha256,
     params: { name: pkgName, runId: run.id, fileCount: entries.length },
+  })
+}
+
+/** 流式计算交付包文件 sha256（不将整个 zip 读入内存；大产物包友好） */
+function sha256File(absPath: string): Promise<string> {
+  return new Promise((res, rej) => {
+    const hash = createHash('sha256')
+    const rs = createReadStream(absPath)
+    rs.on('error', rej)
+    rs.on('data', (chunk) => hash.update(chunk))
+    rs.on('end', () => res(hash.digest('hex')))
   })
 }
 

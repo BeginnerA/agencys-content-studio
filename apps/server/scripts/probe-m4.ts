@@ -512,6 +512,12 @@ async function main(): Promise<void> {
     check(mPaths === zPaths, 'manifest.files 与包内文件逐一对应')
     check(manifest.files.some((f) => f.path === 'video/成片.mp4' && f.role === 'main_video'), 'manifest role 标注（成片 main_video）')
 
+    // [F05] 交付包不可变身份：登记 zip 自身 sha256；同名重复导出生成独立路径，历史包字节不被覆盖
+    check(!!pkg.sha256 && pkg.name === '探针发布包.zip', '导出资产登记 zip 自身 sha256 且显示名保持 .zip')
+    const pkgSame = await buildRunExport({ runId: run.id, name: '探针发布包' })
+    check(pkgSame.id !== pkg.id && pkgSame.relPath !== pkg.relPath && pkgSame.name === pkg.name, '同名重复导出 → 新资产独立存储路径但显示名不变（不覆盖历史包）')
+    check(sha256Hex(new Uint8Array(readFileSync(absPathOf(pkg.relPath!)))) === pkg.sha256, '历史包字节未被覆盖：磁盘内容哈希仍等于登记 sha256（不可变交付身份）')
+
     // 勾选导出 + 错误分支
     const pkg2 = await buildRunExport({ runId: run.id, name: '勾选包', assetIds: [videoAsset.id] })
     const zip2 = unzipSync(readFileSync(absPathOf(pkg2.relPath!)))
@@ -535,7 +541,7 @@ async function main(): Promise<void> {
     check(e4 instanceof ExportError && e4.code === 'asset_file_missing', '文件缺失 → ExportError asset_file_missing（不带半成品包）')
 
     const exports = await listExports({ runId: run.id })
-    check(exports.length === 2 && exports.some((x) => x.id === pkg.id), `listExports 命中（${exports.length}）`)
+    check(exports.length === 3 && exports.some((x) => x.id === pkg.id), `listExports 命中（${exports.length}）`)
   }
 
   const sectionStats = async (): Promise<void> => {

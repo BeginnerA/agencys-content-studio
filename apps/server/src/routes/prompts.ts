@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { Hono } from 'hono'
 import { PROMPTS_DIR } from '../env'
 import { isBuiltinPrompt } from '../pipeline/builtin-assets'
@@ -28,7 +28,9 @@ function resolvePromptPath(reqPath: string): { abs: string; rel: string } {
   if (abs !== root && !abs.startsWith(root + sep)) {
     throw new HttpError(400, 'bad_path', '路径越界（限定在 prompts 目录内）')
   }
-  return { abs, rel: rel.replace(/\\/g, '/') }
+  // 以真实落点 abs 反推规范相对路径作为内置身份：消除 foo/../x.md 、./x.md 等冗余段对字符串比对的绕过
+  const canonRel = relative(root, abs).replace(/\\/g, '/')
+  return { abs, rel: canonRel }
 }
 
 interface PromptItem {

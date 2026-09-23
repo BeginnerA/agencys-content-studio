@@ -83,13 +83,14 @@ export const BUILTIN_PROMPT_NAMES: ReadonlySet<string> = new Set<string>([
   'video-storyboard.md',
 ])
 
-/** 是否系统内置模板（用户不可改删） */
+/** 是否系统内置模板（用户不可改删）；键集均小写，小写比对以覆盖 Windows 不分大小写文件系统的绕过 */
 export function isBuiltinTemplate(key: string): boolean {
-  return BUILTIN_TEMPLATE_KEYS.has(key)
+  return BUILTIN_TEMPLATE_KEYS.has(key.toLowerCase())
 }
 
-/** 是否系统内置提示词（相对路径统一 POSIX 斜杠后比对；用户不可改删） */
+/** 是否系统内置提示词（相对路径统一 POSIX 斜杠 + 去前缀 ./ + 小写后比对；用户不可改删）。
+ *  注：调用方应传入由真实落点反推的规范相对路径，不含 . / .. 冗余段（见 routes 层 resolvePromptPath）。*/
 export function isBuiltinPrompt(relName: string): boolean {
-  const norm = relName.replace(/\\/g, '/').replace(/^\.\//, '')
+  const norm = relName.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()
   return BUILTIN_PROMPT_NAMES.has(norm)
 }
