@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       fileSize: pngBytes.byteLength,
     })
 
-    const uri1 = await assetToDataUri(a1.id)
+    const uri1 = await assetToDataUri(a1.id, pid)
     check(uri1.startsWith('data:image/png;base64,'), `URI 前缀 data:image/png;base64,（${uri1.slice(0, 30)}…）`)
     check(uri1 === `data:image/png;base64,${pngBytes.toString('base64')}`, 'base64 载荷与源文件一致')
 
@@ -128,24 +128,24 @@ async function main(): Promise<void> {
       ext: 'png',
       fileSize: pngBytes.byteLength,
     })
-    check((await assetToDataUri(a2.id)).startsWith('data:image/png;base64,'), 'mime 缺失 + ext=png → image/png')
+    check((await assetToDataUri(a2.id, pid)).startsWith('data:image/png;base64,'), 'mime 缺失 + ext=png → image/png')
 
     // mime/ext 均空 → 从 relPath 后缀推断
     const a3 = await registerAsset(pid, { kind: 'image', purpose: 'shot_image', name: 'probe-ref-3.png', relPath: rel, fileSize: pngBytes.byteLength })
-    check((await assetToDataUri(a3.id)).startsWith('data:image/png;base64,'), 'mime/ext 均空 → relPath 后缀推断')
+    check((await assetToDataUri(a3.id, pid)).startsWith('data:image/png;base64,'), 'mime/ext 均空 → relPath 后缀推断')
 
     // 8MB 守卫
     const big = Buffer.alloc(MAX_REF_IMAGE_BYTES + 1, 0)
     const bigRel = relPathOf(pid, 'shot_image', 'probe-big.png')
     writeFileSync(absPathOf(bigRel), big)
     const a4 = await registerAsset(pid, { kind: 'image', purpose: 'shot_image', name: 'probe-big.png', relPath: bigRel, mime: 'image/png', ext: 'png' })
-    const e4 = await errOf(() => assetToDataUri(a4.id))
+    const e4 = await errOf(() => assetToDataUri(a4.id, pid))
     check(e4 instanceof Error && /超上限 8MB/.test(e4.message), `8MB 守卫抛错（${e4 instanceof Error ? e4.message : '未抛'}）`)
 
     // 缺文件（relPath 指向不存在）
     const missingRel = relPathOf(pid, 'shot_image', 'not-exist.png')
     const a5 = await registerAsset(pid, { kind: 'image', purpose: 'shot_image', name: 'not-exist.png', relPath: missingRel, mime: 'image/png', ext: 'png' })
-    const e5 = await errOf(() => assetToDataUri(a5.id))
+    const e5 = await errOf(() => assetToDataUri(a5.id, pid))
     check(e5 instanceof Error, `缺文件抛错（${e5 instanceof Error ? (e5 as Error).message.slice(0, 60) : '未抛'}）`)
 
     // 非图 kind='text'
@@ -153,14 +153,27 @@ async function main(): Promise<void> {
     const textRel = relPathOf(pid, 'script', 'probe-note.md')
     writeFileSync(absPathOf(textRel), textBytes)
     const a6 = await registerAsset(pid, { kind: 'text', purpose: 'script', name: 'probe-note.md', relPath: textRel, mime: 'text/markdown', ext: 'md' })
-    const e6 = await errOf(() => assetToDataUri(a6.id))
+    const e6 = await errOf(() => assetToDataUri(a6.id, pid))
     check(e6 instanceof Error && /非图片/.test(e6.message), `非图抛错（${e6 instanceof Error ? e6.message : '未抛'}）`)
+
+    // [审计·跨项目隔离 chokepoint] 归属校验：a1 属 pid，用其它项目 id 请求 → 拒绝（先于读盘）
+    const pidOther = (
+      await db
+        .insert(projects)
+        .values({ name: 'M6 跨项目探针', genre: 'other', templateKey: 'mengbao-episode', settings: '{}', tags: '[]', createdAt: t0, updatedAt: t0 })
+        .returning()
+    )[0]!.id
+    const eCross = await errOf(() => assetToDataUri(a1.id, pidOther))
+    check(
+      eCross instanceof Error && /不属于项目/.test(eCross.message) && /跨项目引用被拒/.test(eCross.message),
+      `跨项目引用被拒（${eCross instanceof Error ? eCross.message : '未抛'}）`,
+    )
 
     // 缓存：成功转换 → 删源文件 → 带同一 cache 再调 → 成功且同值（证明未重复读盘）
     const cache = new Map<number, string>()
-    const c1 = await assetToDataUri(a1.id, cache)
+    const c1 = await assetToDataUri(a1.id, pid, cache)
     rmSync(absPathOf(rel))
-    const c2 = await assetToDataUri(a1.id, cache)
+    const c2 = await assetToDataUri(a1.id, pid, cache)
     check(c1 === c2 && c2 === uri1 && c2.startsWith('data:image/png'), '缓存命中：删源文件后仍返回同值（未重复读盘）')
   }
 
@@ -169,12 +182,12 @@ async function main(): Promise<void> {
     const { getVideoAdapter } = await import('../src/adapters/video')
     const img = (k: string): string => getImageAdapter(k).referenceImages ?? 'none'
     check(
-      ['gemini_image', 'volcengine_image', 'aliyun_bailian_image'].every((k) => img(k) === 'base64'),
-      `图片 base64 组：gemini / volcengine / aliyun_bailian（${['gemini_image', 'volcengine_image', 'aliyun_bailian_image'].map((k) => `${k}=${img(k)}`).join(' ')}）`,
+      ['gemini_image', 'volcengine_image', 'aliyun_bailian_image', 'openai_image'].every((k) => img(k) === 'base64'),
+      `图片 base64 组：gemini / volcengine / aliyun_bailian / openai（${['gemini_image', 'volcengine_image', 'aliyun_bailian_image', 'openai_image'].map((k) => `${k}=${img(k)}`).join(' ')}）`,
     )
     check(
-      ['openai_image', 'siliconflow_image', 'pollinations_image'].every((k) => img(k) === 'none'),
-      '图片 none 组：openai / siliconflow / pollinations',
+      ['siliconflow_image', 'pollinations_image'].every((k) => img(k) === 'none'),
+      '图片 none 组：siliconflow / pollinations（openai_image 经 /images/edits 支持 base64 参考图，已移出）',
     )
     const vid = (k: string): string => getVideoAdapter(k).firstFrame ?? 'none'
     check(
