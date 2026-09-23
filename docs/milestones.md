@@ -553,10 +553,10 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 
 用户痛点：轻松创作发送第一句话时就建项目（名称取原句前 40 字、载体固定口播、标签「创作草稿」），规划仅回写名称——**每次都要去项目页把名称/载体/模板/标签/简介再改一遍**。M40 把立项推迟到点「按此方案开始制作」，并让这 5 项信息由平台智能填好、确认前预览可覆盖（Tier A 预填 + Tier B 覆盖）。拍板：草稿影子项目（`status='draft'` 对用户隐身，避开 `creation_sessions.project_id` 可空 + 工作区目录重构的核心数据模型变更，用户可见效果等价且零迁移）。
 
-- **G16.1 立项真源模块 `creation-chat/project-meta.ts`**：`deriveProjectMeta(plan)` 规则派生（slideshow→图文/story→短剧/其余→口播，名称取方案标题、简介取摘要、标签去重 ≤6、模板回落本次真实执行模板 easy-video）；`sanitizeProjectMeta` 逐项校验——缺项静默回落、非法值（模板不存在/载体不在字典/超长）回落 + notes 随回复可见（不静默降级）；`projectMetaPrompt()` 把载体字典 + `listTemplates()` 真实模板候选注入规划消息（不靠提示词幻觉模板 key）。
+- **G16.1 立项真源模块 `creation-chat/project-meta.ts`**：`deriveProjectMeta(plan)` 规则派生（slideshow→图文/story→短剧/其余→口播，名称取方案标题、简介取摘要、标签去重 ≤6；项目默认模板按载体从专业可启动模板派生（GENRE_DEFAULT_TPL，easy-* 批准链模板不入该字段））；`sanitizeProjectMeta` 逐项校验——缺项静默回落、非法值（模板不存在/easy-*/载体不在字典/超长）回落 + notes 随回复可见（不静默降级）；`projectMetaPrompt()` 把载体字典 + `listTemplates()` 专业模板候选注入规划消息（不靠提示词幻觉模板 key）。
 - **G16.2 契约与哈希隔离**：`project` 与 plan **同级**（plan 分支 + 确认请求各加可选 project）→ 不入 planHash，改立项信息永不作废已确认方案；输入侧宽松 catchall + 服务端 sanitize（一个标签超长不得把已计费的整份方案判 invalid_plan）；误写进 plan 内部仍按结构契约拒绝。
 - **G16.3 生命周期改造**：`createSession` 建 draft 影子项目（列表/统计/搜索任何入口不外泄，`GET /projects` status 白名单守死）；规划即智能填写草稿行（active 项目绝不覆写、clarify 不动值）；`confirmCreation` 同事务内覆盖值入库 + 转正 active + 插「已创建项目《…》」对话消息（幂等重发不重复立项）；会话详情透出 `session.project` 立项预览。
-- **G16.4 Web 预览可覆盖**：方案卡新增「将创建的项目」区块（名称/载体下拉/模板下拉/标签/简介，默认即智能填写值）；`projectDraft` dirty 护栏防服务端回读冲掉正在输入；确认只提交改过的字段；草稿期隐藏顶栏「项目」入口；首页/空态文案改为「确认前不立项，点开始制作才创建项目」。
+- **G16.4 Web 预览可覆盖**：方案卡新增「将创建的项目」区块（名称/载体下拉/标签/简介，默认即智能填写值）；不提供「默认模板」设置项（出片模板由 recipe 固定、项目默认模板服务端按载体自动派生，需调整去项目编辑页）；`projectDraft` dirty 护栏防服务端回读冲掉正在输入；确认只提交改过的字段；草稿期隐藏顶栏「项目」入口；首页/空态文案改为「确认前不立项，点开始制作才创建项目」。
 - **G16.5 删除会话闭环 `DELETE /creation-sessions/:id`**（新建 `creation-chat/session-delete.ts`）：影子项目唯一副作用（聊一半放弃 → 库里永久留不可见的 draft 行）就此回收。删除范围按是否立项分两种且不静默多删——未立项（项目仍 draft 且名下无 run）事务内级联清掉消息/会话/参考素材/规划记账/项目行，提交后回收磁盘目录；已立项只删对话记录，项目与产物原样保留并回传 `reason` 明告（要删项目请去项目页）。在途保护：planning/starting → 409 `session_busy`，关联 run 仍 queued/running/waiting_input → 409 `run_active`。列表卡片右上角删除按钮按「是否已立项」分措辞二次确认，结果与失败原因就地显示。
 
 验证：`probe-m40`（**6 节 80 断言全绿**，零网络零计费：stubFetch 回放规划 + stub startRun + app.request 内存 HTTP 删会话）；**M30 / M31 / M32 / M35 / M38 / M39 回归全绿**（合计 313 断言）；server `tsc`、`vue-tsc --noEmit`、`vite build` 全绿。详规：`docs/superpowers/specs/2026-09-20-agencys-content-studio-m40-design.md`。遗留：无（草稿行累积已由 G16.5 闭环）。

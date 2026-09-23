@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
-import { templateApi } from '../../lib/api'
-import { filterSelectable, PROJECT_GENRES } from '../../lib/scene'
+import { PROJECT_GENRES } from '../../lib/scene'
 import { fmtCost } from '../../lib/format'
-import type { TemplateMeta } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
 import CreationStartupOptions from './CreationStartupOptions.vue'
@@ -94,34 +92,8 @@ const confirmed = computed(
 // ===== [M40] 「将创建的项目」：默认智能填写，确认前可逐项覆盖；点开始制作才真正立项 =====
 const proj = computed(() => detail.value?.session.project ?? null)
 const showProject = computed(() => !!proj.value?.isDraft && !confirmed.value)
-const templates = ref<TemplateMeta[]>([])
-let templatesLoaded = false
-async function ensureTemplates(): Promise<void> {
-  if (templatesLoaded) return
-  try {
-    templates.value = (await templateApi.list()).items
-    templatesLoaded = true
-  } catch {
-    /* 拉取失败不阻断：下拉仍保留当前值（下方兼容项） */
-  }
-}
-watch(showProject, (v) => void (v && ensureTemplates()), { immediate: true })
-const templateOptions = computed(() => {
-  // [入口收口] 与专业端「新建项目·默认模板」同源：本字段=「后续到专业工作台可跑的默认模板」，
-  // 剔除轻松创作批准链模板（conversationOnly，无 recipe 到工作台跑不动）；本次自动派生的当前值
-  // （多为 easy-video）若被剔除，以「（当前）」单列如实保留，不静默丢失选中项。真源为服务端 isCreationTemplate。
-  const list = filterSelectable(templates.value).map((t) => ({ key: t.key, name: t.name }))
-  const cur = props.s.projectDraft.templateKey
-  if (cur && !list.some((t) => t.key === cur)) {
-    // 当前值多为 easy-video（批准链模板，已被上面过滤）：从全量列表反查真名 + 清晰标注，与专业端 boundConversationTpl 同源（不显裸 key）
-    const curTpl = templates.value.find((t) => t.key === cur)
-    list.unshift({
-      key: cur,
-      name: curTpl ? `${curTpl.name}（本次执行·由对话管理）` : `${cur}（当前）`,
-    })
-  }
-  return list
-})
+// [简化] 不提供「默认模板」设置项：轻松创作出片模板由服务端 recipe 固定，项目默认模板已按载体自动派生，
+// 需要调整可到项目编辑页修改（此页用户无专业模板心智，下拉只是噪声）。
 /** 任一字段的本地编辑都要置 dirty，阻止后续服务端回读冲掉正在输入的内容 */
 function touchProject(): void {
   props.s.projectDraft.dirty = true
@@ -241,17 +213,6 @@ async function onConfirm(): Promise<void> {
             </option>
           </select>
         </label>
-        <label class="pj-f"
-          ><span>模板</span>
-          <select
-            v-model="s.projectDraft.templateKey"
-            @change="touchProject"
-          >
-            <option v-for="t in templateOptions" :key="t.key" :value="t.key">
-              {{ t.name }}
-            </option>
-          </select>
-        </label>
         <label class="pj-f pj-wide"
           ><span>标签</span>
           <input
@@ -274,7 +235,7 @@ async function onConfirm(): Promise<void> {
       </div>
       <p class="pj-note muted">
         <Icon name="alert" :size="11" />
-        确认时才会创建项目并出现在项目列表；非法值（如模板不存在、超字数）会回落平台校验的合理值并在对话中说明，不阻断制作。
+        确认时才会创建项目并出现在项目列表；非法值（如超字数）会回落平台校验的合理值并在对话中说明，不阻断制作。
       </p>
     </div>
 

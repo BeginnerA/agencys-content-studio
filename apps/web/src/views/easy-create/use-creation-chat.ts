@@ -109,7 +109,6 @@ function syncConfirmKey(): void {
 export const projectDraft = reactive({
   name: '',
   genre: '',
-  templateKey: '',
   tagsText: '',
   brief: '',
   /** 用户改过任一项 → true：服务端回读不再覆盖本地编辑；确认成功后重置 */
@@ -136,7 +135,6 @@ function syncProjectDraft(): void {
   if (projectDraft.dirty) return
   projectDraft.name = p.name
   projectDraft.genre = p.genre
-  projectDraft.templateKey = p.templateKey
   projectDraft.tagsText = p.tags.join('，')
   projectDraft.brief = p.brief
 }
@@ -155,8 +153,6 @@ function projectOverrides(): Partial<CreationProjectMeta> | undefined {
     o.name = projectDraft.name.trim()
   if (projectDraft.genre && projectDraft.genre !== p.genre)
     o.genre = projectDraft.genre
-  if (projectDraft.templateKey && projectDraft.templateKey !== p.templateKey)
-    o.templateKey = projectDraft.templateKey
   const tags = parseTagsText(projectDraft.tagsText)
   if (tags.length && tags.join(',') !== p.tags.join(',')) o.tags = tags
   if (projectDraft.brief.trim() && projectDraft.brief.trim() !== p.brief)
