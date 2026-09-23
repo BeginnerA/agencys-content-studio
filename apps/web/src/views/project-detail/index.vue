@@ -12,6 +12,7 @@ import RunsPanel from './RunsPanel.vue'
 import AssetsPanel from './AssetsPanel.vue'
 import PubsPanel from './PubsPanel.vue'
 import BrandPanel from './BrandPanel.vue'
+import CreationPanel from './CreationPanel.vue'
 import UploadModal from './UploadModal.vue'
 import FetchSourceModal from './FetchSourceModal.vue'
 
@@ -189,6 +190,9 @@ const {
 
       <!-- [M19] 品牌（平台/项目/run 三层；项目层覆盖平台，保存后重新合成生效） -->
       <BrandPanel :s="s" />
+
+      <!-- 对白严格 ASR 核验：项目级覆盖（继承全局默认 / 强制严格 / 强制关闭） -->
+      <CreationPanel :s="s" />
     </template>
 
     <!-- 启动 run（[M14] 起作入口预选项目模板 + 预填 episode_number） -->

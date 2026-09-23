@@ -33,6 +33,7 @@ export function useProjectDetailPage() {
     { key: 'assets', label: '资产', icon: 'photo' },
     { key: 'pubs', label: '发布', icon: 'external' },
     { key: 'brand', label: '品牌', icon: 'brush' },
+    { key: 'creation', label: '创作', icon: 'sliders' },
   ] as const
   type TabKey = (typeof TABS)[number]['key']
 
@@ -250,10 +251,25 @@ export function useProjectDetailPage() {
     ).length
   })
 
+  /** 「创作」tab 角标：项目是否设了对白严格 ASR 覆盖（dialogue_asr.strict 为布尔） */
+  const creationAsrOverride = computed(() => {
+    const s = project.value?.settings
+    const d =
+      s && typeof s === 'object'
+        ? (s as Record<string, unknown>)['dialogue_asr']
+        : undefined
+    return (
+      !!d &&
+      typeof d === 'object' &&
+      typeof (d as { strict?: unknown }).strict === 'boolean'
+    )
+  })
+
   function cntOf(key: TabKey): number {
     if (key === 'runs') return runs.value.length
     if (key === 'assets') return assetCount.value
     if (key === 'brand') return brandSlotCount.value
+    if (key === 'creation') return creationAsrOverride.value ? 1 : 0
     return pubs.value.length
   }
 

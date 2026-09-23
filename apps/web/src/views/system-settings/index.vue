@@ -35,6 +35,12 @@ const TABS = [
     hint: '水印 / 片头 / 片尾 / 字幕样式（平台默认；项目与 run 可覆盖）',
   },
   {
+    key: 'creation',
+    label: '创作',
+    icon: 'sliders',
+    hint: '人物对白严格 ASR 核验（默认开启；关闭后无 ASR 也能创作，项目可覆盖）',
+  },
+  {
     key: 'notify',
     label: '通知',
     icon: 'bell',
@@ -256,11 +262,52 @@ async function saveData() {
   }
 }
 
+// ---------- 创作设置（settings key 'dialogue_asr'：人物对白严格 ASR 核验开关） ----------
+// 默认 ON = 维持现状（人物对白强制逐字核验 + 毫秒分段字幕）；OFF 为逃生阀，允许无 ASR 后端时创作。
+// 仅影响新建方案（已批准会话 recipe 冻结不受影响）；项目级可覆盖本全局默认。
+const asrStrict = ref(true)
+const asrSaving = ref(false)
+const asrHint = ref('')
+
+async function loadCreation() {
+  try {
+    const r = await settingsApi.list()
+    const raw = r.items.find((it) => it.key === 'dialogue_asr')?.value
+    const o =
+      raw && typeof raw === 'object'
+        ? (raw as { strict?: unknown })
+        : {}
+    // 缺失/损坏 → 默认严格（true），与后端 resolveDialogueAsrPolicy 回落口径一致
+    asrStrict.value = typeof o.strict === 'boolean' ? o.strict : true
+  } catch {
+    /* 读取失败保持默认严格 */
+  }
+}
+
+async function saveCreation() {
+  asrSaving.value = true
+  asrHint.value = ''
+  try {
+    await settingsApi.put('dialogue_asr', { strict: asrStrict.value })
+    asrHint.value = asrStrict.value
+      ? '已保存（人物对白维持严格 ASR 核验）'
+      : '已保存（已允许无 ASR 创作，对白将免逐字核验）'
+    window.setTimeout(() => {
+      if (asrHint.value.startsWith('已保存')) asrHint.value = ''
+    }, 2500)
+  } catch (err) {
+    asrHint.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    asrSaving.value = false
+  }
+}
+
 // 初始加载
 refreshPreview()
 loadNotify()
 loadRun()
 loadData()
+loadCreation()
 </script>
 
 <template>
@@ -420,6 +467,40 @@ loadData()
         </div>
         <div class="rc-foot muted">
           <span v-if="concHint">{{ concHint }}</span>
+        </div>
+      </div>
+    </div>
+    <!-- 创作 Tab（人物对白严格 ASR 核验全局默认；项目可覆盖） -->
+    <div v-if="activeTab === 'creation'" class="sys-creation">
+      <div class="panel rc-card">
+        <div class="rc-head">
+          <h3>人物对白严格 ASR 核验</h3>
+          <span class="muted">
+            开启时：人物对白必须由已核实的 whisper-1 分段时间戳 ASR
+            逐字核验、并据真实音轨生成字幕（无匹配 ASR
+            后端则无法创作对白）。关闭后作为逃生阀：无
+            ASR
+            也能创作，对白改用模型原生出声、字幕按批准台词估算（非实测），但仍强制视频自带原声。
+          </span>
+        </div>
+
+        <label class="rc-ck">
+          <input
+            v-model="asrStrict"
+            type="checkbox"
+            :disabled="asrSaving"
+            @change="saveCreation"
+          />
+          <span>强制严格 ASR 核验（默认开启）</span>
+        </label>
+
+        <div class="rc-note muted">
+          配置存于
+          settings「dialogue_asr」；为全局默认，单个项目可在项目详情「创作」分区覆盖。仅影响新建方案，已批准的会话不受影响。
+        </div>
+        <div class="rc-foot muted">
+          <span v-if="asrSaving">保存中…</span>
+          <span v-else-if="asrHint">{{ asrHint }}</span>
         </div>
       </div>
     </div>
@@ -645,6 +726,11 @@ loadData()
 
 /* [M22] 数据设置卡片 */
 .sys-data {
+  max-width: 640px;
+}
+
+/* 创作设置卡片（与数据卡片同宽，复用 rc-card/rc-ck/rc-note 原语） */
+.sys-creation {
   max-width: 640px;
 }
 

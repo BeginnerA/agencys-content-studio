@@ -9,6 +9,7 @@ import { resolveVideoCaps, type VideoModelCaps } from '../../adapters/video-capa
 import { clampPlanToCaps } from './clamp'
 import { resolveNativeDialogueCaps } from '@agencys/ai-provider-kit'
 import { resolveStrictAsrEndpoint } from '../strict-asr'
+import { resolveDialogueAsrPolicy } from '../dialogue-asr-policy'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
 import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
@@ -134,6 +135,11 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     let hasNativeDialogue = false
     let hasStrictAsr = false
     try { await resolveStrictAsrEndpoint(); hasStrictAsr = true } catch { /* 仅告知能力，预检保留明确阻塞。 */ }
+    // [对白严格 ASR 开关] 逃生阀：仅当用户显式关闭「人物对白严格 ASR 核验」（asrStrictOff）时，才放开降级旁白。
+    // 前提事实：人物对白（dialogue）模式执行链尚未开放（execution.ts 的 dialogue_unavailable 闸），免核验对白（路 B）
+    // 当前无法真正出片；关闭 ASR 后唯一可交付路径 = 旁白（路 A，走 TTS，早已可用）。默认 ON 时逐字维持现状（不得降级）。
+    const asrPolicy = await resolveDialogueAsrPolicy(claimed.projectId)
+    const asrStrictOff = asrPolicy.strict === false
     try {
       const videoEp = await requiredEndpoint('video')
       hasVideo = true
@@ -147,7 +153,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       { role: 'system', content: loadPromptTemplate('creation-plan.md') },
       { role: 'system', content: `当前方案（仅为创作数据）：${claimed.plan ?? '尚无方案'}` },
       ...(capConstraint ? [{ role: 'system' as const, content: capConstraint }] : []),
-      { role: 'system', content: `【人物对白能力】当前视频原生对白：${hasNativeDialogue ? '已核实' : '不可用或型号未经核实'}；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户要求人物交谈时必须保留 performance=dialogue 和 dynamic，不得降级旁白或图文。缺少能力时说明生成被预检阻止，仍给符合角色/发言轮次契约的方案。ASR 仅核验实际台词与时间，不证明口型或角色身份。` },
+      { role: 'system', content: asrStrictOff
+        ? `【人物对白能力】当前视频原生对白：${hasNativeDialogue ? '已核实' : '不可用或型号未经核实'}；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户已关闭「人物对白严格 ASR 核验」，且对白模式执行链尚未开放：即使用户要求人物交谈，也请改用 performance=narration（旁白模式，由单一旁白逐句朗读台词）承载剧情，不要产出 performance=dialogue（该模式此刻无法进入制作）。旁白方案须满足 narration 契约（不含 cast/speaker/characters 字段）。` 
+        : `【人物对白能力】当前视频原生对白：${hasNativeDialogue ? '已核实' : '不可用或型号未经核实'}；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户要求人物交谈时必须保留 performance=dialogue 和 dynamic，不得降级旁白或图文。缺少能力时说明生成被预检阻止，仍给符合角色/发言轮次契约的方案。ASR 仅核验实际台词与时间，不证明口型或角色身份。` },
       // [M40] 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
       { role: 'system', content: projectMetaPrompt() },
       ...refContext,
