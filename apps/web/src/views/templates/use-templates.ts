@@ -38,6 +38,11 @@ export function useTemplates() {
       : detail.value,
   )
 
+  /** [内置保护] 当前选中模板是否系统内置（真源取服务端 metas.builtin）：内置则不可编辑保存/删除 */
+  const currentBuiltin = computed(
+    () => metas.value.find((m) => m.key === selected.value)?.builtin === true,
+  )
+
   async function refreshMetas(autoOpen = false) {
     metasLoading.value = true
     try {
@@ -123,6 +128,11 @@ export function useTemplates() {
 
   async function save() {
     if (!selected.value || saving.value) return
+    // [内置保护] 内置模板不可保存（UI 已禁编辑入口，此处防御性兼顶）
+    if (currentBuiltin.value) {
+      actionErr.value = '系统内置模板不可修改，请先「另存为副本」创建自定义模板'
+      return
+    }
     saving.value = true
     actionErr.value = ''
     stopValidate()
@@ -215,6 +225,11 @@ export function useTemplates() {
   }
 
   async function removeTemplate(key: string, name: string) {
+    // [内置保护] 内置模板不可删除（UI 已隐藏删除按钮，此处防御性兼顶）
+    if (metas.value.find((m) => m.key === key)?.builtin === true) {
+      actionErr.value = `模板「${name}」是系统内置模板，不可删除`
+      return
+    }
     const ok = await confirmDialog({
       title: '删除模板',
       message: `删除模板「${name}」（${key}）？\n文件将从 workspace/templates 移除，且不可撤销。`,
@@ -267,6 +282,7 @@ export function useTemplates() {
     actionErr,
     dirty,
     liveTpl,
+    currentBuiltin,
     refreshMetas,
     openTemplate,
     stopValidate,

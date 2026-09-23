@@ -30,6 +30,7 @@ const { prompts, pLoading, pListErr, pSelected, openPrompt, openNewPrompt } =
     >
       <div class="r1">
         <span class="k mono">{{ p.name }}</span>
+        <span v-if="p.builtin" class="chip builtin" title="系统内置提示词·只读，不可修改/删除">内置</span>
       </div>
       <div class="r3 muted">
         {{ fmtSize(p.size) }} · {{ fmtTime(p.updatedAt) }}
@@ -102,5 +103,14 @@ const { prompts, pLoading, pListErr, pSelected, openPrompt, openNewPrompt } =
 .item .r3 {
   margin-top: 5px;
   font-size: 11px;
+}
+
+.item .chip.builtin {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 </style>

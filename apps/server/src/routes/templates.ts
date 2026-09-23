@@ -22,6 +22,7 @@ import type { Template } from '../pipeline/types'
 import { PrefillError, resolveRunPrefill } from '../services/run-prefill'
 import { recommendTemplates, refreshTemplateVectors } from '../services/template-recommend'
 import { isCreationTemplate } from '../services/creation-chat/recipe'
+import { isBuiltinTemplate } from '../pipeline/builtin-assets'
 import { HttpError, h } from './helpers'
 
 export const templatesRoutes = new Hono()
@@ -30,7 +31,11 @@ export const templatesRoutes = new Hono()
 // 全量返回（含 easy-*，供编辑器查改与按 key 反查名字）；每项依 isCreationTemplate 真源打 conversationOnly 标记，
 // 由各「选择器」消费方自行过滤（启动/批量/建项目/画布/排程），展示方忽略该标记即可。
 templatesRoutes.get('/templates', (c) => {
-  const items = listTemplates().map((t) => ({ ...t, conversationOnly: isCreationTemplate(t.key) }))
+  const items = listTemplates().map((t) => ({
+    ...t,
+    conversationOnly: isCreationTemplate(t.key),
+    builtin: isBuiltinTemplate(t.key),
+  }))
   return c.json({ items })
 })
 
@@ -111,6 +116,7 @@ templatesRoutes.post('/templates', h(async (c) => {
 templatesRoutes.put('/templates/:key', h(async (c) => {
   const key = c.req.param('key') ?? ''
   if (!templateFileOf(key)) throw new HttpError(404, 'template_not_found', `模板「${key}」不存在`)
+  if (isBuiltinTemplate(key)) throw new HttpError(409, 'template_builtin', `模板「${key}」是系统内置模板，不可修改；如需定制请用「另存为副本」创建自定义模板`)
   const body = await c.req.json().catch(() => {
     throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
   })
@@ -128,6 +134,7 @@ templatesRoutes.put('/templates/:key', h(async (c) => {
 templatesRoutes.delete('/templates/:key', h(async (c) => {
   const key = c.req.param('key') ?? ''
   if (!templateFileOf(key)) throw new HttpError(404, 'template_not_found', `模板「${key}」不存在`)
+  if (isBuiltinTemplate(key)) throw new HttpError(409, 'template_builtin', `模板「${key}」是系统内置模板，不可删除`)
   const refs = await db
     .select({ name: projects.name })
     .from(projects)

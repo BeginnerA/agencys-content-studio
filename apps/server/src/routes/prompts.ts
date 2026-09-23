@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync,
 import { dirname, join, resolve, sep } from 'node:path'
 import { Hono } from 'hono'
 import { PROMPTS_DIR } from '../env'
+import { isBuiltinPrompt } from '../pipeline/builtin-assets'
 import { HttpError, h } from './helpers'
 
 export const promptsRoutes = new Hono()
@@ -34,6 +35,8 @@ interface PromptItem {
   name: string
   size: number
   updatedAt: number
+  /** [内置保护] 系统出厂内置提示词（BUILTIN_PROMPT_NAMES 真源）：用户只读，不可修改/删除 */
+  builtin?: boolean
 }
 
 /** 递归收集目录内文件（相对路径统一 POSIX 斜杠） */
@@ -54,7 +57,9 @@ function walk(dir: string, base = ''): PromptItem[] {
 // GET /prompts —— 提示词文件清单（相对路径）
 promptsRoutes.get('/prompts', h((c) => {
   if (!existsSync(PROMPTS_DIR)) return c.json({ items: [] })
-  const items = walk(PROMPTS_DIR).sort((a, b) => a.name.localeCompare(b.name))
+  const items = walk(PROMPTS_DIR)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((it) => ({ ...it, builtin: isBuiltinPrompt(it.name) }))
   return c.json({ items })
 }))
 
@@ -75,6 +80,7 @@ promptsRoutes.get('/prompts/*', h((c) => {
 // PUT /prompts/* —— 新建/覆盖写 {content}（父目录自动创建）
 promptsRoutes.put('/prompts/*', h(async (c) => {
   const { abs, rel } = resolvePromptPath(c.req.path)
+  if (isBuiltinPrompt(rel)) throw new HttpError(409, 'prompt_builtin', `提示词「${rel}」是系统内置提示词，不可修改；如需定制请新建自定义文件并在模板中改引用`)
   const body = await c.req.json().catch(() => {
     throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
   })
@@ -98,6 +104,7 @@ promptsRoutes.delete('/prompts/*', h((c) => {
     // 不存在按 404 处理
   }
   if (!isFile) throw new HttpError(404, 'prompt_not_found', `提示词「${rel}」不存在`)
+  if (isBuiltinPrompt(rel)) throw new HttpError(409, 'prompt_builtin', `提示词「${rel}」是系统内置提示词，不可删除`)
   unlinkSync(abs)
   return c.json({ ok: true })
 }))

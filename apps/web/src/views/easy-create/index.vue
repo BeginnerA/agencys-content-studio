@@ -41,6 +41,16 @@ async function loadPresets(): Promise<void> {
 }
 watch(selStyle, (v) => { s.state.stylePresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_STYLE) })
 watch(selCast, (v) => { s.state.characterPresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_CAST) })
+// 锁定（上传中）时禁止展开预设面板
+function guardLocked(e: Event): void {
+  if (s.first.locked.value) e.preventDefault()
+}
+// 预设气泡互斥：一个展开时自动收起另一个（同时只出现一个）
+const stylePopEl = ref<HTMLDetailsElement | null>(null)
+const castPopEl = ref<HTMLDetailsElement | null>(null)
+function exclusivePop(openEl: HTMLDetailsElement | null, closeEl: HTMLDetailsElement | null): void {
+  if (openEl?.open && closeEl?.open) closeEl.open = false
+}
 
 let departed = false
 let handoffPath = ''
@@ -275,28 +285,38 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
 
         <AttachmentTray v-if="s.state.attachments.length" :s="s" />
 
-        <!-- [batch5] 风格 / 角色预设：作为规划软提示基线，零计费、不进幂等 -->
-        <div class="preset-row">
-          <label class="preset">
-            <span class="preset-l">画风预设 <em class="mono preset-cnt">{{ selStyle.length }}/{{ MAX_STYLE }}</em></span>
-            <select v-model="selStyle" multiple size="3" class="preset-select" :disabled="s.first.locked.value" aria-label="选择画风预设（可多选，作为画风基线）">
-              <option v-for="p in styleOptions" :key="p.id" :value="String(p.id)" :title="p.description || p.snippet">{{ p.name }}</option>
-            </select>
-            <span v-if="!styleOptions.length" class="preset-empty muted">暂无启用的画风预设，可在工作台创建</span>
-          </label>
-          <label class="preset">
-            <span class="preset-l">角色预设 <em class="mono preset-cnt">{{ selCast.length }}/{{ MAX_CAST }}</em></span>
-            <select v-model="selCast" multiple size="3" class="preset-select" :disabled="s.first.locked.value" aria-label="选择可复用角色（可多选，作为角色基线）">
-              <option v-for="c in castOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
-            </select>
-            <span v-if="!castOptions.length" class="preset-empty muted">暂无角色，可先在工作台新建</span>
-          </label>
-          <p class="preset-tip muted">软提示：预选会作为画风 / 角色的基线喂给规划模型，可在其上细化，不会凭空替换风格或丢弃已选角色特征。</p>
-        </div>
-
         <div class="crow">
-          <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
           <div class="crow-tools">
+            <!-- [batch5] 风格 / 角色预设：工具行胶囊 + 向上展开勾选面板（软提示基线，零计费、不进幂等） -->
+            <details ref="stylePopEl" class="pop" :class="{ on: selStyle.length }" @toggle="exclusivePop(stylePopEl, castPopEl)">
+              <summary class="pop-btn" aria-label="选择画风预设（可多选，作为画风基线）" @click="guardLocked">
+                <Icon name="palette" :size="14" /> 画风
+                <span class="pop-cnt mono">{{ selStyle.length }}/{{ MAX_STYLE }}</span>
+              </summary>
+              <div class="pop-panel">
+                <label v-for="p in styleOptions" :key="p.id" class="pop-opt" :title="p.description || p.snippet">
+                  <input type="checkbox" :value="String(p.id)" v-model="selStyle" :disabled="s.first.locked.value || (!selStyle.includes(String(p.id)) && selStyle.length >= MAX_STYLE)" />
+                  <span class="pop-name">{{ p.name }}</span>
+                </label>
+                <p v-if="!styleOptions.length" class="pop-empty muted">暂无启用的画风预设，可在工作台创建</p>
+                <p class="pop-tip muted">软提示：作为画风基线喂给规划模型，可在其上细化，不会凭空替换风格。</p>
+              </div>
+            </details>
+            <details ref="castPopEl" class="pop" :class="{ on: selCast.length }" @toggle="exclusivePop(castPopEl, stylePopEl)">
+              <summary class="pop-btn" aria-label="选择可复用角色（可多选，作为角色基线）" @click="guardLocked">
+                <Icon name="users" :size="14" /> 角色
+                <span class="pop-cnt mono">{{ selCast.length }}/{{ MAX_CAST }}</span>
+              </summary>
+              <div class="pop-panel">
+                <label v-for="c in castOptions" :key="c.id" class="pop-opt">
+                  <input type="checkbox" :value="String(c.id)" v-model="selCast" :disabled="s.first.locked.value || (!selCast.includes(String(c.id)) && selCast.length >= MAX_CAST)" />
+                  <span class="pop-name">{{ c.name }}</span>
+                </label>
+                <p v-if="!castOptions.length" class="pop-empty muted">暂无角色，可先在工作台新建</p>
+                <p class="pop-tip muted">软提示：作为角色基线喂给规划模型，不会丢弃已选角色特征。</p>
+              </div>
+            </details>
+            <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
             <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="fileInput?.click()"><Icon name="upload" :size="14" /> 添加参考</button>
             <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="showPicker = true"><Icon name="arrange" :size="14" /> 从素材选取</button>
             <button v-if="s.first.state.ticket" class="btn ghost" type="button" :disabled="s.first.busy.value" @click="abandonLocal">放弃本地草稿</button>

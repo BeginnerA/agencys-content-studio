@@ -87,6 +87,9 @@ export interface TemplateMeta {
   /** [入口收口] 轻松创作批准链专用（easy-*）：仅由对话页在方案确认后调度，手动启动/排程/建项目选它都无法运行。
    *  由 GET /templates 依服务端 isCreationTemplate 真源注入；所有「选择器」按此过滤，展示反查方忽略。 */
   conversationOnly?: boolean
+  /** [内置保护] 系统出厂内置模板（BUILTIN_TEMPLATE_KEYS 真源）：用户只读，不可修改/删除；
+   *  由 GET /templates 注入，前端据此锁定编辑/删除入口，服务端 PUT/DELETE 据此拒绝。 */
+  builtin?: boolean
 }
 
 // ---------- 执行产物 ----------

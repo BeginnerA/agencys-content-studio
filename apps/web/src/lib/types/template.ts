@@ -52,6 +52,8 @@ export interface TemplateMeta {
   next?: string[]
   /** [入口收口] 轻松创作批准链专用（easy-*）：选择器应过滤掉，展示反查方忽略（服务端 isCreationTemplate 真源注入） */
   conversationOnly?: boolean
+  /** [内置保护] 系统出厂内置模板：用户只读，不可修改/删除（服务端 isBuiltinTemplate 真源注入）；前端据此锁定编辑/删除 */
+  builtin?: boolean
 }
 
 /** POST /templates/validate 响应（纯校验不落盘） */
@@ -67,6 +69,8 @@ export interface PromptItem {
   name: string
   size: number
   updatedAt: number
+  /** [内置保护] 系统出厂内置提示词：用户只读，不可修改/删除（服务端 isBuiltinPrompt 真源注入） */
+  builtin?: boolean
 }
 
 export interface TemplateDetail {

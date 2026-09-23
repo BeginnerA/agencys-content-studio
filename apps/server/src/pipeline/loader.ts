@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { PROMPTS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
+import { isBuiltinTemplate } from './builtin-assets'
 import type { Template, TemplateInputDef, TemplateMeta, TemplateStepDef } from './types'
 import { parseWhenExpr, whenRefs } from './refs'
 
@@ -340,6 +341,8 @@ export function validateTemplateText(text: string, expectKey?: string): Template
 /** 原子保存模板（临时文件 → 校验 → rename 覆盖；失败保留原文件并清理临时件） */
 export function saveTemplate(key: string, text: string): Template {
   if (!/^[\w-]+$/.test(key)) throw new Error(`模板 key「${key}」非法`)
+  // [内置保护] 兜底拦截：系统内置模板不可覆盖（routes 层已先行 409；此处防任何未来调用路径误伤出厂资产）
+  if (isBuiltinTemplate(key)) throw new Error(`模板「${key}」是系统内置模板，不可修改`)
   const res = validateTemplateText(text, key)
   if (!res.ok || !res.template) throw new Error(`模板「${key}」校验未通过：${res.errors.join('；')}`)
   const target = templateFileOf(key) ?? join(TEMPLATES_DIR, `${key}.yaml`)
@@ -364,6 +367,8 @@ export function saveTemplate(key: string, text: string): Template {
 export function deleteTemplate(key: string): void {
   const file = templateFileOf(key)
   if (!file) throw new Error(`模板「${key}」不存在`)
+  // [内置保护] 兜底拦截：系统内置模板不可删除（routes 层已先行 409）
+  if (isBuiltinTemplate(key)) throw new Error(`模板「${key}」是系统内置模板，不可删除`)
   unlinkSync(file)
   invalidateTemplate(key)
   log.info(`模板「${key}」已删除`)

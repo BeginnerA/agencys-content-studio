@@ -3,8 +3,16 @@ import Icon from '../../components/common/Icon.vue'
 import type { PromptsApi } from './use-prompts'
 
 const props = defineProps<{ p: PromptsApi }>()
-const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
-  props.p
+const {
+  pSelected,
+  pText,
+  pSaving,
+  pErr,
+  pDirty,
+  currentPromptBuiltin,
+  savePrompt,
+  removePrompt,
+} = props.p
 </script>
 
 <template>
@@ -15,11 +23,21 @@ const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
     <template v-else>
       <div class="ehead">
         <span class="tt mono">{{ pSelected }}</span>
-        <span class="badge" :class="pDirty ? 'queued' : 'succeeded'">{{
+        <span
+          v-if="currentPromptBuiltin"
+          class="badge"
+          title="系统内置提示词·只读，不可修改/删除"
+          >内置·只读</span
+        >
+        <span v-else class="badge" :class="pDirty ? 'queued' : 'succeeded'">{{
           pDirty ? '未保存' : '已同步'
         }}</span>
         <div class="acts">
-          <button class="btn sm danger" @click="removePrompt(pSelected)">
+          <button
+            v-if="!currentPromptBuiltin"
+            class="btn sm danger"
+            @click="removePrompt(pSelected)"
+          >
             <Icon name="trash" :size="12" /> 删除
           </button>
         </div>
@@ -31,15 +49,20 @@ const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
             v-model="pText"
             class="yaml"
             spellcheck="false"
+            :readonly="currentPromptBuiltin"
             :aria-label="`${pSelected} 提示词编辑器`"
           ></textarea>
         </div>
       </div>
       <div class="ebar">
-        <span class="muted">Markdown 文本 · 保存后模板引用即时指向新内容</span>
+        <span class="muted">{{
+          currentPromptBuiltin
+            ? '系统内置提示词只读；如需定制请新建自定义提示词并在模板中改引用'
+            : 'Markdown 文本 · 保存后模板引用即时指向新内容'
+        }}</span>
         <button
           class="btn primary"
-          :disabled="!pDirty || pSaving"
+          :disabled="!pDirty || pSaving || currentPromptBuiltin"
           @click="savePrompt"
         >
           <Icon name="check" :size="13" :stroke-width="2.2" />

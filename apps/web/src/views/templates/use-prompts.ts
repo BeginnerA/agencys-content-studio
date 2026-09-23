@@ -22,6 +22,11 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
     () => pSelected.value !== null && pText.value !== pBaseline.value,
   )
 
+  /** [内置保护] 当前选中提示词是否系统内置（真源取服务端 prompts.builtin）：内置则只读、不可保存/删除 */
+  const currentPromptBuiltin = computed(
+    () => prompts.value.find((p) => p.name === pSelected.value)?.builtin === true,
+  )
+
   async function refreshPrompts() {
     pLoading.value = true
     try {
@@ -57,6 +62,11 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
 
   async function savePrompt() {
     if (!pSelected.value || pSaving.value) return
+    // [内置保护] 内置提示词不可保存（UI 已只读，此处防御性兼顶）
+    if (currentPromptBuiltin.value) {
+      pErr.value = '系统内置提示词不可修改，请新建自定义提示词并在模板中改引用'
+      return
+    }
     pSaving.value = true
     pErr.value = ''
     try {
@@ -71,6 +81,11 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
   }
 
   async function removePrompt(name: string) {
+    // [内置保护] 内置提示词不可删除（UI 已隐藏删除按钮，此处防御性兼顶）
+    if (prompts.value.find((p) => p.name === name)?.builtin === true) {
+      pErr.value = `提示词「${name}」是系统内置提示词，不可删除`
+      return
+    }
     const ok = await confirmDialog({
       title: '删除提示词',
       message: `删除提示词「${name}」？引用它的模板将出现「引用缺失」提示。`,
@@ -134,6 +149,7 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
     pSaving,
     pErr,
     pDirty,
+    currentPromptBuiltin,
     refreshPrompts,
     openPrompt,
     savePrompt,

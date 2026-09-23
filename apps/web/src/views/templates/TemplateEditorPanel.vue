@@ -16,6 +16,7 @@ const {
   loadErr,
   actionErr,
   dirty,
+  currentBuiltin,
   toGuide,
   toEdit,
   openCopy,
@@ -40,6 +41,12 @@ const router = useRouter()
           :class="dirty ? 'queued' : 'succeeded'"
           >{{ dirty ? '未保存' : '已同步' }}</span
         >
+        <span
+          v-if="currentBuiltin"
+          class="badge"
+          title="系统内置模板·只读，不可修改/删除；如需定制请「另存为副本」"
+          >内置·只读</span
+        >
         <span v-if="detail" class="muted"
           >v{{ detail.version }} · {{ detail.steps.length }} 步</span
         >
@@ -47,7 +54,8 @@ const router = useRouter()
           <button
             v-if="mode === 'guide'"
             class="btn primary sm"
-            title="打开 YAML 编辑器（高级模式）"
+            :title="currentBuiltin ? '系统内置模板不可直接编辑，请先另存为副本' : '打开 YAML 编辑器（高级模式）'"
+            :disabled="currentBuiltin"
             @click="toEdit"
           >
             <Icon name="pencil" :size="12" /> 编辑 YAML
@@ -83,6 +91,7 @@ const router = useRouter()
             <Icon name="flow" :size="12" /> 画布
           </button>
           <button
+            v-if="!currentBuiltin"
             class="btn sm danger"
             title="删除模板文件（不可撤销）"
             @click="removeTemplate(selected, detail?.name ?? selected)"
