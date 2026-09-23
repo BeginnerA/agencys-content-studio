@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders, seedVendorCredentials, migrateCredentialsFromConfigs, migrateAliyunBailianRows } from './seed'
+import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows } from './seed'
 
 const log = createLogger('db')
 
@@ -42,6 +42,8 @@ export async function initDb(): Promise<void> {
   await seedVendorCredentials()
   await seedProviders()
   await migrateCredentialsFromConfigs()
+  // 内置常用风格预设（幂等补缺，不覆盖用户编辑）：表由 ensureSchemaColumns 建表兜底后写入
+  await seedStylePresets()
   log.info('db ready', { file: join(DATA_DIR, 'studio.db') })
 }
 

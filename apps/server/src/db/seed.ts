@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from './index'
-import { apiConfigs, apiProviders, vendorCredentials, voiceClones } from './schema'
+import { apiConfigs, apiProviders, vendorCredentials, voiceClones, stylePresets } from './schema'
 import { deleteSecret, resolveApiKey, writeSecret } from '../services/secrets'
 
 interface ProviderSeed {
@@ -258,4 +258,54 @@ function extractVendor(providerKey: string): string | null {
   // gemini_image 归属 google
   if (providerKey.startsWith('gemini_')) return 'google'
   return null
+}
+
+/**
+ * 内置常用风格预设目录（M8 风格库）。
+ * snippet 采用与自带「画风提取」（style-extract.md）一致的双语格式：（画风：中文描述,english prompt）
+ * ——中文供人阅读、英文供图像/视频生成模型使用（英文为风格触发主词，效果更稳）；
+ * description = 面向用户的中文适用场景说明。命名保持通用、跨体裁复用。
+ */
+interface StylePresetSeed {
+  name: string
+  snippet: string
+  description: string
+}
+
+export const STYLE_PRESET_SEEDS: StylePresetSeed[] = [
+  { name: '写实摄影', snippet: '（画风：电影级写实摄影,cinematic photorealistic, 8k, ultra detailed, natural lighting, shallow depth of field, film grain, realistic skin texture）', description: '电影感写实风格，适合真人质感口播、产品展示、纪实短视频' },
+  { name: '日系动漫', snippet: '（画风：日系二次元赛璐璐,japanese anime style, cel shading, clean lineart, vibrant colors, detailed background, studio quality）', description: '赛璐璐二次元画风，适合剧情动画、二次元 IP、轻小说改编' },
+  { name: '3D 卡通', snippet: '（画风：皮克斯风 3D 卡通,pixar-style 3d animation, soft studio lighting, subsurface scattering, rounded characters, high detail octane render）', description: '皮克斯风 3D 渲染，适合萌系 IP、儿童向、品牌吉祥物' },
+  { name: '国风墨韵', snippet: '（画风：水墨国风,traditional chinese ink painting, guofeng style, delicate brush strokes, misty mountains, elegant negative space, watercolor and ink）', description: '水墨国风，适合古风剧情、诗词文化、传统题材' },
+  { name: '吉卜力治愈', snippet: '（画风：吉卜力治愈手绘,studio ghibli style, hand-drawn animation, warm pastel colors, soft lighting, peaceful whimsical mood, detailed lush nature）', description: '吉卜力手绘风，适合治愈系故事、生活记录、自然题材' },
+  { name: '赛博霓虹', snippet: '（画风：赛博朋克霓虹,cyberpunk style, neon lights, futuristic cityscape, high contrast, rain reflections, cinematic blue and magenta color grading）', description: '赛博朋克霓虹，适合科技、潮流、未来感短片' },
+  { name: '黏土定格', snippet: '（画风：黏土定格动画,claymation stop-motion style, plasticine characters, soft studio lighting, handmade textures, tilt-shift, adorable）', description: '黏土定格动画，适合趣味科普、萌宝 IP、手作质感' },
+  { name: '水彩绘本', snippet: "（画风：水彩绘本插画,children's picture book watercolor illustration, soft washes, gentle pastel palette, hand-painted texture, warm cozy）", description: '水彩绘本插画，适合童话、亲子' },
+]
+
+/**
+ * 幂等补种内置风格预设（仅按 name 补缺失行，不覆盖用户已改名/编辑的既有项）。
+ * sortOrder 依目录顺序递增，保证内置项在列表靠前且稳定。
+ */
+export async function seedStylePresets(): Promise<void> {
+  const now = Date.now()
+  const rows = await db.select({ name: stylePresets.name }).from(stylePresets)
+  const existing = new Set(rows.map((r) => r.name))
+  let order = 1
+  for (const p of STYLE_PRESET_SEEDS) {
+    if (existing.has(p.name)) {
+      order += 1
+      continue
+    }
+    await db.insert(stylePresets).values({
+      name: p.name,
+      snippet: p.snippet,
+      description: p.description,
+      sortOrder: order,
+      isActive: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+    order += 1
+  }
 }
