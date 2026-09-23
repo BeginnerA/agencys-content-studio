@@ -33,6 +33,9 @@ const modeHint = computed(() =>
       ? '每条镜头为真实 AI 生成视频；不会静默降级为静态图。'
       : '本模式使用静态画面 + 旁白字幕，非动态视频，已明确标注。',
 )
+const scriptLabel = computed(() =>
+  plan.value?.performance === 'dialogue' ? '台词/脚本' : '旁白脚本',
+)
 const videoModeText = computed(() =>
   exec.value?.videoMode === 'i2v'
     ? '分镜图 → 图生视频'
@@ -256,7 +259,7 @@ async function onConfirm(): Promise<void> {
           :name="showScript ? 'chevron-down' : 'chevron-right'"
           :size="13"
         />
-        旁白脚本
+        {{ scriptLabel }}
       </button>
       <pre v-if="showScript" class="pre">{{ plan.script }}</pre>
       <button
