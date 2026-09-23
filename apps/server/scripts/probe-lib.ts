@@ -10,7 +10,7 @@
  * 贯穿 registry 与全部分节的唯一 checker，节模块 runner 闭包捕获同一 checker.check，
  * 因此拆分前后 PASS/FAIL 文案与总数逐字不变、退出码语义不变。
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,54 @@ export interface IsolatedEnvResult {
   cleanup: () => void
 }
 
+const PID_SENTINEL = '.acs-probe.pid'
+
+/** 在本探针临时根目录写入 PID 哨兵，供并行扫描判定「该目录是否属于存活探针进程」。写失败不致命（退化为 mtime 保护）。 */
+export function writeProbePidSentinel(dir: string): void {
+  try {
+    writeFileSync(join(dir, PID_SENTINEL), String(process.pid), 'utf8')
+  } catch {
+    /* 哨兵写失败 → 由 probeDirIsLive 的 mtime 宽限兜底 */
+  }
+}
+
+/** 判定某 acs-probe-* 目录是否正被存活探针进程使用：优先读 PID 哨兵（进程存活→true）；
+ *  无哨兵（迁移前历史残留）→ 5 分钟 mtime 宽限避开「刚建尚未写哨兵」竞态，逾期视为孤儿可清；读异常→保守 true。 */
+function probeDirIsLive(dir: string): boolean {
+  const pidFile = join(dir, PID_SENTINEL)
+  try {
+    if (existsSync(pidFile)) {
+      const pid = parseInt(readFileSync(pidFile, 'utf8').trim(), 10)
+      if (Number.isInteger(pid) && pid > 0) {
+        try { process.kill(pid, 0); return true } catch { return false } // 信号 0 仅探活；已退出 → 可清
+      }
+      return false
+    }
+  } catch {
+    return true
+  }
+  try {
+    return Date.now() - statSync(dir).mtimeMs < 5 * 60 * 1000
+  } catch {
+    return true
+  }
+}
+
+/** 清理同前缀历史残留临时目录，但跳过仍被存活探针进程占用的目录（根治并行 --jobs≥2 下嵌套回归子探针与顶层同名探针互相误删 SQLite 库）。 */
+export function sweepStaleProbeTempDirs(prefix: string): void {
+  const root = tmpdir()
+  for (const name of readdirSync(root)) {
+    if (!name.startsWith(prefix)) continue
+    const dir = join(root, name)
+    if (probeDirIsLive(dir)) continue // 存活并行探针 → 跳过
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      /* 句柄占用（Windows libsql）→ 下次运行自动收敛 */
+    }
+  }
+}
+
 /**
  * 设置隔离环境：CSTUDIO_ROOT/DATA/WORKSPACE 指向一次性临时目录（独立 studio.db + workspace）。
  * ⚠ 必须在任何 src 模块动态 import 之前调用（env 单例在首次加载时固化）。
@@ -35,18 +83,10 @@ export interface IsolatedEnvResult {
  */
 export function isolatedEnv(tag: string, opts?: { bridge?: Array<'templates' | 'prompts'> }): IsolatedEnvResult {
   const prefix = `acs-probe-${tag}-`
-  // 清理历史残留：libsql 在 Windows 下不释放文件句柄（close 后仍 EBUSY）——本进程退出时 db 文件必留；
-  // 本次运行在创建自己的目录前清掉旧的（占用中则跳过，自动收敛为最多一份）。
-  for (const name of readdirSync(tmpdir())) {
-    if (name.startsWith(prefix)) {
-      try {
-        rmSync(join(tmpdir(), name), { recursive: true, force: true })
-      } catch {
-        /* 占用中（并行探针）→ 跳过 */
-      }
-    }
-  }
+  // 清理历史残留（跳过存活并行探针目录，避免并行下互删 SQLite 库）
+  sweepStaleProbeTempDirs(prefix)
   const tmp = mkdtempSync(join(tmpdir(), prefix))
+  writeProbePidSentinel(tmp)
   process.env.CSTUDIO_ROOT = REPO_ROOT
   process.env.CSTUDIO_DATA = join(tmp, 'data')
   process.env.CSTUDIO_WORKSPACE = join(tmp, 'workspace')

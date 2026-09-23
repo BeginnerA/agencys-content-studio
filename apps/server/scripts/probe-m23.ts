@@ -28,17 +28,13 @@ const REPO_ROOT = resolve(HERE, '..', '..', '..') // apps/server/scripts -> 仓�
 // ---- 隔离环境：必须在任何 src 模块加载前设置 ----
 // 清理历史残留：libsql 在 Windows 下不释放文件句柄（close 后仍 EBUSY）——本进程退出时 db 文件必留；
 // 本次运行在创建自己的目录前清掉旧的（占用中则跳过，自动收敛为最多一份）。
+import { sweepStaleProbeTempDirs, writeProbePidSentinel } from './probe-lib'
+
 const TMP_PREFIX = 'acs-probe-m23-'
-for (const name of readdirSync(tmpdir())) {
-  if (name.startsWith(TMP_PREFIX)) {
-    try {
-      rmSync(join(tmpdir(), name), { recursive: true, force: true })
-    } catch {
-      /* 占用中（并行探针）→ 跳过 */
-    }
-  }
-}
+// 清理历史残留（跳过存活并行探针目录，避免并行 --jobs≥2 下嵌套回归子探针与顶层同名探针互删 SQLite 库）
+sweepStaleProbeTempDirs(TMP_PREFIX)
 const TMP = mkdtempSync(join(tmpdir(), TMP_PREFIX))
+writeProbePidSentinel(TMP)
 process.env.CSTUDIO_ROOT = REPO_ROOT
 process.env.CSTUDIO_DATA = join(TMP, 'data')
 process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
