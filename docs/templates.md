@@ -1,6 +1,6 @@
 # 内置模板详表
 
-14 个内置模板（`workspace/templates/*.yaml`）逐一说明与典型工作流链；「启动流水线」按 出成品 / 做规划 / 发布与复盘 三组呈现场景卡。模板均可独立运行，亦可按链串联；新增体裁 / 新流程 = 新增或修改 YAML（模板页保存即生效，无需改代码、无需重启）。
+18 个内置模板（`workspace/templates/*.yaml`）逐一说明与典型工作流链。模板分**两类入口**：「启动流水线」（专业端场景选卡，按 出成品 / 做规划 / 发布与复盘 三组呈现）与「轻松创作」（对话式立项页）。四个 `easy-*` 模板**仅由轻松创作对话页在方案确认后内部调度**，不出现在「启动流水线」选卡（其入参为对话页生成的 `recipe` 执行快照，手动启动无 `script/lines/shots/recipe` 无法运行）。模板均可独立运行，亦可按链串联；新增体裁 / 新流程 = 新增或修改 YAML（模板页保存即生效，无需改代码、无需重启）。
 
 ## 内置模板
 
@@ -22,6 +22,15 @@
 | `novel-adapt` v2 | 小说改编·切分→图谱→剧本（plan） | 小说入库 → 章节切分（三级正则链 / 卷识别 / 范围过滤，可审阅）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量）；产物对齐 `script-ep` 格式，可接力短剧链；**v2（M25·G1）**：accept 扩 [.txt,.md,.docx,.epub]（入库单点转 md，原二进制不落盘）；支持 `per_source` 多部合并与 `/novel/append` 增量连载 | 内容编排 + 剧本创作 |
 | `novel-audit` v1 | 改编一致性回查（plan） | 章节 + 剧本 → `adapt_audit` 批量 LLM 审计（omission/alteration/addition/order 差异 + severity）→ 差异报告 md（purpose=audit_report）；独立形态不侵入 novel-adapt 现链 | M25·G4 |
 | `video-reverse` v1 | 视频反推链（drama_short） | 视频入库 → `video_analyze`（抽帧≤24 + ASR 音轨转写含宽容降级 + 多模态时间轴 JSON）→ 分镜反推（storyboard-json，必审门控，直通 `ai_video` 消费契约）→ 文案包；M25·G9/G10 | M25·G10 |
+
+**轻松创作专用模板**（`CREATION_TEMPLATE_KEYS`，仅由 `easy-create` 对话页在方案确认后内部调度，**不出现在「启动流水线」选卡**；它们是「纯执行已批准方案」的批准链载体：全步 `retry:0` + `strict_delivery`、不自动付费重试，`recipe` 钉死 `templateHash`/端点/素材来源供恢复校验）：
+
+| key | 场景 | 要点 |
+|---|---|---|
+| `easy-video` v1 | 轻松创作·旁白成片 | 输入=对话页已批准的脚本/旁白/分镜/recipe；tts → measured 字幕 → 图文/首帧出图 → 动态镜头（i2v）→ 严格合成（无角色一致性/风格预设注入，交付以批准方案为准） |
+| `easy-video-review` v1 | 轻松创作·旁白成片（首帧审阅） | 与 `easy-video` 步骤逐字同构，仅在画面/首帧生成后挂人工审阅闸，确认后才开始动态镜头等高费用生成 |
+| `easy-dialogue` v1 | 轻松创作·人物对白成片 | 原生音画人物交谈（`motion` 走 `ai_video` 原生对白）→ `dialogue_subtitle` 逐镜原声 ASR 核验与实测字幕 → 原声合成（最终强制人工审阅台词/角色/口型） |
+| `easy-dialogue-review` v1 | 轻松创作·人物对白成片（首帧审阅） | 与 `easy-dialogue` 同构，仅在人物对白首帧后挂审阅闸，确认后才开始原生对白视频及 ASR 等付费生成 |
 
 **典型工作流链**（`review-restock` 回灌记忆 → `topic-radar` 召回调分，构成「选题 → 生产 → 复盘 → 回灌」闭环；模板均可独立运行）：
 

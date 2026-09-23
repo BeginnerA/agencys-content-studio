@@ -232,7 +232,7 @@ async function init() {
   loading.value = true
   try {
     const [tRes, aRes, pubRes] = await Promise.all([
-      templateApi.list(),
+      templateApi.list('?picker=1'),
       projectApi.assets(props.projectId, '?limit=100'),
       publicationApi.list(`?project_id=${props.projectId}`),
     ])

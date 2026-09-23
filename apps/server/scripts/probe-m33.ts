@@ -80,17 +80,17 @@ async function main(): Promise<void> {
       check(!!ds && ds.prices.tokens_in === 2 && ds.prices.tokens_out === 8 && !!ds.source, 'deepseek-flash 命中高峰全价 2/8（元/百万 token）+ 来源锚点')
       const pro = resolveModelPricing('llm', 'deepseek_llm', 'deepseek-v4-pro')
       check(!!pro && pro.prices.tokens_in === 9 && pro.prices.tokens_out === 27, 'deepseek-v4-pro 命中 9/27')
-      const qmax = resolveModelPricing('llm', 'aliyun_qwen_llm', 'qwen3.8-max')
+      const qmax = resolveModelPricing('llm', 'aliyun_bailian_llm', 'qwen3.8-max')
       check(!!qmax && qmax.prices.tokens_in === 12 && qmax.prices.tokens_out === 36, 'qwen3.8-max 命中 12/36')
-      const qflash = resolveModelPricing('llm', 'aliyun_qwen_llm', 'qwen3.8-flash')
+      const qflash = resolveModelPricing('llm', 'aliyun_bailian_llm', 'qwen3.8-flash')
       check(!!qflash && qflash.prices.tokens_in === 0.8 && qflash.prices.tokens_out === 2.7, 'qwen3.8-flash 命中 0.8/2.7')
-      const wan = resolveModelPricing('image', 'aliyun_wan_image', 'wan2.7-image')
+      const wan = resolveModelPricing('image', 'aliyun_bailian_image', 'wan2.7-image')
       check(!!wan && wan.prices.image === 0.2, 'wan2.7-image 命中 0.2 元/张')
       check(resolveModelPricing('llm', 'deepseek_llm', '  DeepSeek-Flash  ')?.prices.tokens_out === 8, 'model 大小写 / 首尾空格归一后仍命中')
       // fail-closed：未核实一律 null（不猜、不回退通用默认）
       check(resolveModelPricing('llm', 'openai_llm', 'gpt-5') === null, '未登记模型（openai）→ null（回落手填）')
       check(resolveModelPricing('llm', 'mystery_llm', 'deepseek-flash') === null, '未知供应商 → null（不猜）')
-      check(resolveModelPricing('video', 'aliyun_wan_image', 'wan2.7-image') === null, '单位守卫：image 条目按 video 请求 → null（防表内填错造成虚假背书）')
+      check(resolveModelPricing('video', 'aliyun_bailian_image', 'wan2.7-image') === null, '单位守卫：image 条目按 video 请求 → null（防表内填错造成虚假背书）')
       check(resolveModelPricing('llm', 'deepseek_llm', '') === null, '空 model → null')
       check(resolveModelPricing('video', 'minimax_video', 'MiniMax-H3') === null, '视频未登记秒价 → null（首批仅 LLM+万相图，视频回落手填）')
     },
@@ -111,14 +111,14 @@ async function main(): Promise<void> {
         ] },
         { model: 'qwen-image-3.0', prices: [{ range_name: 'Default', prices: [{ type: 'qima_input_1k', price: '0.02', price_unit: '每张' }] }] },
       ] } }
-      const eLlm = normalizeModelList('llm', 'aliyun_qwen_llm', ds)
+      const eLlm = normalizeModelList('llm', 'aliyun_bailian_llm', ds)
       const max = eLlm.find((m) => m.id === 'qwen3.8-max')
       check(!!max && max.pricing?.prices.tokens_in === 12 && max.pricing?.prices.tokens_out === 36, 'metadata: qwen3.8-max 归一 12/36（忽略 cache/batch）')
       check(!!max && max.context?.input === 991808 && max.context?.output === 131072, 'metadata: context 带出（max_input/output_tokens）')
       const plus = eLlm.find((m) => m.id === 'qwen3.7-plus')
       check(!!plus && plus.pricing?.prices.tokens_in === 2 && plus.pricing?.prices.tokens_out === 8, 'metadata: 分档无 Default → 取首组/基础档 2/8（与核实表一致，不取高档不猜）')
       check(!eLlm.some((m) => m.id === 'qwen-image-3.0'), 'metadata: image 条目无 token 全价档 → LLM 列表自然排除')
-      check(normalizeModelList('image', 'aliyun_wan_image', ds).length === 0, 'metadata: 非 llm serviceType → 空（不从 live 猜图/视频/语音价）')
+      check(normalizeModelList('image', 'aliyun_bailian_image', ds).length === 0, 'metadata: 非 llm serviceType → 空（不从 live 猜图/视频/语音价）')
       const compat = normalizeModelList('llm', 'openai_llm', { data: [{ id: 'gpt-5' }, { id: 'gpt-5' }, 'o3'] })
       check(compat.length === 2 && compat.every((e) => !e.pricing), 'metadata: OpenAI 兼容口 id-only、去重、无价（不猜）')
     },
@@ -166,11 +166,11 @@ async function main(): Promise<void> {
             ] } } },
           }
         }) as never
-        const rLive = await jpost('/api/v1/api-configs/fetch-models', { provider_key: 'aliyun_qwen_llm', api_key: 'probe' })
+        const rLive = await jpost('/api/v1/api-configs/fetch-models', { provider_key: 'aliyun_bailian_llm', api_key: 'probe' })
         check(rLive.status === 200 && rLive.body?.source === 'live' && rLive.body?.models?.[0]?.id === 'qwen3.8-max' && rLive.body?.models?.[0]?.pricing?.prices?.tokens_in === 12, 'fetch: 阿里千问 LLM 走原生口 → live + 带价 12/36')
 
         globalThis.fetch = (async () => { throw new Error('boom') }) as never
-        const rFail = await jpost('/api/v1/api-configs/fetch-models', { provider_key: 'aliyun_qwen_llm', api_key: 'probe' })
+        const rFail = await jpost('/api/v1/api-configs/fetch-models', { provider_key: 'aliyun_bailian_llm', api_key: 'probe' })
         check(rFail.body?.source === 'preset' && Array.isArray(rFail.body?.models) && rFail.body?.models.length > 0, 'fetch: 在线失败 → 回退 preset（id-only 列表非空）')
         check(typeof rFail.body?.note === 'string' && rFail.body.note.includes('回退'), 'fetch: 回退附 note 说明原因')
 
@@ -199,11 +199,11 @@ async function main(): Promise<void> {
       check(viaInstance === 5 / 1_000_000, '实例定价存在 → 计价值取实例（5/百万），与参考表口径独立（零漂移）')
       // [M33.1] 即便在线目录归一出 live 价，只要未落进实例 pricing，事后计价仍不受影响（真源/元数据不注入计价链）
       const { normalizeModelList } = await import('../src/adapters/model-metadata')
-      const liveEntry = normalizeModelList('llm', 'aliyun_qwen_llm', { output: { models: [{ model: 'qwen3.8-max', prices: [{ range_name: 'Default', prices: [{ type: 'input_token', price: '12', price_unit: '每百万tokens' }, { type: 'output_token', price: '36', price_unit: '每百万tokens' }] }] }] } }).find((m) => m.id === 'qwen3.8-max')
+      const liveEntry = normalizeModelList('llm', 'aliyun_bailian_llm', { output: { models: [{ model: 'qwen3.8-max', prices: [{ range_name: 'Default', prices: [{ type: 'input_token', price: '12', price_unit: '每百万tokens' }, { type: 'output_token', price: '36', price_unit: '每百万tokens' }] }] }] } }).find((m) => m.id === 'qwen3.8-max')
       check(liveEntry?.pricing?.prices.tokens_in === 12, 'cost-drift: 在线目录归一 qwen3.8-max live 12（仅供预填）')
       await clearService('llm')
-      await seedConfig({ serviceType: 'llm', providerKey: 'aliyun_qwen_llm', model: 'qwen3.8-max', pricing: '{}' })
-      const viaLive = await resolveUnitPrice({ kind: 'llm', provider: 'aliyun_qwen_llm', model: 'qwen3.8-max', unit: 'tokens_in' })
+      await seedConfig({ serviceType: 'llm', providerKey: 'aliyun_bailian_llm', model: 'qwen3.8-max', pricing: '{}' })
+      const viaLive = await resolveUnitPrice({ kind: 'llm', provider: 'aliyun_bailian_llm', model: 'qwen3.8-max', unit: 'tokens_in' })
       check(viaLive === null, 'cost-drift: live 元数据命中但不写实例 pricing → 事后计价仍 null（不进计价链）')
     },
   }

@@ -173,8 +173,8 @@ async function main(): Promise<void> {
     const { getVideoAdapter } = await import('../src/adapters/video')
     const img = (k: string): string => getImageAdapter(k).referenceImages ?? 'none'
     check(
-      ['gemini_image', 'volcengine_image', 'aliyun_qwen_image', 'aliyun_wan_image'].every((k) => img(k) === 'base64'),
-      `图片 base64 组：gemini / volcengine / aliyun_qwen / aliyun_wan（${['gemini_image', 'volcengine_image', 'aliyun_qwen_image', 'aliyun_wan_image'].map((k) => `${k}=${img(k)}`).join(' ')}）`,
+      ['gemini_image', 'volcengine_image', 'aliyun_bailian_image'].every((k) => img(k) === 'base64'),
+      `图片 base64 组：gemini / volcengine / aliyun_bailian（${['gemini_image', 'volcengine_image', 'aliyun_bailian_image'].map((k) => `${k}=${img(k)}`).join(' ')}）`,
     )
     check(
       ['openai_image', 'siliconflow_image', 'pollinations_image'].every((k) => img(k) === 'none'),
@@ -182,8 +182,8 @@ async function main(): Promise<void> {
     )
     const vid = (k: string): string => getVideoAdapter(k).firstFrame ?? 'none'
     check(
-      ['minimax_video', 'siliconflow_video', 'aliyun_wan_video'].every((k) => vid(k) === 'base64'),
-      '视频 base64 组：minimax / siliconflow / aliyun_wan',
+      ['minimax_video', 'siliconflow_video', 'aliyun_bailian_video'].every((k) => vid(k) === 'base64'),
+      '视频 base64 组：minimax / siliconflow / aliyun_bailian',
     )
     check(
       ['base64', 'as-reference'].includes(vid('volcengine_video')),

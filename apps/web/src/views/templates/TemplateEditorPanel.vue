@@ -17,6 +17,7 @@ const {
   actionErr,
   dirty,
   toGuide,
+  toEdit,
   openCopy,
   removeTemplate,
 } = props.t
@@ -43,6 +44,14 @@ const router = useRouter()
           >v{{ detail.version }} · {{ detail.steps.length }} 步</span
         >
         <div class="acts">
+          <button
+            v-if="mode === 'guide'"
+            class="btn primary sm"
+            title="打开 YAML 编辑器（高级模式）"
+            @click="toEdit"
+          >
+            <Icon name="pencil" :size="12" /> 编辑 YAML
+          </button>
           <button
             v-if="mode === 'edit'"
             class="btn sm"
@@ -107,6 +116,9 @@ const router = useRouter()
   flex: 1;
   min-width: 0;
   padding: 14px;
+  /* 与左侧模板列表（max-height: calc(100vh - 130px)）等高，两栏对齐；内容超出时面板内部滚动 */
+  height: calc(100vh - 130px);
+  overflow-y: auto;
 }
 
 .ehead {

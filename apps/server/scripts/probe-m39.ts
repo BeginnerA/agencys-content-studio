@@ -38,12 +38,12 @@ async function main(): Promise<void> {
     const sizeField = (p: string, m?: string) => resolveExtraSchema(p, 'image', m).find((f) => f.key === 'size')
 
     // 阿里云千问 TTS：qwen3-tts 系逐模型专属枚举（官方音色列表核实），qwen-tts 老一代回落 provider 级
-    const instruct = voiceField('aliyun_qwen_tts', 'qwen3-tts-instruct-flash')
+    const instruct = voiceField('aliyun_bailian_tts', 'qwen3-tts-instruct-flash')
     check(!!instruct && instruct.type === 'select' && (instruct.options ?? []).some((o) => o.value === 'Eldric Sage') && (instruct.options ?? []).every((o) => !o.value.startsWith('Jennifer')), 'aliyun qwen3-tts-instruct-flash：专属枚举（含 Eldric Sage、不含 flash 系独有 Jennifer）')
     check(!!instruct && instruct.default === 'Cherry' && !!instruct.help && instruct.help.includes('instruct'), 'instruct profile：默认 Cherry + help 标注情绪指令能力')
-    const flash = voiceField('aliyun_qwen_tts', 'qwen3-tts-flash-2025-11-17')
+    const flash = voiceField('aliyun_bailian_tts', 'qwen3-tts-flash-2025-11-17')
     check(!!flash && flash.type === 'select' && (flash.options ?? []).some((o) => o.value === 'Jennifer') && (flash.options ?? []).some((o) => o.value === 'Roy'), 'qwen3-tts-flash（含快照版）：36 音色集含美语/方言音色')
-    const legacy = voiceField('aliyun_qwen_tts', 'qwen-tts')
+    const legacy = voiceField('aliyun_bailian_tts', 'qwen-tts')
     check(!!legacy && legacy.type === 'select' && (legacy.options ?? []).length === 4 && (legacy.options ?? []).some((o) => o.value === 'Chelsie'), '未注册 profile 的 qwen-tts：回落 provider 级 4 音色（行为不劣于 M38）')
 
     // OpenAI：gpt-4o-mini-tts 11 音色 vs tts-1 系 9 音色（ballad/verse 仅前者）
@@ -68,27 +68,27 @@ async function main(): Promise<void> {
     check(!!polElv && polElv.type === 'text' && polElv.default === undefined, 'pollinations elevenlabs/：text 且无默认（枚举未核实，不猜 alloy 假默认）')
 
     // 图像：命中族 → select 官方档位 / text 核实约束；未命中 → provider 级通用文本框
-    const wanPro = sizeField('aliyun_wan_image', 'wan2.7-image-pro')
+    const wanPro = sizeField('aliyun_bailian_image', 'wan2.7-image-pro')
     check(!!wanPro && wanPro.type === 'select' && (wanPro.options ?? []).some((o) => o.value === '4K') && wanPro.default === '2K', 'wan2.7-image-pro：1K/2K/4K 档位（默认 2K）')
-    const wan = sizeField('aliyun_wan_image', 'wan2.7-image')
+    const wan = sizeField('aliyun_bailian_image', 'wan2.7-image')
     check(!!wan && wan.type === 'select' && !(wan.options ?? []).some((o) => o.value === '4K'), 'wan2.7-image：仅 1K/2K（不含 4K）')
-    const wan22 = sizeField('aliyun_wan_image', 'wan2.2-t2i-flash')
+    const wan22 = sizeField('aliyun_bailian_image', 'wan2.2-t2i-flash')
     check(!!wan22 && wan22.type === 'text' && !!wan22.help && wan22.help.includes('512'), 'wan2.2：text + 官方宽高 [512,1440] 约束 help（非通用文案）')
-    const qmax = sizeField('aliyun_qwen_image', 'qwen-image-max')
+    const qmax = sizeField('aliyun_bailian_image', 'qwen-image-max')
     check(!!qmax && qmax.type === 'select' && (qmax.options ?? []).every((o) => /^[0-9]{3,4}x[0-9]{3,4}$/.test(o.value)) && qmax.default === '1664x928', 'qwen-image-max：官方固定 5 档 WxH（默认 1664x928）')
-    const q3 = sizeField('aliyun_qwen_image', 'qwen-image-3.0-pro')
+    const q3 = sizeField('aliyun_bailian_image', 'qwen-image-3.0-pro')
     check(!!q3 && q3.type === 'text' && !!q3.help && q3.help.includes('2048'), 'qwen-image-3.0：text + [512,2048] 自定义范围 help')
     const genericSize = sizeField('openai_image', 'probe-img')
     check(!!genericSize && genericSize.type === 'text' && genericSize.default === '1024x1024', '未注册尺寸族（openai_image）：provider 级通用 1024x1024 文本框')
 
     // defaultVoice / defaultImageSize 回落链
-    check(defaultVoice('aliyun_qwen_tts', 'qwen3-tts-flash') === 'Cherry' && defaultVoice('openai_audio', 'gpt-4o-mini-tts') === 'alloy', 'defaultVoice：命中 profile 用模型级默认')
+    check(defaultVoice('aliyun_bailian_tts', 'qwen3-tts-flash') === 'Cherry' && defaultVoice('openai_audio', 'gpt-4o-mini-tts') === 'alloy', 'defaultVoice：命中 profile 用模型级默认')
     check(defaultVoice('siliconflow_audio', 'FunAudioLLM/CosyVoice2-0.5B') === 'FunAudioLLM/CosyVoice2-0.5B:alex', 'defaultVoice：CosyVoice2 → 合成后完整串')
     check(defaultVoice('siliconflow_audio', 'fnlp/MOSS-TTSD-v0.5') === '', 'defaultVoice：未核实模型回落 provider 级（无默认→空，不猜）')
     check(defaultVoice('pollinations_audio', 'elevenlabs/eleven-flash-v2.5') === '', 'defaultVoice：未核实音色集 → 空（交由显式配置）')
-    check(defaultVoice('aliyun_qwen_tts') === 'Cherry' && defaultVoice('unknown_audio') === '', 'defaultVoice：不传 model/未知供应商 = M38 现行为')
-    check(defaultImageSize('aliyun_qwen_image', 'qwen-image-plus') === '1664x928', 'defaultImageSize：max/plus → 官方默认档（避开非法 1024x1024）')
-    check(defaultImageSize('aliyun_wan_image', 'wan2.7-image') === '2K' && defaultImageSize('aliyun_wan_image', 'wan2.6-t2i') === '1024x1024', 'defaultImageSize：2.7 档 2K / 2.6 系 1024x1024')
+    check(defaultVoice('aliyun_bailian_tts') === 'Cherry' && defaultVoice('unknown_audio') === '', 'defaultVoice：不传 model/未知供应商 = M38 现行为')
+    check(defaultImageSize('aliyun_bailian_image', 'qwen-image-plus') === '1664x928', 'defaultImageSize：max/plus → 官方默认档（避开非法 1024x1024）')
+    check(defaultImageSize('aliyun_bailian_image', 'wan2.7-image') === '2K' && defaultImageSize('aliyun_bailian_image', 'wan2.6-t2i') === '1024x1024', 'defaultImageSize：2.7 档 2K / 2.6 系 1024x1024')
     check(defaultImageSize('openai_image', 'probe-img') === '1024x1024', 'defaultImageSize：未注册族 → 1024x1024 通用兜底')
   }
 
@@ -161,16 +161,16 @@ async function main(): Promise<void> {
     check(pfElv.issues.some((i) => i.code === 'missing_voice'), 'elevenlabs 实例无 voice 且音色集未核实 → 仍 missing_voice（不注入假默认）')
 
     // provider 级回落不变：未注册 profile 模型沿用 M38 行为
-    const pfLegacy = await run({ providerKey: 'aliyun_qwen_tts', model: 'qwen-tts' }, oaiImg, 'm39-pf-legacy')
+    const pfLegacy = await run({ providerKey: 'aliyun_bailian_tts', model: 'qwen-tts' }, oaiImg, 'm39-pf-legacy')
     check(pfLegacy.ready && pfLegacy.execution?.voice === 'Cherry', 'qwen-tts（无 profile）：回落 provider 级默认 Cherry')
-    const pfExplicit = await run({ providerKey: 'aliyun_qwen_tts', model: 'qwen3-tts-flash', voice: 'Serena' }, oaiImg, 'm39-pf-explicit')
+    const pfExplicit = await run({ providerKey: 'aliyun_bailian_tts', model: 'qwen3-tts-flash', voice: 'Serena' }, oaiImg, 'm39-pf-explicit')
     check(pfExplicit.ready && pfExplicit.execution?.voice === 'Serena', '显式配置 voice=Serena：覆盖逐模型默认')
 
     // 尺寸：未配置 → 逐模型默认（qwen-image-max 官方默认档，1024x1024 对其非法不再注入）
-    const pfMax = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_qwen_image', model: 'qwen-image-max' }, 'm39-pf-imagemax')
+    const pfMax = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_bailian_image', model: 'qwen-image-max' }, 'm39-pf-imagemax')
     check(pfMax.ready && pfMax.execution?.imageSize === '1664x928', `qwen-image-max 未配 size：兜底官方默认 1664x928${pfMax.execution ? '（实际 ' + pfMax.execution.imageSize + '）' : ''}`)
     // [1-4]K 档位合法透传（wan2.7 系，M38 正则不认致静默回落）
-    const pfWan2k = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_wan_image', model: 'wan2.7-image', size: '2K' }, 'm39-pf-wan2k')
+    const pfWan2k = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_bailian_image', model: 'wan2.7-image', size: '2K' }, 'm39-pf-wan2k')
     check(pfWan2k.ready && pfWan2k.execution?.imageSize === '2K', 'wan2.7 显式 size=2K：官方档位合法透传（正则扩展 [1-4]K）')
     // 未注册族兜底仍 1024x1024（行为不劣于 M38）
     const pfGeneric = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, oaiImg, 'm39-pf-generic')

@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       check(!!mini && mini.modes.join() === 'i2v,t2v' && mini.durations[0] === 4 && mini.durations[mini.durations.length - 1] === 15 && mini.resolutions.join() === '768P,2K' && mini.defaultResolution === '768P', 'minimax 背书档位：i2v+t2v / 4–15 秒 / 768P·2K（对齐迁移前约束）')
       const volc = resolveVideoCaps('volcengine_video', 'doubao-seedance-2-0-mini')
       check(!!volc && volc.resolutions.join() === '480p,720p' && volc.defaultResolution === '720p' && volc.durations[0] === 4 && volc.durations[volc.durations.length - 1] === 15, 'volcengine 背书档位：480p·720p / 4–15 秒')
-      const aliyun = resolveVideoCaps('aliyun_wan_video', 'wan3.0-video-prime')
+      const aliyun = resolveVideoCaps('aliyun_bailian_video', 'wan3.0-video-prime')
       check(!!aliyun && aliyun.durations[0] === 2 && aliyun.resolutions.includes('1080p'), 'aliyun 背书档位：2–30 秒 / 含 1080p')
       const pollMinimax = resolveVideoCaps('pollinations_video', 'minimax/minimax-h3-max-turbo')
       check(!!pollMinimax && pollMinimax.modes.join() === 't2v' && pollMinimax.durations.join() === '5,10,15' && pollMinimax.resolutions.join() === '480p', 'pollinations·minimax：t2v-only / 5,10,15 / 480p（无首帧注入）')

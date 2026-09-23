@@ -180,10 +180,10 @@ async function main(): Promise<void> {
       check((await svc(pid, T_NOVIDEO)).overrides.video === null, '不含 ai_video/ffmpeg_merge 的模板 → overrides.video null')
 
       // settings.video 缺省 → 回落默认 video 实例
-      await seedDefaultVideoInstance('aliyun_wan_video', 'wan3.0')
+      await seedDefaultVideoInstance('aliyun_bailian_video', 'wan3.0')
       await setVideoSettings(pid, null)
       const fb = (await svc(pid, T_TB)).overrides.video
-      check(!!fb && fb.providerKey === 'aliyun_wan_video' && fb.durations.every((d) => d >= 2 && d <= 30), 'settings 无 video → 回落默认 video 实例（万相 2–30）')
+      check(!!fb && fb.providerKey === 'aliyun_bailian_video' && fb.durations.every((d) => d >= 2 && d <= 30), 'settings 无 video → 回落默认 video 实例（万相 2–30）')
       check(!!fb && JSON.stringify(fb.selectableResolutions) === JSON.stringify(['480p', '720p', '1080p']), '万相三档分辨率均在输入白名单内 → selectable 全保留')
     },
 

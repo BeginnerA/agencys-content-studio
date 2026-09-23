@@ -5,13 +5,12 @@ import {
   stepBadgesOf,
   GUIDE_BADGE_TEXT,
 } from './internals'
-import Icon from '../../components/common/Icon.vue'
 import { SCENE_LABELS, genreText } from '../../lib/scene'
 import { actionText } from '../../lib/template-dict'
 import type { TemplatesApi } from './use-templates'
 
 const props = defineProps<{ t: TemplatesApi }>()
-const { selected, detail, toEdit } = props.t
+const { selected, detail } = props.t
 </script>
 
 <template>
@@ -68,29 +67,20 @@ const { selected, detail, toEdit } = props.t
       </li>
     </ol>
 
-    <div class="ebar">
-      <span class="muted"
-        >模板文件：workspace/templates/{{ selected }}.yaml ·
-        保存后下一个新运行立即生效</span
-      >
-      <button
-        class="btn primary"
-        title="打开 YAML 编辑器（高级模式）"
-        @click="toEdit"
-      >
-        <Icon name="pencil" :size="13" /> 编辑 YAML
-      </button>
+    <div class="vfile">
+      模板文件：workspace/templates/{{ selected }}.yaml ·
+      保存后下一个新运行立即生效
     </div>
   </template>
 </template>
 
 <style scoped>
-.ebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
+.vfile {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
 }
 
 /* ---------- [说明书改造] 说明书视图 ---------- */

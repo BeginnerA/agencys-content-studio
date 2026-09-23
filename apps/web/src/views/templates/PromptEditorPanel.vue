@@ -56,6 +56,10 @@ const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
   flex: 1;
   min-width: 0;
   padding: 14px;
+  display: flex;
+  flex-direction: column;
+  /* 与左侧列表面板（max-height: calc(100vh - 130px)）等高，两栏对齐 */
+  height: calc(100vh - 130px);
 }
 
 .ehead {
@@ -64,6 +68,7 @@ const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
   gap: 10px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  flex: none;
 }
 
 .ehead .tt {
@@ -81,17 +86,22 @@ const { pSelected, pText, pSaving, pErr, pDirty, savePrompt, removePrompt } =
   display: flex;
   gap: 10px;
   align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .ed {
   flex: 1;
   min-width: 0;
+  display: flex;
 }
 
 textarea.yaml {
+  flex: 1;
   width: 100%;
-  height: 430px;
-  resize: vertical;
+  height: 100%;
+  min-height: 0;
+  resize: none;
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.6;
@@ -105,5 +115,6 @@ textarea.yaml {
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
+  flex: none;
 }
 </style>
