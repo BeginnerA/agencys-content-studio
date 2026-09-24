@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
 import { engine } from '../pipeline/engine'
-import { isCreationTemplate } from '../services/creation-chat/recipe'
+import { isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const tasksRoutes = new Hono()
@@ -58,7 +58,11 @@ tasksRoutes.post('/tasks/:id/retry', h(async (c) => {
   const runRows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, t.runId)).limit(1)
   const run = runRows[0]
   if (!run) return notFound(c, `run ${t.runId}`)
-  if (isCreationTemplate(run.templateKey)) throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
+  // [方案C] 轻松创作 run：仅「受理状态不明」任务（已提交无任务号/产物，可能已计费）阻断就地重试 → 引导会话核验；
+  // 其余失败（纯本地校验失败、有外部 taskId 仅恢复查询、已有产物）放行，与 resume 委派 retryCreation 同口径。
+  if (isCreationTemplate(run.templateKey) && isAmbiguousSubmitted(t)) {
+    throw new HttpError(409, 'creation_confirmation_required', '该任务受理状态不明（已提交但无外部任务号/产物），可能已被供应商计费，请在轻松创作会话中核验后恢复，避免重复计费')
+  }
   if (run.status === 'completed') throw new HttpError(400, 'bad_status', '所属 run 已完成，无需重试')
   if (run.status === 'waiting_input') throw new HttpError(400, 'bad_status', '所属 run 正等待闸门，先处理闸门')
   if (run.status === 'running') throw new HttpError(400, 'bad_status', '所属 run 正在执行，无法重试')
@@ -119,6 +123,8 @@ function taskView(t: typeof genTasks.$inferSelect, resultAsset: AssetSnapshot | 
     provider: t.provider,
     model: t.model,
     taskId: t.taskId, // 第三方任务 id（ai_video 轮询溯源）
+    // [方案C] 受理状态不明标记（单一真源谓词）：前端轻松创作 run 据此逐任务隐显「重试」
+    ambiguous: isAmbiguousSubmitted(t),
     status: t.status,
     attempts: t.attempts,
     errorMsg: t.errorMsg,

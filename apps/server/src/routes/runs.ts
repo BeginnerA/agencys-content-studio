@@ -6,7 +6,10 @@ import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pi
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { checkBudget } from '../services/budget'
-import { isCreationTemplate } from '../services/creation-chat/recipe'
+import { randomUUID } from 'node:crypto'
+import { isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
+import { retryCreation } from '../services/creation-chat/execution'
+import { CreationError } from '../services/creation-chat/contract'
 import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
@@ -79,9 +82,22 @@ runsRoutes.get('/runs/:id', h(async (c) => {
     .orderBy(desc(creationSessions.id))
     .limit(1)
   const creationSessionId = sessionRows[0]?.id ?? null
+  // [方案C] 专业端「断点续跑」能否就地恢复：轻松创作 run 若存在「受理状态不明」任务（可能已计费），
+  // retryCreation 会拒 needs_verification → 前端改呈现直达会话核验链接；否则放行就地续跑。
+  const ambiguousTaskIds: number[] = []
+  if (isCreationTemplate(run.templateKey) && ['failed', 'cancelled'].includes(run.status)) {
+    const tRows = await db
+      .select({ id: genTasks.id, status: genTasks.status, attempts: genTasks.attempts, taskId: genTasks.taskId, resultAssetId: genTasks.resultAssetId })
+      .from(genTasks)
+      .where(eq(genTasks.runId, run.id))
+    for (const t of tRows) if (isAmbiguousSubmitted(t)) ambiguousTaskIds.push(t.id)
+  }
+  const resumeNeedsVerification = ambiguousTaskIds.length > 0
   return c.json({
     run: toRunView(run),
     creationSessionId,
+    resumeNeedsVerification,
+    ambiguousTaskIds,
     steps: steps.map((s) => ({
       id: s.id,
       seq: s.seq,
@@ -158,20 +174,37 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
+  // [方案C] 轻松创作批准链 run：不在专业端走朴素 generic resume（其迁移会把已拿到外部 taskId 的在途任务归零重投=重复计费风险），
+  // 而委派会话恢复真源 retryCreation（verified 列表留空：有 taskId 者仅恢复查询、有产物者复用缓存、仅拦「受理状态不明」）。
+  // 存在受理状态不明任务时 retryCreation 抛 needs_verification(409) → 引导回会话核验；无则就地安全续跑并返回新 run。
   if (isCreationTemplate(src.templateKey)) {
     const sess = await db
-      .select({ id: creationSessions.id })
+      .select()
       .from(creationSessions)
       .where(eq(creationSessions.runId, runId))
       .orderBy(desc(creationSessions.id))
       .limit(1)
-    throw new HttpError(
-      409,
-      'creation_confirmation_required',
-      sess[0]
-        ? `该运行由轻松创作发起，请在创作会话 #${sess[0].id} 中核验并恢复，避免重复计费`
-        : '该运行由轻松创作发起，请在轻松创作中核验并恢复，避免重复计费',
-    )
+    const s = sess[0]
+    if (!s) {
+      throw new HttpError(409, 'creation_confirmation_required', '该运行由轻松创作发起，请在轻松创作中核验并恢复，避免重复计费')
+    }
+    try {
+      const { runId: newRunId } = await retryCreation(s.id, {
+        runId,
+        planHash: s.planHash,
+        planRevision: s.planRevision,
+        idempotencyKey: randomUUID(),
+        verifiedFailedTaskIds: [],
+      })
+      const newRun = await findRun(newRunId)
+      if (!newRun) throw new HttpError(500, 'resume_failed', '续跑已提交但新 run 未生成，请到轻松创作会话中查看')
+      return c.json({ run: toRunView(newRun) }, 202)
+    } catch (e) {
+      if (e instanceof CreationError) throw new HttpError(e.status, e.code, e.message)
+      // retryCreation 的停机型普通 Error（已批准模板/方案/资产/项目漂移、assertRecipeSources 抛错）：
+      // 专业端无法处理，一律归为「须回会话核验」409（不泄漏成 400 bad_request），与 needs_verification 同类引导
+      throw new HttpError(409, 'creation_confirmation_required', `该轻松创作 run 无法就地续跑（${e instanceof Error ? e.message : String(e)}），请回到轻松创作会话处理`)
+    }
   }
   if (!['failed', 'cancelled'].includes(src.status)) {
     throw new HttpError(400, 'bad_status', `仅 failed/cancelled 可续跑（当前 ${src.status}）；如需重跑请直接新建 run`)

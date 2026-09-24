@@ -46,6 +46,8 @@ export interface CanvasTaskAgg {
   succeeded: number
   failed: number
   cancelled: number
+  /** [方案C] 受理状态不明任务数 */
+  ambiguous?: number
 }
 
 /** [M15] 运行画布节点（run 状态 × 步骤） */
@@ -109,6 +111,8 @@ export interface RunCanvas {
     canResume: boolean
     /** [恢复收口] 轻松创作批准链 run：续跑/重试真源在创作会话，顶栏改呈现直达链接 */
     isCreation?: boolean
+    /** [方案C] 存在受理状态不明任务 → 无法就地续跑，顶栏呈现会话核验链接 */
+    resumeNeedsVerification?: boolean
   }
 }
 

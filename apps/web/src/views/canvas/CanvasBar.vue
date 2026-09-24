@@ -56,10 +56,12 @@ const selTplKey = defineModel<string>('tplSel', { required: true })
 const selProject = defineModel<string>('project', { required: true })
 // [入口收口] 顶栏「选模板→启动运行」不呈现轻松创作批准链模板（无 recipe 无法启动）；CanvasGuide 浏览设计不受影响
 const selectableTpls = computed(() => filterSelectable(props.tplMetas))
-// [恢复收口] 批准链 run：服务端 canResume 已置 false（续跑/重试真源在创作会话），顶栏改呈现直达会话链接
+// [方案C] 批准链 run：仅当存在受理状态不明任务（resumeNeedsVerification）时才不能就地续跑，顶栏改呈现直达会话链接；
+// 无状态不明任务的轻松创作 run canResume 已为 true → 上面的「断点续跑」按钮直接可用（专业端 resume 委派 retryCreation）
 const showCreationRecover = computed(
   () =>
     props.runCanvas?.runActions.isCreation === true &&
+    props.runCanvas?.runActions.resumeNeedsVerification === true &&
     ['failed', 'cancelled'].includes(props.curRun?.status ?? ''),
 )
 </script>

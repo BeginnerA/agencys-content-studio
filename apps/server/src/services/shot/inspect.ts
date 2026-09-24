@@ -1,11 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
-import { assets, pipelineSteps, type Asset, type PipelineRun, type PipelineStep } from '../../db/schema'
+import { assets, genTasks, pipelineSteps, type Asset, type PipelineRun, type PipelineStep } from '../../db/schema'
 import { stepDeps } from '../../pipeline/dag'
 import { templateForRun } from '../../pipeline/loader'
 import type { Template } from '../../pipeline/types'
 import { readTextAsset } from '../storage'
-import { isCreationTemplate } from '../creation-chat/recipe'
+import { isAmbiguousSubmitted, isCreationTemplate } from '../creation-chat/recipe'
 import { WorkbenchError, getRunOrThrow, getStepOrThrow, outputIdsOf, type ShotSpec } from './helpers'
 
 export interface StoryboardSource {
@@ -133,6 +133,18 @@ export async function assertChainRepairable(
     // 轻松创作已批准制作链「已完成」后再级联重跑=额外生成，须回轻松创作重新确认方案；
     // 但 run=failed 表示批准链路尚未跑完，级联救援只是完成既定方案（执行期 assertRecipeSources 仍独立守方案/素材一致性），故放行。
     throw new WorkbenchError('creation_confirmation_required', '已批准制作链已完成；额外生成请在轻松创作中重新确认方案', 409)
+  }
+  // [方案C 收口] failed 轻松创作 run 的级联救援会重置链内非成功任务；「受理状态不明」任务（已提交但无外部
+  // task_id/无产物）无 task_id 可续轮询 → 引擎将重新提交，与断点续跑/单任务重试同类重复计费风险。
+  // 故级联重跑亦须与 resume 同源收口（单一真源 isAmbiguousSubmitted）：存在此类任务时拒绝级联、引导回会话核验。
+  if (isCreationTemplate(run.templateKey) && run.status === 'failed') {
+    const taskRows = await db
+      .select({ status: genTasks.status, attempts: genTasks.attempts, taskId: genTasks.taskId, resultAssetId: genTasks.resultAssetId })
+      .from(genTasks)
+      .where(eq(genTasks.runId, runId))
+    if (taskRows.some(isAmbiguousSubmitted)) {
+      throw new WorkbenchError('creation_confirmation_required', '该轻松创作 run 存在受理状态不明任务（已提交但无回执，可能已计费），级联重跑会重新提交导致重复扣费；请在轻松创作会话中核验后恢复', 409)
+    }
   }
   const step = await getStepOrThrow(runId, stepKey)
   if (step.status !== 'succeeded' && step.status !== 'failed') {

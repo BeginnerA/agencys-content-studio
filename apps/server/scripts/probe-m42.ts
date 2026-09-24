@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     // ============ review-template：变体模板同构 / 确认选键 / 哈希收口 / 恢复路径零破坏 ============
     'review-template': async () => {
       const { db } = await import('../src/db')
-      const { creationSessions, pipelineRuns, projects } = await import('../src/db/schema')
+      const { creationSessions, pipelineRuns, pipelineSteps, genTasks, projects } = await import('../src/db/schema')
       const { eq } = await import('drizzle-orm')
       const { loadTemplate } = await import('../src/pipeline/loader')
       const { hashJson } = await import('../src/services/creation-chat/contract')
@@ -196,13 +196,41 @@ async function main(): Promise<void> {
         // 恢复产生的 queued run 在本节不会真启动；先落终态，避免下游导入 app 时的启动恢复发出媒体请求
         await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.status, 'queued'))
 
-        // —— 专业端不得直接启动/续跑创作模板（含变体） ——
+        // —— [方案C] 专业端不得直接「启动」创作模板；但「续跑」改为委派会话恢复真源 retryCreation：
+        //     干净失败 run 就地安全续跑，被篡改/有状态不明任务的 run 仍被 retryCreation 各守卫 409 拦截 ——
         const { app } = await import('../src/app')
         const direct = await app.request(`/api/v1/projects/${a.projectId}/runs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_key: 'easy-video-review', input: {} }) })
         check(direct.status === 400, '项目页直启审阅变体 run → 400（仍须从会话确认方案）')
-        await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, runA2.id))
+        // 被篡改哈希的 runA2：专业 resume 委派 retryCreation → assertRecipeSources 抛停机型普通 Error（模板版本漂移），
+        // 专业端无法处理 → 统一归为须回会话核验 409 creation_confirmation_required（不泄漏成 400、不落朴素 generic resume）
         const resume = await app.request(`/api/v1/runs/${runA2.id}/resume`, { method: 'POST' })
-        check(resume.status === 409 && String((await resume.json() as { error?: { code?: string } }).error?.code) === 'creation_confirmation_required', '审阅变体 run 走专业 resume → 409 要求回会话恢复（避免重复计费）')
+        const resumeBody = (await resume.json()) as { error?: { code?: string; message?: string } }
+        check(resume.status === 409 && String(resumeBody.error?.code) === 'creation_confirmation_required', 'C：被篡改创作 run 走专业 resume → 委派 retryCreation 命中模板漂移守卫，映射为 409 引导回会话（防越权/重复计费）')
+        // 全新干净失败 run（无 gen_tasks → 无状态不明任务、recipe 未篡改）：专业 resume 就地委派恢复成功、产出新 run
+        const c3 = await makeReadySession('slideshow')
+        const sC = (await db.select().from(creationSessions).where(eq(creationSessions.id, c3.sessionId)))[0]!
+        const runC = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, (await confirmCreation(c3.sessionId, { planRevision: sC.planRevision, planHash: sC.planHash, idempotencyKey: 'm42pro-clean-1', acceptUnpriced: false })).runId)))[0]!
+        await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, runC.id))
+        const resumeC = await app.request(`/api/v1/runs/${runC.id}/resume`, { method: 'POST' })
+        const bodyC = (await resumeC.json()) as { run?: { id?: number } }
+        check(resumeC.status === 202 && typeof bodyC.run?.id === 'number' && bodyC.run.id > runC.id, 'C：干净失败创作 run 专业 resume 就地委派 retryCreation 成功、返回续跑新 run（免跳会话）')
+        // 会话已把 runId 前移到续跑新 run：原 runC 再 resume → 无归属会话 → 409 creation_confirmation_required
+        const resumeC2 = await app.request(`/api/v1/runs/${runC.id}/resume`, { method: 'POST' })
+        check(resumeC2.status === 409 && String((await resumeC2.json() as { error?: { code?: string } }).error?.code) === 'creation_confirmation_required', 'C：会话 runId 已前移，原失败 run 再 resume → 409 引导回会话（避免脱离会话状态机）')
+        // [方案C 同源收口] 级联重跑也是重复计费入口：含「受理状态不明」任务的失败创作 run，
+        // 级联会重置链内非成功任务（歧义任务无 task_id 可续轮询→引擎重新提交）→ assertChainRepairable 必须与 resume 同源 409
+        const c4 = await makeReadySession('slideshow')
+        const sC4 = (await db.select().from(creationSessions).where(eq(creationSessions.id, c4.sessionId)))[0]!
+        const runC4 = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, (await confirmCreation(c4.sessionId, { planRevision: sC4.planRevision, planHash: sC4.planHash, idempotencyKey: 'm42-casc-amb-1', acceptUnpriced: false })).runId)))[0]!
+        await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, runC4.id))
+        // 引擎 startRun 被 stub → createRunRow 不会懒建步骤行；此处手建一步供歧义任务 FK 挂载（assertChainRepairable 的
+        // 创作+歧义守卫先于步骤解析，故级联预览必然 409）
+        const tC4 = Date.now()
+        const [firstStep] = await db.insert(pipelineSteps).values({ runId: runC4.id, seq: 1, stepKey: 'images', actionKey: 'ai_image', title: '生成画面', status: 'failed', createdAt: tC4, updatedAt: tC4 }).returning()
+        await db.insert(genTasks).values({ projectId: c4.projectId, runId: runC4.id, stepId: firstStep!.id, kind: 'image', params: '{}', status: 'failed', attempts: 1, errorMsg: '已提交无回执', createdAt: tC4, updatedAt: tC4 })
+        const cascadePrev = await app.request(`/api/v1/runs/${runC4.id}/steps/images/rerun-cascade`, { method: 'GET' })
+        const cascadeBody = (await cascadePrev.json()) as { error?: { code?: string } }
+        check(cascadePrev.status === 409 && String(cascadeBody.error?.code) === 'creation_confirmation_required', 'C：含受理状态不明任务的创作 run 级联重跑预览 → 409 同源拦截（防级联重新提交重复扣费）')
       } finally {
         engine.engine.startRun = origStart as typeof engine.engine.startRun
       }

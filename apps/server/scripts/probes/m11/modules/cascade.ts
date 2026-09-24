@@ -2,7 +2,7 @@
  * [M11·拆分] scripts/probe-m11.ts 的 rerun / cascade 两节（≤800 行红线拆分，断言逐字保留）。
  * 运行期服务在本模块内动态 import（入口已建立隔离环境），与拆分前 main() 内 import 时序等价。
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { M11Ctx } from '../ctx'
 
 export async function sectionRerun(ctx: M11Ctx): Promise<void> {
@@ -200,10 +200,16 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   await setRunStatus(eRun.runId, 'cancelled')
   const eE = await errOf(() => describeChainRerun(eRun.runId, 'gen_images', {}))
   check(eE instanceof WorkbenchError && eE.code === 'run_cancelled', 'E cancelled run → run_cancelled（引导续跑）')
-  // E2：easy-video + failed → 守卫放行（用户真实卡点场景），级联集合正常解析
+  // E2：easy-video + failed 且失败任务属「在途（已拿到外部 task_id）」→ 守卫放行（合法救援：续轮询不重复提交），级联集合正常解析
   const evRun = await seedChainRun({ templateKey: 'easy-video' })
+  // 歧义判定要求「无 taskId 且无产物」；补外部 task_id → 失败任务转为在途（引擎续轮询安全），不触发方案C 级联拦截
+  await db.update(genTasks).set({ taskId: 'EXT-INV-FLIGHT' }).where(and(eq(genTasks.runId, evRun.runId), eq(genTasks.status, 'failed')))
   const dEV = await describeChainRerun(evRun.runId, 'gen_images', { resetTasks: true })
-  check(dEV.chain.length === 4 && dEV.chain[0]!.stepKey === 'gen_images', 'E2 easy-video+failed → 守卫放行，级联集合=目标+下游（4 步）')
+  check(dEV.chain.length === 4 && dEV.chain[0]!.stepKey === 'gen_images', 'E2 easy-video+failed(在途任务带 task_id) → 守卫放行，级联集合=目标+下游（4 步）')
+  // E2b：easy-video + failed 且存在「受理状态不明」任务（已提交无 task_id/无产物）→ 级联与 resume 同源 409（防重新提交重复扣费）
+  const evAmbRun = await seedChainRun({ templateKey: 'easy-video' })
+  const eE2b = await errOf(() => describeChainRerun(evAmbRun.runId, 'gen_images', { resetTasks: true }))
+  check(eE2b instanceof WorkbenchError && eE2b.code === 'creation_confirmation_required', 'E2b easy-video+failed(含受理状态不明任务) → creation_confirmation_required（级联与 resume 同源拦截）')
   // E3：easy-video + completed → 额外生成，creation_confirmation_required 拦截
   const evcRun = await seedChainRun({ templateKey: 'easy-video', status: 'completed' })
   const eE3 = await errOf(() => describeChainRerun(evcRun.runId, 'gen_images', {}))

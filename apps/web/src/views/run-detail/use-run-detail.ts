@@ -58,6 +58,10 @@ export function useRunDetail(deps: {
     () => detail.value?.creationSessionId ?? null,
   )
   const isCreationRun = computed(() => creationSessionId.value != null)
+  // [方案C] 轻松创作 run 且存在受理状态不明任务 → 无法就地续跑，改呈现直达会话核验链接
+  const resumeNeedsVerification = computed(
+    () => detail.value?.resumeNeedsVerification === true,
+  )
   const hasTasks = computed(() =>
     steps.value.some((s) => s.actionKey === 'ai_image'),
   )
@@ -277,7 +281,9 @@ export function useRunDetail(deps: {
   async function resumeRun() {
     const ok = await confirmDialog({
       title: '断点续跑',
-      message: '将新建一个 run，跳过已成功步骤继续执行。',
+      message: isCreationRun.value
+        ? '该运行由轻松创作发起：将走会话恢复真源续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
+        : '将新建一个 run，跳过已成功步骤继续执行。',
       confirmText: '开始续跑',
     })
     if (!ok) return
@@ -421,6 +427,8 @@ export function useRunDetail(deps: {
     if (rs !== 'completed' && rs !== 'failed') return false
     // [恢复收口] 已完成的轻松创作 run：级联=额外生成，服务端 assertChainRepairable 拦截（覆盖全 4 个 easy-* 键，不再硬编码单键）→ 隐藏入口；failed 仍放行救援
     if (isCreationRun.value && rs === 'completed') return false
+    // [方案C 收口] 轻松创作 run 存在受理状态不明任务：级联会重新提交该任务=重复计费，服务端同源拒绝 → 隐藏级联入口，统一引导回会话核验
+    if (isCreationRun.value && resumeNeedsVerification.value) return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return steps.value.some((x) => x.seq > s.seq)
   }
@@ -461,6 +469,7 @@ export function useRunDetail(deps: {
     canResume,
     creationSessionId,
     isCreationRun,
+    resumeNeedsVerification,
     hasTasks,
     active,
     gateSkipLabel,

@@ -56,6 +56,15 @@ export type { CreationRef }
 export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue', 'easy-dialogue-review'])
 export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
 
+/**
+ * [方案C] 「受理状态不明」任务判定（单一真源）：已提交过（attempts>0）但既无第三方任务号（taskId）
+ * 也无已捕获产物（resultAssetId）且未成功——供应商侧可能已受理并在计费，盲目重投=重复扣费，必须人工核验。
+ * 与 retryCreation 的 needs_verification 判定同源；供 resume 委派、task 重试、画布读模型统一消费。
+ */
+export const isAmbiguousSubmitted = (
+  t: { status: string; attempts: number; taskId?: string | null; resultAssetId?: number | null },
+): boolean => t.status !== 'succeeded' && t.attempts > 0 && !t.taskId && !t.resultAssetId
+
 export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): CreationRecipe | null {
   if (!isCreationTemplate(run.templateKey)) return null
   const input = JSON.parse(run.input)

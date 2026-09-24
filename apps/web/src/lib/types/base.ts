@@ -76,6 +76,10 @@ export interface RunDetail {
   steps: RunStep[]
   /** [恢复收口] 归属轻松创作会话 id（非创作 run 为 null；旧服务端缺字段时回退 undefined） */
   creationSessionId?: number | null
+  /** [方案C] 轻松创作 run 因存在「受理状态不明」任务而无法就地续跑（需回会话核验） */
+  resumeNeedsVerification?: boolean
+  /** [方案C] 受理状态不明的任务 id 清单（供核验引导） */
+  ambiguousTaskIds?: number[]
 }
 
 /** [M21] Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */
@@ -141,6 +145,9 @@ export interface GenTask {
   kind: string
   provider: string
   model: string | null
+  taskId: string | null
+  /** [方案C] 受理状态不明（已提交无任务号/产物）：轻松创作 run 据此隐显「重试」 */
+  ambiguous: boolean
   status: TaskStatus
   attempts: number
   errorMsg: string | null

@@ -10,7 +10,7 @@ import type { StudioEventMap } from '../../lib/socket'
 const props = defineProps<{
   runId: number
   active: boolean
-  /** [恢复收口] 轻松创作 run：服务端任务重试必 409（真源在会话核验恢复），隐藏重试入口 */
+  /** [方案C] 轻松创作 run：仅「受理状态不明」任务(t.ambiguous)隐藏就地重试（引导会话核验），其余仍可重试 */
   isCreation?: boolean
 }>()
 const emit = defineEmits<{ changed: []; err: [message: string] }>()
@@ -193,7 +193,7 @@ onBeforeUnmount(() => {
             {{ previewBusyId === t.resultAsset.id ? '载入中…' : '查看' }}
           </button>
           <button
-            v-if="t.status === 'failed' && !props.isCreation"
+            v-if="t.status === 'failed' && !(props.isCreation && t.ambiguous)"
             class="btn sm"
             @click="retry(t)"
           >

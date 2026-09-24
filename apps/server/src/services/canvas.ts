@@ -4,7 +4,7 @@ import { genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
 import { stepDepEdges } from '../pipeline/dag'
 import { loadTemplate, templateForRun } from '../pipeline/loader'
 import { interpolate } from '../pipeline/refs'
-import { isCreationTemplate } from './creation-chat/recipe'
+import { isAmbiguousSubmitted, isCreationTemplate } from './creation-chat/recipe'
 import type { Template, TemplateStepDef } from '../pipeline/types'
 
 /**
@@ -88,7 +88,7 @@ export interface RunCanvas {
   template: { key: string; name: string; version: number } | null
   nodes: RunCanvasNode[]
   edges: CanvasEdge[]
-  runActions: { canCancel: boolean; canResume: boolean; isCreation: boolean }
+  runActions: { canCancel: boolean; canResume: boolean; isCreation: boolean; resumeNeedsVerification: boolean }
 }
 
 /** [M23] 模板画布编辑模式：inputs 顶层字段视图（string 原值可编辑；其余 JSON 预览只读） */
@@ -144,9 +144,17 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
   const failedKeys = stepRows.filter((s) => s.status === 'failed').map((s) => s.stepKey)
 
   const taskRows = await db
-    .select({ stepId: genTasks.stepId, status: genTasks.status })
+    .select({
+      stepId: genTasks.stepId,
+      status: genTasks.status,
+      attempts: genTasks.attempts,
+      taskId: genTasks.taskId,
+      resultAssetId: genTasks.resultAssetId,
+    })
     .from(genTasks)
     .where(eq(genTasks.runId, runId))
+  // [方案C] run 级「受理状态不明」任务数（含孤儿行）：>0 时轻松创作 run 无法就地续跑/重试，须回会话核验
+  const runAmbiguous = taskRows.filter(isAmbiguousSubmitted).length
   const tasksByStep = new Map<number, TaskAgg>()
   for (const t of taskRows) {
     if (t.stepId == null) continue
@@ -157,6 +165,7 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     else if (t.status === 'succeeded') agg.succeeded += 1
     else if (t.status === 'failed') agg.failed += 1
     else if (t.status === 'cancelled') agg.cancelled += 1
+    if (isAmbiguousSubmitted(t)) agg.ambiguous += 1
     tasksByStep.set(t.stepId, agg)
   }
 
@@ -218,10 +227,13 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     edges,
     runActions: {
       canCancel: ['queued', 'running', 'waiting_input'].includes(run.status),
-      // [恢复收口] 轻松创作 run 的续跑/重试真源在创作会话（核验后恢复，防重复计费），
-      // 专业端 resume/taskRetry 入口统一置灰（与 POST /runs/:id/resume 服务端守卫同源）
-      canResume: ['failed', 'cancelled'].includes(run.status) && !isCreationTemplate(run.templateKey),
+      // [方案C] 轻松创作 run：无「受理状态不明」任务时可就地续跑（专业端 resume 委派 retryCreation）；
+      // 有则 canResume=false 且 resumeNeedsVerification=true → 顶栏改呈现直达会话核验链接（防重复计费）
+      canResume:
+        ['failed', 'cancelled'].includes(run.status) &&
+        (!isCreationTemplate(run.templateKey) || runAmbiguous === 0),
       isCreation: isCreationTemplate(run.templateKey),
+      resumeNeedsVerification: isCreationTemplate(run.templateKey) && runAmbiguous > 0,
     },
   }
 }
@@ -233,10 +245,11 @@ interface TaskAgg {
   succeeded: number
   failed: number
   cancelled: number
+  ambiguous: number
 }
 
 function emptyTaskAgg(): TaskAgg {
-  return { total: 0, pending: 0, processing: 0, succeeded: 0, failed: 0, cancelled: 0 }
+  return { total: 0, pending: 0, processing: 0, succeeded: 0, failed: 0, cancelled: 0, ambiguous: 0 }
 }
 
 interface StepOutputLite {
@@ -272,10 +285,11 @@ function buildRunNode(ctx: {
     ? { mode: gateDef.mode, message: gateMessage(gateDef.message, runInput), skipLabel: gateDef.skip_label, when: gateDef.when }
     : null
   const retryables = tasks.failed + tasks.cancelled
-  // [恢复收口] 批准链 run 不呈现节点级任务重试（服务端 POST /tasks/:id/retry 必 409，会话恢复是唯一真源）
+  // [方案C] 批准链 run：无「受理状态不明」任务的节点允许就地重试（与 POST /tasks/:id/retry 逐任务守卫同源）；
+  // 含状态不明任务的节点不呈现重试（服务端必 409），引导回会话核验
   const runAllowsRetry =
     !['completed', 'waiting_input', 'running'].includes(run.status) &&
-    !isCreationTemplate(run.templateKey)
+    (!isCreationTemplate(run.templateKey) || tasks.ambiguous === 0)
 
   return {
     key,
