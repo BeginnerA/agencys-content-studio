@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import {
+  createEditExchangeDownload,
+  EDIT_EX_FORMATS,
+  editExEnabled,
+  editExTitle,
+  probeEditExchangeFormats,
+} from '../../lib/edit-exchange'
 import { fmtDur } from '../../lib/format'
+import type { EditExchangeFormat, EditExchangeFormatsResult } from '../../lib/api'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
@@ -22,6 +30,37 @@ const coverUrl = computed(() =>
     ? `/api/v1/assets/${result.value.coverId}/thumb?v=2`
     : null,
 )
+
+// ===== [M50] 剪辑工程交换导出（成片导出为多轨工程继续精剪）=====
+const editExFormats = ref<EditExchangeFormatsResult | null>(null)
+const editExBusy = ref(false)
+const editExErr = ref('')
+
+/** 成片就绪（result + runId 均存在）才探测能力；本组件常驻挂载，需 watch 而非 onMounted */
+const editExRunId = computed(() =>
+  result.value && runId.value != null ? runId.value : null,
+)
+watch(
+  editExRunId,
+  async (id) => {
+    editExFormats.value = id != null ? await probeEditExchangeFormats(id) : null
+  },
+  { immediate: true },
+)
+
+async function exportEditEx(format: EditExchangeFormat) {
+  const id = editExRunId.value
+  if (id == null || editExBusy.value) return
+  editExBusy.value = true
+  editExErr.value = ''
+  try {
+    await createEditExchangeDownload(id, format)
+  } catch (e) {
+    editExErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    editExBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -56,6 +95,25 @@ const coverUrl = computed(() =>
         >查看项目</RouterLink
       >
     </footer>
+
+    <!-- [M50] 导出剪辑工程：成片→多轨工程（FCPXML/EDL/OTIO），到剪辑软件继续精剪 -->
+    <div v-if="editExFormats?.final_video" class="editex">
+      <span class="editex-lab">导出剪辑工程（多轨精剪）</span>
+      <div class="editex-btns">
+        <button
+          v-for="f in EDIT_EX_FORMATS"
+          :key="f.key"
+          class="btn sm"
+          :aria-busy="editExBusy"
+          :disabled="editExBusy || !editExEnabled(editExFormats, f.key)"
+          :title="editExTitle(editExFormats, f.key, editExBusy)"
+          @click="exportEditEx(f.key)"
+        >
+          <Icon name="cube" :size="12" /> {{ f.label }}
+        </button>
+      </div>
+      <p v-if="editExErr" class="note err">{{ editExErr }}</p>
+    </div>
   </div>
 </template>
 
@@ -114,5 +172,29 @@ const coverUrl = computed(() =>
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* [M50] 剪辑工程交换导出区 */
+.editex {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.editex-lab {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.editex-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editex .err {
+  color: var(--danger, #dc2626);
 }
 </style>

@@ -7,6 +7,8 @@ import {
   statsApi,
   templateApi,
 } from '../../lib/api'
+import type { EditExchangeFormat, EditExchangeFormatsResult } from '../../lib/api'
+import { createEditExchangeDownload, probeEditExchangeFormats } from '../../lib/edit-exchange'
 import { confirmDialog } from '../../lib/confirm'
 import { PLATFORM_TEXT } from '../../lib/format'
 import { assetIds } from './internals'
@@ -145,6 +147,7 @@ export function useRunExtras(deps: {
 
   /** 本 run 附加数据（四路并行：导出包 / 用量聚合 / run 发布记录（服务端 run_id 过滤）/ run 产物） */
   async function loadExtras(projectId: number) {
+    void loadEditExchangeFormats() // [M50] 能力探测独立异步，不阻断主附加数据加载
     try {
       const [ex, us, pub, ra] = await Promise.all([
         exportApi.list(`?run_id=${runId}`),
@@ -202,6 +205,33 @@ export function useRunExtras(deps: {
   /** 派生完成 → 刷新 run 产物（项目资产已新行，导出/发布候选跟着更新） */
   function onDerived() {
     refreshExtras()
+  }
+
+  // ===== [M50] 剪辑工程交换导出（FCPXML / EDL / OTIO 多轨工程）=====
+  /** 能力探测结果（成片存在=全开；无 timeline 且不可重算=置灰带提示；null=未载/不可达） */
+  const editExFormats = ref<EditExchangeFormatsResult | null>(null)
+  const editExBusy = ref(false)
+
+  /** 拉取剪辑工程交换能力（不阻断主视图：失败静默置 null，按钮组自然隐藏/置灰） */
+  async function loadEditExchangeFormats() {
+    editExFormats.value = await probeEditExchangeFormats(runId)
+  }
+
+  /**
+   * 生成并下载剪辑工程交换包：POST → archive 资产 → 直连下载端点 → 刷新产物列表。
+   * 错误（no_final_video / no_timeline / bad_format）写 err 顶栏提示。
+   */
+  async function exportEditExchange(format: EditExchangeFormat) {
+    if (editExBusy.value) return
+    editExBusy.value = true
+    try {
+      await createEditExchangeDownload(runId, format)
+      refreshExtras()
+    } catch (e) {
+      err.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      editExBusy.value = false
+    }
   }
 
   function onExportDone() {
@@ -273,6 +303,10 @@ export function useRunExtras(deps: {
     deriveOpen,
     hasFinalVideo,
     onDerived,
+    editExFormats,
+    editExBusy,
+    loadEditExchangeFormats,
+    exportEditExchange,
     onExportDone,
     removeExport,
     removePub,

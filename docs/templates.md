@@ -45,4 +45,16 @@
 | 图文 / 长文 | `topic-radar` → `note-clip` / `article-clip` → `platform-adapt`（或模板内 `to_platforms`）→ `review-restock` |
 | 参考图复用 | `image-reverse`（参考图 → 提示词包/文案）→ `image_prompt` 直通 `note-clip` 配图 / 文生图链；`video-reverse` 为同形态视频版 |
 
+## 成片精剪接力（M50）
+
+任何产出成片（`compose_video` / `ffmpeg_merge` 步有 `final_video`）的模板，运行详情页成片卡与轻松创作成片区均可一键「**导出剪辑工程**」，把成片导出为**多轨工程**（V1 镜头序 · 逐句对白/配音轨 · BGM 轨 · SFX 轨 · 字幕轨）到外部剪辑软件继续精剪。**单向导出**：不支持工程导入回读、不自建多轨时间轴 UI、不支持剪映私有 draft 格式、不做云端直传。三种标准工程按目标软件择一：
+
+| 工程格式 | 目标软件 | 轨道 / 分层 | 降级面（须注意） |
+|---|---|---|---|
+| **FCPXML**（1.10） | 剪映专业版 / Final Cut Pro / DaVinci Resolve | 全：视频 + 对白 + BGM + SFX + 字幕 + 转场 | 剪映对 FCPXML 的支持随版本漂移（社区口径、非官方承诺）→ **以实际版本实测为准**；不达标回落 EDL / OTIO |
+| **EDL**（CMX3600） | Premiere / Avid | 仅 V 序列 + AA 旁白混音轨 + Dissolve | **Premiere 不吃 FCPXML → 用 EDL**；无字幕 / SFX / BGM 独立分层（EDL 语义上限，包内 README 声明） |
+| **OTIO**（JSON） | DaVinci Resolve / 程序化管线 | 全：Video / Dialogue Audio / Music / Effects / Markdown | 需 Resolve 或支持 OTIO 的管线 |
+
+口径与降级：帧率取成片时间轴快照 fps、时码非丢帧（NDF）；`native_dialogue`（原生对白）成片音画同体，导出仅有视频轨 + 估算字幕、无独立配音轨（如实降级）；`include_media=false` 可出「纯工程 + manifest 清单」不复制媒体（工程按 manifest 在别处定位素材）。时间轴真源为合成期落库的 canonical 快照，存量无快照成片按同源逻辑重算，重算失败提示「重新合成后再导出」。
+
 新增体裁 / 新流程 = 在模板页「另存为副本」派生自定义模板后编辑其 YAML（自定义模板保存即生效，无需改代码、无需重启）；系统内置模板与内置提示词只读，不可直接改删。

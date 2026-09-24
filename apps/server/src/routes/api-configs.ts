@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { and, asc, count, desc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
-import { resolveApiKey, writeSecret } from '../services/secrets'
+import { deleteSecret, resolveApiKey, writeSecret } from '../services/secrets'
 import { vendorPriorityRank } from '../db/seed'
 import { providerDefaultUrl } from '../services/llm'
 import { resolveVideoCaps } from '../adapters/video-capabilities'
@@ -117,15 +117,15 @@ apiRoutes.post('/api-configs', h(async (c) => {
   const providerRows = await db.select().from(apiProviders).where(eq(apiProviders.key, providerKey)).limit(1)
   if (!providerRows[0]) throw new HttpError(400, 'bad_provider', `供应商 ${providerKey} 不存在`)
 
-  // credential_id 优先；否则回退到旧的 per-instance key 逻辑
+  // credential_id 优先；否则回退到 per-instance key 逻辑
   const credentialId = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
   let apiKeyRef = 'local'
+  let pendingApiKey: string | null = null
   if (!credentialId) {
-    // 无凭证关联时沿用旧逻辑：body.api_key 明文 → secrets.json
+    // 无凭证关联：api_key 明文留到插入后按「实例 id 专属槽」写入（见下），避免同供应商多实例互相覆盖
     if (body['api_key'] !== undefined) {
       if (typeof body['api_key'] !== 'string' || !body['api_key']) throw new HttpError(400, 'bad_key', 'api_key 非法')
-      writeSecret(`local:cfg:${serviceType}:${providerKey}`, body['api_key'])
-      apiKeyRef = `local:cfg:${serviceType}:${providerKey}`
+      pendingApiKey = body['api_key']
     } else if (typeof body['api_key_ref'] === 'string' && body['api_key_ref']) {
       apiKeyRef = body['api_key_ref']
     }
@@ -150,8 +150,16 @@ apiRoutes.post('/api-configs', h(async (c) => {
       updatedAt: t,
     })
     .returning()
-  if (row[0]?.isDefault === 1) await clearOtherDefaults(row[0]!.id, serviceType as string)
-  return c.json({ config: row[0] }, 201)
+  // 实例级明文 Key：取得自增 id 后写入 id 专属密钥槽并回填 ref（同供应商多实例互不覆盖）
+  const created = row[0]
+  if (created && pendingApiKey) {
+    const ref = `local:cfg:${serviceType}:${providerKey}:${created.id}`
+    writeSecret(ref, pendingApiKey)
+    await db.update(apiConfigs).set({ apiKeyRef: ref, updatedAt: Date.now() }).where(eq(apiConfigs.id, created.id))
+    created.apiKeyRef = ref
+  }
+  if (created?.isDefault === 1) await clearOtherDefaults(created.id, serviceType as string)
+  return c.json({ config: created }, 201)
 }))
 
 // POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（协议分派与预置回退由 kit services/fetch-models 承担）
@@ -271,8 +279,10 @@ apiRoutes.put('/api-configs/:id', h(async (c) => {
   if (body['credential_id'] !== undefined) patch['credentialId'] = typeof body['credential_id'] === 'number' ? body['credential_id'] : null
   if (body['api_key'] !== undefined) {
     if (typeof body['api_key'] !== 'string' || !body['api_key']) throw new HttpError(400, 'bad_key', 'api_key 非法')
-    writeSecret(`local:cfg:${cfg.serviceType}:${cfg.providerKey}`, body['api_key'])
-    patch['apiKeyRef'] = `local:cfg:${cfg.serviceType}:${cfg.providerKey}`
+    // 实例级独立 Key 按 id 专属槽存储，避免同供应商多实例互相覆盖
+    const ref = `local:cfg:${cfg.serviceType}:${cfg.providerKey}:${id}`
+    writeSecret(ref, body['api_key'])
+    patch['apiKeyRef'] = ref
   }
   const updated = await db.update(apiConfigs).set(patch).where(eq(apiConfigs.id, id)).returning()
   if (updated[0]?.isDefault === 1) await clearOtherDefaults(id, cfg.serviceType)
@@ -283,8 +293,11 @@ apiRoutes.put('/api-configs/:id', h(async (c) => {
 apiRoutes.delete('/api-configs/:id', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(apiConfigs).where(eq(apiConfigs.id, id)).limit(1)
-  if (!rows[0]) return notFound(c, `配置 ${id}`)
+  const cfg = rows[0]
+  if (!cfg) return notFound(c, `配置 ${id}`)
   await db.delete(apiConfigs).where(eq(apiConfigs.id, id))
+  // 仅回收「实例 id 专属」密钥槽；旧版共享槽可能被同供应商其它实例共用，勿删
+  if (cfg.apiKeyRef === `local:cfg:${cfg.serviceType}:${cfg.providerKey}:${id}`) deleteSecret(cfg.apiKeyRef)
   return c.json({ ok: true })
 }))
 

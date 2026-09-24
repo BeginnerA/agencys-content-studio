@@ -13,6 +13,7 @@ import { isSameAspect, resolveAspectSize } from './aspect'
 import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset, buildClipDurByShotId } from './segments'
 import { loadShotAlignShots, planBestEffortTimeline, planSrtShifts, countSrtCues, shiftSrtText } from './align'
 import { buildTransitionPlan } from './transition'
+import { buildEditTimeline } from './timeline-snapshot'
 import { planSfxStarts } from './sfx'
 import { buildComposeArgs } from './args'
 import { numParam, clamp, round3 } from './util'
@@ -113,7 +114,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // voices：tts 产物逐句 concat 为连续音轨；[M11] 逐句 meta（lineId/durSec）供对齐/fit_voice/撑长共用
   const voiceIds = ctx.assetIdsOf('voices')
   const voicePaths: string[] = []
-  const voiceMetas: Array<{ assetId: number; lineId: string | null; durSec: number | null }> = []
+  const voiceMetas: Array<{ assetId: number; lineId: string | null; durSec: number | null; relPath: string | null; text: string }> = []
   if (voiceIds.length > 0) {
     const vRows = await ctx.assetsOf(voiceIds)
     for (const a of vRows) {
@@ -126,6 +127,9 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         assetId: a.id,
         lineId: lineIdOfVoiceAsset(a),
         durSec: typeof a.duration === 'number' && a.duration > 0 ? a.duration : probeMediaDuration(path),
+        // [M50] 快照附加字段（仅入 timeline，不参与既有对齐/混流逻辑）
+        relPath: a.relPath,
+        text: a.prompt ?? '',
       })
     }
     const probeFail = voiceMetas.filter((v) => v.durSec === null).length
@@ -368,6 +372,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const sfxVolume = clamp(composeCfg.sfx_volume ?? 1, 0, 2)
   const sfxMap = strict ? new Map<string, Asset>() : await loadSfxAssets(ctx.run.id)
   let sfxList: ComposeSfxInput[] = []
+  // [M50] 快照专用：entries 补 shotId（不改动 sfxList 既有形状）
+  const sfxSnap: Array<{ shotId: string | null; assetId: number; startSec: number; relPath: string }> = []
   if (sfxMap.size > 0) {
     const { entries, missing } = planSfxStarts(
       segments.map((s) => s.durSec),
@@ -385,6 +391,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
     for (const m of missing) ctx.log(`音效资产 #${m.assetId}（镜 ${m.shotId}）文件缺失，已跳过该条`)
     sfxList = entries.map((e) => ({ path: absPathOf(e.relPath), startSec: e.startSec }))
+    for (const e of entries) {
+      let sid: string | null = null
+      for (const [k, a] of sfxMap) if (a.id === e.assetId) { sid = k; break }
+      sfxSnap.push({ shotId: sid, assetId: e.assetId, startSec: e.startSec, relPath: e.relPath })
+    }
     if (sfxList.length > 0) ctx.log(`逐镜音效就绪：${sfxList.length} 条（音量 ${sfxVolume}）`)
   }
 
@@ -606,6 +617,15 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null,
       outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null,
       sfx: sfxList.length > 0 ? { count: sfxList.length, volume: sfxVolume } : null,
+      // [M50] Canonical 同源时间轴快照（剪辑工程交换导出唯一真源；纯增量溯源，不改任何 ffmpeg 参数与音频结果）
+      timeline: buildEditTimeline({
+        fps, width, height, totalSec: totalAll, introSec: introShift, outroSec: outroArg ? round3(outroArg.durSec) : 0,
+        segments, rows, alignPlan, voices: voiceMetas, sfx: sfxSnap,
+        bgm: bgmPath && bgmAsset?.relPath ? { assetId: bgmAsset.id, relPath: bgmAsset.relPath, volume: bgmVolume, fadeSec: bgmFade } : null,
+        transition: xfadePlan.enabled ? { type: xfadePlan.type, durSec: xfadePlan.durSec } : null,
+        subtitle: srtRelPath ? { assetId: subtitleIds[0] ?? null, relPath: srtRelPath } : null,
+        watermark: !!watermarkArg,
+      }),
     },
     tags,
     stepId: ctx.step.id,

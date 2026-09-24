@@ -62,6 +62,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'audit_report': // [M25·G4] 改编一致性回查报告
       return 'texts'
     case 'export':
+    case 'edit_exchange': // [M50] 剪辑工程交换导出包（与发布包同归档目录）
     case 'creation_svg': // [M22] 画布布局图 SVG 导出（与 export 同类归档）
       return 'exports'
     case 'shot_image':

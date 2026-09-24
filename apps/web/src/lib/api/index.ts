@@ -37,12 +37,14 @@ export { creationChatApi, newRequestKey } from './creation-chat'
 export {
   statsApi,
   exportApi,
+  editExchangeApi,
   publicationApi,
   settingsApi,
   scheduleApi,
   complianceApi,
   budgetApi,
 } from './insights'
+export type { EditExchangeFormat, EditExchangeFormatsResult } from './insights'
 
 export { workflowApi } from './workflows'
 export type { WorkflowCreateBody, WorkflowPatchBody } from './workflows'

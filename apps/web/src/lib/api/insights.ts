@@ -57,6 +57,33 @@ export const exportApi = {
     ),
 }
 
+// ===== [M50] 剪辑工程交换导出（FCPXML / EDL / OTIO）=====
+
+export type EditExchangeFormat = 'fcpxml' | 'edl' | 'otio'
+
+export interface EditExchangeFormatsResult {
+  final_video: boolean
+  timeline_source: 'stored' | 'recomputed' | null
+  available: boolean
+  formats: Array<{ format: EditExchangeFormat; enabled: boolean }>
+  reason?: string
+}
+
+export const editExchangeApi = {
+  /** 能力探测：成片存在=全开；无 timeline 且不可重算=置灰带提示 */
+  formats: (runId: number) =>
+    api.get<EditExchangeFormatsResult>(`/api/v1/runs/${runId}/edit-exchange/formats`),
+  /** 生成剪辑工程交换包（→ archive 资产；下载复用 fileUrl） */
+  create: (runId: number, format: EditExchangeFormat, includeMedia = true) =>
+    api.post<{ asset: ExportAssetLite; timeline_source: 'stored' | 'recomputed'; format: EditExchangeFormat }>(
+      `/api/v1/runs/${runId}/edit-exchange`,
+      { format, include_media: includeMedia },
+    ),
+  /** 下载导出包（复用资产文件端点） */
+  fileUrl: (assetId: number, download = true) =>
+    `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
+}
+
 export const publicationApi = {
   list: (params = '') =>
     api.get<{

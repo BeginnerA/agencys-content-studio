@@ -11,6 +11,11 @@ import ShotBoard from '../../components/shot/board/index.vue'
 import NovelBoard from '../../components/NovelBoard.vue'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime, stepStatus } from '../../lib/format'
+import {
+  EDIT_EX_FORMATS,
+  editExEnabled,
+  editExTitle,
+} from '../../lib/edit-exchange'
 import type { RunDetailApi } from './use-run-detail'
 import type { ExtrasApi } from './use-run-extras'
 import type { RunStep } from '../../lib/types'
@@ -31,7 +36,14 @@ const {
   canCascadeStep,
   openRerun,
 } = props.u
-const { badges, deriveOpen, hasFinalVideo } = props.e
+const {
+  badges,
+  deriveOpen,
+  hasFinalVideo,
+  editExFormats,
+  editExBusy,
+  exportEditExchange,
+} = props.e
 </script>
 
 <template>
@@ -126,6 +138,25 @@ const { badges, deriveOpen, hasFinalVideo } = props.e
           @click="deriveOpen = true"
         >
           <Icon name="crop" :size="12" /> 派生画幅
+        </button>
+      </div>
+
+      <!-- [M50] 剪辑工程交换导出：成片导出为多轨工程（FCPXML/EDL/OTIO）继续专业精剪 -->
+      <div
+        v-if="s.actionKey === 'ffmpeg_merge' && editExFormats?.final_video"
+        class="editex-ops"
+      >
+        <span class="editex-lab muted">导出剪辑工程</span>
+        <button
+          v-for="f in EDIT_EX_FORMATS"
+          :key="f.key"
+          class="btn sm"
+          :aria-busy="editExBusy"
+          :disabled="busy || active || editExBusy || !editExEnabled(editExFormats, f.key)"
+          :title="editExTitle(editExFormats, f.key, editExBusy)"
+          @click="exportEditExchange(f.key)"
+        >
+          <Icon name="cube" :size="12" /> {{ f.label }}
         </button>
       </div>
 
@@ -285,6 +316,19 @@ const { badges, deriveOpen, hasFinalVideo } = props.e
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* [M50] 剪辑工程交换导出行：标签 + 三格式按钮（窄屏自动换行） */
+.editex-ops {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.editex-lab {
+  font-size: 12px;
 }
 
 /* [M11] 单步重跑按钮行 + 成功 notice */

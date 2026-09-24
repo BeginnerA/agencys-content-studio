@@ -205,3 +205,19 @@
 | 9 | 全局总览定位 | ✅ | 抽屉 10 行按严重度排序（失败 › 未就绪 › 运行中 › 就绪 › 完成）；点击行选中 + 视口居中（transform 位移 + 行 active + 卡片 sel + inViewport 实证）；收起正常 |
 | 10 | 实弹暴露缺陷修复 3 处 | ✅ | ①快照重建任务孤儿 → `restoreFromNodeId` 认领（探针 restore-claim 断言群）②redo/undo 循环认领源过期 → `snap.curId` 循环修复（三轮实证）③产物子目录映射缺失 → `purposeSubDir` +2（`creation_audio` → audio/、`creation_compose` → video/；重跑 #460 复验入 audio/） |
 | 11 | 越界核查（红线零 diff） | ✅ | `git status`：engine / refs / loader / 适配器 / 模板 / 提示词零 diff；`schema.ts` 仅 +2 列（设计 §2.1 白名单）；M15 三组件零 diff；`package.json` 仅 +`probe:m17`（dependencies 零新增）；改动面 = 14 改 + 4 新件（`creation-ops.ts` / `creation-export.ts` / `probe-m17.ts` / `canvas-history.ts`） |
+
+## M50 验收快照（剪辑工程交换导出 · 静态 + 探针门禁）
+
+> 里程碑主体见 [milestones.md](./milestones.md) 「M50 能力速览」；本表仅列验收矩阵。门禁口径：双端 typecheck + 全量 `run-probes` 零红灯（含 m26 红线）+ web build 绿；真机接力目检为手动项（下方 #9）。
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 双端静态 typecheck | ✅ | `pnpm -r typecheck`：server `tsc --noEmit` + web `vue-tsc --noEmit` 全 EXIT=0 |
+| 2 | 探针 `probe-m50` | ✅ | **6 节 64 断言全绿**（timecode / formatters / snapshot / sources / bundle / redline）；isolatedEnv 隔离临时库 + `globalThis.fetch` 阻断零网络零计费 |
+| 3 | 全量回归零红灯 | ✅ | `run-probes` 全量 **4244 断言 / 46 探针全绿**（含 m26 红线探针）；合成链路 m7/m11/m18/m19/m42/m44 全绿 = 「timeline 落库不改任何 ffmpeg 参数与音频结果」背书（B② 同源红线） |
+| 4 | web build | ✅ | `pnpm build` EXIT=0；`run-detail` / `easy-create` 分包含新入口 |
+| 5 | 三格式结构正确性 | ✅ | OTIO 可 `JSON.parse` 且五轨命名固定 + clipCount；FCPXML 含 format/sequence/title/transitionlist；EDL record 时码升序 + Dissolve 行（formatters 断言） |
+| 6 | 时间轴双路解析 | ✅ | `params.timeline` stored 直通 / 无快照同源 recomputed 兜底 / 双失败 400 `no_timeline` / 无成片 `no_final_video`（sources 断言，夹具 mkStep 链 asset_ids） |
+| 7 | zip 交付与下载一致性 | ✅ | `buildEditExchange` → unzipSync 校 manifest.media[].mediaFile 均在包 + README + `bad_format` 负例 + `probeEditExchange` 能力探测（bundle 断言）；下载复用 `GET /assets/:id/file?download=1` |
+| 8 | 行数红线 | ✅ | 新文件均 <400（最大 `timeline-source.ts` 189）；`ffmpeg-merge/index.ts` 维持 785 ≤800（redline 断言 + m26 split-audit 背书） |
+| 9 | 真实成片剪映 / DaVinci 打开目检（**手动项，本次未执行**） | ⏳ 待实机 | 需真实成片 + 剪映专业版 / DaVinci Resolve 实机打开确认多轨结构（V1/对白/BGM/SFX/字幕）。本轮为离线探针 + 构建门禁，未跑真机目检——按 plan「手动项失败不阻塞门禁但如实登记」登记为待人工实测；剪映对 FCPXML 支持随版本漂移，实测后回填版本号（不达标以 EDL / OTIO 双路保底） |

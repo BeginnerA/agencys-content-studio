@@ -9,6 +9,7 @@ import { db } from '../db'
 import { pipelineRuns, projects, settings, type Asset } from '../db/schema'
 import { summarizeBatch } from '../services/batch'
 import { ExportError, buildRunExport, collectRunAssets, listExports } from '../services/export'
+import { buildEditExchange, probeEditExchange, EditExchangeError } from '../services/edit-exchange'
 import { PLATFORM_CATALOG, seedMissing, type PlatformCatalogEntry } from '../services/platform-catalog'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -51,6 +52,29 @@ exportsRoutes.get('/runs/:id/assets', h(async (c) => {
   if (!exists) return notFound(c, `run ${runId}`)
   const rows = await collectRunAssets(runId)
   return c.json({ items: rows.map((a) => ({ ...toAssetLite(a), stepId: a.stepId, sha256: a.sha256 })) })
+}))
+
+// [M50] GET /runs/:id/edit-exchange/formats —— 剪辑工程导出能力探测（成片存在=全开；无 timeline 且不可重算=置灰带提示）
+exportsRoutes.get('/runs/:id/edit-exchange/formats', h(async (c) => {
+  const runId = idParam(c)
+  return c.json(await probeEditExchange(runId))
+}))
+
+// [M50] POST /runs/:id/edit-exchange —— 生成剪辑工程交换包 {format:'fcpxml'|'edl'|'otio', include_media?}
+exportsRoutes.post('/runs/:id/edit-exchange', h(async (c) => {
+  const runId = idParam(c)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  try {
+    const { asset, timelineSource, format } = await buildEditExchange({
+      runId,
+      format: body['format'],
+      includeMedia: body['include_media'] !== false,
+    })
+    return c.json({ asset: toAssetLite(asset), timeline_source: timelineSource, format }, 201)
+  } catch (err) {
+    if (err instanceof EditExchangeError) throw new HttpError(400, err.code, err.message)
+    throw err
+  }
 }))
 
 // POST /batches/:id/exports —— 批量导出（对有产物的 run 逐个全量打包；无产物 run 记 skipped）
