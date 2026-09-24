@@ -113,6 +113,16 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // [B③] 声线拆分：characters.voice_desc 自然语言描述列（存量行 NULL → 展示回退 voice）
+  if (!charHas.has('voice_desc')) {
+    try {
+      await sqlite.execute('ALTER TABLE characters ADD COLUMN voice_desc text')
+      log.info('ensureColumn: characters.voice_desc 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
   // [M16] 画布任务归属列：gen_tasks.canvas_node_id（存量行 NULL）
   const taskCols = await sqlite.execute("PRAGMA table_info('gen_tasks')")
   const taskHas = new Set((taskCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))

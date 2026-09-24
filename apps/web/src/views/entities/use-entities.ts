@@ -117,6 +117,8 @@ export function useEntitiesPage() {
     appearance: '',
     negative: '',
     voice: '',
+    /** [B③] 自然语言声线描述（仅角色；展示/审计，与机器令牌 voice 分列） */
+    voiceDesc: '',
     /** [M13] 状态变体（每行一条；仅角色保存） */
     states: '',
     projectId: 0,
@@ -247,6 +249,7 @@ export function useEntitiesPage() {
     form.appearance = ''
     form.negative = ''
     form.voice = ''
+    form.voiceDesc = ''
     form.states = ''
     form.projectId =
       projectFilter.value && projectFilter.value !== 'global'
@@ -268,6 +271,7 @@ export function useEntitiesPage() {
     form.appearance = it.appearance ?? ''
     form.negative = it.negative ?? ''
     form.voice = it.voice ?? ''
+    form.voiceDesc = it.voiceDesc ?? ''
     form.states = (it.states ?? []).join('\n')
     form.projectId = it.projectId ?? 0
     form.refIds = [...it.refAssetIds]
@@ -312,6 +316,8 @@ export function useEntitiesPage() {
       }
       if (kind.value === 'character') {
         body.voice = form.voice.trim() || null
+        // [B③] 声线描述（snake body 键）：与机器令牌 voice 分列，仅展示/审计
+        body.voice_desc = form.voiceDesc.trim() || null
         // [M13] 状态变体：每行一条（空数组 = 清空；scene/prop 不传）
         body.states = form.states
           .split('\n')

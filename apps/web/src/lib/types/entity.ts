@@ -37,8 +37,10 @@ export interface EntityItem {
   summary: string | null
   appearance: string | null
   negative: string | null
-  /** 声线（仅 kind=character 有意义；scene/prop 恒为 null） */
+  /** [B③] 机器音色令牌（供应商 voice / clone:{id}；仅 kind=character 有意义；scene/prop 恒为 null） */
   voice: string | null
+  /** [B③] 自然语言声线描述（展示/审计；仅 kind=character 有意义；scene/prop 恒为 null） */
+  voiceDesc: string | null
   /** [M13] 状态变体（仅 kind=character 有意义；「剧情节点：状态短语」；scene/prop 恒为 []） */
   states: string[]
   refAssetIds: number[]

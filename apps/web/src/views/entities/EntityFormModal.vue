@@ -69,13 +69,23 @@ const {
     <!-- 声音设定（仅角色） -->
     <div v-if="kind === 'character'" class="section">
       <div class="section-title">声音设定</div>
+      <!-- [B③] 声线描述：自然语言短语，仅供展示/审计，不进 TTS 声链 -->
       <label class="fld voice-fld">
-        <span class="voice-label">声线 voice（TTS 声线链 L2）</span>
+        <span class="voice-label">声线描述（人设参考，不下发 TTS）</span>
+        <textarea
+          v-model="form.voiceDesc"
+          rows="2"
+          placeholder="如：软糯童声 / 成年男声、低沉沙哑"
+          class="voice-ta"
+        />
+      </label>
+      <label class="fld voice-fld">
+        <span class="voice-label">音色令牌 / 克隆（进 TTS 声线链 L2，选填）</span>
         <div class="voice-row">
           <textarea
             v-model="form.voice"
             rows="2"
-            placeholder="如：软糯童声（或网关 模型:音色 格式）"
+            placeholder="供应商音色令牌，如 Cherry / 网关 模型:音色（留空走默认降级）"
             class="voice-ta"
           />
           <!-- [M19 P8] 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->

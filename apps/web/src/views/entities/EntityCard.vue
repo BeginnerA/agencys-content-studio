@@ -61,9 +61,9 @@ const {
         >
       </div>
       <div class="meta muted">
-        <span v-if="c.voice"
+        <span v-if="c.voice || c.voiceDesc"
           ><Icon name="speaker-wave" :size="12" />
-          {{ voiceLabel(c.voice) }}</span
+          {{ c.voiceDesc?.trim() || voiceLabel(c.voice) }}</span
         >
         <span v-if="c.refAssetIds.length" class="chip"
           >{{ c.refAssetIds.length }} 张{{ cfg.refLabel }}</span

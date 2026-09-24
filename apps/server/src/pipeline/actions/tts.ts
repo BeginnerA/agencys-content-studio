@@ -365,9 +365,9 @@ function toLines(list: unknown[]): LineItem[] {
 /**
  * 声线七级链（spec §6.2 + [M24·F4] voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
  * 各级仅接受「供应商 voice 令牌」（全 ASCII，如 Cherry / FunAudioLLM/CosyVoice2-0.5B:alex）；
- * 自然语言声线基准短语（如「成年女声、清爽亲和」——voice_hint/角色库 voice 的方法论形态）跳过并继续降级：
- * 语义短语不是供应商枚举值，直接下发会 400（M3 验收实测 DashScope Invalid voice）；
- * 其原文仍逐句记录于 asset.params.voiceHint 供审计，声线链来源记实际下发级。
+ * [B③] 自然语言声线描述（如「成年女声、清爽亲和」）自角色库拆出后落 characters.voice_desc，不再进本链；
+ * 本链「character」级只读 voice=机器音色令牌。旧行/误将 NL 写入 voice 时，isProviderVoice 作防御性合法性守卫跳过并继续降级（与拆列前逐字节一致，零音频变更）；
+ * 语义短语不再靠本启发式做语义消歧（描述已分流至 voice_desc），仅留作机器字段的合法性守卫。其 NL 原文仍逐句记录于 asset.params.voiceHint 供审计。
  * [M19 P8] cloneIndex：写 `clone:{id}` 且索引命中 → 返回供应商真实 voiceId + clone 行（调用方据此换端点/模型）；
  * 旧调用签名兼容（不传 cloneIndex 时行为逐字不变），此时 clone 令牌无法解析 → 记入 cloneSkipped 并跳过该级继续降级。
  */
@@ -409,7 +409,7 @@ export function resolveVoiceChain(p: {
   return { voice: 'alloy', source: 'default', clone: null, cloneSkipped }
 }
 
-/** 供应商 voice 令牌判定：全 ASCII 可打印字符（voice 枚举 /「模型:音色」格式均满足；中文语义短语不满足） */
+/** [B③] 机器 voice 字段合法性守卫：全 ASCII 可打印字符（voice 枚举 /「模型:音色」格式均满足；中文语义短语不满足→跳过降级，防 400）；现仅作合法性校验，不再充当语义消歧器 */
 export function isProviderVoice(v?: string): boolean {
   return !!v && /^[\x20-\x7e]+$/.test(v)
 }

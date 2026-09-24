@@ -158,7 +158,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
 /**
  * 输出契约校验（导出供探针直接断言，无需 LLM）：
  * storyboard-json（shots 数组 + image_prompt）/ lines-json（lines 数组 + text/est_ms + v2 speaker/voice_hint/emotion_hint）
- * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/ref_prompt）
+ * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/voice_desc/ref_prompt）
  * / set-json（scenes+props 至少一数组非空 + name/appearance）；
  * 返回条目数（非校验格式 → 0）；错误消息口径与 M1/M2 一致。
  */
@@ -214,7 +214,7 @@ export function validateTextOutput(content: string, format: string): number {
       if (aliases !== undefined && (!Array.isArray(aliases) || aliases.some((x: unknown) => typeof x !== 'string' || !x.trim()))) {
         throw new Error(`角色档案 JSON 不合法：角色 ${who} 的 aliases 需为非空字符串数组`)
       }
-      for (const key of ['summary', 'negative', 'voice']) {
+      for (const key of ['summary', 'negative', 'voice', 'voice_desc']) {
         if (rec[key] !== undefined && typeof rec[key] !== 'string') {
           throw new Error(`角色档案 JSON 不合法：角色 ${who} 的 ${key} 需为字符串`)
         }

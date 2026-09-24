@@ -84,7 +84,8 @@ const createEntity = h(async (c) => {
   const summary = strField(body, 'summary')
   const appearance = strField(body, 'appearance')
   const negative = strField(body, 'negative')
-  const voice = kind === 'character' ? strField(body, 'voice') : undefined // 声线仅角色有意义：scene/prop 忽略
+  const voice = kind === 'character' ? strField(body, 'voice') : undefined // [B③] 机器音色令牌（仅角色）：scene/prop 忽略
+  const voiceDesc = kind === 'character' ? strField(body, 'voice_desc') : undefined // [B③] 声线描述（仅角色）：scene/prop 忽略
   const states = kind === 'character' ? strArrField(body, 'states') : undefined // [M13] 状态变体仅角色有意义：scene/prop 忽略
   const meta = body['meta'] && typeof body['meta'] === 'object' && !Array.isArray(body['meta']) ? (body['meta'] as Record<string, unknown>) : undefined
   const { id, created } = await upsertEntity({
@@ -96,6 +97,7 @@ const createEntity = h(async (c) => {
     appearance,
     negative,
     voice,
+    voiceDesc,
     states,
     refAssetIds: refAssetIds && refAssetIds.length > 0 ? refAssetIds : undefined,
     meta,
@@ -192,6 +194,11 @@ const updateEntity = h(async (c) => {
       if (body[key] !== null && typeof body[key] !== 'string') throw new HttpError(400, `bad_${key}`, `${key} 需为字符串或 null`)
       patch[key] = body[key]
     }
+  }
+  if (body['voice_desc'] !== undefined && cur.kind === 'character') {
+    // [B③] body 键 snake（voice_desc）→ 列属性 camel（voiceDesc）；仅角色（同 voice 口径）
+    if (body['voice_desc'] !== null && typeof body['voice_desc'] !== 'string') throw new HttpError(400, 'bad_voice_desc', 'voice_desc 需为字符串或 null')
+    patch['voiceDesc'] = body['voice_desc']
   }
   if (body['states'] !== undefined && cur.kind === 'character') {
     // [M13] states 替换语义：含空数组（空 = 清空）；scene/prop 忽略（同 voice 口径）
@@ -314,6 +321,7 @@ function toEntityView(r: CharacterRow, assetsById: Map<number, typeof assets.$in
     appearance: r.appearance,
     negative: r.negative,
     voice: r.voice,
+    voiceDesc: r.voiceDesc,
     states: safeStrArr(r.states),
     refAssetIds,
     refAssets,

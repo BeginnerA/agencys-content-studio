@@ -231,7 +231,8 @@ export const characters = sqliteTable(
     summary: text('summary'),
     appearance: text('appearance'), // 外观锚定文本（注入核心）
     negative: text('negative'), // 免漂移负向词
-    voice: text('voice'), // 声线基准短语
+    voice: text('voice'), // [B③] 机器音色入口：供应商 voice 令牌 / clone:{id} 引用（进 TTS 声链）
+    voiceDesc: text('voice_desc'), // [B③] 自然语言声线描述（如「成年男声、低沉沙哑」；仅展示/审计，永不进声链）
     states: text('states').notNull().default('[]'), // [M13] 角色状态变体（JSON string[]：{剧情节点}：{状态短语}；仅 character 有意义）
     refAssetIds: text('ref_asset_ids').notNull().default('[]'), // 定妆照资产 ids（JSON）
     meta: text('meta').notNull().default('{}'),

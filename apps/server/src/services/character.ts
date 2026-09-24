@@ -45,6 +45,8 @@ export async function upsertEntity(p: {
   appearance?: string | null
   negative?: string | null
   voice?: string | null
+  /** [B③] 自然语言声线描述（仅展示/审计，不进 TTS 声链） */
+  voiceDesc?: string | null
   /** [M13] 状态变体（「{剧情节点}：{状态短语}」字符串数组；非空覆盖写） */
   states?: string[]
   refAssetIds?: number[]
@@ -71,6 +73,7 @@ export async function upsertEntity(p: {
     if (p.appearance) patch['appearance'] = p.appearance
     if (p.negative) patch['negative'] = p.negative
     if (p.voice) patch['voice'] = p.voice
+    if (p.voiceDesc) patch['voiceDesc'] = p.voiceDesc
     if (p.states && p.states.length > 0) patch['states'] = JSON.stringify(p.states)
     if (p.refAssetIds && p.refAssetIds.length > 0) {
       patch['refAssetIds'] = JSON.stringify([...new Set([...safeArrNum(hit.refAssetIds), ...p.refAssetIds])])
@@ -95,6 +98,7 @@ export async function upsertEntity(p: {
         appearance: p.appearance ?? null,
         negative: p.negative ?? null,
         voice: p.voice ?? null,
+        voiceDesc: p.voiceDesc ?? null,
         states: JSON.stringify(p.states ?? []),
         refAssetIds: JSON.stringify(p.refAssetIds ?? []),
         meta: JSON.stringify(p.meta ?? {}),
@@ -150,6 +154,8 @@ export async function upsertCharacter(p: {
   appearance?: string | null
   negative?: string | null
   voice?: string | null
+  /** [B③] 自然语言声线描述（透传 upsertEntity） */
+  voiceDesc?: string | null
   /** [M13] 状态变体（透传 upsertEntity） */
   states?: string[]
   refAssetIds?: number[]

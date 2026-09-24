@@ -32,6 +32,7 @@ export async function characterSync(ctx: StepContext): Promise<StepResult> {
       appearance: s.appearance,
       negative: s.negative,
       voice: s.voice,
+      voiceDesc: s.voiceDesc,
       states: s.states,
     })
     if (r.created) created.push(s.name)
@@ -64,6 +65,8 @@ interface CharacterSpec {
   summary?: string
   negative?: string
   voice?: string
+  /** [B③] 自然语言声线描述（档案产 voice_desc；展示/审计，不进声链） */
+  voiceDesc?: string
   /** [M13] 状态变体（「{剧情节点}：{状态短语}」；逐字对齐设定包） */
   states?: string[]
 }
@@ -166,6 +169,7 @@ export function normalizeSpec(v: unknown): CharacterSpec | null {
     summary: strOrUndef(o['summary']),
     negative: strOrUndef(o['negative']),
     voice: strOrUndef(o['voice']),
+    voiceDesc: strOrUndef(o['voice_desc']),
     states: states.length > 0 ? states : undefined,
   }
 }

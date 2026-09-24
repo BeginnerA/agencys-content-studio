@@ -1,6 +1,6 @@
 /**
  * M13 探针（素材链补全六项）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m13.ts [--section=style-multi|vision|video-refs|upload|polish|states|regression]
+ *   cd apps/server && npx tsx scripts/probe-m13.ts [--section=style-multi|vision|video-refs|upload|polish|states|voice-desc|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
  * （独立 studio.db + workspace），不触碰开发库（同 probe-m3~m12）。LLM 全链由 globalThis.fetch
@@ -19,6 +19,8 @@
  *               空白输出 failed/全局跳过用量/去重/边界 400）
  *   states      PRAGMA 迁移列（默认 '[]' NOT NULL + 幂等）+ upsertEntity 覆盖语义（非空覆盖/空数组不覆盖）+
  *               normalizeSpec 保留 + HTTP 读写（清洗/替换/清空/坏 JSON → []/非角色忽略/坏类型 400）
+ *   voice-desc  [B③] 声线拆分：PRAGMA 迁移列（nullable）+ upsertEntity voice/voiceDesc 互不串写 +
+ *               resolveVoiceChain 零变更回归锁 + normalizeSpec 双读 + HTTP 读写（回显 camel/清空/非角色忽略/坏类型 400）+ 存量行 NULL 回退
  *   regression  probe:m7 / probe:m8 / probe:m10 / probe:m11 / probe:m12 子进程全绿
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
@@ -53,7 +55,7 @@ process.env.AGENT_LLM_MODEL = 'probe-model-vision'
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['style-multi', 'vision', 'video-refs', 'upload', 'polish', 'states', 'regression'] as const
+const SECTIONS = ['style-multi', 'vision', 'video-refs', 'upload', 'polish', 'states', 'voice-desc', 'regression'] as const
 
 // ---- fetch stub：录制 LLM 请求 + 可编程响应（OpenAI 兼容格式）----
 interface StubCall {
@@ -553,6 +555,71 @@ async function main(): Promise<void> {
     check(badType.status === 400 && badType.body?.error?.code === 'bad_states', `states 非数组 → 400 bad_states（${badType.status}）`)
   }
 
+  /** ⑥b voice_desc 拆分（B③）：迁移列 + upsert 互不串写 + 声链零变更锁 + normalizeSpec 双读 + HTTP 读写 + 存量回退 */
+  const sectionVoiceDesc = async (): Promise<void> => {
+    const { normalizeSpec } = await import('../src/pipeline/actions/character-sync')
+    const { resolveVoiceChain } = await import('../src/pipeline/actions/tts')
+
+    // ---- 迁移列（nullable text，无默认，与 voice 同族）----
+    const cols = await sqlite.execute("PRAGMA table_info('characters')")
+    const colMap = new Map(
+      (cols.rows as unknown as Array<{ name: string; dflt_value: string | null; notnull: number }>).map((r) => [r.name, r]),
+    )
+    const vd = colMap.get('voice_desc')
+    check(!!vd, 'characters.voice_desc 列存在（幂等迁移）')
+    check(vd?.notnull === 0 && (vd?.dflt_value ?? '') === '', `voice_desc 可空无默认（notnull=${vd?.notnull}）`)
+    await initDb() // 重复执行 → 幂等
+    const colsAgain = await sqlite.execute("PRAGMA table_info('characters')")
+    check(
+      (colsAgain.rows as unknown as Array<{ name: string }>).filter((r) => r.name === 'voice_desc').length === 1,
+      '重复 initDb 幂等（voice_desc 单列）',
+    )
+
+    // ---- upsertEntity：voice（机器令牌）与 voiceDesc（描述）互不串写 ----
+    const pid = await mkProject('M13 探针项目（voice_desc）')
+    const u = await upsertEntity({ projectId: pid, kind: 'character', name: '声线拆分角色', voice: 'Cherry', voiceDesc: '成年女声、清爽亲和' })
+    const rowU = await charRow(u.id)
+    check(rowU.voice === 'Cherry' && rowU.voiceDesc === '成年女声、清爽亲和', '创建同写 voice 与 voiceDesc（分列）')
+    await upsertEntity({ projectId: pid, kind: 'character', name: '声线拆分角色', voiceDesc: '成年女声、温柔' })
+    const rowU2 = await charRow(u.id)
+    check(rowU2.voice === 'Cherry' && rowU2.voiceDesc === '成年女声、温柔', '仅改 voiceDesc → voice 保留（不串写）')
+    await upsertEntity({ projectId: pid, kind: 'character', name: '声线拆分角色', appearance: '新外观' })
+    const rowU3 = await charRow(u.id)
+    check(rowU3.voice === 'Cherry' && rowU3.voiceDesc === '成年女声、温柔', '未传 voice/voiceDesc → 双列均保留')
+
+    // ---- 声链零变更回归锁：角色级 NL 描述仍被跳过 → 降级链与拆列前一致 ----
+    const chain = resolveVoiceChain({ charVoice: '成年女声、清爽亲和', paramVoice: 'Cherry' })
+    check(chain.voice === 'Cherry' && chain.source === 'params', '角色级 NL 描述仍跳过 → 音频降级链不变（B③ 零音频变更回归锁）')
+
+    // ---- normalizeSpec：voice / voice_desc 双读（trim）----
+    const ns = normalizeSpec({ name: 'A', voice: 'Cherry', voice_desc: ' 成年男声、低沉沙哑 ' })
+    check(!!ns && ns.voice === 'Cherry' && ns.voiceDesc === '成年男声、低沉沙哑', 'normalizeSpec：voice + voice_desc（trim）双落')
+    check(normalizeSpec({ name: 'B' })?.voiceDesc === undefined, '无 voice_desc → undefined')
+    check(normalizeSpec({ name: 'C', voice_desc: '   ' })?.voiceDesc === undefined, '纯空白 voice_desc → undefined')
+    check(normalizeSpec({ name: 'D', voice_desc: 5 })?.voiceDesc === undefined, '非字符串 voice_desc → undefined')
+
+    // ---- HTTP 读写 ----
+    const cr = await jreq('POST', '/api/v1/entities', { kind: 'character', project_id: pid, name: 'HTTP 声线拆分', voice: 'Cherry', voice_desc: '成年女声、清爽亲和' })
+    check(cr.status === 201 && cr.body?.entity?.voice === 'Cherry' && cr.body?.entity?.voiceDesc === '成年女声、清爽亲和', 'POST voice + voice_desc 入库并回显（camel）')
+    const hid = cr.body?.entity?.id as number
+    const up = await jreq('PUT', `/api/v1/entities/${hid}`, { voice_desc: '成年女声、温柔' })
+    check(up.body?.entity?.voice === 'Cherry' && up.body?.entity?.voiceDesc === '成年女声、温柔', 'PUT voice_desc → voice 不动')
+    const clr = await jreq('PUT', `/api/v1/entities/${hid}`, { voice_desc: null })
+    check(clr.body?.entity?.voiceDesc === null && clr.body?.entity?.voice === 'Cherry', 'PUT voice_desc=null → 清空描述、voice 保留')
+    const sc = await jreq('POST', '/api/v1/entities', { kind: 'scene', project_id: pid, name: '声线场景', voice_desc: '不应生效' })
+    check(sc.status === 201 && (sc.body?.entity?.voiceDesc ?? null) === null, 'POST scene + voice_desc → 忽略（仅角色）')
+    const scId = sc.body?.entity?.id as number
+    const scUp = await jreq('PUT', `/api/v1/entities/${scId}`, { voice_desc: 'x' })
+    check((scUp.body?.entity?.voiceDesc ?? null) === null, 'PUT scene + voice_desc → 忽略')
+    const badType = await jreq('PUT', `/api/v1/entities/${hid}`, { voice_desc: 123 })
+    check(badType.status === 400 && badType.body?.error?.code === 'bad_voice_desc', `voice_desc 非字符串 → 400 bad_voice_desc（${badType.status}）`)
+
+    // ---- 存量行兼容：仅 voice（无 voice_desc）→ voiceDesc NULL（前端回退展示基略）----
+    const legacy = await upsertEntity({ projectId: pid, kind: 'character', name: '存量旧角色', voice: '旧令牌' })
+    const legacyRow = await charRow(legacy.id)
+    check(legacyRow.voice === '旧令牌' && (legacyRow.voiceDesc ?? null) === null, '存量行仅 voice → voice_desc NULL（双读回退基础）')
+  }
+
   /** ⑦ 回归：前序探针子进程全绿 */
   const sectionRegression = async (): Promise<void> => {
     const { spawnSync } = await import('node:child_process')
@@ -590,7 +657,8 @@ async function main(): Promise<void> {
     'video-refs': sectionVideoRefs,
     upload: sectionUpload,
     polish: sectionPolish,
-    states: sectionStates,
+    'states': sectionStates,
+    'voice-desc': sectionVoiceDesc,
     regression: sectionRegression,
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
