@@ -17,6 +17,25 @@ export class WorkbenchError extends Error {
 /** 工作台类步骤（分镜编辑 / 单镜重生成 / 选片） */
 export const WORKBENCH_ACTIONS = ['ai_image', 'ai_video']
 
+/**
+ * [审计·重生成收口] gen_task 归零重排队补丁（单一真源，取代各重生成入口的分叉写法）。
+ * 引擎执行段以 `task.taskId ? 续轮询 : 重新提交` 决定第三方任务去向（见 ai-video.ts）：
+ * - regen=true（强制重新生成：单镜重生成 / 单步全量重跑 / 级联重做 / 局部返修）→ 清空外部 task_id，
+ *   令其真正重新提交。保留旧 task_id 会让「重生成」直接轮回变更前的旧第三方成片（假重生成：
+ *   用户以为重出，实际拿回旧片），与 resetShotsForRework、ai-video[F03]「内容变更即清 task_id」同规则。
+ * - regen=false（失败重试 / 断点续跑：复用已受理任务）→ 保留 task_id，续轮询避免二次提交扣费
+ *   （与 tasks/:id/retry、runs/:id/resume、崩溃恢复的语义一致）。
+ * 图片 / TTS 为同步适配器不用 task_id 轮询，清空无副作用；统一下发以保持单一真源。
+ */
+export function requeuePatch(
+  regen: boolean,
+  now: number,
+): { status: 'pending'; attempts: 0; errorMsg: null; completedAt: null; updatedAt: number; taskId?: null } {
+  return regen
+    ? { status: 'pending', attempts: 0, errorMsg: null, completedAt: null, taskId: null, updatedAt: now }
+    : { status: 'pending', attempts: 0, errorMsg: null, completedAt: null, updatedAt: now }
+}
+
 /** 分镜镜头（宽松形态：兼容裸数组与 {shots:[]}，与 ai-image 解析口径一致） */
 export interface ShotSpec {
   id: string

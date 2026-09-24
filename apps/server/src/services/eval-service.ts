@@ -122,12 +122,12 @@ export async function scoreConsistencyEval(body: Record<string, unknown>): Promi
   const parts: ChatContentPart[] = []
   for (const id of refIds) {
     parts.push({ type: 'text', text: `【角色参考图 asset#${id}】` })
-    parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, cache) } })
+    parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, projectId, cache) } })
   }
   for (const g of groups) {
     for (const id of g.assetIds) {
       parts.push({ type: 'text', text: `【待评图 asset_id=${id} · 组=${g.label}】` })
-      parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, cache) } })
+      parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, projectId, cache) } })
     }
   }
   parts.push({ type: 'text', text: `共 ${allIds.length} 张待评图，asset_id 集合：[${allIds.join(', ')}]。请按契约输出 scores JSON（每 asset_id 恰好一条）。` })

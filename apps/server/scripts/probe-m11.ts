@@ -10,7 +10,9 @@
  *   rerun      resetStepForRerun：复用模式（succeeded 不动 / tasksReset=非 succeeded 数）+
  *              reset_tasks=true（全量归零 + resultAssetId 保留）+ 无任务步骤（选项忽略）+ 校验拒绝矩阵
  *   align      planVoiceAlignedSegments（一致映射/补静音/空镜/句长兜底/四类回退 reason）+
- *              parseShotLines + planSrtShifts + shiftSrtText（平移/零平移/数量不符/负值收敛）
+ *              [统一时轴] planBestEffortTimeline（零回归一致/幽灵句 partial 命中镜仍同源/motion 真实 clip 长/
+ *              硬失败保留孤儿配音·重复句·无 lines）+ buildClipDurByShotId +
+ *              parseShotLines + planSrtShifts（含 partial 平移）+ shiftSrtText（平移/零平移/数量不符/负值收敛）
  *   bgm        compose-config：上传/复制行绑定、替换软删、隔离、移除 + 校验矩阵 +
  *              updateComposeConfig（白名单/枚举/clamp/合并写）+ readComposeConfig 容错
  *   transition buildTransitionPlan：videoLens/offsets/totalDur 数学 + clamp + 禁用矩阵 + round3
@@ -224,7 +226,7 @@ async function main(): Promise<void> {
   // 经下方 m11Ctx 注入共享 helpers；align / transition / template 留在本文件。
 
   const sectionAlign = async (): Promise<void> => {
-    const { parseShotLines, planVoiceAlignedSegments, planAudioDrivenShotDurations, planSrtShifts, shiftSrtText, srtTsToSec, secToSrtTs } = await import(
+    const { parseShotLines, planVoiceAlignedSegments, planBestEffortTimeline, planAudioDrivenShotDurations, planSrtShifts, shiftSrtText, srtTsToSec, secToSrtTs, buildClipDurByShotId, buildComposeArgs } = await import(
       '../src/pipeline/actions/ffmpeg-merge'
     )
 
@@ -355,6 +357,118 @@ async function main(): Promise<void> {
     check(srtTsToSec('01', '02', '03', '456') === 3723.456, 'srtTsToSec（3723.456）')
     check(secToSrtTs(3723.456) === '01:02:03,456', 'secToSrtTs 往返')
     check(secToSrtTs(-5) === '00:00:00,000', 'secToSrtTs 负值收敛 0')
+
+    // ================================================================
+    // [统一时轴·中档] planBestEffortTimeline：回退路径接同源（幽灵句不整体回退）
+    // ================================================================
+
+    // ---- (c) 零回归锁定：无幽灵句时核心产出与 planVoiceAlignedSegments 完全一致 ----
+    const beA = planBestEffortTimeline(shotsA, voiceA, 4, { hasLinesField: true, mode: 'images' })
+    check(beA.aligned === true && beA.partial === false && JSON.stringify(beA.warnLines) === JSON.stringify([]), `无幽灵句 → aligned & partial=false（实际 ${beA.aligned}/${beA.partial}）`)
+    check(JSON.stringify(beA.segments) === JSON.stringify(planA.segments), 'segments 与严格 plan 逐字节一致（零回归）')
+    check(JSON.stringify(beA.lines) === JSON.stringify(planA.lines), 'lines 双轴与严格 plan 逐字节一致')
+    check(beA.totalDur === planA.totalDur && beA.mode === 'images', `totalDur/mode 一致（实际 ${beA.totalDur}/${beA.mode}）`)
+    check(JSON.stringify(planSrtShifts(beA, ['L1', 'L2', 'L3'])) === JSON.stringify(shifts), '无幽灵句 planSrtShifts 与严格 plan 一致')
+
+    // ---- (a) 孤儿/幽灵句：严格 plan 整体 mapping_mismatch，best-effort 命中镜仍产 canonical 计划 + partial ----
+    const shotsE = [
+      { id: 's01', durationSec: 6, lineIds: ['L1'] },
+      { id: 's02', durationSec: 5, lineIds: ['L2', 'LX'] }, // LX = 幽灵句（分镜引用、无实测配音）
+    ]
+    const voiceE = new Map([['L1', 2], ['L2', 3]]) // 无 LX
+    const strictE = planVoiceAlignedSegments(shotsE, voiceE, 4, { hasLinesField: true })
+    check(!strictE.aligned && strictE.reason === 'mapping_mismatch', '严格 plan：幽灵句 LX → mapping_mismatch（整体回退）')
+    const beE = planBestEffortTimeline(shotsE, voiceE, 4, { hasLinesField: true, mode: 'images' })
+    check(beE.aligned === true && beE.partial === true, `best-effort：命中镜仍产出计划（aligned=${beE.aligned} partial=${beE.partial}）`)
+    check(JSON.stringify(beE.warnLines) === JSON.stringify(['LX']), `warnLines=[LX]（实际 ${JSON.stringify(beE.warnLines)}）`)
+    check(beE.segments.length === 2 && beE.segments[0]!.durSec === 6 && beE.segments[0]!.silenceSec === 4, 's01：显式 6 > 句和 2 → 6s + 镜尾静音 4s')
+    check(beE.segments[1]!.durSec === 5 && JSON.stringify(beE.segments[1]!.lineIds) === JSON.stringify(['L2']), 's02：幽灵 LX 剔除后仅 L2（显式 5 > 句和 3）')
+    check(beE.lines.length === 2 && beE.lines[1]!.lineId === 'L2' && beE.lines[1]!.speechStart === 2 && beE.lines[1]!.timelineStart === 6, 'L2 双轴（speech 2 / timeline 6）')
+    // partial 化 planSrtShifts：命中 cue 按同源平移，幽灵 cue（不在计划）shift 0 不整体放弃
+    const shiftsE = planSrtShifts(beE, ['L1', 'L2', 'LX'])
+    check(JSON.stringify(shiftsE) === JSON.stringify([0, 4, 0]), `partial 平移：L1=0 / L2=+4 / 幽灵 LX=0（实际 ${JSON.stringify(shiftsE)}）`)
+    check(planSrtShifts(planA, ['L1', 'L2', 'LX']) === null, '非 partial 计划缺句 → null（旧行为不变）')
+
+    // ---- 硬失败保留：孤儿配音（有 voice 无镜引用）/ 重复句 / 无 lines 字段 ----
+    const beOrphan = planBestEffortTimeline([{ id: 's01', durationSec: 2, lineIds: ['L1'] }], new Map([['L1', 1], ['L2', 1]]), 4, { hasLinesField: true, mode: 'images' })
+    check(!beOrphan.aligned && beOrphan.reason === 'mapping_mismatch', 'best-effort：孤儿配音（语音多出）→ 仍 mapping_mismatch（视频将短于音轨）')
+    const beDup = planBestEffortTimeline(
+      [{ id: 's01', durationSec: 2, lineIds: ['L1'] }, { id: 's02', durationSec: 2, lineIds: ['L1'] }],
+      new Map([['L1', 1]]),
+      4,
+      { hasLinesField: true, mode: 'images' },
+    )
+    check(!beDup.aligned && beDup.reason === 'mapping_mismatch', 'best-effort：跨镜复引（歧义）→ mapping_mismatch')
+    const beNoLines = planBestEffortTimeline(shotsA, voiceA, 4, { hasLinesField: false, mode: 'images' })
+    check(!beNoLines.aligned && beNoLines.reason === 'no_lines_field', 'best-effort：无 lines 字段 → no_lines_field（多镜不可推导，留 fit_voice）')
+
+    // ---- (b) motion：段长按真实 clip 时长（不拉伸），仅借 lineIds 把字幕平移到 clip 累计轴 ----
+    const shotsM = [
+      { id: 's01', durationSec: null, lineIds: ['M1'] },
+      { id: 's02', durationSec: null, lineIds: ['M2'] },
+    ]
+    const voiceM = new Map([['M1', 2], ['M2', 3]])
+    const clipDurM = new Map([['s01', 5], ['s02', 4]]) // 真实 clip 长（≠ 句和 2/3）
+    const beM = planBestEffortTimeline(shotsM, voiceM, 4, { hasLinesField: true, mode: 'motion', clipDurByShotId: clipDurM })
+    check(beM.aligned === true && beM.mode === 'motion' && beM.partial === false, `motion aligned & mode=motion（实际 ${beM.aligned}/${beM.mode}）`)
+    check(beM.segments[0]!.durSec === 5 && beM.segments[0]!.silenceSec === 3, 'motion s01：段长=clip 5（不拉伸为句和 2）+ 静音 3')
+    check(beM.segments[1]!.durSec === 4, 'motion s02：段长=clip 4')
+    check(beM.totalDur === 9, `motion totalDur = Σclip（实际 ${beM.totalDur}）`)
+    check(beM.lines[1]!.speechStart === 2 && beM.lines[1]!.timelineStart === 5, 'M2 双轴：speech 2（语音连续）/ timeline 5（clip 累计）')
+    const shiftsM = planSrtShifts(beM, ['M1', 'M2'])
+    check(JSON.stringify(shiftsM) === JSON.stringify([0, 3]), `motion 字幕平移到 clip 累计轴：M2 +3s（实际 ${JSON.stringify(shiftsM)}）`)
+    // motion clip 时长缺该镜 → 回退 explicit/safeFallback（不抛错）
+    const beMNoClip = planBestEffortTimeline(shotsM, voiceM, 4, { hasLinesField: true, mode: 'motion', clipDurByShotId: new Map() })
+    check(beMNoClip.aligned && beMNoClip.segments[0]!.durSec === 4 && beMNoClip.segments[1]!.durSec === 4, 'motion clipDur 缺表 → 兜底 safeFallback 4s')
+
+    // ---- buildClipDurByShotId：shotId → clip 实测时长（motion 段长来源）----
+    const clipRows = [
+      { id: 101, params: JSON.stringify({ shotId: 's01' }) },
+      { id: 102, params: JSON.stringify({ shotId: 's02' }) },
+      { id: 103, params: '{}' }, // 无 shotId → 不入表
+    ] as unknown as Parameters<typeof buildClipDurByShotId>[1]
+    const clipSegs = [
+      { id: 101, kind: 'video', durSec: 5 },
+      { id: 102, kind: 'video', durSec: 4 },
+      { id: 103, kind: 'video', durSec: 9 },
+    ] as unknown as Parameters<typeof buildClipDurByShotId>[0]
+    const builtClipDur = buildClipDurByShotId(clipSegs, clipRows)
+    check(builtClipDur.get('s01') === 5 && builtClipDur.get('s02') === 4 && !builtClipDur.has('' ) && builtClipDur.size === 2, `buildClipDurByShotId：shotId→clip dur（实际 ${builtClipDur.size} 项）`)
+
+    // ---- [统一时轴] best-effort 计划 → buildComposeArgs：音频放置 + 字幕烧录同源于该计划（消除回退即漂移）----
+    // beE：partial 计划（s01 L1 dur6/静音4、s02 L2 dur5/静音2；幽灵 LX 无配音不入 voicePaths/lineIds）
+    const beArgs = buildComposeArgs({
+      segments: [
+        { id: 1, path: 'a.png', kind: 'image', durSec: beE.segments[0]!.durSec },
+        { id: 2, path: 'b.png', kind: 'image', durSec: beE.segments[1]!.durSec },
+      ],
+      width: 1080,
+      height: 1920,
+      fps: 25,
+      xfadePlan: { enabled: false, type: 'none', durSec: 0, videoLens: [6, 5], offsets: [], totalDur: 11 },
+      voicePaths: ['v1.mp3', 'v2.mp3'],
+      lineIds: ['L1', 'L2'],
+      alignPlan: beE,
+      total: beE.totalDur,
+      srtAbs: 'C:/out/ep.srt',
+      style: 'FontName=X,FontSize=18',
+      bgmPath: null,
+      bgmVolume: 0.25,
+      bgmFade: 2,
+      watermark: null,
+      intro: null,
+      outro: null,
+      outAbs: 'C:/out/ep-final.mp4',
+    })
+    const beFc = beArgs.args[beArgs.args.indexOf('-filter_complex') + 1]!
+    // 对齐 concat：2 句 + 2 镜尾静音 = 4 段；镜尾静音时长按计划 silenceSec（4s/2s）
+    check(beFc.includes('concat=n=4:v=0:a=1'), `音频轨按命中句 + 镜尾静音 concat（实际含 concat=n=4）`)
+    check(beFc.includes('anullsrc=r=44100:cl=stereo:d=4') && beFc.includes('anullsrc=r=44100:cl=stereo:d=2'), '镜尾静音同源：s01=4s / s02=2s（=计划 silenceSec）')
+    check(beFc.includes('[a0]') && beFc.includes('[a1]'), '逐句引用命中配音资产 [a0]/[a1]（幽灵句无残留引用）')
+    check(beFc.includes("subtitles='ep.srt'"), '字幕烧录消费同一（已按 partial 平移重写的）SRT')
+    // 零漂移不变式：Σ(句时长 + 镜尾静音) == Σ视频段长 == plan.totalDur == 合成 totalAll
+    const audioSum = 2 + 4 + 3 + 2
+    check(audioSum === beE.totalDur && beE.totalDur === 11 && beArgs.totalAll === 11, `音/画/字三口径同源（Σ=${audioSum} / plan.totalDur=${beE.totalDur} / totalAll=${beArgs.totalAll}）`)
   }
 
   const sectionTransition = async (): Promise<void> => {

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, genTasks, pipelineRuns, pipelineSteps, type GenTask } from '../../db/schema'
-import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, shotIdOfAsset } from './helpers'
+import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, shotIdOfAsset, requeuePatch } from './helpers'
 import { isCreationTemplate } from '../creation-chat/recipe'
 import { assertRepairable, resolveStoryboardSource } from './inspect'
 
@@ -44,9 +44,11 @@ export async function resetShotForRegenerate(
   if (!target) throw new WorkbenchError('no_task', `镜头 ${shotId} 无对应生成任务`)
 
   const now = Date.now()
+  // 单镜重生成（用户点“重出该镜”）→ regen=true 清外部 task_id，令引擎重新提交而非续轮询旧成片（requeuePatch 单一真源，
+  // 与 resetStepForRerun / resetChainForRerun / [F03] 同规则）；失败重试/续跑保留 task_id 的语义在本入口不适用。
   await db
     .update(genTasks)
-    .set({ status: 'pending', attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
+    .set(requeuePatch(true, now))
     .where(eq(genTasks.id, target.id))
   await db
     .update(pipelineSteps)

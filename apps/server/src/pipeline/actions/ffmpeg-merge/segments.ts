@@ -137,3 +137,18 @@ export function lineIdOfVoiceAsset(a: Asset): string | null {
     return null
   }
 }
+
+/**
+ * [统一时轴] motion：从已算 clip 段构造 shotId → clip 实测时长（供 planBestEffortTimeline mode:'motion'
+ * 按真实 clip 时长作时间轴基准，不拉伸；仅借 lineIds 将字幕平移到 clip 累计轴）。无 shotId/无段 → 不入表。
+ */
+export function buildClipDurByShotId(segments: Segment[], rows: Asset[]): Map<string, number> {
+  const segByAsset = new Map(segments.map((s) => [s.id, s]))
+  const out = new Map<string, number>()
+  for (const a of rows) {
+    const sid = shotIdOfAsset(a)
+    const seg = segByAsset.get(a.id)
+    if (sid && seg) out.set(sid, seg.durSec)
+  }
+  return out
+}

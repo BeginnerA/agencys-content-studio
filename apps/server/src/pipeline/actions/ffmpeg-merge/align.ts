@@ -24,6 +24,12 @@ export interface AlignPlan {
   lines: AlignLine[]
   totalDur: number
   warnShots?: string[]
+  /** [统一时轴] best-effort：命中镜已产出 canonical 计划，但存在被跳过的幽灵句（分镜引用却无实测配音） */
+  partial?: boolean
+  /** [统一时轴] 被跳过的句 id（幽灵句；无配音不入时间轴） */
+  warnLines?: string[]
+  /** [统一时轴] 计划所属模式（溯源；images 音频驱动 / motion 真实 clip 时长） */
+  mode?: 'images' | 'motion'
 }
 
 /** [M11] 分镜 JSON → 对齐输入（shots[].lines；hasLinesField = 至少一镜含该字段） */
@@ -147,6 +153,81 @@ export function planAudioDrivenShotDurations(
   return out
 }
 
+/**
+ * [统一时轴·中档] best-effort 时间轴计划：与 planVoiceAlignedSegments 同段/双轴算法，但放宽
+ * 「一个幽灵句即整体回退」——分镜引用但缺实测配音的句按 0 长跳过（记 warnLines / partial=true），
+ * 其余命中镜仍产出 canonical 计划，供视频段长 + 字幕平移 + 音轨同源消费（消除回退即漂移）。
+ * 保留的硬失败：no_shots / no_voices / no_lines_field（多镜无归属 → fit_voice 残差）/ 重复映射（歧义）/
+ * 孤儿配音（有 voice 无镜引用 → 视频将短于音轨，不可安全对齐）。无幽灵句时行为与 planVoiceAlignedSegments 逐字节一致。
+ * mode：images 段长 = max(explicit, Σ命中句)（音频驱动，显式为下限防台词被截）；
+ *       motion 段长 = clipDurByShotId 真实 clip 时长（不拉伸），仅借 lineIds 把字幕平移到 clip 累计轴。
+ */
+export function planBestEffortTimeline(
+  shots: AlignShotInput[],
+  voiceDur: Map<string, number>,
+  fallbackDur: number,
+  opts: { hasLinesField: boolean; mode: 'images' | 'motion'; clipDurByShotId?: Map<string, number> },
+): AlignPlan {
+  const fail = (reason: string): AlignPlan => ({ aligned: false, reason, segments: [], lines: [], totalDur: 0 })
+  if (shots.length === 0) return fail('no_shots')
+  if (voiceDur.size === 0) return fail('no_voices')
+  if (!opts.hasLinesField) return fail('no_lines_field')
+  // 逐镜解析命中句：幽灵句（分镜引用但 voiceDur 缺）跳过并告警，不阻断；重复映射=歧义仍整体失败
+  const mapped = new Set<string>()
+  const warnLines: string[] = []
+  const resolved: Array<{ shot: AlignShotInput; ids: string[] }> = []
+  for (const s of shots) {
+    const ids: string[] = []
+    for (const id of s.lineIds) {
+      if (mapped.has(id)) return fail('mapping_mismatch')
+      if (!voiceDur.has(id)) {
+        warnLines.push(id)
+        continue
+      }
+      mapped.add(id)
+      ids.push(id)
+    }
+    resolved.push({ shot: s, ids })
+  }
+  if (mapped.size !== voiceDur.size) return fail('mapping_mismatch')
+  const safeFallback = fallbackDur > 0 ? fallbackDur : 4
+  const segments: AlignPlan['segments'] = []
+  const lines: AlignLine[] = []
+  const warnShots: string[] = []
+  let speechCursor = 0
+  let timelineCursor = 0
+  for (const { shot: s, ids } of resolved) {
+    const sum = ids.reduce((acc, id) => acc + voiceDur.get(id)!, 0)
+    let durSec: number
+    let silenceSec = 0
+    if (opts.mode === 'motion') {
+      const clipDur = opts.clipDurByShotId?.get(s.id)
+      durSec = clipDur != null && clipDur > 0 ? clipDur : s.durationSec != null && s.durationSec > 0 ? s.durationSec : safeFallback
+      silenceSec = Math.max(0, durSec - sum)
+    } else if (ids.length > 0) {
+      if (s.durationSec != null && s.durationSec > sum) {
+        durSec = s.durationSec
+        silenceSec = s.durationSec - sum
+      } else {
+        durSec = sum
+        if (s.durationSec != null && s.durationSec < sum) warnShots.push(s.id)
+      }
+    } else {
+      durSec = s.durationSec != null && s.durationSec > 0 ? s.durationSec : safeFallback
+      silenceSec = durSec
+    }
+    let inShot = 0
+    for (const id of ids) {
+      lines.push({ lineId: id, speechStart: round3(speechCursor + inShot), timelineStart: round3(timelineCursor + inShot) })
+      inShot += voiceDur.get(id)!
+    }
+    speechCursor += inShot
+    segments.push({ shotId: s.id, durSec: round3(durSec), lineIds: [...ids], silenceSec: round3(silenceSec) })
+    timelineCursor += durSec
+  }
+  return { aligned: true, segments, lines, totalDur: round3(timelineCursor), warnShots, partial: warnLines.length > 0, warnLines, mode: opts.mode }
+}
+
 /** [M11] SRT 每 cue 平移秒数（cue ↔ 句序 = voices 序；任一缺失 → null = 不平移） */
 export function planSrtShifts(align: AlignPlan, lineIdsInCueOrder: string[]): number[] | null {
   if (!align.aligned || lineIdsInCueOrder.length === 0) return null
@@ -154,7 +235,12 @@ export function planSrtShifts(align: AlignPlan, lineIdsInCueOrder: string[]): nu
   const shifts: number[] = []
   for (const id of lineIdsInCueOrder) {
     const line = byId.get(id)
-    if (!line) return null
+    if (!line) {
+      // [统一时轴] partial：该 cue 句未命中计划（幽灵/无实测配音）→ 不平移（shift 0），不整体放弃
+      if (!align.partial) return null
+      shifts.push(0)
+      continue
+    }
     shifts.push(round3(line.timelineStart - line.speechStart))
   }
   return shifts

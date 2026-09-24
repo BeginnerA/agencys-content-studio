@@ -1,8 +1,19 @@
+import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { db } from '../../db'
+import { assets } from '../../db/schema'
 import { writeTextAsset } from '../storage'
 import { WORKBENCH_ACTIONS, WorkbenchError, type ShotSpec } from './helpers'
 import { assertRepairable, findProducerStep, resolveStoryboardSource } from './inspect'
 import { rebuildShotOutput, replaceProducerOutputAsset } from './reset'
 import { shotDurationSec } from './board'
+
+/**
+ * [审计·跨项目隔离] 分镜镜头携带的资产 id 类字段（参考图）——写入口归属校验覆盖的键（单一真源）。
+ * 读时 assetToDataUri 已按 projectId 做 chokepoint 拒绝跨项目注入；写时（工作台结构性编辑）此处
+ * 落库前统一拒绝跨项目 / 不存在 / 已删除资产，给出清晰早期错误（配成双保险，对齐 selection.ts picks 归属校验范式）。
+ * 目前镜头级唯一按 id 注入图片的字段是 ref_asset_ids（ai-image / ai-video 消费）；如后续新增同类字段在此登记。
+ */
+const SHOT_ASSET_ID_KEYS = ['ref_asset_ids'] as const
 
 export interface ShotEditItem {
   shot_id: string
@@ -120,6 +131,9 @@ export async function applyStoryboardOps(
   const producer = await findProducerStep(src.asset, run)
   if (!producer) throw new WorkbenchError('no_producer', '分镜资产无产出步骤溯源，暂不支持编辑')
 
+  // [审计·跨项目隔离] 写入口预算校验：add/patch 可向镜头写入 ref_asset_ids，落库前统一拒绝非本项目资产
+  await assertOpsAssetIdsScoped(run.projectId, ops)
+
   // 工作副本：deep 拷贝保持裸数组 / {shots:[]} 形态；仅保留有 id 的有效镜头（结构性编辑统一规范化）
   const deep = JSON.parse(JSON.stringify(src.parsed)) as unknown
   const rawArr = ((Array.isArray(deep) ? deep : (deep as { shots?: unknown[] }).shots) ?? []) as unknown[]
@@ -164,6 +178,44 @@ export async function reorderShots(
   order: string[],
 ): Promise<{ assetId: number; assetIds: number[]; shots: number }> {
   return applyStoryboardOps(runId, stepKey, [{ op: 'reorder', order }])
+}
+
+/**
+ * [审计·跨项目隔离] 结构性编辑写入口预算校验：遍历 ops 收集 add.shot / patch.fields 上的资产 id 类字段
+ * （SHOT_ASSET_ID_KEYS，一次查询）→ 全部须存在、属本项目、未删除，否则抛 WorkbenchError('bad_asset')。
+ * 与 assetToDataUri 读时 chokepoint 配成双保险：读时已阻止实际注入，写时提前给出清晰错误、拒绝脏 id 落库。
+ */
+async function assertOpsAssetIdsScoped(projectId: number, ops: ShotOp[]): Promise<void> {
+  const ids = new Set<number>()
+  const collect = (holder: Record<string, unknown> | undefined | null): void => {
+    if (!holder) return
+    for (const key of SHOT_ASSET_ID_KEYS) {
+      const v = holder[key]
+      if (v === undefined || v === null) continue
+      if (!Array.isArray(v)) throw new WorkbenchError('bad_field', `${key} 需为资产 id 数组`)
+      for (const raw of v) {
+        const n = Number(raw)
+        if (!Number.isInteger(n) || n <= 0) throw new WorkbenchError('bad_asset', `${key} 含非法资产 id：${String(raw)}`)
+        ids.add(n)
+      }
+    }
+  }
+  for (const op of ops) {
+    const raw = (op ?? {}) as Record<string, unknown>
+    if (raw['op'] === 'add') collect(raw['shot'] as Record<string, unknown> | undefined)
+    else if (raw['op'] === 'patch') collect(raw['fields'] as Record<string, unknown> | undefined)
+  }
+  if (ids.size === 0) return
+  const list = [...ids]
+  const rows = await db
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(inArray(assets.id, list), eq(assets.projectId, projectId), isNull(assets.deletedAt)))
+  const found = new Set(rows.map((r) => r.id))
+  const bad = list.filter((id) => !found.has(id))
+  if (bad.length > 0) {
+    throw new WorkbenchError('bad_asset', `参考图资产不存在或不属于本项目（跨项目引用被拒）：${bad.map((b) => `#${b}`).join('、')}`)
+  }
 }
 
 /** 单条 op 应用（运行时不变量校验；失败抛 WorkbenchError） */

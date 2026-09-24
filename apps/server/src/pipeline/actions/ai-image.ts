@@ -314,7 +314,7 @@ async function runOneTask(
         let ordinal = 0
         for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
           try {
-            uris.push(await assetToDataUri(id, cfg.uriCache))
+            uris.push(await assetToDataUri(id, ctx.run.projectId, cfg.uriCache))
             refInputs.push(await assetInput('reference', id, { shotId, port: 'reference', ordinal: ordinal++ }))
           } catch (err) {
             if (recipe?.plan.performance === 'dialogue') throw new Error('对白批准参考图读取失败，禁止静默跳过')

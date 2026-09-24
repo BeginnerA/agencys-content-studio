@@ -60,12 +60,12 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
 
   if (spec.edit) {
     // 编辑通道：source → baseImage；mask（inpaint/erase）；adapter.edit（能力声明制）
-    const sourceUri = plan.sourceAssetId != null ? await assetToDataUri(plan.sourceAssetId, uriCache) : null
+    const sourceUri = plan.sourceAssetId != null ? await assetToDataUri(plan.sourceAssetId, canvas.projectId, uriCache) : null
     if (!sourceUri) throw new Error('编辑节点缺少源图产物')
     if (plan.sourceAssetId != null) execInputs.push(await assetInput('source', plan.sourceAssetId, { port: 'source' }))
     let maskUri: string | undefined
     if (spec.edit.mode === 'inpaint' || spec.edit.mode === 'erase') {
-      maskUri = spec.edit.maskAssetId != null ? await assetToDataUri(spec.edit.maskAssetId, uriCache) : undefined
+      maskUri = spec.edit.maskAssetId != null ? await assetToDataUri(spec.edit.maskAssetId, canvas.projectId, uriCache) : undefined
       if (!maskUri) throw new Error('缺少蒙版资产')
       if (spec.edit.maskAssetId != null) execInputs.push(await assetInput('mask', spec.edit.maskAssetId))
     }
@@ -95,7 +95,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     let ordinal = 0
     for (const id of plan.referenceAssetIds) {
       try {
-        refUris.push(await assetToDataUri(id, uriCache))
+        refUris.push(await assetToDataUri(id, canvas.projectId, uriCache))
         execInputs.push(await assetInput('reference', id, { port: 'reference', ordinal: ordinal++ }))
       } catch (err) {
         log.warn(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
@@ -121,7 +121,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     let ordinal = 0
     for (const id of plan.referenceAssetIds) {
       try {
-        refUris.push(await assetToDataUri(id, uriCache))
+        refUris.push(await assetToDataUri(id, canvas.projectId, uriCache))
         execInputs.push(await assetInput('reference', id, { port: 'reference', ordinal: ordinal++ }))
       } catch (err) {
         log.warn(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
@@ -131,7 +131,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     let firstFrameUri: string | undefined
     if (plan.firstFrameAssetId != null) {
       try {
-        firstFrameUri = await assetToDataUri(plan.firstFrameAssetId, uriCache)
+        firstFrameUri = await assetToDataUri(plan.firstFrameAssetId, canvas.projectId, uriCache)
         execInputs.push(await assetInput('first_frame', plan.firstFrameAssetId, { port: 'first_frame' }))
       } catch (err) {
         log.warn(`首帧 asset#${plan.firstFrameAssetId} 跳过（${(err as Error).message}）`)
@@ -141,7 +141,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     let lastFrameUri: string | undefined
     if (plan.lastFrameAssetId != null) {
       try {
-        lastFrameUri = await assetToDataUri(plan.lastFrameAssetId, uriCache)
+        lastFrameUri = await assetToDataUri(plan.lastFrameAssetId, canvas.projectId, uriCache)
         execInputs.push(await assetInput('last_frame', plan.lastFrameAssetId, { port: 'last_frame' }))
       } catch (err) {
         log.warn(`尾帧 asset#${plan.lastFrameAssetId} 跳过（${(err as Error).message}）`)
@@ -442,7 +442,7 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
   const execInputs: ExecInputSpec[] = []
   for (const id of plan.referenceAssetIds) {
     try {
-      imageParts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, uriCache) } })
+      imageParts.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, canvas.projectId, uriCache) } })
       execInputs.push(await assetInput('reference', id, { port: 'reference' }))
     } catch (err) {
       log.warn(`LLM 参考图 asset#${id} 跳过（${(err as Error).message}）`)

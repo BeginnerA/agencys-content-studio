@@ -61,7 +61,7 @@ export async function compileReferenceContext(projectId: number, refs: CreationR
       const parts: ChatContentPart[] = [{ type: 'text', text: '以下是用户上传的参考图（用于约束风格/主体；请仅依据其中真实可见的内容，不得编造图中没有的信息）：' }]
       const cache = new Map<number, string>()
       for (const r of imageRefs) {
-        try { parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(r.assetId, cache) } }) } catch { /* 单图不可读：跳过，不假装理解 */ }
+        try { parts.push({ type: 'image_url', image_url: { url: await assetToDataUri(r.assetId, projectId, cache) } }) } catch { /* 单图不可读：跳过，不假装理解 */ }
       }
       out.push({ role: 'user', content: parts })
     } else {

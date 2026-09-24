@@ -12,15 +12,20 @@ export const MAX_REF_IMAGE_BYTES = 8 * 1024 * 1024
  * 资产图片 → base64 data URI（供参考图 / 首帧注入，本地单机无公网图床故内联）。
  *
  * 调用方契约：**明确提供了图但本函数抛错 → 调用方跳过该图 + 记日志，不使任务失败**。
- * 缓存：同 run 内同图多镜复用（Map 由调用方持有，step 级）。
+ * 缓存：同 run 内同图多镜复用（Map 由调用方持有，step 级；assetId 全局唯属一项目，按 id 缓存安全）。
+ *
+ * [审计·跨项目隔离 chokepoint] projectId 必传：本函数是唯一把任意 assetId 转成可注入图的收口点，
+ * 在此强校验资产归属，防止参考图 / 首帧 / 尾帧 / 蒙版等按 id 注入拉取到其它项目的图片（数据越界）。
+ * 不匹配 → 抛错（沿用调用方跳图契约）；无需额外查询，已按 id 载入行。
  */
-export async function assetToDataUri(assetId: number, cache?: Map<number, string>): Promise<string> {
+export async function assetToDataUri(assetId: number, projectId: number, cache?: Map<number, string>): Promise<string> {
   const cached = cache?.get(assetId)
   if (cached !== undefined) return cached
 
   const row = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
   const asset = row[0]
   if (!asset) throw new Error(`资产 ${assetId} 不存在`)
+  if (asset.projectId !== projectId) throw new Error(`资产 ${assetId} 不属于项目 ${projectId}（跨项目引用被拒）`)
   if (asset.kind !== 'image') throw new Error(`资产 ${assetId} 非图片（kind=${asset.kind}）`)
   if (!asset.relPath) throw new Error(`资产 ${assetId} 无本地文件`)
 

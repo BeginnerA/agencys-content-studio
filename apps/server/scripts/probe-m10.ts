@@ -14,6 +14,9 @@
  *   select     applyShotSelection 放宽：上传资产可选 + 非本步骤/跨镜拒绝
  *   regression M7 语义回归：applyStoryboardEdits 不变 + edit→mutate 链 + reset 不含上传
  *
+ * [≤800 行红线拆分 2026-09] regression → scripts/probes/m10/modules/regression.ts
+ * （断言逐字保留，行为零变更）；本入口保留隔离环境/setup/行级 helpers 与 ops/output/upload/board/select 五节，经 ctx 注入共享。
+ *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -418,6 +421,39 @@ async function main(): Promise<void> {
       check(e instanceof WorkbenchError && e.code === c.want, `patch ${c.label} → ${c.want}（实际 ${e instanceof WorkbenchError ? e.code : String(e)}）`)
     }
 
+    // ---- [审计·跨项目隔离] ref_asset_ids 写入口归属校验（与 assetToDataUri 读时 chokepoint 双保险）----
+    const pidX = (
+      await db
+        .insert(projects)
+        .values({ name: 'M10 跨项目探针', genre: 'other', templateKey: 'mengbao-episode', settings: '{}', tags: '[]', createdAt: T0, updatedAt: T0 })
+        .returning()
+    )[0]!.id
+    const foreignAsset = (
+      await db
+        .insert(assets)
+        .values({ projectId: pidX, kind: 'image', purpose: 'shot_image', name: 'foreign-ref.png', mime: 'image/png', ext: 'png', tags: '[]', createdAt: T0, updatedAt: T0 })
+        .returning()
+    )[0]!.id
+    // 合法：本项目资产 id → 放行并落库（验证校验不误伤正常引用）
+    const rLegit = await applyStoryboardOps(s2.runId, 'gen_images', [{ op: 'patch', shot_id: 's01', fields: { ref_asset_ids: [s2.a1v1] } }])
+    const jLegit = JSON.parse(await readTextAsset(rLegit.assetId)) as { shots: Array<{ id: string; ref_asset_ids?: number[] }> }
+    check(JSON.stringify(jLegit.shots[0]!.ref_asset_ids) === JSON.stringify([s2.a1v1]), `patch 本项目 ref_asset_ids 放行（落库 [${jLegit.shots[0]!.ref_asset_ids}]）`)
+    // 非法矩阵：跨项目 / 不存在 / add 携带 / 非数组 / 非法 id
+    const refBad: Array<{ label: string; ops: unknown; want: string; msg?: string }> = [
+      { label: '跨项目资产', ops: [{ op: 'patch', shot_id: 's01', fields: { ref_asset_ids: [foreignAsset] } }], want: 'bad_asset', msg: '跨项目引用被拒' },
+      { label: '不存在资产', ops: [{ op: 'patch', shot_id: 's01', fields: { ref_asset_ids: [987654] } }], want: 'bad_asset', msg: '跨项目引用被拒' },
+      { label: 'add 携跨项目资产', ops: [{ op: 'add', shot: { id: 's09', image_prompt: 'x', ref_asset_ids: [foreignAsset] } }], want: 'bad_asset', msg: '跨项目引用被拒' },
+      { label: 'ref 非数组', ops: [{ op: 'patch', shot_id: 's01', fields: { ref_asset_ids: 5 } }], want: 'bad_field' },
+      { label: 'ref 含非法 id', ops: [{ op: 'patch', shot_id: 's01', fields: { ref_asset_ids: ['abc'] } }], want: 'bad_asset' },
+    ]
+    for (const c of refBad) {
+      const e = await errOf(() => applyStoryboardOps(s2.runId, 'gen_images', c.ops as never))
+      check(
+        e instanceof WorkbenchError && e.code === c.want && (!c.msg || e.message.includes(c.msg)),
+        `${c.label} → ${c.want}（实际 ${e instanceof WorkbenchError ? `${e.code}：${e.message}` : String(e)}）`,
+      )
+    }
+
     // ---- 多 op 序列（端到端；每条在应用时点校验）----
     const s3 = await seedRun()
     const r6 = await applyStoryboardOps(s3.runId, 'gen_images', [
@@ -685,52 +721,18 @@ async function main(): Promise<void> {
     check(JSON.stringify(outAfter.asset_ids) === JSON.stringify([s.a1v2]), `非法调用不改变 output（实际 [${outAfter.asset_ids}]）`)
   }
 
-  const sectionRegression = async (): Promise<void> => {
-    const s = await seedRun()
-
-    // ---- applyStoryboardEdits（M7）行为不变 ----
-    const r1 = await applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's01', duration: 3.5, image_prompt: '夜景版' }])
-    check(r1.edited === 1 && r1.assetIds[0] === r1.assetId, '编辑：新资产 + 保位替换')
-    const na = await getAsset(r1.assetId)
-    check(na.name.includes('工作台编辑') && na.stepId === s.sbStepId && na.runId === s.runId, '编辑资产命名/归属（M7 不变）')
-    const ed1 = JSON.parse(await readTextAsset(r1.assetId)) as { shots: Array<{ id: string; duration?: number; image_prompt?: string }> }
-    check(ed1.shots[0]!.duration === 3.5 && ed1.shots[0]!.image_prompt === '夜景版', '三字段 patch 生效（duration/提示词）')
-
-    // ---- edit → mutate 链（基于最新分镜）----
-    const r2 = await reorderShots(s.runId, 'gen_images', ['s02', 's01'])
-    const ed2 = JSON.parse(await readTextAsset(r2.assetId)) as { shots: Array<{ id: string; image_prompt?: string; duration?: number }> }
-    check(ed2.shots[0]!.id === 's02' && ed2.shots[1]!.image_prompt === '夜景版', 'mutate 基于编辑后分镜（编辑保留）')
-    const sbOut = JSON.parse((await getStep(s.sbStepId)).output ?? '{}') as { asset_ids?: number[] }
-    check(sbOut.asset_ids?.[0] === r2.assetId, '保位替换链（编辑资产 → 结构性编辑资产）')
-
-    // ---- M7 错误码不回归 ----
-    const eSame = await errOf(() => applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's01', duration: 3.5, image_prompt: '夜景版' }]))
-    check(eSame instanceof WorkbenchError && eSame.code === 'no_change', 'no_change 语义（同值提交）')
-    const eBad = await errOf(() => applyStoryboardEdits(s.runId, 'gen_images', []))
-    check(eBad instanceof WorkbenchError && eBad.code === 'bad_items', 'bad_items（空数组）')
-
-    // ---- reset 恢复仅任务产物（不含上传）----
-    const up = await uploadAndBindShotAsset(s.runId, 'gen_images', 's01', { name: 'reset.png', data: PNG_A })
-    check(JSON.stringify(up.assetIds) === JSON.stringify([s.a2, up.asset.id]), `重置前置：output 含上传（[a2,up]）（实际 [${up.assetIds}]）`)
-    const r3 = await applyShotSelection(s.runId, 'gen_images', { reset: true })
-    check(JSON.stringify(r3.assetIds) === JSON.stringify([s.a2, s.a1v2]), `reset → 任务产物全量（上传被排除）（实际 [${r3.assetIds}]）`)
-
-    // ---- board 聚合读兼容（M7 字段仍在）----
-    const board = await buildShotBoard(s.runId, 'gen_images')
-    const sh1 = board.shots.find((x) => x.shotId === 's01')!
-    check(sh1.duration === 3.5 && sh1.imagePrompt === '夜景版', '板面消费编辑后分镜（时长/提示词）')
-    check(sh1.versions.every((v) => typeof v.id === 'number' && typeof v.urls.file === 'string'), 'M7 版本字段结构不变（id/urls）')
-  }
-
   // ================= 分发 =================
 
+  // [M10 split] regression 节因 ≤800 行红线拆至 probes/m10/modules/regression.ts（断言逐字保留），
+  // 经下方 m10Ctx 注入共享行级 helpers；ops/output/upload/board/select 留在本文件。
+  const m10Ctx = { check, errOf, seedRun, getStep, getAsset, PNG_A }
   const runners: Record<string, () => Promise<void>> = {
     ops: sectionOps,
     output: sectionOutput,
     upload: sectionUpload,
     board: sectionBoard,
     select: sectionSelect,
-    regression: sectionRegression,
+    regression: async () => (await import('./probes/m10/modules/regression')).sectionRegression(m10Ctx),
   }
   const arg = process.argv.find((a) => a.startsWith('--section='))
   const wanted = arg ? arg.slice('--section='.length) : 'all'

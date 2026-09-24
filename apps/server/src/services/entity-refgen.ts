@@ -343,7 +343,7 @@ async function executeOnce(
     const cache = new Map<number, string>()
     for (const id of refIds) {
       try {
-        referenceImages.push(await assetToDataUri(id, cache))
+        referenceImages.push(await assetToDataUri(id, task.projectId, cache))
       } catch (err) {
         log.warn(`参考图 asset#${id} 跳过（${(err as Error).message}）`)
       }

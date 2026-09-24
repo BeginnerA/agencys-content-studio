@@ -7,7 +7,8 @@ import type { M11Ctx } from '../ctx'
 
 export async function sectionRerun(ctx: M11Ctx): Promise<void> {
   const { WorkbenchError, resetStepForRerun } = await import('../../../../src/services/shot')
-  const { seedRun, check, errOf, getTask, getStep, getRun, setStepStatus, setRunStatus } = ctx
+  const { genTasks } = await import('../../../../src/db/schema')
+  const { db, seedRun, check, errOf, getTask, getStep, getRun, setStepStatus, setRunStatus } = ctx
 
   // ---- 复用模式（默认）：succeeded 任务不动、tasksReset = 非 succeeded 数 ----
   const s1 = await seedRun()
@@ -30,6 +31,8 @@ export async function sectionRerun(ctx: M11Ctx): Promise<void> {
 
   // ---- reset_tasks=true：全量归零 + resultAssetId 保留 ----
   const s2 = await seedRun()
+  // [审计·重生成收口] 预置旧第三方 task_id：全量重做=重生成，必须清空令其重新提交（否则 ai-video 续轮询旧成片）
+  await db.update(genTasks).set({ taskId: 'EXT-RERUN' }).where(eq(genTasks.id, s2.t1))
   const r2 = await resetStepForRerun(s2.runId, 'gen_images', { resetTasks: true })
   check(r2.tasksTotal === 2 && r2.tasksSucceeded === 1 && r2.tasksReset === 2, `全量：tasksReset=total（${r2.tasksReset}）`)
   const t1r2 = await getTask(s2.t1)
@@ -38,6 +41,7 @@ export async function sectionRerun(ctx: M11Ctx): Promise<void> {
     '全量：succeeded 任务归零（pending/attempts/errorMsg/completedAt）',
   )
   check(t1r2.resultAssetId === s2.imgA, `全量：resultAssetId 保留（${t1r2.resultAssetId}）`)
+  check(t1r2.taskId === null, '全量重做清空外部 task_id（regen 语义：强制重新提交）')
   const t2r2 = await getTask(s2.t2)
   check(t2r2.status === 'pending' && t2r2.attempts === 0, '全量：failed 任务归零')
 
@@ -149,6 +153,8 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   )
   check(!chainA.includes('make_storyboard'), 'A 上游 make_storyboard 不入级联集合')
   check(dA.chargedSteps === 2 && dA.totalTasksToRun === 5, `A 预览计数（charged=${dA.chargedSteps} totalToRun=${dA.totalTasksToRun}，gen_images2+voice1+subtitle1整体+compose1整体）`)
+  // [审计·重生成收口] 预置旧 task_id：级联目标步 reset_tasks=true 属全量重做 → 必清（重新提交）
+  await db.update(genTasks).set({ taskId: 'EXT-CHAIN-REGEN' }).where(eq(genTasks.id, a.t1))
   const rA = await resetChainForRerun(a.runId, 'gen_images', { resetTasks: true })
   check(rA.chain.length === 4 && (await getRun(a.runId)).status === 'queued', 'A 执行：4 步入 pending、run → queued')
   const giA = await getStep(a.gi)
@@ -157,12 +163,15 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   const t1A = await getTask(a.t1)
   const t2A = await getTask(a.t2)
   check(t1A.status === 'pending' && t2A.status === 'pending', 'A 目标步 reset_tasks=true：gen_images 全量任务归零')
+  check((await getTask(a.t1)).taskId === null, 'A 级联全量重做清空外部 task_id（regen 语义：强制重新提交）')
   const msA = await getStep(a.ms)
   const mstA = await getTask(a.mst)
   check(msA.status === 'succeeded' && mstA.status === 'succeeded', 'A 防重复扣费：上游 make_storyboard 步骤/任务保持 succeeded 未动')
 
   // ---- B. 目标复用（resetTasks=false）：仅重置非 succeeded，下游仍全量 ----
   const b = await seedChainRun()
+  // [审计·重生成收口] 目标复用下 failed 任务属“重试”（非重生成）→ 保留 task_id 令引擎续轮询已受理任务（避免重复计费）
+  await db.update(genTasks).set({ taskId: 'EXT-CHAIN-REUSE' }).where(eq(genTasks.id, b.t2))
   const rB = await resetChainForRerun(b.runId, 'gen_images', { resetTasks: false })
   const giB = rB.chain.find((c) => c.isTarget)!
   const voB = rB.chain.find((c) => c.stepKey === 'voice')!
@@ -171,6 +180,7 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   const t1B = await getTask(b.t1)
   const t2B = await getTask(b.t2)
   check(t1B.status === 'succeeded' && t2B.status === 'pending', 'B 复用：succeeded 任务不动、failed 归零')
+  check((await getTask(b.t2)).taskId === 'EXT-CHAIN-REUSE', 'B 目标复用：重试的 failed 任务保留 task_id（retry 语义：续轮询不重复提交）')
 
   // ---- C. 级联范围外 failed 拒绝：从 subtitle 起级联（voice failed 在上游、不在集合）----
   const cRun = await seedChainRun()

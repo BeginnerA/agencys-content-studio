@@ -178,7 +178,18 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(/\[bm\]subtitles='ep\.srt':force_style='FontName=Legacy,FontSize=18'/.test(f3), '主路沿用上游定型的 style（仅派生路重算）')
     check(f3.includes('[dv0]subtitles=') && f3.includes('FontSize=19'), '派生路 1（1:1，h=1080）结构化重算字号 19')
     check(f3.includes('[dv1]subtitles=') && f3.includes('FontSize=16'), '派生路 2（16:9，h=608 → 10.9）最小字号兜底 16')
-    check(f3.includes('[dsub0][wm]overlay=') && f3.includes('[dsub1][wm]overlay='), '同一 [wm] 分流至两派生路（字幕之后；ffmpeg 允许一个滤镜输出作多路 overlay 输入，实测合法）')
+    // [M19 修复] 水印多路分流：主 + 两派生共 3 个 overlay 消费者，必须 [wm]split=3 各取唯一标签。
+    // 旧断言曾错误地断言两派生路都复用同一 [wm]（注释谎称“ffmpeg 允许一个滤镜输出作多路 overlay 输入，实测合法”）；
+    // 实则 ffmpeg 一个 filter pad 仅可被消费一次，重复引用 → "Invalid stream specifier: wm" 整条合成命令失败（已实跑复现）。
+    check(
+      f3.includes('[wm]split=3[wm0][wm1][wm2]')
+        && f3.includes('[subv][wm0]overlay=')
+        && f3.includes('[dsub0][wm1]overlay=')
+        && f3.includes('[dsub1][wm2]overlay=')
+        && !f3.includes('[dsub0][wm]overlay')
+        && !f3.includes('[dsub1][wm]overlay'),
+      '水印分流至主+两派生：[wm]split=3 每路唯一标签（修复：同一 [wm] pad 重复消费 → ffmpeg 整条命令失败）',
+    )
     check(d3.args.filter((t) => t === '-map').length === 3 && d3.args[d3.args.indexOf('-map') + 1] === '[outv]', '三路输出×无音轨 → 3 个 -map；主路仍为 [outv]')
     check(d3.derived[1]!.height === 608 && d3.derived[1]!.width === 1080, 'derived 第 2 路尺寸 1080x608')
     const d4 = buildComposeArgs(mkArgsInput({

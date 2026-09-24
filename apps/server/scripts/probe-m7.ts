@@ -485,6 +485,15 @@ async function main(): Promise<void> {
     check((await getTask(s.t2)).status === 'succeeded', '同步骤其他任务不受影响（t2）')
     check((await getStep(s.motionStepId)).status === 'succeeded', '其他步骤不受影响（gen_motion）')
 
+    // ---- [审计·重生成收口] 视频单镜重生成必清外部 task_id ----
+    // ai-video 执行段以 `task.taskId ? 续轮询 : 重新提交` 决定去向；重生成若保留旧 task_id
+    // 会直接轮回变更前的旧成片（假重生成）。新隔离 seed，对视频任务预置旧 task_id 后重生成。
+    const sv = await seedRun()
+    await db.update(genTasks).set({ taskId: 'EXT-VIDEO-OLD' }).where(eq(genTasks.id, sv.t3))
+    const rv = await resetShotForRegenerate(sv.runId, 'gen_motion', 's01')
+    check(rv.taskId === sv.t3, '视频单镜重生成命中目标视频任务（gen_motion/s01）')
+    check((await getTask(sv.t3)).taskId === null, '视频重生成清空外部 task_id（regen 语义：强制重新提交，绝不续轮询旧成片）')
+
     // 重置后板面：版本保留 / 选中保留 / run 活跃 → repairable=false
     const board = await buildShotBoard(s.runId, 'gen_images')
     check(board.shots[0]!.versions.length === 2 && board.shots[0]!.task?.status === 'pending', '重置后版本组保留（2 版）+ 任务状态 pending')

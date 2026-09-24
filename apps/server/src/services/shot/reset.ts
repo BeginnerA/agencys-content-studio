@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks, pipelineRuns, pipelineSteps, type PipelineStep } from '../../db/schema'
 import { cleanupVersions, type CleanupResult } from '../version-cleanup'
-import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, selectedMapOf, sameIds, toIdArray, type ShotSpec } from './helpers'
+import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, selectedMapOf, sameIds, toIdArray, requeuePatch, type ShotSpec } from './helpers'
 import { isCreationTemplate } from '../creation-chat/recipe'
 import { assertRepairable, assertChainRepairable } from './inspect'
 
@@ -140,11 +140,10 @@ export async function resetShotsForRework(
         // 删除该镜旧转写任务：视频将重做 → 新原声需重新转写（合法新计费），旧转写诊断资产保留可回溯
         await executor.delete(genTasks).where(eq(genTasks.id, t.id))
       } else {
-        // 归零重排队并清空外部任务号：提示词已变 → 必须重新提交生成，绝不轮询旧第三方任务返回旧成片
-        await executor
-          .update(genTasks)
-          .set({ status: 'pending', prompt: t.prompt, attempts: 0, taskId: null, errorMsg: null, completedAt: null, updatedAt: now })
-          .where(eq(genTasks.id, t.id))
+        // 归零重排队：提示词已变 → regen=true 清空外部任务号，令引擎重新提交（requeuePatch 单一真源，
+        // 与 resetShotForRegenerate / resetStepForRerun / [F03] 同规则），绝不轮询旧第三方任务返回旧成片；
+        // prompt 同步为重新批准后的提示词（ai_image/ai_video「已批准任务参数变化」守卫比对任务快照，不同步则返修一执行即失败）
+        await executor.update(genTasks).set({ ...requeuePatch(true, now), prompt: t.prompt }).where(eq(genTasks.id, t.id))
       }
       resetTaskIds.push(t.id)
     }
@@ -206,9 +205,10 @@ export async function resetStepForRerun(
   const resetTasks = opts.resetTasks === true
   const now = Date.now()
   if (resetTasks && tasks.length > 0) {
+    // 全量重做（重生成）→ regen=true 清外部 task_id，令引擎重新提交而非续轮询旧成片（requeuePatch 单一真源）
     await db
       .update(genTasks)
-      .set({ status: 'pending', attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
+      .set(requeuePatch(true, now))
       .where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id)))
   }
   await db
@@ -327,9 +327,10 @@ export async function resetChainForRerun(
       const taskCond = fullReset
         ? and(eq(genTasks.runId, runId), eq(genTasks.stepId, stepRow.id))
         : and(eq(genTasks.runId, runId), eq(genTasks.stepId, stepRow.id), ne(genTasks.status, 'succeeded'))
+      // fullReset=true（强制重做）→ regen 清 task_id 重新提交；fullReset=false（目标复用仅重试非 succeeded）→ 保留 task_id 续轮询避免重复计费（requeuePatch 单一真源）
       await db
         .update(genTasks)
-        .set({ status: 'pending', attempts: 0, errorMsg: null, completedAt: null, updatedAt: now })
+        .set(requeuePatch(fullReset, now))
         .where(taskCond)
     }
     await db

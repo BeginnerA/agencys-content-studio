@@ -204,6 +204,18 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       `[${wmIdx}:v]scale=${Math.round(width * watermark.width_pct)}:-1,format=rgba,colorchannelmixer=aa=${watermark.opacity}[wm]`,
     )
   }
+  // [M19 修复] 水印多路分流：启用水印且存在派生画幅时，同一 [wm] filter 输出 pad 不能被多个 overlay
+  // 重复消费（ffmpeg：一个 filter pad 仅可被消费一次，重复引用 → "Invalid stream specifier: wm" /
+  // "Error initializing complex filters: Invalid argument"，整条合成命令失败而非仅缺某一路）。
+  // 与音频 asplit 同理：按消费路数（主 + 派生）先 split 出每路唯一标签，供各 overlay 分别引用；
+  // 单输出（无派生）→ 不 split，[wm] 仍被主 overlay 唯一消费（零 diff 红线：brand-watermark/intro-outro 不变）。
+  const wmConsumers = watermark ? 1 + maTargets.length : 0
+  const wmSplit = wmConsumers > 1
+  if (wmSplit) {
+    const wmLabels = Array.from({ length: wmConsumers }, (_, i) => `[wm${i}]`).join('')
+    fcParts.push(`[wm]split=${wmConsumers}${wmLabels}`)
+  }
+  const wmPad = (i: number): string => (wmSplit ? `wm${i}` : 'wm')
   if (intro) {
     const introIdx = auxIdx
     auxIdx++
@@ -276,14 +288,14 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       `[${mainBase}]subtitles='${basename(subPathFor(0))}':force_style='${style}'[${subOut}]`,
     )
   }
-  // [M19] 水印 overlay（最顶层；字幕烧录之后）
+  // [M19] 水印 overlay（最顶层；字幕烧录之后）；多路时取分流的唯一标签 wm0
   if (watermark) {
     const wmIn = srtAbs && subOut ? subOut : mainBase
-    fcParts.push(`[${wmIn}][wm]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
+    fcParts.push(`[${wmIn}][${wmPad(0)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
   }
   const videoOut = watermark || srtAbs ? 'outv' : mainBase
 
-  // [M19] 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（同一 [wm] 分流）
+  // [M19] 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（[wm]split 分流后各取唯一标签 wm(k+1)）
   const derived: ComposeDerivedOutput[] = []
   const derivedLabels: string[] = []
   maTargets.forEach((t, k) => {
@@ -297,7 +309,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       prev = `dsub${k}`
     }
     if (watermark) {
-      fcParts.push(`[${prev}][wm]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[dwm${k}]`)
+      fcParts.push(`[${prev}][${wmPad(k + 1)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[dwm${k}]`)
       prev = `dwm${k}`
     }
     derivedLabels.push(prev)

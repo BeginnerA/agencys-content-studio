@@ -360,7 +360,7 @@ async function runOneTask(
       let ffUri: string | undefined
       if (cfg.frameCap !== 'none' && typeof parsed.firstFrameAssetId === 'number') {
         try {
-          ffUri = await assetToDataUri(parsed.firstFrameAssetId, cfg.uriCache)
+          ffUri = await assetToDataUri(parsed.firstFrameAssetId, ctx.run.projectId, cfg.uriCache)
           ctx.log(`shot ${shotId} 首帧注入完成`)
         } catch (err) {
           if (recipe) throw new Error('首帧读取失败，禁止降级文生视频')
@@ -376,7 +376,7 @@ async function runOneTask(
       const setRefUris: string[] = []
       for (const id of decision.inject) {
         try {
-          setRefUris.push(await assetToDataUri(id, cfg.uriCache))
+          setRefUris.push(await assetToDataUri(id, ctx.run.projectId, cfg.uriCache))
         } catch (err) {
           ctx.log(`shot ${shotId} 参考图 #${id} 跳过（${(err as Error).message}）`)
         }

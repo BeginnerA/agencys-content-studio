@@ -133,7 +133,7 @@ export async function extractStyleSnippetFromAssets(
   const nums = await assertProjectAssets(projectId, assetIds, 'asset_ids')
   const cache = new Map<number, string>()
   const images: ChatContentPart[] = []
-  for (const id of nums) images.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, cache) } })
+  for (const id of nums) images.push({ type: 'image_url', image_url: { url: await assetToDataUri(id, projectId, cache) } })
   const system = loadPromptTemplate('style-extract.md')
   const result = await chatCompleteDetailed(
     [

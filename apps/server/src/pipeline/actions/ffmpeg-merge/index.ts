@@ -10,8 +10,8 @@ import { emitStudioEvent } from '../../../services/events'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
 import { srtToAss } from './subtitle-ass'
 import { isSameAspect, resolveAspectSize } from './aspect'
-import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset } from './segments'
-import { loadShotAlignShots, planVoiceAlignedSegments, planSrtShifts, countSrtCues, shiftSrtText } from './align'
+import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset, buildClipDurByShotId } from './segments'
+import { loadShotAlignShots, planBestEffortTimeline, planSrtShifts, countSrtCues, shiftSrtText } from './align'
 import { buildTransitionPlan } from './transition'
 import { planSfxStarts } from './sfx'
 import { buildComposeArgs } from './args'
@@ -154,10 +154,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     ctx.log('subtitle=true 但 inputs.subtitle 无 SRT 资产，已跳过烧录')
   }
 
-  // [M11] 音字对齐尝试（静态图 + voices 全带 lineId/时长 + 分镜 lines 映射一致）：
-  // 逐镜时长 = 句时长和（显式 > 句和 → 镜尾静音）/ 空镜 explicit ?? duration_per_shot；失败回退下方 M7 语义
+  // [M11/统一时轴] 音字对齐尝试（静态图与动效统一：voices 全带 lineId/时长 + 分镜 lines，best-effort 命中镜即产出 canonical 计划）：
+  // 逐镜时长 images=句和（显式>句和→镜尾静音）/ motion=真实 clip 时长（不拉伸）/ 空镜 explicit??duration_per_shot；幽灵句跳过不整体回退；失败回退下方 M7 语义
   let alignPlan: AlignPlan | null = null
-  // 回退原因：motion_mode / no_voices / no_lineid / 计划 reason / mapping_incomplete（成功路径该值不参与 params）
+  // 回退原因：no_voices / no_lineid / 计划 reason(no_lines_field等) / mapping_incomplete（成功路径：aligned / partial_mapped / motion_aligned）
   let alignReason = 'not_applicable'
   if (dialogueClips && recipe) {
     if (voiceIds.length || !srtRelPath || subtitleIds.length !== 1) throw new Error('人物对白必须使用原声和配套字幕，禁止混入 TTS')
@@ -179,16 +179,16 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     alignPlan = strictVoicePlan(recipe.plan, await ctx.assetsOf(voiceIds), ctx.run.projectId)
     if (!srtRelPath || subtitleIds.length !== 1) throw new Error('严格交付缺少字幕')
     assertStrictSrt(absPathOf(srtRelPath), recipe.plan, alignPlan, await ctx.assetsOf(voiceIds))
-  } else if (mode !== 'images') {
-    alignReason = 'motion_mode'
   } else if (voiceMetas.length === 0) {
     alignReason = 'no_voices'
   } else if (!voiceMetas.every((v) => v.lineId !== null && v.durSec !== null && v.durSec > 0)) {
     alignReason = 'no_lineid'
   } else {
+    const planMode: 'images' | 'motion' = mode === 'images' ? 'images' : 'motion'
     const { shots: alignShots, hasLinesField } = await loadShotAlignShots(ctx, shotsIds)
     const voiceDur = new Map(voiceMetas.map((v) => [v.lineId!, v.durSec!]))
-    const plan = planVoiceAlignedSegments(alignShots, voiceDur, durationPerShot, { hasLinesField })
+    const clipDurByShotId = planMode === 'motion' ? buildClipDurByShotId(segments, rows) : undefined
+    const plan = planBestEffortTimeline(alignShots, voiceDur, durationPerShot, { hasLinesField, mode: planMode, clipDurByShotId })
     if (plan.aligned) {
       // 严格映射：实际段集合 == 分镜集合（任一镜缺段/无 shotId → 回退；先校验后赋值防半改）
       const shotIdByAssetId = new Map<number, string>()
@@ -213,10 +213,14 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       if (ok && used.size === plan.segments.length) {
         for (const item of mapping) item.seg.durSec = item.durSec
         alignPlan = plan
+        alignReason = planMode === 'motion' ? 'motion_aligned' : plan.partial ? 'partial_mapped' : 'aligned'
         const silentShots = plan.segments.filter((s) => s.lineIds.length === 0).length
         ctx.log(
-          `音字对齐启用：${plan.segments.length} 镜 × ${plan.lines.length} 句映射一致（无台词镜 ${silentShots} 个），成片总长 ${plan.totalDur.toFixed(2)}s`,
+          `音字对齐启用（${planMode}）：${plan.segments.length} 镜 × ${plan.lines.length} 句映射一致（无台词镜 ${silentShots} 个），成片总长 ${plan.totalDur.toFixed(2)}s`,
         )
+        if (plan.warnLines && plan.warnLines.length > 0) {
+          ctx.log(`同源时间轴启用（部分命中）：${plan.warnLines.length} 句缺实测配音（${plan.warnLines.join('、')}）——已跳过该句，命中镜仍按同源平移`)
+        }
         if (plan.warnShots && plan.warnShots.length > 0) {
           ctx.log(`显式时长小于句长合计 ${plan.warnShots.length} 镜（${plan.warnShots.join('、')}）：已以句长为准，确保台词完整`)
         }
@@ -589,10 +593,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         shots_source: shotsIds[0] ?? null,
       },
       skipped_shots: skipped,
-      // [M11] 三增强溯源（禁用时记录原因，不影响既有语义）
+      // [M11/统一时轴] 三增强溯源（禁用时记录原因，不影响既有语义；partial/warn_lines 标记 best-effort 部分命中）
       align: alignPlan
-        ? { aligned: true, reason: null, lines: alignPlan.lines.length, shots: alignPlan.segments.length, total_dur: alignPlan.totalDur }
-        : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null },
+        ? { aligned: true, reason: null, lines: alignPlan.lines.length, shots: alignPlan.segments.length, total_dur: alignPlan.totalDur, mode: alignPlan.mode ?? null, partial: alignPlan.partial ?? false, warn_lines: alignPlan.warnLines?.length ?? 0 }
+        : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null, mode: null, partial: false, warn_lines: 0 },
       transition: { enabled: xfadePlan.enabled, type: xfadePlan.enabled ? xfadePlan.type : null, dur_sec: xfadePlan.enabled ? xfadePlan.durSec : null },
       bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null,
       // [M19] 品牌溯源（无配置 → null；duration = 含片头尾总长）
@@ -751,8 +755,8 @@ export { estimateMaxCharsPerLine, wrapSingleLine, wrapSrtText } from './subtitle
 export { srtToAss, parseSrtCues } from './subtitle-ass'
 export { watermarkOverlayXY } from './watermark'
 export { resolveAspectSize, aspectGeometryFilter, isSameAspect } from './aspect'
-export { computeShotSegments, parseShotDurations } from './segments'
-export { parseShotLines, planVoiceAlignedSegments, planAudioDrivenShotDurations, planSrtShifts, srtTsToSec, secToSrtTs, countSrtCues, shiftSrtText } from './align'
+export { computeShotSegments, parseShotDurations, buildClipDurByShotId } from './segments'
+export { parseShotLines, planVoiceAlignedSegments, planBestEffortTimeline, planAudioDrivenShotDurations, planSrtShifts, srtTsToSec, secToSrtTs, countSrtCues, shiftSrtText } from './align'
 export { buildTransitionPlan } from './transition'
 export { planSfxStarts } from './sfx'
 export { buildComposeArgs } from './args'

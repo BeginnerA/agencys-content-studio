@@ -174,7 +174,7 @@ export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
         if (ffmpeg) uri = toScaledJpegDataUri(ffmpeg, absPathOf(a.relPath!), join(tmp, `analyze-${a.id}.jpg`))
         if (!uri) {
           if (ffmpeg && includedAssets.length === 0) ctx.log('图片缩放编码失败 → 回退原图内联（≤8MB，超限跳图）')
-          uri = await assetToDataUri(a.id)
+          uri = await assetToDataUri(a.id, ctx.run.projectId)
         }
       } catch (err) {
         ctx.log(`图「${a.name}」编码失败跳过：${(err as Error).message}`)
