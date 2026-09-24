@@ -52,6 +52,12 @@ export function useRunDetail(deps: {
     const s = run.value?.status
     return s === 'failed' || s === 'cancelled'
   })
+  // [恢复收口] 轻松创作 run：专业端 resume/task-retry 服务端必 409（真源在会话核验恢复），
+  // 入口统一换成直达会话链接；会话反查由 GET /runs/:id 的 creationSessionId 提供
+  const creationSessionId = computed(
+    () => detail.value?.creationSessionId ?? null,
+  )
+  const isCreationRun = computed(() => creationSessionId.value != null)
   const hasTasks = computed(() =>
     steps.value.some((s) => s.actionKey === 'ai_image'),
   )
@@ -403,6 +409,8 @@ export function useRunDetail(deps: {
   function canRerunStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
+    // [恢复收口] 轻松创作批准链：服务端 resetStepForRerun 对全部 easy-* 一律拒绝单步重跑（须回会话或走级联救援）→ 前端同步隐藏单步入口
+    if (isCreationRun.value) return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return !steps.value.some((x) => x.id !== s.id && x.status === 'failed')
   }
@@ -411,8 +419,8 @@ export function useRunDetail(deps: {
   function canCascadeStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
-    // easy-video（轻松创作）已完成的 run：级联=额外生成，后端守卫拦截 → 隐藏入口（failed 仍放行救援）
-    if (run.value?.templateKey === 'easy-video' && rs === 'completed') return false
+    // [恢复收口] 已完成的轻松创作 run：级联=额外生成，服务端 assertChainRepairable 拦截（覆盖全 4 个 easy-* 键，不再硬编码单键）→ 隐藏入口；failed 仍放行救援
+    if (isCreationRun.value && rs === 'completed') return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return steps.value.some((x) => x.seq > s.seq)
   }
@@ -451,6 +459,8 @@ export function useRunDetail(deps: {
     steps,
     canCancel,
     canResume,
+    creationSessionId,
+    isCreationRun,
     hasTasks,
     active,
     gateSkipLabel,

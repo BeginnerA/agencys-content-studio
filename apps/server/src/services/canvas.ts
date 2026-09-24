@@ -4,6 +4,7 @@ import { genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
 import { stepDepEdges } from '../pipeline/dag'
 import { loadTemplate, templateForRun } from '../pipeline/loader'
 import { interpolate } from '../pipeline/refs'
+import { isCreationTemplate } from './creation-chat/recipe'
 import type { Template, TemplateStepDef } from '../pipeline/types'
 
 /**
@@ -87,7 +88,7 @@ export interface RunCanvas {
   template: { key: string; name: string; version: number } | null
   nodes: RunCanvasNode[]
   edges: CanvasEdge[]
-  runActions: { canCancel: boolean; canResume: boolean }
+  runActions: { canCancel: boolean; canResume: boolean; isCreation: boolean }
 }
 
 /** [M23] 模板画布编辑模式：inputs 顶层字段视图（string 原值可编辑；其余 JSON 预览只读） */
@@ -217,7 +218,10 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     edges,
     runActions: {
       canCancel: ['queued', 'running', 'waiting_input'].includes(run.status),
-      canResume: ['failed', 'cancelled'].includes(run.status),
+      // [恢复收口] 轻松创作 run 的续跑/重试真源在创作会话（核验后恢复，防重复计费），
+      // 专业端 resume/taskRetry 入口统一置灰（与 POST /runs/:id/resume 服务端守卫同源）
+      canResume: ['failed', 'cancelled'].includes(run.status) && !isCreationTemplate(run.templateKey),
+      isCreation: isCreationTemplate(run.templateKey),
     },
   }
 }
@@ -268,7 +272,10 @@ function buildRunNode(ctx: {
     ? { mode: gateDef.mode, message: gateMessage(gateDef.message, runInput), skipLabel: gateDef.skip_label, when: gateDef.when }
     : null
   const retryables = tasks.failed + tasks.cancelled
-  const runAllowsRetry = !['completed', 'waiting_input', 'running'].includes(run.status)
+  // [恢复收口] 批准链 run 不呈现节点级任务重试（服务端 POST /tasks/:id/retry 必 409，会话恢复是唯一真源）
+  const runAllowsRetry =
+    !['completed', 'waiting_input', 'running'].includes(run.status) &&
+    !isCreationTemplate(run.templateKey)
 
   return {
     key,

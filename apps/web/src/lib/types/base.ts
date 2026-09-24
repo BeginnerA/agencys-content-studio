@@ -74,6 +74,8 @@ export interface RunStep {
 export interface RunDetail {
   run: Run
   steps: RunStep[]
+  /** [恢复收口] 归属轻松创作会话 id（非创作 run 为 null；旧服务端缺字段时回退 undefined） */
+  creationSessionId?: number | null
 }
 
 /** [M21] Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */

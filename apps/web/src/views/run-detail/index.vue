@@ -117,14 +117,25 @@ const {
         >
           取消运行
         </button>
-        <button
-          v-if="canResume"
-          class="btn primary"
-          :disabled="busy"
-          @click="resumeRun"
-        >
-          <Icon name="refresh" :size="14" /> 断点续跑
-        </button>
+        <template v-if="canResume">
+          <button
+            v-if="!u.isCreationRun.value"
+            class="btn primary"
+            :disabled="busy"
+            @click="resumeRun"
+          >
+            <Icon name="refresh" :size="14" /> 断点续跑
+          </button>
+          <!-- [恢复收口] 轻松创作 run：专业端续跑/重试必被服务端拦截（防重复计费），直达会话核验恢复 -->
+          <RouterLink
+            v-else-if="u.creationSessionId.value"
+            class="btn primary"
+            :to="`/create/${u.creationSessionId.value}`"
+            title="该运行由轻松创作发起，到会话中核验失败任务后恢复制作"
+          >
+            <Icon name="refresh" :size="14" /> 去轻松创作恢复
+          </RouterLink>
+        </template>
         <button
           class="btn"
           :disabled="!runAssets.length"
@@ -196,8 +207,10 @@ const {
             v-if="hasTasks"
             :run-id="runId"
             :active="active"
+            :is-creation="u.isCreationRun.value"
             class="tpanel-wrap"
             @changed="loadDetail()"
+            @err="err = $event"
           />
 
           <RunParamsPanel

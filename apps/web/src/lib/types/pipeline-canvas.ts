@@ -104,7 +104,12 @@ export interface RunCanvas {
   template: { key: string; name: string; version: number } | null
   nodes: RunCanvasNode[]
   edges: CanvasEdge[]
-  runActions: { canCancel: boolean; canResume: boolean }
+  runActions: {
+    canCancel: boolean
+    canResume: boolean
+    /** [恢复收口] 轻松创作批准链 run：续跑/重试真源在创作会话，顶栏改呈现直达链接 */
+    isCreation?: boolean
+  }
 }
 
 /** [M23] 模板节点输入字段（画布内编辑数据源；string 顶层字段可编辑，其余只读 JSON 预览） */

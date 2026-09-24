@@ -56,6 +56,12 @@ const selTplKey = defineModel<string>('tplSel', { required: true })
 const selProject = defineModel<string>('project', { required: true })
 // [入口收口] 顶栏「选模板→启动运行」不呈现轻松创作批准链模板（无 recipe 无法启动）；CanvasGuide 浏览设计不受影响
 const selectableTpls = computed(() => filterSelectable(props.tplMetas))
+// [恢复收口] 批准链 run：服务端 canResume 已置 false（续跑/重试真源在创作会话），顶栏改呈现直达会话链接
+const showCreationRecover = computed(
+  () =>
+    props.runCanvas?.runActions.isCreation === true &&
+    ['failed', 'cancelled'].includes(props.curRun?.status ?? ''),
+)
 </script>
 
 <template>
@@ -139,6 +145,14 @@ const selectableTpls = computed(() => filterSelectable(props.tplMetas))
         <Icon name="play" :size="12" />
         {{ resumeBusy ? '处理中…' : '断点续跑' }}
       </button>
+      <RouterLink
+        v-else-if="showCreationRecover"
+        class="btn sm primary"
+        to="/create"
+        title="该运行由轻松创作发起，到会话中核验失败任务后恢复制作（专业端续跑/重试会被拦截，防重复计费）"
+      >
+        <Icon name="play" :size="12" /> 去轻松创作恢复
+      </RouterLink>
     </template>
 
     <template v-else-if="tab === 'template'">
@@ -262,12 +276,7 @@ const selectableTpls = computed(() => filterSelectable(props.tplMetas))
     <span class="sp" />
     <span v-if="listErr" class="muted" :title="listErr">目录加载失败</span>
     <span v-if="loading" class="muted">加载中…</span>
-    <button
-      type="button"
-      class="btn sm"
-      title="适应视图（0）"
-      @click="fitView"
-    >
+    <button type="button" class="btn sm" title="适应视图（0）" @click="fitView">
       <Icon name="zoom-in" :size="12" /> 适应视图
     </button>
   </div>

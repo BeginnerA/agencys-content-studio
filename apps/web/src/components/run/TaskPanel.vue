@@ -7,8 +7,13 @@ import AssetPreviewer from '../asset/previewer/index.vue'
 import { studioOff, studioOn } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
 
-const props = defineProps<{ runId: number; active: boolean }>()
-const emit = defineEmits<{ changed: [] }>()
+const props = defineProps<{
+  runId: number
+  active: boolean
+  /** [恢复收口] 轻松创作 run：服务端任务重试必 409（真源在会话核验恢复），隐藏重试入口 */
+  isCreation?: boolean
+}>()
+const emit = defineEmits<{ changed: []; err: [message: string] }>()
 
 const tasks = ref<GenTask[]>([])
 const loading = ref(false)
@@ -39,13 +44,24 @@ const sum = computed(() => ({
 }))
 
 async function retry(t: GenTask) {
-  await taskApi.retry(t.id)
+  try {
+    await taskApi.retry(t.id)
+  } catch (e) {
+    // 原先无 catch：409（如批准链拦截）被静吞，“点了没反应”——上报父级展示
+    emit('err', e instanceof Error ? e.message : String(e))
+    return
+  }
   emit('changed')
   load()
 }
 
 async function cancel(t: GenTask) {
-  await taskApi.cancel(t.id)
+  try {
+    await taskApi.cancel(t.id)
+  } catch (e) {
+    emit('err', e instanceof Error ? e.message : String(e))
+    return
+  }
   emit('changed')
   load()
 }
@@ -176,7 +192,11 @@ onBeforeUnmount(() => {
           >
             {{ previewBusyId === t.resultAsset.id ? '载入中…' : '查看' }}
           </button>
-          <button v-if="t.status === 'failed'" class="btn sm" @click="retry(t)">
+          <button
+            v-if="t.status === 'failed' && !props.isCreation"
+            class="btn sm"
+            @click="retry(t)"
+          >
             重试
           </button>
           <button

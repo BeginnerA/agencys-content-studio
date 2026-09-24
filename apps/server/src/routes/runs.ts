@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { and, asc, desc, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm'
 import { db } from '../db'
-import { genTasks, pipelineRuns, pipelineSteps, projects, assets } from '../db/schema'
+import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions } from '../db/schema'
 import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
@@ -70,8 +70,18 @@ runsRoutes.get('/runs/:id', h(async (c) => {
     .from(pipelineSteps)
     .where(eq(pipelineSteps.runId, run.id))
     .orderBy(asc(pipelineSteps.seq))
+  // [恢复收口] 反查归属轻松创作会话（creation_sessions.run_id 单向持有；同 run 多会话取最新一条），
+  // 专业端据此把「断点续跑/任务重试」死路换成直达会话的恢复入口
+  const sessionRows = await db
+    .select({ id: creationSessions.id })
+    .from(creationSessions)
+    .where(eq(creationSessions.runId, run.id))
+    .orderBy(desc(creationSessions.id))
+    .limit(1)
+  const creationSessionId = sessionRows[0]?.id ?? null
   return c.json({
     run: toRunView(run),
+    creationSessionId,
     steps: steps.map((s) => ({
       id: s.id,
       seq: s.seq,
@@ -148,7 +158,21 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
-  if (isCreationTemplate(src.templateKey)) throw new HttpError(409, 'creation_confirmation_required', '请在轻松创作中核验并恢复，避免重复计费')
+  if (isCreationTemplate(src.templateKey)) {
+    const sess = await db
+      .select({ id: creationSessions.id })
+      .from(creationSessions)
+      .where(eq(creationSessions.runId, runId))
+      .orderBy(desc(creationSessions.id))
+      .limit(1)
+    throw new HttpError(
+      409,
+      'creation_confirmation_required',
+      sess[0]
+        ? `该运行由轻松创作发起，请在创作会话 #${sess[0].id} 中核验并恢复，避免重复计费`
+        : '该运行由轻松创作发起，请在轻松创作中核验并恢复，避免重复计费',
+    )
+  }
   if (!['failed', 'cancelled'].includes(src.status)) {
     throw new HttpError(400, 'bad_status', `仅 failed/cancelled 可续跑（当前 ${src.status}）；如需重跑请直接新建 run`)
   }
