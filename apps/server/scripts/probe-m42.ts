@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     // ============ review-template：变体模板同构 / 确认选键 / 哈希收口 / 恢复路径零破坏 ============
     'review-template': async () => {
       const { db } = await import('../src/db')
-      const { creationSessions, pipelineRuns, pipelineSteps, genTasks, projects } = await import('../src/db/schema')
+      const { apiConfigs, creationSessions, pipelineRuns, pipelineSteps, genTasks, projects } = await import('../src/db/schema')
       const { eq } = await import('drizzle-orm')
       const { loadTemplate } = await import('../src/pipeline/loader')
       const { hashJson } = await import('../src/services/creation-chat/contract')
@@ -231,6 +231,24 @@ async function main(): Promise<void> {
         const cascadePrev = await app.request(`/api/v1/runs/${runC4.id}/steps/images/rerun-cascade`, { method: 'GET' })
         const cascadeBody = (await cascadePrev.json()) as { error?: { code?: string } }
         check(cascadePrev.status === 409 && String(cascadeBody.error?.code) === 'creation_confirmation_required', 'C：含受理状态不明任务的创作 run 级联重跑预览 → 409 同源拦截（防级联重新提交重复扣费）')
+        // —— [配置漂移就地续跑] 改图像模型 → 默认 resume 409 configuration_changed；GET 透出 resumeConfigDrift；
+        //     显式 accept_config_drift → 202 就地续跑且新 run 端点快照已按当前配置重钉 ——
+        const c5 = await makeReadySession('slideshow')
+        const sC5 = (await db.select().from(creationSessions).where(eq(creationSessions.id, c5.sessionId)))[0]!
+        const runC5 = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, (await confirmCreation(c5.sessionId, { planRevision: sC5.planRevision, planHash: sC5.planHash, idempotencyKey: 'm42-drift-1', acceptUnpriced: false })).runId)))[0]!
+        await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, runC5.id))
+        const imgPin = recipeOf(runC5)!.endpoints.image!
+        await db.update(apiConfigs).set({ model: 'probe-img-drifted', updatedAt: Date.now() + 1 }).where(eq(apiConfigs.id, imgPin.configId))
+        const resumeNoDrift = await app.request(`/api/v1/runs/${runC5.id}/resume`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        const driftCode = String((await resumeNoDrift.json() as { error?: { code?: string } }).error?.code)
+        check(resumeNoDrift.status === 409 && driftCode === 'configuration_changed', '配置漂移：已批准图像实例模型变更 → 默认 resume 409 configuration_changed（未确认不改配置）')
+        const driftBody = (await (await app.request(`/api/v1/runs/${runC5.id}`)).json()) as { resumeConfigDrift?: { service: string; from: string; to: string | null }[] }
+        check((driftBody.resumeConfigDrift ?? []).some((d) => d.service === 'image' && d.to === 'probe-img-drifted'), 'GET /runs/:id 透出 resumeConfigDrift（漂移服务与新旧模型），供前端确认弹窗')
+        const resumeDrift = await app.request(`/api/v1/runs/${runC5.id}/resume`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accept_config_drift: true }) })
+        const driftRun = (await resumeDrift.json()) as { run?: { id?: number } }
+        check(resumeDrift.status === 202 && typeof driftRun.run?.id === 'number' && driftRun.run.id > runC5.id, '配置漂移：显式 accept_config_drift → 就地续跑成功返回新 run（202）')
+        const newImg = recipeOf((await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, driftRun.run!.id!)))[0]!)!.endpoints.image!
+        check(newImg.configHash !== imgPin.configHash && newImg.model === 'probe-img-drifted', '新 run 已按当前配置重钉端点快照（configHash 刷新、model=probe-img-drifted）')
       } finally {
         engine.engine.startRun = origStart as typeof engine.engine.startRun
       }

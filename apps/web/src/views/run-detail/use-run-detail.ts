@@ -63,6 +63,8 @@ export function useRunDetail(deps: {
     () => detail.value?.resumeNeedsVerification === true,
   )
   const ambiguousTaskIds = computed(() => detail.value?.ambiguousTaskIds ?? [])
+  // [配置漂移就地续跑] 已批准端点漂移清单（改模型/改价/删实例）→ 续跑需确认改用当前配置（accept_config_drift）
+  const configDrift = computed(() => detail.value?.resumeConfigDrift ?? [])
   const hasTasks = computed(() =>
     steps.value.some((s) => s.actionKey === 'ai_image'),
   )
@@ -280,22 +282,32 @@ export function useRunDetail(deps: {
   }
 
   async function resumeRun() {
-    // 存在受理状态不明任务时，明确告知「可能已计费、继续会重发该任务」并要求显式确认；
-    // 确认后带 confirm_ambiguous=true，服务端据单一真源重发这些任务（其余成功复用/在途仅续轮询）。
+    // 两类「花钱/换配置」风险合并进同一次显式确认：
+    //  (1) 受理状态不明任务（可能已计费、继续会重发该任务）→ 带 confirm_ambiguous=true，服务端据单一真源重发；
+    //  (2) 已批准端点漂移（改模型/改价/删实例）→ 带 accept_config_drift=true，服务端按当前配置重钉快照后就地续跑。
     const needVerify = isCreationRun.value && resumeNeedsVerification.value
+    const drift = configDrift.value
+    const hasDrift = isCreationRun.value && drift.length > 0
+    const driftNote = hasDrift
+      ? `\n已批准的供应商端点已变化：${drift.map((d) => `${d.service} ${d.from} → ${d.to ?? '（实例已删除）'}`).join('；')}。继续将改用当前配置（模型/价格可能与批准时不同）。`
+      : ''
+    const baseMsg = needVerify
+      ? `该运行由轻松创作发起，其中 ${ambiguousTaskIds.value.length} 个任务已提交但无回执（可能已被供应商计费）。继续将重新提交这些任务，可能产生重复费用。请确认你已在供应商侧核验或接受该风险。`
+      : isCreationRun.value
+        ? '该运行由轻松创作发起：将就地续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
+        : '将新建一个 run，跳过已成功步骤继续执行。'
     const ok = await confirmDialog({
       title: '断点续跑',
-      message: needVerify
-        ? `该运行由轻松创作发起，其中 ${ambiguousTaskIds.value.length} 个任务已提交但无回执（可能已被供应商计费）。继续将重新提交这些任务，可能产生重复费用。请确认你已在供应商侧核验或接受该风险。`
-        : isCreationRun.value
-          ? '该运行由轻松创作发起：将走会话恢复真源续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
-          : '将新建一个 run，跳过已成功步骤继续执行。',
-      confirmText: needVerify ? '已核验，继续重发' : '开始续跑',
+      message: baseMsg + driftNote,
+      confirmText: needVerify ? '已核验，继续重发' : hasDrift ? '接受改用当前配置' : '开始续跑',
     })
     if (!ok) return
     busy.value = true
     try {
-      const res = await runApi.resume(runId, needVerify ? { confirm_ambiguous: true } : {})
+      const body: Record<string, unknown> = {}
+      if (needVerify) body.confirm_ambiguous = true
+      if (hasDrift) body.accept_config_drift = true
+      const res = await runApi.resume(runId, body)
       router.push(`/runs/${res.run.id}`)
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
