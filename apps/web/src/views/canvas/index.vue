@@ -594,6 +594,7 @@ onMounted(() => {
         :sel="drawerSel"
         :log="logText"
         :project-id="runCanvas?.run.projectId ?? null"
+        :is-creation="runCanvas?.runActions.isCreation === true"
         :edit-node="editNode"
         @close="drawerOpen = false"
         @refresh="onDrawerRefresh"

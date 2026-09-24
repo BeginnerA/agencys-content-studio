@@ -22,6 +22,8 @@ export interface DrawerProps {
   sel: DrawerSel
   log: string
   projectId: number | null
+  /** 轻松创作批准链 run：受理状态不明任务(t.ambiguous)的重试需成本确认（与 TaskPanel 同口径），真源为服务端 runActions.isCreation */
+  isCreation?: boolean
 }
 
 export interface DrawerEmits {
@@ -196,10 +198,21 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
   }
 
   async function retryTask(t: GenTask): Promise<void> {
+    // 与 TaskPanel 同口径：轻松创作 run 的「受理状态不明」任务重试=可能重复计费，服务端必 409，
+    // 不先弹窗确认就会把原始 409 文案直接甩给用户（此处曾漏接，画布抽屉是唯一没接确认的重试入口）
+    const needConfirm = props.isCreation === true && t.ambiguous === true
+    if (needConfirm) {
+      const ok = await confirmDialog({
+        title: '重试任务',
+        message: '该任务已提交但无回执（可能已被供应商计费）。重试将重新提交，可能产生重复费用。请确认已在供应商侧核验或接受该风险。',
+        confirmText: '已核验，重试',
+      })
+      if (!ok) return
+    }
     taskBusy.value = t.id
     taskErr.value = ''
     try {
-      await taskApi.retry(t.id)
+      await taskApi.retry(t.id, needConfirm ? { confirm_ambiguous: true } : {})
       notice.value = `任务 #${t.id} 已重新入队`
       await loadTasks()
       emit('refresh')

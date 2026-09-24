@@ -32,6 +32,8 @@ const props = defineProps<{
   sel: DrawerSel
   log: string
   projectId: number | null
+  /** 轻松创作 run：受理状态不明任务重试前弹成本确认（真源为服务端 runActions.isCreation） */
+  isCreation?: boolean
   /** 画布内编辑：编辑模式下选中节点的编辑区视图（非编辑态 → null/不传） */
   editNode?: EditNodeState | null
 }>()
