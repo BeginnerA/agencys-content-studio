@@ -249,6 +249,11 @@ async function main(): Promise<void> {
         check(resumeDrift.status === 202 && typeof driftRun.run?.id === 'number' && driftRun.run.id > runC5.id, '配置漂移：显式 accept_config_drift → 就地续跑成功返回新 run（202）')
         const newImg = recipeOf((await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, driftRun.run!.id!)))[0]!)!.endpoints.image!
         check(newImg.configHash !== imgPin.configHash && newImg.model === 'probe-img-drifted', '新 run 已按当前配置重钉端点快照（configHash 刷新、model=probe-img-drifted）')
+        // 回归锁：重钉后必须同步刷新会话 approvedPlan，否则新 run 执行期 assertRecipeSources 会因
+        // approvedPlan(旧) vs recipe(重钉) 失配抛「运行未关联当前已批准方案」（run131 现场报错，startRun 被 stub 时探针曾漏测）。
+        const newRunRow = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, driftRun.run!.id!)))[0]!
+        const driftAnchorErr = await errOf(() => assertRecipeSources(newRunRow, recipeOf(newRunRow)!))
+        check(driftAnchorErr === null, '配置漂移续跑：新 run 通过执行期 assertRecipeSources 真源锚点校验（approvedPlan 已随重钉同步）')
       } finally {
         engine.engine.startRun = origStart as typeof engine.engine.startRun
       }

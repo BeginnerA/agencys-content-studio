@@ -198,7 +198,10 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
         }
       }
       history.push({ from: src.id, to: newRun.id, key: request.idempotencyKey })
-      await tx.update(creationSessions).set({ status: 'started', runId: newRun.id, runHistory: JSON.stringify(history), updatedAt: Date.now() }).where(eq(creationSessions.id, id))
+      // 配置漂移重钉后 recipe 已改写（新 configHash/model/unitPrice）：必须同步刷新批准锚点 approvedPlan，
+      // 否则新 run 执行期 assertRecipeSources 比对 approvedPlan vs recipe 会失配 → 报「运行未关联当前已批准方案」而停机。
+      // 仅重钉时改写（与 rework 改写批准链同源做法）；planHash 不动（resume 路由回传既有 planHash，且 assertRecipeSources 不校验 planHash）。
+      await tx.update(creationSessions).set({ status: 'started', runId: newRun.id, runHistory: JSON.stringify(history), ...(recipeRewritten ? { approvedPlan: JSON.stringify(recipe) } : {}), updatedAt: Date.now() }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '已从断点恢复，成功任务将复用。有外部任务编号的未完成视频仅恢复查询，除非你明确核实失败并授权重新提交。', payload: JSON.stringify({ kind: 'retry', runId: newRun.id, verifiedFailedTaskIds: request.verifiedFailedTaskIds }), createdAt: Date.now() })
       return { runId: newRun.id, start: true }
     })
