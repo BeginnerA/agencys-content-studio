@@ -543,6 +543,7 @@ function toRunView(r: typeof pipelineRuns.$inferSelect): Record<string, unknown>
     templateVersion,
     batchId: r.batchId,
     batchSeq: r.batchSeq,
+    resumedFromRunId: r.resumedFromRunId,
     status: r.status,
     currentStepKey: r.currentStepKey,
     input: safeParse(r.input),

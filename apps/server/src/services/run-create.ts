@@ -58,6 +58,8 @@ export async function createRunRow(p: {
   batchSeq?: number | null
   workflowId?: number | null
   workflowSeq?: number | null
+  /** 断点续跑派生自哪个源 run（NULL = 非续跑）；对话式「恢复制作」retryCreation 传入，令运行列表可折叠续跑链 */
+  resumedFromRunId?: number | null
   /** 仅会话确认服务传入；普通 run/batch/workflow 不得启动批准模板。 */
   creationSessionId?: number
 }, executor: Pick<typeof db, 'insert'> = db): Promise<PipelineRun> {
@@ -79,6 +81,8 @@ export async function createRunRow(p: {
       // 编排链归属（NULL = 非编排 run）
       workflowId: p.workflowId ?? null,
       workflowSeq: p.workflowSeq ?? null,
+      // 续跑来源（NULL = 非续跑派生）：与 /runs/:id/resume 路由同口径，供运行列表折叠续跑链
+      resumedFromRunId: p.resumedFromRunId ?? null,
       createdAt: t,
       updatedAt: t,
     })

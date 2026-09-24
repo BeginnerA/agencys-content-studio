@@ -45,6 +45,8 @@ export interface Run {
   templateVersion?: number
   batchId: number | null
   batchSeq: number | null
+  /** 断点续跑派生自哪个源 run（NULL = 非续跑派生）；前端据此把同一创作的续跑链折叠为一条 */
+  resumedFromRunId: number | null
   status: RunStatus
   currentStepKey: string | null
   input: Record<string, unknown>

@@ -29,6 +29,10 @@ const {
   expanded,
   toggleBatch,
   pagedRows,
+  expandedChains,
+  isChainHead,
+  chainHistory,
+  toggleChain,
   seriesRef,
   onStartEpisode,
   tplName,
@@ -193,13 +197,81 @@ const {
               </td>
             </tr>
 
-            <!-- 独立运行行 -->
+            <!-- 续跑历史子行：被取代的旧 run（产物已按引用并入 head，删除仅清记录） -->
+            <tr
+              v-else-if="row.kind === 'resume-child'"
+              class="rrow child"
+              @click="router.push(`/runs/${row.run.id}`)"
+            >
+              <td class="mono cid">└ #{{ row.run.id }}</td>
+              <td>
+                <span class="badge" :class="row.run.status">{{
+                  runStatus(row.run.status).text
+                }}</span>
+              </td>
+              <td class="muted mono tkey">续跑记录</td>
+              <td class="sum">
+                <span
+                  v-if="errOf(row.run)"
+                  class="em"
+                  :title="row.run.error ?? ''"
+                  >{{ errOf(row.run) }}</span
+                >
+                <span v-else class="muted">{{
+                  inputSummary(row.run.input)
+                }}</span>
+              </td>
+              <td class="muted" style="white-space: nowrap">
+                {{ fmtTime(row.run.startedAt ?? row.run.createdAt) }}
+                <template v-if="row.run.completedAt"
+                  >→ {{ fmtTime(row.run.completedAt) }}</template
+                >
+              </td>
+              <td @click.stop>
+                <button
+                  v-if="runDeletable(row.run)"
+                  class="btn xs danger-ghost"
+                  title="删除该运行记录（产物素材保留）"
+                  @click="deleteRunRow(row.run)"
+                >
+                  删除
+                </button>
+                <span class="muted">详情 →</span>
+              </td>
+            </tr>
+
+            <!-- 独立运行行（续跑链 head 可展开历史） -->
             <tr
               v-else-if="row.kind === 'run'"
               class="rrow"
               @click="router.push(`/runs/${row.run.id}`)"
             >
-              <td class="mono">{{ row.run.id }}</td>
+              <td class="mono">
+                <button
+                  v-if="isChainHead(row.run)"
+                  class="bexp cexp"
+                  type="button"
+                  :aria-expanded="expandedChains.has(row.run.id)"
+                  :aria-label="`展开或收起 #${row.run.id} 的历史续跑记录`"
+                  :title="
+                    expandedChains.has(row.run.id)
+                      ? '收起历史续跑'
+                      : '展开历史续跑'
+                  "
+                  @click.stop="toggleChain(row.run.id)"
+                >
+                  <Icon name="chevron-right" :size="12" :stroke-width="2.2" />
+                </button>
+                {{ row.run.id }}
+                <button
+                  v-if="isChainHead(row.run)"
+                  class="resume-badge"
+                  title="同一创作任务的断点续跑历史（已折叠，点击展开）"
+                  @click.stop="toggleChain(row.run.id)"
+                >
+                  已恢复 {{ chainHistory(row.run.id).length }} 次
+                </button>
+              </td>
               <td>
                 <span class="badge" :class="row.run.status">{{
                   runStatus(row.run.status).text
@@ -384,6 +456,31 @@ const {
 
 .child .cid {
   padding-left: 26px;
+}
+
+/* ---------- 续跑链 head：展开箭头与「已恢复 N 次」徽标 ---------- */
+.cexp {
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+.resume-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-3);
+  background: rgb(148 163 184 / 12%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.resume-badge:hover {
+  color: var(--text);
+  background: var(--hover);
 }
 
 .tkey {

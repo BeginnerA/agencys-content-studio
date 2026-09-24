@@ -179,7 +179,7 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       if (!claim.length) throw new CreationError('conflict', '会话已被恢复，请刷新', 409)
       const newInput = JSON.parse(src.input) as Record<string, unknown>
       if (recipeRewritten) newInput.recipe = JSON.stringify(recipe)
-      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id }, tx)
+      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id, resumedFromRunId: src.id }, tx)
       // 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
       const srcCompose = (JSON.parse(src.input) as Record<string, unknown>)['_compose']
       if (srcCompose && typeof srcCompose === 'object' && !Array.isArray(srcCompose)) {
