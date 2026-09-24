@@ -300,8 +300,9 @@ async function submit() {
     is_default: isDefault.value,
     is_active: isActive.value,
   }
-  // 凭证关联（优先）或旧式 per-instance key
-  if (credentialId.value != null) body.credential_id = credentialId.value
+  // 凭证关联（优先）或旧式 per-instance key —— 显式发送（含 null），否则把已绑凭证切回
+  // 「—— 选择凭证 ——」时前端不发该字段、后端保持旧值，导致永远解不掉绑定（如火山语音被 ark 凭证静默覆盖）。
+  body.credential_id = credentialId.value
   if (baseUrl.value.trim()) body.base_url = baseUrl.value.trim()
   if (model.value.trim()) body.model = model.value.trim()
   if (apiKey.value.trim()) body.api_key = apiKey.value.trim()
