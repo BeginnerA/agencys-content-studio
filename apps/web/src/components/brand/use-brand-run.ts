@@ -1,5 +1,5 @@
 /**
- * [M19] run 级品牌覆盖（BrandSettings 拆分：M26 红线纯重构，函数体逐字搬移）
+ * run 级品牌覆盖（BrandSettings 拆分：纯重构，函数体逐字搬移）
  * run scope 三态覆盖（继承/禁用/自定义）+ 继承摘要 + 保存 + 回填。
  * 依赖注入：form（水印参数 refs）、deps（wrap/imgAssets/assetName）；保持函数体逐字不变。
  */

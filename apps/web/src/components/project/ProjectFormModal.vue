@@ -31,7 +31,7 @@ const emit = defineEmits<{ done: []; close: [] }>()
 
 const isEdit = computed(() => !!props.project)
 const templates = ref<TemplateMeta[]>([])
-// [入口收口] 下拉选项只列可手动启动的模板（剔除 conversationOnly）；templates 仍存全量供反查名字/回填
+// 下拉选项只列可手动启动的模板（剔除 conversationOnly）；templates 仍存全量供反查名字/回填
 const tplGroups = computed(() => groupTemplates(filterSelectable(templates.value)))
 // 当前绑定项为轻松创作专用（不在选项内）→ 单列一条如实标注的选项，避免被误标「已失效」
 const boundConversationTpl = computed(() =>
@@ -42,17 +42,17 @@ const name = ref('')
 const genre = ref('drama_short')
 const tplKey = ref('')
 const brief = ref('')
-/** [M21] 标签（逗号 / 顿号分隔；提交时拆分为数组去重） */
+/** 标签（逗号 / 顿号分隔；提交时拆分为数组去重） */
 const tagsInput = ref('')
 const err = ref('')
 const busy = ref(false)
 /** 用户在本弹窗内是否手动改过模板（改过后切体裁不再覆盖） */
 const tplTouched = ref(false)
-/** [M13] 视觉风格多选绑定：勾选 id 数组（叠加顺序 = 数组顺序）；预设列表含停用项（绑定残留友好显示） */
+/** 视觉风格多选绑定：勾选 id 数组（叠加顺序 = 数组顺序）；预设列表含停用项（绑定残留友好显示） */
 const presets = ref<StylePresetItem[]>([])
 const stylePresetIds = ref<number[]>([])
 
-/** [M35 G7] brief → 自然语言推荐模板（embedding 零成本、失败回落关键词）；仅新建成交展示，编辑不干预既有选择 */
+/** brief → 自然语言推荐模板（embedding 零成本、失败回落关键词）；仅新建成交展示，编辑不干预既有选择 */
 const recommends = ref<RecommendItem[]>([])
 const recommendReady = ref(false)
 let recTimer: ReturnType<typeof setTimeout> | null = null
@@ -99,14 +99,14 @@ const tplMissing = computed(
   () => !!tplKey.value && !templates.value.some((t) => t.key === tplKey.value),
 )
 
-/** [M13] 启用中预设（按 sortOrder 展示；勾选叠加顺序 = 数组顺序） */
+/** 启用中预设（按 sortOrder 展示；勾选叠加顺序 = 数组顺序） */
 const activePresets = computed(() =>
   presets.value
     .filter((s) => !!s.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
 )
 
-/** [M13] 绑定值不在「启用中」预设里 → 追加可取消条目（已停用/已删，避免静默改写） */
+/** 绑定值不在「启用中」预设里 → 追加可取消条目（已停用/已删，避免静默改写） */
 const missingBound = computed(() =>
   stylePresetIds.value
     .filter((id) => !presets.value.some((s) => s.id === id && !!s.isActive))
@@ -126,7 +126,7 @@ function onGenreChange() {
 
 onMounted(async () => {
   // 模板列表自加载（失败不阻塞：新建回退空模板，编辑保留原值）
-  // [入口收口] 全量拉取（含 conversationOnly 标记）：下拉选项由 tplGroups 过滤，但保留全量以正确反查名字/回填老项目的 easy-* 默认模板。
+  // 全量拉取（含 conversationOnly 标记）：下拉选项由 tplGroups 过滤，但保留全量以正确反查名字/回填老项目的 easy-* 默认模板。
   try {
     const t = await templateApi.list()
     templates.value = t.items
@@ -140,7 +140,7 @@ onMounted(async () => {
     brief.value = p.brief ?? ''
     tplKey.value = p.templateKey ?? ''
     tagsInput.value = (p.tags ?? []).join('，')
-    // [M13] 视觉风格：读 settings.style_preset_ids（数组优先；回退旧单值键；列表失败保留裸值显示）
+    // 视觉风格：读 settings.style_preset_ids（数组优先；回退旧单值键；列表失败保留裸值显示）
     const st = p.settings ?? {}
     const rawIds: unknown[] = Array.isArray(st['style_preset_ids'])
       ? st['style_preset_ids']
@@ -190,7 +190,7 @@ async function submit() {
       ],
     }
     if (props.project) {
-      // [M13] 读-合并写 settings（保留既有其他键；无勾选 → null + 显式清理旧单值键）
+      // 读-合并写 settings（保留既有其他键；无勾选 → null + 显式清理旧单值键）
       await projectApi.update(props.project.id, {
         ...body,
         settings: {
@@ -249,7 +249,7 @@ async function submit() {
         </optgroup>
       </select>
     </label>
-    <!-- [M35 G7] brief 推荐命中（前 3）：点击徽标预设 tplKey；不自动改选，避免静默覆盖 -->
+    <!-- brief 推荐命中（前 3）：点击徽标预设 tplKey；不自动改选，避免静默覆盖 -->
     <div v-if="recommends.length && !isEdit" class="rec-bar">
       <span class="rec-lead muted">
         ✦ 根据简介推荐
@@ -316,7 +316,7 @@ async function submit() {
 </template>
 
 <style scoped>
-/* [M13] 风格多选面板：替代旧单选 select；勾选顺序即注入顺序 */
+/* 风格多选面板：替代旧单选 select；勾选顺序即注入顺序 */
 .fldbox {
   display: block;
   margin-bottom: 12px;
@@ -360,7 +360,7 @@ async function submit() {
   text-overflow: ellipsis;
 }
 
-/* [M35 G7] brief 推荐 chips */
+/* brief 推荐 chips */
 .rec-bar {
   display: flex;
   flex-wrap: wrap;

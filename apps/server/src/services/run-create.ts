@@ -1,6 +1,6 @@
 /**
- * [M4] run 创建共享链路（runs.ts 单发与 batch.ts 批量共用）
- * - 归一化/校验口径与 M1 runs.ts 完全一致（normalizeInput 逐字迁入）
+ * run 创建共享链路（runs.ts 单发与 batch.ts 批量共用）
+ * - 归一化/校验口径与 runs.ts 完全一致（normalizeInput 逐字迁入）
  * - 错误类型与 HttpError 解耦：路由层转 400（services 不依赖路由层）
  */
 import { db } from '../db'
@@ -28,8 +28,8 @@ export function loadTemplateOrThrow(templateKey: string): Template {
 }
 
 /**
- * 归一化 + 校验（口径与 M1 runs.ts 完全一致；validateRunInput 内部含 defaults 应用）。
- * [M14] 集级参数覆盖：input._params（内部键）先校验后附回快照（normalizeInput 仅保留模板声明键）。
+ * 归一化 + 校验（口径与 runs.ts 完全一致；validateRunInput 内部含 defaults 应用）。
+ * 集级参数覆盖：input._params（内部键）先校验后附回快照（normalizeInput 仅保留模板声明键）。
  */
 export function prepareRunInput(template: Template, input: Record<string, unknown>): Record<string, unknown> {
   let params: RunParams
@@ -76,7 +76,7 @@ export async function createRunRow(p: {
       templateSnapshot: JSON.stringify(template),
       batchId: p.batchId ?? null,
       batchSeq: p.batchSeq ?? null,
-      // [M27] 编排链归属（NULL = 非编排 run）
+      // 编排链归属（NULL = 非编排 run）
       workflowId: p.workflowId ?? null,
       workflowSeq: p.workflowSeq ?? null,
       createdAt: t,
@@ -108,7 +108,7 @@ function normalizeInput(defs: TemplateInputDef[], raw: Record<string, unknown>):
       }
       out[def.key] = ids
     } else if (def.kind === 'publications') {
-      // [整改] 发布记录选择器：保持为正整数 publication id 数组（与 files 同处理，但不做资产归属校验）
+      // 发布记录选择器：保持为正整数 publication id 数组（与 files 同处理，但不做资产归属校验）
       const ids = Array.isArray(v) ? v.map(Number) : [Number(v)]
       if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
         throw new InvalidRunInputError('bad_input', `input.${def.key} 需为发布记录 id 数组`)

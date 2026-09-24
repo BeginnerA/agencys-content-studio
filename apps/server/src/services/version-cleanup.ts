@@ -6,7 +6,7 @@ import { createLogger } from '../logger'
 import { absPathOf } from './storage'
 import { thumbAbsPath } from './thumb'
 
-// [M12] 旧版本清理 + 回收空间（物理 GC）。
+// 旧版本清理 + 回收空间（物理 GC）。
 // 清理保留规则（统一）：组内最新 / isFavorite / 被任意步骤 output.asset_ids 引用（在用）→ 保留；
 // 其余未软删行 → deletedAt 软删（可回溯）。回收空间 = 对已软删资产删物理文件，不可逆、显式触发。
 
@@ -31,7 +31,7 @@ export interface GcResult {
 
 /**
  * 版本组批量清理：范围 = projectId（+ 可选 runId/stepId 限定）。
- * 组定义：taskId 非空 → 同 taskId 一组；taskId 为空（M10 上传）→ (runId, stepId, params.shotId) 一组。
+ * 组定义：taskId 非空→ 同 taskId 一组；taskId 为空（上传）→ (runId, stepId, params.shotId) 一组。
  * 引用集始终按项目全量扫描（保守：任一 run 的选中产物都豁免）。
  */
 export async function cleanupVersions(opts: { projectId: number; runId?: number; stepId?: number }): Promise<CleanupResult> {
@@ -124,12 +124,12 @@ function shotIdOf(a: Asset): string | null {
   }
 }
 
-/** 项目全量引用集：所有步骤 output.asset_ids 并集 ∪ [M29·R02] 执行快照实际消费过的资产（保守豁免在用/历史依赖产物，防物理 GC 造成追溯悬空） */
+/** 项目全量引用集：所有步骤 output.asset_ids 并集 ∪ 执行快照实际消费过的资产（保守豁免在用/历史依赖产物，防物理 GC 造成追溯悬空） */
 async function referencedAssetIds(projectId: number): Promise<Set<number>> {
   const runRows = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, projectId))
   const runIds = runRows.map((r) => r.id)
   const set = new Set<number>()
-  // [M29·R02] 追溯依赖：曾被任一次执行快照消费的资产行不物理删（否则历史影响指向空文件）
+  // 追溯依赖：曾被任一次执行快照消费的资产行不物理删（否则历史影响指向空文件）
   const consumed = await db
     .select({ srcId: execInputs.srcId })
     .from(execInputs)

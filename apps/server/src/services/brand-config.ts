@@ -1,5 +1,5 @@
 /**
- * [M19] 品牌配置三层模型服务（平台 settings.brand / 项目 projects.settings.brand / run.input._compose.brand）。
+ * 品牌配置三层模型服务（平台 settings.brand / 项目 projects.settings.brand / run.input._compose.brand）。
  * - 合并语义：字段级浅合并（槽内字段后层覆盖前层；槽整体保留）
  * - 来源解析：asset_id（须存在/属项目/未删/有 relPath，经项目目录）→ file（BRAND_DIR 内文件名）→ 无（禁用）
  * - enabled === false 强制禁用；文件缺失宽容降级（跳过 + log，不阻断合成）

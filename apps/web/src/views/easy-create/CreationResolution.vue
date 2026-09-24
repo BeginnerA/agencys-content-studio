@@ -2,7 +2,7 @@
 import Icon from '../../components/common/Icon.vue'
 
 /**
- * [M43] 确认卡「清晰度」选择（独立轻组件：确认卡本体已近红线长度，同 CreationReviewGate 先例）。
+ * 确认卡「清晰度」选择（独立轻组件：确认卡本体已近红线长度，同 CreationReviewGate 先例）。
  * 仅透出服务端预检已背书档位（preflight.resolutionOptions.choices）；不选 = 模型默认档（confirm 不传键，
  * 请求体与旧版逐字一致）。改档不触发重新规划（画质不入 planHash——成立前提是价格表无档位维度）。
  * 文案红线：不承诺「更高画质不加价」——视频按秒计价，实际计费以供应商对所选档为准。

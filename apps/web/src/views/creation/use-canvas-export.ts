@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasExport；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasExport；依赖显式注入，原函数体保持不变。 */
 import { ref } from 'vue'
 import { creationApi } from '../../lib/api'
 import type { CanvasExportResult, TemplateValidation } from '../../lib/types'
@@ -16,7 +16,7 @@ type Dependencies = Pick<
 export function useCanvasExport(deps: Dependencies) {
   const { canvasId, doc, toast, boardRef, addNodesCommand, loadDoc } = deps
 
-  // ===== [M17] 导出 zip（打包为 archive 资产 → 下载复用资产文件端点） =====
+  // ===== 导出 zip（打包为 archive 资产 → 下载复用资产文件端点） =====
   const exportBusy = ref(false)
   const showExport = ref(false)
   const exportResult = ref<CanvasExportResult | null>(null)
@@ -35,7 +35,7 @@ export function useCanvasExport(deps: Dependencies) {
     }
   }
 
-  // ===== [M22] 布局图导出（服务端 SVG 落库 + 前端下载/光栅化；零新依赖） =====
+  // ===== 布局图导出（服务端 SVG 落库 + 前端下载/光栅化；零新依赖） =====
   const imageBusy = ref(false)
 
   /** Blob 触发浏览器下载（临时 a[download]；OBJECT URL 延迟回收） */
@@ -157,7 +157,7 @@ export function useCanvasExport(deps: Dependencies) {
     }
   }
 
-  /** [M18] 草案弹窗内「试跑」：建 queued run + 视口中心自动创建 run 节点 */
+  /** 草案弹窗内「试跑」：建 queued run + 视口中心自动创建 run 节点 */
   async function tryRunFromDraft(): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return

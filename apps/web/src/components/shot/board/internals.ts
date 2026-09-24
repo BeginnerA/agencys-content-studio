@@ -1,5 +1,5 @@
 /**
- * [M28] 镜头工作台共用契约与纯函数（自 ShotBoard.vue 逐字迁移）
+ * 镜头工作台共用契约与纯函数（自 ShotBoard.vue 逐字迁移）
  * —— 迁移纪律：常量/函数体逐字保留，仅补 export 前缀供 board 子模块共用
  */
 import type {
@@ -25,7 +25,7 @@ export type ShotBoardEmitFn = {
   <K extends keyof ShotBoardEmits>(event: K, ...args: ShotBoardEmits[K]): void
 }
 
-// [M11] 合成设置（转场 / 配乐；配置不触发执行，重新合成后生效）
+// 合成设置（转场 / 配乐；配置不触发执行，重新合成后生效）
 export const TRANSITIONS: Array<{ value: ComposeTransition; label: string }> = [
   { value: 'none', label: '无（硬切）' },
   { value: 'fade', label: '淡入淡出' },

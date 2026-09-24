@@ -1,5 +1,5 @@
 /**
- * [M19] 品牌公共表单状态（BrandSettings 拆分：M26 红线纯重构，函数体逐字搬移）
+ * 品牌公共表单状态（BrandSettings 拆分：纯重构，函数体逐字搬移）
  * 水印参数 + 片头尾开关 + 字幕样式的响应式表单；fill/collect 逻辑供三 scope 复用。
  */
 import { ref } from 'vue'

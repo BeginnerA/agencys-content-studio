@@ -11,14 +11,14 @@ export interface Segment {
   path: string
   kind: 'image' | 'video'
   durSec: number
-  /** [M7] 静态图：时长来自分镜 per-shot 覆盖（fit_voice 显式优先依据） */
+  /** 静态图：时长来自分镜 per-shot 覆盖（fit_voice 显式优先依据） */
   explicit?: boolean
-  /** [M7] 动效片：时长未知按 duration_per_shot 估算（日志溯源） */
+  /** 动效片：时长未知按 duration_per_shot 估算（日志溯源） */
   estimated?: boolean
 }
 
 /**
- * [M7] 镜头段组装（纯函数；探针直测）——段组装 + 时长决策 + 容错判定收敛于此：
+ * 镜头段组装（纯函数；探针直测）——段组装 + 时长决策 + 容错判定收敛于此：
  * - 缺本地文件 / 文件缺失 / kind 不符 → skipped（不再整体失败；全 skip 由调用方拦抛）；
  * - 静态图：分镜 per-shot 覆盖优先（explicit 标记）→ duration_per_shot；
  * - 动效片：asset.duration → ffprobe → duration_per_shot 估算（estimated 标记）。
@@ -49,7 +49,7 @@ export function computeShotSegments(
         skipped.push(a.id)
         continue
       }
-      // [M12] 图像检测异常警示（仅警告；不阻断用户已选中的图）
+      // 图像检测异常警示（仅警告；不阻断用户已选中的图）
       const warn = qualityWarning(a)
       if (warn) warnings.push(warn)
       const shotId = shotIdOfAsset(a)
@@ -75,7 +75,7 @@ export function computeShotSegments(
   return { segments, skipped, warnings }
 }
 
-/** [M12] 图像检测异常警示（params.quality.ok === false；缺失/坏数据 → null） */
+/** 图像检测异常警示（params.quality.ok === false；缺失/坏数据 → null） */
 function qualityWarning(a: Asset): string | null {
   if (!a.params) return null
   try {
@@ -88,7 +88,7 @@ function qualityWarning(a: Asset): string | null {
   }
 }
 
-/** [M7] shots（分镜 JSON 原始文本）→ per-shot 时长表（裸数组 / {shots:[]}；duration 优先回退 duration_sec；非法条目跳过） */
+/** shots（分镜 JSON 原始文本）→ per-shot 时长表（裸数组 / {shots:[]}；duration 优先回退 duration_sec；非法条目跳过） */
 export function parseShotDurations(raw: string): Map<string, number> {
   const map = new Map<string, number>()
   const obj = JSON.parse(raw) as unknown
@@ -105,7 +105,7 @@ export function parseShotDurations(raw: string): Map<string, number> {
   return map
 }
 
-/** [M7] shots（分镜 JSON）→ per-shot 时长覆盖表（解析失败 → 空表 + 日志；无输入 → 空表） */
+/** shots（分镜 JSON）→ per-shot 时长覆盖表（解析失败 → 空表 + 日志；无输入 → 空表） */
 export async function loadPerShotDurations(ctx: StepContext, shotsIds: number[]): Promise<Map<string, number>> {
   if (shotsIds.length === 0) return new Map()
   try {
@@ -127,7 +127,7 @@ export function shotIdOfAsset(a: Asset): string | null {
   }
 }
 
-/** [M11] 配音资产 params.lineId（tts 产物句 id） */
+/** 配音资产 params.lineId（tts 产物句 id） */
 export function lineIdOfVoiceAsset(a: Asset): string | null {
   if (!a.params) return null
   try {

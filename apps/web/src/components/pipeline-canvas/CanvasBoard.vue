@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * [M15] 画布渲染层（手绘零依赖；spec §2.4）
+ * 画布渲染层（手绘零依赖；spec §2.4）
  * - 世界层单容器 transform: translate(pan) scale(zoom)；节点 = 绝对定位 HTML 卡；边 = SVG 三次贝塞尔
  * - 布局：层号 = sched 边拓扑最长路径松弛（防环最多 n 轮）；层内按 seq 垂直堆叠居中
  * - pan = 视口 pointer capture（节点卡 @pointerdown.stop）；缩放 = 滚轮光标锚定 [0.3, 2.5]；键盘 +/-/0
  * - 数据层 props 全量替换不影响视图状态（pan/zoom 为组件内 ref；跨目标切换由父级 :key 重建）
- * - [M23] 编辑模式（editMode 仅模板画布编辑态）：节点右缘输出口拖拽连线（window pointermove/up +
+ * - 编辑模式（editMode 仅模板画布编辑态）：节点右缘输出口拖拽连线（window pointermove/up +
  *   elementFromPoint 落点检测；临时线世界坐标 = (clientX-rect.left-pan)/zoom）；sched 边点选 + Del 删除
  *   → emit connect / delEdge（链路语义校验与 after 物化由父级编辑层应用）
  */
@@ -34,14 +34,14 @@ const props = defineProps<{
   edges: CanvasEdge[]
   selectedKey: string | null
   mode: 'run' | 'template'
-  /** [M23] 编辑模式：输出口拖拽连线 + 调度边点选/删除（仅模板画布编辑态传 true） */
+  /** 编辑模式：输出口拖拽连线 + 调度边点选/删除（仅模板画布编辑态传 true） */
   editMode?: boolean
 }>()
 const emit = defineEmits<{
   select: [key: string]
-  /** [M23] 拖拽连线完成（上游 → 下游；合法性由父级编辑层校验/拒绝） */
+  /** 拖拽连线完成（上游 → 下游；合法性由父级编辑层校验/拒绝） */
   connect: [from: string, to: string]
-  /** [M23] 调度边删除（Del 键；after 移除语义由父级应用） */
+  /** 调度边删除（Del 键；after 移除语义由父级应用） */
   delEdge: [from: string, to: string]
 }>()
 
@@ -87,7 +87,7 @@ function onPointerUp(ev: PointerEvent): void {
   const el = ev.currentTarget as HTMLElement
   if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId)
   if (!dragMoved) {
-    selEdge.value = null // [M23] 点空白 = 取消边选中 / 取消节点选中（拖动不触发）
+    selEdge.value = null // 点空白 = 取消边选中 / 取消节点选中（拖动不触发）
     emit('select', '')
   }
 }
@@ -134,7 +134,7 @@ function onKeydown(ev: KeyboardEvent): void {
     props.editMode &&
     selEdge.value
   ) {
-    // [M23] 删除选中调度边（仍存在才 emit；after 移除语义由父级应用）
+    // 删除选中调度边（仍存在才 emit；after 移除语义由父级应用）
     const cur = selEdge.value
     if (
       props.edges.some(
@@ -151,7 +151,7 @@ function onKeydown(ev: KeyboardEvent): void {
 }
 defineExpose({ fit })
 
-// ---- [M23] 编辑模式：拖拽连线 / 边选择 / 删除 ----
+// ---- 编辑模式：拖拽连线 / 边选择 / 删除 ----
 const selEdge = ref<{ from: string; to: string } | null>(null)
 const connectFrom = ref<string | null>(null)
 const connectPos = ref({ x: 0, y: 0 })
@@ -311,7 +311,7 @@ watch(
           @pointerdown.stop
           @click.stop="onEdgeClick(e)"
         />
-        <!-- [M23] 拖拽连线临时线（无箭头；指针穿透） -->
+        <!-- 拖拽连线临时线（无箭头；指针穿透） -->
         <path v-if="tempPath" :d="tempPath" class="cv-edge temp" />
       </svg>
 
@@ -371,7 +371,7 @@ watch(
           >
           <span v-if="n.hasError" class="cn-chip bad">错误</span>
         </span>
-        <!-- [M23] 编辑模式输出口：拖拽到任一节点 = 新增调度依赖（上游 → 下游） -->
+        <!-- 编辑模式输出口：拖拽到任一节点 = 新增调度依赖（上游 → 下游） -->
         <span
           v-if="editMode"
           class="cn-port"
@@ -402,7 +402,7 @@ watch(
       </span>
     </div>
 
-    <!-- [M23] 编辑模式提示（底部居中；指针穿透） -->
+    <!-- 编辑模式提示（底部居中；指针穿透） -->
     <div v-if="editMode" class="cv-edit-hint">
       拖拽节点右缘圆点连线（上游 → 下游） · 点选调度边后 Del 删除
     </div>
@@ -502,7 +502,7 @@ watch(
   }
 }
 
-/* ---- [M23] 编辑模式：sched 边点选 / 临时线 ---- */
+/* ---- 编辑模式：sched 边点选 / 临时线 ---- */
 .cv-edges.editable .cv-edge.sched {
   pointer-events: stroke;
   cursor: pointer;
@@ -558,7 +558,7 @@ watch(
   box-shadow: 0 0 0 2px var(--accent);
 }
 
-/* [M23] 连线拖拽悬停落点高亮 */
+/* 连线拖拽悬停落点高亮 */
 .cnode.drop {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgb(129 140 248 / 30%);
@@ -677,7 +677,7 @@ watch(
   border-color: rgb(34 197 94 / 35%);
 }
 
-/* [M23] 编辑模式输出口（卡内侧右缘——.cnode overflow:hidden 不得放在卡外） */
+/* 编辑模式输出口（卡内侧右缘——.cnode overflow:hidden 不得放在卡外） */
 .cn-port {
   position: absolute;
   right: 4px;
@@ -701,7 +701,7 @@ watch(
   transform: scale(1.18);
 }
 
-/* [M23] 编辑模式提示（底部居中胶囊；指针穿透） */
+/* 编辑模式提示（底部居中胶囊；指针穿透） */
 .cv-edit-hint {
   position: absolute;
   left: 50%;

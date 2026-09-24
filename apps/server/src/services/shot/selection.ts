@@ -128,7 +128,7 @@ export async function applyShotSelection(
       if (a.taskId != null) {
         if (!taskIds.has(a.taskId)) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤生成任务`)
       } else if (a.stepId !== step.id || a.runId !== run.id) {
-        // [M10] 上传资产（taskId=null）：须为本步骤本 run 的入库行
+        // 上传资产（taskId=null）：须为本步骤本 run 的入库行
         throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤上传资产`)
       }
     }

@@ -19,7 +19,7 @@ import { jsonRecord } from './projection'
 import { compileDialogueShot } from './dialogue'
 
 /**
- * [M42] 自然语言局部返修：一句话定位镜头 → LLM 解析成预览（第一次调用，只花文本模型小额费用、零媒体计费）
+ * 自然语言局部返修：一句话定位镜头 → LLM 解析成预览（第一次调用，只花文本模型小额费用、零媒体计费）
  * → 用户显式确认 → 同事务改写批准链（新分镜版本 + run.input + approvedPlan + planHash）→ 只重置目标镜任务 → 续跑。
  *
  * 可返修范围按模式收口（不猜、不让用户花进不了成片的钱）：
@@ -128,7 +128,7 @@ function estimateOf(recipe: CreationRecipe, changed: readonly AppliedChange[]): 
       const secs = recipe.requestDurations[c.shotId] ?? recipe.plan.shots[index]?.duration ?? 0
       if (!ep || ep.unitPrice === null) unpriced.add(`${ep ? `${ep.provider} / ${ep.model}` : '未绑定视频实例'}（动态镜头 ${secs} 秒）`)
       else { t.motionCost = round((t.motionCost ?? 0) + ep.unitPrice * secs); knownCost += ep.unitPrice * secs }
-      // [M44] 对白返修必然连同新原声重新转写，预算须计入该镜 ASR，不能只报视频价（不隐瞒用户将付出的转写费）
+      // 对白返修必然连同新原声重新转写，预算须计入该镜 ASR，不能只报视频价（不隐瞒用户将付出的转写费）
       if (recipe.plan.performance === 'dialogue' && recipe.asr) {
         if (recipe.asr.unitPrice === null) unpriced.add(`${recipe.asr.provider} / ${recipe.asr.model}（逐镜转写 ${secs} 秒）`)
         else { t.motionCost = round((t.motionCost ?? 0) + recipe.asr.unitPrice * secs); knownCost += recipe.asr.unitPrice * secs }
@@ -375,7 +375,7 @@ export async function applyRework(id: number, raw: unknown): Promise<{ runId: nu
         .where(and(eq(pipelineRuns.id, run.id), eq(pipelineRuns.status, run.status))).returning()
       if (!moved.length) throw new CreationError('conflict', '制作记录状态已变化，请刷新后重试', 409)
       const stepKey = reworkStepKey(recipe.plan)
-      // [M44] 对白返修：重编译该镜完整批准请求（非裸运动提示），并专用失效该镜转写→全片字幕→合成→最终审阅；
+      // 对白返修：重编译该镜完整批准请求（非裸运动提示），并专用失效该镜转写→全片字幕→合成→最终审阅；
       // 未受影响镜头的任务与转写原样保留（引擎按 succeeded 跳过，零重做零重复付费）。
       const isDialogue = recipe.plan.performance === 'dialogue'
       const steps: ReworkStepReset[] = [

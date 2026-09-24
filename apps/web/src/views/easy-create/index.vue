@@ -186,7 +186,7 @@ async function go(): Promise<void> {
   }
 }
 
-// [M35 G7] idea debounce → 模板推荐提示（仅展示，不预选、不路由）
+// idea debounce → 模板推荐提示（仅展示，不预选、不路由）
 const ideaRec = ref<RecommendItem | null>(null)
 let ideaRecTimer: ReturnType<typeof setTimeout> | null = null
 async function fireIdeaRecommend(text: string): Promise<void> {
@@ -210,7 +210,7 @@ function onIdeaInput(): void {
 
 // 状态 → 卡片左侧强调条 + 徽标色（走共享 creationStatusTone；started 控制态按 run 真实状态派生已完成/失败/取消）
 
-// ===== [M40+] 删除创作记录：未立项时一并回收影子项目，已立项只删对话（项目保留） =====
+// ===== 删除创作记录：未立项时一并回收影子项目，已立项只删对话（项目保留） =====
 const delBusy = ref(0)
 const delNotice = ref('')
 const delError = ref('')
@@ -342,7 +342,7 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
       <p v-if="s.first.state.warning" class="muted" role="status">{{ s.first.state.warning }}</p>
       <div v-if="s.state.error" class="err-text" role="alert">{{ s.state.error }}</div>
 
-      <!-- [M35 G7] 创意→模板推荐提示（零成本 embedding，仅展示不预选不自动路由） -->
+      <!-- 创意→模板推荐提示（零成本 embedding，仅展示不预选不自动路由） -->
       <div v-if="ideaRec" class="idea-rec" role="status">
         <Icon name="sparkles" :size="13" />
         <span>

@@ -9,10 +9,10 @@ import { WORKBENCH_ACTIONS, WorkbenchError, shotIdOfAsset } from './helpers'
 import { assertRepairable, resolveStoryboardSource } from './inspect'
 import { rebuildShotOutput } from './reset'
 
-// ---------- [M10] 上传替换（外来图入镜） ----------
+// ---------- 上传替换（外来图入镜） ----------
 
 /**
- * [M10] 上传资产入库：kind 按扩展名校验（图步收 image / 视频步收 video）→ sha256 查重：
+ * 上传资产入库：kind 按扩展名校验（图步收 image / 视频步收 video）→ sha256 查重：
  * - 命中 → 复制资产行（复用 relPath/mime/sha256 等文件属性，不重复落盘；用途独立不污染原资产）；
  * - 未命中 → 落盘（shot_image → images / shot_video → video）+ 建行。
  * 行属性：stepId=镜头步骤、taskId=null、runId、params={shotId, source:'upload', original_name}。
@@ -67,7 +67,7 @@ export async function importShotAsset(
   return await registerAsset(run.projectId, { ...base, relPath, fileSize: file.data.byteLength })
 }
 
-/** [M10] 上传 + 绑定组合（路由层单调用）：校验镜头 → 入库 → 绑定进 output */
+/** 上传 + 绑定组合（路由层单调用）：校验镜头 → 入库 → 绑定进 output */
 export async function uploadAndBindShotAsset(
   runId: number,
   stepKey: string,
@@ -85,7 +85,7 @@ export async function uploadAndBindShotAsset(
 }
 
 /**
- * [M10] 绑定既有资产为该镜选中：归属校验（任务产物 ∈ 本步任务集 / 上传资产 stepId=本步骤）
+ * 绑定既有资产为该镜选中：归属校验（任务产物 ∈ 本步任务集 / 上传资产 stepId=本步骤）
  * + params.shotId 匹配 → 重建 output（该镜位替换/按分镜序插入）。选片放宽后亦可经 select 端点达成，本函数供上传组合与探针。
  */
 export async function bindUploadedShotAsset(

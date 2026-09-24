@@ -1,5 +1,5 @@
 /**
- * [M28] 创作画布板内共用符号（自 CreationBoard.vue 逐字迁移；无状态常量与纯函数）
+ * 创作画布板内共用符号（自 CreationBoard.vue 逐字迁移；无状态常量与纯函数）
  * —— 迁移纪律：常量/函数体逐字保留，仅补 export 前缀供 board 子模块共用
  */
 import type {
@@ -46,7 +46,7 @@ export interface BoardEmits {
     },
   ]
   'group-delete': [gid: number]
-  /** [M22] 组条拖拽：后代组锚点批量平移（与 moved 节点平移同源 dx/dy） */
+  /** 组条拖拽：后代组锚点批量平移（与 moved 节点平移同源 dx/dy） */
   'groups-moved': [moves: Array<{ id: number; x: number; y: number }>]
   undo: []
   redo: []

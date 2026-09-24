@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M11] 重跑弹窗（spec §4.1）——支持两种范围：
+ * 重跑弹窗（spec §4.1）——支持两种范围：
  * - 仅本步骤（单步重跑）：二选一复用成功子任务（默认）/ 全部重跑（reset_tasks=true）；succeeded 下游照常跳过
  * - 级联到末尾（cascade）：从本步起重做到末尾，目标步尊重 reset_tasks、下游一律全量重置，
  *   提交前先拉 rerun-cascade 预览（级联步骤清单 + 预估计费子任务数），二次确认后执行

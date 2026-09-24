@@ -2,21 +2,21 @@ import { shotDurationSec } from '../../../services/shot'
 import { round3 } from './util'
 import type { StepContext } from '../../context'
 
-/** [M11] 对齐输入（分镜 shots[] 子集：id / 时长 / 台词句 id 列表） */
+/** 对齐输入（分镜 shots[] 子集：id / 时长 / 台词句 id 列表） */
 export interface AlignShotInput {
   id: string
   durationSec: number | null
   lineIds: string[]
 }
 
-/** [M11] 句级映射（speechStart 语音连续轴 / timelineStart 成片轴；SRT 平移依据） */
+/** 句级映射（speechStart 语音连续轴 / timelineStart 成片轴；SRT 平移依据） */
 export interface AlignLine {
   lineId: string
   speechStart: number
   timelineStart: number
 }
 
-/** [M11] 音字对齐计划（aligned=false 时 reason 记录回退原因；warnShots = 显式时长 < 句长合计的镜 id） */
+/** 音字对齐计划（aligned=false 时 reason 记录回退原因；warnShots = 显式时长 < 句长合计的镜 id） */
 export interface AlignPlan {
   aligned: boolean
   reason?: string
@@ -32,7 +32,7 @@ export interface AlignPlan {
   mode?: 'images' | 'motion'
 }
 
-/** [M11] 分镜 JSON → 对齐输入（shots[].lines；hasLinesField = 至少一镜含该字段） */
+/** 分镜 JSON → 对齐输入（shots[].lines；hasLinesField = 至少一镜含该字段） */
 export function parseShotLines(raw: string): { shots: AlignShotInput[]; hasLinesField: boolean } {
   const obj = JSON.parse(raw) as unknown
   const arr = Array.isArray(obj) ? obj : (obj as { shots?: unknown }).shots
@@ -55,7 +55,7 @@ export function parseShotLines(raw: string): { shots: AlignShotInput[]; hasLines
   return { shots, hasLinesField }
 }
 
-/** [M11] shots 资产 → 对齐输入（无输入/解析失败 → 空表） */
+/** shots 资产 → 对齐输入（无输入/解析失败 → 空表） */
 export async function loadShotAlignShots(
   ctx: StepContext,
   shotsIds: number[],
@@ -70,7 +70,7 @@ export async function loadShotAlignShots(
 }
 
 /**
- * [M11] 音字对齐计划（§2.3 条件与决策表；纯函数，探针直测）：
+ * 音字对齐计划（§2.3 条件与决策表；纯函数，探针直测）：
  * - 校验：lines 字段存在 → 并集 == voiceDur 键集（无重复/幽灵/孤儿）；否则 reason 回退；
  * - 时长：带台词镜 Σ句和（explicit > Σ → explicit + 镜尾静音；explicit < Σ → Σ + warnShots）；
  *        空镜 explicit ?? fallbackDur；
@@ -228,7 +228,7 @@ export function planBestEffortTimeline(
   return { aligned: true, segments, lines, totalDur: round3(timelineCursor), warnShots, partial: warnLines.length > 0, warnLines, mode: opts.mode }
 }
 
-/** [M11] SRT 每 cue 平移秒数（cue ↔ 句序 = voices 序；任一缺失 → null = 不平移） */
+/** SRT 每 cue 平移秒数（cue ↔ 句序 = voices 序；任一缺失 → null = 不平移） */
 export function planSrtShifts(align: AlignPlan, lineIdsInCueOrder: string[]): number[] | null {
   if (!align.aligned || lineIdsInCueOrder.length === 0) return null
   const byId = new Map(align.lines.map((l) => [l.lineId, l]))
@@ -246,12 +246,12 @@ export function planSrtShifts(align: AlignPlan, lineIdsInCueOrder: string[]): nu
   return shifts
 }
 
-/** [M11] SRT 时间戳（hh:mm:ss,mmm / 兼容 . 分隔）→ 秒 */
+/** SRT 时间戳（hh:mm:ss,mmm / 兼容 . 分隔）→ 秒 */
 export function srtTsToSec(h: string, m: string, s: string, ms: string): number {
   return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000
 }
 
-/** [M11] 秒 → SRT 时间戳（hh:mm:ss,mmm；负值收敛 0） */
+/** 秒 → SRT 时间戳（hh:mm:ss,mmm；负值收敛 0） */
 export function secToSrtTs(sec: number): string {
   const totalMs = Math.round(Math.max(0, sec) * 1000)
   const p2 = (x: number): string => String(x).padStart(2, '0')
@@ -261,10 +261,10 @@ export function secToSrtTs(sec: number): string {
   )
 }
 
-/** [M11] SRT 时间戳行正则（cue 行：hh:mm:ss,mmm --> hh:mm:ss,mmm；兼容 . 分隔）；[M19] 提升为模块级共享常量 */
+/** SRT 时间戳行正则（cue 行：hh:mm:ss,mmm --> hh:mm:ss,mmm；兼容 . 分隔）； 提升为模块级共享常量 */
 const SRT_TIME_RE = /^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/
 
-/** [M19] SRT cue 数（时间戳行计数；片头位移平移前校验用） */
+/** SRT cue 数（时间戳行计数；片头位移平移前校验用） */
 export function countSrtCues(srt: string): number {
   let n = 0
   for (const line of srt.split(/\r?\n/)) {
@@ -273,7 +273,7 @@ export function countSrtCues(srt: string): number {
   return n
 }
 
-/** [M11] SRT 逐 cue 平移（保格式；cue 数与 shifts 不符 → null） */
+/** SRT 逐 cue 平移（保格式；cue 数与 shifts 不符 → null） */
 export function shiftSrtText(srt: string, shifts: number[]): string | null {
   const timeRe = SRT_TIME_RE
   const lines = srt.split(/\r?\n/)

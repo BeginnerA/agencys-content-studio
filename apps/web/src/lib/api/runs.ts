@@ -38,12 +38,12 @@ export const runApi = {
   cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
   resume: (id: number, body?: Record<string, unknown>) =>
     api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`, body ?? {}),
-  /** [M21] 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */
+  /** 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */
   revisions: (id: number, stepKey: string) =>
     api.get<{ items: RevisionItem[] }>(
       `/api/v1/runs/${id}/steps/${encodeURIComponent(stepKey)}/revisions`,
     ),
-  /** [M21] 集级参数热调（受限：queued/running/waiting_input；组内深合并 + 留痕） */
+  /** 集级参数热调（受限：queued/running/waiting_input；组内深合并 + 留痕） */
   updateParams: (id: number, params: Record<string, Record<string, unknown>>) =>
     api.patch<{ run: Run; applied: ParamChange[] }>(
       `/api/v1/runs/${id}/params`,
@@ -59,7 +59,7 @@ export const taskApi = {
     api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/cancel`),
 }
 
-// ===== [M11] 单步重跑 / 合成设置（BGM·转场） =====
+// ===== 单步重跑 / 合成设置（BGM·转场） =====
 
 export const stepApi = {
   /** 引擎级单步重跑（复用成功子任务；reset_tasks=true 全量重跑；succeeded 下游步骤照常跳过） */
@@ -144,10 +144,10 @@ export const composeApi = {
   /** 移除 BGM（软删本 run 有效行） */
   removeBgm: (runId: number) =>
     api.del<{ ok: boolean; note: string }>(`/api/v1/runs/${runId}/compose/bgm`),
-  /** [M19] SFX 列表（shotId → 资产；每镜 ≤1 条有效） */
+  /** SFX 列表（shotId → 资产；每镜 ≤1 条有效） */
   listSfx: (runId: number) =>
     api.get<{ items: ComposeSfxItem[] }>(`/api/v1/runs/${runId}/compose/sfx`),
-  /** [M19] 绑定项目音频资产到指定镜头（复制行；不污染源资产） */
+  /** 绑定项目音频资产到指定镜头（复制行；不污染源资产） */
   bindSfx: (runId: number, shotId: string, assetId: number) =>
     api.post<{ ok: boolean; item: ComposeSfxItem; note: string }>(
       `/api/v1/runs/${runId}/compose/sfx`,
@@ -156,7 +156,7 @@ export const composeApi = {
         asset_id: assetId,
       },
     ),
-  /** [M19] 上传音频绑定到指定镜头（multipart：shot_id + file） */
+  /** 上传音频绑定到指定镜头（multipart：shot_id + file） */
   uploadSfx: async (runId: number, shotId: string, file: File) => {
     const form = new FormData()
     form.append('shot_id', shotId)
@@ -190,13 +190,13 @@ export const composeApi = {
       note: string
     }
   },
-  /** [M19] 移除某镜音效（软删该镜全部有效行） */
+  /** 移除某镜音效（软删该镜全部有效行） */
   removeSfx: (runId: number, shotId: string) =>
     api.del<{ ok: boolean; note: string }>(
       `/api/v1/runs/${runId}/compose/sfx/${encodeURIComponent(shotId)}`,
     ),
   /**
-   * [M19] 成片多画幅派生（A 路径；源 = 该 run 最新 final_video）。
+   * 成片多画幅派生（A 路径；源 = 该 run 最新 final_video）。
    * 单路重编码同步完成（本地单机工具，长成片耗时相应增长）；同参已派生 → reused。
    */
   deriveAspect: (
@@ -210,7 +210,7 @@ export const composeApi = {
     }),
 }
 
-// ===== [M7] 镜头工作台 =====
+// ===== 镜头工作台 =====
 
 export const shotApi = {
   /** 工作台聚合读（镜头 × 任务 × 版本 × 选中 × 合成新鲜度） */
@@ -248,7 +248,7 @@ export const shotApi = {
       `/api/v1/runs/${runId}/shots/select`,
       { step_key: stepKey, ...opts },
     ),
-  /** [M10] 结构性编辑（reorder/add/remove/patch；写新分镜版本，不触发执行） */
+  /** 结构性编辑（reorder/add/remove/patch；写新分镜版本，不触发执行） */
   mutate: (runId: number, stepKey: string, ops: ShotOp[]) =>
     api.post<{
       ok: boolean
@@ -257,7 +257,7 @@ export const shotApi = {
       shots: number
       note: string
     }>(`/api/v1/runs/${runId}/shots/mutate`, { step_key: stepKey, ops }),
-  /** [M10] 上传替换镜头（multipart：file + step_key + shot_id；入库 + 绑定选中） */
+  /** 上传替换镜头（multipart：file + step_key + shot_id；入库 + 绑定选中） */
   uploadShot: async (
     runId: number,
     stepKey: string,
@@ -304,7 +304,7 @@ export const shotApi = {
       `/api/v1/runs/${runId}/recompose`,
       { step_key: stepKey },
     ),
-  /** [M12] 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行） */
+  /** 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行） */
   cleanup: (runId: number, stepKey: string) =>
     api.post<CleanupResult & { run_id: number; step_key: string }>(
       `/api/v1/runs/${runId}/shots/cleanup`,
@@ -312,7 +312,7 @@ export const shotApi = {
     ),
 }
 
-// ===== [M9] 小说改编链 =====
+// ===== 小说改编链 =====
 
 export const novelApi = {
   /** 小说改编看板聚合读（章节切分 × 事件图谱 × 分集规划 × 改编剧本） */

@@ -4,7 +4,7 @@ import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
 
 /**
- * entity_sync：场景/道具素材建档（M8 素材链；对齐 character_sync 的手感与产物模式）。
+ * entity_sync：场景/道具素材建档（素材链；对齐 character_sync 的手感与产物模式）。
  * 输入 sets：set-json 资产（多资产逐个尝试，取第一个含非空 scenes/props 的）；
  * 输入 ref_images?：参考图资产序列（按 asset.params.shotId = 场景/道具名归属，未命中按资产名包含兜底）；
  * params：{ project = true }（true → 当前项目域；false → 全局素材库 projectId=NULL，不挂项目资产）。

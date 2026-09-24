@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M16] 蒙版笔刷编辑器（inpaint/erase 用；spec §2.7）
+ * 蒙版笔刷编辑器（inpaint/erase 用；spec §2.7）
  * - 底图 = 源图（source 端口上游最新产物）；白色笔刷 / 橡皮 / 尺寸 / 清空
  * - 导出契约：黑底 + 白笔迹 PNG（最长边 ≤1024）→ uploadFiles(purpose='mask') → emit saved(assetId)
  *   （白 = 要编辑/去除的区域；颜色语义对齐 wanx description_edit_with_mask）

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * [M26-split] 流水线画布页 · 顶栏（自 views/canvas/index.vue 原样搬出，行为零变更）：
+ * 流水线画布页 · 顶栏（自 views/canvas/index.vue 原样搬出，行为零变更）：
  * 模式 tabs / 三态目标下拉 / 运行操作（取消·续跑）/ 模板操作（启动·编辑草稿通道）/ 全景摘要 / 适应视图。
- * —— 装配约定：状态真源在页面 index；操作函数经 props 直传（M28 shot-board 同约定）；
+ * —— 装配约定：状态真源在页面 index；操作函数经 props 直传（shot-board 同约定）；
  * 三个目标下拉以 v-model 传父级 writable computed（get 回显 / set 路由跳转均留父级）。
  */
 import { computed } from 'vue'
@@ -54,9 +54,9 @@ const props = defineProps<{
 const selRunId = defineModel<string>('runId', { required: true })
 const selTplKey = defineModel<string>('tplSel', { required: true })
 const selProject = defineModel<string>('project', { required: true })
-// [入口收口] 顶栏「选模板→启动运行」不呈现轻松创作批准链模板（无 recipe 无法启动）；CanvasGuide 浏览设计不受影响
+// 顶栏「选模板→启动运行」不呈现轻松创作批准链模板（无 recipe 无法启动）；CanvasGuide 浏览设计不受影响
 const selectableTpls = computed(() => filterSelectable(props.tplMetas))
-// [方案C] 批准链 run：仅当存在受理状态不明任务（resumeNeedsVerification）时才不能就地续跑，顶栏改呈现直达会话链接；
+// 批准链 run：仅当存在受理状态不明任务（resumeNeedsVerification）时才不能就地续跑，顶栏改呈现直达会话链接；
 // 无状态不明任务的轻松创作 run canResume 已为 true → 上面的「断点续跑」按钮直接可用（专业端 resume 委派 retryCreation）
 const showCreationRecover = computed(
   () =>
@@ -199,7 +199,7 @@ const showCreationRecover = computed(
         <Icon name="play" :size="12" /> 启动运行
       </button>
 
-      <!-- [M23] 画布内编辑（本地草稿） -->
+      <!-- 画布内编辑（本地草稿） -->
       <button
         v-if="!editMode"
         type="button"
@@ -223,7 +223,7 @@ const showCreationRecover = computed(
         >
           <Icon name="undo" :size="12" /> 重置修改
         </button>
-        <!-- [M23] E4 落盘通道：草案预览（不落盘）/ 保存为新模板（原文件零触碰） -->
+        <!-- E4 落盘通道：草案预览（不落盘）/ 保存为新模板（原文件零触碰） -->
         <button
           v-if="editDirty"
           type="button"
@@ -326,7 +326,7 @@ const showCreationRecover = computed(
   flex: 1;
 }
 
-/* [M23] 编辑标记（顶栏） */
+/* 编辑标记（顶栏） */
 .edit-flag {
   font-size: 11px;
   color: var(--warn);

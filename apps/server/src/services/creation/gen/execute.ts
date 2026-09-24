@@ -38,12 +38,12 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     .where(eq(canvasEdges.to, node.id))
   const plan = await loadInputPlan(node, incoming, spec)
   if (plan.problems.length > 0) throw new Error(`输入未就绪：${plan.problems.join('；')}`)
-  // [M17] audio / compose 独立执行径（不展开风格与参考图 URI）
+  // audio / compose 独立执行径（不展开风格与参考图 URI）
   if (spec.genKind === 'audio') return executeAudioOnce(taskId, canvas, node, spec, plan)
   if (spec.genKind === 'compose') return executeComposeOnce(taskId, canvas, node, spec, plan)
   if (spec.genKind === 'llm') return executeLlmOnce(taskId, canvas, node, spec, plan)
   const uriCache = new Map<number, string>()
-  // [M29·R02] 执行真实输入快照：记录本次实际消费的资产/实体版本 + used/skipped（零行为变更，仅旁路采集）
+  // 执行真实输入快照：记录本次实际消费的资产/实体版本 + used/skipped（零行为变更，仅旁路采集）
   const execInputs: ExecInputSpec[] = []
 
   const styleSnippet =
@@ -73,7 +73,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
     const adapter = getImageAdapter(endpoint.providerKey)
     if (!adapter.edit) throw new Error(`供应商「${endpoint.providerKey}」未实现图像编辑能力`)
     const editParams = buildEditParams(spec, { baseImage: sourceUri, mask: maskUri })
-    // [M17] prompt 端口覆盖（text 节点内容优先于 spec.prompt；与图片/视频径一致）
+    // prompt 端口覆盖（text 节点内容优先于 spec.prompt；与图片/视频径一致）
     if (plan.promptText != null) editParams.prompt = plan.promptText
     const prompt = styleSnippet ? appendStyleSnippet(editParams.prompt ?? '', styleSnippet) : editParams.prompt
     const img = await adapter.edit({
@@ -237,7 +237,7 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
       model: usedModel,
     })
   }
-  // [M29·R02] 补齐 prompt/实体来源，冻结本次执行真实输入快照（旁路，失败不影响生成）
+  // 补齐 prompt/实体来源，冻结本次执行真实输入快照（旁路，失败不影响生成）
   if (plan.promptSource?.assetId != null) execInputs.push(await assetInput('text', plan.promptSource.assetId, { port: 'prompt' }))
   for (const eid of plan.entitySources) execInputs.push(await entityInput('reference', eid))
   await safeRecordExecSnapshot({
@@ -251,13 +251,13 @@ export async function executeOnce(taskId: number, task: GenTask, node: CanvasNod
   log.info(`canvas node #${node.id} 生成完成 → asset#${asset.id}`)
 }
 
-// ---------- [M17/M18] audio / compose / llm 执行径 ----------
+// ---------- audio / compose / llm 执行径 ----------
 
-/** [M17/M18] compose 输入资产 → 本地路径 + 时长元数据（软删/无文件/缺文件即抛错，避免 ffmpeg 半途失败） */
+/** compose 输入资产 → 本地路径 + 时长元数据（软删/无文件/缺文件即抛错，避免 ffmpeg 半途失败） */
 interface ComposeInput {
   path: string
   duration: number | null
-  /** [M22] 资产 prompt（tts 语音文本——字幕 'auto' 模式文本源） */
+  /** 资产 prompt（tts 语音文本——字幕 'auto' 模式文本源） */
   prompt: string | null
 }
 
@@ -277,7 +277,7 @@ async function composeInputsOf(assetIds: number[], label: string): Promise<Compo
   return out
 }
 
-/** [M17] 项目 settings.audio.voice（声线链第 4 级；缺失/损坏 → undefined） */
+/** 项目 settings.audio.voice（声线链第 4 级；缺失/损坏 → undefined） */
 async function projectAudioVoice(projectId: number): Promise<string | undefined> {
   const rows = await db.select({ settings: projects.settings }).from(projects).where(eq(projects.id, projectId)).limit(1)
   try {
@@ -290,7 +290,7 @@ async function projectAudioVoice(projectId: number): Promise<string | undefined>
   }
 }
 
-/** [M17] ffprobe 探测视频宽高（失败 → null；宽高向下取偶） */
+/** ffprobe 探测视频宽高（失败 → null；宽高向下取偶） */
 function probeVideoSize(file: string): ComposeSize | null {
   const ffprobe = resolveFfprobe()
   if (!ffprobe) return null
@@ -312,7 +312,7 @@ function probeVideoSize(file: string): ComposeSize | null {
   }
 }
 
-/** [M17] ffmpeg 执行（异步 spawn；超时 10min；stderr 尾部保留并在失败时附上） */
+/** ffmpeg 执行（异步 spawn；超时 10min；stderr 尾部保留并在失败时附上） */
 function runComposeFfmpeg(ffmpeg: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpeg, args, { windowsHide: true })
@@ -343,8 +343,8 @@ function runComposeFfmpeg(ffmpeg: string, args: string[]): Promise<void> {
   })
 }
 
-/** [M17] 音频执行径：声线链（params → settings → 实例 → alloy）→ synthSpeech → 落盘 → succeeded + 用量(tts/char)
- * [M19 P8] 任一级写 clone:{id} 且音色库命中 → 换 provider 端点 + 克隆绑定模型（无效引用降级同声线链口径） */
+/** 音频执行径：声线链（params → settings → 实例 → alloy）→ synthSpeech → 落盘 → succeeded + 用量(tts/char)
+ * 任一级写 clone:{id} 且音色库命中 → 换 provider 端点 + 克隆绑定模型（无效引用降级同声线链口径） */
 async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode, spec: NodeSpec, plan: InputPlan): Promise<void> {
   const text = (plan.promptText ?? spec.prompt).trim()
   if (!text) throw new Error('音频文本为空（请在 prompt 填写内容或连线提示词节点）')
@@ -403,7 +403,7 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
     .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
   emitCanvasChanged(canvas, node.id)
-  // [M29·R02] audio 执行真实输入快照：prompt 端口来源文本资产（版本指针）
+  // audio 执行真实输入快照：prompt 端口来源文本资产（版本指针）
   if (plan.promptSource?.assetId != null) {
     await safeRecordExecSnapshot({
       projectId: canvas.projectId,
@@ -429,7 +429,7 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
 }
 
 /**
- * [M18] LLM 文本执行径：指令（prompt 端口文本 > spec.prompt）+ 文本素材（text 端口 ≤4 段拼接）+
+ * LLM 文本执行径：指令（prompt 端口文本 > spec.prompt）+ 文本素材（text 端口 ≤4 段拼接）+
  * 参考图（≤4 多模态 ChatContentPart，镜像 style-preset 先例）→ chatCompleteDetailed →
  * writeTextAsset(purpose='creation_llm') → succeeded + recordLlmUsage（tokens_in/out）。
  */
@@ -438,7 +438,7 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
   if (!instruction) throw new Error('LLM 指令为空（请在 prompt 填写指令或连线文本节点）')
   const uriCache = new Map<number, string>()
   const imageParts: ChatContentPart[] = []
-  // [M29·R02] llm 执行真实输入快照（参考图 used/skipped + 文本素材版本指针）
+  // llm 执行真实输入快照（参考图 used/skipped + 文本素材版本指针）
   const execInputs: ExecInputSpec[] = []
   for (const id of plan.referenceAssetIds) {
     try {
@@ -513,7 +513,7 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
   log.info(`canvas node #${node.id} LLM 完成 → asset#${asset.id}（${text.length} 字符）`)
 }
 
-/** [M17/M18] 合成执行径：输入路径解析（+时长元数据）→ ffmpeg（resolution 优先；多段缺省探测第一段；[M18] 转场/BGM）→ 落盘 → succeeded（无外部用量） */
+/** 合成执行径：输入路径解析（+时长元数据）→ ffmpeg（resolution 优先；多段缺省探测第一段； 转场/BGM）→ 落盘 → succeeded（无外部用量） */
 async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNode, spec: NodeSpec, plan: InputPlan): Promise<void> {
   const ffmpeg = resolveFfmpeg()
   if (!ffmpeg) {
@@ -523,15 +523,15 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
   const audioIns = await composeInputsOf(plan.audioAssetIds, '音频')
   const videoPaths = videoIns.map((v) => v.path)
   const audioPaths = audioIns.map((a) => a.path)
-  // [M18] 段时长：资产元数据优先，缺失 ffprobe 兜底；任一未知 → durations=null → 转场/BGM 宽容降级
+  // 段时长：资产元数据优先，缺失 ffprobe 兜底；任一未知 → durations=null → 转场/BGM 宽容降级
   const resolvedDurs = videoIns.map((v) => v.duration ?? probeMediaDuration(v.path))
   const durations = resolvedDurs.every((d): d is number => typeof d === 'number' && d > 0) ? resolvedDurs : null
-  // [M22] 音字对齐：段级配对计划（video[i]↔audio[i]，段时长 max）；段数不匹配/任一段时长未知 → 宽容降级为现状
+  // 音字对齐：段级配对计划（video[i]↔audio[i]，段时长 max）；段数不匹配/任一段时长未知 → 宽容降级为现状
   const resolvedADurs = audioIns.map((a) => a.duration ?? probeMediaDuration(a.path))
   const alignPlan = spec.align ? planAlignedSegments(resolvedDurs, resolvedADurs) : null
   if (spec.align && !alignPlan) log.warn(`canvas node #${node.id} 音字对齐已降级（视频/音频段数不匹配或时长未知）`)
   if (alignPlan && spec.transition && spec.transition !== 'none') log.warn(`canvas node #${node.id} 对齐模式与转场互斥，已禁用转场`)
-  // [M22] 字幕链：'auto'=音频段 prompt 文本生成 / 'asset'=已有 SRT 按段重钉 → 先落库（烧录引用文件绝对路径，不删留档）
+  // 字幕链：'auto'=音频段 prompt 文本生成 / 'asset'=已有 SRT 按段重钉 → 先落库（烧录引用文件绝对路径，不删留档）
   let subtitleAssetId: number | null = null
   let burnSubPath: string | null = null
   if (alignPlan && spec.subtitle && spec.subtitle !== 'none') {
@@ -656,7 +656,7 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
       transition: spec.transition ?? null,
       transitionDuration: spec.transitionDuration ?? null,
       bgmAssetId: spec.bgmAssetId ?? null,
-      // [M22] 对齐/字幕快照
+      // 对齐/字幕快照
       align: alignPlan != null,
       segDurs: alignPlan?.segDurs ?? null,
       subtitle: spec.subtitle ?? null,
@@ -670,7 +670,7 @@ async function executeComposeOnce(taskId: number, canvas: Canvas, node: CanvasNo
     .set({ status: 'succeeded', resultAssetId: asset.id, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
   emitCanvasChanged(canvas, node.id)
-  // [M29·R02] compose 执行真实输入快照：镜头视频/配音/字幕/BGM 均入边（媒体资产 versionId=null，身份即资产 id）
+  // compose 执行真实输入快照：镜头视频/配音/字幕/BGM 均入边（媒体资产 versionId=null，身份即资产 id）
   {
     const execInputs: ExecInputSpec[] = []
     for (let i = 0; i < plan.videoAssetIds.length; i++) execInputs.push(await assetInput('source', plan.videoAssetIds[i]!, { port: 'video', ordinal: i }))

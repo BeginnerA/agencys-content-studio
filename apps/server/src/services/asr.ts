@@ -1,11 +1,11 @@
 /**
- * [M25·G9] ASR 音轨转写通道（spec §2.9，用户拍板「全链含音频转写」）。
+ * ASR 音轨转写通道（spec §2.9，用户拍板「全链含音频转写」）。
  * 复用 api_configs serviceType='audio' 实例（不新增 service_type 枚举）：
  * baseUrl 显式配置且形如 OpenAI 兼容根（/v1 结尾）的实例才参与——
  * SiliconFlow（https://api.siliconflow.cn/v1）实测形态；volcengine/aliyun TTS 端点
  * baseUrl 为空/非兼容根 → 自动跳过（宽容降级链的一部分）。
  * 端点：POST {baseUrl}/audio/transcriptions（multipart：file + model）。
- * 宽容降级（对齐 M24 LLM 复审纪律）：任何失败 → null，调用方跳过音轨不阻断主链。
+ * 宽容降级（对齐 LLM 复审纪律）：任何失败→ null，调用方跳过音轨不阻断主链。
  */
 import { readFileSync } from 'node:fs'
 import { and, desc, eq } from 'drizzle-orm'

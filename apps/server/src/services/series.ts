@@ -1,5 +1,5 @@
 /**
- * [M14] 剧集实体服务（平台级通用：剧 → 集两级）。
+ * 剧集实体服务（平台级通用：剧 → 集两级）。
  * - 载体：series / episodes 两表（一项目一剧；集号项目内唯一）。
  * - 状态派生：展示以「最新 run 状态」为准（Q2 决策：run 活跃/终态优先），无 run 时回落行 status（locked/planning/done）。
  * - run 联动：启动端点后置回写（mapRunToEpisode），失败不阻断 run（宽容降级）。

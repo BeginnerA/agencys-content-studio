@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * [M20] 排产日历视图（B1）
+ * 排产日历视图（B1）
  * 月历形式展示排产计划，支持创建/取消/恢复/重置/删除操作。
- * ---- [M26-split] 新建弹窗拆至 ScheduleFormModal.vue（行为零变更）----
- * ---- [M26-split2] 新建表单状态机与提交逻辑拆至 use-schedule-form.ts（行为零变更）----
+ * ---- 新建弹窗拆至 ScheduleFormModal.vue（行为零变更）----
+ * ---- 新建表单状态机与提交逻辑拆至 use-schedule-form.ts（行为零变更）----
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -32,7 +32,7 @@ const projectId = ref<number | ''>('')
 // 日历状态
 const viewDate = ref(new Date())
 
-// [M26-split2] 新建表单状态机（showForm/formXxx/提交逻辑）拆至 use-schedule-form.ts
+// 新建表单状态机（showForm/formXxx/提交逻辑）拆至 use-schedule-form.ts
 const {
   showForm,
   creating,
@@ -163,7 +163,7 @@ onMounted(() => {
 })
 watch([viewDate, projectId], () => void load())
 
-// [M21] ?new=1 深链接（命令面板「新建排产计划」直达）；消费后清 query（保留 tab 等其余键）
+// ?new=1 深链接（命令面板「新建排产计划」直达）；消费后清 query（保留 tab 等其余键）
 watch(
   () => route.query.new,
   (v) => {
@@ -401,7 +401,7 @@ const monthStats = computed<MonthStats>(() => {
       </div>
     </div>
 
-    <!-- 新建弹窗（M26-split：拆至 ScheduleFormModal.vue；表单状态真源在 use-schedule-form.ts，经父级 v-model 透传） -->
+    <!-- 新建弹窗（拆至 ScheduleFormModal.vue；表单状态真源在 use-schedule-form.ts，经父级 v-model 透传） -->
     <ScheduleFormModal
       v-if="showForm"
       v-model:project-id="projectId"

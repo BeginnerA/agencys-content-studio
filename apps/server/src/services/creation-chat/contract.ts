@@ -4,13 +4,13 @@ import { z } from 'zod'
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/)
 const text = (max: number) => z.string().trim().min(1).max(max)
 
-// [M43] 视频分辨率档位（与 @agencys/ai-provider-kit CapsResolution 六档同源，预检 videoCapabilitiesSchema 同引用）。
+// 视频分辨率档位（与 @agencys/ai-provider-kit CapsResolution 六档同源，预检 videoCapabilitiesSchema 同引用）。
 // 确认级可选但不入 planHash 的成立前提：价格注册表无 resolution 维度（视频按秒单价，档位不改变预估）；
 // 若未来注册表加分档定价，此字段必须改随方案入 hash（改档位即改价格，旧确认必须作废）。
 export const CREATION_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p', '480P', '768P', '2K'] as const
 export type CreationVideoResolution = (typeof CREATION_VIDEO_RESOLUTIONS)[number]
 
-// [M31] 对话式参考输入：受方案约束的参考素材（上传后编译进 refs → 进 planHash，确认即执行）。
+// 对话式参考输入：受方案约束的参考素材（上传后编译进 refs → 进 planHash，确认即执行）。
 // role 语义：style 风格参考 / first_frame 首帧 / subject 主体一致性 / content 视频内容解析 / bgm 背景乐。
 export const refRoleSchema = z.enum(['style', 'first_frame', 'subject', 'content', 'bgm'])
 export type CreationRefRole = z.infer<typeof refRoleSchema>
@@ -43,7 +43,7 @@ export const creationPlanSchema = z.object({
     lines: z.array(id).max(12),
     characters: z.array(id).min(1).max(4).optional(),
   }).strict()).min(2).max(12),
-  // [M31] 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
+  // 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
   refs: z.array(refSchema).max(12).default([]),
   // 缺省字段不补值：历史批准 JSON 与哈希保持逐字一致。
   performance: z.enum(['narration', 'dialogue']).optional(),
@@ -85,7 +85,7 @@ export function isDialoguePlan(plan: CreationPlan): boolean {
   return plan.performance === 'dialogue'
 }
 
-// ===== [M40] 立项信息（名称 / 载体 / 模板 / 标签 / 简介）=====
+// ===== 立项信息（名称 / 载体 / 模板 / 标签 / 简介）=====
 // 项目行在「发送一句话」时即以 draft 影子态存在（规划记账与参考素材需归属），
 // 但项目列表 / 统计 / 搜索一律不可见；点「开始制作」确认时才智能填写并转正。
 // 载体字典与 web/src/lib/scene PROJECT_GENRES 同源（新增取值两端同改）。
@@ -115,7 +115,7 @@ export type ProjectMetaInput = z.infer<typeof projectMetaInputSchema>
 
 export const planningReplySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('clarify'), message: text(1200), questions: z.array(text(300)).min(1).max(2) }).strict(),
-  // [M40] project 与 plan 同级（LLM 建议值；不入 planHash → 改立项信息不会作废已确认的方案）
+  // project 与 plan 同级（LLM 建议值；不入 planHash → 改立项信息不会作废已确认的方案）
   z.object({ kind: z.literal('plan'), message: text(1200), plan: creationPlanSchema, project: projectMetaInputSchema.optional() }).strict(),
 ])
 export type PlanningReply = z.infer<typeof planningReplySchema>
@@ -146,22 +146,22 @@ export const confirmationSchema = z.object({
   planHash: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: requestKeySchema,
   acceptUnpriced: z.boolean().default(false),
-  // [M40] 确认即立项：前端「将创建的项目」可覆盖值（缺项沿用草稿行现值）
+  // 确认即立项：前端「将创建的项目」可覆盖值（缺项沿用草稿行现值）
   project: projectMetaInputSchema.optional(),
-  // [M42] 审阅闸：true 时本次 run 用 easy-video-review 变体模板（画面/首帧完成后挂起等审阅）；
+  // 审阅闸：true 时本次 run 用 easy-video-review 变体模板（画面/首帧完成后挂起等审阅）；
   // 不入 planHash（与立项覆盖同理：是启动方式而非执行数据），恢复/重试沿用 run 自身模板键。
   reviewGate: z.boolean().default(false),
-  // [M43] 画质选择：仅 ∈ 预检透出的已背书档位（resolutionOptions.choices）可确认；缺省 = 模型默认档，
+  // 画质选择：仅 ∈ 预检透出的已背书档位（resolutionOptions.choices）可确认；缺省 = 模型默认档，
   // 请求体与旧版逐字一致。与 reviewGate 的先例差异：画质是执行数据，但不作废方案的唯一理由是预估不随档变（见文件头注）。
   resolution: z.enum(CREATION_VIDEO_RESOLUTIONS).optional(),
-  // [M45] 品牌叠加开关：默认 true = 轻松创作成片继承平台/项目已配品牌（水印/片头尾/字幕样式）；
+  // 品牌叠加开关：默认 true = 轻松创作成片继承平台/项目已配品牌（水印/片头尾/字幕样式）；
   // 仅显式传 false 时确认卡逐次关闭。与 reviewGate/resolution 同一先例：是启动方式而非执行数据，
   // 不入 planHash（改开关不作废已确认方案）；缺省 true 时请求体与旧版逐字一致。
   brandApply: z.boolean().default(true),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
 
-// [M42] 闸门决策（会话侧代理）：仅 approve/reject——skip 需模板声明 skip_label，审阅变体不提供免审。
+// 闸门决策（会话侧代理）：仅 approve/reject——skip 需模板声明 skip_label，审阅变体不提供免审。
 export const gateDecisionSchema = z.object({
   stepKey: text(40),
   decision: z.enum(['approve', 'reject']),
@@ -170,12 +170,12 @@ export const gateDecisionSchema = z.object({
 }).strict()
 export type GateDecision = z.infer<typeof gateDecisionSchema>
 
-// [M42] 候选版本可视化只放开这三个生成步（配音/字幕/合成无多版本选片语义）。
+// 候选版本可视化只放开这三个生成步（配音/字幕/合成无多版本选片语义）。
 export const CREATION_CANDIDATE_STEPS = ['images', 'frames', 'motion'] as const
 export const candidateStepSchema = z.enum(CREATION_CANDIDATE_STEPS)
 
 /**
- * [M42] 选片提交：前端只报「这一镜我要哪一个」，服务端把未提及镜头按当前在用补全为全量
+ * 选片提交：前端只报「这一镜我要哪一个」，服务端把未提及镜头按当前在用补全为全量
  * （底层 applyShotSelection 是子集替换语义，漏提即剔除——不能交给前端裸拼）。
  */
 export const shotSelectionSchema = z.object({
@@ -185,11 +185,11 @@ export const shotSelectionSchema = z.object({
 }).strict()
 export type ShotSelection = z.infer<typeof shotSelectionSchema>
 
-/** [M42] 本地重新合成：仅重置 ffmpeg_merge 步，不调用任何付费模型 */
+/** 本地重新合成：仅重置 ffmpeg_merge 步，不调用任何付费模型 */
 export const recomposeSchema = z.object({ idempotencyKey: requestKeySchema }).strict()
 
 /**
- * [M43] 参考登记变更（用途 + 逐镜绑定共用一个写入口）：role 缺省不改；
+ * 参考登记变更（用途 + 逐镜绑定共用一个写入口）：role 缺省不改；
  * shotId：null = 回到整片级，缺省不改，字符串 = 绑到该镜（仅 image 类可带）。
  * 至少给一个变更键，否则拒绝（空 PATCH 不刷哈希、不抬 revision）。
  */
@@ -200,7 +200,7 @@ export const refBindSchema = z.object({
 export type RefBind = z.infer<typeof refBindSchema>
 
 /**
- * [M42] 局部返修——第一步：自然语言指令解析（只花文本模型小额费用，零媒体计费）。
+ * 局部返修——第一步：自然语言指令解析（只花文本模型小额费用，零媒体计费）。
  * 与消息输入框完全独立：默认发信「记录下一版建议」的语义不得被劫持成返修费用。
  */
 export const reworkRequestSchema = z.object({
@@ -228,7 +228,7 @@ export const reworkApplySchema = z.object({
 export type ReworkApply = z.infer<typeof reworkApplySchema>
 
 /**
- * [M42] LLM 返修解析回复 = 建议值（与 projectMetaInputSchema 同先例：多余键忽略、
+ * LLM 返修解析回复 = 建议值（与 projectMetaInputSchema 同先例：多余键忽略、
  * 单字段坏不致整次已花钱解析作废），逐字段在 rework.ts 归一后再进客户端契约。
  */
 export const reworkReplySchema = z.object({ targets: z.unknown().optional(), unclear: z.unknown().optional() }).catchall(z.unknown())

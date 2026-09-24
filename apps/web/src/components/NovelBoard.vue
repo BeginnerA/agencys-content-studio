@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M9] 小说改编看板（spec §3.8）
+ * 小说改编看板（spec §3.8）
  * 挂载：RunDetailView 步骤卡内（actionKey === 'text_split'）
  * 只读看板四段：① 章节表 ② 事件图谱 ③ 分集规划 ④ 改编剧本
  * 刷新约定：挂载拉取 + task.updated 防抖合并 + step 非终态 3s 轮询（终态即停）→ watch(step.status) 兜底
@@ -49,7 +49,7 @@ const summary = computed(() => {
   const parts = [
     `章节 ${m.selected ?? chapters.value.length}/${m.total ?? chapters.value.length}`,
   ]
-  // [M25·G6] 多部合并摘要：N 部 · M 章
+  // 多部合并摘要：N 部 · M 章
   if (m.per_source && m.books?.length)
     parts.unshift(
       `${m.books.length} 部 · ${m.total ?? chapters.value.length} 章`,
@@ -273,7 +273,7 @@ async function openAsset(assetId: number) {
         </div>
       </div>
 
-      <!-- 段② 事件图谱（M26 拆分：./NovelGraphView.vue） -->
+      <!-- 段② 事件图谱（拆至：./NovelGraphView.vue） -->
       <NovelGraphView :board="board" @reload="load" />
 
       <!-- 段③ 分集规划 -->
@@ -480,7 +480,7 @@ async function openAsset(assetId: number) {
   border-top: none;
 }
 
-/* [M25·G6] 章节表：per_source 时加「部」列 */
+/* 章节表：per_source 时加「部」列 */
 .nb-table.ch .nb-tr {
   grid-template-columns: 36px minmax(0, 1fr) 92px 52px 64px;
 }
@@ -676,5 +676,5 @@ async function openAsset(assetId: number) {
   }
 }
 
-/* ---------- [M25·G3] SVG 选中事件高亮、视图切换、事件编辑表单已随段② 迁至 ./NovelGraphView.vue ---------- */
+/* ---------- SVG 选中事件高亮、视图切换、事件编辑表单已随段② 迁至 ./NovelGraphView.vue ---------- */
 </style>

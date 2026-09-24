@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M36·G12.2 / G12.3] 合规词库视图 + 补充建议采纳
+ * 合规词库视图 + 补充建议采纳
  * - 词库只读视图：GET /compliance/rules（source='file' 在位 / 'builtin' 缺失兜底基准地板）
  * - 补充建议（Tier B）：从既有已付费复审结论聚合候选新词（零新 LLM 计费），勾选后一键追加进词库
  * 不猜测/保留人工：建议一律 warn 起步（升 block 属法务判断）；追加只增不覆盖、去重。
@@ -108,7 +108,7 @@ onMounted(async () => {
       <div class="panel cp-view">
         <div class="cp-header">
           <h3><Icon name="check" :size="15" /> 合规词库</h3>
-          <!-- [M37·G13] 统一徽标：仅兜底时提示（用户自有词库非「自动值」，不加噪） -->
+          <!-- 统一徽标：仅兜底时提示（用户自有词库非「自动值」，不加噪） -->
           <ProvenanceBadge
             v-if="view?.source === 'builtin'"
             kind="builtin"

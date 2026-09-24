@@ -24,7 +24,7 @@ import { RunCancelledError, StepError } from './types'
 
 const log = createLogger('engine')
 
-/** [M4] run 终态监听（batch pump 挂钩点）；listener 异常隔离，不影响引擎主流程 */
+/** run 终态监听（batch pump 挂钩点）；listener 异常隔离，不影响引擎主流程 */
 type SettledListener = (runId: number) => void
 const settledListeners = new Set<SettledListener>()
 
@@ -44,7 +44,7 @@ function notifySettled(runId: number): void {
 
 const now = (): number => Date.now()
 
-// ===== [M21 C6] 全局并发上限（settings 'concurrency' → env → 默认 3；1–6 clamp） =====
+// ===== 全局并发上限（settings 'concurrency' → env → 默认 3；1–6 clamp） =====
 
 const DEFAULT_GLOBAL_MAX = 3
 const GLOBAL_MAX_RANGE = { lo: 1, hi: 6 } as const
@@ -94,12 +94,12 @@ export function currentGlobalMax(): number {
 interface StepOutputDoc {
   asset_ids: number[]
   gate?: { decision: 'approve' | 'reject'; note?: string; at: number }
-  /** [M2] 跳过痕迹：user_skip=免审放行（产物保留）/ upstream_skipped=依赖全跳过 / when_condition=条件不满足 */
+  /** 跳过痕迹：user_skip=免审放行（产物保留）/ upstream_skipped=依赖全跳过 / when_condition=条件不满足 */
   skipped?: { reason: 'user_skip' | 'upstream_skipped' | 'when_condition'; note?: string; at: number }
 }
 
 /**
- * M2 流水线引擎（spec §3.2 DAG 调度语义）：
+ * 流水线引擎（spec §3.2 DAG 调度语义）：
  *   run:  queued → running → { waiting_input | completed | failed | cancelled }
  *   step: pending → running → waiting_input | succeeded | skipped | failed | cancelled
  * 执行链为「单飞 + 就绪集并发（≤2）」：步骤默认依赖前一步（after 可改）；
@@ -108,14 +108,14 @@ interface StepOutputDoc {
  */
 class PipelineEngine {
   private active = new Set<number>()
-  /** [M21 C6] 全局补位泵防重入（同刻至多一轮） */
+  /** 全局补位泵防重入（同刻至多一轮） */
   private pumpingGlobal = false
 
   isRunning(runId: number): boolean {
     return this.active.has(runId)
   }
 
-  /** [M21 C6] 当前活跃执行数（全局闸门观察点） */
+  /** 当前活跃执行数（全局闸门观察点） */
   activeCount(): number {
     return this.active.size
   }
@@ -125,7 +125,7 @@ class PipelineEngine {
    * - 跳过 succeeded 步骤（断点续跑语义）
    * - 遇 waiting_input 步骤（他人工闸）→ 挂起等待
    * - 遇 pending/failed 步骤 → 从该处恢复执行
-   * [M21 C6] 三态返回：'running'=已在 active（幂等吸收）；'deferred'=全局闸门已满
+   * 三态返回：'running'=已在 active（幂等吸收）；'deferred'=全局闸门已满
    * （异步将该 run 归一到 queued，等 pumpGlobal 补位）；'started'=本次真正启动。
    */
   startRun(runId: number): 'started' | 'deferred' | 'running' {
@@ -141,7 +141,7 @@ class PipelineEngine {
     return 'started'
   }
 
-  /** [M21 C6] defer 归一：仅 running/waiting_input/queued → queued（不触碰终态；与用户 cancel 并发安全） */
+  /** defer 归一：仅 running/waiting_input/queued → queued（不触碰终态；与用户 cancel 并发安全） */
   private async normalizeToQueued(runId: number): Promise<void> {
     try {
       await db
@@ -154,7 +154,7 @@ class PipelineEngine {
   }
 
   /**
-   * [M21 C6] 全局并发补位泵（防重入）：挑 `queued AND batch_id IS NULL` 的 run（createdAt ASC）
+   * 全局并发补位泵（防重入）：挑 `queued AND batch_id IS NULL` 的 run（createdAt ASC）
    * 补足 max − active 槽位；批内 queued run 不归本泵（保持 batchSeq 序由 batch.ts pump 管）。
    * 触发点：runChain 结束 / 启动恢复后 / 30s 定时兜底。
    */
@@ -303,7 +303,7 @@ class PipelineEngine {
       .update(genTasks)
       .set({ status: 'cancelled', errorMsg: 'run cancelled', completedAt: t, updatedAt: t })
       .where(and(eq(genTasks.runId, runId), inArray(genTasks.status, ['pending', 'processing'])))
-    // [M4] 取消即终态：直接通知（覆盖 queued 等无活跃执行链的 run；与 runChain finally 的
+    // 取消即终态：直接通知（覆盖 queued 等无活跃执行链的 run；与 runChain finally 的
     // 重复通知幂等无害——pump 每轮重算）
     notifySettled(runId)
   }
@@ -319,7 +319,7 @@ class PipelineEngine {
     try {
       const run0 = await this.requireRun(runId)
       if (['completed', 'cancelled', 'failed'].includes(run0.status)) return
-      // [M2] 模板来源优先 run 快照（模板在线修改不影响续跑语义；存量 run 回退文件加载）
+      // 模板来源优先 run 快照（模板在线修改不影响续跑语义；存量 run 回退文件加载）
       const template = templateForRun(run0)
       const orderByKey = new Map(template.steps.map((s, i) => [s.key, i] as const))
       const projectSettings = await this.loadProjectSettings(run0.projectId)
@@ -484,13 +484,13 @@ class PipelineEngine {
       emitStudioEvent({ type: 'run.failed', runId, stepKey: '', error: msg })
     } finally {
       this.active.delete(runId)
-      // [M4] 终态通知（单点）：覆盖全部收敛出口——allDone 完成、失败收敛、链级兜底 catch、
+      // 终态通知（单点）：覆盖全部收敛出口——allDone 完成、失败收敛、链级兜底 catch、
       // executeStep 失败（置 run failed 后循环顶部 break）、调度停滞防御、RunCancelledError。
       // 查库判定而非按分支埋点：waiting_input（gate 挂起）不是终态，不通知。
       void this.settleIfTerminal(runId).catch((err) =>
         log.warn(`run ${runId} settle 通知失败`, { error: (err as Error).message }),
       )
-      // [M21 C6] 槽位释放 → 全局补位（下一批 queued run 自动启动）
+      // 槽位释放 → 全局补位（下一批 queued run 自动启动）
       void this.pumpGlobal()
     }
   }
@@ -535,9 +535,9 @@ class PipelineEngine {
     const runInput = JSON.parse(run.input) as Record<string, unknown>
     try {
       if ((await this.requireRun(run.id)).status === 'cancelled') throw new RunCancelledError()
-      // [M2] 依赖产物快照（when 求值与 input 引用解析共用；依赖已由调度器保证终态）
+      // 依赖产物快照（when 求值与 input 引用解析共用；依赖已由调度器保证终态）
       const stepOutputs = await loadStepOutputs(run.id)
-      // [M2] when/when_any 条件：不满足 → skipped（不占重试、不触发 gate）
+      // when/when_any 条件：不满足 → skipped（不占重试、不触发 gate）
       if (!evaluateWhen(def.when, def.when_any, { runInput, stepOutputs })) {
         await this.markStepSkipped(step, 'when_condition')
         log.info(`run ${run.id} step ${def.key} 条件不满足，已跳过`)
@@ -571,14 +571,14 @@ class PipelineEngine {
       const action = getAction(def.action)
       const result: StepResult = await action(ctx)
 
-      // [M4] 动作执行期间可能收到取消（cancelRun 已置 run/steps 为 cancelled）：动作不可中断，
+      // 动作执行期间可能收到取消（cancelRun 已置 run/steps 为 cancelled）：动作不可中断，
       // 但完成后不得盲写 succeeded/waiting_input 覆盖终态——否则 run 卡死非终态、批次不收敛
       if ((await this.requireRun(run.id)).status === 'cancelled') throw new RunCancelledError()
 
       ctx.log(`步骤完成，产物资产 ${result.assetIds.length} 个`)
 
       const output: StepOutputDoc = { asset_ids: result.assetIds }
-      // [M2] gate 条件门：gate.when 不满足 → 免审直过（正常 succeeded 不挂起）
+      // gate 条件门：gate.when 不满足 → 免审直过（正常 succeeded 不挂起）
       const gateHang = !!def.gate && (!review || def.gate.reject === 'stop') && this.gateShouldHang(def, runInput, stepOutputs)
 
       if (gateHang) {
@@ -629,7 +629,7 @@ class PipelineEngine {
     }
   }
 
-  /** [M4] run 已终态（completed/failed/cancelled）→ 通知监听者；其余状态静默 */
+  /** run 已终态（completed/failed/cancelled）→ 通知监听者；其余状态静默 */
   private async settleIfTerminal(runId: number): Promise<void> {
     const rows = await db
       .select({ status: pipelineRuns.status })
@@ -654,7 +654,7 @@ class PipelineEngine {
     }
   }
 
-  /** [M2] gate 是否应挂起审阅：gate.when 未声明或满足 → 挂起；不满足 → 免审直过 */
+  /** gate 是否应挂起审阅：gate.when 未声明或满足 → 挂起；不满足 → 免审直过 */
   private gateShouldHang(
     def: TemplateStepDef,
     runInput: Record<string, unknown>,
@@ -715,7 +715,7 @@ export async function recoverInterruptedState(): Promise<{ requeued: number[] }>
       })
       .where(eq(pipelineRuns.id, run.id))
   }
-  // [M4] 批内 queued run 不在此 requeue——由 reconcileBatches 按槽位约束推进（防恢复瞬间绕过批内并发限制）
+  // 批内 queued run 不在此 requeue——由 reconcileBatches 按槽位约束推进（防恢复瞬间绕过批内并发限制）
   const queued = await db
     .select({ id: pipelineRuns.id })
     .from(pipelineRuns)

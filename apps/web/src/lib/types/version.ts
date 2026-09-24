@@ -1,4 +1,4 @@
-// [M29·R02] 内容/参考版本与下游影响追踪的前端领域类型（与 routes/versions.ts 响应对齐）
+// 内容/参考版本与下游影响追踪的前端领域类型（与 routes/versions.ts 响应对齐）
 import type { Asset } from './base'
 
 export type VersionPayloadKind = 'file' | 'json'

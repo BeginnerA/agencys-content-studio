@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasPalette；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasPalette；依赖显式注入，原函数体保持不变。 */
 import type { Asset, EntityItem } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasCommands } from './use-canvas-commands'
@@ -46,7 +46,7 @@ export function useCanvasPalette(deps: Dependencies) {
     }
   }
 
-  /** [M17] 实体 Tab：类型标签 + 拖入 / 单击送至视口中心（建 entity 节点） */
+  /** 实体 Tab：类型标签 + 拖入 / 单击送至视口中心（建 entity 节点） */
   const ENT_KIND_TEXT: Record<EntityItem['kind'], string> = {
     character: '角色',
     scene: '场景',

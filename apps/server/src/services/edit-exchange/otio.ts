@@ -1,5 +1,5 @@
 /**
- * [M50] OTIO JSON 格式化器（Resolve / 程序化管线）——纯函数，探针可直测。
+ * OTIO JSON 格式化器（Resolve / 程序化管线）——纯函数，探针可直测。
  * 五轨固定：Video（V1 镜头序）/ Dialogue Audio（逐句配音）/ Music（BGM）/ Effects（SFX）/ Markdown（字幕）。
  * 坐标：segments/lines 为内容轴 → +introSec 落绝对轴；sfx.startSec 已绝对轴。
  * 时间值统一 RationalTime（rate=fps，value=帧），轨道内用 Gap 对齐留白。

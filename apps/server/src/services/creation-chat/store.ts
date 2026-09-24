@@ -46,7 +46,7 @@ export async function creationDetail(id: number) {
       runId: session.runId, runHistory: parseJson(session.runHistory, []), error: session.error,
       initialDraft: initial?.success && initial.data.deferPlanning ? { content: initial.data.content, requestKey: initial.data.requestKey } : null,
       createdAt: session.createdAt, updatedAt: session.updatedAt, projectDeleted: !project || project.deletedAt !== null,
-      // [M40] 立项预览：未转正项目以 draft 影子态存在（不进项目列表），确认时才写入完整信息并转正
+      // 立项预览：未转正项目以 draft 影子态存在（不进项目列表），确认时才写入完整信息并转正
       project: project
         ? {
             id: project.id, name: project.name, genre: project.genre, templateKey: project.templateKey,
@@ -72,7 +72,7 @@ export async function listCreationSessions() {
   return Promise.all(rows.map(async ({ session, name, run }) => ({
     id: session.id, projectId: session.projectId, name, status: session.status, runId: session.runId, updatedAt: session.updatedAt,
     runStatus: run?.projectId !== session.projectId ? null : run.status === 'completed' ? (await runProjection(session, run)).progress.status : run.status,
-    // [M31+] 「待确认」须真的可确认：status=ready 但预检未过（缺配置/超预算）时置 false，前端据此改显「待完善配置」，不再误导
+    // 「待确认」须真的可确认：status=ready 但预检未过（缺配置/超预算）时置 false，前端据此改显「待完善配置」，不再误导
     confirmable: session.status === 'ready' && parseJson<{ ready?: boolean } | null>(session.preflight, null)?.ready === true,
   })))
 }

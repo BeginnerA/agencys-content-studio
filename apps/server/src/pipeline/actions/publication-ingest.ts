@@ -117,7 +117,7 @@ export async function publicationIngest(ctx: StepContext): Promise<StepResult> {
     for (const rn of runs) runMap.set(rn.id, { templateKey: rn.templateKey, input: rn.input })
   }
 
-  // [整改] 抓取发布正文：来源 run 的发布稿文本资产（publish 稿 > 其它 export > script 主稿）
+  // 抓取发布正文：来源 run 的发布稿文本资产（publish 稿 > 其它 export > script 主稿）
   const contentByRun = new Map<number, { name: string; title: string; body: string }>()
   if (runIds.length > 0) {
     const candRows = await db
@@ -189,7 +189,7 @@ export async function publicationIngest(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // [整改] 发布正文节：让复盘 AI 看到「实际发了什么内容」，标题模式/内容维度分析才有效
+  // 发布正文节：让复盘 AI 看到「实际发了什么内容」，标题模式/内容维度分析才有效
   const contentRows = ordered
     .map((r) => ({ r, c: r.runId ? contentByRun.get(r.runId) : undefined }))
     .filter((x): x is { r: Publication; c: { name: string; title: string; body: string } } => Boolean(x.c))

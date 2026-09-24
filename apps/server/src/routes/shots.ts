@@ -1,9 +1,9 @@
 /**
- * [M7] 镜头级轻工作台路由（spec §3.2）
+ * 镜头级轻工作台路由（spec §3.2）
  * - 服务层只改 DB，engine.startRun 在此同步调用（对齐 tasks.ts retry 手法）
  * - WorkbenchError → HttpError（状态码透传）；不触发执行的端点（edit / select / mutate / upload）不启动引擎
- * [M10] +mutate（结构性编辑：reorder/add/remove/patch）/ +upload（上传替换：multipart）
- * [M11] wb 提取至 helpers 共用（compose/runs 路由接入；行为零变化）
+ * +mutate（结构性编辑：reorder/add/remove/patch）/ +upload（上传替换：multipart）
+ * wb 提取至 helpers 共用（compose/runs 路由接入；行为零变化）
  */
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -128,7 +128,7 @@ shotsRoutes.post('/runs/:id/shots/upload', h(async (c) => {
   }, 201)
 }))
 
-// POST /runs/:id/shots/cleanup —— [M12] 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行）
+// POST /runs/:id/shots/cleanup —— 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行）
 shotsRoutes.post('/runs/:id/shots/cleanup', h(async (c) => {
   const runId = idParam(c)
   const body = await bodyJson(c)

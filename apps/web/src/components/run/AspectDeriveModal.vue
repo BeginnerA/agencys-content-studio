@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M19] 成片多画幅派生弹窗（spec §2.3 ⑤ A 路径：POST /runs/:id/derive-aspect）
+ * 成片多画幅派生弹窗（spec §2.3 ⑤ A 路径：POST /runs/:id/derive-aspect）
  * - 源 = 本 run 最新 final_video（无成片 → 空态 + 生成禁用）
  * - 画幅四选（与源同比例者置灰）+ 策略 crop/pad；目标尺寸为前端镜像预览，真实尺寸服务端计算
  * - 已派生列表：A 路径件按 params.source_asset_id 命中本源成片，B 路径（合成内原生）件本就在 run 产物内

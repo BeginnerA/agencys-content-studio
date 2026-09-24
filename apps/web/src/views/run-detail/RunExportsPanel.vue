@@ -8,7 +8,7 @@ const { showExport, exportsList, runAssets, removeExport } = props.e
 </script>
 
 <template>
-  <!-- [M4] 导出包（purpose=export 资产） -->
+  <!-- 导出包（purpose=export 资产） -->
   <div class="panel mini">
     <div class="lhead">
       <span class="lt">导出包</span>
@@ -38,7 +38,7 @@ const { showExport, exportsList, runAssets, removeExport } = props.e
 </template>
 
 <style scoped>
-/* [M4] 右栏辅助面板（成本 / 导出包 / 发布记录） */
+/* 右栏辅助面板（成本 / 导出包 / 发布记录） */
 .mini {
   padding: 10px 14px;
 }

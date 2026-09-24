@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：输入规划（入边→端口输入）+ 显示任务决策 + 执行时输入装载。
+// 自 services/creation.ts 拆分：输入规划（入边→端口输入）+ 显示任务决策 + 执行时输入装载。
 import { readFileSync } from 'node:fs'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
@@ -20,8 +20,8 @@ import {
 /**
  * 输入计划 v3（纯函数）：入边 → 各端口输入资产/文本 + 问题清单 + 宽容提示。
  * 语义 = 引用快照（采纳优先）：执行时取上游「采纳产物（有效时）或最新成功产物」；
- * [M17] 扩展：prompt 端口（text 节点内容）、video/audio 端口（compose 输入）、entity 源（refAssetIds 展开截断）；
- * [M18] 扩展：text 端口（llm 素材文本 ≤4 段）。
+ * 扩展：prompt 端口（text 节点内容）、video/audio 端口（compose 输入）、entity 源（refAssetIds 展开截断）；
+ * 扩展：text 端口（llm 素材文本 ≤4 段）。
  */
 export function planNodeInputs(
   spec: NodeSpec,
@@ -62,7 +62,7 @@ export function planNodeInputs(
       const cap = (REF_CAP as Record<string, number>)[spec.genKind] ?? 0
       const up = upstream.get(e.from)
       if (up?.refAssetIds != null) {
-        // [M17] entity 节点：展开参考图集（受 cap 截断，记 notes）
+        // entity 节点：展开参考图集（受 cap 截断，记 notes）
         let truncated = 0
         for (const rid of up.refAssetIds) {
           if (plan.referenceAssetIds.length >= cap) {
@@ -72,7 +72,7 @@ export function planNodeInputs(
           plan.referenceAssetIds.push(rid)
         }
         if (truncated > 0) plan.notes.push(`实体参考图超上限 ${cap} 张，已截断 ${truncated} 张`)
-        // [M29] 实体溯源：记录贡献参考图的实体 id（去重）
+        // 实体溯源：记录贡献参考图的实体 id（去重）
         if (up.entityId != null && !plan.entitySources.includes(up.entityId)) plan.entitySources.push(up.entityId)
         continue
       }
@@ -124,12 +124,12 @@ export function planNodeInputs(
         continue
       }
       plan.promptText = t.trim()
-      // [M29] prompt 来源溯源（背后资产 id；内联 text 节点 assetId=null）
+      // prompt 来源溯源（背后资产 id；内联 text 节点 assetId=null）
       plan.promptSource = { nodeId: e.from, assetId: upP?.assetId ?? null }
       continue
     }
     if (e.port === 'text') {
-      // [M18] text 端口：llm 素材文本（≤4 段；空文本 → problem）
+      // text 端口：llm 素材文本（≤4 段；空文本 → problem）
       if (spec.genKind !== 'llm') {
         plan.problems.push('文本素材连线仅 LLM 节点可用')
         continue
@@ -145,7 +145,7 @@ export function planNodeInputs(
         continue
       }
       plan.textInputs.push(t.trim())
-      // [M29] text 素材来源溯源（与 textInputs 同序）
+      // text 素材来源溯源（与 textInputs 同序）
       plan.textSources.push({ nodeId: e.from, assetId: upT?.assetId ?? null })
       continue
     }
@@ -205,7 +205,7 @@ export function planNodeInputs(
 }
 
 /**
- * [M17] 显示/引用任务决策（纯函数）：采纳有效（属本节点 + succeeded + 有产物）→ 该任务；否则最新成功；无 → null。
+ * 显示/引用任务决策（纯函数）：采纳有效（属本节点 + succeeded + 有产物）→ 该任务；否则最新成功；无 → null。
  * 节点对外引用（下游输入）与节点显示（画廊当前）同源。
  */
 export function pickDisplayTask<T extends { id: number; status: string; resultAssetId: number | null }>(
@@ -219,7 +219,7 @@ export function pickDisplayTask<T extends { id: number; status: string; resultAs
   return tasksDesc.find((t) => t.status === 'succeeded' && t.resultAssetId != null) ?? null
 }
 
-/** 执行时输入计划 v3（实时解析：采纳优先；text/entity 上游展开；[M18] llm 产物文本装载；供 creation-gen 调用） */
+/** 执行时输入计划 v3（实时解析：采纳优先；text/entity 上游展开； llm 产物文本装载；供 creation-gen 调用） */
 export async function loadInputPlan(
   node: CanvasNode,
   incoming: Array<{ from: number; to: number; port: string }>,
@@ -271,14 +271,14 @@ export async function loadInputPlan(
         displayAssetByNode.set(r.id, disp.resultAssetId)
       }
     }
-    // [M29] 锁版：预载 pin 指向的资产（可能非当前显示产物），供上游节点覆盖解析
+    // 锁版：预载 pin 指向的资产（可能非当前显示产物），供上游节点覆盖解析
     const pinMap = spec.pin ?? {}
     for (const v of Object.values(pinMap)) {
       if (Number.isInteger(v) && v > 0) assetIds.add(v)
     }
     const assetRows = assetIds.size ? await db.select().from(assets).where(inArray(assets.id, [...assetIds])) : []
     const assetById = new Map(assetRows.map((a) => [a.id, a]))
-    // [M29] 锁版生效判定：pin 指向的资产须存在且属本项目，否则忽略该 pin（回落最新/采纳）
+    // 锁版生效判定：pin 指向的资产须存在且属本项目，否则忽略该 pin（回落最新/采纳）
     const pinnedAssetId = (nodeId: number): number | null => {
       const raw = pinMap[String(nodeId)]
       if (raw == null) return null
@@ -295,7 +295,7 @@ export async function loadInputPlan(
         const rid = pinned ?? displayAssetByNode.get(r.id)
         const a = rid != null ? assetById.get(rid) : undefined
         const up: UpstreamInfo = { assetId: a?.id ?? null, mediaKind: a?.kind ?? null }
-        // [M18] llm 产物文本装载：prompt/text 端口源侧取正文（文件缺失 → text 留空，planNodeInputs 报「暂无文本」）
+        // llm 产物文本装载：prompt/text 端口源侧取正文（文件缺失 → text 留空，planNodeInputs 报「暂无文本」）
         if (a?.kind === 'text' && a.relPath) {
           try {
             up.text = readFileSync(absPathOf(a.relPath), 'utf8')

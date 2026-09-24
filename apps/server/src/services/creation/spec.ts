@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：节点规格常量/类型与解析校验纯函数（导出面冻结）。
+// 自 services/creation.ts 拆分：节点规格常量/类型与解析校验纯函数（导出面冻结）。
 import { TRANSITIONS } from '../compose-config'
 
 // ---------- 常量与类型 ----------
@@ -6,7 +6,7 @@ import { TRANSITIONS } from '../compose-config'
 export const NODE_KINDS = ['asset', 'gen', 'text', 'entity', 'run'] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
 
-/** [M17/M18] gen 节点生成类型（audio=配音；compose=视频合成；llm=文本处理/图生文） */
+/** gen 节点生成类型（audio=配音；compose=视频合成；llm=文本处理/图生文） */
 export const GEN_KINDS = ['image', 'video', 'audio', 'compose', 'llm'] as const
 export type GenKind = (typeof GEN_KINDS)[number]
 
@@ -16,20 +16,20 @@ export type EdgePort = (typeof EDGE_PORTS)[number]
 export const EDIT_MODES = ['inpaint', 'erase', 'outpaint'] as const
 export type EditMode = (typeof EDIT_MODES)[number]
 
-/** 参考图端口容量（图片 ≤6 / 视频 ≤2 / [M18] llm ≤4；镜像 ai_image / ai_video 单镜参考图上限） */
+/** 参考图端口容量（图片 ≤6 / 视频 ≤2 / llm ≤4；镜像 ai_image / ai_video 单镜参考图上限） */
 export const REF_CAP: Record<'image' | 'video' | 'llm', number> = { image: 6, video: 2, llm: 4 }
 
-/** [M18] LLM 节点 text 端口（素材文本）上限 */
+/** LLM 节点 text 端口（素材文本）上限 */
 export const LLM_TEXT_CAP = 4
 
-/** [M17] 合成节点单端口输入上限（video / audio 各 ≤4） */
+/** 合成节点单端口输入上限（video / audio 各 ≤4） */
 export const COMPOSE_CAP = 4
 
-/** [M22] 字幕模式（compose：none=不出字幕 / auto=音轨文本自动生成 / asset=已有 SRT 资产重钉） */
+/** 字幕模式（compose：none=不出字幕 / auto=音轨文本自动生成 / asset=已有 SRT 资产重钉） */
 export const SUBTITLE_MODES = ['none', 'auto', 'asset'] as const
 export type SubtitleMode = (typeof SUBTITLE_MODES)[number]
 
-/** [M22] 对齐时画面适配（compose：pad=信箱补边（现状零漂移）/ crop=裁切满幅） */
+/** 对齐时画面适配（compose：pad=信箱补边（现状零漂移）/ crop=裁切满幅） */
 export const COMPOSE_FITS = ['pad', 'crop'] as const
 export type ComposeFit = (typeof COMPOSE_FITS)[number]
 
@@ -46,68 +46,68 @@ export interface NodeSpec {
   duration?: number
   resolution?: string
   aspectRatio?: string
-  /** [M17] 输出帧率（仅 compose 有意义） */
+  /** 输出帧率（仅 compose 有意义） */
   fps?: number
-  /** [M18] 转场 token（仅 compose；TRANSITIONS 枚举） */
+  /** 转场 token（仅 compose；TRANSITIONS 枚举） */
   transition?: string
-  /** [M18] 转场时长秒（仅 compose，0.1-2，默认 0.5） */
+  /** 转场时长秒（仅 compose，0.1-2，默认 0.5） */
   transitionDuration?: number
-  /** [M18] BGM 资产 id（仅 compose；须属本项目 audio 资产） */
+  /** BGM 资产 id（仅 compose；须属本项目 audio 资产） */
   bgmAssetId?: number
-  /** [M18] BGM 音量（仅 compose，0-1，默认 0.5） */
+  /** BGM 音量（仅 compose，0-1，默认 0.5） */
   bgmVolume?: number
-  /** [M18] BGM 首尾淡入淡出（仅 compose，默认 true） */
+  /** BGM 首尾淡入淡出（仅 compose，默认 true） */
   bgmFade?: boolean
-  /** [M22] 音字对齐（仅 compose，默认 false；video[i]↔audio[i] 边序配对，段时长=max，短段冻帧/静音补齐） */
+  /** 音字对齐（仅 compose，默认 false；video[i]↔audio[i] 边序配对，段时长=max，短段冻帧/静音补齐） */
   align?: boolean
-  /** [M22] 字幕模式（仅 compose，默认 'none'） */
+  /** 字幕模式（仅 compose，默认 'none'） */
   subtitle?: SubtitleMode
-  /** [M22] 字幕资产 id（subtitle='asset'：已有 SRT 资产，存在性校验在服务层——bgmAssetId 先例） */
+  /** 字幕资产 id（subtitle='asset'：已有 SRT 资产，存在性校验在服务层——bgmAssetId 先例） */
   subtitleAssetId?: number
-  /** [M22] 烧录字幕（仅 compose，默认 false——缺省仅生成 SRT 资产） */
+  /** 烧录字幕（仅 compose，默认 false——缺省仅生成 SRT 资产） */
   burnSubtitles?: boolean
-  /** [M22] 对齐画面适配（仅 compose，默认 'pad'） */
+  /** 对齐画面适配（仅 compose，默认 'pad'） */
   fit?: ComposeFit
-  /** [M17] 声线令牌（仅 audio；全 ASCII 供应商枚举，语义短语经 resolveVoiceChain 降级） */
+  /** 声线令牌（仅 audio；全 ASCII 供应商枚举，语义短语经 resolveVoiceChain 降级） */
   voice?: string
-  /** [M17] 语速（仅 audio，0.25-4） */
+  /** 语速（仅 audio，0.25-4） */
   speed?: number
   /** 情绪透传（仅 audio）：完整 emotion hint（`基调词——六维细节`）；仅当 audio 实例 extra 声明 emotion_param 时下发 */
   emotion?: string
   provider?: string
   model?: string
-  /** [M18] LLM 温度（仅 llm，0-2，默认 0.8） */
+  /** LLM 温度（仅 llm，0-2，默认 0.8） */
   temperature?: number
-  /** [M18] LLM 输出预算 tokens（仅 llm，1-128000，默认 12000） */
+  /** LLM 输出预算 tokens（仅 llm，1-128000，默认 12000） */
   maxTokens?: number
   useStylePreset?: boolean
   edit?: NodeSpecEdit
   /**
-   * [M29·R02] 锁版：上游节点 id（字符串键）→ 锁定的输入资产 id（下次执行强制用该资产，无视采纳/最新切换）。
+   * 锁版：上游节点 id（字符串键）→ 锁定的输入资产 id（下次执行强制用该资产，无视采纳/最新切换）。
    * 语义独立于 adoptedTaskId（选片）；缺省（无键）走最新/采纳。加法字段，旧 spec 无此键行为不变。
    */
   pin?: Record<string, number>
 }
 
-/** [M17] kind=text：提示词/文案节点 */
+/** kind=text：提示词/文案节点 */
 export interface TextSpec {
   text: string
 }
 
-/** [M17] kind=entity：实体参考直通（characters 行） */
+/** kind=entity：实体参考直通（characters 行） */
 export interface EntitySpec {
   entityId: number
 }
 
-/** [M17] kind=run：内嵌运行（pipeline_runs 行，须属同项目） */
+/** kind=run：内嵌运行（pipeline_runs 行，须属同项目） */
 export interface RunSpec {
   runId: number
 }
 
-/** [M17] 读模型节点 spec 联合（按 kind 分派解析） */
+/** 读模型节点 spec 联合（按 kind 分派解析） */
 export type AnyNodeSpec = NodeSpec | TextSpec | EntitySpec | RunSpec
 
-/** [M17] spec 类型守卫：是否 gen 规范（含 genKind 字段） */
+/** spec 类型守卫：是否 gen 规范（含 genKind 字段） */
 export function isGenSpec(s: unknown): s is NodeSpec {
   return !!s && typeof s === 'object' && typeof (s as Record<string, unknown>)['genKind'] === 'string'
 }
@@ -151,11 +151,11 @@ export interface EditCapability {
 export interface UpstreamInfo {
   assetId: number | null
   mediaKind: string | null
-  /** [M17] text 节点：提示词内容 */
+  /** text 节点：提示词内容 */
   text?: string | null
-  /** [M17] entity 节点：参考资产 id 集（执行时按 REF_CAP 截断展开） */
+  /** entity 节点：参考资产 id 集（执行时按 REF_CAP 截断展开） */
   refAssetIds?: number[] | null
-  /** [M29] entity 节点：背后实体 id（供参考图实体版本溯源） */
+  /** entity 节点：背后实体 id（供参考图实体版本溯源） */
   entityId?: number | null
 }
 
@@ -164,26 +164,26 @@ export interface InputPlan {
   firstFrameAssetId: number | null
   lastFrameAssetId: number | null
   sourceAssetId: number | null
-  /** [M17] prompt 端口（text 节点内容；非 null 时覆盖 spec.prompt） */
+  /** prompt 端口（text 节点内容；非 null 时覆盖 spec.prompt） */
   promptText: string | null
-  /** [M17] compose 视频输入（边创建序） */
+  /** compose 视频输入（边创建序） */
   videoAssetIds: number[]
-  /** [M17] compose 音频输入（边创建序） */
+  /** compose 音频输入（边创建序） */
   audioAssetIds: number[]
-  /** [M18] text 端口（llm 素材文本，边创建序 ≤4） */
+  /** text 端口（llm 素材文本，边创建序 ≤4） */
   textInputs: string[]
-  /** [M29] prompt 端口来源（节点 id + 背后资产 id；内联 text 节点 assetId=null） */
+  /** prompt 端口来源（节点 id + 背后资产 id；内联 text 节点 assetId=null） */
   promptSource: { nodeId: number; assetId: number | null } | null
-  /** [M29] text 端口素材来源（与 textInputs 同序；节点 id + 背后资产 id） */
+  /** text 端口素材来源（与 textInputs 同序；节点 id + 背后资产 id） */
   textSources: Array<{ nodeId: number; assetId: number | null }>
-  /** [M29] 参考图来源实体 id（entity 节点展开去重；供实体版本溯源） */
+  /** 参考图来源实体 id（entity 节点展开去重；供实体版本溯源） */
   entitySources: number[]
   problems: string[]
-  /** [M17] 宽容提示（实体截断等；不阻断执行） */
+  /** 宽容提示（实体截断等；不阻断执行） */
   notes: string[]
 }
 
-/** [M17] 结果画廊条目（最近成功 ≤12） */
+/** 结果画廊条目（最近成功 ≤12） */
 export interface CanvasResultItem {
   taskId: number
   assetId: number
@@ -191,7 +191,7 @@ export interface CanvasResultItem {
   createdAt: number
 }
 
-/** [M17] entity 节点实体摘要 */
+/** entity 节点实体摘要 */
 export interface CanvasEntityInfo {
   id: number
   name: string
@@ -200,7 +200,7 @@ export interface CanvasEntityInfo {
   asset: AssetLite | null
 }
 
-/** [M17] run 节点运行摘要（pipeline_runs + steps 计数） */
+/** run 节点运行摘要（pipeline_runs + steps 计数） */
 export interface CanvasRunInfo {
   id: number
   templateKey: string
@@ -216,35 +216,35 @@ export interface CanvasDocNode {
   x: number
   y: number
   title: string
-  /** [M17] 故事板序号（1 起；null = 未编号） */
+  /** 故事板序号（1 起；null = 未编号） */
   seq?: number | null
-  /** [M18] 成组归属（canvas_groups.id；null=未成组） */
+  /** 成组归属（canvas_groups.id；null=未成组） */
   groupId?: number | null
   /** asset 节点：引用资产；gen 节点：显示产物（采纳优先）资产（冗余方便前端） */
   assetId: number | null
   asset: AssetLite | null
-  /** gen → NodeSpec；text → TextSpec；entity → EntitySpec；run → RunSpec；损坏 → null + specError [M17] */
+  /** gen → NodeSpec；text → TextSpec；entity → EntitySpec；run → RunSpec；损坏 → null + specError */
   spec: AnyNodeSpec | null
   specError: string | null
   /** 仅 gen：latestTask?.status ?? 'idle' */
   status: string | null
   latestTask: GenTaskLite | null
   tasks: GenTaskLite[]
-  /** [M17] 仅 gen：采纳任务 id（null = 未采纳） */
+  /** 仅 gen：采纳任务 id（null = 未采纳） */
   adoptedTaskId?: number | null
-  /** [M17] 仅 gen：显示任务 id（采纳优先派生） */
+  /** 仅 gen：显示任务 id（采纳优先派生） */
   displayTaskId?: number | null
-  /** [M17] 仅 gen：显示任务（含产物资产冗余） */
+  /** 仅 gen：显示任务（含产物资产冗余） */
   displayTask?: (GenTaskLite & { asset: AssetLite | null }) | null
-  /** [M17] 仅 gen：结果画廊（最近成功 ≤12） */
+  /** 仅 gen：结果画廊（最近成功 ≤12） */
   results?: CanvasResultItem[]
   readiness: { ready: boolean; problems: string[]; notes?: string[] } | null
   editCapability: EditCapability | null
   canRun: boolean | null
   canCancel: boolean | null
-  /** [M17] 仅 entity */
+  /** 仅 entity */
   entity?: CanvasEntityInfo | null
-  /** [M17] 仅 run */
+  /** 仅 run */
   run?: CanvasRunInfo | null
 }
 
@@ -255,7 +255,7 @@ export interface CanvasDocEdgeView {
   port: string
 }
 
-/** [M18] 画布分组视图（成员由节点 groupId 前端派生；空组用存储 x/y 显示） */
+/** 画布分组视图（成员由节点 groupId 前端派生；空组用存储 x/y 显示） */
 export interface CanvasDocGroup {
   id: number
   title: string
@@ -263,7 +263,7 @@ export interface CanvasDocGroup {
   collapsed: boolean
   x: number
   y: number
-  /** [M22] 父组 id（null=顶层；前端嵌套渲染/移组菜单依赖） */
+  /** 父组 id（null=顶层；前端嵌套渲染/移组菜单依赖） */
   parentId: number | null
 }
 
@@ -271,7 +271,7 @@ export interface CanvasDoc {
   canvas: { id: number; projectId: number; name: string; viewport: Viewport }
   nodes: CanvasDocNode[]
   edges: CanvasDocEdgeView[]
-  /** [M18] 节点分组（成组/折叠） */
+  /** 节点分组（成组/折叠） */
   groups: CanvasDocGroup[]
 }
 
@@ -282,9 +282,9 @@ export interface CanvasListItem {
   nodeCount: number
   createdAt: number
   updatedAt: number
-  /** [M18] 回收站标记（null=正常；非 null=软删时间戳） */
+  /** 回收站标记（null=正常；非 null=软删时间戳） */
   deletedAt: number | null
-  /** [M18] 列表封面：该画布最近完成 succeeded 任务的产物缩略（无 → null） */
+  /** 列表封面：该画布最近完成 succeeded 任务的产物缩略（无 → null） */
   cover: AssetLite | null
 }
 
@@ -427,7 +427,7 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
     }
     spec.edit = edit
   }
-  // [M29] pin（锁版）：{ [上游节点id字符串]: 资产id 正整数 }；空对象/缺省 → 不设置
+  // pin（锁版）：{ [上游节点id字符串]: 资产id 正整数 }；空对象/缺省 → 不设置
   if (o['pin'] !== undefined && o['pin'] !== null) {
     const pn = o['pin']
     if (typeof pn !== 'object' || Array.isArray(pn)) throw new Error('spec.pin 需为对象（节点id→资产id）')
@@ -441,7 +441,7 @@ export function parseNodeSpec(raw: unknown): NodeSpec {
   return spec
 }
 
-/** [M17] text spec 结构校验：{ text: string }（空文本属 readiness 语义） */
+/** text spec 结构校验：{ text: string }（空文本属 readiness 语义） */
 export function parseTextSpec(raw: unknown): TextSpec {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('text spec 需为对象（{ text }）')
   const o = raw as Record<string, unknown>
@@ -450,7 +450,7 @@ export function parseTextSpec(raw: unknown): TextSpec {
   return { text }
 }
 
-/** [M17] entity spec 结构校验：{ entityId: 正整数 } */
+/** entity spec 结构校验：{ entityId: 正整数 } */
 export function parseEntitySpec(raw: unknown): EntitySpec {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('entity spec 需为对象（{ entityId }）')
   const o = raw as Record<string, unknown>
@@ -459,7 +459,7 @@ export function parseEntitySpec(raw: unknown): EntitySpec {
   return { entityId: id }
 }
 
-/** [M17] run spec 结构校验：{ runId: 正整数 } */
+/** run spec 结构校验：{ runId: 正整数 } */
 export function parseRunSpec(raw: unknown): RunSpec {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('run spec 需为对象（{ runId }）')
   const o = raw as Record<string, unknown>
@@ -468,7 +468,7 @@ export function parseRunSpec(raw: unknown): RunSpec {
   return { runId: id }
 }
 
-/** [M17] 通用 spec 宽容解析：坏 JSON → { spec: null, error }（读模型防炸） */
+/** 通用 spec 宽容解析：坏 JSON → { spec: null, error }（读模型防炸） */
 function safeParseRaw<T>(raw: string | null, parse: (obj: unknown) => T): { spec: T | null; error: string | null } {
   if (!raw) return { spec: null, error: 'spec 缺失' }
   let obj: unknown
@@ -489,7 +489,7 @@ export function safeParseSpec(raw: string | null): { spec: NodeSpec | null; erro
   return safeParseRaw(raw, parseNodeSpec)
 }
 
-/** [M17] spec 宽容解析（text / entity / run） */
+/** spec 宽容解析（text / entity / run） */
 export function safeParseTextSpec(raw: string | null): { spec: TextSpec | null; error: string | null } {
   return safeParseRaw(raw, parseTextSpec)
 }
@@ -502,12 +502,12 @@ export function safeParseRunSpec(raw: string | null): { spec: RunSpec | null; er
   return safeParseRaw(raw, parseRunSpec)
 }
 
-/** spec 业务完备性（readiness 用）：结构合法但有缺失 → 问题清单（[M17] hasPromptInput：prompt 端口已供文本 → 空 prompt 不再报） */
+/** spec 业务完备性（readiness 用）：结构合法但有缺失 → 问题清单（ hasPromptInput：prompt 端口已供文本 → 空 prompt 不再报） */
 export function specProblems(spec: NodeSpec, hasPromptInput = false): string[] {
   const problems: string[] = []
   if (spec.genKind === 'compose') return problems // 输入全部来自连线；缺 video 输入由 planNodeInputs 报
   if (spec.genKind === 'llm') {
-    // [M18] 指令 = prompt 端口文本 > spec.prompt（LLM 未配置由 preflight 追加）
+    // 指令 = prompt 端口文本 > spec.prompt（LLM 未配置由 preflight 追加）
     if (!spec.prompt.trim() && !hasPromptInput) problems.push('指令为空（填写 prompt 或连接文本节点）')
     return problems
   }
@@ -539,7 +539,7 @@ export function parseViewport(raw: unknown): Viewport | null {
   return { x, y, zoom: Math.min(10, Math.max(0.1, zoom)) }
 }
 
-/** [M17] characters.refAssetIds（JSON 数组）宽容解析：非法 → [] */
+/** characters.refAssetIds（JSON 数组）宽容解析：非法 → [] */
 export function parseRefIds(raw: string | null): number[] {
   try {
     const arr: unknown = JSON.parse(raw ?? '[]')

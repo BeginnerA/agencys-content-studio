@@ -58,7 +58,7 @@ tasksRoutes.post('/tasks/:id/retry', h(async (c) => {
   const runRows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, t.runId)).limit(1)
   const run = runRows[0]
   if (!run) return notFound(c, `run ${t.runId}`)
-  // [方案C 就地核验] 轻松创作 run：「受理状态不明」任务（已提交无任务号/产物，可能已计费）默认阻断就地重试；
+  // 轻松创作 run：「受理状态不明」任务（已提交无任务号/产物，可能已计费）默认阻断就地重试；
   // 前端成本确认弹窗后带 confirm_ambiguous=true 则放行（用户显式接受可能重复计费），与 resume 委派 retryCreation 同口径。
   if (isCreationTemplate(run.templateKey) && isAmbiguousSubmitted(t)) {
     const raw = await c.req.text()
@@ -134,7 +134,7 @@ function taskView(t: typeof genTasks.$inferSelect, resultAsset: AssetSnapshot | 
     provider: t.provider,
     model: t.model,
     taskId: t.taskId, // 第三方任务 id（ai_video 轮询溯源）
-    // [方案C] 受理状态不明标记（单一真源谓词）：前端轻松创作 run 据此逐任务隐显「重试」
+    // 受理状态不明标记（单一真源谓词）：前端轻松创作 run 据此逐任务隐显「重试」
     ambiguous: isAmbiguousSubmitted(t),
     status: t.status,
     attempts: t.attempts,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 画布内编辑节（自 drawer/index.vue 的 [M23] 编辑区原样搬出，行为零变更）：
+ * 画布内编辑节（自 drawer/index.vue 的 编辑区原样搬出，行为零变更）：
  * 标题 / 输入字段本地草稿编辑；patch 经 emit('edit') 转交父级回流（受控：值经父级 useCanvasEdit overlay）。
  * v-if 守卫留在父级调用点；.sec 等布局样式子级自带一份（父级同名规则仅命中子组件根元素，内部元素需子级作用域）。
  */
@@ -11,7 +11,7 @@ const emit = defineEmits<{
   edit: [key: string, patch: StepOverride]
 }>()
 
-// ---- [M23] 编辑区输入转交（受控：值经父级 useCanvasEdit overlay 回流） ----
+// ---- 编辑区输入转交（受控：值经父级 useCanvasEdit overlay 回流） ----
 function onEditTitle(e: Event): void {
   if (!props.editNode) return
   emit('edit', props.editNode.key, {
@@ -109,7 +109,7 @@ function onEditText(fieldKey: string, e: Event): void {
   font-size: 11.5px;
 }
 
-/* ---- [M23] 画布内编辑区 ---- */
+/* ---- 画布内编辑区 ---- */
 .etag {
   font-size: 10.5px;
   color: var(--warn);

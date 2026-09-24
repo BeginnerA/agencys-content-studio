@@ -1,5 +1,5 @@
 /**
- * [M50] EDL CMX3600 格式化器（Premiere / Avid）——纯函数，探针可直测。
+ * EDL CMX3600 格式化器（Premiere / Avid）——纯函数，探针可直测。
  * 语义上限（§决策 3）：仅 V 镜头序列 + AA 旁白混音轨；转场 → 后一事件标 D（Dissolve）并附过渡时长；
  *   无字幕 / SFX / BGM 分层（EDL 表达能力上限，包内 README 声明降级面）。时码 HH:MM:SS:FF @fps（NDF）。
  */

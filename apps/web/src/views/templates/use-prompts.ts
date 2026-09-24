@@ -1,4 +1,4 @@
-/** [M28] 提示词区：列表 / 编辑 / 新建删除；refreshMetas 由装配方注入（删除后刷新模板引用态）。 */
+/** 提示词区：列表 / 编辑 / 新建删除；refreshMetas 由装配方注入（删除后刷新模板引用态）。 */
 import { computed, ref } from 'vue'
 import { promptApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'

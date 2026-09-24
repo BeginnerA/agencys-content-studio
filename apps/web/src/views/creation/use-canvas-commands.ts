@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasCommands；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasCommands；依赖显式注入，原函数体保持不变。 */
 import {
   creationApi,
   uploadFiles,
@@ -270,7 +270,7 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  /** [M17] 删除选中（快照重建逆操作；undo: POST nodes 重映射 + gen 任务认领 + POST edges + PATCH extras）
+  /** 删除选中（快照重建逆操作；undo: POST nodes 重映射 + gen 任务认领 + POST edges + PATCH extras）
    *  rethrow=true（Inspector 调用）：错误上抛、成功静默（由 Inspector 显示）；false：本地 toast */
   async function onDeleteSelected(rethrow = false): Promise<void> {
     const cid = canvasId.value
@@ -279,7 +279,7 @@ export function useCanvasCommands(deps: Dependencies) {
     const idSet = new Set(ids)
     const snap: Array<{
       oldId: number
-      /** [M17] 当前代实际节点 id（任务历史认领源；redo/undo 循环中随重建更新） */
+      /** 当前代实际节点 id（任务历史认领源；redo/undo 循环中随重建更新） */
       curId: number
       body: AddNodeBody
       title: string | null
@@ -329,7 +329,7 @@ export function useCanvasCommands(deps: Dependencies) {
         const idMap = new Map<number, number>()
         const newIds: number[] = []
         for (const s of snap) {
-          // [M17] gen 节点重建附带认领任务历史（源=curId：任务实际所在的一代 id；否则 adoptedTaskId 恢复必失败）
+          // gen 节点重建附带认领任务历史（源=curId：任务实际所在的一代 id；否则 adoptedTaskId 恢复必失败）
           const r = await creationApi.addNode(
             cid,
             s.body.kind === 'gen'
@@ -365,7 +365,7 @@ export function useCanvasCommands(deps: Dependencies) {
     })
   }
 
-  /** [M17] 复制选中（Ctrl+D：偏移 +40,+40；内部边重映射） */
+  /** 复制选中（Ctrl+D：偏移 +40,+40；内部边重映射） */
   async function onCopySelected(): Promise<void> {
     const cid = canvasId.value
     const ids = [...selectedIds.value]
@@ -398,7 +398,7 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  /** [M17] 撤销 / 重做（失败 → toast + 清栈提示；对账重拉） */
+  /** 撤销 / 重做（失败 → toast + 清栈提示；对账重拉） */
   async function onUndo(): Promise<void> {
     const label = history.undoLabel.value
     try {
@@ -424,7 +424,7 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  // ===== [M17] Inspector 写命令接线（props 回调；写操作入撤销栈，await 返回即已落库） =====
+  // ===== Inspector 写命令接线（props 回调；写操作入撤销栈，await 返回即已落库） =====
   /** 取单节点 patch 覆盖字段的当前值（表单变化判定 + 撤销逆操作源） */
   function patchCurrent(
     n: CanvasDocNode,

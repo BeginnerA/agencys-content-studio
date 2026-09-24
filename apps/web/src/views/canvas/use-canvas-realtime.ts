@@ -1,5 +1,5 @@
 /**
- * [M15] 画布页实时层（views/canvas/index.vue 拆分：M26 红线纯重构，逻辑逐字搬移）
+ * 画布页实时层（views/canvas/index.vue 拆分：纯重构，逻辑逐字搬移）
  * 350ms 防抖 + in-flight 合并对账 / runId 可切换手动 join-leave run 房间 / 抽屉日志节流拉取 / socket 订阅生命周期。
  * 依赖注入：tab、runId、drawerOpen、loadRun、loadOverview（数据层由页面提供）。
  */
@@ -73,7 +73,7 @@ export function useCanvasRealtime(opts: {
       scheduleRefresh()
     else if (tab.value === 'overview') scheduleRefresh()
   }
-  /** [M23] 批次头变更（计数/状态）→ 全景对账 */
+  /** 批次头变更（计数/状态）→ 全景对账 */
   function onBatchEvent(): void {
     if (tab.value === 'overview') scheduleRefresh()
   }

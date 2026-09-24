@@ -92,7 +92,7 @@ export const PURPOSE_TEXT: Record<string, string> = {
   storyboard: '分镜',
   shot_image: '镜头图',
   final_video: '成片',
-  // [M19] 多画幅派生产物（A 端点 / B 合成内多路）
+  // 多画幅派生产物（A 端点 / B 合成内多路）
   final_video_derived: '成片派生画幅',
   thumbnail: '封面',
   reference_character: '角色参考',
@@ -104,17 +104,17 @@ export const PURPOSE_TEXT: Record<string, string> = {
   set_log: '素材建档',
   subtitle: '字幕',
   voice: '配音',
-  // [M19] per-shot 音效绑定行
+  // per-shot 音效绑定行
   sfx: '镜头音效',
   lines: '台词',
   export: '成稿',
-  // [M9] 小说改编链
+  // 小说改编链
   chapters: '章节',
   events: '事件',
   graph: '事件图谱',
   plan: '分集规划',
   regex: '切分正则',
-  // [M16] 创作画布
+  // 创作画布
   creation: '画布产物',
   creation_video: '画布视频',
   mask: '蒙版',
@@ -181,7 +181,7 @@ const WORKFLOW_CLS: Record<string, string> = {
   cancelled: 'cancelled',
 }
 
-/** [M27] 编排链状态展示（文字徽章 + 复用色类，非仅色编码） */
+/** 编排链状态展示（文字徽章 + 复用色类，非仅色编码） */
 export function workflowStatus(s: string): StatusMeta {
   return { text: WORKFLOW_TEXT[s] ?? s, cls: WORKFLOW_CLS[s] ?? s }
 }
@@ -204,7 +204,7 @@ export function inputSummary(
   return s.length > 80 ? s.slice(0, 80) + '…' : s
 }
 
-// ===== [M12] 图像检测展示 =====
+// ===== 图像检测展示 =====
 
 export const QUALITY_TEXT: Record<string, string> = {
   ok: '正常',
@@ -232,7 +232,7 @@ export function parseAssetQuality(a: Asset): ImageQuality | null {
   }
 }
 
-// ===== [M24] 合规审核标记展示（spec §2.6 前端最小面：params.compliance → 状态徽章） =====
+// ===== 合规审核标记展示（spec §2.6 前端最小面：params.compliance → 状态徽章） =====
 
 export interface AssetCompliance {
   status: 'pass' | 'warn' | 'block'
@@ -242,7 +242,7 @@ export interface AssetCompliance {
 
 const COMPLIANCE_STATUS = new Set(['pass', 'warn', 'block'])
 
-/** 取资产 params.compliance（[M24] compliance_check 写回；无/脏数据 → null） */
+/** 取资产 params.compliance（ compliance_check 写回；无/脏数据 → null） */
 export function parseAssetCompliance(a: Asset): AssetCompliance | null {
   const raw = a.params?.['compliance']
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null

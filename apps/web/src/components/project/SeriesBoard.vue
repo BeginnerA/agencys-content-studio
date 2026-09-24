@@ -7,7 +7,7 @@ import { runStatus } from '../../lib/format'
 import type { Episode, RunStatus, SeriesInfo } from '../../lib/types'
 
 /**
- * [M14] 剧集地图（一项目一剧：剧 → 集两级）。
+ * 剧集地图（一项目一剧：剧 → 集两级）。
  * - 数据：GET /projects/:id/series（集状态为服务端派生：最新 run 状态优先，回落行原值）。
  * - 起作：emit startEpisode(集号) → 父页面打开 RunFormModal（预选模板 + 预填 episode_number）。
  * - 刷新：父组件经 defineExpose reload() 在 run 创建 / 终态 / 闸门事件后静默重载。
@@ -301,7 +301,7 @@ async function doRemoveEpisode(e: Episode) {
 </template>
 
 <style scoped>
-/* [M14] .bh/.bt 系 ProjectDetailView scoped 样式（不穿透子组件），本组件内同名补定义 */
+/* .bh/.bt 系 ProjectDetailView scoped 样式（不穿透子组件），本组件内同名补定义 */
 .bh {
   display: flex;
   align-items: center;

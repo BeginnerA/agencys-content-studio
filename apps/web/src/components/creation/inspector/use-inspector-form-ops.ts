@@ -1,7 +1,7 @@
 /**
- * [M26-split] 检查器操作域（自 use-inspector-form.ts 逐字迁移，行为零变更）：
+ * 检查器操作域（自 use-inspector-form.ts 逐字迁移，行为零变更）：
  * AI 扩写弹窗 / BGM·字幕资产候选 / 视频抽帧 / 实体参考图挂接。
- * —— 装配约定：ctx 注入 + 首行同名解构，函数体逐字保留（M28 拆分纪律）；
+ * —— 装配约定：ctx 注入 + 首行同名解构，函数体逐字保留（拆分纪律）；
  * form 字段与 buildSpec/persistFormIfNeeded/markFormSaved 真源仍在主 composable。
  */
 import { computed, ref, watch } from 'vue'
@@ -51,7 +51,7 @@ export function useInspectorFormOps(ctx: {
     markFormSaved,
   } = ctx
 
-  // ===== [M17] AI 扩写（对照弹窗：原/新，可编辑 → 应用 PATCH 入栈） =====
+  // ===== AI 扩写（对照弹窗：原/新，可编辑 → 应用 PATCH 入栈） =====
   const expandOpen = ref(false)
   const expandBusy = ref(false)
   const expandErr = ref('')
@@ -137,7 +137,7 @@ export function useInspectorFormOps(ctx: {
     }
   }
 
-  // ===== [M17] 提取文本节点 =====
+  // ===== 提取文本节点 =====
   async function doExtract(): Promise<void> {
     const n = props.node
     if (!n) return
@@ -154,7 +154,7 @@ export function useInspectorFormOps(ctx: {
     }
   }
 
-  // ===== [M18] BGM 候选（本画布音频节点/资产产物；含 spec 现值兼容兜底） =====
+  // ===== BGM 候选（本画布音频节点/资产产物；含 spec 现值兼容兜底） =====
   const bgmOptions = computed<Array<{ id: number; name: string }>>(() => {
     const out: Array<{ id: number; name: string }> = []
     const seen = new Set<number>()
@@ -180,7 +180,7 @@ export function useInspectorFormOps(ctx: {
     return out
   })
 
-  // ===== [M22] 字幕资产候选（purpose=creation_subtitle 的文本资产；含 spec 现值兼容兜底） =====
+  // ===== 字幕资产候选（purpose=creation_subtitle 的文本资产；含 spec 现值兼容兜底） =====
   const subtitleOptions = computed<Array<{ id: number; name: string }>>(() => {
     const out: Array<{ id: number; name: string }> = []
     const seen = new Set<number>()
@@ -209,7 +209,7 @@ export function useInspectorFormOps(ctx: {
     return out
   })
 
-  // ===== [M18] 视频抽帧（gen(video) 显示产物 / asset 视频资产） =====
+  // ===== 视频抽帧（gen(video) 显示产物 / asset 视频资产） =====
   const canExtractFrame = computed<boolean>(() => {
     const n = props.node
     if (!n) return false

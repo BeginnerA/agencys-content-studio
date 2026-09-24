@@ -63,7 +63,7 @@ const { steps } = props.u
   border-color: rgb(34 197 94 / 25%);
 }
 
-/* [M2] skipped：中性灰，虚线标记「无产物经过」 */
+/* skipped：中性灰，虚线标记「无产物经过」 */
 .st.skip .dot {
   background: rgb(148 163 184 / 7%);
   color: var(--text-3);

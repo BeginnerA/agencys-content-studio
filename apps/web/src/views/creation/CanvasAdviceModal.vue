@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** [M23-D11] AI 编排建议面板（仅展示 + 定位；执行始终由用户手动发起）。 */
+/** AI 编排建议面板（仅展示 + 定位；执行始终由用户手动发起）。 */
 import Icon from '../../components/common/Icon.vue'
 import Modal from '../../components/common/Modal.vue'
 import type { CanvasAdviceKind } from '../../lib/types'

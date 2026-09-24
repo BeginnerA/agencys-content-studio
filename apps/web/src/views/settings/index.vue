@@ -57,7 +57,7 @@ async function onCredSaved() {
     <div v-if="loading" class="empty">加载中…</div>
 
     <template v-else>
-      <!-- [M19 P8] 音色库 tab：声音克隆（列表/试听/删除 + 新建复刻） -->
+      <!-- 音色库 tab：声音克隆（列表/试听/删除 + 新建复刻） -->
       <VoiceLibrary v-if="activeTab === 'voices'" />
 
       <template v-else>

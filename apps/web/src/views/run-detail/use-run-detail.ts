@@ -1,4 +1,4 @@
-/** [M28] 运行详情核心：数据流 / 闸门 / 日志 / 防抖刷新 / socket 实时；loadBadges 等附加数据经 deps 延迟注入。 */
+/** 运行详情核心：数据流 / 闸门 / 日志 / 防抖刷新 / socket 实时；loadBadges 等附加数据经 deps 延迟注入。 */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { assetApi, runApi, shotApi, templateApi } from '../../lib/api'
@@ -52,13 +52,13 @@ export function useRunDetail(deps: {
     const s = run.value?.status
     return s === 'failed' || s === 'cancelled'
   })
-  // [恢复收口] 轻松创作 run：专业端 resume/task-retry 服务端必 409（真源在会话核验恢复），
+  // 轻松创作 run：专业端 resume/task-retry 服务端必 409（真源在会话核验恢复），
   // 入口统一换成直达会话链接；会话反查由 GET /runs/:id 的 creationSessionId 提供
   const creationSessionId = computed(
     () => detail.value?.creationSessionId ?? null,
   )
   const isCreationRun = computed(() => creationSessionId.value != null)
-  // [方案C] 轻松创作 run 且存在受理状态不明任务 → 就地续跑需成本确认（confirm_ambiguous），服务端据核验后重发
+  // 轻松创作 run 且存在受理状态不明任务 → 就地续跑需成本确认（confirm_ambiguous），服务端据核验后重发
   const resumeNeedsVerification = computed(
     () => detail.value?.resumeNeedsVerification === true,
   )
@@ -70,7 +70,7 @@ export function useRunDetail(deps: {
     () => run.value?.status === 'running' || run.value?.status === 'queued',
   )
 
-  // [M2] 当前闸门的免审按钮文案（模板 gate.skip_label）；模板不可达时隐藏
+  // 当前闸门的免审按钮文案（模板 gate.skip_label）；模板不可达时隐藏
   const gateSkipLabel = computed(() => {
     const step = gateStep.value
     if (!step) return undefined
@@ -78,7 +78,7 @@ export function useRunDetail(deps: {
     return def?.gate?.skip_label
   })
 
-  // [M2] 并行执行提示：同一时刻 ≥2 步骤处于执行/待审状态（引擎就绪集并发 ≤2）
+  // 并行执行提示：同一时刻 ≥2 步骤处于执行/待审状态（引擎就绪集并发 ≤2）
   const parallelHint = computed(() => {
     const actives = steps.value.filter(
       (s) => s.status === 'running' || s.status === 'waiting_input',
@@ -86,7 +86,7 @@ export function useRunDetail(deps: {
     return actives.length >= 2 ? `并行执行中：${actives.length} 步并发推进` : ''
   })
 
-  // [M2] 快照差异：run 启动时的模板版本 vs 当前文件（版本号 + stepKey 集比对；无差异不显示）
+  // 快照差异：run 启动时的模板版本 vs 当前文件（版本号 + stepKey 集比对；无差异不显示）
   const snapshot = computed(() => {
     const r = run.value
     if (!r || r.templateVersion === undefined) return null
@@ -168,7 +168,7 @@ export function useRunDetail(deps: {
       }
       void loadGate()
       void loadBadges()
-      // [M4] 附加数据仅初载一次（后续由显式刷新点驱动，避免 step 事件高频重复拉取）
+      // 附加数据仅初载一次（后续由显式刷新点驱动，避免 step 事件高频重复拉取）
       if (!extrasLoaded) {
         extrasLoaded = true
         void loadExtras(d.run.projectId)
@@ -280,7 +280,7 @@ export function useRunDetail(deps: {
   }
 
   async function resumeRun() {
-    // [方案C 就地核验] 存在受理状态不明任务时，明确告知「可能已计费、继续会重发该任务」并要求显式确认；
+    // 存在受理状态不明任务时，明确告知「可能已计费、继续会重发该任务」并要求显式确认；
     // 确认后带 confirm_ambiguous=true，服务端据单一真源重发这些任务（其余成功复用/在途仅续轮询）。
     const needVerify = isCreationRun.value && resumeNeedsVerification.value
     const ok = await confirmDialog({
@@ -311,7 +311,7 @@ export function useRunDetail(deps: {
     const local = steps.value.find((s) => s.id === p.step.id)
     if (local && p.step.status) {
       local.status = p.step.status as RunStep['status']
-      // [M4] server run.step 不含 attempts（删除旧 p.step.attempts 行）；详细状态由 loadDetail 兜底
+      // server run.step 不含 attempts（删除旧 p.step.attempts 行）；详细状态由 loadDetail 兜底
       if (
         p.step.status === 'waiting_input' ||
         p.step.status === 'succeeded' ||
@@ -380,7 +380,7 @@ export function useRunDetail(deps: {
   }
   let extrasLoaded = false
 
-  // ===== [M7] 镜头工作台集成（步骤卡内嵌 + compose 卡重新合成 / stale 徽标） =====
+  // ===== 镜头工作台集成（步骤卡内嵌 + compose 卡重新合成 / stale 徽标） =====
   const WB_ACTIONS = new Set(['ai_image', 'ai_video'])
   const composeInfo = ref<ShotBoardCompose | null>(null)
 
@@ -410,7 +410,7 @@ export function useRunDetail(deps: {
     }
   }
 
-  // ===== [M11] 引擎级单步重跑（显示条件对齐服务端 assertRepairable） =====
+  // ===== 引擎级单步重跑（显示条件对齐服务端 assertRepairable） =====
   const rerunStep = ref<RunStep | null>(null)
   const notice = ref('')
   // 弹窗内级联/单步两个入口的可用性（openRerun 时快照，避免模板对可空 rerunStep 的窄化问题）
@@ -421,7 +421,7 @@ export function useRunDetail(deps: {
   function canRerunStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
-    // [恢复收口] 轻松创作批准链：服务端 resetStepForRerun 对全部 easy-* 一律拒绝单步重跑（须回会话或走级联救援）→ 前端同步隐藏单步入口
+    // 轻松创作批准链：服务端 resetStepForRerun 对全部 easy-* 一律拒绝单步重跑（须回会话或走级联救援）→ 前端同步隐藏单步入口
     if (isCreationRun.value) return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return !steps.value.some((x) => x.id !== s.id && x.status === 'failed')
@@ -431,9 +431,9 @@ export function useRunDetail(deps: {
   function canCascadeStep(s: RunStep): boolean {
     const rs = run.value?.status
     if (rs !== 'completed' && rs !== 'failed') return false
-    // [恢复收口] 已完成的轻松创作 run：级联=额外生成，服务端 assertChainRepairable 拦截（覆盖全 4 个 easy-* 键，不再硬编码单键）→ 隐藏入口；failed 仍放行救援
+    // 已完成的轻松创作 run：级联=额外生成，服务端 assertChainRepairable 拦截（覆盖全 4 个 easy-* 键，不再硬编码单键）→ 隐藏入口；failed 仍放行救援
     if (isCreationRun.value && rs === 'completed') return false
-    // [方案C 收口] 轻松创作 run 存在受理状态不明任务：级联会重新提交该任务=重复计费，服务端同源拒绝 → 隐藏级联入口，统一引导回会话核验
+    // 轻松创作 run 存在受理状态不明任务：级联会重新提交该任务=重复计费，服务端同源拒绝 → 隐藏级联入口，统一引导回会话核验
     if (isCreationRun.value && resumeNeedsVerification.value) return false
     if (s.status !== 'succeeded' && s.status !== 'failed') return false
     return steps.value.some((x) => x.seq > s.seq)

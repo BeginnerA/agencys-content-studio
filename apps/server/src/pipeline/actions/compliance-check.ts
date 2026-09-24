@@ -15,7 +15,7 @@ import type { StepContext } from '../context'
 import { interpolate } from '../refs'
 import { StepError, type StepResult } from '../types'
 
-// [M24·F5] compliance_check action（spec §2.6）：本地词库扫描 + 可选 LLM 复审 + 产物标记写回。
+// compliance_check action（spec §2.6）：本地词库扫描 + 可选 LLM 复审 + 产物标记写回。
 // 输入 inputs.content = 被检 text 资产（可多个，逐个标记）；亦支持 input.content 字面文本（仅入报告不标记）。
 // params：llm_review（默认 true；LLM 失败宽容降级）、on_block（'fail'|'mark' 默认 'fail'，spec §2.6）、prompt_tpl、name_tpl。
 // 产物：各资产 params.compliance 标记（零新列，对齐 params.quality 先例）+ 汇总报告资产（purpose=compliance_report）。

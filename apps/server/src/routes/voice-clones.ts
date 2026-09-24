@@ -14,7 +14,7 @@ import { createLogger } from '../logger'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
 
 /**
- * [M19 P8] 平台音色库（spec §2.2 ⑧）：克隆音色列表 + 能力位矩阵、克隆创建（multipart 样本 / 公网样本地址）、
+ * 平台音色库（spec §2.2 ⑧）：克隆音色列表 + 能力位矩阵、克隆创建（multipart 样本 / 公网样本地址）、
  * 删除、试听（不落资产）。密钥不落本表——端点与 Key 由 services/tts-clone 经 api_configs（Settings → 语音合成）解析。
  */
 

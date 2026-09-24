@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M28] 创作画布边层（自 CreationBoard.vue 整块迁移：SVG 三次贝塞尔 + 箭头 marker + 临时连线）
+ * 创作画布边层（自 CreationBoard.vue 整块迁移：SVG 三次贝塞尔 + 箭头 marker + 临时连线）
  */
 import type { EdgePath } from './internals'
 

@@ -37,7 +37,7 @@ export const projectsRoutes = new Hono()
 
 // GET /projects —— 项目列表（?status= 过滤；含最近 run 与资产计数）
 projectsRoutes.get('/projects', h(async (c) => {
-  // [M40] 只开放 active|archived：轻松创作未立项的 draft 影子项目一律不出列表（其余值归 active）
+  // 只开放 active|archived：轻松创作未立项的 draft 影子项目一律不出列表（其余值归 active）
   const status = c.req.query('status') === 'archived' ? 'archived' : 'active'
   const rows = await db
     .select()
@@ -98,7 +98,7 @@ projectsRoutes.post('/projects', h(async (c) => {
     throw new HttpError(400, 'bad_template', `模板不可用：${(err as Error).message}`)
   }
   const genre = typeof body['genre'] === 'string' ? body['genre'] : 'drama_short'
-  // [M35 G9] settings 写时闸门（已登记字段白名单校验，未登记字段放行）
+  // settings 写时闸门（已登记字段白名单校验，未登记字段放行）
   if (body['settings'] !== undefined && body['settings'] !== null) {
     const errs = validateProjectSettings(body['settings'])
     if (errs.length > 0) throw new HttpError(400, 'bad_settings', errs.join('；'))
@@ -182,7 +182,7 @@ projectsRoutes.patch('/projects/:id', h(async (c) => {
     patch['templateKey'] = body['template_key']
   }
   if (body['settings'] !== undefined && typeof body['settings'] === 'object') {
-    // [M35 G9] settings 写时闸门（与 POST 同口径，已登记字段白名单 + 未登记字段放行）
+    // settings 写时闸门（与 POST 同口径，已登记字段白名单 + 未登记字段放行）
     const errs = validateProjectSettings(body['settings'])
     if (errs.length > 0) throw new HttpError(400, 'bad_settings', errs.join('；'))
     patch['settings'] = JSON.stringify(body['settings'])
@@ -194,7 +194,7 @@ projectsRoutes.patch('/projects/:id', h(async (c) => {
   return c.json({ project: rows[0] })
 }))
 
-// [M35 G11] GET /projects/:id/next-steps —— 规则引擎下一步建议（零 LLM、零计费，纯提示不自动执行）
+// GET /projects/:id/next-steps —— 规则引擎下一步建议（零 LLM、零计费，纯提示不自动执行）
 projectsRoutes.get('/projects/:id/next-steps', h(async (c) => {
   const id = idParam(c)
   const items = await resolveNextSteps(id)
@@ -228,7 +228,7 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
   const runIds = (
     await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, id))
   ).map((r) => r.id)
-  // [M16] 创作画布归属画布 id（先清边/节点再清画布）
+  // 创作画布归属画布 id（先清边/节点再清画布）
   const canvasIds = (
     await db.select({ id: canvases.id }).from(canvases).where(eq(canvases.projectId, id))
   ).map((r) => r.id)
@@ -259,7 +259,7 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
         ? await cnt(tx.delete(canvasNodes).where(inArray(canvasNodes.canvasId, canvasIds)).returning({ id: canvasNodes.id }))
         : 0,
       canvases: await cnt(tx.delete(canvases).where(eq(canvases.projectId, id)).returning({ id: canvases.id })),
-      // [M29·R02] 追溯三表级联删（无外键，按依赖序：exec_inputs → exec_snapshots → content_versions）
+      // 追溯三表级联删（无外键，按依赖序：exec_inputs → exec_snapshots → content_versions）
       execInputs: await cnt(tx.delete(execInputs).where(eq(execInputs.projectId, id)).returning({ id: execInputs.id })),
       execSnapshots: await cnt(tx.delete(execSnapshots).where(eq(execSnapshots.projectId, id)).returning({ id: execSnapshots.id })),
       contentVersions: await cnt(tx.delete(contentVersions).where(eq(contentVersions.projectId, id)).returning({ id: contentVersions.id })),

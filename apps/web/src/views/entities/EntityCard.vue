@@ -88,7 +88,7 @@ const {
   flex-direction: column;
 }
 
-/* [M13] 卡片多选态 */
+/* 卡片多选态 */
 .card.picked {
   border-color: var(--accent);
 }
@@ -170,7 +170,7 @@ const {
   font-size: 11.5px;
 }
 
-/* [M13] 状态变体 chips */
+/* 状态变体 chips */
 .states {
   display: flex;
   align-items: center;

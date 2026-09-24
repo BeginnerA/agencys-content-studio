@@ -110,7 +110,7 @@ const sb = props.sb
   overflow: hidden;
 }
 
-/* [M10] 上传资产角标（与任务版区分） */
+/* 上传资产角标（与任务版区分） */
 .wb-vtag {
   position: absolute;
   left: 3px;
@@ -162,7 +162,7 @@ const sb = props.sb
   pointer-events: none;
 }
 
-/* [M12] 收藏按钮（版本画廊） */
+/* 收藏按钮（版本画廊） */
 .wb-heart {
   border: none;
   background: none;

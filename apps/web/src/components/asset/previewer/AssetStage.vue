@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * [M26-split] 资产预览器 · 舞台分支（自 previewer/index.vue 原样搬出，行为零变更）：
- * 图片（缩放/平移/复位）/ 视频 / 音频 / 文本类（markdown/json/纯文本 + M25 编辑态）/ 兜底。
+ * 资产预览器 · 舞台分支（自 previewer/index.vue 原样搬出，行为零变更）：
+ * 图片（缩放/平移/复位）/ 视频 / 音频 / 文本类（markdown/json/纯文本 + 编辑态）/ 兜底。
  * 状态真源仍在父级 use-asset-previewer composable：数据经 props 直传，
  * draft / imgErr 经 defineModel 双向；交互函数经函数 props 直传（stageEl 量测仍指父级 .stage）。
  */
@@ -39,7 +39,7 @@ defineProps<{
   resetImage: () => void
 }>()
 
-/** 编辑草稿（M25）：真源在 composable 的 draft ref */
+/** 编辑草稿：真源在 composable 的 draft ref */
 const draft = defineModel<string>('draft', { required: true })
 /** 图片加载失败标记：@error 置位复位逻辑与母本一致 */
 const imgErr = defineModel<boolean>('imgErr', { required: true })
@@ -152,7 +152,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
         >新标签打开</a
       >
     </div>
-    <!-- [M25] 编辑态：textarea + markdown 分栏实时预览（对齐 GateDialog 编辑器先例） -->
+    <!-- 编辑态：textarea + markdown 分栏实时预览（对齐 GateDialog 编辑器先例） -->
     <div
       v-else-if="editing"
       class="editwrap"
@@ -378,7 +378,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
   text-align: center;
 }
 
-/* [M25] G2 编辑态：单栏 textarea；markdown 双栏（左编辑右预览） */
+/* G2 编辑态：单栏 textarea；markdown 双栏（左编辑右预览） */
 .editwrap {
   width: min(980px, 100%);
   margin: 0 auto;

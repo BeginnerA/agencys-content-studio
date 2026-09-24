@@ -15,7 +15,7 @@ const form = props.form
 </script>
 
 <template>
-  <!-- ===== [M17] run 节点：内嵌运行 ===== -->
+  <!-- ===== run 节点：内嵌运行 ===== -->
   <template v-if="node.kind === 'run'">
     <section class="sec">
       <div class="sec-h">运行</div>

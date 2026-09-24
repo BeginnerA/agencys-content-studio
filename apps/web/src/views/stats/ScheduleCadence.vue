@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M36·G12.4] 排期发布节奏模板（Tier A，纯日期数学，零 LLM 零计费）
+ * 排期发布节奏模板（Tier A，纯日期数学，零 LLM 零计费）
  * 以某条既有排产计划为「模板源」（克隆其 input_template / template_key），
  * 按日更 / 隔 N 日 / 每周指定星期展开为未来一串时间戳，先预览再批量建。
  * 不猜测：count/intervalDays/weekdays 越界 → 服务端 errors 原样回显；未来过滤由后端保证。

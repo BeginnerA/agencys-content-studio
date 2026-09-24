@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasRuns；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasRuns；依赖显式注入，原函数体保持不变。 */
 import { computed, ref, watch } from 'vue'
 import { runApi } from '../../lib/api'
 import type { CanvasState } from './use-canvas-state'
@@ -31,7 +31,7 @@ export function useCanvasRuns(deps: Dependencies) {
     loadDoc,
   } = deps
 
-  // ===== [M17] run 节点轮询（存在非终态 run 时 5s；终态自动停） =====
+  // ===== run 节点轮询（存在非终态 run 时 5s；终态自动停） =====
   const RUN_TEXT: Record<string, string> = {
     queued: '排队',
     running: '运行中',

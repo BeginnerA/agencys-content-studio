@@ -58,7 +58,7 @@ async function main(): Promise<void> {
     socket.on('disconnect', () => log.debug('socket disconnected', { id: socket.id }))
   })
 
-  // 进程内事件 → /studio：投递 run:{id}（如有）+ canvas:{id}（[M16]）+ project:{id} room
+  // 进程内事件 → /studio：投递 run:{id}（如有）+ canvas:{id}（ ）+ project:{id} room
   // （batch.updated / canvas.changed 等无 runId 事件经 projectId 投递；两者俱无 → 丢弃）
   onStudioEvent((e) => {
     const runId = 'runId' in e ? e.runId : null
@@ -74,20 +74,20 @@ async function main(): Promise<void> {
     })().catch((err) => log.error(`studio event bridge failed (${e.type})`, err))
   })
 
-  // [M4] 先注册终态监听（批 pump 钩子），再 recover——避免恢复期通知落空
+  // 先注册终态监听（批 pump 钩子），再 recover——避免恢复期通知落空
   onRunSettled((runId) => {
     void notifyRunSettled(runId).catch((err) => log.error(`settle→pump run ${runId} 失败`, err))
   })
 
-  // [M27] 编排链推进钩子（与批 pump 并列、互不影响；settle 异常隔离，不波及引擎主流程）
+  // 编排链推进钩子（与批 pump 并列、互不影响；settle 异常隔离，不波及引擎主流程）
   onRunSettled((runId) => {
     void advanceWorkflow(runId).catch((err) => log.error(`settle→advance run ${runId} 失败`, err))
   })
 
-  // [M24·F1] 自动摘要钩子（settings memory.auto_summary 缺省关；内部门控，fire-and-forget 隔离）
+  // 自动摘要钩子（settings memory.auto_summary 缺省关；内部门控，fire-and-forget 隔离）
   registerAutoSummaryHook()
 
-  // [M21 C6] 全局并发上限载入（startRun 同步闸门读缓存；先于恢复启动）
+  // 全局并发上限载入（startRun 同步闸门读缓存；先于恢复启动）
   await refreshGlobalConcurrency()
 
   // 崩溃恢复：running → failed(interrupted)；queued 重新入队执行
@@ -96,24 +96,24 @@ async function main(): Promise<void> {
     log.info(`recover: requeue run ${runId}`)
     try { engine.startRun(runId) } catch (err) { log.error(`recover: run ${runId} startRun failed`, err) }
   }
-  // [M21 C6] 恢复后全局补位：首波被 defer（闸门满）的 run 交给泵拉起
+  // 恢复后全局补位：首波被 defer（闸门满）的 run 交给泵拉起
   await engine.pumpGlobal()
-  // [M4] 批内 queued run 统一经批调度（recover 已过滤 batchId；此处按槽位约束推进）
+  // 批内 queued run 统一经批调度（recover 已过滤 batchId；此处按槽位约束推进）
   await reconcileBatches()
 
-  // [M16] 画布任务崩溃恢复：pending/processing 的 canvas 任务 → failed('服务重启中断')
+  // 画布任务崩溃恢复：pending/processing 的 canvas 任务 → failed('服务重启中断')
   await recoverCanvasTasks()
 
-  // [M19 P6] 素材批量生成任务崩溃恢复：本域 pending/processing → failed（不自动重排队，用户可在素材页重新发起）
+  // 素材批量生成任务崩溃恢复：本域 pending/processing → failed（不自动重排队，用户可在素材页重新发起）
   await recoverEntityRefTasks()
 
-  // [M20] 启动排产调度器（60s 轮询 + 幂等触发）
+  // 启动排产调度器（60s 轮询 + 幂等触发）
   startScheduler()
 
-  // [M35 G7] 自然语言→模板推荐 embedding 预计算（首次加载 2–3 秒，fire-and-forget；失败已内部兑底为关键词回落）
+  // 自然语言→模板推荐 embedding 预计算（首次加载 2–3 秒，fire-and-forget；失败已内部兑底为关键词回落）
   void refreshTemplateVectors().catch((err) => log.warn('template recommend embedding 预计算失败（回落 keyword）', err))
 
-  // [M22·6] 回收站保留期自动清理：启动执行一次 + 6h 周期（unref 防挂起；autoPurge=false 由服务内跳过）
+  // 回收站保留期自动清理：启动执行一次 + 6h 周期（unref 防挂起；autoPurge=false 由服务内跳过）
   void purgeExpiredCanvases().catch((err) => log.error('trash sweep failed', err))
   const trashSweepTimer = setInterval(
     () => void purgeExpiredCanvases().catch((err) => log.error('trash sweep failed', err)),
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
   )
   trashSweepTimer.unref()
 
-  // [M21 C6] 全局并发 pump 定时兜底（30s）：异常态自愈（settle 丢失等）；
+  // 全局并发 pump 定时兜底（30s）：异常态自愈（settle 丢失等）；
   // 批停滞扫描同样兜底（可救起「settle 链路未覆盖」等极端残留的 queued 批 run）
   const globalPumpTimer = setInterval(() => {
     void engine.pumpGlobal()

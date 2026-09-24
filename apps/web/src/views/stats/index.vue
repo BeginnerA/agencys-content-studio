@@ -15,7 +15,7 @@ import ReviewPanel from './ReviewPanel.vue'
 import PlatformPresets from './PlatformPresets.vue'
 import CompliancePanel from './CompliancePanel.vue'
 
-// [M20] Tab 切换：概览 / 排产 / 预算 / 发布 / 成本 / 复盘 / 合规
+// Tab 切换：概览 / 排产 / 预算 / 发布 / 成本 / 复盘 / 合规
 const TABS = [
   { key: 'overview', label: '概览', icon: 'chart' },
   { key: 'schedule', label: '排产', icon: 'calendar' },
@@ -27,7 +27,7 @@ const TABS = [
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
-// [M21] ?tab= 深链接（命令面板「新建排产计划」等直达）；切 Tab 不回写 URL（对齐 M20 现状）
+// ?tab= 深链接（命令面板「新建排产计划」等直达）；切 Tab 不回写 URL（对齐现状）
 const route = useRoute()
 function initTab(): TabKey {
   const t = route.query.tab
@@ -205,7 +205,7 @@ function pct(n: number): string {
       <h1>统计</h1>
       <span class="sub">运行 / 成本 / 发布 / 排产 / 预算 / A/B 测试</span>
       <div class="ctl">
-        <!-- [M20] Tab 切换 -->
+        <!-- Tab 切换 -->
         <div class="seg" role="tablist">
           <button
             v-for="t in TABS"
@@ -239,24 +239,24 @@ function pct(n: number): string {
       </div>
     </div>
 
-    <!-- [M20] 排产 Tab -->
+    <!-- 排产 Tab -->
     <div v-show="activeTab === 'schedule'" role="tabpanel">
       <ScheduleCalendar />
-      <!-- [M36·G12.4] 按节奏批量排期（克隆现有计划 + 纯日期展开） -->
+      <!-- 按节奏批量排期（克隆现有计划 + 纯日期展开） -->
       <ScheduleCadence />
     </div>
 
-    <!-- [M20] 预算 Tab -->
+    <!-- 预算 Tab -->
     <div v-show="activeTab === 'budget'" role="tabpanel">
       <BudgetPanel />
     </div>
 
-    <!-- [M20] 发布 Tab -->
+    <!-- 发布 Tab -->
     <div v-show="activeTab === 'publications'" role="tabpanel">
       <PublicationPanel />
     </div>
 
-    <!-- [M20] 成本 Tab -->
+    <!-- 成本 Tab -->
     <div v-show="activeTab === 'cost'" role="tabpanel">
       <CostPanel />
       <hr
@@ -269,12 +269,12 @@ function pct(n: number): string {
       <PlatformPresets />
     </div>
 
-    <!-- [M20] 复盘 Tab -->
+    <!-- 复盘 Tab -->
     <div v-show="activeTab === 'review'" role="tabpanel">
       <ReviewPanel />
     </div>
 
-    <!-- [M36·G12.2/G12.3] 合规 Tab -->
+    <!-- 合规 Tab -->
     <div v-show="activeTab === 'compliance'" role="tabpanel">
       <CompliancePanel />
     </div>

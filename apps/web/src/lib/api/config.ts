@@ -24,23 +24,23 @@ export const configApi = {
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
   test: (id: number) =>
     api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
-  /** 在线拉取供应商可用模型目录（[M33.1] 阿里百炼 LLM 走 DashScope 原生带价口，其余 OpenAI 兼容仅 id，失败回退预置） */
+  /** 在线拉取供应商可用模型目录（ 阿里百炼 LLM 走 DashScope 原生带价口，其余 OpenAI 兼容仅 id，失败回退预置） */
   fetchModels: (body: Record<string, unknown>) =>
     api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
-  /** [M32] 查询视频模型能力单一真源表（命中→平台自动背书档位；未命中→回退手填声明） */
+  /** 查询视频模型能力单一真源表（命中→平台自动背书档位；未命中→回退手填声明） */
   videoCaps: (providerKey: string, model: string) =>
     api.get<VideoCapsResult>(
       `/api/v1/api-configs/video-caps?provider_key=${encodeURIComponent(providerKey)}&model=${encodeURIComponent(model)}`,
     ),
-  /** [M38] 查询扩展参数单一真源清单（前端据此按供应商动态渲染结构化表单）；
-   * [M39] 可选 model：命中逐模型 profile 时返回模型级候选/默认，不传行为不变 */
+  /** 查询扩展参数单一真源清单（前端据此按供应商动态渲染结构化表单）；
+   * 可选 model：命中逐模型 profile 时返回模型级候选/默认，不传行为不变 */
   extraSchema: (providerKey: string, serviceType: string, model?: string) => {
     const m = (model || '').trim()
     return api.get<ExtraSchemaResult>(
       `/api/v1/api-configs/extra-schema?provider_key=${encodeURIComponent(providerKey)}&service_type=${encodeURIComponent(serviceType)}${m ? `&model=${encodeURIComponent(m)}` : ''}`,
     )
   },
-  /** [M33] 跨通道「选中即生成」Tier A 建议：参考定价 + 视频能力 + 默认通道建议 */
+  /** 跨通道「选中即生成」Tier A 建议：参考定价 + 视频能力 + 默认通道建议 */
   modelSuggest: (providerKey: string, serviceType: string, model: string) =>
     api.get<ModelSuggestResult>(
       `/api/v1/api-configs/model-suggest?provider_key=${encodeURIComponent(providerKey)}&service_type=${encodeURIComponent(serviceType)}&model=${encodeURIComponent(model)}`,
@@ -64,7 +64,7 @@ export const vendorApi = {
 }
 
 /**
- * [M19] 平台品牌资产（Settings 品牌 tab；水印/片头/片尾）。
+ * 平台品牌资产（Settings 品牌 tab；水印/片头/片尾）。
  * 槽参数（position/opacity/enabled 等）走 settingsApi.put('brand', ...) 整体写；本 API 只管文件键通道。
  */
 export const brandAssetApi = {
@@ -111,7 +111,7 @@ export const brandAssetApi = {
 }
 
 /**
- * [M19 P8] 平台音色库（Settings 音色库 tab；声音克隆）。
+ * 平台音色库（Settings 音色库 tab；声音克隆）。
  * 密钥不落本表：服务端经 Settings → 语音合成实例（api_configs）解析端点与 Key。
  */
 async function voiceCloneSend(

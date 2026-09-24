@@ -160,7 +160,7 @@ export async function recoverCanvasTasks(): Promise<{ failed: number }> {
 }
 
 /**
- * [M18] 一键停止全部：该画布全部 pending/processing 任务 → cancelled
+ * 一键停止全部：该画布全部 pending/processing 任务 → cancelled
  * （复刻 tasks.ts 单任务取消语义：errorMsg='user cancelled' + completedAt）；返回停止数。
  */
 export async function cancelCanvasTasks(canvas: Canvas): Promise<{ cancelled: number }> {

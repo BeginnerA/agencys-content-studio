@@ -1,5 +1,5 @@
 /**
- * [M23] 模板编辑层（E3/E4 受控写面）：
+ * 模板编辑层（E3/E4 受控写面）：
  * - serializeTemplate：Template 对象 → YAML 文本（snake_case 还原，对齐 loader 解析规则逆向；
  *   parse ∘ stringify 往返等值由探针直测）；
  * - applyTemplateEdits：白名单 edits 纯应用（不改动入参；只产出新对象）+ 全量校验

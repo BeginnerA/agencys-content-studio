@@ -13,7 +13,7 @@ import { combineStyleSnippets, resolveProjectStyleSnippets } from './style-prese
 import { recordUsage } from './usage'
 
 /**
- * [M19 P6] 素材页批量生成参考图（spec §2.4 ⑥）：
+ * 素材页批量生成参考图（spec §2.4 ⑥）：
  * - 无 run 异步任务队列（gen_tasks：runId/stepId/canvasNodeId 均 null，params.source='entity_ref_gen' 标识域）；
  * - 执行器镜像 creation-gen 的 runCanvasTask 生命周期：进程内信号量 ≤2 / attempts 重试 1 次 / 取消检查点弃存；
  * - 提示词 = appearance + 项目风格词块 + 「必须剔除：negative」拼接直连（不做 LLM 预润色）；
@@ -22,7 +22,7 @@ import { recordUsage } from './usage'
 
 const log = createLogger('entity-refgen')
 
-/** 单次发起实体上限（对齐 M13 批量润色 ≤10 先例） */
+/** 单次发起实体上限（对齐批量润色 ≤10 先例） */
 export const MAX_REFGEN_ITEMS = 10
 /** 单实体变体数上限（对齐画布 variants 1-4） */
 export const MAX_REFGEN_VARIANTS = 4

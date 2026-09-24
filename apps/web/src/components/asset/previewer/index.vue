@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 统一资产预览查看器：图片（缩放/平移）/ 视频 / 音频 / Markdown / JSON / 纯文本 / 未知兜底
 // 设计：沉浸式弹窗（与 Modal 体例同源），多资产可切换（← →），操作统一收敛顶栏（复制/下载/新标签）
-// ---- [M28] 已拆分：交互逻辑经 use-asset-previewer.ts 装配（行为零变更）----
-// ---- [M26-split] 舞台分支拆至 AssetStage.vue（状态真源仍在 composable）----
+// ---- 已拆分：交互逻辑经 use-asset-previewer.ts 装配（行为零变更）----
+// ---- 舞台分支拆至 AssetStage.vue（状态真源仍在 composable）----
 import type { Asset } from '../../../lib/types'
 import Icon from '../../common/Icon.vue'
 import AssetStage from './AssetStage.vue'
@@ -21,7 +21,7 @@ const emit = defineEmits<{
   removed: [asset: Asset]
 }>()
 
-// ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
+// ---- 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   MIN_SCALE,
   MAX_SCALE,
@@ -104,7 +104,7 @@ const {
           <Icon :name="TYPE_ICON[vkind]" :size="15" class="type-ic" />
           <span class="nm" :title="cur.name">{{ cur.name }}</span>
           <span class="badge">{{ kindLabel }}</span>
-          <!-- [M24] 合规审核徽章（params.compliance；悬停看命中数与时间） -->
+          <!-- 合规审核徽章（params.compliance；悬停看命中数与时间） -->
           <span
             v-if="compliance"
             class="badge"
@@ -135,7 +135,7 @@ const {
               <Icon :name="copied ? 'check' : 'copy'" :size="12" />
               {{ copied ? '已复制' : '复制' }}
             </button>
-            <!-- [M25] G2 文本内容编辑（白名单 purpose 入口；保存/取消收敛顶栏） -->
+            <!-- G2 文本内容编辑（白名单 purpose 入口；保存/取消收敛顶栏） -->
             <button
               v-if="canEdit && !editing"
               class="btn sm"
@@ -145,7 +145,7 @@ const {
             >
               <Icon name="pencil" :size="12" /> 编辑
             </button>
-            <!-- [M29·R02] 历史·影响面板入口（可编辑文本资产；只读 + 显式还原 + 影响仅报告） -->
+            <!-- 历史·影响面板入口（可编辑文本资产；只读 + 显式还原 + 影响仅报告） -->
             <button
               v-if="canEdit && !editing"
               class="btn sm"
@@ -199,7 +199,7 @@ const {
         <!-- 舞台 -->
         <div class="stagewrap">
           <div ref="stageEl" class="stage" :class="`stage-${vkind}`">
-            <!-- 舞台分支 [M26-split]：拆至 AssetStage.vue（状态真源仍在 composable；draft/imgErr 双向；stageEl 量测仍指本组件 .stage） -->
+            <!-- 舞台分支 ：拆至 AssetStage.vue（状态真源仍在 composable；draft/imgErr 双向；stageEl 量测仍指本组件 .stage） -->
             <AssetStage
               v-model:draft="draft"
               v-model:img-err="imgErr"
@@ -293,7 +293,7 @@ const {
           </details>
         </footer>
 
-        <!-- [M29·R02] 右侧「历史 · 影响」抽屉（可编辑文本资产；覆盖舞台右缘） -->
+        <!-- 右侧「历史 · 影响」抽屉（可编辑文本资产；覆盖舞台右缘） -->
         <div
           v-if="!readonly && showVersions && cur"
           class="vdraw"
@@ -399,7 +399,7 @@ const {
   font-size: 11.5px;
 }
 
-/* [M24] 合规徽章三态（配色对齐全局 badge 语义：ok/warn/bad） */
+/* 合规徽章三态（配色对齐全局 badge 语义：ok/warn/bad） */
 .comp-pass {
   background: var(--ok-weak);
   color: var(--ok);
@@ -549,7 +549,7 @@ const {
   color: var(--text-3);
 }
 
-/* [M21] 标签编辑（回车添加 / chip × 删除；变更即存） */
+/* 标签编辑（回车添加 / chip × 删除；变更即存） */
 .tagedit {
   display: flex;
   align-items: center;
@@ -604,7 +604,7 @@ const {
   padding: 3px 8px;
 }
 
-/* [M12] 重检结果（成功绿 / 失败红） */
+/* 重检结果（成功绿 / 失败红） */
 .chk {
   font-size: 11.5px;
   color: var(--ok);
@@ -627,7 +627,7 @@ const {
   font-size: 11.5px;
 }
 
-/* [M29·R02] 右侧「历史 · 影响」抽屉（覆盖舞台右缘，不阻断主预览） */
+/* 右侧「历史 · 影响」抽屉（覆盖舞台右缘，不阻断主预览） */
 .vdraw {
   position: absolute;
   top: 48px;

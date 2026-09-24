@@ -39,7 +39,7 @@ export function isJsonTextFormat(format?: string): boolean {
   return !!format && (JSON_FORMATS as readonly string[]).includes(format)
 }
 
-/** purpose → 子目录映射（M1/M2 产物归类 + M3 记忆/角色日志 + M9 小说链 + M19 SFX/派生画幅；未列出的 purpose 回退 source） */
+/** purpose → 子目录映射（产物归类 + 记忆/角色日志 + 小说链 + SFX/派生画幅；未列出的 purpose 回退 source） */
 export function purposeSubDir(purpose?: string | null): string {
   switch (purpose) {
     case 'script':
@@ -57,13 +57,13 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'graph':
     case 'plan':
     case 'regex':
-    case 'video_analysis': // [M25·G9] 视频时间轴 json + 人读 md 报告
+    case 'video_analysis': // 视频时间轴 json + 人读 md 报告
     case 'image_analysis': // 图片反推 json + 人读 md 报告（image-reverse 链，同源形态）
-    case 'audit_report': // [M25·G4] 改编一致性回查报告
+    case 'audit_report': // 改编一致性回查报告
       return 'texts'
     case 'export':
-    case 'edit_exchange': // [M50] 剪辑工程交换导出包（与发布包同归档目录）
-    case 'creation_svg': // [M22] 画布布局图 SVG 导出（与 export 同类归档）
+    case 'edit_exchange': // 剪辑工程交换导出包（与发布包同归档目录）
+    case 'creation_svg': // 画布布局图 SVG 导出（与 export 同类归档）
       return 'exports'
     case 'shot_image':
     case 'first_frame':
@@ -107,7 +107,7 @@ export interface ImportedFile {
 }
 
 /** 批量导入素材文件 → 资产行 + 落盘（sha256 重复跳过）。
- *  [M25·G1] docx/epub 在入库单点转 md 文本资产（原二进制不落盘 v1）：转换后文本参与 sha256 去重，
+ * docx/epub 在入库单点转 md 文本资产（原二进制不落盘 v1）：转换后文本参与 sha256 去重，
  *  name 去扩展 + .md，params.doc_import={format,chars}（供前端导入提示与召回判定）。 */
 export async function importFiles(
   projectId: number,
@@ -120,7 +120,7 @@ export async function importFiles(
     let data = f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data)
     let storeName = f.name
     let docImport: { format: string; chars: number } | null = null
-    // [M25·G1] docx/epub → 解析为纯文本，重封为 .md 资产（解析失败向上抛 DocParseError，导入侧 400）
+    // docx/epub → 解析为纯文本，重封为 .md 资产（解析失败向上抛 DocParseError，导入侧 400）
     if (docFormatByExt(storeName)) {
       const { text, format } = await parseDocBuffer(storeName, data)
       docImport = { format, chars: text.length }
@@ -201,7 +201,7 @@ export async function writeTextAsset(
       kind: 'text',
       purpose: opts.purpose,
       name: opts.name,
-      // [M22] srt 单独归位（烧录/下载/前端候选过滤可依赖 mime/ext；其余同现状零漂移）；[M22.P3] svg 同理
+      // srt 单独归位（烧录/下载/前端候选过滤可依赖 mime/ext；其余同现状零漂移）； svg 同理
       mime: opts.format === 'srt' ? 'application/x-subrip' : opts.format === 'svg' ? 'image/svg+xml' : isJsonTextFormat(opts.format) ? 'application/json' : 'text/markdown',
       ext: opts.format === 'srt' ? 'srt' : opts.format === 'svg' ? 'svg' : isJsonTextFormat(opts.format) ? 'json' : 'md',
       fileSize: data.byteLength,

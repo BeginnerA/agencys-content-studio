@@ -1,5 +1,5 @@
 /**
- * [M25·G8] 轻量通用抓取（spec §2.8）：任意 URL → 正文文本 → source 资产。
+ * 轻量通用抓取（spec §2.8）：任意 URL → 正文文本 → source 资产。
  * - assertSafeUrl：SSRF 硬守卫（仅 http/https、仅 80/443、拒回环/RFC1918/链路本地/ULA/管理域；
  *   已知局限：DNS 解析后指向内网不可拦——本机 hosts 自伤场景，登记 spec §5）。
  * - extractReadableText：确定性零依赖正文提取（与 epub XHTML 提取共用，spec §2.8/§2.2）。

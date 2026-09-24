@@ -8,7 +8,7 @@ import type { Asset, CreationArtifact } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 
 /**
- * [M42] 中途审阅面板：run 挂在闸门上时（progress.review）置顶展示待审产物与两个决策出口。
+ * 中途审阅面板：run 挂在闸门上时（progress.review）置顶展示待审产物与两个决策出口。
  * 只读投影 + 一次决策请求：不预测费用数字（单价随供应商配置变化），改由文案明示「会继续调用生成、可能计费」。
  * 驳回语义按引擎既有行为如实说明：该阶段整体重做，且重跑轮不再二次暂停。
  */
@@ -20,9 +20,9 @@ const note = ref('')
 const rejecting = ref(false)
 const MAX_NOTE = 500
 
-// [M44] 对白最终审阅：待审对象是带原声的成片视频与字幕，而非逐镜首帧；驳回为停机不自动重做
+// 对白最终审阅：待审对象是带原声的成片视频与字幕，而非逐镜首帧；驳回为停机不自动重做
 const dialogue = computed(() => review.value?.kind === 'dialogue')
-// [M47] 免核验路线：字幕按批准台词估算（非实测），发声只能靠人工收听比对，文案必须如实区分
+// 免核验路线：字幕按批准台词估算（非实测），发声只能靠人工收听比对，文案必须如实区分
 const subtitlesEstimated = computed(() => review.value?.subtitlesEstimated === true)
 const dialogueVideoUrl = computed(() =>
   review.value?.videoId ? `/api/v1/assets/${review.value.videoId}/file` : '',
@@ -50,7 +50,7 @@ watch(
 )
 
 // 待审产物：图文画面（slideshow）与动态首帧（i2v）都是逐镜 image，复用成果投影的在用版本
-// [M42] 投影已候选化（{selected, candidates}）：审阅只看正在用的那一版，逐镜换版走成果面板的候选选择
+// 投影已候选化（{selected, candidates}）：审阅只看正在用的那一版，逐镜换版走成果面板的候选选择
 const frames = computed<Array<{ index: number; artifact: CreationArtifact }>>(() =>
   (props.s.state.detail?.artifacts.shots ?? [])
     .map((shot) => ({ index: shot.index, artifact: shot.image.selected }))
@@ -105,7 +105,7 @@ async function onReject(): Promise<void> {
     </header>
     <p class="rm" role="status">{{ review.message }}</p>
 
-    <!-- [M44] 对白最终审阅：播放带原声的待审成片 + 字幕入口（实测/估算如实标注）+ 逐镜原声核验问题 -->
+    <!-- 对白最终审阅：播放带原声的待审成片 + 字幕入口（实测/估算如实标注）+ 逐镜原声核验问题 -->
     <div v-if="dialogue" class="ec-dlg">
       <p v-if="subtitlesEstimated" class="warnline">
         <Icon name="alert" :size="13" /> 免核验路线：字幕按批准台词估算（非实测），模型实际发声未经逐字核验，请务必收听原声比对台词、说话人与口型后再交付。
@@ -378,7 +378,7 @@ async function onReject(): Promise<void> {
   outline-offset: 2px;
 }
 
-/* [M44] 对白最终审阅：待审成片与字幕入口 */
+/* 对白最终审阅：待审成片与字幕入口 */
 .ec-dlg {
   display: flex;
   flex-direction: column;

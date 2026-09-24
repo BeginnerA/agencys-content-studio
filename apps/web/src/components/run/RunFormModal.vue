@@ -19,7 +19,7 @@ const props = defineProps<{
   projectId: number
   initialTemplateKey?: string
   defaultTemplateKey?: string
-  /** [M14] 输入预填（如剧集地图「起作」带 episode_number；仅覆盖模板声明的键） */
+  /** 输入预填（如剧集地图「起作」带 episode_number；仅覆盖模板声明的键） */
   prefillInput?: Record<string, unknown>
 }>()
 const emit = defineEmits<{ done: [runId: number]; close: [] }>()
@@ -28,12 +28,12 @@ const templates = ref<TemplateMeta[]>([])
 const tplKey = ref('')
 const tpl = ref<TemplateDetail | null>(null)
 const assets = ref<Asset[]>([])
-/** [整改] 项目发布记录（publications 类输入的选择源，复盘回灌直接勾选） */
+/** 项目发布记录（publications 类输入的选择源，复盘回灌直接勾选） */
 const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
-/** [M34] 自动预填来源映射（key → last_run/brief；用户编辑即剔除，驱动字段 chip） */
+/** 自动预填来源映射（key → last_run/brief；用户编辑即剔除，驱动字段 chip） */
 const sourceMap = ref<Record<string, PrefillSource>>({})
-/** [M34] G8 视频覆盖合法档位（null → 前端回退现硬编码手填） */
+/** G8 视频覆盖合法档位（null → 前端回退现硬编码手填） */
 const videoOverride = ref<VideoOverride | null>(null)
 const RES_DEFAULT = ['480p', '720p', '1080p']
 const resolutionOptions = computed(() =>
@@ -46,7 +46,7 @@ const durationMax = computed(() => {
   const d = videoOverride.value?.durations
   return d?.length ? d[d.length - 1] : 30
 })
-/** [M14] 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
+/** 集级参数覆盖（run.input._params；全空 = 不覆盖，继承项目 settings / 模板 defaults） */
 const adv = ref({
   imageSize: '',
   resolution: '',
@@ -125,7 +125,7 @@ async function selectTemplate(key: string) {
       else if (inp.kind === 'publications') form.value[inp.key] = []
       else form.value[inp.key] = d ?? ''
     }
-    // [M34] G6 输入预填（历史 run + brief）+ G8 视频合法档位；失败非致命→回落模板默认
+    // G6 输入预填（历史 run + brief）+ G8 视频合法档位；失败非致命→回落模板默认
     try {
       const pf = await templateApi.prefill(props.projectId, key)
       for (const [k, iv] of Object.entries(pf.inputs)) {
@@ -136,7 +136,7 @@ async function selectTemplate(key: string) {
     } catch {
       videoOverride.value = null
     }
-    // [M14] 起作预填（如 episode_number）：覆盖模板默认值 / 预填（仅模板声明的键，用户上下文非自动）
+    // 起作预填（如 episode_number）：覆盖模板默认值 / 预填（仅模板声明的键，用户上下文非自动）
     if (props.prefillInput) {
       for (const inp of res.template.inputs) {
         const pv = props.prefillInput[inp.key]
@@ -187,7 +187,7 @@ async function submit() {
     else if (inp.kind === 'publications') input[inp.key] = (v as number[]) ?? []
     else input[inp.key] = v ?? ''
   }
-  // [M14] 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
+  // 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）
   // 仅提交当前模板实际涉及的分组，隐藏字段一律忽略（双保险，防残留值误提交）
   const p: Record<string, Record<string, unknown>> = {}
   if (showImage.value && adv.value.imageSize.trim())
@@ -237,7 +237,7 @@ async function init() {
       projectApi.assets(props.projectId, '?limit=100'),
       publicationApi.list(`?project_id=${props.projectId}`),
     ])
-    // [入口收口] 启动选卡不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
+    // 启动选卡不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
     templates.value = filterSelectable(tRes.items)
     assets.value = aRes.items
     publications.value = pubRes.items
@@ -293,11 +293,11 @@ init()
             :sources="sourceMap"
             @change="onFieldChange"
           />
-          <!-- [M14] 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
+          <!-- 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
           <details v-if="hasOverride" class="adv">
             <summary>
               本集参数覆盖（可选）——仅本 run 生效，优先于项目设置
-              <!-- [M37·G13] 补齐 caps_suggest 来源标注：合法域非手拍，由平台能力真源表收窄 -->
+              <!-- 补齐 caps_suggest 来源标注：合法域非手拍，由平台能力真源表收窄 -->
               <ProvenanceBadge
                 v-if="videoOverride"
                 kind="auto"

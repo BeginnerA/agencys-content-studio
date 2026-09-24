@@ -1,5 +1,5 @@
 /**
- * [M20] 发布回采 / A/B 测试 / 成本聚合 前端类型
+ * 发布回采 / A/B 测试 / 成本聚合 前端类型
  */
 
 /** 发布趋势数据点（按日聚合） */
@@ -43,7 +43,7 @@ export interface CostTotals {
   unpriced: number
 }
 
-/** [M20] 趋势对比基线响应（当前周期 vs 上一周期） */
+/** 趋势对比基线响应（当前周期 vs 上一周期） */
 export interface CompareResult {
   days: number
   current: {
@@ -59,7 +59,7 @@ export interface CompareResult {
   delta: { runsTotal: number; costTotal: number; successRate: number }
 }
 
-/** [M20] 平台导出预设 */
+/** 平台导出预设 */
 export interface ExportPreset {
   platform: string
   label: string

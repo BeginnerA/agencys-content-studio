@@ -1,6 +1,6 @@
 /**
- * [M4] 发布登记 REST（E4 内容面）：登记/列表+汇总/更新回填/删除
- * [M20] 增强：批量导入 / 趋势视图 / A/B 分组对比 / title+ab_group 字段
+ * 发布登记 REST（E4 内容面）：登记/列表+汇总/更新回填/删除
+ * 增强：批量导入 / 趋势视图 / A/B 分组对比 / title+ab_group 字段
  * - run_id/asset_id 可空：允许登记非流水线内容
  * - metrics 白名单归一（views/likes/comments/favorites/shares → 非负整数）
  */
@@ -149,7 +149,7 @@ function safeParse(s: string | null): unknown {
   }
 }
 
-// ---------- [M20] 批量导入 ----------
+// ---------- 批量导入 ----------
 
 /** POST /publications/batch —— 批量导入（数组 ≤200 条） */
 publicationsRoutes.post('/publications/batch', h(async (c) => {
@@ -188,7 +188,7 @@ publicationsRoutes.post('/publications/batch', h(async (c) => {
   return c.json({ count: created.length, items: created }, 201)
 }))
 
-// ---------- [M20] 趋势视图 ----------
+// ---------- 趋势视图 ----------
 
 /** GET /publications/trend?project_id=&days= —— 按日聚合发布指标趋势 */
 publicationsRoutes.get('/publications/trend', h(async (c) => {
@@ -221,7 +221,7 @@ publicationsRoutes.get('/publications/trend', h(async (c) => {
   return c.json({ items, days })
 }))
 
-// ---------- [M20] A/B 分组对比 ----------
+// ---------- A/B 分组对比 ----------
 
 /** GET /publications/ab-groups?project_id= —— A/B 分组聚合对比 */
 publicationsRoutes.get('/publications/ab-groups', h(async (c) => {

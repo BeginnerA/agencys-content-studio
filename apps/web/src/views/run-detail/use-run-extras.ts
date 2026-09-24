@@ -1,4 +1,4 @@
-/** [M28] 运行详情附加数据：接力推荐 / 记忆徽标 / 导出包 / 成本 / 发布记录；核心状态由 deps 注入。 */
+/** 运行详情附加数据：接力推荐 / 记忆徽标 / 导出包 / 成本 / 发布记录；核心状态由 deps 注入。 */
 import { computed, ref } from 'vue'
 import {
   assetApi,
@@ -79,7 +79,7 @@ export function useRunExtras(deps: {
     window.location.href = `/runs/${id}`
   }
 
-  // [M3] 记忆/角色步骤徽标：读产物资产 params 组装（轻量、失败静默、按 step:asset 缓存）
+  // 记忆/角色步骤徽标：读产物资产 params 组装（轻量、失败静默、按 step:asset 缓存）
   const BADGE_ACTIONS = new Set([
     'memory_write',
     'memory_recall',
@@ -137,7 +137,7 @@ export function useRunExtras(deps: {
     badges.value = next
   }
 
-  // ===== [M4] 导出包 / 本 run 成本 / 发布记录 =====
+  // ===== 导出包 / 本 run 成本 / 发布记录 =====
   const showExport = ref(false)
   const showPublish = ref(false)
   const exportsList = ref<ExportAssetLite[]>([])
@@ -147,7 +147,7 @@ export function useRunExtras(deps: {
 
   /** 本 run 附加数据（四路并行：导出包 / 用量聚合 / run 发布记录（服务端 run_id 过滤）/ run 产物） */
   async function loadExtras(projectId: number) {
-    void loadEditExchangeFormats() // [M50] 能力探测独立异步，不阻断主附加数据加载
+    void loadEditExchangeFormats() // 能力探测独立异步，不阻断主附加数据加载
     try {
       const [ex, us, pub, ra] = await Promise.all([
         exportApi.list(`?run_id=${runId}`),
@@ -185,7 +185,7 @@ export function useRunExtras(deps: {
   })
 
   /**
-   * [整改] 发布记录面板可见性：只有产出可发布成品的模板才显示入口。
+   * 发布记录面板可见性：只有产出可发布成品的模板才显示入口。
    * plan（选题雷达/创作策划/立项/改编等）与 operate（复盘回灌/多平台适配/翻译等）
    * 场景不产出发布物，隐藏「标记发布 / 发布记录」面板；produce 与场景未知（元数据未载/自定义模板）保留。
    */
@@ -196,7 +196,7 @@ export function useRunExtras(deps: {
     return scene !== 'plan' && scene !== 'operate'
   })
 
-  // ===== [M19] 成片多画幅派生（A 路径：对最新 final_video 二次编码） =====
+  // ===== 成片多画幅派生（A 路径：对最新 final_video 二次编码） =====
   const deriveOpen = ref(false)
   /** 有 final_video 产物才可派生 */
   const hasFinalVideo = computed(() =>
@@ -207,7 +207,7 @@ export function useRunExtras(deps: {
     refreshExtras()
   }
 
-  // ===== [M50] 剪辑工程交换导出（FCPXML / EDL / OTIO 多轨工程）=====
+  // ===== 剪辑工程交换导出（FCPXML / EDL / OTIO 多轨工程）=====
   /** 能力探测结果（成片存在=全开；无 timeline 且不可重算=置灰带提示；null=未载/不可达） */
   const editExFormats = ref<EditExchangeFormatsResult | null>(null)
   const editExBusy = ref(false)

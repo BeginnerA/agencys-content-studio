@@ -7,7 +7,7 @@ import { createLogger } from '../logger'
 import { resolveFfmpeg } from './ffmpeg'
 import { absPathOf } from './storage'
 
-// [M12] 图像有效性检测：ffmpeg signalstats 单帧像素统计（复用 ffmpeg-static，零新依赖）。
+// 图像有效性检测：ffmpeg signalstats 单帧像素统计（复用 ffmpeg-static，零新依赖）。
 // 判定「损坏 / 黑图 / 纯色空白」三类异常，结果写 assets.params.quality（零新列）。
 // 保守策略：阈值宁漏报不误报（暗调/风格化纯色属正常创作），ffmpeg 不可用 → ok=null 宽容不标记。
 

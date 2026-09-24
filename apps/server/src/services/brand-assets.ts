@@ -1,5 +1,5 @@
 /**
- * [M19] 平台品牌资产服务（BRAND_DIR 文件 + settings.brand[slot].file 引用）。
+ * 平台品牌资产服务（BRAND_DIR 文件 + settings.brand[slot].file 引用）。
  * - 上传：kindByExt 校验（watermark 须 image / intro|outro 须 video）→ 落 BRAND_DIR/{slot}-{ts}-{sanitize}
  *   → settings.brand[slot].file 更新（同槽旧文件保留磁盘——与 DELETE「不物理删」语义一致）
  * - 预览：settings 引用 → BRAND_DIR 存在性（无引用/文件缺失 → null，路由层 404）

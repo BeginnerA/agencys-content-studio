@@ -1,5 +1,5 @@
 /**
- * [M23-E4] 设计态编排（画布内编辑落盘通道）——views/canvas/index.vue 拆分（M26 红线纯重构，逻辑逐字搬移）
+ * 设计态编排（画布内编辑落盘通道）——views/canvas/index.vue 拆分（纯重构，逻辑逐字搬移）
  * 轻提示 toast + Board 连线/删边 + 落盘预检 + 导出草案（edit-draft）+ 保存为新模板（edit-save）。
  * 依赖注入：edit（本地草稿层）、tab/tplKey（当前画布目标）、onSaved（保存成功后刷新目录）。
  */
@@ -17,7 +17,7 @@ export function useCanvasDesign(opts: {
 }) {
   const { edit, tab, tplKey, onSaved } = opts
 
-  // ===== [M23] 轻提示（连线拒绝原因 / 落盘结果；2.8s 自动消退）=====
+  // ===== 轻提示（连线拒绝原因 / 落盘结果；2.8s 自动消退）=====
   const toastMsg = ref('')
   let toastTimer: number | null = null
   function showToast(msg: string): void {
@@ -32,7 +32,7 @@ export function useCanvasDesign(opts: {
     if (toastTimer != null) window.clearTimeout(toastTimer)
   })
 
-  // ===== [M23-E4] 设计态编排（拖拽连线 + 落盘通道：草案预览 / 保存为新模板）=====
+  // ===== 设计态编排（拖拽连线 + 落盘通道：草案预览 / 保存为新模板）=====
   const boardEdit = computed(
     () => tab.value === 'template' && edit.editMode.value,
   )

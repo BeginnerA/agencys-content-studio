@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasSelection；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasSelection；依赖显式注入，原函数体保持不变。 */
 import type { CanvasState } from './use-canvas-state'
 
 type Dependencies = Pick<CanvasState, 'selectedIds' | 'selectedEdgeId'>

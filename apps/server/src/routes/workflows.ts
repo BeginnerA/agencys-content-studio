@@ -1,5 +1,5 @@
 /**
- * [M27] 自动编排链 REST（挂 /api/v1，spec §2.3）
+ * 自动编排链 REST（挂 /api/v1，spec §2.3）
  * - CRUD：列表 / 详情 / 建 / 改 / 删 / 克隆（I2）
  * - 状态转移：start / pause / resume
  * P0 骨架：start 仅置 active（首段 run 创建 + 级联于 P1 实装）；改 segments 的 active 守卫在此层。

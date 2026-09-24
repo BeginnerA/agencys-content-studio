@@ -19,7 +19,7 @@ const cv = props.cv
 </script>
 
 <template>
-  <!-- [M18] 回收站（软删画布：恢复 / 彻底删除） -->
+  <!-- 回收站（软删画布：恢复 / 彻底删除） -->
   <Modal
     v-if="cv.showTrash"
     title="回收站"
@@ -75,7 +75,7 @@ const cv = props.cv
   font-size: 11px;
 }
 
-/* ===== [M18] 回收站 / 文档快照弹窗 ===== */
+/* ===== 回收站 / 文档快照弹窗 ===== */
 .trash-list,
 .snap-list {
   display: flex;

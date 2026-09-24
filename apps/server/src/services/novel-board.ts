@@ -5,7 +5,7 @@ import { layoutFromGraphDoc, type GraphLayout } from './graph-layout'
 import { readTextAsset } from './storage'
 
 /**
- * [M9] 小说改编链聚合读（只读零副作用）：
+ * 小说改编链聚合读（只读零副作用）：
  * 按产物 purpose 归类（不依赖步骤 key 命名）——text_split 步骤 → manifest + 逐章；
  * ai_text 步骤产物 purpose=events/graph/plan/script 分别归位；
  * 章节 × 事件状态由 extract_events 步骤的 gen_tasks.params.itemId ↔ task.status 映射。
@@ -20,7 +20,7 @@ export interface NovelBoardChapter {
   chars: number
   /** 事件提取任务状态（pending/processing/succeeded/failed/cancelled；无任务 → null） */
   event_status: string | null
-  /** [M25·G6] 多部合并归属书名（非 per_source → null） */
+  /** 多部合并归属书名（非 per_source → null） */
   source_book: string | null
 }
 
@@ -90,7 +90,7 @@ export async function buildNovelBoard(runId: number): Promise<NovelBoard | null>
     if (purpose === 'events' && !eventsStep) eventsStep = s
     if (purpose === 'graph' && !board.graph) {
       const g = await docOf(rows[0]!)
-      // [M25·G3] 服务端确定性力导向布局（加法零破坏；脏 doc → layout=null 前端降级表视图）
+      // 服务端确定性力导向布局（加法零破坏；脏 doc → layout=null 前端降级表视图）
       board.graph = { ...g, layout: layoutFromGraphDoc(g.doc) }
     }
     if (purpose === 'plan' && !board.plan) board.plan = await docOf(rows[0]!)
@@ -185,7 +185,7 @@ function parseAssetIds(output: string | null): number[] {
   }
 }
 
-/** gen_tasks.params → itemId（M9 batch 任务；无 → null） */
+/** gen_tasks.params → itemId（batch 任务；无→ null） */
 function itemIdOfTask(params: string): string | null {
   try {
     const p = JSON.parse(params) as { itemId?: unknown }

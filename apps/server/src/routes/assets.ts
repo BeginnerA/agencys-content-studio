@@ -33,7 +33,7 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const conds = [eq(assets.projectId, projectId), isNull(assets.deletedAt)]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))
-  // [M21] tag 过滤下推 SQL（json_each 展开数组做 JSON 精确成员匹配——含引号/反斜杠/跨元素拼接串均无误配漏配；
+  // tag 过滤下推 SQL（json_each 展开数组做 JSON 精确成员匹配——含引号/反斜杠/跨元素拼接串均无误配漏配；
   // json_valid 守卫防历史脏数据炸查询）——修复 limit/offset 后内存过滤的分页错位
   if (tag) {
     conds.push(sql`json_valid(${assets.tags}) AND EXISTS (SELECT 1 FROM json_each(${assets.tags}) WHERE json_each.value = ${tag})`)
@@ -66,12 +66,12 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   }
   if (files.length === 0) throw new HttpError(400, 'no_files', '未收到文件')
   const created = await importFiles(projectId, files, { purpose })
-  // [M12] 写时图像有效性检测（仅图片；fire-and-forget 不阻断）
+  // 写时图像有效性检测（仅图片；fire-and-forget 不阻断）
   for (const a of created) scheduleImageCheck(a)
   return c.json({ items: created.map(toAssetView), duplicated: created.length < files.length }, 201)
 }))
 
-// POST /projects/:id/fetch-source —— [M25·G8] URL 抓正文→ source 资产（spec §2.8：SSRF 守卫 + 限额；400 守卫/过短，502 抓取失败）
+// POST /projects/:id/fetch-source —— URL 抓正文→ source 资产（spec §2.8：SSRF 守卫 + 限额；400 守卫/过短，502 抓取失败）
 assetsRoutes.post('/projects/:id/fetch-source', h(async (c) => {
   const projectId = idParam(c)
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
@@ -122,7 +122,7 @@ assetsRoutes.get('/assets/:id/file', h(async (c) => {
 
   const mime = withUtf8Charset(a.mime ?? mimeOfExt(`.${a.ext ?? ''}`))
   const download = c.req.query('download') === '1'
-  // [M29·R02] 可编辑文本资产内容会变（同 relPath 覆写）：no-store 规避 max-age=3600 陈旧缓存，正文保存后立即可见
+  // 可编辑文本资产内容会变（同 relPath 覆写）：no-store 规避 max-age=3600 陈旧缓存，正文保存后立即可见
   const editableText = a.kind === 'text' && !!a.purpose && (EDITABLE_PURPOSES as readonly string[]).includes(a.purpose)
   const headers: Record<string, string> = {
     'Content-Type': mime,
@@ -194,7 +194,7 @@ assetsRoutes.patch('/assets/:id', h(async (c) => {
   return c.json({ asset: toAssetView(rows[0]!) })
 }))
 
-// PATCH /assets/:id/content —— [M25·G2] 文本资产内容覆写 + [M29·R02] 版本链/乐观并发
+// PATCH /assets/:id/content —— 文本资产内容覆写 + 版本链/乐观并发
 assetsRoutes.patch('/assets/:id/content', h(async (c) => {
   const id = idParam(c)
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
@@ -222,7 +222,7 @@ assetsRoutes.delete('/assets/:id', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /assets/:id/check —— [M12] 单资产图像有效性检测（同步；仅图片；结果写 params.quality）
+// POST /assets/:id/check —— 单资产图像有效性检测（同步；仅图片；结果写 params.quality）
 assetsRoutes.post('/assets/:id/check', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
@@ -232,7 +232,7 @@ assetsRoutes.post('/assets/:id/check', h(async (c) => {
   return c.json({ asset: toAssetView(updated) })
 }))
 
-// POST /projects/:id/assets/cleanup-versions —— [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯）
+// POST /projects/:id/assets/cleanup-versions —— 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯）
 assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
   const projectId = idParam(c)
   const result = await cleanupVersions({ projectId })
@@ -245,7 +245,7 @@ assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
   })
 }))
 
-// POST /projects/:id/assets/gc —— [M12] 回收空间（删除已清理资产的物理文件；不可逆；行保留）
+// POST /projects/:id/assets/gc —— 回收空间（删除已清理资产的物理文件；不可逆；行保留）
 assetsRoutes.post('/projects/:id/assets/gc', h(async (c) => {
   const projectId = idParam(c)
   const result = await gcProject(projectId)

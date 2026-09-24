@@ -1,6 +1,6 @@
 import type { RunStatus } from './base'
 
-// ===== [M4] 批次 / 用量 / 统计 / 导出 / 发布 =====
+// ===== 批次 / 用量 / 统计 / 导出 / 发布 =====
 
 export type BatchStatus =
   'running' | 'completed' | 'partial_failed' | 'failed' | 'cancelled'
@@ -103,9 +103,9 @@ export interface Publication {
   updatedAt: number
 }
 
-// ===== [M14] 剧集实体（series → episodes 两级，一项目一剧） =====
+// ===== 剧集实体（series → episodes 两级，一项目一剧） =====
 
-/** [M14] 剧（系列） */
+/** 剧（系列） */
 export interface SeriesInfo {
   id: number
   projectId: number
@@ -116,7 +116,7 @@ export interface SeriesInfo {
   updatedAt: number
 }
 
-/** [M14] 集（status 为派生展示态：最新 run 状态优先；rowStatus 为行原值，编辑回显用） */
+/** 集（status 为派生展示态：最新 run 状态优先；rowStatus 为行原值，编辑回显用） */
 export interface Episode {
   id: number
   projectId: number

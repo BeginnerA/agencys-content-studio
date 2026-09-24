@@ -1,10 +1,10 @@
 /**
- * [M17] 创作画布打包导出（[M18] zip 流式化：内存 O(64KB)；零新依赖，fflate，spec §2.6⑫）：
+ * 创作画布打包导出（ zip 流式化：内存 O(64KB)；零新依赖，fflate，spec §2.6⑫）：
  * - 打包对象：asset 节点（其资产）/ gen 节点（displayTask 产物——采纳优先）/ text 节点（.txt）；
  * - entity / run 不参与打包（manifest.skipped 记账）；软删/缺文件/无产物 → skipped 不炸；
  * - 条目命名 <seq?>-<title|node-<id>>[-<assetId>].<ext>（重名 -1/-2 递增）；manifest.json 为首条目；
  * - nodeIds 缺省 = 全画布；显式数组 = 子集（空数组 → 抛错引导省略）；排序按 seq 优先（无 seq 按 x→y→id）；
- * - [M18] 流式：manifest/文本 → ZipDeflate（压缩）；媒体 → ZipPassThrough（store，createReadStream 64KB 分块），
+ * - 流式：manifest/文本 → ZipDeflate（压缩）；媒体 → ZipPassThrough（store，createReadStream 64KB 分块），
  *   直写临时文件 → rename 落位（zipSync 全内存 → 大画布内存峰值高已消除）；条目命名 / manifest 结构零变化（探针 unzipSync 对拍等价）；
  * - 产物落手工 exports 目录（对齐 export.ts 先例）+ registerAsset(kind:'archive', purpose:'creation_export')；
  *   下载复用既有 GET /assets/:id/file?download=1。
@@ -48,7 +48,7 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
   const assetById = new Map(rows.map((a) => [a.id, a]))
 
   const used = new Set<string>()
-  // [M18] 打包条目：文本/manifest 走内存 ZipDeflate；媒体走 absPath 流式 ZipPassThrough（不整文入内存）
+  // 打包条目：文本/manifest 走内存 ZipDeflate；媒体走 absPath 流式 ZipPassThrough（不整文入内存）
   type ZipItem = { name: string; data: Uint8Array } | { name: string; absPath: string }
   const items: ZipItem[] = []
   const manifestFiles: Array<Record<string, unknown>> = []
@@ -169,7 +169,7 @@ export async function exportCanvas(canvasId: number, rawNodeIds?: unknown): Prom
 }
 
 /**
- * [M18] fflate 流式 zip 直写文件：manifest/文本条目 → ZipDeflate（压缩）；媒体条目 → ZipPassThrough（store，不压缩）。
+ * fflate 流式 zip 直写文件：manifest/文本条目 → ZipDeflate（压缩）；媒体条目 → ZipPassThrough（store，不压缩）。
  * 逐条目 add + push（媒体 createReadStream 分块），末尾 zip.end()；resolve = 写出总字节数；任一错误 reject（调用方清理临时文件）。
  */
 function writeZipStream(absPath: string, manifestData: Uint8Array, items: Array<{ name: string; data?: Uint8Array; absPath?: string }>): Promise<number> {

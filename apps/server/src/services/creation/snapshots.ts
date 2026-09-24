@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：文档快照（创建/列表/删除/恢复，保留 id 重放）。
+// 自 services/creation.ts 拆分：文档快照（创建/列表/删除/恢复，保留 id 重放）。
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
 import { canvasEdges, canvasGroups, canvasNodes, canvasSnapshots, canvases } from '../../db/schema'
@@ -7,19 +7,19 @@ import { emitStudioEvent } from '../events'
 import { findCanvas } from './canvas'
 import { diffSnapshotDocs, type SnapshotDiff } from './snapshot-diff'
 
-// ---------- [M18] 文档快照（保留 id 重放） ----------
+// ---------- 文档快照（保留 id 重放） ----------
 
-/** [M18] 每画布快照上限（手动创建满额 → 400 提示清理；恢复前自动备份满额 → 驱逐最旧） */
+/** 每画布快照上限（手动创建满额 → 400 提示清理；恢复前自动备份满额 → 驱逐最旧） */
 export const SNAPSHOT_LIMIT = 20
 
-/** [M18] 快照文档形态（全量行 JSON；id 保留用于重放——adoptedTaskId→gen_tasks.canvasNodeId 不孤儿） */
+/** 快照文档形态（全量行 JSON；id 保留用于重放——adoptedTaskId→gen_tasks.canvasNodeId 不孤儿） */
 export interface CanvasSnapshotDoc {
   nodes: Array<typeof canvasNodes.$inferSelect>
   edges: Array<typeof canvasEdges.$inferSelect>
   groups: Array<typeof canvasGroups.$inferSelect>
 }
 
-/** [M18] 快照元信息（列表；不含 doc 全文） */
+/** 快照元信息（列表；不含 doc 全文） */
 export interface CanvasSnapshotMeta {
   id: number
   label: string
@@ -29,7 +29,7 @@ export interface CanvasSnapshotMeta {
   createdAt: number
 }
 
-/** [M18] 恢复冲突（快照行 id 被他画布占用；路由层映射 409） */
+/** 恢复冲突（快照行 id 被他画布占用；路由层映射 409） */
 export class SnapshotConflictError extends Error {
   constructor(message: string) {
     super(message)
@@ -37,7 +37,7 @@ export class SnapshotConflictError extends Error {
   }
 }
 
-/** [M18] 恢复结果（backupSnapshotId = 恢复前自动备份；restored = 重放行数） */
+/** 恢复结果（backupSnapshotId = 恢复前自动备份；restored = 重放行数） */
 export interface SnapshotRestoreResult {
   backupSnapshotId: number
   restored: { nodes: number; edges: number; groups: number }
@@ -50,7 +50,7 @@ function chunkIds(ids: number[], size = 500): number[][] {
   return out
 }
 
-/** [M18/M22] 采集当前文档全量行（diff 端点取 live 文档复用；快照重建重放语义靠调用侧） */
+/** 采集当前文档全量行（diff 端点取 live 文档复用；快照重建重放语义靠调用侧） */
 export async function collectSnapshotDoc(canvasId: number): Promise<CanvasSnapshotDoc> {
   const [nodes, edges, groups] = await Promise.all([
     db.select().from(canvasNodes).where(eq(canvasNodes.canvasId, canvasId)).orderBy(asc(canvasNodes.id)),
@@ -61,7 +61,7 @@ export async function collectSnapshotDoc(canvasId: number): Promise<CanvasSnapsh
 }
 
 /**
- * [M18] 创建快照：label 缺省「快照 N」；auto=true 为恢复前自动备份（满额驱逐最旧腾位，不阻断恢复）
+ * 创建快照：label 缺省「快照 N」；auto=true 为恢复前自动备份（满额驱逐最旧腾位，不阻断恢复）
  */
 export async function createSnapshot(canvasId: number, label: unknown, opts?: { auto?: boolean }): Promise<CanvasSnapshot> {
   const canvas = await findCanvas(canvasId)
@@ -85,7 +85,7 @@ export async function createSnapshot(canvasId: number, label: unknown, opts?: { 
   return row!
 }
 
-/** [M18] 快照列表（新→旧；含行数统计，不含 doc；画布不存在 → null） */
+/** 快照列表（新→旧；含行数统计，不含 doc；画布不存在 → null） */
 export async function listSnapshots(canvasId: number): Promise<CanvasSnapshotMeta[] | null> {
   const canvas = await findCanvas(canvasId)
   if (!canvas) return null
@@ -107,7 +107,7 @@ export async function listSnapshots(canvasId: number): Promise<CanvasSnapshotMet
   })
 }
 
-/** [M18] 删除快照（画布域限定；不存在/不属本画布 → false） */
+/** 删除快照（画布域限定；不存在/不属本画布 → false） */
 export async function deleteSnapshot(canvasId: number, snapshotId: number): Promise<boolean> {
   const rows = await db
     .select({ id: canvasSnapshots.id })
@@ -120,7 +120,7 @@ export async function deleteSnapshot(canvasId: number, snapshotId: number): Prom
 }
 
 /**
- * [M18] 快照恢复（保留 id 重放，spec §2.1）：
+ * 快照恢复（保留 id 重放，spec §2.1）：
  * ①事务内先冲突预检（快照行 id 被他画布占用 → 回滚 + 409）→ ②自动备份「恢复前备份」→
  * ③清空现 nodes/edges/groups → ④按快照 doc 显式保留原 id 重插 → ⑤ emitCanvasChanged。
  * 画布/快照不存在 → null（路由 404）；行数极少场景下 id 占用仅可能来自显式建行，仍走事务回滚保护。
@@ -167,7 +167,7 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
     await tx.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvasId))
     await tx.delete(canvasGroups).where(eq(canvasGroups.canvasId, canvasId))
 
-    // ④ 重放（显式保留 id；分组先于节点；[M22] parentId 保留重放——旧快照无字段容错）
+    // ④ 重放（显式保留 id；分组先于节点； parentId 保留重放——旧快照无字段容错）
     for (const g of doc.groups) {
       await tx.insert(canvasGroups).values({
         id: g.id,
@@ -210,7 +210,7 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
   }
 }
 
-// ---------- [M22] 快照 diff / 分支（spec §2.5） ----------
+// ---------- 快照 diff / 分支（spec §2.5） ----------
 
 /** 快照行读取（画布域限定；不存在/不属本画布 → null） */
 async function readSnapshotRow(canvasId: number, snapshotId: number): Promise<CanvasSnapshot | null> {
@@ -222,7 +222,7 @@ async function readSnapshotRow(canvasId: number, snapshotId: number): Promise<Ca
   return rows[0] ?? null
 }
 
-/** [M22] diff 端点响应形状（base=基准快照；target=live 或另一快照；diff 三桶展开） */
+/** diff 端点响应形状（base=基准快照；target=live 或另一快照；diff 三桶展开） */
 export interface SnapshotDiffResult {
   base: { kind: 'snapshot'; id: number; label: string }
   target: { kind: 'snapshot'; id: number; label: string } | { kind: 'live' }
@@ -233,7 +233,7 @@ export interface SnapshotDiffResult {
 }
 
 /**
- * [M22] 快照对比：against 缺省/='live'（快照 ↔ 当前文档），或另一快照 sid 字符串。
+ * 快照对比：against 缺省/='live'（快照 ↔ 当前文档），或另一快照 sid 字符串。
  * sid / sid2 须属本画布（否则 null → 路由 404）。
  */
 export async function diffSnapshotAgainst(canvasId: number, snapshotId: number, against: string): Promise<SnapshotDiffResult | null> {
@@ -256,7 +256,7 @@ export async function diffSnapshotAgainst(canvasId: number, snapshotId: number, 
 }
 
 /**
- * [M22] 分支为新画布：单事务内新 id 重放（groups 先插 parentId 回填 → nodes groupId 映射 → edges 端点映射）。
+ * 分支为新画布：单事务内新 id 重放（groups 先插 parentId 回填 → nodes groupId 映射 → edges 端点映射）。
  * 与 restoreSnapshot（保留 id）不同：全新画布空间无 id 冲突（duplicateCanvas 深拷哲学）；name 缺省「{源画布名} 分支」。
  */
 export async function branchSnapshot(canvasId: number, snapshotId: number, name?: unknown): Promise<Canvas | null> {

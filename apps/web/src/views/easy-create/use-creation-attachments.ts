@@ -14,8 +14,8 @@ import type {
   CreationRefRole,
 } from '../../lib/types'
 
-/** [M31] composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl）。
- *  [M31+] 两类来源：上传项持有 file；「从素材选取」项无 file，凭 sourceAssetId 走 from-asset 登记（改用途/重试同源）。 */
+/** composer 待采纳参考附件（本地项；上传后回填 assetId/hash/thumbUrl）。
+ * 两类来源：上传项持有 file；「从素材选取」项无 file，凭 sourceAssetId 走 from-asset 登记（改用途/重试同源）。 */
 export interface AttachmentItem {
   clientId: string
   file?: File
@@ -29,11 +29,11 @@ export interface AttachmentItem {
   error?: string
   /** 素材库源资产 id（仅从素材选取项；服务端去重后可能对应不同会话资产） */
   sourceAssetId?: number
-  /** [M43] 逐镜绑定（undefined/null = 整片级）；ready 项 PATCH 成功后回填，重传登记会覆写 payload → 同步清空 */
+  /** 逐镜绑定（undefined/null = 整片级）；ready 项 PATCH 成功后回填，重传登记会覆写 payload → 同步清空 */
   shotId?: string | null
 }
 
-/** [M43] 附件域独立成 composable（不继续膨胀 use-creation-chat）：与主状态机共享同一 reactive state 引用，切会话/离开时主文件直接覆写 state.attachments 即生效。 */
+/** 附件域独立成 composable（不继续膨胀 use-creation-chat）：与主状态机共享同一 reactive state 引用，切会话/离开时主文件直接覆写 state.attachments 即生效。 */
 interface AttachmentHost {
   currentId: number
   detail: CreationDetail | null
@@ -56,7 +56,7 @@ export function createAttachments(
 ) {
   const { commit, first, errText } = deps
 
-  // ===== [M31] 参考附件登记（composer：上传或从素材选取 → 落当前会话项目；不计费、不触发规划） =====
+  // ===== 参考附件登记（composer：上传或从素材选取 → 落当前会话项目；不计费、不触发规划） =====
   let attSeq = 0
   async function uploadItem(item: AttachmentItem): Promise<void> {
     const id = state.currentId
@@ -85,7 +85,7 @@ export function createAttachments(
         item.name = res.name
         item.kind = res.kind
         item.role = res.role
-        // [M43] 重新登记会覆写服务端 payload（registerAttachment 不带 shotId）→ 本地绑定同步清空，不假称还在
+        // 重新登记会覆写服务端 payload（registerAttachment 不带 shotId）→ 本地绑定同步清空，不假称还在
         item.shotId = undefined
       }
     } catch (e) {
@@ -129,7 +129,7 @@ export function createAttachments(
     if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
   }
 
-  /** [M31+] 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
+  /** 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
   async function addAssetReference(asset: Asset): Promise<void> {
     if (attachmentsLocked.value) return
     const kind = asset.kind as CreationRefKind
@@ -157,7 +157,7 @@ export function createAttachments(
     if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
   }
 
-  /** 更改用途：已有方案时走 PATCH（[M43] 与逐镜绑定同一语义：双写 payload + plan.refs，不重传文件）；
+  /** 更改用途：已有方案时走 PATCH（ 与逐镜绑定同一语义：双写 payload + plan.refs，不重传文件）；
    *  无方案（规划前）保持既有重登记路径（此时 PATCH 无 plan 可同步，重登记即唯一写链）。 */
   async function changeAttachmentRole(
     clientId: string,
@@ -180,7 +180,7 @@ export function createAttachments(
     }
   }
 
-  /** [M43] 参考绑定写入口（用途 + 逐镜共用）：PATCH 双写 payload + plan.refs，零 LLM、零计费；
+  /** 参考绑定写入口（用途 + 逐镜共用）：PATCH 双写 payload + plan.refs，零 LLM、零计费；
    *  hash 变则服务端 planRevision+1，旧确认失效。失败不写回本地（服务端为权威）；成功才同步 item + 提示重新确认。 */
   async function bindAttachment(clientId: string, patch: CreationRefBindBody): Promise<void> {
     const id = state.currentId
@@ -209,7 +209,7 @@ export function createAttachments(
     }
   }
 
-  /** [M43] 逐镜绑定切换：'' = 整片级（shotId null，服务端删键） */
+  /** 逐镜绑定切换：'' = 整片级（shotId null，服务端删键） */
   async function setAttachmentShot(clientId: string, shotId: string): Promise<void> {
     await bindAttachment(clientId, { shotId: shotId || null })
   }

@@ -13,12 +13,12 @@ import { validatedDialogueClip } from './dialogue-cache'
 import { creationWrite, sessionRow } from './store'
 
 /**
- * [M42] 会话侧候选版本通路（轻松创作不开放专业工作台路由，但复用同一套镜头服务）：
+ * 会话侧候选版本通路（轻松创作不开放专业工作台路由，但复用同一套镜头服务）：
  * 归属校验（session.runId → run.projectId）在 creation 层做，业务校验（资产/步骤/settled）留在 shot 服务层，
  * 不在这里重写一遍矩阵；shot 层的 WorkbenchError 原样翻译成 HTTP 状态，避免一律塌成 503 掩盖真实原因。
  */
 
-/** 工作台领域错误 → 会话领域错误（保留 code/message/status，不吞真实原因）；[M42] 返修通道同用此翻译 */
+/** 工作台领域错误 → 会话领域错误（保留 code/message/status，不吞真实原因）； 返修通道同用此翻译 */
 export async function throughShotLayer<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn()
@@ -37,7 +37,7 @@ async function ownedRun(id: number): Promise<{ session: CreationSession; run: Pi
 }
 
 /**
- * [M44] 安全读取本 run 的对白方案：仅当方案确为对白时返回，供候选指纹/重合成失效判定使用。
+ * 安全读取本 run 的对白方案：仅当方案确为对白时返回，供候选指纹/重合成失效判定使用。
  * 旁白旧方案（如 easy-video）run.input 可能没有 recipe 快照，recipeOf 解析会抛错；此处按旁白处理返回 null，
  * 保证新的对白通道绝不把既有的选片/重合成路径打断（历史兼容，非静默吞异常：非对白本就不走对白分支）。
  */
@@ -59,7 +59,7 @@ export async function creationShotBoard(id: number, rawStep: unknown): Promise<S
 }
 
 /**
- * [M44] 对白候选指纹：每段选中视频必须已有匹配当前批准台词与角色、且经严格校验的原声转写缓存；
+ * 对白候选指纹：每段选中视频必须已有匹配当前批准台词与角色、且经严格校验的原声转写缓存；
  * 否则拒绝选入——本地重合成绝不暗中调用付费 ASR，也不能把无声/错台词/其他角色/未验证历史版本送进成片。
  */
 export async function assertDialogueCandidates(recipe: CreationRecipe, picks: Array<{ shot_id: string; asset_id: number }>, projectId: number): Promise<void> {
@@ -93,7 +93,7 @@ export async function selectCreationShots(id: number, raw: unknown): Promise<{ r
       .filter((s) => wanted.has(s.shotId) || s.selectedAssetId != null)
       .map((s) => ({ shot_id: s.shotId, asset_id: wanted.get(s.shotId) ?? s.selectedAssetId! }))
     if (!picks.length) throw new CreationError('empty_selection', '该步骤还没有可用版本，请等待画面生成完成后再选', 409)
-    // [M44] 对白交付视频改选先过指纹缓存校验（写入前），避免选中陈旧版本后重合成暗改字幕或暗中付费 ASR
+    // 对白交付视频改选先过指纹缓存校验（写入前），避免选中陈旧版本后重合成暗改字幕或暗中付费 ASR
     const dialogueRecipe = dialogueRecipeOf(run)
     if (dialogueRecipe && request.stepKey === 'motion') await assertDialogueCandidates(dialogueRecipe, picks, run.projectId)
     const result = await throughShotLayer(() => applyShotSelection(run.id, request.stepKey, { picks }))
@@ -112,7 +112,7 @@ export async function recomposeCreation(id: number, raw: unknown): Promise<{ run
     const prior = await db.select().from(creationMessages)
       .where(and(eq(creationMessages.sessionId, id), eq(creationMessages.requestKey, request.idempotencyKey)))
     if (prior.length) return null
-    // [M44] 对白重合成同时失效逐镜转写与合成（从选中版本的已校验缓存重建全片字幕、旧审阅作废），仍零模型调用
+    // 对白重合成同时失效逐镜转写与合成（从选中版本的已校验缓存重建全片字幕、旧审阅作废），仍零模型调用
     const dialogue = dialogueRecipeOf(run) !== null
     await throughShotLayer(() => (dialogue ? resetDialogueForRecompose(run.id) : resetStepForRecompose(run.id, 'compose')))
     return { runId: run.id }

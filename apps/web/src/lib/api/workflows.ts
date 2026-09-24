@@ -1,5 +1,5 @@
 /**
- * [M27] 自动编排链 REST 客户端（spec §2.3）
+ * 自动编排链 REST 客户端（spec §2.3）
  * 后端 toWorkflowView 返回 camelCase（autoAdvance/budgetCap/segments[]）；
  * 建/改请求体沿用后端读取的 snake_case 键（auto_advance/budget_cap）。
  */

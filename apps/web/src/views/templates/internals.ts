@@ -1,4 +1,4 @@
-/** [M28] 模板视图共享纯逻辑：消息格式化 / YAML 骨架 / 只读信息字典 / 流程图几何。 */
+/** 模板视图共享纯逻辑：消息格式化 / YAML 骨架 / 只读信息字典 / 流程图几何。 */
 import { ApiError } from '../../lib/api'
 import { KIND_TEXT } from '../../lib/template-dict'
 import type { TemplateStepDef } from '../../lib/types'
@@ -90,7 +90,7 @@ export const BOX = { x: 56, w: 468, h: 56, gap: 30, top: 16 }
 export const CORRIDOR = BOX.x - 22
 export const BADGE_SLOT = 30
 
-/** [M28] 步骤流程图几何（原 flow computed 提纯：boxes/edges/height）。 */
+/** 步骤流程图几何（原 flow computed 提纯：boxes/edges/height）。 */
 export function computeFlow(steps: TemplateStepDef[]) {
   const boxes: FlowBox[] = []
   const edges: FlowEdge[] = []

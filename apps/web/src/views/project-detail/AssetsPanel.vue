@@ -108,7 +108,7 @@ const {
       </div>
       <div v-if="assetErr" class="err-text">{{ assetErr }}</div>
       <div v-if="assetNotice" class="asset-notice">{{ assetNotice }}</div>
-      <!-- [M21] 批量打标工具条（选择模式下展示；应用 = 追加去重） -->
+      <!-- 批量打标工具条（选择模式下展示；应用 = 追加去重） -->
       <div v-if="tagSelectMode" class="bulk">
         <span class="muted">已选 {{ checkedIds.length }} 项</span>
         <input
@@ -171,7 +171,7 @@ const {
   padding-top: 8px;
   border-top: 1px dashed var(--border);
 }
-/* [M12] 资产维护（收藏筛选 / 清理 / 回收） */
+/* 资产维护（收藏筛选 / 清理 / 回收） */
 .fav-ck {
   display: inline-flex;
   align-items: center;
@@ -191,7 +191,7 @@ const {
   padding: 7px 10px;
 }
 
-/* [M21] 批量打标工具条 */
+/* 批量打标工具条 */
 .bulk {
   display: flex;
   align-items: center;

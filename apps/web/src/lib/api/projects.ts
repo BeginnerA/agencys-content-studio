@@ -38,9 +38,9 @@ export const projectApi = {
       genre?: string
       template_key?: string
       status?: 'active' | 'archived'
-      /** [M8] 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_ids） */
+      /** 读-合并写：调用方先展开既有 settings 再覆盖目标键（如 style_preset_ids） */
       settings?: Record<string, unknown>
-      /** [M21] 标签（覆盖式写入） */
+      /** 标签（覆盖式写入） */
       tags?: string[]
     },
   ) =>
@@ -67,7 +67,7 @@ export const projectApi = {
     api.patch<{ project: Record<string, unknown> }>(`/api/v1/projects/${id}`, {
       status: 'active',
     }),
-  /** [M35 G11] 下一步建议（规则引擎，零 LLM、零计费，≤ 3 条） */
+  /** 下一步建议（规则引擎，零 LLM、零计费，≤ 3 条） */
   nextSteps: (id: number) =>
     api.get<{ items: NextStep[] }>(`/api/v1/projects/${id}/next-steps`),
 }
@@ -79,12 +79,12 @@ export const templateApi = {
     api.get<{ template: TemplateDetail; yaml: string }>(
       `/api/v1/templates/${encodeURIComponent(key)}`,
     ),
-  /** [M34] 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位；只读、零计费） */
+  /** 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位；只读、零计费） */
   prefill: (projectId: number, key: string) =>
     api.get<PrefillResult>(
       `/api/v1/templates/${encodeURIComponent(key)}/prefill?project_id=${projectId}`,
     ),
-  /** [M35 G7] 自然语言→模板推荐（embedding 零成本，失败回落关键词；只读、零计费） */
+  /** 自然语言→模板推荐（embedding 零成本，失败回落关键词；只读、零计费） */
   recommend: (text: string, top = 3) =>
     api.get<RecommendResult>(
       `/api/v1/templates/recommend?text=${encodeURIComponent(text)}&top=${top}`,
@@ -104,14 +104,14 @@ export const templateApi = {
     ),
   remove: (key: string) =>
     api.del<{ ok: boolean }>(`/api/v1/templates/${encodeURIComponent(key)}`),
-  /** [M23] 设计态编辑草案：edits 白名单应用 → YAML 序列化（不落盘）→ { yaml, validation, editsApplied } */
+  /** 设计态编辑草案：edits 白名单应用 → YAML 序列化（不落盘）→ { yaml, validation, editsApplied } */
   editDraft: (key: string, edits: TemplateEdits) =>
     api.post<{
       yaml: string
       validation: TemplateValidation
       editsApplied: number
     }>(`/api/v1/templates/${encodeURIComponent(key)}/edit-draft`, { edits }),
-  /** [M23] 编辑落盘为新模板（原文件零触碰；newKey 缺省 <原key>-edit，冲突自动后缀）→ { templateKey, validation } */
+  /** 编辑落盘为新模板（原文件零触碰；newKey 缺省 <原key>-edit，冲突自动后缀）→ { templateKey, validation } */
   editSave: (key: string, edits: TemplateEdits, newKey?: string) =>
     api.post<{
       templateKey: string
@@ -165,7 +165,7 @@ export const batchApi = {
     }>(`/api/v1/batches/${id}/exports`),
 }
 
-// ===== [M14] 剧集实体（series → episodes 两级，一项目一剧） =====
+// ===== 剧集实体（series → episodes 两级，一项目一剧） =====
 
 export const seriesApi = {
   /** 项目剧 + 集列表（无剧 → { series: null, episodes: [] }） */

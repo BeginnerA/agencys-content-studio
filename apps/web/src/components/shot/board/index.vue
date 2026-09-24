@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * [M7] 镜头级轻工作台（spec §3.5）
+ * 镜头级轻工作台（spec §3.5）
  * 挂载：RunDetailView 步骤卡内（actionKey ∈ {ai_image, ai_video}）
  * 交互约定（写死）：
  * - 时长编辑：change 即提交（单条 edit），刷新后输入框保留新值
  * - 版本选用 / 启用开关：本地 draft，头条「应用选择」统一提交 select
  * - 重生成：即时提交（可选改词），执行进度由 TaskPanel / socket 呈现
  * - 重新合成：确认弹窗 → recompose；active（run 运行中）时全部操作禁用
- * ---- [M28] 已拆分：internals / use-shot-board / ShotCard / VersionStrip / ComposeBar（行为零变更；状态经 useShotBoard 装配）----
+ * ---- 已拆分：internals / use-shot-board / ShotCard / VersionStrip / ComposeBar（行为零变更；状态经 useShotBoard 装配）----
  */
 import Icon from '../../common/Icon.vue'
 import AssetPreviewer from '../../asset/previewer/index.vue'
@@ -22,7 +22,7 @@ import type { ShotBoardEmits, ShotBoardProps } from './internals'
 const props = defineProps<ShotBoardProps>()
 const emit = defineEmits<ShotBoardEmits>()
 
-// ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
+// ---- 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   sb,
   loading,
@@ -136,7 +136,7 @@ const {
       </div>
     </div>
 
-    <!-- [M19] 控制条：转场设置 | 批量工具 | 合成工具，三段合并为一条深色 strip（纯呈现层重组，绑定不变） -->
+    <!-- 控制条：转场设置 | 批量工具 | 合成工具，三段合并为一条深色 strip（纯呈现层重组，绑定不变） -->
     <div class="wb-strip">
       <ComposeBar :sb="sb" :save-transition="saveTransition" />
       <template v-if="shots.length">

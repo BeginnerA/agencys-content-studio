@@ -1,5 +1,5 @@
 /**
- * [M25·G7] 自动连载·增量导入（spec §2.7）：向在跑/已跑 run 的章节链追加新章，不级联重跑。
+ * 自动连载·增量导入（spec §2.7）：向在跑/已跑 run 的章节链追加新章，不级联重跑。
  * 流程：新文件走 G1 导入（docx/epub/txt/md → source 资产）→ 逐源独立切分（复用该 run
  * split 步骤的 regex_used）→「章题 + 归一化首行哈希」与既有章节幂等比对 → 新章续编 index
  * 落库（挂同一 step/run）→ manifest 重写（appended_at 追加记录，经 G2 受控写通道）。

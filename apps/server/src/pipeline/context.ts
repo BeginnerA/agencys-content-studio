@@ -51,7 +51,7 @@ export async function createStepContext(opts: {
   projectSettings?: Record<string, unknown>
 }): Promise<StepContext> {
   const { run, step, template, def, input } = opts
-  // [M14] 集级参数覆盖（run.input._params，启动时快照）：无键时合并结果与旧行为逐字等价
+  // 集级参数覆盖（run.input._params，启动时快照）：无键时合并结果与旧行为逐字等价
   const runParams = readRunParams(run.input)
   const settings: RunSettings = await frozenSettings(run, def.action) ?? {
     llm: { ...((template.defaults?.llm as Record<string, unknown>) ?? {}), ...((opts.projectSettings?.llm as Record<string, unknown>) ?? {}), ...(runParams.llm ?? {}) },

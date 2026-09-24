@@ -19,7 +19,7 @@ const props = defineProps<{
   publications?: Publication[]
   /** 受控值（单组输入） */
   values: Record<string, unknown>
-  /** [M34] 自动预填来源映射（命中 last_run / brief 的字段标 chip；用户编辑后父层剔除） */
+  /** 自动预填来源映射（命中 last_run / brief 的字段标 chip；用户编辑后父层剔除） */
   sources?: Record<string, PrefillSource>
   /** 紧凑模式（批量表单行内：text 单行、files 折叠为计数按钮） */
   dense?: boolean
@@ -70,7 +70,7 @@ function openPreview(id: number) {
   if (i >= 0) previewIdx.value = i
 }
 
-/** [M34] 自动预填来源（[M37·G13] 改挂统一徽标；仅标注本轮新增的自动值，模板自身默认不加噪） */
+/** 自动预填来源（ 改挂统一徽标；仅标注本轮新增的自动值，模板自身默认不加噪） */
 function srcChip(k: string): string {
   const s = props.sources?.[k]
   if (s === 'last_run') return '沿用上次运行'

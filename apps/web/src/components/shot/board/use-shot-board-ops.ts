@@ -1,6 +1,6 @@
 /**
- * [M26-split] 镜头工作台操作域（自 use-shot-board.ts 逐字搬出，行为零变更）：
- * 时长编辑 / 拖拽重排 / 上传替换 / 大编辑器 / 重新合成 / [M11] 合成设置 / [M19] 音效 / [M12] 版本收藏与清理。
+ * 镜头工作台操作域（自 use-shot-board.ts 逐字搬出，行为零变更）：
+ * 时长编辑 / 拖拽重排 / 上传替换 / 大编辑器 / 重新合成 / 合成设置 / 音效 / 版本收藏与清理。
  * —— 装配约定：状态真源（refs/computed/run/load/selectedVersion）经 ctx 注入，函数体逐字保留；
  * 主文件同名解构，return 键面与 sb 总线冻结。
  */
@@ -121,7 +121,7 @@ export function useShotBoardOps(ctx: {
     }
   }
 
-  // ---------- [M10] 拖拽重排 ----------
+  // ---------- 拖拽重排 ----------
 
   function onGripDragStart(shot: ShotBoardShot, e: DragEvent) {
     if (!canOperate.value) return
@@ -183,7 +183,7 @@ export function useShotBoardOps(ctx: {
     if (res) notice.value = '镜头顺序已更新（重新合成后生效）'
   }
 
-  // ---------- [M10] 上传替换 ----------
+  // ---------- 上传替换 ----------
 
   function pickUpload(shot: ShotBoardShot) {
     if (!canOperate.value || uploadBusy.value) return
@@ -218,7 +218,7 @@ export function useShotBoardOps(ctx: {
     }
   }
 
-  // ---------- [M10] 大编辑器 ----------
+  // ---------- 大编辑器 ----------
 
   function openEditor() {
     if (!canOperate.value) return
@@ -250,7 +250,7 @@ export function useShotBoardOps(ctx: {
     }
   }
 
-  // ---------- [M11] 合成设置 ----------
+  // ---------- 合成设置 ----------
 
   const cfgDirty = computed(() => {
     const c = composeCfg.value
@@ -308,7 +308,7 @@ export function useShotBoardOps(ctx: {
     }
   }
 
-  // ---------- [M19] 镜头音效（SFX） ----------
+  // ---------- 镜头音效（SFX） ----------
 
   function openSfx(shot: ShotBoardShot) {
     if (!canOperate.value) return
@@ -335,7 +335,7 @@ export function useShotBoardOps(ctx: {
       : []
   }
 
-  // ---------- [M12] 质量徽标 / 收藏 / 版本清理 ----------
+  // ---------- 质量徽标 / 收藏 / 版本清理 ----------
 
   /** 版本质量异常文案（ok===false 才返回；null/正常不显示徽标） */
   function verQualityWarn(v: ShotVersion): string | null {

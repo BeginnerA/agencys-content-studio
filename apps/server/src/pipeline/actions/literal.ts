@@ -4,14 +4,14 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
 /**
- * [M18] literal：零 LLM 纯写文本资产（画布 → 模板 v2 桥接件）。
+ * literal：零 LLM 纯写文本资产（画布 → 模板 v2 桥接件）。
  * inputs.text：字符串（input.x 文本或引用串）或资产 id（number / [number]，读全文）；
  * params.payload：字面文本（inputs.text 缺省/空时回落）；
  * params.as：'raw'（默认）| 'storyboard-single'（包成 ai-image 可解析的单镜 shots JSON）
  *   | 'lines-single'（包成 tts 可解析的单句 lines JSON）；
  * params.name_tpl：文件名模板（{input.x} 内插，缺省 `${stepKey}.txt` / `.json`）；
  * params.output_purpose：资产 purpose（缺省 'text'）。
- * [M22] inputs.refs（资产 id 数组）与 inputs.first_frame（首个）：仅 storyboard-single 生效，
+ * inputs.refs（资产 id 数组）与 inputs.first_frame（首个）：仅 storyboard-single 生效，
  * 注入单镜 ref_asset_ids / first_frame_asset_id（画布参考边保真直通）。
  * 产物：1 个文本资产（stepId 归属），供下游 ai_image.inputs.shots / tts.inputs.lines / ai_text.inputs 消费。
  */
@@ -35,7 +35,7 @@ export async function literal(ctx: StepContext): Promise<StepResult> {
   if (!text || !text.trim()) throw new Error('literal 缺文本内容（inputs.text 或 params.payload 至少其一非空）')
 
   // 3) as 转换
-  // [M22] refs / first_frame 直通仅 storyboard-single 生效；其他形态忽略（存在输入时提示）
+  // refs / first_frame 直通仅 storyboard-single 生效；其他形态忽略（存在输入时提示）
   if (as !== 'storyboard-single' && (ctx.input['refs'] !== undefined || ctx.input['first_frame'] !== undefined)) {
     ctx.log(`inputs.refs / inputs.first_frame 仅 as=storyboard-single 生效，当前 as=${as} 已忽略`)
   }

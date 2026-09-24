@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * [M15] 节点抽屉（spec §2.4）
+ * 节点抽屉（spec §2.4）
  * - run 态：操作（闸门三决策 / 单步重跑 RerunModal / 重新合成 / 任务行内 retry·cancel）+ 输入 + 产物 + 日志
  * - template 态：设计态信息（gate / 依赖 / 条件 / 批量 / 产物用途 / 引用清单；无运行字段与操作）
- * - [M23] template 态 + 编辑模式：画布内编辑区（标题 / 输入字段；本地草稿，patch 经 emit('edit') 回流）
+ * - template 态 + 编辑模式：画布内编辑区（标题 / 输入字段；本地草稿，patch 经 emit('edit') 回流）
  * - node.key / status / assetIds 变化重载各分区；操作后 emit refresh 由父级全量重拉（REST 对账）
- * ---- [M28] 已拆分：交互逻辑经 use-canvas-drawer.ts 装配（行为零变更）----
- * ---- [M26-split] [M23] 编辑区拆至 EditSection.vue（行为零变更）----
+ * ---- 已拆分：交互逻辑经 use-canvas-drawer.ts 装配（行为零变更）----
+ * ----  编辑区拆至 EditSection.vue（行为零变更）----
  */
 import type { DrawerSel } from './use-canvas-drawer'
 import { useCanvasDrawer } from './use-canvas-drawer'
@@ -32,18 +32,18 @@ const props = defineProps<{
   sel: DrawerSel
   log: string
   projectId: number | null
-  /** [M23] 画布内编辑：编辑模式下选中节点的编辑区视图（非编辑态 → null/不传） */
+  /** 画布内编辑：编辑模式下选中节点的编辑区视图（非编辑态 → null/不传） */
   editNode?: EditNodeState | null
 }>()
 const emit = defineEmits<{
   close: []
   refresh: []
   'open-canvas': [canvasId: number]
-  /** [M23] 编辑草稿转交（patch 结构对齐 P3 edits.steps[]） */
+  /** 编辑草稿转交（patch 结构对齐 P3 edits.steps[]） */
   edit: [key: string, patch: StepOverride]
 }>()
 
-// ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
+// ---- 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   rn,
   tn,
@@ -251,7 +251,7 @@ const {
       <div v-if="taskErr" class="err-text">{{ taskErr }}</div>
     </section>
 
-    <!-- ===== [M23] template 态：画布内编辑（本地草稿；E3；M26-split 拆至 EditSection） ===== -->
+    <!-- ===== template 态：画布内编辑（本地草稿；E3； -split 拆至 EditSection） ===== -->
     <EditSection
       v-if="editNode"
       :edit-node="editNode"
@@ -363,7 +363,7 @@ const {
       <pre ref="logEl" class="log mono">{{ logText || '暂无该步骤日志' }}</pre>
     </section>
 
-    <!-- 重跑弹窗（复用 M11） -->
+    <!-- 重跑弹窗（复用） -->
     <RerunModal
       v-if="showRerun && rerunStep && runId != null"
       :run-id="runId"
@@ -371,7 +371,7 @@ const {
       @close="showRerun = false"
       @done="onRerunDone"
     />
-    <!-- [M16] 送入创作画布 -->
+    <!-- 送入创作画布 -->
     <CanvasTargetModal
       v-if="showSend && projectId != null && rn"
       :project-id="projectId"

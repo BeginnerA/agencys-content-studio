@@ -1,4 +1,4 @@
-// ===== [M21] 主导航定义（App.vue 侧栏与命令面板共享同一数据源） =====
+// ===== 主导航定义（App.vue 侧栏与命令面板共享同一数据源） =====
 
 export interface NavItem {
   to: string

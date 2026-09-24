@@ -11,7 +11,7 @@ const sb = props.sb
 </script>
 
 <template>
-  <!-- [M11→redesign] 转场设置段：作为工作台控制条（.wb-strip）左段呈现；合成设置按钮已归入右侧工具簇 -->
+  <!-- 转场设置段：作为工作台控制条（.wb-strip）左段呈现；合成设置按钮已归入右侧工具簇 -->
   <div v-if="sb.compose" class="wb-grp">
     <span class="wb-lb"><Icon name="film" :size="12" /> 转场</span>
     <select
@@ -118,7 +118,7 @@ const sb = props.sb
 }
 
 .wb-sel {
-  /* 覆盖全局 select{width:100%}：转场下拉按内容宽收缩，避免独占整行挤出配乐按钮（M11 实弹修复） */
+  /* 覆盖全局 select{width:100%}：转场下拉按内容宽收缩，避免独占整行挤出配乐按钮（实弹修复） */
   width: auto;
   max-width: 132px;
   background: var(--panel-2);

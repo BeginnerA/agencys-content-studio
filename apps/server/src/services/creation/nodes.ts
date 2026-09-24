@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：节点 CRUD/校验/快照重建认领 + 坐标解析。
+// 自 services/creation.ts 拆分：节点 CRUD/校验/快照重建认领 + 坐标解析。
 import { and, eq, or } from 'drizzle-orm'
 import { db } from '../../db'
 import { canvasEdges, canvasNodes, characters, genTasks, pipelineRuns } from '../../db/schema'
@@ -69,7 +69,7 @@ export async function addGenNode(
   return row!
 }
 
-/** [M17] 文本节点：spec { text }（空文本属 readiness 语义） */
+/** 文本节点：spec { text }（空文本属 readiness 语义） */
 export async function addTextNode(
   canvas: Canvas,
   spec: unknown,
@@ -96,7 +96,7 @@ export async function addTextNode(
   return row!
 }
 
-/** [M17] 实体节点：entityId 须存在且属同项目或全局（project_id NULL） */
+/** 实体节点：entityId 须存在且属同项目或全局（project_id NULL） */
 export async function addEntityNode(
   canvas: Canvas,
   entityId: unknown,
@@ -127,7 +127,7 @@ export async function addEntityNode(
   return row!
 }
 
-/** [M17] 运行节点：runId 须存在且属同项目 */
+/** 运行节点：runId 须存在且属同项目 */
 export async function addRunNode(
   canvas: Canvas,
   runId: unknown,
@@ -168,7 +168,7 @@ export interface NodePatch {
 }
 
 /**
- * [M17] PATCH 校验核心（updateNode 与 batchNodes 共用，保证同文案同语义）：
+ * PATCH 校验核心（updateNode 与 batchNodes 共用，保证同文案同语义）：
  * 校验 patch 合法性并返回待更新字段集（不含写库）。
  */
 export async function validateNodePatch(cur: CanvasNode, patch: NodePatch): Promise<Record<string, unknown>> {
@@ -190,7 +190,7 @@ export async function validateNodePatch(cur: CanvasNode, patch: NodePatch): Prom
     else if (cur.kind === 'text') set['spec'] = JSON.stringify(parseTextSpec(patch.spec))
     else throw new Error('该节点类型不可改 spec（gen/text 可改）')
   }
-  // [M17] 故事板序号：null 清除 / 正整数（1 起）
+  // 故事板序号：null 清除 / 正整数（1 起）
   if (patch.seq !== undefined) {
     if (patch.seq === null) set['seq'] = null
     else {
@@ -199,7 +199,7 @@ export async function validateNodePatch(cur: CanvasNode, patch: NodePatch): Prom
       set['seq'] = n
     }
   }
-  // [M17] 结果采纳：null 清除 / 校验（属本节点 + succeeded + 有产物）
+  // 结果采纳：null 清除 / 校验（属本节点 + succeeded + 有产物）
   if (patch.adoptedTaskId !== undefined) {
     if (cur.kind !== 'gen') throw new Error('仅生成节点支持采纳结果')
     if (patch.adoptedTaskId === null) {
@@ -241,7 +241,7 @@ export async function deleteNode(id: number): Promise<boolean> {
 }
 
 /**
- * [M17] 快照重建认领-源校验：restoreFromNodeId 为正整数且源节点已不存在。
+ * 快照重建认领-源校验：restoreFromNodeId 为正整数且源节点已不存在。
  * 路由在建节点前前置调用——失败即抛，避免产生「节点已建但认领失败」的残留；与 claimNodeTasks 同文案同语义。
  */
 export async function assertRestorableSource(rawFrom: unknown): Promise<number> {
@@ -253,7 +253,7 @@ export async function assertRestorableSource(rawFrom: unknown): Promise<number> 
 }
 
 /**
- * [M17] 快照重建：认领已删节点的任务历史（gen_tasks.canvas_node_id 旧 → 新，同项目域）。
+ * 快照重建：认领已删节点的任务历史（gen_tasks.canvas_node_id 旧 → 新，同项目域）。
  * 撤销删除时重建 gen 节点后调用——任务归属随重建迁移，使画廊/采纳/下游引用完整恢复；
  * 否则 adoptedTaskId 的 PATCH 校验（任务须属本节点）必然失败。
  * 校验：目标须为 gen（任务仅归属 gen 节点）；源节点须已不存在（禁止转移存活节点任务）。

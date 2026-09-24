@@ -22,7 +22,7 @@ const {
 </script>
 
 <template>
-  <!-- [M4] 用量计费（折叠；实例级定价优先，此处为全局兜底） -->
+  <!-- 用量计费（折叠；实例级定价优先，此处为全局兜底） -->
   <details class="panel pricing">
     <summary class="psum">
       <Icon name="chart" :size="14" />

@@ -1,5 +1,5 @@
 /**
- * [M27] 自动编排链服务（真 orchestrator，spec §2）
+ * 自动编排链服务（真 orchestrator，spec §2）
  * - 数据层 CRUD（workflows 表）+ 链视图投影
  * - advanceWorkflow：run 落定 → 链推进（P0 为受守卫的骨架桩，P1 实装九步算法）
  * - 纯服务层新增：不碰 engine.ts / dag.ts / loader.ts / refs.ts（复用既有 onRunSettled 钩子 + createRunRow + engine.startRun）
@@ -177,7 +177,7 @@ export interface SegmentInputResult {
   inputs: Record<string, unknown>
   /** 模板 required 且未提供且无 default 的输入键（非空 → input 阻塞） */
   missingRequired: string[]
-  /** [M29·R02] 本次经 $prev.* 令牌命中的上游产物资产 id（含 $prev.text 字符串来料），供跨段版本溯源 */
+  /** 本次经 $prev.* 令牌命中的上游产物资产 id（含 $prev.text 字符串来料），供跨段版本溯源 */
   prevSources: number[]
 }
 
@@ -213,7 +213,7 @@ async function prevAssetIdsByPurpose(prevRunId: number | null, purpose: string):
 }
 
 /** 解析单个 inputSpec token（$prev.* 取上游产物；否则字面量）；不可解析 → undefined。
- *  [M29·R02] sink 收集本次命中的上游资产 id（含 $prev.text 字符串来料），不改返回值语义。 */
+ * sink 收集本次命中的上游资产 id（含 $prev.text 字符串来料），不改返回值语义。 */
 async function resolveToken(token: string, prevRunId: number | null, sink: number[]): Promise<unknown> {
   if (typeof token !== 'string') return token
   if (token.startsWith('$prev.assets:')) {
@@ -469,7 +469,7 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
   engine.startRun(newRun.id)
   emitStudioEvent({ type: 'workflow.advanced', workflowId, projectId: wf.projectId, fromRunId: runId, toRunId: newRun.id, seq: seq + 1 })
   log.info(`workflow ${workflowId} 推进段 ${seq}→${seq + 1}（run ${runId}→${newRun.id}）`)
-  // [M29·R02] 跨段版本溯源：将本段经 $prev.*（尤其 $prev.text 字符串）命中的上游资产版本随新 run 带出（旁路，不改推进/预算/幂等语义）
+  // 跨段版本溯源：将本段经 $prev.*（尤其 $prev.text 字符串）命中的上游资产版本随新 run 带出（旁路，不改推进/预算/幂等语义）
   if (prevSources.length > 0) {
     const inputs: ExecInputSpec[] = []
     for (const aid of new Set(prevSources)) inputs.push(await assetInput('prev_text', aid))

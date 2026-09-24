@@ -98,7 +98,7 @@ const { lineSuggest, lineList, addLine, removeLine, lineLabelOf } = props.s
   padding: 2px 0 !important;
 }
 
-/* [M11] 台词建议提示 */
+/* 台词建议提示 */
 .se-lines-tip {
   margin-top: 4px;
   font-size: 11.5px;

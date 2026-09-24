@@ -32,7 +32,7 @@ export interface CreationArtifact {
 }
 
 /**
- * [M42] 每镜每模态的多版本视图：selected = 正在用的那一个（与旧单值口径完全一致），
+ * 每镜每模态的多版本视图：selected = 正在用的那一个（与旧单值口径完全一致），
  * candidates = 同镜头全部候选（含缺文件/已删除的不可选占位）。候选序确定性：
  * 在用优先 → 本步任务产物优先 → id 倒序（同优先级下最新版在前）。
  */
@@ -63,7 +63,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const parsed = creationPlanSchema.safeParse(recipe.plan ?? jsonRecord(session.approvedPlan))
   const plan = parsed.success ? parsed.data : null
   const dialogue = plan?.performance === 'dialogue'
-  // [M47] 免核验对白路线标记（随 run 冻结的 recipe 透传，不重新解析策略）：字幕为估算非实测，展示层诚实区分
+  // 免核验对白路线标记（随 run 冻结的 recipe 透传，不重新解析策略）：字幕为估算非实测，展示层诚实区分
   const estimatedDialogue = dialogue && recipe.estimatedDialogue === true
   const videoMode = ['i2v', 't2v', 'none'].includes(String(recipe.videoMode)) ? recipe.videoMode : null
   const stepByKey = new Map(steps.map((s) => [s.stepKey, s]))
@@ -82,7 +82,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     return { assetId: id, kind, name: valid ? a.name : label, available: valid && available(a), sourceRunId: valid ? a.runId : null, reused: valid && a.runId !== null && a.runId !== run.id }
   }
   const eligibleTasks = tasks.filter((t) => t.projectId === session.projectId && t.runId === run.id)
-  /** [M42] 候选集投影：候选来源与原 pick 同口径（同 shotId 的 succeeded 任务 resultAssetId ∪ output/本步资产） */
+  /** 候选集投影：候选来源与原 pick 同口径（同 shotId 的 succeeded 任务 resultAssetId ∪ output/本步资产） */
   const pickSet = (stageKey: string, kind: string, field: 'shotId' | 'lineId', key: string): CreationArtifactChoice => {
     const output = outputByKey.get(stageKey) ?? new Set<number>()
     const step = stepByKey.get(stageKey)
@@ -171,7 +171,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   const preflight = jsonRecord(session.preflight)
   const estimate = preflight.estimate as { unpriced?: unknown } | undefined
   const unpriced = Array.isArray(estimate?.unpriced) ? estimate.unpriced.filter((x): x is string => typeof x === 'string') : []
-  // [M42] 中途审阅：等待闸门时把挂起步与模板 gate 文案透出，前端据此渲染审阅面板（不改引擎语义，仅投影）
+  // 中途审阅：等待闸门时把挂起步与模板 gate 文案透出，前端据此渲染审阅面板（不改引擎语义，仅投影）
   const waitingStep = run.status === 'waiting_input' ? steps.find((s) => s.status === 'waiting_input') : undefined
   const gateMessage = (() => {
     if (!waitingStep || !Array.isArray(snapshot.steps)) return null

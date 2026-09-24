@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasDocument；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasDocument；依赖显式注入，原函数体保持不变。 */
 import { creationApi } from '../../lib/api'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasTarget } from './use-canvas-target'

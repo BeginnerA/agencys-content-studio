@@ -19,13 +19,13 @@ const active = computed(
 const settledBad = computed(
   () => !!prog.value && ['failed', 'cancelled'].includes(prog.value.status),
 )
-// [M42] 挂起在人工闸：等的是用户决策（上方审阅面板），不是失败也不是「默默运行中」
+// 挂起在人工闸：等的是用户决策（上方审阅面板），不是失败也不是「默默运行中」
 const waiting = computed(() => prog.value?.status === 'waiting_input')
 const recovery = computed(() => prog.value?.recovery)
 const acceptUnpriced = ref(false)
 const canRetry = computed(() => !!recovery.value?.resumable && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value))
 // 运行态/步骤态文案（后端 status 为宽字符串，经映射兜底，未知态原样显示）
-// [M42] waiting_input 在轻松创作里说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）；徽章复用全局 .waiting_input 色类
+// waiting_input 在轻松创作里说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）；徽章复用全局 .waiting_input 色类
 const runMeta = computed(() =>
   prog.value?.status === 'waiting_input'
     ? { text: '等待审阅', cls: 'waiting_input' }

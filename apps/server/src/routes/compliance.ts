@@ -3,9 +3,9 @@ import { rulesView } from '../services/compliance'
 import { suggestRules, appendRules } from '../services/compliance-suggest'
 import { HttpError, h } from './helpers'
 
-// [M24·F5] 合规词库只读视图（spec §3 端点 3）：GET /compliance/rules → { total, byCategory, source }
-// [M36·G12.2] 词库文件缺失 → source:'builtin'（内置《广告法》基准地板兜底，不 500、不返空）。
-// [M36·G12.3] 新增：GET /compliance/suggest（Tier B 内容补充建议，零新计费）+ POST /compliance/rules（采纳追加进词库）。
+// 合规词库只读视图（spec §3 端点 3）：GET /compliance/rules → { total, byCategory, source }
+// 词库文件缺失 → source:'builtin'（内置《广告法》基准地板兜底，不 500、不返空）。
+// 新增：GET /compliance/suggest（Tier B 内容补充建议，零新计费）+ POST /compliance/rules（采纳追加进词库）。
 export const complianceRoutes = new Hono()
 
 complianceRoutes.get('/compliance/rules', h(async (c) => c.json(rulesView())))

@@ -1,5 +1,5 @@
 /**
- * [M40] 轻松创作「立项信息」真源派生与校验。
+ * 轻松创作「立项信息」真源派生与校验。
  *
  * 决策权模型（Tier B 建议 + 预览闸门）：LLM 随方案给出立项建议（名称/载体/模板/标签/简介），
  * 本模块按平台真源逐项校验并归一——缺项静默回落（本就是自动填），越界/非法值回落并产出**可见 notes**
@@ -142,7 +142,7 @@ export function sanitizeProjectMeta(
     const k = typeof input.templateKey === 'string' ? input.templateKey.trim() : ''
     if (k && templateFileOf(k) && !isCreationTemplate(k)) templateKey = k
     else if (k && isCreationTemplate(k)) {
-      // [B 收口] 服务端真源拒绝批准链模板进「项目专业默认」字段（与前端 filterSelectable 双保险）
+      // 服务端真源拒绝批准链模板进「项目专业默认」字段（与前端 filterSelectable 双保险）
       templateKey = resolveDefaultTemplateKey(genre)
       notes.push(`模板「${k}」是轻松创作批准链专用（不能在专业工作台启动），已按载体改选「${templateKey}」`)
     } else {
@@ -167,7 +167,7 @@ export function sanitizeProjectMeta(
 }
 
 /**
- * [M40] 立项信息约束注入（与 Tier A 能力约束同范式）：把载体字典与模板候选真源交给 LLM，
+ * 立项信息约束注入（与 Tier A 能力约束同范式）：把载体字典与模板候选真源交给 LLM，
  * 避免它编造不存在的 templateKey；执行模板恒为 easy-video（不因此建议而改变）。
  */
 export function projectMetaPrompt(): string {

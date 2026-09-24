@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 排产日历 · 新建计划弹窗（自 ScheduleCalendar.vue 原样搬出，行为零变更）：
+ * 排产日历 · 新建计划弹窗（自 ScheduleCalendar.vue 原样搬出，行为零变更）：
  * 表单状态与提交逻辑真源留父级（watch 模板加载 / submitForm 校验 / err 同源），本组件纯装配：
  * v-model 透传六个表单字段，操作经 emit 转交；复用全局 Modal（Teleport + backdrop + Esc）。
  */
@@ -23,7 +23,7 @@ const props = defineProps<{
   err: string
   creating: boolean
 }>()
-// [入口收口] 排程选模板不呈现轻松创作批准链模板（无 recipe、到点必失败）
+// 排程选模板不呈现轻松创作批准链模板（无 recipe、到点必失败）
 const selectableTpls = computed(() => filterSelectable(props.templates))
 
 const emit = defineEmits<{

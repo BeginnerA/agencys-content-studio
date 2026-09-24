@@ -18,7 +18,7 @@ const cv = props.cv
 </script>
 
 <template>
-  <!-- [M18] 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） -->
+  <!-- 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） -->
   <Modal
     v-if="cv.showRefPick"
     title="加入实体参考"

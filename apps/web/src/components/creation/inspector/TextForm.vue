@@ -13,7 +13,7 @@ const form = props.form
 </script>
 
 <template>
-  <!-- ===== [M17] text 节点：文本内容 ===== -->
+  <!-- ===== text 节点：文本内容 ===== -->
   <template v-if="node.kind === 'text'">
     <section class="sec">
       <div class="sec-h">文本内容</div>
@@ -91,7 +91,7 @@ const form = props.form
   font-size: 11px;
 }
 
-/* ===== [M17] 新增块：frow-ops / notes / vsel / 画廊 / 弹窗 ===== */
+/* ===== 新增块：frow-ops / notes / vsel / 画廊 / 弹窗 ===== */
 .frow-ops {
   display: flex;
   gap: 6px;

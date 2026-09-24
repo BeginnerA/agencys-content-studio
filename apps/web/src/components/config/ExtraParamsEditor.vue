@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M38] 扩展参数结构化编辑器：按服务端单一真源清单（extra-schema）动态渲染表单，
+ * 扩展参数结构化编辑器：按服务端单一真源清单（extra-schema）动态渲染表单，
  * 替代 ApiConfigForm 高级区那个「鬼才知道配啥」的裸 JSON textarea。
  *
  * 父组件负责拉取 fields 与剥离/合并（本组件不感知 JSON 框），职责边界同 VideoCapsEditor：
@@ -11,7 +11,7 @@
  *
  * 纪律：仅渲染服务端登记的字段，不猜 key；未知透传参数仍留在父组件 JSON 框（高级兜底）。
  *
- * [M39] 逐模型联动防护：fields 会随实例所选模型重拉（音色的候选/默认是模型级事实）——
+ * 逐模型联动防护：fields 会随实例所选模型重拉（音色的候选/默认是模型级事实）——
  * - 脏值保护：用户手动改过的 key 在重建时保留现值，不被切模型冲掉；
  * - select 回显保护：现值不在新候选集时动态追加「当前值」项，编辑既有实例不丢值、不误导。
  */
@@ -30,7 +30,7 @@ const strVals = ref<Record<string, string>>({})
 const boolVals = ref<Record<string, boolean>>({})
 /** 回显时该 key 是否真实存在于 extra（区分「显式 false」与「未设置」） */
 const initialKeys = ref<Set<string>>(new Set())
-/** [M39] 用户手动改过的 key：fields 变化重建时保留现值（切模型不冲掉手选音色） */
+/** 用户手动改过的 key：fields 变化重建时保留现值（切模型不冲掉手选音色） */
 const dirtyKeys = ref<Set<string>>(new Set())
 const err = ref('')
 
@@ -59,7 +59,7 @@ function reseed(): void {
   const keys = new Set<string>()
   const src = props.initial ?? {}
   for (const f of props.fields) {
-    // [M39] 脏值保护：用户改过的 key 保留现值（含空串），不按新 fields/initial 重建
+    // 脏值保护：用户改过的 key 保留现值（含空串），不按新 fields/initial 重建
     const dirty = dirtyKeys.value.has(f.key)
     if (f.type === 'boolean') {
       if (dirty && f.key in boolVals.value) {
@@ -79,7 +79,7 @@ function reseed(): void {
   err.value = ''
 }
 
-/** [M39] select 回显保护：现值不在登记候选集时追加「当前值」项（不丢值、不误导；提交仍按现值写回） */
+/** select 回显保护：现值不在登记候选集时追加「当前值」项（不丢值、不误导；提交仍按现值写回） */
 function selectOptions(f: ExtraField): { value: string; label: string }[] {
   const opts = f.options ?? []
   const cur = String(strVals.value[f.key] ?? '').trim()

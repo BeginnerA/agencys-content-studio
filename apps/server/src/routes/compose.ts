@@ -1,9 +1,9 @@
 /**
- * [M11] 合成设置路由（run 级：_compose 配置 + BGM/SFX 绑定）。
+ * 合成设置路由（run 级：_compose 配置 + BGM/SFX 绑定）。
  * - 配置/绑定不触发执行：重新合成（recompose）后生效
  * - WorkbenchError → HttpError（wb 共用）；run 状态校验在服务层（completed/failed）
- * - [M19] SFX：per-shot 音效（multipart file + shot_id / JSON { shot_id, asset_id } / DELETE :shotId）
- * - [M19] derive-aspect：成片多画幅派生（A 路径；单路重编码，幂等复用）
+ * - SFX：per-shot 音效（multipart file + shot_id / JSON { shot_id, asset_id } / DELETE :shotId）
+ * - derive-aspect：成片多画幅派生（A 路径；单路重编码，幂等复用）
  */
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -121,7 +121,7 @@ composeRoutes.delete('/runs/:id/compose/sfx/:shotId', h(async (c) => {
   return c.json({ ok: true, note: '音效已移除（重新合成后生效）' })
 }))
 
-// POST /runs/:id/derive-aspect —— [M19] 多画幅派生（A 路径；源 = 最新 final_video；同参已派生 → 直接复用）
+// POST /runs/:id/derive-aspect —— 多画幅派生（A 路径；源 = 最新 final_video；同参已派生 → 直接复用）
 // 单路重编码在当前请求内同步完成（本地单机工具；长成片耗时相应增长）
 composeRoutes.post('/runs/:id/derive-aspect', h(async (c) => {
   const runId = idParam(c)

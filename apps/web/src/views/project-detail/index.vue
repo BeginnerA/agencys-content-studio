@@ -78,7 +78,7 @@ const {
         <button class="btn" @click="showUpload = true">
           <Icon name="upload" :size="14" /> 上传素材
         </button>
-        <!-- [M25] G8 URL 抓正文入库（服务端抓取 + SSRF 守卫） -->
+        <!-- G8 URL 抓正文入库（服务端抓取 + SSRF 守卫） -->
         <button
           class="btn"
           title="抓取网页正文存为素材资产（仅供个人素材整理）"
@@ -158,7 +158,7 @@ const {
         </button>
       </div>
 
-      <!-- [M35 G11] 下一步建议（服务端规则引擎，≤3 条；run 终态自动重拉） -->
+      <!-- 下一步建议（服务端规则引擎，≤3 条；run 终态自动重拉） -->
       <NextStepsBar :project-id="projectId" />
 
       <!-- 页内 Tab（?tab= 深链接） -->
@@ -188,14 +188,14 @@ const {
       <!-- 发布 -->
       <PubsPanel :s="s" />
 
-      <!-- [M19] 品牌（平台/项目/run 三层；项目层覆盖平台，保存后重新合成生效） -->
+      <!-- 品牌（平台/项目/run 三层；项目层覆盖平台，保存后重新合成生效） -->
       <BrandPanel :s="s" />
 
       <!-- 对白严格 ASR 核验：项目级覆盖（继承全局默认 / 强制严格 / 强制关闭） -->
       <CreationPanel :s="s" />
     </template>
 
-    <!-- 启动 run（[M14] 起作入口预选项目模板 + 预填 episode_number） -->
+    <!-- 启动 run（ 起作入口预选项目模板 + 预填 episode_number） -->
     <RunFormModal
       v-if="showRunForm"
       :project-id="projectId"
@@ -209,10 +209,10 @@ const {
     <!-- 上传素材 -->
     <UploadModal :s="s" />
 
-    <!-- [M25] G8 从 URL 抓取 -->
+    <!-- G8 从 URL 抓取 -->
     <FetchSourceModal :s="s" />
 
-    <!-- [M4] 批量创建 -->
+    <!-- 批量创建 -->
     <BatchFormModal
       v-if="showBatch"
       :project-id="projectId"
@@ -238,7 +238,7 @@ const {
       @close="showDanger = false"
     />
 
-    <!-- [M4] 标记发布 / 编辑回填 -->
+    <!-- 标记发布 / 编辑回填 -->
     <PublishModal
       v-if="showPublish"
       :project-id="projectId"

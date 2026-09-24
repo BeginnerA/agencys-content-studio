@@ -1,4 +1,4 @@
-/** [M28] 模板区：列表 / 说明书切换 / YAML 编辑校验 / 新建副本删除；原函数体逐字保留。 */
+/** 模板区：列表 / 说明书切换 / YAML 编辑校验 / 新建副本删除；原函数体逐字保留。 */
 import { computed, ref, watch } from 'vue'
 import { templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'

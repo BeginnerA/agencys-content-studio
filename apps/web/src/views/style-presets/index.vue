@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * [M8] 风格预设库：平台级通用画风词块（CRUD + 启用开关 + 排序）。
- * [M13] 从参考图提取画风词（视觉 LLM → 预填新建表单，不落库）；项目多选绑定在项目「编辑」弹窗
+ * 风格预设库：平台级通用画风词块（CRUD + 启用开关 + 排序）。
+ * 从参考图提取画风词（视觉 LLM → 预填新建表单，不落库）；项目多选绑定在项目「编辑」弹窗
  * （settings.style_preset_ids）；出图时由 ai_image 运行时解析拼接注入。
  */
 import { onMounted, reactive, ref } from 'vue'
@@ -27,7 +27,7 @@ const form = reactive({
 })
 const formErr = ref('')
 
-// [M13] 从参考图提取（项目 → 图片多选 ≤4 → 视觉 LLM → 预填 snippet；不落库）
+// 从参考图提取（项目 → 图片多选 ≤4 → 视觉 LLM → 预填 snippet；不落库）
 const projects = ref<Project[]>([])
 const extractPid = ref(0)
 const extractAssets = ref<Asset[]>([])
@@ -143,7 +143,7 @@ async function removeItem(p: StylePresetItem) {
   }
 }
 
-/** [M13] 提取用项目切换 → 拉取该项目图片候选（清空已选） */
+/** 提取用项目切换 → 拉取该项目图片候选（清空已选） */
 async function onExtractProject() {
   extractIds.value = []
   extractAssets.value = []
@@ -161,7 +161,7 @@ async function onExtractProject() {
   }
 }
 
-/** [M13] 参考图勾选（上限 4 张：多图仅取共同风格，过多会稀释特征） */
+/** 参考图勾选（上限 4 张：多图仅取共同风格，过多会稀释特征） */
 function toggleExtractAsset(aid: number) {
   const i = extractIds.value.indexOf(aid)
   if (i >= 0) {
@@ -176,7 +176,7 @@ function toggleExtractAsset(aid: number) {
   extractIds.value.push(aid)
 }
 
-/** [M13] 提取风格词 → 预填 snippet（确认后随表单保存落库，不自动建预设） */
+/** 提取风格词 → 预填 snippet（确认后随表单保存落库，不自动建预设） */
 async function doExtract() {
   if (!extractPid.value) {
     extractErr.value = '请先选择项目'
@@ -524,7 +524,7 @@ async function doExtract() {
   flex: 1;
 }
 
-/* [M13] 从参考图提取 */
+/* 从参考图提取 */
 .extract-box {
   margin: 2px 0 12px;
   padding: 10px 12px;

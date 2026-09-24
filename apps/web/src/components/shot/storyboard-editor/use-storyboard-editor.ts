@@ -1,5 +1,5 @@
 /**
- * [M10] 分镜可视化大编辑器（spec §4.2）
+ * 分镜可视化大编辑器（spec §4.2）
  * 挂载：ShotBoard 头条「编辑分镜」（Modal）
  * 形态：两栏——左=镜头列表（拖拽排序 / 选中 / 删除标记 / 新增），右=字段表单
  * 保存：本地草稿 diff → ops（add* → patch* → remove* → reorder）→ shotApi.mutate（不触发执行）
@@ -54,7 +54,7 @@ export function useStoryboardEditor(deps: {
   const busy = ref(false)
   const err = ref('')
   const charNames = ref<string[]>([])
-  /** [M11] 台词 id 建议（本 run cast_lines 产物解析；失败降级为空 = 纯标签输入） */
+  /** 台词 id 建议（本 run cast_lines 产物解析；失败降级为空 = 纯标签输入） */
   const lineSuggest = ref<Array<{ id: string; label: string }>>([])
 
   function cloneDraft(shot: ShotBoardShot): DraftShot {
@@ -97,7 +97,7 @@ export function useStoryboardEditor(deps: {
     }
   }
 
-  /** [M11] 台词 id 建议：run 内 cast_lines 产物 JSON（{ lines: [{id, speaker, text}] }）；失败静默降级 */
+  /** 台词 id 建议：run 内 cast_lines 产物 JSON（{ lines: [{id, speaker, text}] }）；失败静默降级 */
   async function loadLineSuggest() {
     try {
       const detail = await runApi.detail(props.runId)
@@ -283,7 +283,7 @@ export function useStoryboardEditor(deps: {
   function setDur(d: DraftShot, e: Event) {
     const raw = (e.target as HTMLInputElement).value
     if (raw.trim() === '') {
-      // 清空 = 维持原值（对齐 M7 时长编辑惯例）
+      // 清空 = 维持原值（对齐时长编辑惯例）
       delete d.fields.duration
       return
     }
@@ -311,7 +311,7 @@ export function useStoryboardEditor(deps: {
     d.fields.characters = charList(d).filter((x) => x !== name)
   }
 
-  // ---------- [M11] 台词标签控件（lines；空数组 = 无台词镜） ----------
+  // ---------- 台词标签控件（lines；空数组 = 无台词镜） ----------
 
   function lineList(d: DraftShot): string[] {
     const l = d.fields.lines
@@ -448,7 +448,7 @@ export function useStoryboardEditor(deps: {
         out.characters = list
       }
     }
-    // [M11] lines 归一（字符串数组；空数组合法 = 无台词镜）
+    // lines 归一（字符串数组；空数组合法 = 无台词镜）
     if (out.lines !== undefined) {
       const arr = out.lines
       if (

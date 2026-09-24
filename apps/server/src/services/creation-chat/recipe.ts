@@ -24,12 +24,12 @@ export const recipeSchema = z.object({
   voice: z.string().min(1).optional(), imageSize: z.string(), resolution: z.string(),
   templateHash: z.string().length(64),
   sources: z.array(z.object({ id: z.number().int().positive(), hash: z.string().length(64) })).min(3).max(3),
-  // [M31] 参考素材指纹（PreparedRecipe 随之携带 → hashJson({plan,execution}) 天然含参考 → 编辑/删除即停机）
+  // 参考素材指纹（PreparedRecipe 随之携带 → hashJson({plan,execution}) 天然含参考 → 编辑/删除即停机）
   refs: z.array(refSchema).max(12).default([]),
   asr: endpointSnapshotSchema.extend({
     model: z.literal('whisper-1'), protocol: z.literal('openai_verbose_json'), policy: z.literal('verbatim-segments-v1'),
   }).strict().optional(),
-  // [M47] 免核验对白标记（路 B）：仅当用户显式关闭严格 ASR（dialogue_asr.strict=false）且视频模型命中原生对白背书时
+  // 免核验对白标记（路 B）：仅当用户显式关闭严格 ASR（dialogue_asr.strict=false）且视频模型命中原生对白背书时
   // 由预检写入；无默认值 → 存量 recipe（narration/旧会话）序列化不增键，hashJson 重算逐字不变（零回归）。
   estimatedDialogue: z.literal(true).optional(),
 }).strict().superRefine((recipe, ctx) => {
@@ -41,7 +41,7 @@ export const recipeSchema = z.object({
     return
   }
   if (!recipe.endpoints.video || recipe.videoMode === 'none') issue('对白必须包含原生视频实例')
-  // [M47] 对白两条路线互斥：strict（逐字 ASR 快照，执行链仍冻结）或 estimated（原生出声 + 估算字幕）
+  // 对白两条路线互斥：strict（逐字 ASR 快照，执行链仍冻结）或 estimated（原生出声 + 估算字幕）
   if (!recipe.asr && !recipe.estimatedDialogue) issue('对白必须携带严格 ASR 快照或显式免核验标记')
   if (recipe.asr && recipe.estimatedDialogue) issue('严格 ASR 快照与免核验标记互斥')
   if (recipe.endpoints.audio || recipe.voice) issue('对白不得使用独立 TTS 或旁白音色')
@@ -51,13 +51,13 @@ export const recipeSchema = z.object({
 export type CreationRecipe = z.infer<typeof recipeSchema>
 export type { CreationRef }
 
-/** [M42] 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
+/** 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
  *  执行期守卫、恢复校验与专业端阻断一律按集合判定，不逐处硬编码单键。 */
 export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue', 'easy-dialogue-review'])
 export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
 
 /**
- * [方案C] 「受理状态不明」任务判定（单一真源）：已提交过（attempts>0）但既无第三方任务号（taskId）
+ * 「受理状态不明」任务判定（单一真源）：已提交过（attempts>0）但既无第三方任务号（taskId）
  * 也无已捕获产物（resultAssetId）且未成功——供应商侧可能已受理并在计费，盲目重投=重复扣费，必须人工核验。
  * 与 retryCreation 的 needs_verification 判定同源；供 resume 委派、task 重试、画布读模型统一消费。
  */
@@ -82,7 +82,7 @@ export function refContentHash(asset: { relPath: string | null }): string {
   return sha256Hex(new Uint8Array(readFileSync(absPathOf(asset.relPath))))
 }
 
-/** [M31] 本镜可用图片参考 assetId（保序去重）：kind image 且 role∈roles 且（全局 shotId=null 或 ===shotId）。 */
+/** 本镜可用图片参考 assetId（保序去重）：kind image 且 role∈roles 且（全局 shotId=null 或 ===shotId）。 */
 export function recipeRefImageIds(recipe: CreationRecipe | null, shotId: string, roles: readonly CreationRef['role'][]): number[] {
   if (!recipe) return []
   const ids: number[] = []
@@ -95,7 +95,7 @@ export function recipeRefImageIds(recipe: CreationRecipe | null, shotId: string,
   return ids
 }
 
-/** [M31] 本镜首帧参考 assetId：shot 级 first_frame 优先，否则全局（shotId=null）；无 → null。 */
+/** 本镜首帧参考 assetId：shot 级 first_frame 优先，否则全局（shotId=null）；无 → null。 */
 export function recipeFirstFrameId(recipe: CreationRecipe | null, shotId: string): number | null {
   if (!recipe) return null
   const shotLevel = recipe.refs.find((r) => r.kind === 'image' && r.role === 'first_frame' && r.shotId === shotId)
@@ -121,7 +121,7 @@ export async function assertRecipeSources(run: PipelineRun, recipe: CreationReci
     if (!a || a.projectId !== run.projectId || a.deletedAt !== null || a.kind !== 'text') throw new Error('批准素材不存在、已删除或不属于本项目')
     if (hashJson(await readTextAsset(a.id)) !== src.hash) throw new Error('已批准脚本或分镜被修改，请重新规划并确认')
   }
-  // [M31] 参考素材核验：项目归属 / 未软删 / kind 相符 / 二进制摘要一致；任一不符停机（不静默消费新素材）
+  // 参考素材核验：项目归属 / 未软删 / kind 相符 / 二进制摘要一致；任一不符停机（不静默消费新素材）
   for (const ref of recipe.refs) {
     const a = rows.find((row) => row.id === ref.assetId)
     if (!a || a.projectId !== run.projectId || a.deletedAt !== null) throw new Error('参考素材不存在、已删除或不属于本项目，请重新确认')
@@ -136,7 +136,7 @@ export async function frozenSettings(run: PipelineRun, action: string): Promise<
   await assertRecipeSources(run, recipe)
   if (action === 'dialogue_subtitle') {
     if (recipe.plan.performance !== 'dialogue') throw new Error('对白字幕仅适用对白方案')
-    // [M47] estimated 分支零 ASR：字幕由批准台词估算，不需也不解析 ASR 端点
+    // estimated 分支零 ASR：字幕由批准台词估算，不需也不解析 ASR 端点
     if (!recipe.estimatedDialogue) {
       if (!recipe.asr) throw new Error('严格对白字幕缺少 ASR 批准快照')
       const { resolveStrictAsrEndpoint } = await import('../strict-asr')

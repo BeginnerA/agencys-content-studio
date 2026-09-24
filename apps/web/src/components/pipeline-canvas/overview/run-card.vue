@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M23] 全景 run 卡片（spec §2.4）——批次组内与独立组共用
+ * 全景 run 卡片（spec §2.4）——批次组内与独立组共用
  * 纯展示：状态/模板版本/时间/耗时/成本；点击整卡 emit open（页面负责导航）
  */
 import { fmtCost, fmtMs, fmtTime, runStatus } from '../../../lib/format'

@@ -17,7 +17,7 @@ import { creationWrite, sessionRow } from './store'
 const log = createLogger('creation-chat')
 
 /**
- * [M40+] 删除轻松创作会话（清理"聊了一半放弃"的记录，顺带回收其影子项目）。
+ * 删除轻松创作会话（清理"聊了一半放弃"的记录，顺带回收其影子项目）。
  *
  * 两种结局，绝不静默多删：
  *  - 未立项（项目仍是 draft 影子态，且无 run）→ 会话 + 影子项目一并清除。

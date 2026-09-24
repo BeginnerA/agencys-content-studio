@@ -1,5 +1,5 @@
 /**
- * [M20] 成本预算熔断与告警服务（B4）
+ * 成本预算熔断与告警服务（B4）
  * - 预算存储：settings 表 key='budgets'，JSON { project?: { monthly, total }, global: { monthly, total } }
  * - 预检：run 创建前调用 checkBudget，超阈返回拦截码（应用层 409）
  * - 告警：用量记录后调用 checkAlerts，超阈写入 budget_alerts 并 emit 事件

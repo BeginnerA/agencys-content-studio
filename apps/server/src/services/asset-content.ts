@@ -1,5 +1,5 @@
 /**
- * [M25·G2] 文本资产内容覆写服务（spec §2.3）：章节/事件/图谱等中间产物可编辑的底层通道。
+ * 文本资产内容覆写服务（spec §2.3）：章节/事件/图谱等中间产物可编辑的底层通道。
  * 安全纪律：kind=text + purpose 白名单 + 尺寸上限；JSON 格式资产（ext=json）保存前
  * 走 validateTextOutput 既有契约校验（防手改炸下游 batch 解析）；同 relPath
  * tmp+rename 原子覆盖（断电不出现半截文件）；sha256/fileSize 同步更新；
@@ -40,7 +40,7 @@ function jsonFormatOf(asset: Pick<Asset, 'params'>): string {
 /**
  * 覆写文本资产内容（返回更新后的行）。守卫顺序：存在 → kind=text → relPath →
  * purpose 白名单 → 非空尺寸 → JSON 契约 → 原子落盘 → 行更新。
- * [M29·R02] 版本链：编辑前懒补 baseline（保护原文可回看），落盘后记新不可变版本；
+ * 版本链：编辑前懒补 baseline（保护原文可回看），落盘后记新不可变版本；
  * opts.expectedRevision 提供乐观并发（缺省保留 last-write-wins 向后兼容；不匹配抛 conflict）；
  * 编辑成功后清空 embedding（标记待重建，避免旧向量与正文不一致）。任何守卫不通过抛 ContentEditError。
  */
@@ -69,7 +69,7 @@ export async function updateAssetContent(
       throw new ContentEditError('bad_json', `JSON 契约校验不通过（format=${format || '未知'}）：${(err as Error).message}`)
     }
   }
-  // [M29] 编辑前确保原文已入版本链（baseline 懒补）；随后当前版本 = 工作副本内容的版本
+  // 编辑前确保原文已入版本链（baseline 懒补）；随后当前版本 = 工作副本内容的版本
   const currentRev = await ensureAssetTextBaseline(assetId)
   if (opts.expectedRevision !== undefined && opts.expectedRevision !== currentRev) {
     throw new ContentEditError('conflict', `内容已被他人更新至 v${currentRev}（你基于 v${opts.expectedRevision}），请刷新后重试`)
@@ -104,7 +104,7 @@ export async function updateAssetContent(
     .where(eq(assets.id, assetId))
     .returning()
   const asset = updated[0]!
-  // [M29] 落新不可变版本（工作副本内容快照；source=edit）
+  // 落新不可变版本（工作副本内容快照；source=edit）
   await recordAssetTextVersion({ asset, content, source: 'edit' })
   return asset
 }

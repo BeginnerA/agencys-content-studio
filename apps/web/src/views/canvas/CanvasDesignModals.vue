@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * [M23] 设计态落盘 Modal 组（草案预览 edit-draft + 保存为新模板 edit-save + 轻提示 toast）
- * views/canvas/index.vue 拆分：M26 红线纯重构，模板/样式逐字搬移。
+ * 设计态落盘 Modal 组（草案预览 edit-draft + 保存为新模板 edit-save + 轻提示 toast）
+ * views/canvas/index.vue 拆分：纯重构，模板/样式逐字搬移。
  * 状态由父级 useCanvasDesign 提供（props 下行 + v-model:save-key + emit 触发既有方法），行为与内联时完全一致。
  */
 import type { TemplateValidation } from '../../lib/types'
@@ -28,7 +28,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <!-- [M23] 编辑草案预览（edit-draft；不落盘，仅受控 edits 应用的 YAML） -->
+  <!-- 编辑草案预览（edit-draft；不落盘，仅受控 edits 应用的 YAML） -->
   <Modal
     v-if="showDraft"
     title="编辑草案（不落盘）"
@@ -77,7 +77,7 @@ const emit = defineEmits<{
     </template>
   </Modal>
 
-  <!-- [M23] 保存为新模板（edit-save；key 冲突自动后缀避让） -->
+  <!-- 保存为新模板（edit-save；key 冲突自动后缀避让） -->
   <Modal
     v-if="showSave"
     title="保存为新模板"
@@ -114,12 +114,12 @@ const emit = defineEmits<{
     </template>
   </Modal>
 
-  <!-- [M23] 轻提示（连线拒绝 / 落盘结果） -->
+  <!-- 轻提示（连线拒绝 / 落盘结果） -->
   <div v-if="toastMsg" class="toast-m23" role="status">{{ toastMsg }}</div>
 </template>
 
 <style scoped>
-/* ===== [M23] 草案/保存 Modal 内体 + 轻提示 ===== */
+/* ===== 草案/保存 Modal 内体 + 轻提示 ===== */
 .ed-body {
   display: flex;
   flex-direction: column;

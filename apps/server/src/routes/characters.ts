@@ -14,15 +14,15 @@ import { toAssetView } from './assets'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
 
 /**
- * M8 实体素材库路由：/entities（kind=character|scene|prop）+ /characters 兼容路径。
+ * 实体素材库路由：/entities（kind=character|scene|prop）+ /characters 兼容路径。
  * 同一 handler 双路径挂载；?kind= 缺省 character，旧客户端零改动。
- * [M19 P6] /entities/ref-gen*：参考图批量生成（无 run 异步任务队列；校验在服务层）。
+ * /entities/ref-gen*：参考图批量生成（无 run 异步任务队列；校验在服务层）。
  */
 export const charactersRoutes = new Hono()
 
-/** [M13] 批量润色单次上限 */
+/** 批量润色单次上限 */
 const MAX_POLISH_ITEMS = 10
-/** [M13] 参考图上传单文件上限（10MB） */
+/** 参考图上传单文件上限（10MB） */
 const MAX_REF_UPLOAD_BYTES = 10 * 1024 * 1024
 
 // GET /entities|/characters —— 实体列表（?project_id=&kind=；项目视角 = 项目域 + 全局；含 refAssets 缩略）
@@ -86,7 +86,7 @@ const createEntity = h(async (c) => {
   const negative = strField(body, 'negative')
   const voice = kind === 'character' ? strField(body, 'voice') : undefined // [B③] 机器音色令牌（仅角色）：scene/prop 忽略
   const voiceDesc = kind === 'character' ? strField(body, 'voice_desc') : undefined // [B③] 声线描述（仅角色）：scene/prop 忽略
-  const states = kind === 'character' ? strArrField(body, 'states') : undefined // [M13] 状态变体仅角色有意义：scene/prop 忽略
+  const states = kind === 'character' ? strArrField(body, 'states') : undefined // 状态变体仅角色有意义：scene/prop 忽略
   const meta = body['meta'] && typeof body['meta'] === 'object' && !Array.isArray(body['meta']) ? (body['meta'] as Record<string, unknown>) : undefined
   const { id, created } = await upsertEntity({
     projectId,
@@ -108,7 +108,7 @@ const createEntity = h(async (c) => {
 charactersRoutes.post('/entities', createEntity)
 charactersRoutes.post('/characters', createEntity)
 
-// POST /entities/polish —— [M13] 批量润色 appearance（逐项串行；失败收集不阻断；全局实体跳过用量记录）
+// POST /entities/polish —— 批量润色 appearance（逐项串行；失败收集不阻断；全局实体跳过用量记录）
 const polishEntities = h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const rawIds = body['ids']
@@ -134,7 +134,7 @@ const polishEntities = h(async (c) => {
         continue
       }
       await db.update(characters).set({ appearance, updatedAt: Date.now() }).where(eq(characters.id, id))
-      // [M29] 润色改变外观锚定文本 → 记实体版本
+      // 润色改变外观锚定文本 → 记实体版本
       await recordEntityVersion({ entityId: id, projectId: row.projectId, source: 'polish', label: 'LLM 润色外观' })
       if (row.projectId !== null) {
         await recordLlmUsage({ projectId: row.projectId, runId: null, provider: r.provider, model: r.model, usage: r.usage })
@@ -148,7 +148,7 @@ const polishEntities = h(async (c) => {
 })
 charactersRoutes.post('/entities/polish', polishEntities)
 
-// POST /entities/ref-gen —— [M19 P6] 批量发起参考图生成（≤10 实体 × 1-4 变体；入队即返 202）
+// POST /entities/ref-gen —— 批量发起参考图生成（≤10 实体 × 1-4 变体；入队即返 202）
 // 体容 camelCase（spec 形态）与 snake_case（本路由既有风格）双写法
 charactersRoutes.post('/entities/ref-gen', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
@@ -201,7 +201,7 @@ const updateEntity = h(async (c) => {
     patch['voiceDesc'] = body['voice_desc']
   }
   if (body['states'] !== undefined && cur.kind === 'character') {
-    // [M13] states 替换语义：含空数组（空 = 清空）；scene/prop 忽略（同 voice 口径）
+    // states 替换语义：含空数组（空 = 清空）；scene/prop 忽略（同 voice 口径）
     if (!Array.isArray(body['states'])) throw new HttpError(400, 'bad_states', 'states 需为字符串数组')
     patch['states'] = JSON.stringify(cleanStrArr(body['states']))
   }
@@ -215,7 +215,7 @@ const updateEntity = h(async (c) => {
     }
   }
   const rows = await db.update(characters).set(patch).where(eq(characters.id, id)).returning()
-  // [M29] 实质字段变更时记版本
+  // 实质字段变更时记版本
   if (Object.keys(patch).length > 1) {
     await recordEntityVersion({ entityId: id, projectId: cur.projectId, source: 'edit', label: '手工编辑' })
   }
@@ -234,7 +234,7 @@ const removeEntity = h(async (c) => {
 charactersRoutes.delete('/entities/:id', removeEntity)
 charactersRoutes.delete('/characters/:id', removeEntity)
 
-// POST /entities/:id/ref-images —— [M13] 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；全局实体拒绝）
+// POST /entities/:id/ref-images —— 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；全局实体拒绝）
 const uploadEntityRefImage = h(async (c) => {
   const id = idParam(c)
   const cur = await findEntityRow(id)
@@ -284,7 +284,7 @@ function strField(body: Record<string, unknown>, key: string): string | undefine
   return v.trim() || undefined
 }
 
-/** [M13] body 字符串数组字段：undefined/null → undefined；非数组 → 400；元素清洗见 cleanStrArr */
+/** body 字符串数组字段：undefined/null → undefined；非数组 → 400；元素清洗见 cleanStrArr */
 function strArrField(body: Record<string, unknown>, key: string): string[] | undefined {
   const v = body[key]
   if (v === undefined || v === null) return undefined
@@ -292,7 +292,7 @@ function strArrField(body: Record<string, unknown>, key: string): string[] | und
   return cleanStrArr(v)
 }
 
-/** [M13] 字符串数组清洗：仅留字符串 + trim 去空 + 去重保序（states 口径） */
+/** 字符串数组清洗：仅留字符串 + trim 去空 + 去重保序（states 口径） */
 function cleanStrArr(v: unknown[]): string[] {
   return [...new Set(v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean))]
 }
@@ -331,7 +331,7 @@ function toEntityView(r: CharacterRow, assetsById: Map<number, typeof assets.$in
   }
 }
 
-/** [M13] JSON 字符串数组读取（坏 JSON/非数组 → []；aliases/states 同容错） */
+/** JSON 字符串数组读取（坏 JSON/非数组 → []；aliases/states 同容错） */
 function safeStrArr(s: string): string[] {
   try {
     const v = JSON.parse(s) as unknown

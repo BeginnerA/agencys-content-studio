@@ -1,5 +1,5 @@
 /**
- * [M50] FCPXML 1.10 格式化器（剪映专业版 / Final Cut / DaVinci Resolve）——纯函数，探针可直测。
+ * FCPXML 1.10 格式化器（剪映专业版 / Final Cut / DaVinci Resolve）——纯函数，探针可直测。
  * 结构：resources（format + 每媒体一 asset + 标题/转场声明）→ library/event/project/sequence → spines（多轨）。
  * 轨道映射（§决策 3）：V1=镜头段顺序（转场启用时段间 <transition> fade）；对白逐句 asset-clip；
  *   BGM 独立 spine；SFX 独立 spine；字幕逐句 <title> 挂 generator（文本纯净轴）。

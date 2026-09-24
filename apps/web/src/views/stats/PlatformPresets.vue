@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 平台导出预设管理（B8）
+ * 平台导出预设管理（B8）
  * 查看/编辑各平台导出规格（画幅/时长/命名/水印等）
  */
 import { onMounted, ref } from 'vue'
@@ -15,10 +15,10 @@ const saving = ref(false)
 const presets = ref<ExportPreset[]>([])
 const editing = ref(false)
 const editItems = ref<ExportPreset[]>([])
-// [M36·G12.1] 从平台目录一键补全缺失预设
+// 从平台目录一键补全缺失预设
 const seeding = ref(false)
 const seedMsg = ref('')
-/** [M37·G13] 本次补全条数（>0 才挂来源徽标，「无需补全」不加噪） */
+/** 本次补全条数（>0 才挂来源徽标，「无需补全」不加噪） */
 const seedAdded = ref(0)
 
 async function load() {
@@ -71,7 +71,7 @@ function removePreset(idx: number) {
   editItems.value.splice(idx, 1)
 }
 
-/** [M36·G12.1] 从单一真源目录补全尚未配置的平台预设（仅填缺失、不覆盖已配） */
+/** 从单一真源目录补全尚未配置的平台预设（仅填缺失、不覆盖已配） */
 async function seedFromCatalog() {
   seeding.value = true
   err.value = ''

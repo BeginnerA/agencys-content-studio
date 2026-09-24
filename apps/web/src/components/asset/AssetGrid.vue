@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const previewIdx = ref<number | null>(null)
 
-/** [M21] 选择模式：选中集合判断 */
+/** 选择模式：选中集合判断 */
 function isChecked(a: Asset): boolean {
   return !!props.checkedIds?.includes(a.id)
 }
@@ -67,12 +67,12 @@ function ariaLabel(a: Asset): string {
   return `${a.name}，${kindText(a.kind)}，${fmtSize(a.fileSize)}，${fmtTime(a.createdAt)}，回车${act}`
 }
 
-/** [M12] 收藏切换（提交宿主：唯一使用方 ProjectDetailView 负责 API 与通知） */
+/** 收藏切换（提交宿主：唯一使用方 ProjectDetailView 负责 API 与通知） */
 function toggleFav(a: Asset) {
   emit('favorite', a)
 }
 
-/** [M12] 质量异常文案（仅 ok===false 返回；无 / 正常不显示徽标） */
+/** 质量异常文案（仅 ok===false 返回；无 / 正常不显示徽标） */
 function qualityWarn(a: Asset): string | null {
   const q = parseAssetQuality(a)
   return q && q.ok === false ? qualityText(q.reason) : null
@@ -256,7 +256,7 @@ function qualityWarn(a: Asset): string | null {
   white-space: nowrap;
 }
 
-/* [M21] 选择模式复选框（空格视觉指示；整卡点击即切换） */
+/* 选择模式复选框（空格视觉指示；整卡点击即切换） */
 .ck {
   position: absolute;
   left: 6px;
@@ -285,7 +285,7 @@ function qualityWarn(a: Asset): string | null {
   right: 6px;
 }
 
-/* [M21] 标签 chips（≤2 + N；title 展开全文） */
+/* 标签 chips（≤2 + N；title 展开全文） */
 .tgs {
   display: flex;
   align-items: center;
@@ -313,7 +313,7 @@ function qualityWarn(a: Asset): string | null {
   color: var(--text-3);
 }
 
-/* [M12] 质量异常角标（不阻断；提示在预览中重检） */
+/* 质量异常角标（不阻断；提示在预览中重检） */
 .qbadge {
   position: absolute;
   left: 6px;
@@ -332,7 +332,7 @@ function qualityWarn(a: Asset): string | null {
   pointer-events: none;
 }
 
-/* [M12] 收藏按钮（hover / 聚焦 / 已收藏常显；收藏态填充心形） */
+/* 收藏按钮（hover / 聚焦 / 已收藏常显；收藏态填充心形） */
 .fav {
   position: absolute;
   right: 6px;

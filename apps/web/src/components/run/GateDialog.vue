@@ -14,10 +14,10 @@ const props = defineProps<{
   /** 产物全文（可编辑覆盖） */
   artifactText?: string
   artifactName?: string
-  /** [M2] 模板声明 skip_label 后显示「跳过」按钮（免审放行、产物保留） */
+  /** 模板声明 skip_label 后显示「跳过」按钮（免审放行、产物保留） */
   skipLabel?: string
   busy?: boolean
-  /** [M21] 版本对比：run id + 步骤 key（≥2 版文本产物时显示「对比」tab） */
+  /** 版本对比：run id + 步骤 key（≥2 版文本产物时显示「对比」tab） */
   runId?: number
   stepKey?: string
 }>()
@@ -35,7 +35,7 @@ const note = ref('')
 
 const showEdit = computed(() => !!props.artifactText && tab.value === 'edit')
 
-// ---- [M21] 版本对比（diff tab）：上一版本 vs 当前产物，可切换基准版本 ----
+// ---- 版本对比（diff tab）：上一版本 vs 当前产物，可切换基准版本 ----
 const revisions = ref<RevisionItem[]>([])
 const hasDiff = computed(() => revisions.value.length >= 2)
 /** 基准版本在 revisions 中的下标（默认 1 = 上一版本；新侧固定为当前产物 revisions[0]） */
@@ -131,7 +131,7 @@ function reject() {
   emit('decided', 'reject', { note: note.value.trim() })
 }
 
-/** [M2] 免审放行：产物保留直接通过（模板声明 skip_label 才出现此按钮） */
+/** 免审放行：产物保留直接通过（模板声明 skip_label 才出现此按钮） */
 function skip() {
   emit('decided', 'skip', {})
 }
@@ -304,7 +304,7 @@ async function abort() {
   gap: 8px;
 }
 
-/* [M2] 免审放行：中性次主按钮（介于批准与驳回之间） */
+/* 免审放行：中性次主按钮（介于批准与驳回之间） */
 .btn.skip {
   border-color: rgb(148 163 184 / 32%);
   color: #b9c7dc;
@@ -377,7 +377,7 @@ async function abort() {
   margin-top: 10px;
 }
 
-/* [M21] 版本对比 diff 视图：+ 绿 / - 红 / 上下文灰 */
+/* 版本对比 diff 视图：+ 绿 / - 红 / 上下文灰 */
 .diff-bar {
   display: flex;
   align-items: center;

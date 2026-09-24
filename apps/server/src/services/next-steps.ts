@@ -1,5 +1,5 @@
 /**
- * [M35 · G11] 规则引擎「下一步建议」（零 LLM、零计费）。
+ * 规则引擎「下一步建议」（零 LLM、零计费）。
  *
  * 背景：[`canvasAdvice`](file:///d:/work/AI/Agent/agencys-content-studio/apps/server/src/services/creation/advice.ts)
  * 只在画布页由用户手动点按钮触发（每次 LLM 计费）。项目主页 / run 完成后 / 模板链上游完成时，

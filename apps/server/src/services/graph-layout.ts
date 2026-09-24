@@ -1,5 +1,5 @@
 /**
- * [M25·G3] 事件图谱力导向布局（spec §2.4）：d3-force 确定性迭代（M23 ops.ts 同构手法）。
+ * 事件图谱力导向布局（spec §2.4）：d3-force 确定性迭代（ops.ts 同构手法）。
  * 输入 = novel-board graph 文档节点/边，输出 = 服务端算好的坐标（前端 SVG 零计算）。
  * 确定性契约（探针断言）：显式注入初始坐标（输入序环形布局，非 d3 内部默认）+ stop() 手动
  * tick 固定轮数 + 输出 round —— 同输入必同输出，无随机源。
@@ -118,7 +118,7 @@ export function computeGraphLayout(nodes: GraphLayoutNode[], links: GraphLayoutL
   }
 }
 
-// ===== [M25·G3] graph-json 文档 → 节点/边推导（纯函数，探针直测）=====
+// ===== graph-json 文档 → 节点/边推导（纯函数，探针直测）=====
 // 输入 = novel-board graph.doc（{overview, characters[], key_events[]}）；脏 doc → null（前端降级表视图）。
 // 边规则（spec §2.4 落地口径）：
 // - sequence：关键事件按首个 chapter 升序（同值保持原序）相邻相连（因果时序链）；

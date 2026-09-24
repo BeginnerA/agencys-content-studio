@@ -1,5 +1,5 @@
 /**
- * [M32] 字幕预换行（ASS 生成前的长行兵底）。
+ * 字幕预换行（ASS 生成前的长行兵底）。
  *
  * 背景：服务端默认使用内置 ffmpeg-static（libass 未编译 ASS_FEATURE_WRAP_UNICODE），
  * 该 libass 只能在「空格」处换行；中文无空格 → 长句不自动换行。烧录链路已改为

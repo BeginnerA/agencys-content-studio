@@ -1,8 +1,8 @@
 /**
- * [M28] 镜头工作台状态与操作（自 ShotBoard.vue 逐字迁移）
+ * 镜头工作台状态与操作（自 ShotBoard.vue 逐字迁移）
  * —— 装配约定：函数体逐字保留；props/emit 经参数注入；包裹层缩进 +2（机械转换）
  * —— sb 状态总线（reactive 代理）：供模板与各面板子组件安全读写全部状态
- * —— [M26-split] 操作域（时长/重排/上传/编辑器/重合成/合成设置/音效/收藏清理）拆至 use-shot-board-ops.ts（行为零变更）
+ * —— 操作域（时长/重排/上传/编辑器/重合成/合成设置/音效/收藏清理）拆至 use-shot-board-ops.ts（行为零变更）
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { assetApi, shotApi } from '../../../lib/api'
@@ -51,7 +51,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const previewIndex = ref(0)
   const previewBusy = ref(false)
 
-  // [M10] 大编辑器 / 拖拽重排 / 上传替换
+  // 大编辑器 / 拖拽重排 / 上传替换
   const editorOpen = ref(false)
   const dragShotId = ref<string | null>(null)
   const dropTarget = ref<{ shotId: string; side: 'left' | 'right' } | null>(
@@ -67,7 +67,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const cfgBusy = ref(false)
   const bgm = ref<Asset | null>(null)
   const composeSettingsOpen = ref(false)
-  // [M19] per-shot 音效（shotId → 绑定资产；镜头卡片「音效」按钮用）
+  // per-shot 音效（shotId → 绑定资产；镜头卡片「音效」按钮用）
   const sfxMap = ref<Record<string, Asset>>({})
   const sfxShotId = ref<string | null>(null)
 
@@ -95,7 +95,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     isVideoStep.value ? '动效提示词' : '出图提示词',
   )
 
-  // ---- [M26-split] 操作域装配：函数体逐字在 use-shot-board-ops；同名解构保持装配面不变 ----
+  // ---- 操作域装配：函数体逐字在 use-shot-board-ops；同名解构保持装配面不变 ----
   const {
     durationValue,
     onDurationInput,
@@ -509,7 +509,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     },
   )
 
-  // ---- sb 状态总线（M28 装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
+  // ---- sb 状态总线（装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
   const sb = reactive({
     // 数据
     board,
@@ -628,7 +628,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 }
 
-/** sb 状态总线类型（M28 装配）：供子组件 props 标注 */
+/** sb 状态总线类型（装配）：供子组件 props 标注 */
 export type ShotBoardState = ReturnType<typeof useShotBoard>['sb']
 /** composable 返回 API 类型：子组件函数 props 以索引类型标注，签名漂移自动同步 */
 export type ShotBoardApi = ReturnType<typeof useShotBoard>

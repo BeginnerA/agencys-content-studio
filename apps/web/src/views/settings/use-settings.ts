@@ -10,7 +10,7 @@ import type {
 } from '../../lib/types'
 
 export function useSettingsPage() {
-  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）+ [M19] 品牌（平台品牌资产）/ 音色库（声音克隆）
+  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）+ 品牌（平台品牌资产）/ 音色库（声音克隆）
   const TABS = [
     {
       key: 'text',
@@ -305,7 +305,7 @@ export function useSettingsPage() {
     document.removeEventListener('pointerdown', onDocPointerDown, true),
   )
 
-  // ===== [M4] 用量计费（settings.pricing 编辑器 + 实例 key 选择 + 未计价引导） =====
+  // ===== 用量计费（settings.pricing 编辑器 + 实例 key 选择 + 未计价引导） =====
   interface PriceRow {
     kind: string
     key: string

@@ -1,4 +1,4 @@
-/** [M28] 运行详情共享纯逻辑：步骤节点样式 / 跳过提示 / 产物 id / 快照格式化 / 动作图标 / 成本字典。 */
+/** 运行详情共享纯逻辑：步骤节点样式 / 跳过提示 / 产物 id / 快照格式化 / 动作图标 / 成本字典。 */
 import { skipReasonText } from '../../lib/format'
 import type { RunStep } from '../../lib/types'
 
@@ -13,7 +13,7 @@ export function nodeClass(s: RunStep): string {
   return 'idle'
 }
 
-/** [M2] 跳过原因（output.skipped.reason）；succeeded 且带 skipped 记录 = 免审放行 */
+/** 跳过原因（output.skipped.reason）；succeeded 且带 skipped 记录 = 免审放行 */
 export function skipInfo(
   s: RunStep,
 ): { text: string; userSkip: boolean } | null {

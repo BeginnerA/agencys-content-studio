@@ -90,7 +90,7 @@ export function groupTemplates(items: TemplateMeta[]): SceneGroup[] {
 }
 
 /**
- * [入口收口] 从模板列表中剔除轻松创作批准链专用模板（conversationOnly）。
+ * 从模板列表中剔除轻松创作批准链专用模板（conversationOnly）。
  * 所有「用户选模板去启动/批量/建项目/排程/画布运行」的选择器均须先过此函数；
  * 而按 key 反查名字展示（run/项目/批量详情、模板编辑器）不过滤（需能显示 easy-* 存量项）。
  * 真源为服务端 isCreationTemplate，前端不硬编码键名。

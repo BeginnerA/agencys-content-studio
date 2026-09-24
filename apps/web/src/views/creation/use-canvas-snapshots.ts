@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasSnapshots；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasSnapshots；依赖显式注入，原函数体保持不变。 */
 import { ref } from 'vue'
 import { creationApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
@@ -14,7 +14,7 @@ type Dependencies = Pick<CanvasState, 'canvasId' | 'toast' | 'history'> &
 export function useCanvasSnapshots(deps: Dependencies) {
   const { canvasId, toast, history, loadDoc, loadCanvases, goCanvas } = deps
 
-  // ===== [M18] 文档快照（保留 id 重放恢复；恢复前自动备份）=====
+  // ===== 文档快照（保留 id 重放恢复；恢复前自动备份）=====
   const showSnaps = ref(false)
   const snapsBusy = ref(false)
   const snapsLoading = ref(false)
@@ -108,7 +108,7 @@ export function useCanvasSnapshots(deps: Dependencies) {
     }
   }
 
-  // ===== [M22] 快照对比（diff）：快照 ↔ live/另一快照 字段级差异 =====
+  // ===== 快照对比（diff）：快照 ↔ live/另一快照 字段级差异 =====
   /** 当前对比基准快照（null=未打开对比视图） */
   const diffFor = ref<CanvasSnapshotMeta | null>(null)
   /** 对比目标：'live'（当前画布）或快照 id 字符串 */
@@ -145,7 +145,7 @@ export function useCanvasSnapshots(deps: Dependencies) {
     diffData.value = null
   }
 
-  // ===== [M22] 从快照分支为新画布（命名 → 创建 → 跳转） =====
+  // ===== 从快照分支为新画布（命名 → 创建 → 跳转） =====
   /** 待分支快照（null=未展开命名面板） */
   const branchFor = ref<CanvasSnapshotMeta | null>(null)
   const branchName = ref('')

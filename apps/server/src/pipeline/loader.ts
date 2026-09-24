@@ -9,10 +9,10 @@ import { parseWhenExpr, whenRefs } from './refs'
 
 const log = createLogger('loader')
 
-/** M3 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
+/** 允许的 action 集合（registry 同步维护；loader 用它做加载期校验） */
 export const KNOWN_ACTIONS = [
   'manual_ingest',
-  'publication_ingest', // [整改] 复盘回灌：发布记录直接入库
+  'publication_ingest', // 复盘回灌：发布记录直接入库
   'literal',
   'ai_text',
   'ai_image',
@@ -28,8 +28,8 @@ export const KNOWN_ACTIONS = [
   'character_sync',
   'entity_sync',
   'text_split',
-  'adapt_audit', // [M25·G4] 一致性回查（批 2 接线）
-  'video_analyze', // [M25·G9] 视频解析含 ASR（批 3 接线）
+  'adapt_audit', // 一致性回查（批 2 接线）
+  'video_analyze', // 视频解析含 ASR（批 3 接线）
   'image_analyze', // 图片反推：多模态逐图反推生成提示词（image-reverse 链，video_analyze 同源形态）
 ] as const
 
@@ -49,7 +49,7 @@ export function templateFileOf(key: string): string | null {
 }
 
 /**
- * [M23] 模板 key 避让：base 未被占用 → 原样返回；否则追加后缀 -2/-3/…（最多 30 层）；
+ * 模板 key 避让：base 未被占用 → 原样返回；否则追加后缀 -2/-3/…（最多 30 层）；
  * 仍冲突 → null（调用方报错）。template-try 与 edit-save 共用。
  */
 export function avoidTemplateKeyConflict(baseKey: string): string | null {

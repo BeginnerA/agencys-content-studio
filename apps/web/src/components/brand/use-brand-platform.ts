@@ -1,5 +1,5 @@
 /**
- * [M19] platform 级品牌（BrandSettings 拆分：M26 红线纯重构，函数体逐字搬移）
+ * platform 级品牌（BrandSettings 拆分：纯重构，函数体逐字搬移）
  * 平台品牌状态 + 预览 + 上传槽/字幕保存。依赖注入：wrap / form / 共享文件路径 refs。
  */
 import { ref } from 'vue'

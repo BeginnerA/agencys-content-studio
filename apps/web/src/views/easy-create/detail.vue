@@ -19,7 +19,7 @@ const detail = computed(() => s.state.detail)
 const session = computed(() => detail.value?.session ?? null)
 const hasPlan = computed(() => !!detail.value?.session.plan)
 const projectId = computed(() => session.value?.projectId ?? null)
-// [M40] 确认前项目仍是 draft 影子态（不进项目列表）：此时不暴露「项目」入口，避免点进半成品
+// 确认前项目仍是 draft 影子态（不进项目列表）：此时不暴露「项目」入口，避免点进半成品
 const projectIsDraft = computed(() => session.value?.project?.isDraft === true)
 
 // 状态徽标（与列表页共用 creationStatusLabel/Tone）：ready 但预检未过时显「待完善配置」；started 控制态按 run 真实状态派生（progress 已带 run 状态）
@@ -87,7 +87,7 @@ onUnmounted(() => s.leave())
     <div v-else class="cols">
       <ConversationPanel class="col conv" :s="s" />
       <div class="col ec-side">
-        <!-- [M42] 等待审阅时置顶决策面板（其余时候自身 v-if 隐藏，不影响原有顺序） -->
+        <!-- 等待审阅时置顶决策面板（其余时候自身 v-if 隐藏，不影响原有顺序） -->
         <CreationReview :s="s" />
         <CreationResult :s="s" />
         <CreationProgress :s="s" />

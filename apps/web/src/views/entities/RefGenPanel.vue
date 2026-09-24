@@ -16,7 +16,7 @@ const {
 </script>
 
 <template>
-  <!-- [M19 P6] 批量生成进度（socket 驱动 + 轮询兜底；行内可取消 / 失败重试） -->
+  <!-- 批量生成进度（socket 驱动 + 轮询兜底；行内可取消 / 失败重试） -->
   <div v-if="refTasks.length" class="refgen panel">
     <div class="rg-head">
       <span class="rg-t"
@@ -75,7 +75,7 @@ const {
 </template>
 
 <style scoped>
-/* ===== [M19 P6] 批量生成参考图：页内进度面板 + 弹窗 ===== */
+/* ===== 批量生成参考图：页内进度面板 + 弹窗 ===== */
 .refgen {
   margin-bottom: 14px;
   padding: 11px 13px 12px;

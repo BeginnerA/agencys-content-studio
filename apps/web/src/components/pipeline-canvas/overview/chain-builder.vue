@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M27] 编排链构建器 Modal（spec §2.5 I3）
+ * 编排链构建器 Modal（spec §2.5 I3）
  * 选模板 → 依上一段 template.next 建议排序 → 设 autoAdvance / budgetCap → 保存 / 保存并启动首段。
  * 段仅引用扁平模板 key（I2 编排层引用，无引擎递归）；运行时深度嵌套明确排除。
  */
@@ -24,7 +24,7 @@ const err = ref('')
 
 const byKey = computed(() => new Map(props.templates.map((t) => [t.key, t])))
 const nameOf = (k: string) => byKey.value.get(k)?.name ?? k
-// [入口收口] 「追加为段」选择器不呈现轻松创作批准链模板（无 recipe，启动首段/到点必失败）；
+// 「追加为段」选择器不呈现轻松创作批准链模板（无 recipe，启动首段/到点必失败）；
 // byKey/nameOf 仍用全量，保证存量链里已引用的 easy-* 段能正常反查名字展示。真源为服务端 isCreationTemplate。
 const selectableTemplates = computed(() => filterSelectable(props.templates))
 

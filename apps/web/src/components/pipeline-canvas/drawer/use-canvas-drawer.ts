@@ -1,5 +1,5 @@
 /**
- * [M28] 节点抽屉状态与操作（自 CanvasDrawer.vue 逐字迁移）
+ * 节点抽屉状态与操作（自 CanvasDrawer.vue 逐字迁移）
  * —— 装配约定：函数体逐字保留；props/emit 经参数注入；包裹层缩进 +2（机械转换）
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -328,7 +328,7 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     },
   )
 
-  // ===== ⑧ [M16] 送入创作画布（步骤产物 → 目标画布素材节点）=====
+  // ===== ⑧ 送入创作画布（步骤产物 → 目标画布素材节点）=====
   const showSend = ref(false)
   const sendItems = computed<Array<{ id: number; name: string }>>(() => {
     const n = rn.value

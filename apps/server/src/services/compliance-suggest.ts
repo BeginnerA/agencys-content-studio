@@ -7,7 +7,7 @@ import { assets } from '../db/schema'
 import { createLogger } from '../logger'
 import { loadRules, normalizeText, parseRules, type ComplianceRule } from './compliance'
 
-// [M36·G12.3] 合规词库补充建议（Tier B，零新 LLM 计费）：从**既有已付费的** compliance_check 结论
+// 合规词库补充建议（Tier B，零新 LLM 计费）：从**既有已付费的** compliance_check 结论
 // （assets.params.compliance.llm.items）聚合候选新词，一键追加进 words.txt。不新增任何 LLM 调用，
 // 不猜测——建议一律 warn 起步（是否升 block 属法务判断，保留人工，charter §六）。
 // 「仅建议不执行」：suggestRules 只读聚合；appendRules 仅在用户点击采纳时写入。

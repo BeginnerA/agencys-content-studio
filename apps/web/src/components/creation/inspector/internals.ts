@@ -1,5 +1,5 @@
 /**
- * [M28] 创作画布检查器共用契约与纯函数（自 CreationInspector.vue 逐字迁移）
+ * 创作画布检查器共用契约与纯函数（自 CreationInspector.vue 逐字迁移）
  * —— 迁移纪律：常量/函数体逐字保留，仅补 export 前缀供 inspector 子模块共用
  */
 import type {
@@ -23,7 +23,7 @@ export interface InspectorProps {
   edges: CanvasDocEdge[]
   canvasId: number
   projectId: number
-  /** [M17] 写命令回调（View 执行 + 入撤销栈；await 返回即已落库） */
+  /** 写命令回调（View 执行 + 入撤销栈；await 返回即已落库） */
   applyPatch: (p: {
     id: number
     patch: CanvasNodePatch
@@ -76,7 +76,7 @@ export const EDIT_MODE_TEXT: Record<CanvasEditMode, string> = {
   erase: '消除',
   outpaint: '扩图',
 }
-/** [M18] 转场中文标签（TRANSITIONS 枚举，与服务端 / M11 ComposeConfig 同源） */
+/** 转场中文标签（TRANSITIONS 枚举，与服务端 / ComposeConfig 同源） */
 export const TRANSITION_OPTIONS: Array<{
   value: ComposeTransition
   label: string
@@ -93,11 +93,11 @@ export const ENT_KIND_LABEL: Record<EntityKind, string> = {
   scene: '场景',
   prop: '道具',
 }
-/** [M17] 实体类型文案（实体摘要 kind 为宽 string，兜底原值） */
+/** 实体类型文案（实体摘要 kind 为宽 string，兜底原值） */
 export function entKindText(k: string): string {
   return ENT_KIND_LABEL[k as EntityKind] ?? k
 }
-/** [M17] run 节点状态映射（pipeline_runs.status） */
+/** run 节点状态映射（pipeline_runs.status） */
 export const RUN_TEXT: Record<string, string> = {
   queued: '排队',
   running: '运行中',
@@ -122,7 +122,7 @@ export function stText(s: string | null): string {
 export function stCls(s: string | null): string | undefined {
   return s ? (TASK_CLS[s] ?? 'pending') : undefined
 }
-/** [M17] spec 类型守卫：是否 gen 规范（含 genKind；spec 已扩为 AnyNodeSpec 联合） */
+/** spec 类型守卫：是否 gen 规范（含 genKind；spec 已扩为 AnyNodeSpec 联合） */
 export function asGenSpec(
   s: AnyNodeSpec | null | undefined,
 ): CreationNodeSpec | null {
@@ -130,14 +130,14 @@ export function asGenSpec(
     ? (s as CreationNodeSpec)
     : null
 }
-/** [M17] spec 类型守卫：是否文本规范（含 text） */
+/** spec 类型守卫：是否文本规范（含 text） */
 export function asTextSpec(
   s: AnyNodeSpec | null | undefined,
 ): TextNodeSpec | null {
   return s && typeof s === 'object' && 'text' in s ? (s as TextNodeSpec) : null
 }
 
-/** [M17] 节点副标题文案（五型全覆盖） */
+/** 节点副标题文案（五型全覆盖） */
 export function kindLabel(n: CanvasDocNode): string {
   switch (n.kind) {
     case 'asset':

@@ -28,13 +28,13 @@ interface ShotSpec {
   id: string
   image_prompt: string
   duration?: number
-  /** [M13] 场景名（与场景库对齐）：命中 → 注入场景参考图（无首帧时） */
+  /** 场景名（与场景库对齐）：命中 → 注入场景参考图（无首帧时） */
   location?: string
-  /** [M13] 道具名列表（与道具库对齐）：命中 → 注入道具参考图（无首帧时） */
+  /** 道具名列表（与道具库对齐）：命中 → 注入道具参考图（无首帧时） */
   props?: string[]
-  /** [M22] 画布/模板直通首帧资产（优先于 gen_frames 索引）；正整数 */
+  /** 画布/模板直通首帧资产（优先于 gen_frames 索引）；正整数 */
   first_frame_asset_id?: number
-  /** [M22] 画布/模板直通参考资产（与场景/道具收集合并，保序去重）；正整数 */
+  /** 画布/模板直通参考资产（与场景/道具收集合并，保序去重）；正整数 */
   ref_asset_ids?: number[]
 }
 
@@ -45,17 +45,17 @@ const POLL_INTERVAL_MS = 5_000
 const POLL_TIMEOUT_MS = 10 * 60_000
 
 /**
- * ai_video：批量镜头视频生成（spec §5.1，M2 启用）。
+ * ai_video：批量镜头视频生成（spec §5.1， 启用）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task（kind=video）：
  * 适配器两形态——轮询型（提交拿 task_id → query 5s/次，超时 10min）与同步型（长请求直收
  * 字节，如 Pollinations）→ 均落盘为 video 资产（purpose=shot_video，params 溯源含 {taskId, provider}）。
  *
  * 提示词由 prompt_field 指定（缺省 shot.image_prompt；支持逗号回退链 'motion_prompt,image_prompt'）；
- * 首帧图（inputs.first_frame，M6）：gen_frames 产物按 params.shotId 匹配 → 供应商能力支持时转
+ * 首帧图（inputs.first_frame， ）：gen_frames 产物按 params.shotId 匹配→ 供应商能力支持时转
  * data URI 驱动 i2v；能力不支持/缺图 → 降级纯文生（params.firstFrameAssetId 记快照）。
- * [M13] 场景/道具参考图（shot.location / shot.props 命中实体库）：无首帧图的镜头按 reference_image 注入
+ * 场景/道具参考图（shot.location / shot.props 命中实体库）：无首帧图的镜头按 reference_image 注入
  * （首帧优先决策：有首帧则跳过，兼规避 Wan 帧/参考互斥）；params.setRefAssetIds 记快照。
- * [M22] 分镜直通字段（画布/模板写入）：first_frame_asset_id 优先于 gen_frames 索引；
+ * 分镜直通字段（画布/模板写入）：first_frame_asset_id 优先于 gen_frames 索引；
  * ref_asset_ids 与场景/道具收集合并（保序去重），仍受首帧优先与 refCap 决策约束。
  * [以音定画] 接 inputs.voices（tts 逐句配音产物）时：逐镜视频时长 = 该镜台词句实测音频总长（planAudioDrivenShotDurations），
  * 优先于分镜 LLM 估长/兜底固定时长，使动效成片逐镜音画对齐；无 voices / 探测全失败 → 维持原分镜估长/兜底行为逐字不变。
@@ -84,7 +84,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     : ((obj as { shots?: ShotSpec[] }).shots ?? [])
   if (!Array.isArray(shots) || shots.length === 0) throw new Error('分镜内容缺 shots 数组')
   const promptField = (ctx.def.params?.prompt_field as string | undefined) ?? 'image_prompt'
-  // prompt 回退链（M6）：'motion_prompt,image_prompt' 形态——老分镜无 motion_prompt 时回退 image_prompt
+  // prompt 回退链：'motion_prompt,image_prompt' 形态——老分镜无 motion_prompt 时回退 image_prompt
   const promptFields = promptField.split(',').map((s) => s.trim()).filter(Boolean)
   for (const s of shots) {
     if (!pickPromptText(s as unknown as Record<string, unknown>, promptFields)) {
@@ -130,14 +130,14 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // 首帧注入（M6）：gen_frames 产物按 params.shotId 建索引；能力判定入队前 resolve 一次
+  // 首帧注入：gen_frames 产物按 params.shotId 建索引；能力判定入队前 resolve 一次
   const frameIds = ctx.assetIdsOf('first_frame')
   const frameIndex = await buildFirstFrameIndex(frameIds)
   const recipe = recipeOf(ctx.run)
   const audioOptions = recipe?.plan.performance === 'dialogue' ? dialogueAudioOptions(provider!, model!) : null
   if (audioOptions && (voiceIds.length || JSON.stringify(shots) !== JSON.stringify(recipe!.plan.shots))) throw new Error('对白视频输入必须与批准分镜一致且不能混入 TTS')
   const frameCap = recipe ? getVideoAdapter(provider!).firstFrame ?? 'none' : await videoFirstFrameCapability(provider)
-  // [M31] 首帧参考覆盖：用户上传 first_frame ref 优先于 gen_frames 产物；本镜“有首帧”= 分镜直传/ref/gen_frames 任一
+  // 首帧参考覆盖：用户上传 first_frame ref 优先于 gen_frames 产物；本镜“有首帧”= 分镜直传/ref/gen_frames 任一
   const shotHasFirstFrame = (s: ShotSpec): boolean => shotFirstFrameOf(s) !== null || recipeFirstFrameId(recipe, s.id) !== null || frameIndex.has(s.id)
   if (recipe?.videoMode === 'i2v' && (frameCap === 'none' || shots.some((s) => !shotHasFirstFrame(s)))) {
     throw new Error('已批准图生视频方案首帧不可用，禁止降级文生视频')
@@ -152,7 +152,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // [M13] 场景/道具参考图：实体索引 + 能力判定（入队前 resolve 一次；首帧优先决策在执行期）
+  // 场景/道具参考图：实体索引 + 能力判定（入队前 resolve 一次；首帧优先决策在执行期）
   const sceneIndex = await loadEntityIndex(ctx.run.projectId, 'scene')
   const propIndex = await loadEntityIndex(ctx.run.projectId, 'prop')
   const refCap = recipe ? getVideoAdapter(provider!).referenceImages ?? 'none' : await videoReferenceCapability(provider)
@@ -286,7 +286,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
 }
 
 /**
- * gen_frames 产物 → shotId 索引（首帧匹配，M6，供探针直接断言）：
+ * gen_frames 产物→ shotId 索引（首帧匹配， ，供探针直接断言）：
  * 逐行取 params.shotId 建 Map（同 shotId 重复 → 后到覆盖）；非图 / 参数损坏行跳过（不抛）。
  */
 export async function buildFirstFrameIndex(assetIds: number[]): Promise<Map<string, number>> {
@@ -367,7 +367,7 @@ async function runOneTask(
           ctx.log(`shot ${shotId} 首帧图跳过（${(err as Error).message}）`)
         }
       }
-      // [M13] 场景/道具参考图注入：首帧优先决策（frame_first 分支规避 Wan 帧/参考互斥）；单图失败跳过
+      // 场景/道具参考图注入：首帧优先决策（frame_first 分支规避 Wan 帧/参考互斥）；单图失败跳过
       const setRefIds = Array.isArray(parsed.setRefAssetIds)
         ? parsed.setRefAssetIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
         : []
@@ -442,7 +442,7 @@ async function runOneTask(
         task.status = 'succeeded'
         emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
       }
-      // [M4] 用量记录：视频按请求时长（秒）计；duration 缺省不记录
+      // 用量记录：视频按请求时长（秒）计；duration 缺省不记录
       const secs = typeof parsed.duration === 'number' && parsed.duration > 0 ? parsed.duration : null
       if (secs)
         await recordUsage({
@@ -530,7 +530,7 @@ async function videoFirstFrameCapability(provider?: string): Promise<'none' | 'b
   }
 }
 
-/** [M13] 参考图能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none' */
+/** 参考图能力判定（入队前 resolve 一次）：端点/适配器不可用 → 'none' */
 async function videoReferenceCapability(provider?: string): Promise<'none' | 'base64'> {
   try {
     const endpoint = await resolveEndpoint('video', provider)
@@ -540,14 +540,14 @@ async function videoReferenceCapability(provider?: string): Promise<'none' | 'ba
   }
 }
 
-/** [M22] 分镜直通首帧资产读取（正整数校验；无效 → null，回退 gen_frames 索引） */
+/** 分镜直通首帧资产读取（正整数校验；无效 → null，回退 gen_frames 索引） */
 export function shotFirstFrameOf(shot: ShotSpec): number | null {
   const v = shot.first_frame_asset_id
   return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null
 }
 
 /**
- * [M13] 本镜场景/道具参考图收集（纯函数，任务 params.setRefAssetIds 快照源）：
+ * 本镜场景/道具参考图收集（纯函数，任务 params.setRefAssetIds 快照源）：
  * 场景（location 命中行 → refAssetIds[0]，≤1）→ 道具（props 顺序首个命中行 → refAssetIds[0]，≤1）；
  * 保序去重，总量 ≤2（镜像 ai_image 场景/道具段；角色参考图不参与——视频侧由首帧承载）。
  */
@@ -576,7 +576,7 @@ export function collectSetRefAssetIds(
 }
 
 /**
- * [M13] 视频参考图注入决策（纯函数，供探针断言；首帧优先为产品决策——规避 Wan 帧/参考互斥）：
+ * 视频参考图注入决策（纯函数，供探针断言；首帧优先为产品决策——规避 Wan 帧/参考互斥）：
  * - refCap 非 base64 或 setRefIds 空 → 不注入；
  * - 有首帧图 → 不注入（frame_first：首帧已承载视觉一致性）；
  * - 无首帧图 → 注入全部（ok）。

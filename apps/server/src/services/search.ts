@@ -9,7 +9,7 @@ import { recallMemories } from './memory'
 import { absPathOf } from './storage'
 
 /**
- * [M21] 全局搜索服务——关键词九域（SQL LIKE）+ 语义限文本域（记忆 / 文本资产）。
+ * 全局搜索服务——关键词九域（SQL LIKE）+ 语义限文本域（记忆 / 文本资产）。
  * 语义模型不可用 → 自动降级（关键词照常，available:false 不抛错）；
  * 首搜检出未索引文本资产 → 后台全量增量索引（模块级单 inflight 防重）。
  */
@@ -140,7 +140,7 @@ async function semanticSearch(q: string): Promise<SearchResult['semantic']> {
     const qv = await embed(q)
     const tag = `${modelName}@${qv.length}`
     const hits: SemanticHit[] = []
-    // 记忆召回（复用 M3 实现：cosine + minScore 0.25 + limit 5）
+    // 记忆召回（复用实现：cosine + minScore 0.25 + limit 5）
     const mem = await recallMemories({ projectId: null, query: q, limit: 5 })
     for (const m of mem) {
       hits.push({ entity: 'memory', id: m.id, title: m.name ?? '记忆', snippet: clip(m.content, 80), score: m.score, url: '/memories' })

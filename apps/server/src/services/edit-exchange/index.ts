@@ -1,5 +1,5 @@
 /**
- * [M50] 剪辑工程交换导出组装层：解析时间轴真源 → 选定格式化器渲染 → zip 打包为 archive 资产。
+ * 剪辑工程交换导出组装层：解析时间轴真源 → 选定格式化器渲染 → zip 打包为 archive 资产。
  * 交付物（§决策 4）：`{name}.{ext}`（工程）+ `manifest.json`（assetId↔媒体文件名↔原相对路径 + 降级声明）
  *   + `media/`（include_media 时复制引用资产，store 不压缩）。下载复用 GET /assets/:id/file?download=1。
  * 单一真源：时间轴取自 params.timeline（stored）或 planBestEffortTimeline 兜底（recomputed），零重算漂移。

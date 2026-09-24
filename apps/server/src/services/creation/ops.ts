@@ -1,9 +1,9 @@
 /**
- * [M17] 创作画布批量操控与编排层（写模型）：
+ * 创作画布批量操控与编排层（写模型）：
  * - batchNodes：批量部分更新（复用 validateNodePatch：预校验全量合法才写，同文案同语义）；
  * - deleteNodes：批量删除（级联边 + 计数）；copyNodes：批量复制（深拷；集合内部边重映射重建）；
  * - chainNodes：规则式串联（相邻对按源产物类型自动选端口建边；失败 skip 记账 {from,to,reason}）；
- * - computeArrange / arrangeNodes：整理·对齐·分布（纯函数 + 落库；layered 层深=最长上游路径 / grid 行优先 / force d3 力导向 [M23]）；
+ * - computeArrange / arrangeNodes：整理·对齐·分布（纯函数 + 落库；layered 层深=最长上游路径 / grid 行优先 / force d3 力导向 ）；
  * - runCanvasNodes：批量执行（仅入队就绪节点；未就绪/忙碌 → skipped 附 problems；variants 1-4 透传；不级联等待）；
  * - promptExpandNode：AI 扩写（text/gen 内容源 → chatCompleteDetailed → 不落库；用量经 recordLlmUsage）。
  * 依赖方向：creation-ops → creation / creation-gen / llm（单向）；本文件不经手 socket 事件（对齐文档层 CRUD）。
@@ -23,7 +23,7 @@ import { recordLlmUsage } from '../usage'
 
 // ---------- 解析与装载 ----------
 
-/** ids 解析：非空正整数数组（去重保序）；[M22] 导出供 copy-to 复用（同文案同语义） */
+/** ids 解析：非空正整数数组（去重保序）； 导出供 copy-to 复用（同文案同语义） */
 export function parseNodeIds(raw: unknown, label = 'ids'): number[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new Error(`${label} 需为非空正整数数组`)
   const ids = [...new Set(raw.map(Number))]
@@ -31,7 +31,7 @@ export function parseNodeIds(raw: unknown, label = 'ids'): number[] {
   return ids
 }
 
-/** 节点批查 + 归属校验（缺失 → 抛；返回按入参序；重复 id 去重后仅一条）；[M22] 导出供 copy-to 复用 */
+/** 节点批查 + 归属校验（缺失 → 抛；返回按入参序；重复 id 去重后仅一条）； 导出供 copy-to 复用 */
 export async function loadCanvasNodes(canvas: Canvas, ids: number[]): Promise<CanvasNode[]> {
   const rows = await db
     .select()
@@ -44,7 +44,7 @@ export async function loadCanvasNodes(canvas: Canvas, ids: number[]): Promise<Ca
   return ids.map((id) => byId.get(id)!)
 }
 
-/** [M17] 建边/串联 from 侧信息组装（asset 查资产 kind；gen 解析 spec） */
+/** 建边/串联 from 侧信息组装（asset 查资产 kind；gen 解析 spec） */
 async function fromInfoOf(node: CanvasNode): Promise<FromNodeInfo> {
   let assetKind: string | null = null
   if (node.kind === 'asset' && node.assetId != null) {
@@ -361,7 +361,7 @@ function computeDepths(nodes: ArrangeNodeInput[], edges: Array<{ from: number; t
   return depth
 }
 
-// ---------- [M23] 力导向（d3-force） ----------
+// ---------- 力导向（d3-force） ----------
 
 /** 力导向参数（spec §2.3）：固定 tick 数 + 固定初始坐标 + d3 固定 LCG = 同输入同输出（无随机源） */
 export const FORCE_TICKS = 300
@@ -376,7 +376,7 @@ interface ForceNode extends SimulationNodeDatum {
 }
 
 /**
- * [M23] force 分支：注入现有坐标 → stop() 后手动 tick(FORCE_TICKS) → round + 整体平移
+ * force 分支：注入现有坐标 → stop() 后手动 tick(FORCE_TICKS) → round + 整体平移
  * （包围盒左上 → 原锚；单节点原坐标不动）。NaN 兜底：异常坐标回落原值。
  */
 function computeForceArrange(
@@ -421,10 +421,10 @@ function computeForceArrange(
 }
 
 /**
- * [M17][M23] 整理布局纯函数（探针直接断言）：返回 id → 新坐标（未列入 = 不移动）。
+ *  整理布局纯函数（探针直接断言）：返回 id → 新坐标（未列入 = 不移动）。
  * - layered：列 = 层深（distinct 归一化），同层按 (seq, x, y) 行序；x = 锚X + 列×300、y = 锚Y + 行×240；
  * - grid：行优先、列数 = max(2, ceil(√n))；sortBy:'seq' 时有 seq 优先（先 seq 组后无 seq 组）；
- * - force：[M23] d3-force 确定性迭代（tick 300）；输出 round 后平移至原锚；单节点原坐标不动；
+ * - force： d3-force 确定性迭代（tick 300）；输出 round 后平移至原锚；单节点原坐标不动；
  * - align-*：点语义（服务端不持有渲染尺寸）取包围盒边缘；distribute-*：n≥3 中间点等距（首尾不动）。
  * 锚 = 目标集包围盒左上角（minX, minY）。
  */
@@ -587,7 +587,7 @@ export async function runCanvasNodes(
   return { started, skipped }
 }
 
-// ---------- [M17] AI 辅助（prompt-expand） ----------
+// ---------- AI 辅助（prompt-expand） ----------
 
 /**
  * 提示词扩写：内容源 = text 节点 spec.text / gen 节点 spec.prompt（其余 kind 拒绝）；

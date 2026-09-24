@@ -23,7 +23,7 @@ import { jsonRecord } from './projection'
 export { messageSchema, createSessionSchema } from './contract'
 /**
  * 首次发送一句话：建 draft 影子项目 + 会话 + 规划（可能产生 LLM 费用）。
- * [M40] 项目以 status='draft' 落库：项目列表 / 统计 / 搜索一律不可见（规划记账与参考素材需归属，
+ * 项目以 status='draft' 落库：项目列表 / 统计 / 搜索一律不可见（规划记账与参考素材需归属，
  * 故行必须在），点「开始制作」确认时才填好立项信息并转正——用户不会再看到需要顺手改一的草稿项目。
  */
 export async function createSession(raw: unknown) {
@@ -49,7 +49,7 @@ export async function createSession(raw: unknown) {
   return sendCreationMessage(id, message)
 }
 
-/** [M31] 规划前参考素材注入（有界、可核实、不编造）：
+/** 规划前参考素材注入（有界、可核实、不编造）：
  *  - 风格/主体/首帧图片：仅 vision 实例以 image_url 分片注入；否则明告「未纳入理解，仅作生成参考」，不假称看到。
  *  - 参考视频：执行 video_analyze 产出可见/可听摘要注入；需 vision+可用实例，缺失/失败即 blocker（不静默跳过、不编造）。
  *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。 */
@@ -125,7 +125,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const presetHint = await resolveCreationPresetHint(claimed.projectId)
     const ep = await requiredEndpoint('llm')
     const vision = ep.extra.vision === true
-    // [M31] 参考素材：本条消息附件→核验编译；[M43] 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
+    // 参考素材：本条消息附件→核验编译； 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
     // 替换致旧参考静默丢失属缺陷）：同资产本轮覆盖（保位；role/hash 取新，编译链保留已绑 shotId），
     // prior 其余保序保留，新资产追加；合并超上限服务端权威拒绝，不静默截断。
     const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
@@ -133,14 +133,14 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
     const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
     const recent = await db.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), ne(creationMessages.role, 'system'))).orderBy(desc(creationMessages.id)).limit(12)
-    // [M35 G10] Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
+    // Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
     // 无 video 实例 → 提示使用 slideshow（不假称动态能力）。失败不阻断主流程，仅缺约束上下文。
     let caps: VideoModelCaps | null = null
     let hasVideo = false
     let hasNativeDialogue = false
     let hasStrictAsr = false
     try { await resolveStrictAsrEndpoint(); hasStrictAsr = true } catch { /* 仅告知能力，预检保留明确阻塞。 */ }
-    // [对白严格 ASR 开关] 逃生阀：用户显式关闭严格 ASR（asrStrictOff）时，路 B（M47）已开放免核验对白：
+    // [对白严格 ASR 开关] 逃生阀：用户显式关闭严格 ASR（asrStrictOff）时，路 B已开放免核验对白：
     // 当前视频模型命中原生对白背书 → 允许产出 dialogue（原生出声 + 估算字幕 + 强制人工审阅）；
     // 未命中 → 维持路 A 降级旁白（唯一可交付路径）。默认 ON 时逐字维持现状（不得降级，strict 执行链仍冻结）。
     const asrPolicy = await resolveDialogueAsrPolicy(claimed.projectId)
@@ -163,7 +163,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
         : hasNativeDialogue
           ? `【人物对白能力】当前视频原生对白：已核实；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户已关闭「人物对白严格 ASR 核验」并选择免核验对白路线（原生出声 + 估算字幕）：用户要求人物交谈时产出 performance=dialogue 和 dynamic，由视频模型原生生成同步人声与口型；字幕按批准台词估算（非实测），台词、说话人与口型全部以人工审阅为准。不得降级旁白或图文；方案须严格符合角色表/发言轮次契约，台词逐字即交付承诺。`
           : `【人物对白能力】当前视频原生对白：不可用或型号未经核实；严格 ASR 分段时间戳：${hasStrictAsr ? '已配置' : '未配置'}。用户已关闭「人物对白严格 ASR 核验」，但当前视频模型未命中原生对白背书，免核验对白路线不可执行：即使用户要求人物交谈，也请改用 performance=narration（旁白模式，由单一旁白逐句朗读台词）承载剧情，不要产出 performance=dialogue（预检会拒绝制作）。旁白方案须满足 narration 契约（不含 cast/speaker/characters 字段）。` },
-      // [M40] 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
+      // 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
       { role: 'system', content: projectMetaPrompt() },
       ...(presetHint ? [{ role: 'system' as const, content: presetHint }] : []),
       ...refContext,
@@ -184,15 +184,15 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
     const reply = parsePlanningReply(result.content, result.finishReason)
-    // [M35 G10] 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
+    // 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
     if (reply.kind === 'plan') {
       const { plan: clampedPlan, report } = clampPlanToCaps(reply.plan, caps, hasVideo)
       if (report.changed) reply.plan = clampedPlan
       if (report.notes.length) reply.message = `${reply.message}\n\n（视频能力检查：${report.notes.join('；')}）`
     }
-    // [M31] 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
+    // 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
     if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
-    // [M40] 立项信息归一：不入库 plan（不入 planHash），只写 draft 项目行；回落必可见
+    // 立项信息归一：不入库 plan（不入 planHash），只写 draft 项目行；回落必可见
     const projectMeta = reply.kind === 'plan' ? sanitizeProjectMeta(reply.project, reply.plan) : null
     if (reply.kind === 'plan' && projectMeta) reply.message = `${reply.message}${renderMetaNotes(projectMeta.notes)}`
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
@@ -206,7 +206,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
       if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions } : { kind: reply.kind, revision: claimed.planRevision + 1 }), createdAt: Date.now() })
-      // [M40] 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
+      // 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
       if (plan && projectMeta && project.status === 'draft') {
         const m = projectMeta.meta
         await tx.update(projects).set({ name: m.name, genre: m.genre, templateKey: m.templateKey, tags: JSON.stringify(m.tags), brief: m.brief, updatedAt: Date.now() }).where(eq(projects.id, claimed.projectId))
@@ -222,7 +222,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
   return creationDetail(id)
 }
 
-/** [M43] 跨轮参考合并：thisTurn 为空 → 沿用 prior（既有 refinement 行为逐字不变）；
+/** 跨轮参考合并：thisTurn 为空 → 沿用 prior（既有 refinement 行为逐字不变）；
  *  否则同 assetId 以本轮为准并占据 prior 原位，本轮新资产追加末尾；合并后 >12 拒绝（不截断）。 */
 function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[] {
   if (!thisTurn.length) return prior
@@ -235,7 +235,7 @@ function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[]
 }
 
 /**
- * [M35 G10] 能力约束注入消息（向 LLM 预先告知真源表已核实档位，避免方案越界造成 preflight 422）。
+ * 能力约束注入消息（向 LLM 预先告知真源表已核实档位，避免方案越界造成 preflight 422）。
  * - caps 命中 → 列出 durations / aspectRatios / 建议总时长与镜头数
  * - 无 video 实例 → 提示默认使用 slideshow（不假称动态能力）
  * - hasVideo=true 但 caps=null（未登记模型，如 siliconflow_video） → 仅提醒“能力未背书”，不列档位

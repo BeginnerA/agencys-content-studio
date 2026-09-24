@@ -1,5 +1,5 @@
 /**
- * [M26-split] 轻松创作对话面板「参考素材」纯函数工具（自 ConversationPanel.vue 原样搬出，行为零变更）：
+ * 轻松创作对话面板「参考素材」纯函数工具（自 ConversationPanel.vue 原样搬出，行为零变更）：
  * 消息 → 参考素材展示元信息（类型图标 / 角色标签 / 文件名 / 缩略图端点）判定。
  */
 import { REF_ROLE_LABELS } from '../../lib/types'
@@ -23,7 +23,7 @@ export const refRoleLabel = (m: CreationChatMessage): string => {
   return role ? REF_ROLE_LABELS[role] : '参考'
 }
 
-/** [M43] 逐镜绑定徽标文案：shotId 按当前方案镜序→「第 N 镜」；方案未命中/未就绪回退裸 id（不隐藏绑定事实） */
+/** 逐镜绑定徽标文案：shotId 按当前方案镜序→「第 N 镜」；方案未命中/未就绪回退裸 id（不隐藏绑定事实） */
 export const refShotLabel = (
   m: CreationChatMessage,
   shots?: CreationShot[] | null,

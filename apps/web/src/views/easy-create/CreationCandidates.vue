@@ -4,7 +4,7 @@ import Icon from '../../components/common/Icon.vue'
 import type { CreationArtifact, ShotBoardData } from '../../lib/types'
 
 /**
- * [M42] 单镜候选版本选择（成果面板行内展开）。
+ * 单镜候选版本选择（成果面板行内展开）。
  * 可用性只认投影 candidates（文件在不在 / 是否删除），时间来源等富信息用工作台同一份 board 按 assetId 叠加（展开时才拉，只读）。
  * 改选别的版本只落本地 pending，点「应用选择」才提交：选片零计费、不触发执行，重新合成后才落到成片。
  */

@@ -1,5 +1,5 @@
 /**
- * [M15] 流水线画布节点卡辅助（CanvasBoard 拆分：M26 红线纯重构，函数体逐字搬移）
+ * 流水线画布节点卡辅助（CanvasBoard 拆分：纯重构，函数体逐字搬移）
  * 纯展示派生（图标 / 卡片类 / 状态徽标 / 任务计数文案）；无响应式依赖。
  */
 import type { CanvasBoardNode } from '../../lib/types'

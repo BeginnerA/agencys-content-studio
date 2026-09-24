@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 品牌效果预览
+ * 品牌效果预览
  * 在模拟视频帧上实时呈现字幕样式 + 水印位置 + 片头片尾状态，
  * 帮助用户在配置时直观看到合成后的真实效果。
  */
@@ -20,7 +20,7 @@ const props = defineProps<{
   wmFile?: string
   /** 预览时间戳（用于刷新缓存） */
   wmPreviewTs?: number
-  /** [M20 fix] 片头/片尾文件路径（实时预览用，因 brand.intro.file 可能未随表单变化同步） */
+  /** 片头/片尾文件路径（实时预览用，因 brand.intro.file 可能未随表单变化同步） */
   introFile?: string
   outroFile?: string
 }>()
@@ -51,7 +51,7 @@ const subStyle = computed(() => {
   const sizePct = s?.size_pct ?? SUB_DEFAULTS.size
   const marginPct = s?.margin_v_pct ?? SUB_DEFAULTS.marginV
   const outlinePct = s?.outline_pct ?? SUB_DEFAULTS.outline
-  // [M20 fix] size_pct/margin_v_pct/outline_pct 均为「视频高度百分比」
+  // size_pct/margin_v_pct/outline_pct 均为「视频高度百分比」
   // 合成基线 1080p：px = val/100 × 1080；预览帧按 FRAME_H 等比缩放
   const PREVIEW_SCALE = FRAME_H / 1080
   const fontSize = Math.max(
@@ -72,7 +72,7 @@ const subStyle = computed(() => {
   const font = s?.font || SUB_DEFAULTS.font
 
   // 垂直位置：2=底部、5=中部、8=顶部
-  // [M20 fix] 水平居中 translateX(-50%) 由 CSS .bp-sub 提供；
+  // 水平居中 translateX(-50%) 由 CSS .bp-sub 提供；
   // 仅 align=5（中部）需叠加 translateY，其余不设 inline transform 以免覆盖 CSS
   let top: string | undefined
   let bottom: string | undefined
@@ -116,12 +116,12 @@ const subAlignClass = computed(() => {
 // ---------- 水印位置计算 ----------
 
 const wmCfg = computed(() => props.brand.watermark ?? null)
-// [M20 fix2] 水印来源两态：项目资产 asset_id（优先）或平台品牌文件 file
+// 水印来源两态：项目资产 asset_id（优先）或平台品牌文件 file
 const wmAssetIdResolved = computed(() => {
   const v = wmCfg.value?.asset_id
   return typeof v === 'number' && v > 0 ? v : 0
 })
-// [M20 fix] wmEnabled 优先用 wmFile prop（实时表单联动），回退到 brand 内的已保存来源
+// wmEnabled 优先用 wmFile prop（实时表单联动），回退到 brand 内的已保存来源
 const wmEnabled = computed(
   () =>
     wmCfg.value?.enabled !== false &&
@@ -175,7 +175,7 @@ const wmUrl = computed(() => {
 
 // ---------- 片头片尾状态 ----------
 
-/** [M20 fix2] 片段槽是否生效（来源两态：asset_id 优先 → file；enabled=false 强制禁用） */
+/** 片段槽是否生效（来源两态：asset_id 优先 → file；enabled=false 强制禁用） */
 function slotOn(
   cfg: BrandMaterialSlot | null | undefined,
   fileProp: string | undefined,

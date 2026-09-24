@@ -1,11 +1,11 @@
 /**
- * [M7] 镜头级轻工作台服务层（spec §3.1）
+ * 镜头级轻工作台服务层（spec §3.1）
  * - 纯 DB 层：只做「校验 + 数据库状态变更」，不调用 engine（startRun 由路由层在服务返回后同步调用）
  * - 错误类型与 HttpError 解耦：路由层转 HTTP（对齐 run-create.ts 惯例）
  * - 三个核心语义：① 分镜 JSON 是唯一事实源 ② 产物即选择（改写 output.asset_ids）③ 状态重置 + 引擎复用
- * [M10] 结构性编辑扩展：ops 协议（reorder/add/remove/patch）+ 上传替换（外来图入镜）
- * [M11] 引擎级单步重跑（resetStepForRerun：复用/重置子任务）+ 分镜 lines 字段校验（音字对齐映射源）
- * [M42] 局部返修批量重置（resetShotsForRework：多镜一次重置，轻松创作内部允许通道，通用工作台路径仍阻断）
+ * 结构性编辑扩展：ops 协议（reorder/add/remove/patch）+ 上传替换（外来图入镜）
+ * 引擎级单步重跑（resetStepForRerun：复用/重置子任务）+ 分镜 lines 字段校验（音字对齐映射源）
+ * 局部返修批量重置（resetShotsForRework：多镜一次重置，轻松创作内部允许通道，通用工作台路径仍阻断）
  */
 
 export { WorkbenchError, WORKBENCH_ACTIONS } from './helpers'

@@ -4,7 +4,7 @@ import type { StepContext } from '../context'
 import { interpolate } from '../refs'
 import { StepError, type StepResult } from '../types'
 
-// [M24·F1] memory_summary action（spec §2.2）：三层记忆摘要压缩的显式形态。
+// memory_summary action（spec §2.2）：三层记忆摘要压缩的显式形态。
 // 素材 = inputs.content（text 资产多个拼接）或 run input.content 字面文本；
 // 参数取值链 params → run input（同名键），level 必需且 ∈ SUMMARY_LEVELS。
 // 产物 = 记忆（type='summary' 具名 upsert 幂等）+ 记忆日志快照资产（purpose=memory_log）。

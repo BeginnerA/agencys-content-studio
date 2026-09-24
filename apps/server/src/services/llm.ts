@@ -20,7 +20,7 @@ export interface LlmEndpoint {
   baseUrl: string
   apiKey: string
   model: string
-  /** [M4] 用量来源标识：api_configs 的 providerKey；env 兜底 'env' */
+  /** 用量来源标识：api_configs 的 providerKey；env 兜底 'env' */
   providerKey: string
 }
 
@@ -79,7 +79,7 @@ export type { ChatContentPart, ChatMessage, ChatOptions }
 /** 补全用量（OpenAI 兼容 usage 字段） */
 export type LlmUsage = ChatUsage
 
-/** [M4] 补全结果（含用量与来源；用量记录用）。provider/model 为宿主侧补充，kit 不携带来源信息 */
+/** 补全结果（含用量与来源；用量记录用）。provider/model 为宿主侧补充，kit 不携带来源信息 */
 export interface LlmResult {
   content: string
   usage: LlmUsage | null

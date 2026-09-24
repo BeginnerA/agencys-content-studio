@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M28] 创作画布节点层（自 CreationBoard.vue 整块迁移：节点卡 v-for + 端口 + 状态徽标）
+ * 创作画布节点层（自 CreationBoard.vue 整块迁移：节点卡 v-for + 端口 + 状态徽标）
  * —— 指针事件转发父级处理（node-pointerdown / out-pointerdown），保持原交互语义
  */
 import type { CanvasDocNode } from '../../../lib/types'
@@ -285,7 +285,7 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
   flex: none;
 }
 
-/* 故事板序号徽标（[M17] seq） */
+/* 故事板序号徽标（ seq） */
 .cn-seq {
   flex: none;
   font-size: 10.5px;

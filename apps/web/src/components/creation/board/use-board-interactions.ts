@@ -1,5 +1,5 @@
 /**
- * [M28] 创作画布交互组合式（自 CreationBoard.vue 逐字迁移：模式机 / 键盘 / 连线 / 框选 / fit）
+ * 创作画布交互组合式（自 CreationBoard.vue 逐字迁移：模式机 / 键盘 / 连线 / 框选 / fit）
  * —— 装配约定：函数体逐字保留；props/emit/依赖经参数注入；包裹层缩进 +2（机械转换）
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -18,9 +18,9 @@ interface BoardInteractionsDeps {
   nodeById: ComputedRef<Map<number, CanvasDocNode>>
   nodeXY: (n: CanvasDocNode) => { x: number; y: number }
   nodeH: (n: CanvasDocNode) => number
-  /** [M22] 组子树递归成员节点 id（含全部后代组） */
+  /** 组子树递归成员节点 id（含全部后代组） */
   descNodeIds: (gid: number) => number[]
-  /** [M22] 组子树后代组 id（不含自身；锚点平移用） */
+  /** 组子树后代组 id（不含自身；锚点平移用） */
   descGroupIds: (gid: number) => number[]
   editingGroupId: Ref<number | null>
   openGroupMenu: Ref<number | null>
@@ -45,7 +45,7 @@ export function useBoardInteractions(
   const { pan, zoom } = vp
 
   /** 拖拽中的整组本地即时偏移（优先于渲染）；抬起 emit 后由父级乐观更新替换
-   *  [M22] gids：组条拖拽时的「自身+后代组」锚点平移集（空组包围盒跟随） */
+   * gids：组条拖拽时的「自身+后代组」锚点平移集（空组包围盒跟随） */
   const dragGroup = ref<{
     ids: number[]
     dx: number
@@ -58,7 +58,7 @@ export function useBoardInteractions(
     if (ev.button !== 0 || spaceDown.value) return
     if (editingGroupId.value === g.id) return
     ev.stopPropagation()
-    // [M22] 递归：选中/拖拽全部后代节点；后代组（含自身）锚点同步平移
+    // 递归：选中/拖拽全部后代节点；后代组（含自身）锚点同步平移
     const ids = descNodeIds(g.id)
     emit('select', ids)
     openGroupMenu.value = null
@@ -119,7 +119,7 @@ export function useBoardInteractions(
       return
     }
     if (ev.button !== 0) return
-    // 空白左键 = 框选（M17 破坏性变更：原为平移）
+    // 空白左键 = 框选（破坏性变更：原为平移）
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
     mode.value = 'box'
     boxMoved = false
@@ -226,7 +226,7 @@ export function useBoardInteractions(
             y: Math.round(n.y + d.dy),
           }))
         if (moves.length) emit('moved', moves)
-        // [M22] 组条拖拽：后代组锚点跟随平移（空组包围盒用锚点）
+        // 组条拖拽：后代组锚点跟随平移（空组包围盒用锚点）
         if (d.gids?.length) {
           const gsel = new Set(d.gids)
           const gmoves = props.groups
@@ -340,7 +340,7 @@ export function useBoardInteractions(
       return
     }
     if (mod && key === 'g') {
-      // [M18] Ctrl+G 成组（须 ≥2 选中；解组走组条菜单）
+      // Ctrl+G 成组（须 ≥2 选中；解组走组条菜单）
       ev.preventDefault()
       if (props.selectedIds.length >= 2) emit('group-create')
       return
@@ -458,7 +458,7 @@ export function useBoardInteractions(
     )
     return { x: Math.round(p.x - NODE_W / 2), y: Math.round(p.y - 60) }
   }
-  /** [M17] 使世界坐标 (x,y) 居中（总览聚焦 / 定位；不改缩放） */
+  /** 使世界坐标 (x,y) 居中（总览聚焦 / 定位；不改缩放） */
   function centerOn(x: number, y: number): void {
     const el = viewportEl.value
     if (!el) return

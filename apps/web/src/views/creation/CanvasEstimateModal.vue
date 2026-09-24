@@ -13,7 +13,7 @@ const cv = props.cv
 </script>
 
 <template>
-  <!-- [M18] 执行成本预估（批量面板；零副作用） -->
+  <!-- 执行成本预估（批量面板；零副作用） -->
   <Modal
     v-if="cv.showEstimate && cv.estimateResult"
     title="执行成本预估"
@@ -126,7 +126,7 @@ const cv = props.cv
   word-break: break-all;
 }
 
-/* ===== [M18] 执行成本预估 / 实体参考弹窗 ===== */
+/* ===== 执行成本预估 / 实体参考弹窗 ===== */
 .est-list {
   display: flex;
   flex-direction: column;

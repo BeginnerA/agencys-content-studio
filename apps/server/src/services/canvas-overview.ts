@@ -1,9 +1,9 @@
 /**
- * [M23] 全景聚合读模型（E1/E2，spec §2.4）：项目内全部 run 的跨批次/跨模板聚合
+ * 全景聚合读模型（E1/E2，spec §2.4）：项目内全部 run 的跨批次/跨模板聚合
  * - batches：批次头（toBatchView 同构）+ 组内 runs（batchSeq 升序；含 cost/快照版本）
  * - standaloneRuns：无批次归属 runs（createdAt 降序）
  * - stats：项目级 run 计数（按状态）+ 总成本（成本口径对齐 summarizeBatch：usage 按 run 聚合）
- * - [M27] workflows：编排链概览（每段取 workflowId+seq 最新 run 的 status/cost 派生；无链则空数组）
+ * - workflows：编排链概览（每段取 workflowId+seq 最新 run 的 status/cost 派生；无链则空数组）
  * 纯读零写；project 缺失 → null（路由层转 404）。
  */
 import { and, desc, eq, inArray, isNull, sum } from 'drizzle-orm'
@@ -28,7 +28,7 @@ export interface OverviewRunLite {
   createdAt: number
 }
 
-/** [M27] 编排链段概览（每段取 workflowId+seq 最新 run；无 run → runId/status/cost 均 null） */
+/** 编排链段概览（每段取 workflowId+seq 最新 run；无 run → runId/status/cost 均 null） */
 export interface WorkflowSegmentLite {
   seq: number
   templateKey: string
@@ -38,7 +38,7 @@ export interface WorkflowSegmentLite {
   cost: number | null
 }
 
-/** [M27] 编排链概览（全景「编排链」区数据源） */
+/** 编排链概览（全景「编排链」区数据源） */
 export interface WorkflowOverviewLite {
   id: number
   name: string
@@ -52,7 +52,7 @@ export interface CanvasOverview {
   batches: Array<Record<string, unknown> & { runs: OverviewRunLite[] }>
   standaloneRuns: OverviewRunLite[]
   stats: { runCount: number; byStatus: Record<string, number>; totalCost: number }
-  /** [M27] 编排链（旧前端超集兼容；无链 → []） */
+  /** 编排链（旧前端超集兼容；无链 → []） */
   workflows: WorkflowOverviewLite[]
 }
 
@@ -117,7 +117,7 @@ export async function buildCanvasOverview(projectId: number): Promise<CanvasOver
     if (typeof c === 'number') totalCost += c
   }
 
-  // [M27] 编排链聚合：每 (workflowId, seq) 取最新 run（runRows 已 createdAt 降序 → 首个命中即最新）
+  // 编排链聚合：每 (workflowId, seq) 取最新 run（runRows 已 createdAt 降序 → 首个命中即最新）
   const wfRows = await db
     .select()
     .from(workflows)

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * [M16] 创作画布检查器（spec §2.6；交互体例对齐 M15 CanvasDrawer）
+ * 创作画布检查器（spec §2.6；交互体例对齐 CanvasDrawer）
  * - gen 节点：spec 表单（genKind/prompt/尺寸/端点覆盖/编辑模式）+ 执行（表单先自动保存）· 取消
  *   + 就绪度问题 / 编辑能力提示 / 任务历史（≤5）/ 结果预览 / 入边出边管理
  * - asset 节点：预览 / 改名 / 删除
  * - 边选中：端点信息 + 断开
  * - 蒙版编辑器（EditBrushModal）内联；「设为实体参考图」内联面板；所有操作 emit refresh 由父级全量重拉
- * ---- [M28] 已拆分：internals / use-inspector-form / 7 面板子组件（行为零变更；状态经 useInspectorForm 装配）----
- * ---- [M26-split] 扩写弹窗另拆 ExpandModal.vue（模板/样式原样搬出，行为零变更）----
+ * ---- 已拆分：internals / use-inspector-form / 7 面板子组件（行为零变更；状态经 useInspectorForm 装配）----
+ * ---- 扩写弹窗另拆 ExpandModal.vue（模板/样式原样搬出，行为零变更）----
  */
 
 import { nextTick, ref } from 'vue'
@@ -43,7 +43,7 @@ const props = defineProps<{
   edges: CanvasDocEdge[]
   canvasId: number
   projectId: number
-  /** [M17] 写命令回调（View 执行 + 入撤销栈；await 返回即已落库） */
+  /** 写命令回调（View 执行 + 入撤销栈；await 返回即已落库） */
   applyPatch: (p: {
     id: number
     patch: CanvasNodePatch
@@ -60,7 +60,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ refresh: []; clear: []; notice: [msg: string] }>()
 
-// ---- M28 装配：状态/操作经 composable；模板标识符解构直用 ----
+// ---- 装配：状态/操作经 composable；模板标识符解构直用 ----
 const {
   form,
   genSpec,
@@ -410,7 +410,7 @@ function onPreviewChanged(updated: Asset): void {
         </div>
       </section>
 
-      <!-- [M29·R02] 锁定下次执行输入（gen 节点上游资产 pin；三操作分离之锁版） -->
+      <!-- 锁定下次执行输入（gen 节点上游资产 pin；三操作分离之锁版） -->
       <CanvasInputLockPanel
         v-if="node.kind === 'gen'"
         :node="node"
@@ -470,7 +470,7 @@ function onPreviewChanged(updated: Asset): void {
       </section>
     </template>
 
-    <!-- AI 扩写（对照弹窗：[M26-split] 另拆 ExpandModal，状态仍归 composable） -->
+    <!-- AI 扩写（对照弹窗： 另拆 ExpandModal，状态仍归 composable） -->
     <ExpandModal
       v-if="expandOpen && node"
       :src="expandSrc"

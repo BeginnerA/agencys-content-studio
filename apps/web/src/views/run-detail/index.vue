@@ -125,7 +125,7 @@ const {
           >
             <Icon name="refresh" :size="14" /> 断点续跑
           </button>
-          <!-- [方案C] 轻松创作 run：续跑已可就地完成（含受理状态不明任务时弹窗确认成本后重发）；会话入口降为次要（查看完整方案/对话/供应商核验） -->
+          <!-- 轻松创作 run：续跑已可就地完成（含受理状态不明任务时弹窗确认成本后重发）；会话入口降为次要（查看完整方案/对话/供应商核验） -->
           <RouterLink
             v-if="u.creationSessionId.value"
             class="btn"
@@ -228,14 +228,14 @@ const {
       </div>
     </template>
 
-    <!-- [M4] 单 run 导出向导 / 标记发布 -->
+    <!-- 单 run 导出向导 / 标记发布 -->
     <ExportWizardModal
       v-if="showExport"
       :run-id="runId"
       @done="onExportDone"
       @close="showExport = false"
     />
-    <!-- [M19] 成片多画幅派生（A 路径） -->
+    <!-- 成片多画幅派生（A 路径） -->
     <AspectDeriveModal
       v-if="deriveOpen"
       :run-id="runId"
@@ -254,7 +254,7 @@ const {
       @close="showPublish = false"
     />
 
-    <!-- [M11] 重跑弹窗（单步 / 级联到末尾；级联携预估计费明细） -->
+    <!-- 重跑弹窗（单步 / 级联到末尾；级联携预估计费明细） -->
     <RerunModal
       v-if="rerunStep"
       :run-id="runId"
@@ -295,7 +295,7 @@ const {
   word-break: break-all;
 }
 
-/* [M2] 并行执行提示条 */
+/* 并行执行提示条 */
 .phint {
   display: flex;
   align-items: center;
@@ -309,7 +309,7 @@ const {
   margin-bottom: 12px;
 }
 
-/* [M2] 并行执行提示条 */
+/* 并行执行提示条 */
 .phint {
   display: flex;
   align-items: center;
@@ -366,7 +366,7 @@ const {
 
 .cols {
   display: grid;
-  /* minmax(0,…)：避免右栏任务长 prompt（nowrap）经 auto min 撑破轨道致整页横滚（M11 实弹修复） */
+  /* minmax(0,…)：避免右栏任务长 prompt（nowrap）经 auto min 撑破轨道致整页横滚（实弹修复） */
   grid-template-columns: minmax(0, 1fr) 400px;
   gap: 16px;
   align-items: start;

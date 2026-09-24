@@ -16,7 +16,7 @@ const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
-// [M31+] 从素材选取弹窗
+// 从素材选取弹窗
 const showPicker = ref(false)
 
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
@@ -42,7 +42,7 @@ watch(() => props.s.first.state.ticket?.content, (content, previous) => {
 watch(draft, (value) => props.s.first.setContent(value), { flush: 'sync' })
 watch(() => props.s.state.currentId, () => { draft.value = ''; previewAsset.value = null; showPicker.value = false; previewSeq++ })
 
-// [M42] system 留痕按类型给来源标签与图标（审阅 / 返修 / 合成）：机器记录不伪装成策划助手的话
+// system 留痕按类型给来源标签与图标（审阅 / 返修 / 合成）：机器记录不伪装成策划助手的话
 function whoLabel(m: CreationChatMessage): string {
   return m.role === 'system' ? creationSystemLabel(m.payload?.kind) : CREATION_ROLE_LABELS[m.role]
 }
@@ -64,14 +64,14 @@ async function submit(): Promise<void> {
   if (ok && id === props.s.state.currentId && draft.value.trim() === text) draft.value = ''
 }
 
-// [M31+] 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
+// 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
 async function onPickAssets(picked: Asset[]): Promise<void> {
   showPicker.value = false
   const id = props.s.state.currentId
   for (const a of picked) { if (id !== props.s.state.currentId) break; await props.s.addAssetReference(a) }
 }
 
-// [M31+] 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现；
+// 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现；
 // 展示元信息纯函数另拆 ref-utils，气泡组件另拆 MessageRefBubble）
 const previewAsset = ref<Asset | null>(null)
 const refLoading = ref<number | null>(null)
@@ -100,7 +100,7 @@ function useQuestion(q: string): void {
 const planning = () =>
   props.s.state.detail?.session.status === 'planning' || props.s.state.busySend || props.s.first.state.phase === 'sending'
 
-// [M31] 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
+// 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
 function pickFiles(): void {
   fileInput.value?.click()
 }
@@ -363,7 +363,7 @@ async function onFiles(e: Event): Promise<void> {
   box-shadow: 0 4px 12px -6px rgb(79 70 229 / 60%);
 }
 
-/* [M42] 审阅决策留痕：系统记录与助手回复视觉区分（虚线 + 弱化色），不伪装成策划助手的话 */
+/* 审阅决策留痕：系统记录与助手回复视觉区分（虚线 + 弱化色），不伪装成策划助手的话 */
 .avatar.system {
   background: var(--raised);
   border: 1px dashed var(--border-strong);

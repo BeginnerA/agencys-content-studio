@@ -17,13 +17,13 @@ import { RunCancelledError } from '../types'
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
  * output_format=storyboard-json/lines-json/characters-json/set-json/event-json/graph-json/plan-json
  * 时走 validateTextOutput 契约校验；
- * def.batch 存在 → aiTextBatch（M9：按 JSON 列表逐项生成）；params.max_input_chars → 超长注入截断。
+ * def.batch 存在→ aiTextBatch（按 JSON 列表逐项生成）；params.max_input_chars → 超长注入截断。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
   if (ctx.def.batch) return aiTextBatch(ctx)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = params['prompt_tpl']
-  // [M18] prompt_inline 与 prompt_tpl 二选一必填（画布 llm 节点映射 → 直接内联指令，无需提示词文件）
+  // prompt_inline 与 prompt_tpl 二选一必填（画布 llm 节点映射 → 直接内联指令，无需提示词文件）
   const inlinePrompt = params['prompt_inline']
   const hasTpl = typeof tplFile === 'string' && tplFile.length > 0
   const hasInline = typeof inlinePrompt === 'string' && inlinePrompt.trim().length > 0
@@ -38,7 +38,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
 
   const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
   const sections: string[] = []
-  // [M29·R02] 冻结本步实际消费的输入资产（文本携版本指针）
+  // 冻结本步实际消费的输入资产（文本携版本指针）
   const execInputs: ExecInputSpec[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
     if (k.startsWith('_')) continue // _review 等内部键不注入
@@ -103,7 +103,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
       timeoutMs,
     },
   )
-  // [M4] 用量记录（LLM 单次调用 → tokens_in/out 两行；失败不影响流水线）
+  // 用量记录（LLM 单次调用 → tokens_in/out 两行；失败不影响流水线）
   await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id,
     provider: res.provider, model: res.model, usage: res.usage })
   const content = res.content
@@ -142,7 +142,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     tags: [tag],
   })
   ctx.log(`已写资产 asset#${asset.id} → ${asset.relPath}`)
-  // [M29·R02] 记录执行真实输入快照（旁路，失败不影响流水线）
+  // 记录执行真实输入快照（旁路，失败不影响流水线）
   await safeRecordExecSnapshot({
     projectId: ctx.run.projectId,
     execKind: 'pipeline_step',
@@ -160,7 +160,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
  * storyboard-json（shots 数组 + image_prompt）/ lines-json（lines 数组 + text/est_ms + v2 speaker/voice_hint/emotion_hint）
  * / characters-json（characters 数组 + name/appearance + 可选 aliases/summary/negative/voice/voice_desc/ref_prompt）
  * / set-json（scenes+props 至少一数组非空 + name/appearance）；
- * 返回条目数（非校验格式 → 0）；错误消息口径与 M1/M2 一致。
+ * 返回条目数（非校验格式→ 0）；错误消息口径与既有实现一致。
  */
 export function validateTextOutput(content: string, format: string): number {
   if (format === 'storyboard-json') {
@@ -372,7 +372,7 @@ function clipContent(content: string, maxChars: number): string {
 }
 
 /**
- * [M9] ai_text batch：按 JSON 列表逐项生成（对齐 ai_image batch 范式）。
+ * ai_text batch：按 JSON 列表逐项生成（对齐 ai_image batch 范式）。
  * batch.field → 输入资产（首个为列表 JSON）→ 数组逐项：一条 gen_task（kind=text）→
  * 幂等（params.itemId）/ 并发池 / 失败重试 / 取消感知 → 产物按 items 顺序聚合。
  * 逐项提示词 = 模板 + 静态输入 sections（跳过 field 键）+ item JSON + item.asset_id 资产全文。
@@ -384,7 +384,7 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
   const maxRetry = Math.max(0, batch.retry ?? 1)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = params['prompt_tpl']
-  // [M18] prompt_inline 与 prompt_tpl 二选一必填（batch 同步支持，保证行为一致）
+  // prompt_inline 与 prompt_tpl 二选一必填（batch 同步支持，保证行为一致）
   const inlinePrompt = params['prompt_inline']
   const hasTpl = typeof tplFile === 'string' && tplFile.length > 0
   const hasInline = typeof inlinePrompt === 'string' && inlinePrompt.trim().length > 0
@@ -433,7 +433,7 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
   }
 
   // 入队 / 同步：逐项构造 prompt（快照）+ name
-  // [M29·R02] batch 实际输入快照：列表资产（source）+ 逐项章节文本资产（携版本指针）
+  // batch 实际输入快照：列表资产（source）+ 逐项章节文本资产（携版本指针）
   const batchInputs: ExecInputSpec[] = [await assetInput('source', ids[0]!)]
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!
@@ -543,7 +543,7 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
     throw new Error(`产物与列表数不符（${assetIds.length}/${items.length}），请重试`)
   }
   ctx.log(`按列表生成完成：${assetIds.length} 份 → ${assetIds.join(', ')}`)
-  // [M29·R02] 记录 batch 执行真实输入快照（旁路，失败不影响流水线）
+  // 记录 batch 执行真实输入快照（旁路，失败不影响流水线）
   await safeRecordExecSnapshot({
     projectId: ctx.run.projectId,
     execKind: 'pipeline_step',

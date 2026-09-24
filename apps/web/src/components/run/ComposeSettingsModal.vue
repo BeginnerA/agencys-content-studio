@@ -1,14 +1,14 @@
 <script setup lang="ts">
 /**
- * [M19] 合成设置弹窗（spec §4；由 M11 BgmModal 升级扩展）
- * - 配乐（BGM）：绑定/移除/音量/上传（原 M11 功能逐字保留）
+ * 合成设置弹窗（spec §4；由既有 BgmModal 升级扩展）
+ * - 配乐（BGM）：绑定/移除/音量/上传（原功能逐字保留）
  * - 字幕样式：run 级 brand.subtitle 覆盖（开关 + 9 字段表单）
  *   · 百分比字段显示 ×100（size_pct 0.018 → 1.8%），保存 ÷100
  *   · 开关关闭保存 → brand.subtitle = null（清除 run 级覆盖，回落项目/平台/默认）
  * - 水印/片头/片尾：复用 BrandSettings scope='run'（三态覆盖 + 继承值与来源摘要）
- * - [M19] 镜头音效（SFX）：汇总条数 + 全局音量（绑定入口在工作台镜头卡片）
- * - [M26-split] 字幕样式节拆至 SubtitleStyleSection.vue（提交经共享 wrap）
- * - [M19] 多画幅原生渲染（B 路径）：勾选启用 + 画幅多选（≤3）+ 策略；关闭 = 清除配置（合成链逐字节不变）
+ * - 镜头音效（SFX）：汇总条数 + 全局音量（绑定入口在工作台镜头卡片）
+ * - 字幕样式节拆至 SubtitleStyleSection.vue（提交经共享 wrap）
+ * - 多画幅原生渲染（B 路径）：勾选启用 + 画幅多选（≤3）+ 策略；关闭 = 清除配置（合成链逐字节不变）
  * - 全部操作不触发执行：提示「重新合成后生效」；操作成功 emit changed
  */
 import { onMounted, ref } from 'vue'
@@ -42,12 +42,12 @@ const volume = ref(25)
 const previewId = ref<number | null>(null)
 const uploadInput = ref<HTMLInputElement | null>(null)
 
-// ---------- [M19] 镜头音效（SFX 汇总；绑定入口在工作台镜头卡片） ----------
+// ---------- 镜头音效（SFX 汇总；绑定入口在工作台镜头卡片） ----------
 
 const sfxCount = ref(0)
 const sfxVolume = ref(100)
 
-// ---------- [M19] 多画幅原生渲染（B 路径：合成内多路输出） ----------
+// ---------- 多画幅原生渲染（B 路径：合成内多路输出） ----------
 
 const maOn = ref(false)
 const maAspects = ref<AspectValue[]>([])
@@ -55,7 +55,7 @@ const maStrategy = ref<AspectStrategy>('crop')
 /** run 级是否已持久化 multi_aspect（决定「清除」按钮可用态） */
 const maPersisted = ref(false)
 
-/** 字幕样式节初值（M26-split：状态真源已拆至 SubtitleStyleSection，此处仅下发 config 拉取结果） */
+/** 字幕样式节初值（状态真源已拆至 SubtitleStyleSection，此处仅下发 config 拉取结果） */
 const brandSub = ref<SubtitleStyleConfig | null | undefined>(undefined)
 
 onMounted(async () => {
@@ -151,7 +151,7 @@ function saveVolume() {
   }, '音量已保存（重新合成后生效）')
 }
 
-/** [M19] SFX 全局音量（显示百分数；存储 0–2，服务端同口径 clamp） */
+/** SFX 全局音量（显示百分数；存储 0–2，服务端同口径 clamp） */
 function saveSfxVolume() {
   const v = Math.min(2, Math.max(0, sfxVolume.value / 100))
   void wrap(async () => {
@@ -220,7 +220,7 @@ function fmtDur(sec: number | null): string {
     <div class="bg">
       <div v-if="loading" class="muted">加载中…</div>
       <template v-else>
-        <!-- ===== 配乐（BGM）[M11] ===== -->
+        <!-- ===== 配乐（BGM） ===== -->
         <div class="bg-sec">
           <div class="bg-lb">
             <Icon name="speaker-wave" :size="12" /> 配乐（BGM）
@@ -325,7 +325,7 @@ function fmtDur(sec: number | null): string {
 
         <div class="bg-sep" />
 
-        <!-- ===== 镜头音效（SFX）[M19] ===== -->
+        <!-- ===== 镜头音效（SFX） ===== -->
         <div class="bg-sec">
           <div class="bg-lb">
             <Icon name="bolt" :size="12" /> 镜头音效（SFX）
@@ -359,7 +359,7 @@ function fmtDur(sec: number | null): string {
 
         <div class="bg-sep" />
 
-        <!-- ===== 字幕样式 [M19]（M26-split：拆至 SubtitleStyleSection.vue；提交经共享 wrap，busy/notice/changed 同源） ===== -->
+        <!-- ===== 字幕样式（拆至 SubtitleStyleSection.vue；提交经共享 wrap，busy/notice/changed 同源） ===== -->
         <SubtitleStyleSection
           :run-id="runId"
           :busy="busy"
@@ -369,7 +369,7 @@ function fmtDur(sec: number | null): string {
 
         <div class="bg-sep" />
 
-        <!-- ===== [M19] 水印 / 片头 / 片尾（run 级覆盖；显示继承值与来源） ===== -->
+        <!-- ===== 水印 / 片头 / 片尾（run 级覆盖；显示继承值与来源） ===== -->
         <BrandSettings
           scope="run"
           :run-id="runId"
@@ -379,7 +379,7 @@ function fmtDur(sec: number | null): string {
 
         <div class="bg-sep" />
 
-        <!-- ===== 多画幅原生渲染（B 路径）[M19] ===== -->
+        <!-- ===== 多画幅原生渲染（B 路径） ===== -->
         <div class="bg-sec">
           <label class="bg-ck">
             <input v-model="maOn" type="checkbox" :disabled="busy" />
@@ -626,7 +626,7 @@ function fmtDur(sec: number | null): string {
   font-size: 12.5px;
 }
 
-/* ===== [M19] 多画幅勾选 chips ===== */
+/* ===== 多画幅勾选 chips ===== */
 
 .ma-chips {
   display: flex;

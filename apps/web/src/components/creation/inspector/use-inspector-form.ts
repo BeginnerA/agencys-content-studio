@@ -1,5 +1,5 @@
 /**
- * [M28] 创作画布检查器状态与操作（自 CreationInspector.vue 逐字迁移）
+ * 创作画布检查器状态与操作（自 CreationInspector.vue 逐字迁移）
  * —— 装配约定：函数体逐字保留；props/emit 经参数注入；包裹层缩进 +2（机械转换）
  * —— form 状态总线（reactive 代理）：供模板与各面板子组件安全读写全部状态
  */
@@ -36,16 +36,16 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const opErr = ref('')
   const opBusy = ref(false)
 
-  /** [M17] gen 规范视图（模板/守卫通用；非 gen 节点为 null） */
+  /** gen 规范视图（模板/守卫通用；非 gen 节点为 null） */
   const genSpec = computed<CreationNodeSpec | null>(() =>
     asGenSpec(props.node?.spec),
   )
-  /** [M17] run 节点可取消（有 run 且非终态） */
+  /** run 节点可取消（有 run 且非终态） */
   const canCancelRun = computed<boolean>(() => {
     const r = props.node?.run
     return !!r && !RUN_TERMINAL.has(r.status)
   })
-  /** [M17] 就绪度 notes（实体截断/降级提示） */
+  /** 就绪度 notes（实体截断/降级提示） */
   const readinessNotes = computed<string[]>(
     () => props.node?.readiness?.notes ?? [],
   )
@@ -67,30 +67,30 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   const fAngle = ref('')
   const fXScale = ref('')
   const fYScale = ref('')
-  /** [M17] 执行变体数（1-4） */
+  /** 执行变体数（1-4） */
   const fVariants = ref(1)
-  /** [M17] text 节点文本表单 */
+  /** text 节点文本表单 */
   const fText = ref('')
-  /** [M18] compose：转场 token / 转场时长（字符串表单）/ BGM 资产（字符串表单）/ 音量 / 淡入淡出 */
+  /** compose：转场 token / 转场时长（字符串表单）/ BGM 资产（字符串表单）/ 音量 / 淡入淡出 */
   const fTransition = ref<ComposeTransition>('none')
   const fTransitionDuration = ref('')
   const fBgmAssetId = ref('')
   const fBgmVolume = ref('')
   const fBgmFade = ref(true)
-  /** [M22] compose：音字对齐 / 字幕模式 / 字幕资产（字符串表单）/ 烧录字幕 / 画面适配 */
+  /** compose：音字对齐 / 字幕模式 / 字幕资产（字符串表单）/ 烧录字幕 / 画面适配 */
   const fAlign = ref(false)
   const fSubtitle = ref<ComposeSubtitleMode>('none')
   const fSubtitleAssetId = ref('')
   const fBurnSubtitles = ref(false)
-  /** [M22] 对齐画面适配（pad=信箱补边（默认）/ crop=裁切满幅） */
+  /** 对齐画面适配（pad=信箱补边（默认）/ crop=裁切满幅） */
   const fFit = ref<ComposeFit>('pad')
-  /** [M18] 抽帧：模式 / 指定时刻（秒）/ 忙锁 */
+  /** 抽帧：模式 / 指定时刻（秒）/ 忙锁 */
   const frameMode = ref<'first' | 'last' | 'custom' | 'uniform'>('first')
   const frameTime = ref('')
-  /** [M22·⑨] 均匀抽帧数量（2–9，默认 3；count=3 恰为首/中/尾） */
+  /** 均匀抽帧数量（2–9，默认 3；count=3 恰为首/中/尾） */
   const uniformCount = ref(3)
   const frameBusy = ref(false)
-  /** [M18] LLM 节点：采样温度 / 最大输出 token */
+  /** LLM 节点：采样温度 / 最大输出 token */
   const fTemperature = ref('')
   const fMaxTokens = ref('')
 
@@ -242,7 +242,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
       )
         spec.speed = speed
     } else if (gk === 'llm') {
-      // [M18] LLM：温度 0-2（默认 0.7）、maxTokens 1-32000（默认 2048），为空不落库走服务端默认
+      // LLM：温度 0-2（默认 0.7）、maxTokens 1-32000（默认 2048），为空不落库走服务端默认
       const tm = Number(fTemperature.value)
       if (
         fTemperature.value.trim() &&
@@ -262,7 +262,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     } else {
       const fps = Number(fFps.value)
       if (fFps.value.trim() && Number.isFinite(fps) && fps > 0) spec.fps = fps
-      // [M18] 转场（'none' 省略；时长仅转场启用时落库，0.1-2 服务端同规则）
+      // 转场（'none' 省略；时长仅转场启用时落库，0.1-2 服务端同规则）
       if (fTransition.value !== 'none') {
         spec.transition = fTransition.value
         const td = Number(fTransitionDuration.value)
@@ -274,7 +274,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
         )
           spec.transitionDuration = td
       }
-      // [M18] BGM（未选省略；音量/淡出仅 BGM 启用时落库，缺省走服务端）
+      // BGM（未选省略；音量/淡出仅 BGM 启用时落库，缺省走服务端）
       const ba = Number(fBgmAssetId.value)
       if (fBgmAssetId.value && Number.isInteger(ba) && ba > 0) {
         spec.bgmAssetId = ba
@@ -288,9 +288,9 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
           spec.bgmVolume = bv
         if (!fBgmFade.value) spec.bgmFade = false
       }
-      // [M22] 音字对齐（仅 true 落库）
+      // 音字对齐（仅 true 落库）
       if (fAlign.value) spec.align = true
-      // [M22] 字幕（'none' 省略；asset 时落 subtitleAssetId；烧录仅字幕启用时落库）
+      // 字幕（'none' 省略；asset 时落 subtitleAssetId；烧录仅字幕启用时落库）
       if (fSubtitle.value !== 'none') {
         spec.subtitle = fSubtitle.value
         if (fSubtitle.value === 'asset') {
@@ -300,7 +300,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
         }
         if (fBurnSubtitles.value) spec.burnSubtitles = true
       }
-      // [M22] 画面适配（缺省 pad 不落库——现状零漂移；仅 crop 落库）
+      // 画面适配（缺省 pad 不落库——现状零漂移；仅 crop 落库）
       if (fFit.value === 'crop') spec.fit = 'crop'
     }
     if (gk !== 'audio') {
@@ -337,7 +337,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     return spec
   }
 
-  /** [M22 实弹] 保存成功后以当前表单为新基线（消除「有未保存修改」提示残留） */
+  /** 保存成功后以当前表单为新基线（消除「有未保存修改」提示残留） */
   function markFormSaved(): void {
     formBase = formSnapshot()
     formTouched.value = false
@@ -415,7 +415,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
       : `当前图像端点未声明「${EDIT_MODE_TEXT[mode]}」能力，执行将失败（可在高级选项指定支持编辑的端点）`
   })
 
-  // ===== [M17] 表单持久化辅助（AI 扩写 / extract 前落库） =====
+  // ===== 表单持久化辅助（AI 扩写 / extract 前落库） =====
   /** 保存 text/gen 表单（有改动才写；写命令入撤销栈） */
   async function persistFormIfNeeded(): Promise<void> {
     const n = props.node
@@ -439,7 +439,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     }
   }
 
-  // ===== [M17] text 节点：直编（blur 提交 PATCH，入撤销栈） =====
+  // ===== text 节点：直编（blur 提交 PATCH，入撤销栈） =====
   async function saveText(): Promise<void> {
     const n = props.node
     if (!n || n.kind !== 'text') return
@@ -461,7 +461,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     }
   }
 
-  // ===== [M26-split] 操作域（扩写 / 候选 / 抽帧 / 实体挂接）逐字迁至 use-inspector-form-ops.ts =====
+  // ===== 操作域（扩写 / 候选 / 抽帧 / 实体挂接）逐字迁至 use-inspector-form-ops.ts =====
   const {
     expandOpen,
     expandBusy,
@@ -502,7 +502,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     markFormSaved,
   })
 
-  // ===== [M17] 画廊采纳（PATCH adoptedTaskId 入栈；再点取消采纳） =====
+  // ===== 画廊采纳（PATCH adoptedTaskId 入栈；再点取消采纳） =====
   async function adoptResult(item: CanvasResultItem): Promise<void> {
     const n = props.node
     if (!n) return
@@ -523,7 +523,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     }
   }
 
-  // ===== [M17] run 节点：打开详情 / 取消 =====
+  // ===== run 节点：打开详情 / 取消 =====
   async function openRunDetail(): Promise<void> {
     const r = props.node?.run
     if (!r) return
@@ -663,7 +663,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
     }
   }
 
-  // ---- 模板状态总线（M28 装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
+  // ---- 模板状态总线（装配新增；reactive 代理解包 ref/computed，模板与子组件读写均安全）----
   const form = reactive({
     // 表单字段
     fGenKind,
@@ -767,7 +767,7 @@ export function useInspectorForm(props: InspectorProps, emit: InspectorEmitFn) {
   }
 }
 
-/** form 状态总线类型（M28 装配）：供各面板子组件 props 标注 */
+/** form 状态总线类型（装配）：供各面板子组件 props 标注 */
 export type InspectorForm = ReturnType<typeof useInspectorForm>['form']
 /** composable 返回 API 类型：子组件函数 props 以索引类型标注，签名漂移自动同步 */
 export type InspectorApi = ReturnType<typeof useInspectorForm>

@@ -7,7 +7,7 @@ import { StepError, type StepResult } from '../types'
 /**
  * memory_recall：按语义相似度召回记忆（spec §4.2）。
  * 输入 query：ctx.input.query 字面文本或 text 资产（可多个 → 换行拼接）；
- * params：{ limit=3, min_score=0.25, scope='both', types?（[M24] 字符串数组如 ['summary']，按 type 过滤召回） }。
+ * params：{ limit=3, min_score=0.25, scope='both', types?（ 字符串数组如 ['summary']，按 type 过滤召回） }。
  * 产物：召回结果 markdown 资产（purpose=memory，name_tpl 默认 recall.md）；
  * 空结果 → 产出「（无相关记忆）」占位资产（始终有产物，下游引用稳定）；
  * embedding 不可用 → StepError 含 model:prepare 指引（不静默）。

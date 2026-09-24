@@ -1,9 +1,9 @@
 /**
- * [M8] 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
+ * 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
  * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
  * 声线仅角色 Tab；挑图选择器 + 全局/项目域约束与旧角色页一致。
- * [M13] 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
- * [M19 P6] 多选批量生成参考图：弹窗选变体（≤10 素材 × 1-4）→ 无 run 异步队列 → 页内进度（socket 驱动 + 轮询兜底）
+ * 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
+ * 多选批量生成参考图：弹窗选变体（≤10 素材 × 1-4）→ 无 run 异步队列 → 页内进度（socket 驱动 + 轮询兜底）
  *   → 服务端自动挂接 ref_asset_ids；行内可取消 / 失败重试（重新发起）。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
@@ -102,7 +102,7 @@ export function useEntitiesPage() {
   // 筛选：'' = 全部 | 'global' = 仅全局 | `${id}` = 项目（含全局继承）
   const projectFilter = ref('')
 
-  // [M13] 批量选择（仅服务批量润色；切换 Tab / 筛选清空）
+  // 批量选择（仅服务批量润色；切换 Tab / 筛选清空）
   const selected = ref(new Set<number>())
   const polishing = ref(false)
   const notice = ref('')
@@ -119,7 +119,7 @@ export function useEntitiesPage() {
     voice: '',
     /** [B③] 自然语言声线描述（仅角色；展示/审计，与机器令牌 voice 分列） */
     voiceDesc: '',
-    /** [M13] 状态变体（每行一条；仅角色保存） */
+    /** 状态变体（每行一条；仅角色保存） */
     states: '',
     projectId: 0,
     refIds: [] as number[],
@@ -127,12 +127,12 @@ export function useEntitiesPage() {
   const formErr = ref('')
   const assetOptions = ref<Asset[]>([])
   const assetsLoading = ref(false)
-  // [M13] 参考图上传（仅编辑态；全局实体无入口）
+  // 参考图上传（仅编辑态；全局实体无入口）
   const uploadEl = ref<HTMLInputElement | null>(null)
   const uploading = ref(false)
   const upNote = ref('')
 
-  // [M19 P8] 克隆音色（角色声线写 clone:{id}；下拉选中即回填，可清除）
+  // 克隆音色（角色声线写 clone:{id}；下拉选中即回填，可清除）
   const clones = ref<VoiceCloneItem[]>([])
   const cloneSel = ref('')
 
@@ -199,10 +199,10 @@ export function useEntitiesPage() {
     void load()
   }
 
-  /** [M13] 筛选变更 → 清空批量选择（跨范围选择易误操作） */
+  /** 筛选变更 → 清空批量选择（跨范围选择易误操作） */
   function onFilterChange() {
     selected.value = new Set()
-    // [M19 P6] 进度面板按项目归属展示，切筛选后不得继续展示上一个项目的任务
+    // 进度面板按项目归属展示，切筛选后不得继续展示上一个项目的任务
     resetRefPanel()
     void load()
   }
@@ -279,7 +279,7 @@ export function useEntitiesPage() {
     upNote.value = ''
     showForm.value = true
     void loadAssets(form.projectId)
-    // [M19 P8] 已存 clone:{id} 回显到下拉（音色库未就绪时先拉一次）
+    // 已存 clone:{id} 回显到下拉（音色库未就绪时先拉一次）
     if (!clones.value.length) void loadClones().then(syncCloneSel)
     else syncCloneSel()
   }
@@ -318,7 +318,7 @@ export function useEntitiesPage() {
         body.voice = form.voice.trim() || null
         // [B③] 声线描述（snake body 键）：与机器令牌 voice 分列，仅展示/审计
         body.voice_desc = form.voiceDesc.trim() || null
-        // [M13] 状态变体：每行一条（空数组 = 清空；scene/prop 不传）
+        // 状态变体：每行一条（空数组 = 清空；scene/prop 不传）
         body.states = form.states
           .split('\n')
           .map((s) => s.trim())
@@ -361,13 +361,13 @@ export function useEntitiesPage() {
     }
   }
 
-  /** [M13] 批量选择切换 */
+  /** 批量选择切换 */
   function toggleSel(id: number) {
     if (selected.value.has(id)) selected.value.delete(id)
     else selected.value.add(id)
   }
 
-  /** [M13] 批量润色 appearance（≤10 项；逐项串行；失败项保留选中可重试） */
+  /** 批量润色 appearance（≤10 项；逐项串行；失败项保留选中可重试） */
   async function polishSelected() {
     const ids = [...selected.value]
     if (ids.length === 0 || polishing.value) return
@@ -405,7 +405,7 @@ export function useEntitiesPage() {
     }
   }
 
-  // ===== [M19 P6] 批量生成参考图（无 run 异步队列 + 页内进度）=====
+  // ===== 批量生成参考图（无 run 异步队列 + 页内进度）=====
   const REFGEN_MAX_ITEMS = 10
   const REFGEN_POLL_MS = 5_000
   const REFGEN_STATUS_TEXT: Record<EntityRefGenTask['status'], string> = {
@@ -554,7 +554,7 @@ export function useEntitiesPage() {
   }
 
   /**
-   * [M19 P6] 打开批量出图弹窗前的门禁校验。
+   * 打开批量出图弹窗前的门禁校验。
    * 失败原因写入 err（页级可见）而非 refErr：refErr 仅渲染在弹窗内，
    * 而校验不通过时弹窗不会打开 → 若只写 refErr 会造成「点击无反应」的静默失败。
    */
@@ -642,12 +642,12 @@ export function useEntitiesPage() {
     }
   }
 
-  /** [M13] 触发上传参考图文件选择（编辑态可用） */
+  /** 触发上传参考图文件选择（编辑态可用） */
   function pickUpload() {
     uploadEl.value?.click()
   }
 
-  /** [M13] 上传参考图 → 入库 + 挂接（form.refIds 同步最新；失败不关闭弹窗） */
+  /** 上传参考图 → 入库 + 挂接（form.refIds 同步最新；失败不关闭弹窗） */
   async function onUploadPick(ev: Event) {
     const input = ev.target as HTMLInputElement
     const file = input.files?.[0]

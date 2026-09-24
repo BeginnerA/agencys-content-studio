@@ -1,7 +1,7 @@
 import { wrapSingleLine, estimateMaxCharsPerLine } from './subtitle-wrap'
 
 /**
- * [M32] SRT → ASS 文档生成（字幕溢出根因修复）。
+ * SRT → ASS 文档生成（字幕溢出根因修复）。
  *
  * 问题：`subtitles` 滤镜直接吃 SRT 时，libass 用「默认小 PlayResY（≈384）」解释 force_style 的
  * FontSize，再按 输出高/PlayResY 放大 → 有效字号 ∝ 高度² 二次膨胀（1080p 尤甚），叠加内置

@@ -11,14 +11,14 @@ import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
 
-// [M25·G9] video_analyze 视频解析 action（spec §2.9，批 3 全接线；用户拍板「全链含音频转写」）。
+// video_analyze 视频解析 action（spec §2.9，批 3 全接线；用户拍板「全链含音频转写」）。
 // 流程：ffprobe 时长 → 均匀抽帧（临时目录，帧不落资产）→ ffmpeg 抽音轨 → ASR（宽容降级 null）
 //       → 多模态 LLM 时间轴 → parseTimelineJson 契约 → 落 video_analysis json + md 报告。
 // 独立帧数常量：不动画布 UNIFORM_FRAME_COUNT_RANGE（2–9），视频解析上限更宽（2–24）。
 
 export const VIDEO_FRAME_COUNT_RANGE = { min: 2, max: 24, default: 8 } as const
 
-/** [M25·G9] 分析帧缩宽（spec §5：768 缩宽再编码，控多模态请求体；对齐抽帧 scale 参数化） */
+/** 分析帧缩宽（spec §5：768 缩宽再编码，控多模态请求体；对齐抽帧 scale 参数化） */
 export const ANALYSIS_FRAME_WIDTH = 768
 
 export interface TimelineScene {
@@ -192,7 +192,7 @@ export interface VideoAnalysisOutcome {
 }
 
 /**
- * [M31] 可复用视频分析核心（探帧 + ASR + 多模态时间轴）：video_analyze 步骤与对话规划前参考视频摘要共用，
+ * 可复用视频分析核心（探帧 + ASR + 多模态时间轴）：video_analyze 步骤与对话规划前参考视频摘要共用，
  * 不另建引擎。帧临时目录不落库；时长以探测为准；ASR 命中⇒兼容内嵌兼底 transcript（与步骤历史行为一致）。
  * 纯分析不写资产；资产落库由调用方（步骤 action）负责。
  */
@@ -285,7 +285,7 @@ export async function analyzeVideoSource(args: {
   }
 }
 
-/** [M31] 参考视频→人读摘要（仅取视频内实际可见/可听内容，缺失不编造），供规划上下文注入。 */
+/** 参考视频→人读摘要（仅取视频内实际可见/可听内容，缺失不编造），供规划上下文注入。 */
 export function renderVideoReferenceSummary(out: VideoAnalysisOutcome, sourceName: string): string {
   const tl = out.tl
   const scenes = tl.scenes.slice(0, 12).map((s) => `- [${s.t0.toFixed(1)}–${s.t1.toFixed(1)}s] ${s.visual || s.speech || '（无描述）'}${s.shot_type ? `（${s.shot_type}）` : ''}`)

@@ -27,7 +27,7 @@ export function buildNodeTaskParams(
   }
 }
 
-/** [M17/M18] 任务 params 扩展（buildNodeTaskParams 字段快照保持不变——probe-m16 精确断言）：audio 附加 voice/speed；compose 附加 fps（[M18] 仅显式含转场/BGM 字段时附加新键——旧形态输出不变，probe-m17 快照兼容） */
+/** 任务 params 扩展（buildNodeTaskParams 字段快照保持不变——probe-m16 精确断言）：audio 附加 voice/speed；compose 附加 fps（ 仅显式含转场/BGM 字段时附加新键——旧形态输出不变，probe-m17 快照兼容） */
 export function extendTaskParams(params: Record<string, unknown>, spec: NodeSpec): Record<string, unknown> {
   if (spec.genKind === 'audio') return { ...params, voice: spec.voice ?? null, speed: spec.speed ?? null }
   if (spec.genKind === 'compose') {
@@ -79,13 +79,13 @@ export function appendStyleSnippet(prompt: string, snippet: string | null): stri
   return base ? `${base}\n视觉风格：${s}` : `视觉风格：${s}`
 }
 
-/** [M17] 合成输出尺寸（WxH，偶数） */
+/** 合成输出尺寸（WxH，偶数） */
 export interface ComposeSize {
   width: number
   height: number
 }
 
-/** [M17] resolution 解析（格式 WxH，对齐 ffmpeg-merge 约定；libx264 yuv420p 要求宽高为正偶数） */
+/** resolution 解析（格式 WxH，对齐 ffmpeg-merge 约定；libx264 yuv420p 要求宽高为正偶数） */
 export function parseResolution(res: string): ComposeSize {
   const m = /^(\d{2,5})x(\d{2,5})$/.exec(res.trim())
   if (!m) throw new Error(`resolution 非法: ${res}（需 WxH 如 1080x1920）`)

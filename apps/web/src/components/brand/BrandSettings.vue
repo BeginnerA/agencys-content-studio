@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M19] 品牌设置（spec §4；三处复用同一表单）
+ * 品牌设置（spec §4；三处复用同一表单）
  * - scope='platform'：平台品牌（settings.brand）——字幕样式 + 水印/片头/片尾上传/预览/参数/清除
  * - scope='project'：项目品牌（projects.settings.brand）——字幕样式 + 水印/片头尾从项目资产选择/上传
  * - scope='run'：run 级覆盖（_compose.brand）——水印/片头尾三态（继承/禁用/自定义）+ 显示继承值与来源
@@ -49,7 +49,7 @@ async function wrap(fn: () => Promise<void>, okMsg: string) {
   }
 }
 
-// ---------- 公共表单状态（水印参数 + 片头尾开关 + 字幕样式）——M26 拆分：./use-brand-form ----------
+// ---------- 公共表单状态（水印参数 + 片头尾开关 + 字幕样式）——拆至：./use-brand-form ----------
 const form = useBrandForm()
 const {
   wmEnabled,
@@ -74,7 +74,7 @@ const {
   fillCommon,
 } = form
 
-// ---------- 项目素材资产（M26 拆分：./use-brand-assets） ----------
+// ---------- 项目素材资产（拆至：./use-brand-assets） ----------
 const assets = useBrandAssets(props)
 const { imgAssets, vidAssets, assetName, assetFileUrl, refreshProjectAssets } =
   assets
@@ -84,7 +84,7 @@ const wmFile = ref('')
 const introFile = ref('')
 const outroFile = ref('')
 
-// ---------- platform scope（M26 拆分：./use-brand-platform） ----------
+// ---------- platform scope（拆至：./use-brand-platform） ----------
 const platform = useBrandPlatform({ wrap, form, wmFile, introFile, outroFile })
 const {
   platformBrand,
@@ -97,7 +97,7 @@ const {
   savePlatformSubtitle,
 } = platform
 
-// ---------- run scope（M26 拆分：./use-brand-run） ----------
+// ---------- run scope（拆至：./use-brand-run） ----------
 const run = useBrandRun(
   props,
   { wmPosition, wmOpacity, wmWidth, wmMargin },
@@ -118,7 +118,7 @@ const {
   setClipMode,
 } = run
 
-// ---------- 品牌操作（project 载入 / 上传·清除 / 保存 + 预览实时联动）M26 拆分：./use-brand-actions ----------
+// ---------- 品牌操作（project 载入 / 上传·清除 / 保存 + 预览实时联动）另拆至 ./use-brand-actions ----------
 const {
   wmAssetId,
   introAssetId,

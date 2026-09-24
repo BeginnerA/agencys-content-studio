@@ -1,5 +1,5 @@
 /**
- * [M15] 流水线画布布局层（CanvasBoard 拆分：M26 红线纯重构，逻辑逐字搬移）
+ * 流水线画布布局层（CanvasBoard 拆分：纯重构，逻辑逐字搬移）
  * - 层号 = sched 边拓扑最长路径松弛（防环最多 n 轮）；层内按 seq 垂直堆叠居中
  * - 边路径（锚点右中 → 左中）三次贝塞尔；running 节点入边 flowing 标记
  * 依赖仅 props.nodes/edges/mode；pan/zoom/编辑交互仍留组件内（共享 viewport/pan/zoom/selEdge refs）。
@@ -19,7 +19,7 @@ export interface EdgePath {
   d: string
   type: 'sched' | 'data'
   flowing: boolean
-  /** [M23] 编辑态边选中/删除定位用 */
+  /** 编辑态边选中/删除定位用 */
   from: string
   to: string
 }

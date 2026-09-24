@@ -7,7 +7,7 @@ import { preflightPlan } from './preflight'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 
 /**
- * [M43] 参考绑定写入口（用途 role + 逐镜 shotId 共用一个 PATCH）：
+ * 参考绑定写入口（用途 role + 逐镜 shotId 共用一个 PATCH）：
  * 双写 attachment payload（再规划编译的权威源）与 plan.refs（当前方案），零 LLM、零计费。
  * ready 态下 plan.refs 变化 → 重跑预检 + 重算 planHash，hash 变则 planRevision+1（复用
  * refreshPreflight 的 bump 语义）——旧确认键自然 stale_plan，用户须重新确认后才开始制作。

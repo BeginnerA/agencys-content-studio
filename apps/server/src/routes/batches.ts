@@ -1,5 +1,5 @@
 /**
- * [M4] 批次 REST（E1）：创建/列表/详情/取消
+ * 批次 REST（E1）：创建/列表/详情/取消
  * - POST /projects/:id/batches：校验 → 落批 + N run → 首轮 pump
  */
 import { Hono } from 'hono'

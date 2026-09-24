@@ -5,7 +5,7 @@ import { shotIdOfAsset } from './segments'
 import { round3 } from './util'
 
 /**
- * [M50] Canonical 同源时间轴快照（成片 params.timeline 落库结构，剪辑工程交换导出的唯一真源）。
+ * Canonical 同源时间轴快照（成片 params.timeline 落库结构，剪辑工程交换导出的唯一真源）。
  * 数据全部来自合成期内存中已算好的既有变量（AlignPlan/voiceMetas/sfx entries/bgm/intro），
  * **纯增量溯源字段——不改任何 ffmpeg 参数与音频结果**（B② 同源红线）。
  * 坐标口径：segments.startSec / lines.timelineStart 均为「内容轴」（片头后为 0 起算，与 AlignPlan 同轴）；

@@ -3,7 +3,7 @@ import { settingsApi } from './api'
 import { studioOn } from './socket'
 
 /**
- * [M21] 浏览器通知：仅后台标签页（document.hidden）推送
+ * 浏览器通知：仅后台标签页（document.hidden）推送
  * run 终态 / 闸门到达 / 批次收敛；Notification 不可用 / 权限未授予 → 全静默（零报错）。
  * 事件载体零服务端改动（payload 已含 runId/stepKey/message/batchId/status/finished/total）。
  */

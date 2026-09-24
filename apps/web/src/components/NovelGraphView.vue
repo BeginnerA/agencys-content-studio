@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M9] 小说改编看板 · 段② 事件图谱（NovelBoard 拆分：M26 红线纯重构，逻辑/模板/样式逐字搬移）
+ * 小说改编看板 · 段② 事件图谱（NovelBoard 拆分：纯重构，逻辑/模板/样式逐字搬移）
  * 表 ↔ SVG 视图切换（布局服务端算好，前端零计算）+ 拖拽 pan + 滚轮 zoom + 事件级编辑。
  * 依赖：props.board（读 graph.doc / graph.layout / graph.name / graph.asset_id）；保存后 emit('reload') 由父级拉取。
  */
@@ -25,7 +25,7 @@ const layout = computed(() => props.board?.graph?.layout ?? null)
 const charList = computed<NovelCharacter[]>(() => graph.value?.characters ?? [])
 const eventList = computed<NovelKeyEvent[]>(() => graph.value?.key_events ?? [])
 
-// ---------- [M25·G3] 图谱视图：表 ↔ SVG（布局服务端算好，前端零计算） ----------
+// ---------- 图谱视图：表 ↔ SVG（布局服务端算好，前端零计算） ----------
 
 const graphView = ref<'table' | 'svg'>('table')
 /** 选中事件节点 id（'event:名'）：SVG 点击 → 表行高亮 */
@@ -86,7 +86,7 @@ function onNodeClick(id: string, kind: string): void {
   )
 }
 
-// ---------- [M25·G5] 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content ----------
+// ---------- 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content ----------
 
 const editIdx = ref(-1)
 const editForm = ref({
@@ -172,7 +172,7 @@ async function saveEventEdit(): Promise<void> {
       事件图谱
       <span v-if="board?.graph" class="muted">{{ board.graph.name }}</span>
       <span class="grow" />
-      <!-- [M25·G3] 视图切换（layout=null 脏 doc 降级：只留表视图） -->
+      <!-- 视图切换（layout=null 脏 doc 降级：只留表视图） -->
       <div
         v-if="layout"
         class="nb-seg"
@@ -207,7 +207,7 @@ async function saveEventEdit(): Promise<void> {
         </div>
       </div>
     </div>
-    <!-- [M25·G3] SVG 自绘：服务端坐标，fit + 拖拽 pan + 滚轮 zoom；事件节点点击→表行高亮 -->
+    <!-- SVG 自绘：服务端坐标，fit + 拖拽 pan + 滚轮 zoom；事件节点点击→表行高亮 -->
     <div
       v-if="graphView === 'svg' && layout"
       class="nb-svgwrap"
@@ -289,7 +289,7 @@ async function saveEventEdit(): Promise<void> {
     </div>
   </div>
 
-  <!-- [M25·G5] 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content -->
+  <!-- 事件级编辑：结构化表单 → 序列化回 graph JSON → PATCH content -->
   <Modal
     v-if="editIdx >= 0"
     title="编辑事件"
@@ -482,7 +482,7 @@ async function saveEventEdit(): Promise<void> {
   background: var(--accent-h);
 }
 
-/* ---------- [M25·G3] 视图切换段控件 ---------- */
+/* ---------- 视图切换段控件 ---------- */
 .nb-seg {
   display: inline-flex;
   border: 1px solid var(--border);
@@ -512,7 +512,7 @@ async function saveEventEdit(): Promise<void> {
   background: rgb(99 102 241 / 12%);
 }
 
-/* ---------- [M25·G3] SVG 图谱：fit + 拖拽 pan + 滚轮 zoom ---------- */
+/* ---------- SVG 图谱：fit + 拖拽 pan + 滚轮 zoom ---------- */
 .nb-svgwrap {
   position: relative;
   border: 1px solid var(--border);
@@ -616,7 +616,7 @@ async function saveEventEdit(): Promise<void> {
   box-shadow: inset 2px 0 0 var(--accent-h);
 }
 
-/* ---------- [M25·G5] 事件行编辑按钮 + 表单 ---------- */
+/* ---------- 事件行编辑按钮 + 表单 ---------- */
 .nb-ico {
   border: none;
   background: none;

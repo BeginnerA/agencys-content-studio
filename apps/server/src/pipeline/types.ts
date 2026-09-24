@@ -1,5 +1,5 @@
 /**
- * M1 流水线共享契约（对照设计规格 §5）。
+ * 流水线共享契约（对照设计规格 §5）。
  * 模板 = YAML 外置文件；引擎 = 状态机；action = 注册表执行器。
  */
 
@@ -11,7 +11,7 @@ export interface TemplateInputDef {
   kind: 'text' | 'files' | 'int' | 'bool' | 'publications'
   required: boolean
   accept?: string[]
-  /** [M2] 启动时用户未传则回填（落库前完成；UI 表单预填同源） */
+  /** 启动时用户未传则回填（落库前完成；UI 表单预填同源） */
   default?: string | number | boolean
 }
 
@@ -19,11 +19,11 @@ export interface TemplateGate {
   mode: 'required'
   /** 支持 {input.x} / {x:03d} 内插 */
   message: string
-  /** [M2] 声明后挂起态显示「跳过」按钮（免审放行、产物保留） */
+  /** 声明后挂起态显示「跳过」按钮（免审放行、产物保留） */
   skip_label?: string
   /** 拒绝后保留产物并停止；缺省仍沿用历史整步重跑语义。 */
   reject?: 'stop'
-  /** [M2] 条件门：不满足 → 步骤自动 succeeded（免审直过、不挂起） */
+  /** 条件门：不满足 → 步骤自动 succeeded（免审直过、不挂起） */
   when?: string | string[]
 }
 
@@ -44,11 +44,11 @@ export interface TemplateStepDef {
   gate?: TemplateGate
   batch?: TemplateBatch
   output?: { purpose: string }
-  /** [M2] 条件表达式（数组=AND）；不满足 → skipped */
+  /** 条件表达式（数组=AND）；不满足 → skipped */
   when?: string | string[]
-  /** [M2] OR 组：与 when 并存时 = when 全满足 且 when_any 任一满足 */
+  /** OR 组：与 when 并存时 = when 全满足 且 when_any 任一满足 */
   when_any?: string[]
-  /** [M2] 显式前置依赖 keys；缺省=[前一步骤 key]；[] = 无依赖 */
+  /** 显式前置依赖 keys；缺省=[前一步骤 key]；[] = 无依赖 */
   after?: string[]
   /** 显式允许可选上游全部跳过后继续；缺省保留历史跳过传播。 */
   after_skipped?: 'continue'
@@ -78,13 +78,13 @@ export interface TemplateMeta {
   version: number
   stepCount: number
   updatedAt: number
-  /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
+  /** 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
   promptsDirty?: boolean
   /** 展示元数据：场景分组（produce/plan/operate） */
   scene?: string
   /** 展示元数据：推荐下游模板 key 列表 */
   next?: string[]
-  /** [入口收口] 轻松创作批准链专用（easy-*）：仅由对话页在方案确认后调度，手动启动/排程/建项目选它都无法运行。
+  /** 轻松创作批准链专用（easy-*）：仅由对话页在方案确认后调度，手动启动/排程/建项目选它都无法运行。
    *  由 GET /templates 依服务端 isCreationTemplate 真源注入；所有「选择器」按此过滤，展示反查方忽略。 */
   conversationOnly?: boolean
   /** [内置保护] 系统出厂内置模板（BUILTIN_TEMPLATE_KEYS 真源）：用户只读，不可修改/删除；

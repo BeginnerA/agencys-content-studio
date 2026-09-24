@@ -1,5 +1,5 @@
 /**
- * [M23] 画布内编辑（spec §2.5；E3/E4）——模板态的本地草稿层
+ * 画布内编辑（spec §2.5；E3/E4）——模板态的本地草稿层
  * - overrides：Record<stepKey, { title?, texts? }>，结构对齐 P3 template-edit 的 edits.steps[]
  * - edgeOps：Record<toKey, { added, removed }>（added/removed 互斥——撤销即抵消，buildEdits 最小化）
  * - 边语义镜像服务端单一真源：基础 after = 显式 / 缺省前一步（materializeAfter）；when 表达式隐含
@@ -22,7 +22,7 @@ import type {
 export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
   const editMode = ref(false)
   const overrides = ref<Record<string, StepOverride>>({})
-  /** [M23-E4] 边操作（按目标步骤聚合；added/removed 互斥——撤销即抵消，edits 最小化） */
+  /** 边操作（按目标步骤聚合；added/removed 互斥——撤销即抵消，edits 最小化） */
   const edgeOps = ref<Record<string, { added: string[]; removed: string[] }>>(
     {},
   )
@@ -44,7 +44,7 @@ export function useCanvasEdit(tplCanvas: Ref<TemplateCanvas | null>) {
     return tplCanvas.value?.nodes.find((n) => n.key === key) ?? null
   }
 
-  // ===== [M23-E4] 边操作层（镜像服务端 dag.stepDepEdges / template-edit 物化语义） =====
+  // ===== 边操作层（镜像服务端 dag.stepDepEdges / template-edit 物化语义） =====
 
   /** 基础 after 物化（镜像 template-edit.materializeAfter）：显式 → 拷贝；缺省 → 前一步；首步 → [] */
   function baseAfterList(node: TemplateCanvasNode): string[] {

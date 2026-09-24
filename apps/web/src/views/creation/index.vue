@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M16] 创作画布页（spec §2.4；URL ?project=&canvas= 为单一真源）
+ * 创作画布页（spec §2.4；URL ?project=&canvas= 为单一真源）
  * - 布局：左侧素材面板（拖入 / 单击送至视口中心）+ 中部 CreationBoard + 右侧 CreationInspector（选中时覆盖）
  * - 数据：creationApi.doc 全量读模型；socket join canvas:{id} room，canvas.changed → 350ms 防抖静默重拉
  * - 操作：拖拽落点乐观更新 + PATCH；其余走 creationApi → 重拉（400 文案 toast）
@@ -25,7 +25,7 @@ import { ref } from 'vue'
 const cv = useCanvasView()
 const showPalette = ref(window.innerWidth >= 1100)
 
-/** [M22] 检查器 refresh（抽帧等改节点数操作）：静默重拉文档 + 刷画布目录（下拉计数） */
+/** 检查器 refresh（抽帧等改节点数操作）：静默重拉文档 + 刷画布目录（下拉计数） */
 function onInspectorRefresh(): void {
   void cv.loadDoc(true)
   void cv.loadCanvases()

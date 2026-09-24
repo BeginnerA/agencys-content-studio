@@ -22,7 +22,7 @@ export interface TimingLine {
  *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
  *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
  *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时。
- * [M24·F4] 双语扩展：params.target_lang（ISO 639-1，非空启用）定时完成后台词逐句翻译（translate-lines.md），
+ * 双语扩展：params.target_lang（ISO 639-1，非空启用）定时完成后台词逐句翻译（translate-lines.md），
  *  params.bilingual='both'（缺省：双语 + 纯目标语两条）| 'merged'（仅双语）；缺失句回退原文 + log；
  *  产物命名 subtitle.zh-{lang}.srt / subtitle.{lang}.srt，params.lang 标注；不传 target_lang 现行为逐字不变。
  * 输入（二选一，同时提供以 script 优先）：
@@ -110,7 +110,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
         maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000,
       },
     )
-    // [M4] 用量记录（estimated 分支单次 LLM 调用；measured 分支零调用不记录）
+    // 用量记录（estimated 分支单次 LLM 调用；measured 分支零调用不记录）
     await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id,
       provider: res.provider, model: res.model, usage: res.usage })
     const content = res.content
@@ -125,7 +125,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   const srt = toSrt(timed)
   assertSrt(srt, timed)
 
-  // [M24·F4] 双语分支：target_lang 非空 → 台词逐句翻译 → 双语（+纯目标语）SRT 产物；否则走下方原文单产物现状
+  // 双语分支：target_lang 非空 → 台词逐句翻译 → 双语（+纯目标语）SRT 产物；否则走下方原文单产物现状
   const targetLang = typeof params['target_lang'] === 'string' && params['target_lang'].trim() ? params['target_lang'].trim().toLowerCase() : ''
   if (targetLang) {
     const bilingualMode: 'both' | 'merged' = params['bilingual'] === 'merged' ? 'merged' : 'both'
@@ -183,7 +183,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   return { assetIds: [asset.id] }
 }
 
-/** [M24] SRT 产物登记（双语分支专用，与原文路径同口径：purpose=subtitle，ext srt） */
+/** SRT 产物登记（双语分支专用，与原文路径同口径：purpose=subtitle，ext srt） */
 async function registerSrtAsset(
   ctx: StepContext,
   fileName: string,
@@ -210,7 +210,7 @@ async function registerSrtAsset(
   })
 }
 
-/** [M24·F4] 定时结果逐句翻译（translate-lines.md 契约）→ id→dst 映射；缺失/同原文不进 map（调用方回退原文已 log） */
+/** 定时结果逐句翻译（translate-lines.md 契约）→ id→dst 映射；缺失/同原文不进 map（调用方回退原文已 log） */
 async function translateTimedLines(ctx: StepContext, timed: TimingLine[], targetLang: string): Promise<Map<string, string>> {
   const templateText = loadPromptTemplate('translate-lines.md')
   const linesPayload = timed.map((l) => ({ id: l.id, text: l.text }))
@@ -238,7 +238,7 @@ async function translateTimedLines(ctx: StepContext, timed: TimingLine[], target
 }
 
 /**
- * [M24·F4] 解析翻译契约 [{id,text,dst}]（纯函数，供探针直测）：
+ * 解析翻译契约 [{id,text,dst}]（纯函数，供探针直测）：
  * 剥围栏；根数组或 {lines:[...]} 宽容；id 字符串化对齐；dst 非字符串/空 → 该条丢弃。
  */
 export function parseLineTranslations(raw: string): Map<string, string> {

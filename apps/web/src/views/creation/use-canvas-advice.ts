@@ -1,4 +1,4 @@
-/** [M28 装配风格] [M23-D11] 创作画布：AI 编排建议（LLM 生成；仅展示 + 定位，不自动执行）。 */
+/**  创作画布：AI 编排建议（LLM 生成；仅展示 + 定位，不自动执行）。 */
 import { ref } from 'vue'
 import { ApiError, creationApi } from '../../lib/api'
 import type { CanvasAdviceResult } from '../../lib/types'

@@ -84,7 +84,7 @@ export const ESTIMATED_DIALOGUE_POLICY = 'estimated-lines-v1'
 const ESTIMATED_HEAD_LEAD = 0.3
 
 /**
- * [M47] 免核验对白估算字幕（路 B）：逐镜在窗口内按批准台词归一字数占比分配区间，
+ * 免核验对白估算字幕（路 B）：逐镜在窗口内按批准台词归一字数占比分配区间，
  * 句间连续单调；与实测 dialogueSrt 的本质区别是「口头承诺」——不核验模型真实说了什么，
  * 台词与声音是否一致由强制人工审阅闸把关（诚实红线：调用方须在资产 params 如实标注 estimated）。
  */
@@ -118,7 +118,7 @@ export function estimatedDialogueSrt(plan: CreationPlan, clips: Array<{ shotId: 
   return blocks.join('\n\n') + '\n'
 }
 
-/** [M47] 估算镜 clips 形态：timing 供合成原声混流与出口守卫，字幕与哈希只消费 {shotId, duration, videoDuration}。 */
+/** 估算镜 clips 形态：timing 供合成原声混流与出口守卫，字幕与哈希只消费 {shotId, duration, videoDuration}。 */
 export interface EstimatedDialogueClip { shotId: string; duration: number; videoDuration: number; timing: DialogueTiming }
 
 /** 估算路线的来源校验（与 strict dialogueSource 同源语义）：视频必须属于当前批准角色与台词（dialogueHash 一致）。 */

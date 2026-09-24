@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：画布边 CRUD（端口矩阵 + 环检测校验）。
+// 自 services/creation.ts 拆分：画布边 CRUD（端口矩阵 + 环检测校验）。
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, canvasEdges, canvasNodes } from '../../db/schema'

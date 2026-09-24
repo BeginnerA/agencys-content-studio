@@ -1,9 +1,9 @@
 /**
- * [M35 · G9] 项目 settings 写时闸门。
+ * 项目 settings 写时闸门。
  *
  * 背景：`POST/PATCH /projects` 将 `settings` 任意 JSON 直存（routes/projects.ts:176），
  * 运行时 `ai-video.ts` / `ffmpeg-merge/index.ts` 读 `ctx.settings.video.{provider,model,resolution,duration}`
- * 才炸——「填错」成本由用户 + 适配器共同承担。M35 把「核实」主体从用户转移到**服务端闸门**
+ * 才炸——「填错」成本由用户 + 适配器共同承担。此后把「核实」主体从用户转移到**服务端闸门**
  * （Tier A 纪律：不取消校验，只在写入前挡），并**保持既有 run-params RULES 白名单同源**。
  *
  * 边界（保守治理，遵「不猜测」）：

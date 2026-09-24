@@ -95,7 +95,7 @@ export async function resolveInputs(
 }
 
 /**
- * [M22] 正整数资产 id 归一（纯函数）：递归展开嵌套数组 → 整数 >0 过滤 → 保序去重。
+ * 正整数资产 id 归一（纯函数）：递归展开嵌套数组 → 整数 >0 过滤 → 保序去重。
  * 用途：literal inputs.refs/first_frame（解析结果含 input.x 原样数组与 steps.x.asset 数组的嵌套）
  * 与 ai-video 直通参考合并（shot.ref_asset_ids）。
  */

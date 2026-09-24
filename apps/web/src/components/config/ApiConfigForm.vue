@@ -24,7 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ saved: []; close: [] }>()
 
 const name = ref('')
-/** [M33.1] 实例名默认自动生成（供应商·模型），用户改过则不覆盖 */
+/** 实例名默认自动生成（供应商·模型），用户改过则不覆盖 */
 const nameTouched = ref(false)
 const baseUrl = ref('')
 const model = ref('')
@@ -39,7 +39,7 @@ const extraText = ref('')
 const extraErr = ref('')
 
 /**
- * [M32] 视频「轻松创作能力」子组件（VideoCapsEditor）：仅管理 extra.creationCapabilities，
+ * 视频「轻松创作能力」子组件（VideoCapsEditor）：仅管理 extra.creationCapabilities，
  * 命中平台能力表时默认自动背书、免手填核实；其余透传参数仍由下方原始 JSON 文本框维护，二者互不覆盖。
  * 编辑时把 creationCapabilities 剥离出 JSON 文本框、以 initial 传入子组件；提交时经子组件 buildExtra 合并。
  */
@@ -49,7 +49,7 @@ const capsEditor = ref<InstanceType<typeof VideoCapsEditor> | null>(null)
 const capsInitial = ref<unknown>(null)
 
 /**
- * [M38] 扩展参数结构化编辑器（ExtraParamsEditor）：按服务端 extra-schema 真源动态渲染已知 key
+ * 扩展参数结构化编辑器（ExtraParamsEditor）：按服务端 extra-schema 真源动态渲染已知 key
  * （音色 / 尺寸 / 参考素材 / 视觉声明 等），替代裸 JSON 天书框。父组件拉取 fields、剥离已知 key
  * 交子组件、提交时合并；未知透传参数仍留在下方「高级」JSON 框（三者 key 互不重叠）。
  */
@@ -61,16 +61,16 @@ const structuredInitial = ref<Record<string, unknown>>({})
 const currentExtra = ref<Record<string, unknown>>({})
 
 /**
- * [M33] 定价智能带出子组件（PricingSuggest，全通道）：命中平台参考定价表→自动预填（可改），
+ * 定价智能带出子组件（PricingSuggest，全通道）：命中平台参考定价表→自动预填（可改），
  * 未命中→回落手填。编辑回显经 pricingInitial 传入，提交经其 buildPricing 回收。
- * [M33.1] 新增 live 优先：选定模型后从在线目录（fetch-models）带出供应商实时参考价（live > 核实表）。
+ * 新增 live 优先：选定模型后从在线目录（fetch-models）带出供应商实时参考价（live > 核实表）。
  * 主区改为只读摘要（不需用户配），手填入口移入「高级」折叠。
  */
 const pricingSuggest = ref<InstanceType<typeof PricingSuggest> | null>(null)
 const pricingInitial = ref<Record<string, number> | null>(null)
 const suggestDefault = ref(false)
 const defaultTouched = ref(false)
-/** [M33.1] 主区只读定价摘要（source 来源 + 是否命中） */
+/** 主区只读定价摘要（source 来源 + 是否命中） */
 const pricingSummaryHit = ref(false)
 const pricingSource = ref<'live' | 'table' | 'stored' | 'none'>('none')
 function onPricingSuggest(p: {
@@ -83,7 +83,7 @@ function onPricingSuggest(p: {
   suggestDefault.value = p.suggestDefault
   if (p.suggestDefault && !props.config && !defaultTouched.value) isDefault.value = true
 }
-/** [M33.1] 主区只读摘要文案（不需用户配定价） */
+/** 主区只读摘要文案（不需用户配定价） */
 const pricingSummaryText = computed(() => {
   switch (pricingSource.value) {
     case 'live':
@@ -107,10 +107,10 @@ const credentialOptions = computed(() => {
   }))
 })
 
-/** 模型候选：目录预置 → 在线拉取覆盖（[M33.1] modelEntries 携参考定价/上下文，modelOptions 仅 id 供下拉） */
+/** 模型候选：目录预置 → 在线拉取覆盖（ modelEntries 携参考定价/上下文，modelOptions 仅 id 供下拉） */
 const modelOptions = ref<string[]>([])
 const modelEntries = ref<ModelEntry[]>([])
-/** [M33.1] 是否已做过一次在线拉取（新建选 Key 后自动触发一次） */
+/** 是否已做过一次在线拉取（新建选 Key 后自动触发一次） */
 const liveFetched = ref(false)
 /** 当前选中模型对应的在线目录条目（取其实时参考价 live 优先） */
 const selectedEntry = computed(
@@ -150,7 +150,7 @@ watch(
     // 扩展参数回显：已知 key 交结构化编辑器、creationCapabilities 交 VideoCapsEditor、其余留 JSON 框
     currentExtra.value = c?.extra && typeof c.extra === 'object' ? { ...c.extra } : {}
     applyEcho()
-    // 定价回显（[M33] 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
+    // 定价回显（ 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
     pricingInitial.value =
       c?.pricing && Object.keys(c.pricing).length ? { ...c.pricing } : null
     pricingSummaryHit.value = false
@@ -164,7 +164,7 @@ watch(
 )
 
 /**
- * [M38] 把 currentExtra 拆分为三部分：creationCapabilities → VideoCapsEditor；已知 key → 结构化编辑器；
+ * 把 currentExtra 拆分为三部分：creationCapabilities → VideoCapsEditor；已知 key → 结构化编辑器；
  * 其余透传 → JSON 框。schema 异步到达或 config 回显变化时均重跑，最终态收敛一致。
  */
 function applyEcho(): void {
@@ -189,8 +189,8 @@ function applyEcho(): void {
   extraErr.value = ''
 }
 
-/** [M38] 拉取本供应商 / 通道的扩展参数字段清单（失败 → 空，回退裸 JSON 透传）；
- * [M39] 带上当前模型：命中逐模型 profile 时返回模型级候选/默认，切模型即重拉联动。
+/** 拉取本供应商 / 通道的扩展参数字段清单（失败 → 空，回退裸 JSON 透传）；
+ * 带上当前模型：命中逐模型 profile 时返回模型级候选/默认，切模型即重拉联动。
  * 模型输入框逐字变更会连续触发，序号护栏防晚到响应覆盖新结果 */
 let extraSchemaSeq = 0
 async function loadExtraSchema(): Promise<void> {
@@ -211,7 +211,7 @@ watch(
   { immediate: true },
 )
 
-// [M33.1] 新建实例：选定凭证 / 填入 Key 后自动拉取一次在线目录（带价），无需用户点「获取模型」
+// 新建实例：选定凭证 / 填入 Key 后自动拉取一次在线目录（带价），无需用户点「获取模型」
 watch([credentialId, apiKey], () => {
   if (props.config || liveFetched.value) return
   const hasKey = credentialId.value != null || apiKey.value.trim().length > 0
@@ -258,7 +258,7 @@ async function fetchModels(silent = false) {
   }
 }
 
-/** 组装定价 JSON：已由 [M33] PricingSuggest 子组件 buildPricing 负责 */
+/** 组装定价 JSON：已由 PricingSuggest 子组件 buildPricing 负责 */
 
 async function submit() {
   if (!name.value.trim()) name.value = autoName.value
@@ -279,8 +279,8 @@ async function submit() {
       return
     }
   }
-  // [M32] 能力声明由子组件裁决：自动背书 / 空声明 → 不写 creationCapabilities（服务端按表推导）；手动声明 → 校验后合并
-  // [M38] 结构化扩展参数（已知 key）：校验并合并（覆盖 JSON 框同名 key，正常无重叠）
+  // 能力声明由子组件裁决：自动背书 / 空声明 → 不写 creationCapabilities（服务端按表推导）；手动声明 → 校验后合并
+  // 结构化扩展参数（已知 key）：校验并合并（覆盖 JSON 框同名 key，正常无重叠）
   const structured = extraEditor.value?.buildExtra()
   if (structured && !structured.ok) return // 子组件已就地显示必填 / JSON 错误
   let finalExtra: Record<string, unknown> = {
@@ -310,7 +310,7 @@ async function submit() {
   if (Object.keys(finalExtra).length > 0) body.extra = finalExtra
   else if (props.config?.extra && Object.keys(props.config.extra).length > 0)
     body.extra = {}
-  // 定价（[M33] 由子组件按服务类型组装；留空 → {}，编辑清空原值由下方分支显式传 {}）
+  // 定价（ 由子组件按服务类型组装；留空 → {}，编辑清空原值由下方分支显式传 {}）
   const pricing = pricingSuggest.value?.buildPricing() ?? {}
   body.pricing = pricing
   busy.value = true
@@ -334,7 +334,7 @@ async function submit() {
     :width="560"
     @close="emit('close')"
   >
-    <!-- [M33.1] 主表单仅需：供应商凭证 / Key + 选择模型；实例名自动生成、定价/端点/能力自动带出（高级可改） -->
+    <!-- 主表单仅需：供应商凭证 / Key + 选择模型；实例名自动生成、定价/端点/能力自动带出（高级可改） -->
 
     <!-- 供应商凭证选择（替代原来的 API Key 字段） -->
     <div class="fld">
@@ -396,7 +396,7 @@ async function submit() {
       >
     </div>
 
-    <!-- [M33.1] 自动带出只读摘要（参考定价 + 上下文）：用户无需配置，手填入口在「高级」 -->
+    <!-- 自动带出只读摘要（参考定价 + 上下文）：用户无需配置，手填入口在「高级」 -->
     <div class="fld autos">
       <span>自动带出</span>
       <div class="auto-line" :class="pricingSummaryHit ? 'ok' : 'warn'">
@@ -411,7 +411,7 @@ async function submit() {
       </div>
     </div>
 
-    <!-- [M32] 视频「轻松创作能力」：默认平台自动背书（Tier A），可覆盖为手动声明；逻辑见 VideoCapsEditor -->
+    <!-- 视频「轻松创作能力」：默认平台自动背书（Tier A），可覆盖为手动声明；逻辑见 VideoCapsEditor -->
     <VideoCapsEditor
       v-if="isVideo"
       ref="capsEditor"
@@ -421,7 +421,7 @@ async function submit() {
       :initial="capsInitial"
     />
 
-    <!-- [M38] 扩展参数结构化表单：按服务端 extra-schema 真源动态渲染已知 key（音色/尺寸/参考/视觉等） -->
+    <!-- 扩展参数结构化表单：按服务端 extra-schema 真源动态渲染已知 key（音色/尺寸/参考/视觉等） -->
     <ExtraParamsEditor
       v-if="extraFields.length"
       ref="extraEditor"
@@ -444,7 +444,7 @@ async function submit() {
           @input="nameTouched = true"
         />
       </label>
-      <!-- [M33.1] 参考定价手填 / 覆盖入口（默认已自动带出，此处可改）；live > 核实表 > 存量 -->
+      <!-- 参考定价手填 / 覆盖入口（默认已自动带出，此处可改）；live > 核实表 > 存量 -->
       <PricingSuggest
         ref="pricingSuggest"
         :service-type="provider.serviceType"
@@ -555,7 +555,7 @@ async function submit() {
   color: var(--warn);
 }
 
-/* [M33.1] 自动带出只读摘要 */
+/* 自动带出只读摘要 */
 .autos .auto-line {
   margin-top: 5px;
   font-size: 12px;

@@ -5,7 +5,7 @@ import { cosine, embed, ensureEmbedder, resolveModelName } from './embedding'
 import { createLogger } from '../logger'
 
 /**
- * M3 记忆服务：写入（具名 upsert）/ 向量召回 / 全量重建索引。
+ * 记忆服务：写入（具名 upsert）/ 向量召回 / 全量重建索引。
  * embedding 不可用时写入与检索直接抛错（不静默）——错误消息含 model:prepare 指引（来自 embedding 服务）。
  */
 
@@ -59,7 +59,7 @@ export async function upsertMemory(p: {
   return { id: inserted.id, created: true }
 }
 
-/** 向量召回：scope 过滤 → types 行内过滤（[M24] 如 ['summary'] 只召摘要；零 SQL 变更）→ 异模型行跳过 → cosine 排序 → limit/minScore 截断 */
+/** 向量召回：scope 过滤 → types 行内过滤（ 如 ['summary'] 只召摘要；零 SQL 变更）→ 异模型行跳过 → cosine 排序 → limit/minScore 截断 */
 export async function recallMemories(p: {
   projectId: number | null
   query: string

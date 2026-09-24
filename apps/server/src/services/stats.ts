@@ -1,5 +1,5 @@
 /**
- * [M4] 统计概览服务（E4 数据面；spec §4.4 形状）
+ * 统计概览服务（E4 数据面；spec §4.4 形状）
  * - 路由薄壳：views/interactions 求和口径与 publications 路由共用（publicationTotals）
  */
 import { and, count, eq, gte, isNull, sum, type SQL } from 'drizzle-orm'

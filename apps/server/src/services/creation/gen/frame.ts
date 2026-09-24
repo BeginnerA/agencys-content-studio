@@ -15,13 +15,13 @@ import { emitCanvasChanged } from './video'
 
 const log = createLogger('creation-gen')
 
-// ---------- [M18] 视频抽帧 ----------
+// ---------- 视频抽帧 ----------
 
-/** [M18] 抽帧模式（[M22·⑨] +uniform 均匀多帧批次） */
+/** 抽帧模式（ +uniform 均匀多帧批次） */
 export type FrameMode = 'first' | 'last' | 'custom' | 'uniform'
 
 /**
- * [M18] 抽帧时间点（秒；纯函数探针直测）：
+ * 抽帧时间点（秒；纯函数探针直测）：
  * - first：0.1s（避开淡入黑帧，对齐 thumb 先例；超短视频取中点）；
  * - last：时长−0.1（时长未知退化 0.1）；
  * - custom：clamp(time, 0, 时长−0.05)（时长未知仅下界）。
@@ -37,11 +37,11 @@ export function frameTimeOf(mode: FrameMode, time: number | null, duration: numb
   return round(dur != null ? Math.min(0.1, dur / 2) : 0.1)
 }
 
-/** [M22·⑨] 均匀抽帧数量范围（2–9） */
+/** 均匀抽帧数量范围（2–9） */
 export const UNIFORM_FRAME_COUNT_RANGE = { lo: 2, hi: 9 } as const
 
 /**
- * [M22·⑨] 抽帧时刻列表（纯函数探针直测）：
+ * 抽帧时刻列表（纯函数探针直测）：
  * - uniform：count ∈ 2–9；t_i = round3(0.1 + (dur − 0.2) × i / (count − 1))（count=3 恰为首/中/尾）；
  *   dur ≤ 0.3 → 全部退化取首帧时刻；dur 未知 → 报错（uniform 必须有时长）。
  * - 其余模式 → 单元素数组（复用 frameTimeOf 语义逐字不变）。
@@ -62,7 +62,7 @@ export function frameTimesOf(mode: FrameMode, time: number | null, count: number
   return Array.from({ length: n }, (_, i) => round(0.1 + (dur - 0.2) * (i / (n - 1))))
 }
 
-/** [M18] 抽帧 argv（全尺寸单帧 jpg；-ss 前置快速定位）；[M25·G9] 可选缩宽（视频解析帧控请求体，-2 保比例偶数宽；缺省不注入 = 现行为逐字不变） */
+/** 抽帧 argv（全尺寸单帧 jpg；-ss 前置快速定位）； 可选缩宽（视频解析帧控请求体，-2 保比例偶数宽；缺省不注入 = 现行为逐字不变） */
 export function buildFrameExtractArgs(src: string, out: string, timeSec: number, scaleWidth?: number): string[] {
   const args = ['-y', '-hide_banner', '-loglevel', 'error', '-ss', String(timeSec), '-i', src, '-frames:v', '1', '-q:v', '2']
   if (typeof scaleWidth === 'number' && scaleWidth > 0) args.push('-vf', `scale=${Math.round(scaleWidth)}:-2`)
@@ -70,10 +70,10 @@ export function buildFrameExtractArgs(src: string, out: string, timeSec: number,
   return args
 }
 
-/** [M18] 抽帧寻址降级梯度（秒）：请求时刻超出末帧 PTS（低帧率视频 dur−ε 越界）→ 逐级回退取最近可用帧 */
+/** 抽帧寻址降级梯度（秒）：请求时刻超出末帧 PTS（低帧率视频 dur−ε 越界）→ 逐级回退取最近可用帧 */
 export const FRAME_SEEK_BACKOFFS = [0, 0.1, 0.3, 0.7, 1.5]
 
-/** [M18] 内部：抽帧错误（retryable=false 时不做寻址降级：超时/进程启动失败/原子写失败） */
+/** 内部：抽帧错误（retryable=false 时不做寻址降级：超时/进程启动失败/原子写失败） */
 class FrameExtractError extends Error {
   constructor(
     message: string,
@@ -84,7 +84,7 @@ class FrameExtractError extends Error {
   }
 }
 
-/** [M18] 单次抽帧（tmp+rename 原子写；超时 30s 强杀）；[M25·G9] scaleWidth 透传缩宽 */
+/** 单次抽帧（tmp+rename 原子写；超时 30s 强杀）； scaleWidth 透传缩宽 */
 async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: string, timeSec: number, attempt: number, scaleWidth?: number): Promise<void> {
   const tmp = `${outAbs}.${process.pid}.${Date.now()}.${attempt}.tmp.jpg`
   const args = buildFrameExtractArgs(srcAbs, tmp, timeSec, scaleWidth)
@@ -114,7 +114,7 @@ async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: strin
       settled = true
       clearTimeout(timer)
       if (code === 0) {
-        // [M23·回归修复] exit=0 且无产物 = ffmpeg 静默空输出（seek 超出可用帧；6.x 二进制行为，9.x 为非零退出）
+        // exit=0 且无产物 = ffmpeg 静默空输出（seek 超出可用帧；6.x 二进制行为，9.x 为非零退出）
         // → 归入「无帧可取」参与寻址降级（与 FRAME_SEEK_BACKOFFS 语义对齐）
         if (!existsSync(tmp)) {
           reject(new FrameExtractError(`抽帧无输出（exit=0，无帧可取）：${tail.split(/\r?\n/).filter(Boolean).slice(-2).join(' | ') || '(无输出)'}`, true))
@@ -136,9 +136,9 @@ async function runFrameExtractOnce(ffmpeg: string, srcAbs: string, outAbs: strin
 }
 
 /**
- * [M18] 抽帧执行：ffmpeg 单帧 → 目标（tmp+rename 原子写；超时 30s；失败抛错含 stderr 尾部）。
+ * 抽帧执行：ffmpeg 单帧 → 目标（tmp+rename 原子写；超时 30s；失败抛错含 stderr 尾部）。
  * 寻址降级：请求时刻无帧可取（超出末帧 PTS）→ 按 FRAME_SEEK_BACKOFFS 回退重试
- * （ffmpeg 非零退出、或 exit=0 静默空输出〔[M23] 回归修复纳入〕均可降级）。
+ * （ffmpeg 非零退出、或 exit=0 静默空输出〔 回归修复纳入〕均可降级）。
  */
 export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec: number, scaleWidth?: number): Promise<void> {
   const ffmpeg = resolveFfmpeg()
@@ -162,7 +162,7 @@ export async function extractVideoFrame(srcAbs: string, outAbs: string, timeSec:
 }
 
 /**
- * [M18] 从视频节点抽帧：gen(video) 显示产物 · asset 节点视频资产 →
+ * 从视频节点抽帧：gen(video) 显示产物 · asset 节点视频资产 →
  * ffmpeg 单帧 jpg（全尺寸）→ registerAsset(purpose='creation_frame') → 新建 asset 节点（缺省源节点右下偏移）。
  * 软删/无文件/非视频/无产物 → 领域错误（route 层 400）。
  */
@@ -223,7 +223,7 @@ export async function extractNodeFrame(
   const duration = (typeof a.duration === 'number' && a.duration > 0 ? a.duration : null) ?? probeMediaDuration(srcAbs)
   const times = frameTimesOf(mode, timeRaw, countRaw, duration)
 
-  // [M18] 单帧路径（first/last/custom 逐字不变）
+  // 单帧路径（first/last/custom 逐字不变）
   if (times.length === 1) {
     const timeSec = times[0]!
     ensureProjectDirs(canvas.projectId)
@@ -264,7 +264,7 @@ export async function extractNodeFrame(
     return { node, asset }
   }
 
-  // [M22·⑨] uniform 多帧路径：逐时刻抽帧 → N 资产 + N 节点网格排布（3 列）
+  // uniform 多帧路径：逐时刻抽帧 → N 资产 + N 节点网格排布（3 列）
   ensureProjectDirs(canvas.projectId)
   const baseX = opts.x === undefined ? src.x + 60 : Number(opts.x)
   const baseY = opts.y === undefined ? src.y + 140 : Number(opts.y)

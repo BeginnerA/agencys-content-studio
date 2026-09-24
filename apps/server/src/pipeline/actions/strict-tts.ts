@@ -12,7 +12,7 @@ import { strictVoicePlan } from './ffmpeg-merge/strict'
 import { RunCancelledError, type StepResult } from '../types'
 import type { StepContext } from '../context'
 
-/** M30 单次付费提交＋台词级成功复用，不改变旧 TTS 的声线/重试链。 */
+/** 单次付费提交＋台词级成功复用，不改变旧 TTS 的声线/重试链。 */
 export async function strictTts(ctx: StepContext): Promise<StepResult> {
   const recipe = recipeOf(ctx.run)
   if (!recipe) throw new Error('严格配音缺少批准方案')

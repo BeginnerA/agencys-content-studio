@@ -1,7 +1,7 @@
 /**
- * [M9] 小说改编链路由（spec §3.7）
+ * 小说改编链路由（spec §3.7）
  * - GET /runs/:id/novel-board —— 聚合读（切分 manifest × 事件状态 × 图谱 × 规划 × 剧本），只读零副作用
- * - [M25·G7] POST /projects/:id/novel/append —— 增量章节追加（multipart；幂等去重，不级联重跑）
+ * - POST /projects/:id/novel/append —— 增量章节追加（multipart；幂等去重，不级联重跑）
  */
 import { Hono } from 'hono'
 import { buildNovelBoard } from '../services/novel-board'
@@ -18,7 +18,7 @@ novelRoutes.get('/runs/:id/novel-board', h(async (c) => {
   return c.json(board)
 }))
 
-// [M25·G7] POST /projects/:id/novel/append —— 自动连载增量导入（form: run_id + files[]）
+// POST /projects/:id/novel/append —— 自动连载增量导入（form: run_id + files[]）
 novelRoutes.post('/projects/:id/novel/append', h(async (c) => {
   const projectId = idParam(c)
   const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })

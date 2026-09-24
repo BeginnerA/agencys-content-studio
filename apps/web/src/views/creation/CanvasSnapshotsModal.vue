@@ -34,12 +34,12 @@ const props = defineProps<{
 }>()
 const cv = props.cv
 
-/** [M22] 对比目标候选（排除基准快照自身） */
+/** 对比目标候选（排除基准快照自身） */
 const otherSnaps = computed(() =>
   cv.snapItems.filter((s) => s.id !== cv.diffFor?.id),
 )
 
-/** [M22] diff 三分区（节点/连线/分组） */
+/** diff 三分区（节点/连线/分组） */
 const diffSections = computed<
   Array<{ key: string; label: string; b: SnapshotDiffBucket }>
 >(() => {
@@ -52,7 +52,7 @@ const diffSections = computed<
   ]
 })
 
-/** [M22] diff 展示值（服务端已截断；对象保留结构直显） */
+/** diff 展示值（服务端已截断；对象保留结构直显） */
 function dv(v: unknown): string {
   if (v === null || v === undefined) return '（空）'
   if (typeof v === 'string') return v
@@ -61,14 +61,14 @@ function dv(v: unknown): string {
 </script>
 
 <template>
-  <!-- [M18] 文档快照（保留 id 重放；恢复前自动备份）；[M22] 对比/分支 -->
+  <!-- 文档快照（保留 id 重放；恢复前自动备份）； 对比/分支 -->
   <Modal
     v-if="cv.showSnaps"
     title="文档快照"
     :width="640"
     @close="cv.showSnaps = false"
   >
-    <!-- [M22] 对比视图（基准快照 ↔ live/另一快照） -->
+    <!-- 对比视图（基准快照 ↔ live/另一快照） -->
     <template v-if="cv.diffFor">
       <div class="diff-head">
         <button type="button" class="btn sm" @click="cv.closeDiff()">
@@ -228,7 +228,7 @@ function dv(v: unknown): string {
               <Icon name="trash" :size="11" /> 删除
             </button>
           </div>
-          <!-- [M22] 分支命名面板 -->
+          <!-- 分支命名面板 -->
           <div v-if="cv.branchFor?.id === s.id" class="branch-panel">
             <input
               v-model="cv.branchName"
@@ -273,7 +273,7 @@ function dv(v: unknown): string {
   font-size: 11px;
 }
 
-/* ===== [M18] 回收站 / 文档快照弹窗 ===== */
+/* ===== 回收站 / 文档快照弹窗 ===== */
 .trash-list,
 .snap-list {
   display: flex;
@@ -318,7 +318,7 @@ function dv(v: unknown): string {
   font-size: 12.5px;
 }
 
-/* ===== [M22] 快照对比视图 ===== */
+/* ===== 快照对比视图 ===== */
 .diff-head {
   display: flex;
   align-items: center;
@@ -443,7 +443,7 @@ function dv(v: unknown): string {
   word-break: break-all;
 }
 
-/* ===== [M22] 分支命名面板 ===== */
+/* ===== 分支命名面板 ===== */
 .snap-cell {
   display: flex;
   flex-direction: column;

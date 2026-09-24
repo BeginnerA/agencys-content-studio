@@ -24,31 +24,31 @@ interface ShotSpec {
   duration?: number
   /** 角色名（含别名）列表：命中角色库 → 自动注入 appearance/negative 锚定（E3） */
   characters?: string[]
-  /** [M8] 场景名（与场景库对齐）：命中 → 注入场景锚定 + 参考图 */
+  /** 场景名（与场景库对齐）：命中 → 注入场景锚定 + 参考图 */
   location?: string
-  /** [M8] 道具名列表（与道具库对齐）：命中 → 注入道具锚定 + 参考图 */
+  /** 道具名列表（与道具库对齐）：命中 → 注入道具锚定 + 参考图 */
   props?: string[]
-  /** [M8] 素材参考图链分类（scene|prop；output_purpose_by_category 按此分派 purpose） */
+  /** 素材参考图链分类（scene|prop；output_purpose_by_category 按此分派 purpose） */
   category?: string
-  /** [M19 P7] 场次号（storyboard-ep v7 的 scene）：states「第N场」定位词命中依据；缺失 → 场次档不命中 */
+  /** 场次号（storyboard-ep v7 的 scene）：states「第N场」定位词命中依据；缺失 → 场次档不命中 */
   scene?: number
-  /** [M22] 画布直通参考图资产 id（前插注入，保序去重；与实体锚定参考共存） */
+  /** 画布直通参考图资产 id（前插注入，保序去重；与实体锚定参考共存） */
   ref_asset_ids?: number[]
 }
 
 const nowMs = (): number => Date.now()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** 单镜角色参考图上限（M6 语义：按角色出场顺序截断） */
+/** 单镜角色参考图上限（语义：按角色出场顺序截断） */
 const MAX_CHARACTER_REFS_PER_SHOT = 4
 
-/** [M8] 单镜参考图总量上限（角色 ≤4 + 场景 ≤1 + 道具 ≤1） */
+/** 单镜参考图总量上限（角色 ≤4 + 场景 ≤1 + 道具 ≤1） */
 const MAX_REFS_PER_SHOT = 6
 
-/** [M31] 并入 ai_image 参考图通道的批准参考角色（风格/主体/首帧） */
+/** 并入 ai_image 参考图通道的批准参考角色（风格/主体/首帧） */
 const IMAGE_REF_ROLES = ['style', 'subject', 'first_frame'] as const
 
-/** [M31] 参考图 id 合并（M31 上传参考前置 → 实体/画布参考，保序去重，总量 ≤MAX_REFS_PER_SHOT） */
+/** 参考图 id 合并（上传参考前置→ 实体/画布参考，保序去重，总量 ≤MAX_REFS_PER_SHOT） */
 function mergeRefIds(primary: number[], secondary: number[]): number[] {
   const ids: number[] = []
   const seen = new Set<number>()
@@ -61,8 +61,8 @@ function mergeRefIds(primary: number[], secondary: number[]): number[] {
 /**
  * ai_image：批量镜头出图（spec §5.3）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
- * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 状态（[M19 P7] 角色 states 命中）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
- * 参考图（角色定妆照 + 场景/道具参考图）在供应商能力支持时转 data URI 注入（M6/M8，params.refUsed 记计划注入数）；
+ * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 状态（ 角色 states 命中）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
+ * 参考图（角色定妆照 + 场景/道具参考图）在供应商能力支持时转 data URI 注入（params.refUsed 记计划注入数）；
  * 并发上限 batch.max_concurrent（默认 2），失败按 batch.retry 重试。
  * 幂等：本 step 已 succeeded 的 task 跳过（断点续跑复用成功图）；
  * failed 且 attempts 未超上限的 task 在本步重跑时自动补跑；
@@ -94,7 +94,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // 锚定注入（E3/M8，快照即一致性硬证据）：角色 → 场景/道具 → 风格，逐段叠加
+  // 锚定注入（快照即一致性硬证据）：角色→ 场景/道具→ 风格，逐段叠加
   const recipe = recipeOf(ctx.run)
   const dialogue = recipe?.plan.performance === 'dialogue'
   if (dialogue && JSON.stringify(shots) !== JSON.stringify(recipe.plan.shots)) throw new Error('对白首帧输入必须与批准分镜一致')
@@ -105,7 +105,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const indexes = { characters: charIndex, scenes: sceneIndex, props: propIndex }
   const { shots: charShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
   ctx.log(`角色锚定注入 ${injected} 镜${missing.length > 0 ? `（未命中角色：${missing.join('、')}）` : ''}`)
-  // [M19 P7] 角色状态锚定：逐镜命中角色 states（场次/集/文本三级）→ 追加状态短语；无 states / 无命中 → 零注入
+  // 角色状态锚定：逐镜命中角色 states（场次/集/文本三级）→ 追加状态短语；无 states / 无命中 → 零注入
   const episode = ctx.run.input ? inputEpisode(ctx.run.input) : undefined
   const stateRes = injectStateAnchors(charShots, charIndex, episode)
   if (stateRes.injected > 0) {
@@ -120,10 +120,10 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const model = typeof imgCfg['model'] === 'string' ? imgCfg['model'] : undefined
   const size = typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248'
   const stepParams = (ctx.def.params ?? {}) as Record<string, unknown>
-  const useRefs = dialogue || stepParams['use_character_refs'] !== false // M8 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
+  const useRefs = dialogue || stepParams['use_character_refs'] !== false // 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'
-  // 风格锚定注入（M8；[M13] 多预设叠加）：项目绑定预设（可多个）→ 运行时解析 → 逐块拼接尾追「视觉风格：…」；未绑定/停用 → 零注入 + 日志
+  // 风格锚定注入（支持多预设叠加）：项目绑定预设（可多个）→ 运行时解析→ 逐块拼接尾追「视觉风格：…」；未绑定/停用→ 零注入 + 日志
   const useStylePreset = !dialogue && stepParams['use_style_preset'] !== false
   const styleResolved = useStylePreset ? await resolveProjectStyleSnippets(ctx.run.projectId) : []
   if (useStylePreset && styleResolved.length === 0) ctx.log('项目未绑定风格预设 / 预设已停用，跳过风格注入')
@@ -132,7 +132,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     ctx.log(`风格注入：${styleResolved.map((s) => s.name).join(' + ')}（预设 ${styleResolved.map((s) => `#${s.id}`).join(',')}）`)
   }
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
-  // [M31] 批准的参考图片（风格/主体/首帧）并入本镜参考图通道（确定性、可幂等：recipe 固定 → params 稳定）
+  // 批准的参考图片（风格/主体/首帧）并入本镜参考图通道（确定性、可幂等：recipe 固定 → params 稳定）
   const refCap = pinOf(imgCfg) ? getImageAdapter(provider!).referenceImages ?? 'none' : await imageRefCapability(provider)
   if (dialogue && shots.some((s) => {
     const count = recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length
@@ -175,7 +175,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
       output_purpose: purpose,
       stylePresetId: styleResolved[0]?.id ?? null,
       stylePresetIds: styleResolved.map((s) => s.id),
-      // [M29·R02] 本镜命中实体 id（快照记录用；succeeded 任务不回写，不影响既有溯源）
+      // 本镜命中实体 id（快照记录用；succeeded 任务不回写，不影响既有溯源）
       entityIds: matchedEntityIds(shot, indexes),
     })
     const existingTask = taskByShotId.get(shot.id)
@@ -274,7 +274,7 @@ async function runOneTask(
     refCap: 'none' | 'base64'
     useRefs: boolean
     uriCache: Map<number, string>
-    /** [M29·R02] 分镜 JSON 文本资产 id（本步所有镜共用的文本来料，携版本指针） */
+    /** 分镜 JSON 文本资产 id（本步所有镜共用的文本来料，携版本指针） */
     sbAssetId?: number
   },
 ): Promise<{ shotId: string; error: string } | null> {
@@ -307,7 +307,7 @@ async function runOneTask(
     try {
       // 参考图注入：能力支持且未关闭 → 逐 id 转 data URI（单图失败跳过该图 + 记日志，不使任务失败）
       let refs: string[] | undefined
-      // [M29·R02] 本镜实际参考图 used/skipped（以 assetToDataUri 构建后最终集合为准）
+      // 本镜实际参考图 used/skipped（以 assetToDataUri 构建后最终集合为准）
       const refInputs: ExecInputSpec[] = []
       if (cfg.useRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
         const uris: string[] = []
@@ -355,7 +355,7 @@ async function runOneTask(
         width: img.width,
         height: img.height,
       })
-      // [M12] 写时图像有效性检测（黑/纯色/损坏 → params.quality；fire-and-forget 不阻断）
+      // 写时图像有效性检测（黑/纯色/损坏 → params.quality；fire-and-forget 不阻断）
       scheduleImageCheck(asset)
       await db
         .update(genTasks)
@@ -364,7 +364,7 @@ async function runOneTask(
       task.status = 'succeeded'
       task.resultAssetId = asset.id
       emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'succeeded' })
-      // [M4] 用量记录：每成功图 1 行（元/张）
+      // 用量记录：每成功图 1 行（元/张）
       await recordUsage({
         projectId: ctx.run.projectId,
         runId: ctx.run.id,
@@ -379,7 +379,7 @@ async function runOneTask(
         ...(recipe ? { unitPrice: recipe.endpoints.image!.unitPrice } : {}),
       })
       ctx.log(`shot ${shotId} 出图完成 → asset#${asset.id}`)
-      // [M29·R02] 冻结本镜真实输入：分镜文本资产 + 参考图 used/skipped + 命中实体（版本指针），按 shotId 定位
+      // 冻结本镜真实输入：分镜文本资产 + 参考图 used/skipped + 命中实体（版本指针），按 shotId 定位
       {
         const execInputs: ExecInputSpec[] = [...refInputs]
         if (cfg.sbAssetId != null) execInputs.push(await assetInput('text', cfg.sbAssetId, { shotId }))
@@ -623,7 +623,7 @@ export function injectSetAnchors(
 
 /**
  * 本镜参考图收集（纯函数，任务 params.refAssetIds 快照源）：
- * [M22] shot.ref_asset_ids 直通（前插）→ 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
+ * shot.ref_asset_ids 直通（前插）→ 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
  * 保序去重；总量 ≤MAX_REFS_PER_SHOT。
  */
 export function collectRefAssetIds(
@@ -638,11 +638,11 @@ export function collectRefAssetIds(
     ids.push(id)
     return true
   }
-  // 0) [M22] 画布直通（shots.ref_asset_ids 前插——画布连线比实体锚定更显式）
+  // 0) 画布直通（shots.ref_asset_ids 前插——画布连线比实体锚定更显式）
   for (const raw of shot.ref_asset_ids ?? []) {
     if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) push(raw)
   }
-  // 1) 角色（M6 语义：按出场顺序截断至 4）
+  // 1) 角色（语义：按出场顺序截断至 4）
   let charAdded = 0
   for (const raw of shot.characters ?? []) {
     if (charAdded >= MAX_CHARACTER_REFS_PER_SHOT) break
@@ -675,7 +675,7 @@ export function collectRefAssetIds(
 }
 
 /**
- * [M29·R02] 本镜命中实体 id（不改纯函数派生）：characters 命中 + location 命中 + props 命中 → characters.id 集（去重）。
+ * 本镜命中实体 id（不改纯函数派生）：characters 命中 + location 命中 + props 命中 → characters.id 集（去重）。
  * 供快照记录实体版本指针（编辑角色/场景/道具外观 → 下游命中的镜可报）。
  */
 function matchedEntityIds(

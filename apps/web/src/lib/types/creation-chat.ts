@@ -1,11 +1,11 @@
-// ===== [M30] 对话式「一句话成片」领域类型（与 routes/creation-chat.ts + services/creation-chat 响应对齐） =====
+// ===== 对话式「一句话成片」领域类型（与 routes/creation-chat.ts + services/creation-chat 响应对齐） =====
 
 export interface CreationLine {
   id: string
   text: string
   /** 情绪提示（audio 实例声明 emotion_param 时透传）；旧方案无此键 */
   emotion_hint?: string
-  /** [M44] 对白发言角色 id（仅人物对白；旁白方案缺省） */
+  /** 对白发言角色 id（仅人物对白；旁白方案缺省） */
   speaker?: string
 }
 
@@ -15,11 +15,11 @@ export interface CreationShot {
   image_prompt: string
   motion_prompt: string
   lines: string[]
-  /** [M44] 本镜出场角色 id（仅人物对白，一镜一发言者；旁白缺省） */
+  /** 本镜出场角色 id（仅人物对白，一镜一发言者；旁白缺省） */
   characters?: string[]
 }
 
-/** [M44] 人物对白角色表项（与对白契约 cast 逐字段对齐） */
+/** 人物对白角色表项（与对白契约 cast 逐字段对齐） */
 export interface CreationCast {
   id: string
   name: string
@@ -31,7 +31,7 @@ export type CreationGenre = 'science' | 'story' | 'product'
 export type CreationAspect = '9:16' | '16:9' | '1:1'
 export type CreationMode = 'dynamic' | 'slideshow'
 
-// ===== [M31] 对话式参考输入：参考素材类型 / 用途 / 附件返回 =====
+// ===== 对话式参考输入：参考素材类型 / 用途 / 附件返回 =====
 export type CreationRefKind = 'image' | 'video' | 'audio'
 /** 参考用途：风格 / 首帧 / 主体一致性 / 视频内容解析 / 背景乐 */
 export type CreationRefRole =
@@ -110,11 +110,11 @@ export interface CreationPlan {
   script: string
   lines: CreationLine[]
   shots: CreationShot[]
-  /** [M31] 已采纳参考素材（缺省空数组，旧方案向后兼容） */
+  /** 已采纳参考素材（缺省空数组，旧方案向后兼容） */
   refs: CreationRef[]
-  /** [M44] 表演形态：缺省视为 narration（历史旁白方案逐字兼容） */
+  /** 表演形态：缺省视为 narration（历史旁白方案逐字兼容） */
   performance?: 'narration' | 'dialogue'
-  /** [M44] 人物对白角色表（仅对白；2-4 名） */
+  /** 人物对白角色表（仅对白；2-4 名） */
   cast?: CreationCast[]
 }
 
@@ -131,12 +131,12 @@ export interface CreationEndpointSnapshot {
 export interface CreationPreparedRecipe {
   plan: CreationPlan
   endpoints: {
-    /** [M44] 对白无独立 TTS 配音端点（原声由视频生成），旁白方案必带 */
+    /** 对白无独立 TTS 配音端点（原声由视频生成），旁白方案必带 */
     audio?: CreationEndpointSnapshot
     image?: CreationEndpointSnapshot
     video?: CreationEndpointSnapshot
   }
-  /** [M44] 严格逐镜原声转写端点快照（仅对白）；与 TTS 不串价 */
+  /** 严格逐镜原声转写端点快照（仅对白）；与 TTS 不串价 */
   asr?: CreationEndpointSnapshot
   videoMode: 'i2v' | 't2v' | 'none'
   requestDurations: Record<string, number>
@@ -144,7 +144,7 @@ export interface CreationPreparedRecipe {
   imageSize: string
   resolution: string
   templateHash: string
-  /** [M31] 执行快照携带参考素材（随 hashJson({plan,execution}) 进 planHash） */
+  /** 执行快照携带参考素材（随 hashJson({plan,execution}) 进 planHash） */
   refs: CreationRef[]
 }
 
@@ -158,25 +158,25 @@ export interface CreationPreflight {
     imageCount: number
     videoSeconds: number
     voiceChars: number
-    /** [M31] 已采纳参考数量与需解析视频数 */
+    /** 已采纳参考数量与需解析视频数 */
     refCount: number
     videoAnalysisCount: number
-    /** [M44] 逐镜原声转写秒数（仅对白，等于视频时长）；旁白缺省 */
+    /** 逐镜原声转写秒数（仅对白，等于视频时长）；旁白缺省 */
     asrSeconds?: number
   }
   planningModel: { provider: string; model: string } | null
-  /** [M43] 画质候选（仅 dynamic 且视频档位可背书时非 null）；pf 顶层字段，不入 planHash */
+  /** 画质候选（仅 dynamic 且视频档位可背书时非 null）；pf 顶层字段，不入 planHash */
   resolutionOptions: { choices: string[]; default: string } | null
-  /** [M45] 品牌叠加摘要（平台/项目已配水印/片头/片尾/字幕）；pf 顶层字段，不入 planHash；未配品牌 available=false */
+  /** 品牌叠加摘要（平台/项目已配水印/片头/片尾/字幕）；pf 顶层字段，不入 planHash；未配品牌 available=false */
   brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
-  /** [M47] 对白执行路线（pf 顶层信息透出，不入 planHash）：strict = 严格 ASR（执行链仍冻结）；estimated = 免核验原生出声 + 估算字幕；null = 非对白 */
+  /** 对白执行路线（pf 顶层信息透出，不入 planHash）：strict = 严格 ASR（执行链仍冻结）；estimated = 免核验原生出声 + 估算字幕；null = 非对白 */
   dialogueMode: 'strict' | 'estimated' | null
 }
 
 export type CreationSessionStatus =
   'draft' | 'planning' | 'ready' | 'starting' | 'started'
 
-// ===== [M40] 立项信息：确认方案后才转正建项目，此前以 draft 影子态隐藏于项目列表 =====
+// ===== 立项信息：确认方案后才转正建项目，此前以 draft 影子态隐藏于项目列表 =====
 /** 将创建项目的 5 项信息（与服务端 project-meta 真源对齐；用户可逐项覆盖） */
 export interface CreationProjectMeta {
   name: string
@@ -200,7 +200,7 @@ export const CREATION_STATUS_LABELS: Record<CreationSessionStatus, string> = {
   starting: '启动中',
   started: '制作中',
 }
-/** [M31+] 「待确认」仅当预检通过才成立；有方案但预检未过（confirmable=false）→ 明确为「待完善配置」 */
+/** 「待确认」仅当预检通过才成立；有方案但预检未过（confirmable=false）→ 明确为「待完善配置」 */
 export function creationStatusLabel(
   status: CreationSessionStatus,
   confirmable = true,
@@ -212,7 +212,7 @@ export function creationStatusLabel(
     if (runStatus === 'completed') return '已完成'
     if (runStatus === 'failed') return '制作失败'
     if (runStatus === 'cancelled') return '已取消'
-    // [M42] 闸门挂起：对普通用户说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）
+    // 闸门挂起：对普通用户说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）
     if (runStatus === 'waiting_input') return '等待审阅'
     return '制作中'
   }
@@ -227,7 +227,7 @@ export function creationStatusTone(
     if (runStatus === 'completed') return 'completed'
     if (runStatus === 'failed') return 'failed'
     if (runStatus === 'cancelled') return 'cancelled'
-    // [M42] 等待审阅复用全局 .badge.waiting_input（与专业工作台同色语义，非仅色编码：另有文字标签）
+    // 等待审阅复用全局 .badge.waiting_input（与专业工作台同色语义，非仅色编码：另有文字标签）
     if (runStatus === 'waiting_input') return 'waiting_input'
     return 'running'
   }
@@ -246,16 +246,16 @@ export interface CreationChatMessagePayload {
   verifiedFailedTaskIds?: number[]
   fingerprint?: string
   attachments?: number[]
-  /** [M31] 附件消息：assetId + 冻结的 ref 指纹 */
+  /** 附件消息：assetId + 冻结的 ref 指纹 */
   assetId?: number
   ref?: CreationRef
-  /** [M42] 审阅决策消息（kind='gate'）：步骤、决策与驳回意见 */
+  /** 审阅决策消息（kind='gate'）：步骤、决策与驳回意见 */
   stepKey?: string
   decision?: CreationGateDecision
   note?: string | null
 }
 
-/** system 角色（[M42] 审阅决策留痕）：进对话流展示，但不进后续规划的 LLM 上下文 */
+/** system 角色（ 审阅决策留痕）：进对话流展示，但不进后续规划的 LLM 上下文 */
 export type CreationChatRole = 'user' | 'assistant' | 'system'
 
 export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
@@ -264,7 +264,7 @@ export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
   system: '审阅记录',
 }
 
-/** [M42] system 留痕按类型给来源标签（审阅 / 返修 / 合成），不与策划助手的话混同 */
+/** system 留痕按类型给来源标签（审阅 / 返修 / 合成），不与策划助手的话混同 */
 export function creationSystemLabel(kind?: string | null): string {
   if (kind === 'rework' || kind === 'rework_plan') return '返修记录'
   if (kind === 'recompose') return '合成记录'
@@ -295,24 +295,24 @@ export interface CreationSessionView {
   updatedAt: number
   projectDeleted: boolean
   initialDraft: { content: string; requestKey: string } | null
-  /** [M40] 立项预览：未确认时为 draft 影子项目（不进项目列表），确认后转正 */
+  /** 立项预览：未确认时为 draft 影子项目（不进项目列表），确认后转正 */
   project: CreationProjectPreview | null
 }
 
-/** [M42] 中途审阅：run 挂在闸门上的那一步（服务端从模板快照 gate.message 透出，非引擎状态） */
+/** 中途审阅：run 挂在闸门上的那一步（服务端从模板快照 gate.message 透出，非引擎状态） */
 export interface CreationReview {
   stepKey: string
   title: string
   message: string
-  /** [M44] 对白最终审阅：kind='dialogue' 时展示待审成片与实测字幕，且驳回为停机（不自动重做） */
+  /** 对白最终审阅：kind='dialogue' 时展示待审成片与实测字幕，且驳回为停机（不自动重做） */
   kind?: 'dialogue'
-  /** [M44] 待审成片视频资产 id（无合格成片时 null） */
+  /** 待审成片视频资产 id（无合格成片时 null） */
   videoId?: number | null
-  /** [M44] 全片实测字幕资产 id（无则 null） */
+  /** 全片实测字幕资产 id（无则 null） */
   subtitleId?: number | null
-  /** [M44] 驳回不自动重做、仅挂起停机（compose gate reject='stop'） */
+  /** 驳回不自动重做、仅挂起停机（compose gate reject='stop'） */
   rejectStops?: boolean
-  /** [M47] 免核验路线：待审字幕为按批准台词估算（非实测），审阅时必须收听原声比对发声 */
+  /** 免核验路线：待审字幕为按批准台词估算（非实测），审阅时必须收听原声比对发声 */
   subtitlesEstimated?: boolean
 }
 
@@ -337,7 +337,7 @@ export interface CreationProgress {
   status: string
   currentStep: string | null
   error: string | null
-  /** [M42] 等待审阅时为待审步骤，否则 null（前端据此置顶审阅面板） */
+  /** 等待审阅时为待审步骤，否则 null（前端据此置顶审阅面板） */
   review: CreationReview | null
   needsVerification: boolean
   uncertainTasks: CreationUncertainTask[]
@@ -358,7 +358,7 @@ export interface CreationArtifact {
 }
 
 /**
- * [M42] 某镜某模态的多版本视图（服务端投影）：selected = 正在用的那一个（可能为 null = 尚未生成），
+ * 某镜某模态的多版本视图（服务端投影）：selected = 正在用的那一个（可能为 null = 尚未生成），
  * candidates = 全部候选（含文件已丢 / 已删除的不可选占位），序为在用优先 → 最新在前。
  */
 export interface CreationArtifactChoice {
@@ -370,7 +370,7 @@ export interface CreationArtifacts {
   documents: Array<CreationArtifact & { label: string }>
 }
 
-/** [M44] 逐镜原声转写核验任务投影（仅对白）：展示核验状态与失败诊断，不伪造成功 */
+/** 逐镜原声转写核验任务投影（仅对白）：展示核验状态与失败诊断，不伪造成功 */
 export interface CreationDialogueVerification {
   taskId: number
   status: string
@@ -394,7 +394,7 @@ export interface CreationDetail {
   result: CreationResult | null
 }
 
-/** [M40+] 删除会话结果：未立项时连影子项目一并回收；已立项只删记录（项目保留，reason 说明原因） */
+/** 删除会话结果：未立项时连影子项目一并回收；已立项只删记录（项目保留，reason 说明原因） */
 export interface CreationDeleteResult {
   ok: true
   mode: 'draft_purged' | 'session_only'
@@ -412,7 +412,7 @@ export interface CreationSessionListItem {
   updatedAt: number
   /** [修复] 关联制作任务的真实状态（queued|running|completed|failed|cancelled…）；控制态 started 不回写，列表据此派生显示 */
   runStatus: string | null
-  /** [M31+] status=ready 且预检通过（真的可点确认）才为 true；否则列表显示「待完善配置」 */
+  /** status=ready 且预检通过（真的可点确认）才为 true；否则列表显示「待完善配置」 */
   confirmable: boolean
 }
 
@@ -422,23 +422,23 @@ export interface CreationConfirmBody {
   planHash: string
   idempotencyKey: string
   acceptUnpriced: boolean
-  /** [M40] 立项覆盖值：只带用户改过的字段，缺项沿用平台智能填写（不入 planHash） */
+  /** 立项覆盖值：只带用户改过的字段，缺项沿用平台智能填写（不入 planHash） */
   project?: Partial<CreationProjectMeta>
-  /** [M42] 勾选「首帧后暂停审阅」：本次改用带闸门的同构变体模板（同样不入 planHash） */
+  /** 勾选「首帧后暂停审阅」：本次改用带闸门的同构变体模板（同样不入 planHash） */
   reviewGate?: boolean
-  /** [M43] 画质选择：仅在 ∈ preflight.resolutionOptions.choices 时可确认；不选不传键（缺省 = 模型默认档，请求体与旧版逐字一致） */
+  /** 画质选择：仅在 ∈ preflight.resolutionOptions.choices 时可确认；不选不传键（缺省 = 模型默认档，请求体与旧版逐字一致） */
   resolution?: string
-  /** [M45] 品牌叠加开关：缺省/true = 继承品牌；仅逐次关闭时传 false（不入 planHash，缺省不传键 → 请求体与旧版逐字一致） */
+  /** 品牌叠加开关：缺省/true = 继承品牌；仅逐次关闭时传 false（不入 planHash，缺省不传键 → 请求体与旧版逐字一致） */
   brandApply?: boolean
 }
 
-/** [M43] 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */
+/** 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */
 export interface CreationRefBindBody {
   role?: CreationRefRole
   shotId?: string | null
 }
 
-/** [M42] 审阅决策：approve=继续制作；reject=该阶段整体重做（会再次调用生成，可能计费） */
+/** 审阅决策：approve=继续制作；reject=该阶段整体重做（会再次调用生成，可能计费） */
 export type CreationGateDecision = 'approve' | 'reject'
 
 export interface CreationGateBody {
@@ -448,7 +448,7 @@ export interface CreationGateBody {
   idempotencyKey: string
 }
 
-/** [M42] 候选版本步（与服务端 CREATION_CANDIDATE_STEPS 同源） */
+/** 候选版本步（与服务端 CREATION_CANDIDATE_STEPS 同源） */
 export type CreationCandidateStep = 'images' | 'frames' | 'motion'
 
 export interface CreationSelectionBody {
@@ -457,14 +457,14 @@ export interface CreationSelectionBody {
   idempotencyKey: string
 }
 
-/** [M42] 候选看板不另建形：服务端直返专业工作台同一份聚合，契约复用 ShotBoardData（见 ./shot.ts） */
+/** 候选看板不另建形：服务端直返专业工作台同一份聚合，契约复用 ShotBoardData（见 ./shot.ts） */
 
 export interface CreationRetryBody extends CreationConfirmBody {
   runId: number
   verifiedFailedTaskIds?: number[]
 }
 
-// ===== [M42] 自然语言局部返修（第一步解析预览 → 第二步显式确认执行） =====
+// ===== 自然语言局部返修（第一步解析预览 → 第二步显式确认执行） =====
 
 /**
  * 单个返修镜头（服务端 rework.ts ReworkTarget 逐字段对齐）：本模式可落地的一侧给新提示词与费用，

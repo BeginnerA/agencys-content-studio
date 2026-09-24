@@ -6,7 +6,7 @@ import type { TemplatesApi } from './use-templates'
 const props = defineProps<{ t: TemplatesApi }>()
 const { liveTpl } = props.t
 
-/** [M28] 流程图（由 internals.computeFlow 计算；viewBox 宽 560 固定）。 */
+/** 流程图（由 internals.computeFlow 计算；viewBox 宽 560 固定）。 */
 const flow = computed(() => computeFlow(liveTpl.value?.steps ?? []))
 </script>
 

@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasState；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasState；依赖显式注入，原函数体保持不变。 */
 import { computed, ref } from 'vue'
 import CreationBoard from '../../components/creation/board/index.vue'
 import { createCanvasHistory } from '../../lib/canvas-history'
@@ -20,10 +20,10 @@ export function useCanvasState() {
 
   const selectedIds = ref<number[]>([])
   const selectedEdgeId = ref<number | null>(null)
-  /** [M17] 撤销/重做命令栈（移动/新建/删除/连线/复制入栈；选中/视口不入栈） */
+  /** 撤销/重做命令栈（移动/新建/删除/连线/复制入栈；选中/视口不入栈） */
   const history = createCanvasHistory()
   const boardRef = ref<InstanceType<typeof CreationBoard> | null>(null)
-  /** [M17] 命令栈按钮状态（嵌套 ref → computed 供模板解包） */
+  /** 命令栈按钮状态（嵌套 ref → computed 供模板解包） */
   const canUndo = computed(() => history.canUndo.value)
   const canRedo = computed(() => history.canRedo.value)
   const undoTitle = computed(() =>

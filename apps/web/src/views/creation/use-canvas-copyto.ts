@@ -1,4 +1,4 @@
-/** [M22] 创作画布：跨画布复制弹窗（项目选择 + 目标画布列表 → POST nodes/copy-to）；依赖显式注入。 */
+/** 创作画布：跨画布复制弹窗（项目选择 + 目标画布列表 → POST nodes/copy-to）；依赖显式注入。 */
 import { ref } from 'vue'
 import { creationApi, projectApi } from '../../lib/api'
 import type { CanvasListItem } from '../../lib/types'

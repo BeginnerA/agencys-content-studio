@@ -22,11 +22,11 @@ export interface BoardVersion {
   height: number | null
   duration: number | null
   prompt: string | null
-  /** [M10] 版本来源：task=步骤任务产物 / upload=本地上传入库 */
+  /** 版本来源：task=步骤任务产物 / upload=本地上传入库 */
   source: 'task' | 'upload'
-  /** [M12] 收藏标记（1=已收藏；版本清理保留豁免） */
+  /** 收藏标记（1=已收藏；版本清理保留豁免） */
   isFavorite: number
-  /** [M12] 图像检测摘要（无/坏数据 → null，前端不显示徽标） */
+  /** 图像检测摘要（无/坏数据 → null，前端不显示徽标） */
   quality: { ok: boolean | null; reason: string } | null
   urls: { file: string; thumb: string | null }
 }
@@ -48,7 +48,7 @@ export interface BoardShot {
   task: BoardTask | null
   selectedAssetId: number | null
   versions: BoardVersion[]
-  /** [M10] 分镜对象全量（大编辑器字段回显/动态键值行） */
+  /** 分镜对象全量（大编辑器字段回显/动态键值行） */
   raw: Record<string, unknown>
 }
 
@@ -108,7 +108,7 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
     versionsByTaskId.set(a.taskId, list)
   }
 
-  // [M10] 上传资产版本组：本步骤 + taskId=null（外来图入镜；与任务版本按 createdAt 升序合并）
+  // 上传资产版本组：本步骤 + taskId=null（外来图入镜；与任务版本按 createdAt 升序合并）
   const uploadRows = await db
     .select()
     .from(assets)
@@ -179,7 +179,7 @@ async function buildComposeInfo(run: PipelineRun): Promise<ShotBoard['compose']>
  * stale 判定：成片产物 params.inputs 快照 vs 当前上游真实输出（任一不等 → true）。
  * - images / motion_clips：快照 id 数组 vs 「其产出步骤」当前 output.asset_ids（同口径全序对比）；
  * - shots_source：快照分镜资产是否仍在产出步骤当前 output 中（分镜被工作台编辑替换 → 不在 → stale）；
- * - [M10] 兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，分镜资产晚于成片 → stale=true；
+ * - 兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，分镜资产晚于成片 → stale=true；
  * - 旧产物无 inputs 快照 / 全部对比项不可用 → null（无法判定，前端降级为常态提示）。
  */
 async function computeStale(finalAsset: Asset, runSteps: PipelineStep[]): Promise<boolean | null> {
@@ -225,7 +225,7 @@ async function computeStale(finalAsset: Asset, runSteps: PipelineStep[]): Promis
       if (!outputIdsOf(producer).includes(src)) return true
     }
   }
-  // [M10] 分镜编辑兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，
+  // 分镜编辑兜底：shots_source 缺失/断链（存量快照、跨 run 资产引用）时，
   // 以「分镜资产晚于成片」判定分镜已被编辑（保守：不参与 compared，null 语义不变）
   const sbStep = runSteps.find((s) => s.stepKey === 'make_storyboard')
   if (sbStep) {
@@ -260,7 +260,7 @@ export function toVersionView(a: Asset): BoardVersion {
   }
 }
 
-/** [M12] params.quality 摘要（board 下发 ok/reason；stats/checkedAt 不下发） */
+/** params.quality 摘要（board 下发 ok/reason；stats/checkedAt 不下发） */
 function parseQualityBrief(params: string | null): BoardVersion['quality'] {
   if (!params) return null
   try {

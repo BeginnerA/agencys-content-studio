@@ -38,14 +38,14 @@ import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } 
  * 时间轴：镜头实际时长优先（video 资产 duration 字段，缺失时 ffprobe 探测兜底）；
  * 静态图回退 duration_per_shot（默认 4s）。产物 tags 增 'with_audio'/'with_subtitle'。
  * fit_voice=true 且为多镜静态图 + 配音时：按配音总长分配每镜时长（成片与音轨等长）。
- * [M7] 可选 shots（分镜 JSON）输入：静态图 per-shot 时长覆盖；逐镜容错（缺文件/类型不符 skip+warn，
+ * 可选 shots（分镜 JSON）输入：静态图 per-shot 时长覆盖；逐镜容错（缺文件/类型不符 skip+warn，
  * 全 skip 才失败）；产物 params 增 inputs 快照（stale 检测）与 skipped_shots；fit_voice 显式时长优先。
- * [M11] 三增强（均可组合；失败即回退 M7 行为）：
+ * 三增强（均可组合；失败即回退既有行为）：
  *   ① 音字对齐：shots[].lines ↔ voice.params.lineId 映射一致时，每镜时长 = 句和（显式 > 句和补镜尾静音）/
  *      空镜 explicit??duration_per_shot，音频轨按镜序 [句…,静音] concat，SRT 平移后烧录；
  *   ② BGM：run 级直查（loadBgmAsset）循环铺满（atrim 到 total）+ volume + afade + amix；
  *   ③ 转场：xfade 链（前 n-1 镜段长 +T 补偿，offset = V_k，总长仍 Σd）；_compose 覆盖 transition/bgm_*。
- *   ④ [M19] per-shot 音效：每镜 ≤1 条（purpose=sfx）；起点 = Σ_{j<i} d_j + 片头位移（与 xfade offsets 同口径），
+ *   ④ per-shot 音效：每镜 ≤1 条（purpose=sfx）；起点 = Σ_{j<i} d_j + 片头位移（与 xfade offsets 同口径），
  *      adelay 注入 + 终混 amix（主轨/BGM 存在时 duration=first）；无绑定 → 音频链逐字节不变。
  */
 export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
@@ -85,13 +85,13 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const mode: 'images' | 'clips' = imageIds.length > 0 ? 'images' : 'clips'
   const rows = await ctx.assetsOf(mode === 'images' ? imageIds : clipIds)
   if (rows.length === 0) throw new Error('镜头资产均不可用（资产不存在或已删除）')
-  // [M7] shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
+  // shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
   const perShotDur = await loadPerShotDurations(ctx, shotsIds)
   const { segments, skipped, warnings } = recipe
     ? { segments: strictSegments(recipe.plan, rows, ctx.run.projectId), skipped: [] as number[], warnings: [] as string[] }
     : computeShotSegments(rows, mode, perShotDur, durationPerShot)
-  // [M47] 对白 clips 双路线：strict = ASR 逐字核验缓存复用（validatedDialogueClip）；estimated = 本步实测视频 + 来源校验同源重算（零付费）
+  // 对白 clips 双路线：strict = ASR 逐字核验缓存复用（validatedDialogueClip）；estimated = 本步实测视频 + 来源校验同源重算（零付费）
   const dialogueClips: Array<Awaited<ReturnType<typeof validatedDialogueClip>> | EstimatedDialogueClip> | null = dialogue && recipe
     ? recipe.estimatedDialogue
       ? recipe.plan.shots.map((shot, i) => estimateDialogueClip(recipe.plan, shot.id, rows[i]!, ctx.run.projectId))
@@ -111,7 +111,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       if (seg.estimated) ctx.log(`镜头视频 #${seg.id} 时长未知（无 duration 字段且 ffprobe 不可用），按 ${seg.durSec}s 估算`)
     }
   }
-  // voices：tts 产物逐句 concat 为连续音轨；[M11] 逐句 meta（lineId/durSec）供对齐/fit_voice/撑长共用
+  // voices：tts 产物逐句 concat 为连续音轨； 逐句 meta（lineId/durSec）供对齐/fit_voice/撑长共用
   const voiceIds = ctx.assetIdsOf('voices')
   const voicePaths: string[] = []
   const voiceMetas: Array<{ assetId: number; lineId: string | null; durSec: number | null; relPath: string | null; text: string }> = []
@@ -127,7 +127,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         assetId: a.id,
         lineId: lineIdOfVoiceAsset(a),
         durSec: typeof a.duration === 'number' && a.duration > 0 ? a.duration : probeMediaDuration(path),
-        // [M50] 快照附加字段（仅入 timeline，不参与既有对齐/混流逻辑）
+        // 快照附加字段（仅入 timeline，不参与既有对齐/混流逻辑）
         relPath: a.relPath,
         text: a.prompt ?? '',
       })
@@ -158,15 +158,15 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     ctx.log('subtitle=true 但 inputs.subtitle 无 SRT 资产，已跳过烧录')
   }
 
-  // [M11/统一时轴] 音字对齐尝试（静态图与动效统一：voices 全带 lineId/时长 + 分镜 lines，best-effort 命中镜即产出 canonical 计划）：
-  // 逐镜时长 images=句和（显式>句和→镜尾静音）/ motion=真实 clip 时长（不拉伸）/ 空镜 explicit??duration_per_shot；幽灵句跳过不整体回退；失败回退下方 M7 语义
+  // 音字对齐尝试（静态图与动效统一：voices 全带 lineId/时长 + 分镜 lines，best-effort 命中镜即产出 canonical 计划）：
+  // 逐镜时长 images=句和（显式>句和→镜尾静音）/ motion=真实 clip 时长（不拉伸）/ 空镜 explicit??duration_per_shot；幽灵句跳过不整体回退；失败回退既有语义
   let alignPlan: AlignPlan | null = null
   // 回退原因：no_voices / no_lineid / 计划 reason(no_lines_field等) / mapping_incomplete（成功路径：aligned / partial_mapped / motion_aligned）
   let alignReason = 'not_applicable'
   if (dialogueClips && recipe) {
     if (voiceIds.length || !srtRelPath || subtitleIds.length !== 1) throw new Error('人物对白必须使用原声和配套字幕，禁止混入 TTS')
     const [subtitle] = await ctx.assetsOf(subtitleIds)
-    // [M47] expected 与 validationHash 均按路线同源重算：陈旧/跨路线字幕一律拒绝（语义与 strict 现状一致）
+    // expected 与 validationHash 均按路线同源重算：陈旧/跨路线字幕一律拒绝（语义与 strict 现状一致）
     const estimated = recipe.estimatedDialogue === true
     const expected = estimated
       ? estimatedDialogueSrt(recipe.plan, dialogueClips as EstimatedDialogueClip[])
@@ -240,7 +240,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const alignAligned = alignPlan !== null
 
   // 口播场景守卫：仅 1 张静态图且带配音/字幕时，底图时长撑到内容实际长度（防尾段冻结/丢内容）——
-  // [M7] 基准取「该镜当前时长」（分镜显式覆盖 ?? 全局）；有字幕以字幕末时间（估时）为准；无字幕则实测音频总长
+  // 基准取「该镜当前时长」（分镜显式覆盖 ?? 全局）；有字幕以字幕末时间（估时）为准；无字幕则实测音频总长
   const needStretch =
     !alignAligned && segments.length === 1 && segments[0]!.kind === 'image' && (voicePaths.length > 0 || srtEndMs > 0)
   if (needStretch && voicePaths.length > 0 && srtEndMs <= 0) {
@@ -257,7 +257,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   // fit_voice：多镜静态图 + 配音 → 按配音总长分配每镜时长（成片与音轨等长，消除尾部静音/末帧定格）——
-  // [M7] 显式优先：分镜 JSON 指定时长（explicit）的镜固定不参与均分，剩余配音时长均分给无显式镜；
+  // 显式优先：分镜 JSON 指定时长（explicit）的镜固定不参与均分，剩余配音时长均分给无显式镜；
   // 全部显式 → 跳过均分；剩余 ≤0 或探测失败 → 放弃适配回退（flex 镜保留全局时长）；
   // 仅 images 模式生效（motion_clips 为真实时长不可拉伸）；单张静态图走上方口播撑长，不重复适配。
   if (
@@ -292,7 +292,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
-  // [M11] 转场计划（仅静态图 ≥2 镜生效；_compose 覆盖模板 params；禁用时 filter 与 M7 逐字节一致）
+  // 转场计划（仅静态图 ≥2 镜生效；_compose 覆盖模板 params；禁用时 filter 与既有实现逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
   const transitionReq = strict ? 'none' : composeCfg.transition ?? (typeof params['transition'] === 'string' ? params['transition'] : 'none')
   const transitionDurReq = composeCfg.transition_duration ?? numParam(params['transition_duration'], 0.5)
@@ -309,11 +309,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       `转场参数 ${transitionReq} 未生效（${!transitionUsable ? (mode === 'images' ? '镜头数不足 2' : 'motion_clips 模式不支持') : '值非法或时长无效'}），按 none 处理`,
     )
   }
-  // [M11] BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
+  // BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
   const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], dialogue ? 0.1 : 0.25), 0, dialogue ? 0.12 : 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
-  // [M31] 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM；
-  // 默认（无 bgm ref）仍无 BGM（逐字节不变，不违反 M30「不生成 BGM」——此处为使用用户素材）
+  // 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM；
+  // 默认（无 bgm ref）仍无 BGM（逐字节不变，不违反「不生成 BGM」——此处为使用用户素材）
   let bgmAsset: Asset | null
   if (strict) {
     const bgmRef = recipe?.refs.find((r) => r.role === 'bgm')
@@ -336,8 +336,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       : `合成 ${segments.length} 段镜头视频 → ${width}x${height}@${fps}fps（按实际时长，总 ${total}s）`,
   )
   if (voicePaths.length > 0) ctx.log(`混流 ${voicePaths.length} 句配音轨（连续拼接${needStretch ? '' : `，对齐总时长 ${total}s`}）`)
-  // [M19] 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
-  // [M45] 严格合成本向不叠加品牌（brand={}）；现仅对轻松创作模板放开“默认继承”，
+  // 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
+  // 严格合成本向不叠加品牌（brand={}）；现仅对轻松创作模板放开“默认继承”，
   // 且确认卡可逐次关（_compose.brandApply=false）；非创建类严格 run 维持 brand={} 不变；未配品牌→{} 逐字节不变。
   const brand = (!strict || (isCreationTemplate(ctx.run.templateKey) && composeCfg.brandApply !== false))
     ? await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
@@ -352,7 +352,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     ctx.log('结构化字幕配置已接管，subtitle_style 旧串被忽略')
   }
 
-  // [M19] 品牌素材槽解析（水印/片头/片尾；时长探测失败 → 宽容跳过该槽，全链保持现行为）
+  // 品牌素材槽解析（水印/片头/片尾；时长探测失败 → 宽容跳过该槽，全链保持现行为）
   const watermarkArg = brand.watermark ?? null
   let introArg: { path: string; durSec: number } | null = null
   if (brand.intro) {
@@ -368,11 +368,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
   if (introArg) ctx.log(`片头就绪：${round3(introArg.durSec)}s（来源 ${brand.intro!.source}），正片内容轴后移 +${round3(introArg.durSec)}s`)
   if (outroArg) ctx.log(`片尾就绪：${round3(outroArg.durSec)}s（来源 ${brand.outro!.source}）`)
-  // [M19] per-shot 音效解析（run 级直查；每镜 ≤1 条；起点 = Σ_{j<i} d_j + 片头位移；缺文件跳过 + log）
+  // per-shot 音效解析（run 级直查；每镜 ≤1 条；起点 = Σ_{j<i} d_j + 片头位移；缺文件跳过 + log）
   const sfxVolume = clamp(composeCfg.sfx_volume ?? 1, 0, 2)
   const sfxMap = strict ? new Map<string, Asset>() : await loadSfxAssets(ctx.run.id)
   let sfxList: ComposeSfxInput[] = []
-  // [M50] 快照专用：entries 补 shotId（不改动 sfxList 既有形状）
+  // 快照专用：entries 补 shotId（不改动 sfxList 既有形状）
   const sfxSnap: Array<{ shotId: string | null; assetId: number; startSec: number; relPath: string }> = []
   if (sfxMap.size > 0) {
     const { entries, missing } = planSfxStarts(
@@ -404,7 +404,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const outName = `ep${ep}-final-${Date.now()}.mp4`
   const outRel = relPathOf(ctx.run.projectId, 'final_video', outName)
   const outAbs = absPathOf(outRel)
-  // [M19] 多画幅原生渲染目标（与主画幅同比例者剔除；派生件落 video/ 子目录 purpose=final_video_derived）
+  // 多画幅原生渲染目标（与主画幅同比例者剔除；派生件落 video/ 子目录 purpose=final_video_derived）
   const multiAspect = strict ? null : readMultiAspect(composeCfg)
   const maTargets = multiAspect
     ? multiAspect.aspects
@@ -414,10 +414,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
           outAbs: absPathOf(relPathOf(ctx.run.projectId, 'final_video_derived', `ep${ep}-final-${a.replace(':', 'x')}-${Date.now()}.mp4`)),
         }))
     : []
-  // [M19] 封面抽取点：有片头 → 片头时长 + 0.2s；否则 0.2s（现行为）
+  // 封面抽取点：有片头 → 片头时长 + 0.2s；否则 0.2s（现行为）
   const coverAt = introArg ? round3(introArg.durSec + 0.2) : 0.2
 
-  // [M11/M19] 字幕平移：对齐逐 cue（cue ↔ 句序 = voices 序）与片头统移合并为一次重写；
+  // 字幕平移：对齐逐 cue（cue ↔ 句序 = voices 序）与片头统移合并为一次重写；
   // Δ 全 0 不写副本；数量不符不平移（原样烧录）；无片头且无对齐 → 不进入（零 diff）
   const introShift = introArg ? round3(introArg.durSec) : 0
   let srtAbs: string | null = srtRelPath ? absPathOf(srtRelPath) : null
@@ -470,11 +470,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // [M32] SRT → ASS 转换：内置 ffmpeg 的 libass 不支持 CJK 换行 + force_style 吃 SRT 时按默认小
+  // SRT → ASS 转换：内置 ffmpeg 的 libass 不支持 CJK 换行 + force_style 吃 SRT 时按默认小
   // PlayResY 二次放大字号 → 长句横向冲出画面。改为生成显式 PlayResX/Y=输出尺寸的 ASS 喂 subtitles
   // 滤镜（force_style 仍生效、args 结构不变）：字号回归真实像素、左右边距由 ASS Style 提供、超长行 \\N 预换行。
   // 多画幅各路 PlayRes 不同 → 主 + 每派生路各生成一份 ASS。
-  // [M32b] 严格交付同样溢出 → 一并启用：仅生成烧录用 ASS 副本喂滤镜，不改原 SRT 资产；
+  // 严格交付同样溢出 → 一并启用：仅生成烧录用 ASS 副本喂滤镜，不改原 SRT 资产；
   // assertStrictSrt 校验的是原始 SRT（本块之前已跑），\N 换行只拆行不减字，成片时长/音轨不变（assertStrictOutput 不受影响）。
   const assTempAbs: string[] = []
   let subtitlePaths: string[] | undefined
@@ -510,7 +510,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // 组装 filter_complex 与编码参数（[M19] 提炼 buildComposeArgs 纯函数；无水印/片头尾 → 与 M11 逐字节一致）
+  // 组装 filter_complex 与编码参数（提炼 buildComposeArgs 纯函数；无水印/片头尾→ 与既有实现逐字节一致）
   const hasAudio = voicePaths.length > 0 || !!dialogueClips
   const { args, cwd, totalAll, derived } = buildComposeArgs({
     strictDelivery: strict,
@@ -597,27 +597,27 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       subtitle: srtRelPath ? 1 : 0,
       subtitle_style: style,
       duration: Math.round(totalAll * 1000) / 1000,
-      // [M7] 输入快照（stale 检测数据源：与 output.asset_ids 同口径）+ 容错溯源（旧键全部保留不动）
+      // 输入快照（stale 检测数据源：与 output.asset_ids 同口径）+ 容错溯源（旧键全部保留不动）
       inputs: {
         images: mode === 'images' ? imageIds : null,
         motion_clips: mode === 'clips' ? clipIds : null,
         shots_source: shotsIds[0] ?? null,
       },
       skipped_shots: skipped,
-      // [M11/统一时轴] 三增强溯源（禁用时记录原因，不影响既有语义；partial/warn_lines 标记 best-effort 部分命中）
+      // 三增强溯源（禁用时记录原因，不影响既有语义；partial/warn_lines 标记 best-effort 部分命中）
       align: alignPlan
         ? { aligned: true, reason: null, lines: alignPlan.lines.length, shots: alignPlan.segments.length, total_dur: alignPlan.totalDur, mode: alignPlan.mode ?? null, partial: alignPlan.partial ?? false, warn_lines: alignPlan.warnLines?.length ?? 0 }
         : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null, mode: null, partial: false, warn_lines: 0 },
       transition: { enabled: xfadePlan.enabled, type: xfadePlan.enabled ? xfadePlan.type : null, dur_sec: xfadePlan.enabled ? xfadePlan.durSec : null },
       bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null,
-      // [M19] 品牌溯源（无配置 → null；duration = 含片头尾总长）
+      // 品牌溯源（无配置 → null；duration = 含片头尾总长）
       watermark: watermarkArg
         ? { position: watermarkArg.position, opacity: watermarkArg.opacity, width_pct: watermarkArg.width_pct, source: watermarkArg.source }
         : null,
       intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null,
       outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null,
       sfx: sfxList.length > 0 ? { count: sfxList.length, volume: sfxVolume } : null,
-      // [M50] Canonical 同源时间轴快照（剪辑工程交换导出唯一真源；纯增量溯源，不改任何 ffmpeg 参数与音频结果）
+      // Canonical 同源时间轴快照（剪辑工程交换导出唯一真源；纯增量溯源，不改任何 ffmpeg 参数与音频结果）
       timeline: buildEditTimeline({
         fps, width, height, totalSec: totalAll, introSec: introShift, outroSec: outroArg ? round3(outroArg.durSec) : 0,
         segments, rows, alignPlan, voices: voiceMetas, sfx: sfxSnap,
@@ -654,7 +654,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     assetIds.push(coverAsset.id)
     ctx.log(`封面提取完成 asset#${coverAsset.id}`)
   }
-  // [M19] 多画幅派生件落资产（单路异常仅 warn，不影响成片与封面结果）
+  // 多画幅派生件落资产（单路异常仅 warn，不影响成片与封面结果）
   for (const d of derived) {
     try {
       if (!existsSync(d.outAbs)) {
@@ -692,7 +692,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       ctx.log(`派生画幅 ${d.aspect} 落资产失败（不影响成片）：${(err as Error).message}`)
     }
   }
-  // [M29·R02] 合成执行真实输入快照：镜头媒体/配音/字幕/BGM + 分镜 JSON 文本（版本指针），按 shotId 定位
+  // 合成执行真实输入快照：镜头媒体/配音/字幕/BGM + 分镜 JSON 文本（版本指针），按 shotId 定位
   await recordMergeProvenance(ctx, {
     rows,
     usedSegments: segments,
@@ -706,7 +706,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
 }
 
 /**
- * [M29·R02] 合成输入旁路快照（失败仅告警，不触碰 buildComposeArgs 零漂移红线与成片产物）。
+ * 合成输入旁路快照（失败仅告警，不触碰 buildComposeArgs 零漂移红线与成片产物）。
  * 媒体资产不可变→ versionId=null（身份即资产 id）；分镜 JSON 为可编辑文本→携版本指针（编辑分镜→下游成片可报）。
  */
 async function recordMergeProvenance(

@@ -1,5 +1,5 @@
 /**
- * M4 用量记录与定价服务（spec §4.3）
+ * 用量记录与定价服务（spec §4.3）
  * - 定价口径：settings.pricing JSON；四级查找 {provider}:{model} → {provider}:* → {provider} → {model}；
  *   基数 tokens=1e6、char=1e3、image/second=1。
  * - 快照语义：写入时定价并落列，后续改价只影响新记录。
@@ -100,7 +100,7 @@ export function priceOf(
 }
 
 /**
- * [M18] 定价解析（返回元/单位，已含基数换算）：实例级 apiConfigs.pricing → 全局 settings.pricing → null。
+ * 定价解析（返回元/单位，已含基数换算）：实例级 apiConfigs.pricing → 全局 settings.pricing → null。
  * recordUsage（写入快照）与 run-preview（成本预估）共用，保证两条链路口径零漂移。
  */
 export async function resolveUnitPrice(q: {
@@ -149,7 +149,7 @@ export async function resolveUnitPrice(q: {
 /** 记录一条用量（写入时定价快照；异常仅 log.warn，不抛） */
 export async function recordUsage(input: UsageInput): Promise<void> {
   try {
-    // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null（[M18] 抽取 resolveUnitPrice 与 run-preview 共用）
+    // 定价查找优先级：实例级 pricing → 全局 settings.pricing → null（ 抽取 resolveUnitPrice 与 run-preview 共用）
     const unitPrice = input.unitPrice !== undefined ? input.unitPrice : await resolveUnitPrice({
       kind: input.kind,
       provider: input.provider,

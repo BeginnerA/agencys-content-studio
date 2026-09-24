@@ -1,7 +1,7 @@
 import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
- * agencys-content-studio M1 schema —— 通用领域模型（对照设计规格 §4）
+ * agencys-content-studio schema —— 通用领域模型（对照设计规格 §4）
  * 时间戳统一 integer unix ms；JSON 字段统一 text + 应用层校验。
  */
 
@@ -41,10 +41,10 @@ export const pipelineRuns = sqliteTable(
     completedAt: integer('completed_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
-    batchId: integer('batch_id'), // [M4] 所属批次（NULL = 独立 run）
-    batchSeq: integer('batch_seq'), // [M4] 批内序号（从 1 起）
-    workflowId: integer('workflow_id'), // [M27] 归属编排链（NULL = 非编排 run）
-    workflowSeq: integer('workflow_seq'), // [M27] 链内段序（从 0 起）
+    batchId: integer('batch_id'), // 所属批次（NULL = 独立 run）
+    batchSeq: integer('batch_seq'), // 批内序号（从 1 起）
+    workflowId: integer('workflow_id'), // 归属编排链（NULL = 非编排 run）
+    workflowSeq: integer('workflow_seq'), // 链内段序（从 0 起）
     resumedFromRunId: integer('resumed_from_run_id'), // [审计G2] 断点续跑派生自哪个源 run（NULL = 非续跑派生；防双击 resume 并行双扣费）
   },
   (t) => [
@@ -85,8 +85,8 @@ export const genTasks = sqliteTable(
     projectId: integer('project_id').notNull(),
     runId: integer('run_id'),
     stepId: integer('step_id'),
-    canvasNodeId: integer('canvas_node_id'), // [M16] 创作画布节点归属（run/step 均 null）
-    kind: text('kind').notNull(), // image|video|text（text = M9 逐项文本任务）
+    canvasNodeId: integer('canvas_node_id'), // 创作画布节点归属（run/step 均 null）
+    kind: text('kind').notNull(), // image|video|text（text = 逐项文本任务）
     provider: text('provider'),
     model: text('model'),
     prompt: text('prompt'),
@@ -114,7 +114,7 @@ export const assets = sqliteTable(
     projectId: integer('project_id').notNull(),
     stepId: integer('step_id'),
     taskId: integer('task_id'),
-    runId: integer('run_id'), // [M4] 所属 run（NULL = 非 run 产物；导出包归属查询用）
+    runId: integer('run_id'), // 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
     purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|final_video_derived|subtitle|thumbnail|export|chapters|events|graph|plan|regex|sfx
     name: text('name').notNull(),
@@ -133,8 +133,8 @@ export const assets = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
     deletedAt: integer('deleted_at'),
-    embedding: text('embedding'), // [M21] 文本资产语义索引向量（JSON number[]；仅 kind='text' 写入，NULL = 未索引）
-    embeddingModel: text('embedding_model'), // [M21] 写入时模型标识（modelName@dims，与 memories 同构）
+    embedding: text('embedding'), // 文本资产语义索引向量（JSON number[]；仅 kind='text' 写入，NULL = 未索引）
+    embeddingModel: text('embedding_model'), // 写入时模型标识（modelName@dims，与 memories 同构）
   },
   (t) => [
     index('idx_assets_project_purpose').on(t.projectId, t.purpose),
@@ -198,7 +198,7 @@ export const settings = sqliteTable('settings', {
   updatedAt: integer('updated_at').notNull(),
 })
 
-/** M3 记忆表（通用；projectId NULL = 全局） */
+/** 记忆表（通用；projectId NULL = 全局） */
 export const memories = sqliteTable(
   'memories',
   {
@@ -219,13 +219,13 @@ export const memories = sqliteTable(
   ],
 )
 
-/** M3 角色库表（M8 泛化为实体素材库：kind 多态 character|scene|prop；projectId NULL = 全局库） */
+/** 角色库表（泛化为实体素材库：kind 多态 character|scene|prop；projectId NULL = 全局库） */
 export const characters = sqliteTable(
   'characters',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id'), // NULL = 全局库
-    kind: text('kind').notNull().default('character'), // [M8] 实体类型：character|scene|prop
+    kind: text('kind').notNull().default('character'), // 实体类型：character|scene|prop
     name: text('name').notNull(),
     aliases: text('aliases').notNull().default('[]'), // JSON string[]
     summary: text('summary'),
@@ -233,7 +233,7 @@ export const characters = sqliteTable(
     negative: text('negative'), // 免漂移负向词
     voice: text('voice'), // [B③] 机器音色入口：供应商 voice 令牌 / clone:{id} 引用（进 TTS 声链）
     voiceDesc: text('voice_desc'), // [B③] 自然语言声线描述（如「成年男声、低沉沙哑」；仅展示/审计，永不进声链）
-    states: text('states').notNull().default('[]'), // [M13] 角色状态变体（JSON string[]：{剧情节点}：{状态短语}；仅 character 有意义）
+    states: text('states').notNull().default('[]'), // 角色状态变体（JSON string[]：{剧情节点}：{状态短语}；仅 character 有意义）
     refAssetIds: text('ref_asset_ids').notNull().default('[]'), // 定妆照资产 ids（JSON）
     meta: text('meta').notNull().default('{}'),
     createdAt: integer('created_at').notNull(),
@@ -242,7 +242,7 @@ export const characters = sqliteTable(
   (t) => [index('idx_characters_project').on(t.projectId), index('idx_characters_name').on(t.name)],
 )
 
-/** M8 风格预设库（平台级通用：跨体裁画风词块；项目经 projects.settings.style_preset_id 单选绑定） */
+/** 风格预设库（平台级通用：跨体裁画风词块；项目经 projects.settings.style_preset_id 单选绑定） */
 export const stylePresets = sqliteTable('style_presets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(), // 预设名（唯一）
@@ -254,7 +254,7 @@ export const stylePresets = sqliteTable('style_presets', {
   updatedAt: integer('updated_at').notNull(),
 })
 
-/** [M14] 剧集主表（平台级通用：一项目一剧；集列表体见 episodes） */
+/** 剧集主表（平台级通用：一项目一剧；集列表体见 episodes） */
 export const series = sqliteTable(
   'series',
   {
@@ -269,7 +269,7 @@ export const series = sqliteTable(
   (t) => [index('idx_series_project').on(t.projectId)],
 )
 
-/** [M14] 集表（平台级通用：集号/标题/状态/内容资产 + 最新 run 绑定） */
+/** 集表（平台级通用：集号/标题/状态/内容资产 + 最新 run 绑定） */
 export const episodes = sqliteTable(
   'episodes',
   {
@@ -290,7 +290,7 @@ export const episodes = sqliteTable(
   ],
 )
 
-/** M4 批次表（通用；同模板多 run 调度与进度） */
+/** 批次表（通用；同模板多 run 调度与进度） */
 export const batches = sqliteTable('batches', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),
@@ -307,7 +307,7 @@ export const batches = sqliteTable('batches', {
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [index('idx_batches_project').on(t.projectId), index('idx_batches_status').on(t.status)])
 
-/** M4 用量记录表（成本核算；runId NULL = 非 run 来源，如连通性测试） */
+/** 用量记录表（成本核算；runId NULL = 非 run 来源，如连通性测试） */
 export const usageRecords = sqliteTable('usage_records', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),
@@ -331,7 +331,7 @@ export const usageRecords = sqliteTable('usage_records', {
   index('idx_usage_kind').on(t.kind),
 ])
 
-/** M4 发布登记表（发布渠道与数据登记；metrics 仅存不算） */
+/** 发布登记表（发布渠道与数据登记；metrics 仅存不算） */
 export const publications = sqliteTable('publications', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),
@@ -341,16 +341,16 @@ export const publications = sqliteTable('publications', {
   url: text('url'),
   publishedAt: integer('published_at'),
   metrics: text('metrics').notNull().default('{}'), // JSON: {views,likes,comments,favorites,shares}（仅存不算）
-  title: text('title'),            // [M20] 发布标题（A/B 测试识别）
-  abGroup: text('ab_group'),       // [M20] A/B 测试分组标记
+  title: text('title'),            // 发布标题（A/B 测试识别）
+  abGroup: text('ab_group'),       // A/B 测试分组标记
   note: text('note'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [index('idx_publications_project').on(t.projectId), index('idx_publications_asset').on(t.assetId)])
 
-// ---------- [M16] 创作画布（写模型；节点状态/结果零存量，全部由 gen_tasks 派生） ----------
+// ---------- 创作画布（写模型；节点状态/结果零存量，全部由 gen_tasks 派生） ----------
 
-/** [M16] 创作画布文档（项目域） */
+/** 创作画布文档（项目域） */
 export const canvases = sqliteTable(
   'canvases',
   {
@@ -358,35 +358,35 @@ export const canvases = sqliteTable(
     projectId: integer('project_id').notNull(),
     name: text('name').notNull().default('未命名画布'),
     viewport: text('viewport').notNull().default('{"x":0,"y":0,"zoom":1}'), // JSON pan/zoom 持久化
-    deletedAt: integer('deleted_at'), // [M18] 回收站（null=正常；非 null=软删时间戳）
+    deletedAt: integer('deleted_at'), // 回收站（null=正常；非 null=软删时间戳）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [index('idx_canvases_project').on(t.projectId)],
 )
 
-/** [M16] 画布节点（最小化：不存状态与结果——由 gen_tasks.canvasNodeId 派生） */
+/** 画布节点（最小化：不存状态与结果——由 gen_tasks.canvasNodeId 派生） */
 export const canvasNodes = sqliteTable(
   'canvas_nodes',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     canvasId: integer('canvas_id').notNull(),
-    kind: text('kind').notNull(), // [M17] asset|gen|text|entity|run
+    kind: text('kind').notNull(), // asset|gen|text|entity|run
     assetId: integer('asset_id'), // kind=asset：引用项目资产
     title: text('title'),
-    spec: text('spec'), // JSON：gen={genKind,prompt,...}；text={text}；entity={entityId}；run={runId} [M17]
+    spec: text('spec'), // JSON：gen={genKind,prompt,...}；text={text}；entity={entityId}；run={runId}
     x: real('x').notNull().default(0),
     y: real('y').notNull().default(0),
-    adoptedTaskId: integer('adopted_task_id'), // [M17] 结果采纳（gen）：gen_tasks.id；null=未采纳取最新成功
-    seq: integer('seq'), // [M17] 故事板序号（1 起；排序/呈现/导出命名，不参与执行）
-    groupId: integer('group_id'), // [M18] 成组归属（canvas_groups.id；null=未成组）
+    adoptedTaskId: integer('adopted_task_id'), // 结果采纳（gen）：gen_tasks.id；null=未采纳取最新成功
+    seq: integer('seq'), // 故事板序号（1 起；排序/呈现/导出命名，不参与执行）
+    groupId: integer('group_id'), // 成组归属（canvas_groups.id；null=未成组）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [index('idx_canvas_nodes_canvas').on(t.canvasId)],
 )
 
-/** [M16] 画布引用连线（手画；端口语义 reference|first_frame|last_frame|source） */
+/** 画布引用连线（手画；端口语义 reference|first_frame|last_frame|source） */
 export const canvasEdges = sqliteTable(
   'canvas_edges',
   {
@@ -403,7 +403,7 @@ export const canvasEdges = sqliteTable(
   ],
 )
 
-/** [M18] 画布节点分组（成员归属存 canvas_nodes.group_id；x/y 为组锚点，正常渲染用成员派生包围盒） */
+/** 画布节点分组（成员归属存 canvas_nodes.group_id；x/y 为组锚点，正常渲染用成员派生包围盒） */
 export const canvasGroups = sqliteTable(
   'canvas_groups',
   {
@@ -414,14 +414,14 @@ export const canvasGroups = sqliteTable(
     collapsed: integer('collapsed').notNull().default(0), // 折叠态持久化（0/1）
     x: real('x').notNull().default(0), // 锚点（创建时=成员包围盒左上；空组显示用）
     y: real('y').notNull().default(0),
-    /** [M22] 父组 id（NULL=顶层；组嵌套——防环与归属校验在服务层） */
+    /** 父组 id（NULL=顶层；组嵌套——防环与归属校验在服务层） */
     parentId: integer('parent_id'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('idx_canvas_groups_canvas').on(t.canvasId)],
 )
 
-/** [M18] 画布文档快照（保留 id 重放恢复；doc = {nodes,edges,groups} 全量行 JSON） */
+/** 画布文档快照（保留 id 重放恢复；doc = {nodes,edges,groups} 全量行 JSON） */
 export const canvasSnapshots = sqliteTable(
   'canvas_snapshots',
   {
@@ -434,7 +434,7 @@ export const canvasSnapshots = sqliteTable(
   (t) => [index('idx_canvas_snapshots_canvas').on(t.canvasId)],
 )
 
-/** [M20] 排产计划表（轻量调度：计划 → 幂等触发 → batch 创建；红线内自研，非重型引擎） */
+/** 排产计划表（轻量调度：计划 → 幂等触发 → batch 创建；红线内自研，非重型引擎） */
 export const schedules = sqliteTable(
   'schedules',
   {
@@ -461,7 +461,7 @@ export const schedules = sqliteTable(
   ],
 )
 
-/** [M27] 自动编排链（跨模板串链 orchestrator；段序列引用既有模板，不碰引擎） */
+/** 自动编排链（跨模板串链 orchestrator；段序列引用既有模板，不碰引擎） */
 export const workflows = sqliteTable(
   'workflows',
   {
@@ -480,7 +480,7 @@ export const workflows = sqliteTable(
   (t) => [index('idx_workflows_project').on(t.projectId), index('idx_workflows_status').on(t.status)],
 )
 
-/** [M19] 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
+/** 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
 export const voiceClones = sqliteTable('voice_clones', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(), // 音色名（用户可读；唯一）
@@ -517,7 +517,7 @@ export type VoiceClone = typeof voiceClones.$inferSelect
 export type Schedule = typeof schedules.$inferSelect
 export type Workflow = typeof workflows.$inferSelect
 
-/** [M20] 预算告警记录（超阈告警留痕；24h 去抖） */
+/** 预算告警记录（超阈告警留痕；24h 去抖） */
 export const budgetAlerts = sqliteTable('budget_alerts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   scope: text('scope').notNull(), // project|global
@@ -531,9 +531,9 @@ export const budgetAlerts = sqliteTable('budget_alerts', {
 
 export type BudgetAlert = typeof budgetAlerts.$inferSelect
 
-// ---------- [M29·R02] 通用追溯层（内容/参考版本 + 执行真实输入快照；无短剧专属模型，加法迁移） ----------
+// ---------- 通用追溯层（内容/参考版本 + 执行真实输入快照；无短剧专属模型，加法迁移） ----------
 
-/** [M29] 内容/参考对象版本（asset 不可变文件版本 / entity 字段快照；写后永不覆写） */
+/** 内容/参考对象版本（asset 不可变文件版本 / entity 字段快照；写后永不覆写） */
 export const contentVersions = sqliteTable(
   'content_versions',
   {
@@ -557,7 +557,7 @@ export const contentVersions = sqliteTable(
   ],
 )
 
-/** [M29] 执行快照：每次生成/合成冻结其真实输入集合（一条 = 一次执行） */
+/** 执行快照：每次生成/合成冻结其真实输入集合（一条 = 一次执行） */
 export const execSnapshots = sqliteTable(
   'exec_snapshots',
   {
@@ -580,7 +580,7 @@ export const execSnapshots = sqliteTable(
   ],
 )
 
-/** [M29] 执行实际输入依赖边：used/skipped + 版本指针 + 镜头/端口语义定位（下游影响反查用） */
+/** 执行实际输入依赖边：used/skipped + 版本指针 + 镜头/端口语义定位（下游影响反查用） */
 export const execInputs = sqliteTable(
   'exec_inputs',
   {
@@ -608,7 +608,7 @@ export type ContentVersion = typeof contentVersions.$inferSelect
 export type ExecSnapshot = typeof execSnapshots.$inferSelect
 export type ExecInput = typeof execInputs.$inferSelect
 
-/** [M30] 创作控制态；生产状态始终由关联 run 投影。 */
+/** 创作控制态；生产状态始终由关联 run 投影。 */
 export const creationSessions = sqliteTable('creation_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),

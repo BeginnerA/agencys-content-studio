@@ -3,21 +3,22 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, creationMessages, creationSessions, genTasks, pipelineRuns, pipelineSteps, projects } from '../../db/schema'
 import { resolveEndpoint } from '../../adapters/provider'
-import { resolveStrictAsrEndpoint } from '../strict-asr'
+import { resolveStrictAsrEndpoint, snapshotStrictAsr } from '../strict-asr'
 import { mapResolution } from '../../adapters/video-capabilities'
 import { engine } from '../../pipeline/engine'
 import { loadTemplate } from '../../pipeline/loader'
 import { createRunRow } from '../run-create'
 import { writeTextAsset } from '../storage'
 import { checkBudget } from '../budget'
+import { resolveUnitPrice } from '../usage'
 import { confirmationSchema, creationPlanSchema, CreationError, hashJson } from './contract'
-import { assertRecipeSources, recipeOf, recipeSchema, type CreationRecipe } from './recipe'
+import { assertRecipeSources, recipeOf, recipeSchema, type CreationRecipe, type EndpointSnapshot } from './recipe'
 import { preflightPlan, type CreationPreflight } from './preflight'
 import { projectMetaFromRow, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationWrite, parseJson, sessionRow } from './store'
 
 /**
- * [M40] 确认即立项：点「开始制作」前项目一直为 draft 影子态，本函数在同一事务里
+ * 确认即立项：点「开始制作」前项目一直为 draft 影子态，本函数在同一事务里
  * 把立项信息（名称/载体/模板/标签/简介）按「用户覆盖 > 草稿行现值 > 规则派生」写入并转 active。
  * 覆盖值不改 planHash（立项信息不是执行数据），因此改项目名称不会作废已确认的方案。
  */
@@ -33,12 +34,12 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     const plan = creationPlanSchema.parse(JSON.parse(s.plan))
     const pf = await preflightPlan(s.projectId, plan)
     if (!pf.ready || !pf.execution) throw new CreationError(pf.issues[0]?.code ?? 'preflight_failed', pf.issues[0]?.message ?? '预检未通过', 409)
-    // [M47] 路 B 分流：预检已按策略判定免核验（estimatedDialogue）的对白放行启动；
+    // 路 B 分流：预检已按策略判定免核验（estimatedDialogue）的对白放行启动；
     // strict 对白（逐字 ASR 路线）执行链仍冻结（需真实配置合格 whisper-1 后另立项解冻），不可达路径不假开放。
     if (plan.performance === 'dialogue' && !pf.execution.estimatedDialogue) throw new CreationError('dialogue_unavailable', '严格 ASR 对白执行链正在接线，尚未开放制作；如需立即创作请在设置中关闭「人物对白严格 ASR 核验」（需视频模型支持原生对白）', 422)
     if (hashJson({ plan, execution: pf.execution }) !== s.planHash) throw new CreationError('configuration_changed', '配置或价格已变化，请重新预检并确认最新方案', 409)
     if (pf.estimate.unpriced.length && !request.acceptUnpriced) throw new CreationError('unpriced', '存在未知价格，请显式接受未计价项后再确认', 409)
-    // [M43] 画质选择：防篡改 hash 校验（默认档位）之后才覆写——选档不豁免配置漂移复查；
+    // 画质选择：防篡改 hash 校验（默认档位）之后才覆写——选档不豁免配置漂移复查；
     // 仅预检透出的已背书档可选（无视频能力/越界一律拒绝，不静默回落），经适配器同源归一后随 recipe 冻结执行。
     if (request.resolution) {
       const opts = pf.resolutionOptions
@@ -49,7 +50,7 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
     return db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
-      // [M40] 立项：智能填写（已含规划时写入的草稿行值）+ 用户覆盖，逐项过真源校验；非法值回落且可见
+      // 立项：智能填写（已含规划时写入的草稿行值）+ 用户覆盖，逐项过真源校验；非法值回落且可见
       const base = projectMetaFromRow({ name: project.name, genre: project.genre, templateKey: project.templateKey, tags: parseJson<string[]>(project.tags, []), brief: project.brief }, plan)
       const { meta, notes } = sanitizeProjectMeta(request.project, plan, base)
       await tx.update(projects).set({ name: meta.name, genre: meta.genre, templateKey: meta.templateKey, tags: JSON.stringify(meta.tags), brief: meta.brief, status: 'active', updatedAt: Date.now() }).where(eq(projects.id, project.id))
@@ -63,7 +64,7 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
         const a = await writeTextAsset(s.projectId, { ...specs[i]!, content: contents[i]!, params: { creationSessionId: id, revision: s.planRevision } }, tx)
         sources.push({ id: a.id, hash: hashJson(contents[i]) })
       }
-      // [M42] 审阅闸：勾选即用变体模板（同构步骤 + 画面/首帧后 gate）；模板哈希随所选键重算，
+      // 审阅闸：勾选即用变体模板（同构步骤 + 画面/首帧后 gate）；模板哈希随所选键重算，
       // planHash 不受该标志影响（启动方式不是执行数据，与立项覆盖同一先例）。
       const baseTemplate = plan.performance === 'dialogue' ? 'easy-dialogue' : 'easy-video'
       const templateKey = request.reviewGate ? `${baseTemplate}-review` : baseTemplate
@@ -71,7 +72,7 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
       const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',
       } }, tx)
-      // [M45] 品牌开关：仅逐次关闭时落 _compose.brandApply=false（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
+      // 品牌开关：仅逐次关闭时落 _compose.brandApply=false（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
       // createRunRow→normalizeInput 只保留模板声明 inputs 与 _params（非声明的 _compose 会被静默丢弃），
       // 故与工作台 updateComposeConfig 同法在建好后直接落库该内部键；合成期 ffmpeg-merge 读取；retryCreation 显式克隆 _compose → 开关随续跑保留。
       if (request.brandApply === false) {
@@ -81,7 +82,7 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
       await tx.update(assets).set({ runId: run.id }).where(eq(assets.id, sources[0]!.id))
       await tx.update(creationSessions).set({ approvedPlan: JSON.stringify(recipe), status: 'started', runId: run.id, updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: '方案已确认，正在自动制作。取消只停止后续提交，在途请求仍可能计费。', payload: JSON.stringify({ kind: 'run', runId: run.id }), createdAt: Date.now() })
-      // [M40] 立项字段被真源修正过 → 补一条可见消息（不静默降级；无调整不打扰）
+      // 立项字段被真源修正过 → 补一条可见消息（不静默降级；无调整不打扰）
       if (notes.length) await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: `已创建项目《${meta.name}》。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'project', projectId: project.id, notes }), createdAt: Date.now() })
       else await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: `已创建项目《${meta.name}》（载体：${meta.genre} · 模板：${meta.templateKey}），可在项目页随时调整。`, payload: JSON.stringify({ kind: 'project', projectId: project.id, notes: [] }), createdAt: Date.now() })
       return { runId: run.id, start: true }
@@ -100,8 +101,28 @@ export const retryCreationSchema = confirmationSchema.extend({
   runId: z.number().int().positive(),
   /** 用户已在供应商侧核实失败且愿意重新提交的任务；已知外部 ID 默认仅恢复查询。 */
   verifiedFailedTaskIds: z.array(z.number().int().positive()).max(100).default([]),
+  /** 用户显式接受「已批准端点已漂移」：按当前配置重钉端点快照后就地续跑（可能改用不同模型/价格）。 */
+  acceptConfigDrift: z.boolean().default(false),
 }).strict()
 interface RetryLink { from: number; to: number; key: string }
+
+/** 配置漂移就地续跑：按 configId 重解析当前实例并刷新端点快照（新 configHash/model/unitPrice）。
+ *  实例已删除/不可解析 → 不能凭空换到别的实例，仍抛 configuration_changed（须重新规划）。 */
+async function rePinEndpoint(service: 'audio' | 'image' | 'video', pin: EndpointSnapshot): Promise<EndpointSnapshot> {
+  let ep
+  try {
+    ep = await resolveEndpoint(service, pin.provider, { configId: pin.configId })
+  } catch {
+    throw new CreationError('configuration_changed', `已批准的${service}实例已被删除或不可解析，无法就地续跑，请重新规划`, 409)
+  }
+  const spec = service === 'audio'
+    ? ({ kind: 'tts', unit: 'char' } as const)
+    : service === 'video'
+      ? ({ kind: 'video', unit: 'second' } as const)
+      : ({ kind: 'image', unit: 'image' } as const)
+  const price = await resolveUnitPrice({ configId: ep.configId, provider: ep.providerKey, model: ep.model, ...spec })
+  return { configId: ep.configId, configHash: ep.configHash, provider: ep.providerKey, model: ep.model!, unitPrice: price !== null && price >= 0 ? price : null }
+}
 export async function retryCreation(id: number, raw: unknown): Promise<{ runId: number }> {
   const request = retryCreationSchema.parse(raw)
   const result = await creationWrite(async () => {
@@ -118,13 +139,27 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
     if (!src || !['failed', 'cancelled'].includes(src.status) || engine.isRunning(src.id)) throw new CreationError('busy', '请等待在途任务结束后恢复', 409)
     const recipe = recipeOf(src)!
     await assertRecipeSources(src, recipe)
+    let recipeRewritten = false
+    const eps = recipe.endpoints as Record<string, EndpointSnapshot | undefined>
     for (const [service, pin] of Object.entries(recipe.endpoints)) {
+      if (!pin) continue
       try { await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, pin) }
-      catch { throw new CreationError('configuration_changed', '已批准实例不可用或配置已变化，请复制需求重新规划', 409) }
+      catch {
+        if (!request.acceptConfigDrift) throw new CreationError('configuration_changed', '已批准实例不可用或配置已变化；确认接受改用当前配置（模型/价格可能不同）后可就地续跑', 409)
+        eps[service] = await rePinEndpoint(service as 'audio' | 'image' | 'video', pin)
+        recipeRewritten = true
+      }
     }
-    // [M44] 对白的严格 ASR 同样是批准快照：恢复前独立按 pin 重解析，配置漂移即阻止，不偷偷换模型或协议。
-    if (recipe.asr) await resolveStrictAsrEndpoint(recipe.asr)
-    // [M42] 模板哈希按 run 自身模板键校验（review 变体恢复不被误拦；原 easy-video 会话因模板未变仍通过）
+    // 对白的严格 ASR 同样是批准快照：默认漂移即阻止；显式接受漂移则按当前配置重钉（不偷偷换模型或协议）。
+    if (recipe.asr) {
+      try { await resolveStrictAsrEndpoint(recipe.asr) }
+      catch {
+        if (!request.acceptConfigDrift) throw new CreationError('configuration_changed', '严格 ASR 实例不可用或配置已变化；确认接受改用当前配置后可就地续跑', 409)
+        recipe.asr = await snapshotStrictAsr()
+        recipeRewritten = true
+      }
+    }
+    // 模板哈希按 run 自身模板键校验（review 变体恢复不被误拦；原 easy-video 会话因模板未变仍通过）
     if (recipe.templateHash !== hashJson(loadTemplate(src.templateKey))) throw new CreationError('template_changed', '模板已变化，请复制需求重新规划', 409)
     const tasks = await db.select().from(genTasks).where(eq(genTasks.runId, src.id))
     const uncertain = tasks.filter((t) => t.status !== 'succeeded' && t.attempts > 0)
@@ -142,8 +177,10 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       if (!project) throw new CreationError('project_deleted', '项目已删除', 409)
       const claim = await tx.update(creationSessions).set({ status: 'starting' }).where(and(eq(creationSessions.id, id), eq(creationSessions.runId, src.id), eq(creationSessions.status, 'started'))).returning()
       if (!claim.length) throw new CreationError('conflict', '会话已被恢复，请刷新', 409)
-      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: JSON.parse(src.input), creationSessionId: id }, tx)
-      // [M45] 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
+      const newInput = JSON.parse(src.input) as Record<string, unknown>
+      if (recipeRewritten) newInput.recipe = JSON.stringify(recipe)
+      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id }, tx)
+      // 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
       const srcCompose = (JSON.parse(src.input) as Record<string, unknown>)['_compose']
       if (srcCompose && typeof srcCompose === 'object' && !Array.isArray(srcCompose)) {
         const cur = JSON.parse(newRun.input) as Record<string, unknown>

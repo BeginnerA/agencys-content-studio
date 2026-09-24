@@ -39,7 +39,7 @@ templatesRoutes.get('/templates', (c) => {
   return c.json({ items })
 })
 
-// [M35 G7] GET /templates/recommend?text=&top=3 —— 自然语言→模板推荐（embedding 零成本，失败回落关键词）
+// GET /templates/recommend?text=&top=3 —— 自然语言→模板推荐（embedding 零成本，失败回落关键词）
 // 预于 /templates/:key 注册，同方法下 Hono 静态优先，不依赖路由树实现细节。
 templatesRoutes.get('/templates/recommend', h(async (c) => {
   const text = c.req.query('text') ?? ''
@@ -62,7 +62,7 @@ templatesRoutes.get('/templates/:key', h((c) => {
   }
 }))
 
-// [M34] GET /templates/:key/prefill?project_id=N —— 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位）
+// GET /templates/:key/prefill?project_id=N —— 运行入参预填候选（G6 历史 run/brief + G8 视频合法档位）
 // 只读、零网络、零计费；200 → PrefillResult；project_id 非法 400；模板/项目缺失 404
 templatesRoutes.get('/templates/:key/prefill', h(async (c) => {
   const key = c.req.param('key') ?? ''
@@ -107,7 +107,7 @@ templatesRoutes.post('/templates', h(async (c) => {
   const res = validateTemplateText(yaml, key)
   if (!res.ok || !res.template) throw new HttpError(400, 'template_invalid', res.errors.join('；'))
   const template = saveTemplate(key, yaml)
-  // [M35 G7] 模板新建 → fire-and-forget refresh embedding 向量（不阻塞响应；失败已内部兑底）
+  // 模板新建 → fire-and-forget refresh embedding 向量（不阻塞响应；失败已内部兑底）
   void refreshTemplateVectors()
   return c.json({ ok: true, template, warnings: res.warnings }, 201)
 }))
@@ -125,7 +125,7 @@ templatesRoutes.put('/templates/:key', h(async (c) => {
   const res = validateTemplateText(yaml, key)
   if (!res.ok || !res.template) throw new HttpError(400, 'template_invalid', res.errors.join('；'))
   const template = saveTemplate(key, yaml)
-  // [M35 G7] 模板更新 → fire-and-forget refresh embedding 向量
+  // 模板更新 → fire-and-forget refresh embedding 向量
   void refreshTemplateVectors()
   return c.json({ ok: true, template, warnings: res.warnings })
 }))
@@ -152,12 +152,12 @@ templatesRoutes.delete('/templates/:key', h(async (c) => {
     )
   }
   deleteTemplate(key)
-  // [M35 G7] 模板删除 → fire-and-forget refresh embedding 向量
+  // 模板删除 → fire-and-forget refresh embedding 向量
   void refreshTemplateVectors()
   return c.json({ ok: true })
 }))
 
-/** [M23] edits 应用（TemplateEditError → 400 bad_edits；其余原样上抛） */
+/** edits 应用（TemplateEditError → 400 bad_edits；其余原样上抛） */
 function applyEditsOr400(tpl: Template, edits: unknown): TemplateEditsResult {
   try {
     return applyTemplateEdits(tpl, edits)
@@ -167,7 +167,7 @@ function applyEditsOr400(tpl: Template, edits: unknown): TemplateEditsResult {
   }
 }
 
-// [M23] POST /templates/:key/edit-draft —— 受控编辑草案（edits 白名单应用 → 序列化 YAML；不落盘）
+// POST /templates/:key/edit-draft —— 受控编辑草案（edits 白名单应用 → 序列化 YAML；不落盘）
 // body { edits } → { yaml, validation, editsApplied }；模板缺失 404；edits 非法 400 bad_edits
 templatesRoutes.post('/templates/:key/edit-draft', h(async (c) => {
   const key = c.req.param('key') ?? ''
@@ -180,7 +180,7 @@ templatesRoutes.post('/templates/:key/edit-draft', h(async (c) => {
   return c.json({ yaml, validation: validateTemplateText(yaml, key), editsApplied: result.applied })
 }))
 
-// [M23] POST /templates/:key/edit-save —— edits 落盘为新模板（key 缺省 <原key>-edit；冲突自动后缀避让；
+// POST /templates/:key/edit-save —— edits 落盘为新模板（key 缺省 <原key>-edit；冲突自动后缀避让；
 // 原文件零触碰）→ { templateKey, validation, editsApplied }；校验失败 400 template_invalid
 templatesRoutes.post('/templates/:key/edit-save', h(async (c) => {
   const key = c.req.param('key') ?? ''

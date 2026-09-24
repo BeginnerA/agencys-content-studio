@@ -1,4 +1,4 @@
-// [M22·批3-⑥] 回收站保留期自动清理：settings 'trash' 策略解析 + 过期选择纯函数 + 批量 purge。
+// 回收站保留期自动清理：settings 'trash' 策略解析 + 过期选择纯函数 + 批量 purge。
 import { eq, isNotNull } from 'drizzle-orm'
 import { db } from '../db'
 import { canvases, settings } from '../db/schema'
@@ -32,7 +32,7 @@ export function parseTrashPolicy(raw: unknown): TrashPolicy {
   return { retentionDays, autoPurge }
 }
 
-/** 读生效策略：settings.key='trash' → 内置默认（M21 concurrency 先例） */
+/** 读生效策略：settings.key='trash' → 内置默认（concurrency 先例） */
 export async function resolveTrashPolicy(): Promise<TrashPolicy> {
   try {
     const rows = await db.select().from(settings).where(eq(settings.key, 'trash')).limit(1)

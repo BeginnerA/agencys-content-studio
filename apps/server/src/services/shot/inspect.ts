@@ -134,7 +134,7 @@ export async function assertChainRepairable(
     // 但 run=failed 表示批准链路尚未跑完，级联救援只是完成既定方案（执行期 assertRecipeSources 仍独立守方案/素材一致性），故放行。
     throw new WorkbenchError('creation_confirmation_required', '已批准制作链已完成；额外生成请在轻松创作中重新确认方案', 409)
   }
-  // [方案C 收口] failed 轻松创作 run 的级联救援会重置链内非成功任务；「受理状态不明」任务（已提交但无外部
+  // failed 轻松创作 run 的级联救援会重置链内非成功任务；「受理状态不明」任务（已提交但无外部
   // task_id/无产物）无 task_id 可续轮询 → 引擎将重新提交，与断点续跑/单任务重试同类重复计费风险。
   // 故级联重跑亦须与 resume 同源收口（单一真源 isAmbiguousSubmitted）：存在此类任务时拒绝级联、引导回会话核验。
   if (isCreationTemplate(run.templateKey) && run.status === 'failed') {

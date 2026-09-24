@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * [M33] 定价智能带出（Tier A）：全通道定价区子组件，从 ApiConfigForm 抽出。
- * 复用 M32「单一真源 + 用户可覆盖 + 预览确认」范式：选供应商 + 模型后自动拉 `model-suggest`——
+ * 定价智能带出（Tier A）：全通道定价区子组件，从 ApiConfigForm 抽出。
+ * 复用 「单一真源 + 用户可覆盖 + 预览确认」范式：选供应商 + 模型后自动拉 `model-suggest`——
  * 命中平台参考定价表 → 自动预填（用户可改），标注来源锚点；未命中（无核实依据）→ 回落手填空框 + 明确提示补录。
  * 编辑态：实例已有 pricing → 尊重存量（不覆盖），仅提供「改用平台参考价」一键切换。
  * 安全线：真源表只影响「建实例预填」，不改事后计价口径（未命中绝不塞通用默认价，成本可见不降级）。
@@ -18,7 +18,7 @@ const props = defineProps<{
   model: string
   /** 编辑回显：既有实例 pricing（无则 null）；有则尊重存量、不自动覆盖 */
   initial?: Record<string, number> | null
-  /** [M33.1] 在线目录带出的参考定价（供应商接口明确返回，如阿里百炼 LLM）；优先级 live > 核实表 */
+  /** 在线目录带出的参考定价（供应商接口明确返回，如阿里百炼 LLM）；优先级 live > 核实表 */
   live?: ModelPricing | null
 }>()
 const emit = defineEmits<{
@@ -60,7 +60,7 @@ function fillFromPrices(prices: ModelPricing['prices']): void {
   }
 }
 
-/** [M33.1] 按优先级带出参考定价：编辑存量 stored > 在线目录 live > 平台核实表 auto > 手填 manual（未命中不塞默认价） */
+/** 按优先级带出参考定价：编辑存量 stored > 在线目录 live > 平台核实表 auto > 手填 manual（未命中不塞默认价） */
 async function refresh(): Promise<void> {
   fetching.value = true
   try {
@@ -148,7 +148,7 @@ watch(
   () => props.initial,
   () => void refresh(),
 )
-// [M33.1] 在线目录带出价到达（选定模型后 fetch-models 结果）→ 重评优先级
+// 在线目录带出价到达（选定模型后 fetch-models 结果）→ 重评优先级
 watch(
   () => props.live,
   () => void refresh(),
@@ -180,7 +180,7 @@ watch(
 
     <span v-if="fetching" class="note">正在按平台定价真源核实…</span>
     <template v-else-if="(mode === 'auto' || mode === 'live') && suggested">
-      <!-- [M37·G13] 统一来源徽标：预填依据一目了然，核实锚点收进 hover -->
+      <!-- 统一来源徽标：预填依据一目了然，核实锚点收进 hover -->
       <span class="prow-line">
         <ProvenanceBadge
           kind="auto"
@@ -240,7 +240,7 @@ watch(
   margin-top: 6px;
 }
 
-/* [M37] 徽标 + 短注一行 */
+/* 徽标 + 短注一行 */
 .prow-line {
   display: flex;
   align-items: center;

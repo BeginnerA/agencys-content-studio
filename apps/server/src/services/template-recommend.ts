@@ -1,5 +1,5 @@
 /**
- * [M35 · G7] 自然语言 → 模板推荐（本地 embedding 零成本）。
+ * 自然语言 → 模板推荐（本地 embedding 零成本）。
  *
  * 背景：`ProjectFormModal` 建项目时靠 `GENRE_DEFAULT_TPL` 静态映射 + 用户手选；
  * `easy-create` 首页 idea 是硬编码 example。15 套模板都有 `name / description / genre / scene`

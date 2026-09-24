@@ -1,5 +1,5 @@
 /**
- * [M28] 资产预览查看器状态与操作（自 AssetPreviewer.vue 逐字迁移）
+ * 资产预览查看器状态与操作（自 AssetPreviewer.vue 逐字迁移）
  * —— 装配约定：函数体逐字保留；props/emit 经参数注入；包裹层缩进 +2（机械转换）
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -102,7 +102,7 @@ export function useAssetPreviewer(
     return KIND_TEXT[a.kind] ?? a.kind
   })
 
-  // [M24] 合规审核徽章（spec §2.6 前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
+  // 合规审核徽章（spec §2.6 前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
   const compliance = computed(() =>
     cur.value ? parseAssetCompliance(cur.value) : null,
   )
@@ -159,7 +159,7 @@ export function useAssetPreviewer(
     if ((a.fileSize ?? 0) > MAX_TEXT) return
     textLoading.value = true
     try {
-      // [M25] no-store：/file 响应带 max-age=3600 缓存，保存后重读必须绕过（编辑预填防陈旧/静默回滚）
+      // no-store：/file 响应带 max-age=3600 缓存，保存后重读必须绕过（编辑预填防陈旧/静默回滚）
       const res = await fetch(a.urls.file, { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const raw = await res.text()
@@ -294,7 +294,7 @@ export function useAssetPreviewer(
     dragging.value = false
   }
 
-  // ===== [M12] 图像有效性重检（写回 params.quality；结果同步宿主） =====
+  // ===== 图像有效性重检（写回 params.quality；结果同步宿主） =====
   const checkBusy = ref(false)
   const checkMsg = ref('')
 
@@ -314,7 +314,7 @@ export function useAssetPreviewer(
     }
   }
 
-  // ===== [M21] 标签编辑（footer 内联；变更即存） =====
+  // ===== 标签编辑（footer 内联；变更即存） =====
   const tagDraft = ref('')
   const tagBusy = ref(false)
   const tagErr = ref('')
@@ -388,7 +388,7 @@ export function useAssetPreviewer(
     }
   }
 
-  // ===== [M25] G2 文本内容编辑（白名单 purpose 的文本资产 → textarea + 分栏预览 → PATCH 覆写）=====
+  // ===== G2 文本内容编辑（白名单 purpose 的文本资产 → textarea + 分栏预览 → PATCH 覆写）=====
   // 与服务端 asset-content.ts EDITABLE_PURPOSES 镜像；守卫终裁在后端，前端仅控制入口
   const EDITABLE_PURPOSES = [
     'source',
@@ -464,7 +464,7 @@ export function useAssetPreviewer(
     }
   }
 
-  // ===== [M29·R02] 版本历史 / 下游影响面板（仅可编辑文本资产；还原后重读工作副本） =====
+  // ===== 版本历史 / 下游影响面板（仅可编辑文本资产；还原后重读工作副本） =====
   const showVersions = ref(false)
 
   /** 面板还原成功回调：宿主同步新资产 + 重读预览文本（no-store 绕过缓存） */

@@ -10,7 +10,7 @@ import type { Asset, CreationArtifact, CreationCandidateStep, ShotBoardData } fr
 import type { useEasyCreate } from './use-creation-chat'
 
 /**
- * [M42] 成果面板：逐镜成果（含复用标记）+ 候选版本选择 + 本地重新合成入口 + 局部返修入口。
+ * 成果面板：逐镜成果（含复用标记）+ 候选版本选择 + 本地重新合成入口 + 局部返修入口。
  * 候选块只在「run 已收敛」且「该镜该模态有 >1 个可用候选」时出现：制作中不展示，避免对着半成品选版本。
  * 选片零计费、不改成片（只写在用指针），因此必须再走一次本地重新合成才落到成片 —— 由 selectionDirty 驱动提示。
  * 返修入口同样只给已收敛的 run（解析要先花一次文本模型费用，制作中不给出计费出口）。
@@ -30,10 +30,10 @@ watch(() => props.s.state.currentId, () => {
   brokenThumbs.value = []
   resetCandidates()
 })
-// [M42] 返修成功后该镜会有新版本：候选缓存与展开态一并丢弃，下一轮投影回显后再重新拉 board
+// 返修成功后该镜会有新版本：候选缓存与展开态一并丢弃，下一轮投影回显后再重新拉 board
 watch(() => props.s.rework.state.stamp, () => resetCandidates())
 
-// ===== [M42] 候选版本：展开态 / 待应用选择 / board 缓存（按步共享，不逐镜重复拉） =====
+// ===== 候选版本：展开态 / 待应用选择 / board 缓存（按步共享，不逐镜重复拉） =====
 
 const SETTLED = new Set(['completed', 'failed'])
 const CANDIDATE_STEPS: CreationCandidateStep[] = ['images', 'frames', 'motion']
@@ -159,7 +159,7 @@ async function open(a: CreationArtifact): Promise<void> {
         </button>
         <p v-if="recomposing" class="muted">不会。重新合成只在本地把现有画面/视频素材拼成新成片，不调用任何付费生成模型。</p>
       </div>
-      <!-- [M42] 局部返修：独立于消息输入框的计费入口（默认发信仍是「记录下一版建议」） -->
+      <!-- 局部返修：独立于消息输入框的计费入口（默认发信仍是「记录下一版建议」） -->
       <button
         v-if="s.rework.canUse.value && !s.rework.state.open"
         class="btn sm ec-rework-open"

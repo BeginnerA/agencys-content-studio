@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 参考素材列表（自 CreationPlanCard.vue 逐字迁移，行为零变更）：
+ * 参考素材列表（自 CreationPlanCard.vue 逐字迁移，行为零变更）：
  * 已冻结进方案的参考素材缩略 + 角色/提示 + 参考视频解析计数提示。
  */
 import Icon from '../../components/common/Icon.vue'

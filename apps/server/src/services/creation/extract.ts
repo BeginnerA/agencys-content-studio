@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：文本提取（gen prompt / 文本资产 → 新 text 节点）。
+// 自 services/creation.ts 拆分：文本提取（gen prompt / 文本资产 → 新 text 节点）。
 import { readFileSync } from 'node:fs'
 import { eq } from 'drizzle-orm'
 import { db } from '../../db'
@@ -8,9 +8,9 @@ import { absPathOf } from '../storage'
 import { findNode, parsePos } from './nodes'
 import { safeParseSpec } from './spec'
 
-// ---------- [M17] 文本提取 ----------
+// ---------- 文本提取 ----------
 
-/** [M17] 提取文本节点：源 = gen（spec.prompt）或文本资产节点（读资产全文）→ 新建 text 节点（默认源右侧偏移） */
+/** 提取文本节点：源 = gen（spec.prompt）或文本资产节点（读资产全文）→ 新建 text 节点（默认源右侧偏移） */
 export async function extractTextNode(nodeId: number, x?: unknown, y?: unknown): Promise<CanvasNode | null> {
   const src = await findNode(nodeId)
   if (!src) return null

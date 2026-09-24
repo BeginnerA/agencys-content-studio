@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasSocket；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasSocket；依赖显式注入，原函数体保持不变。 */
 import { watch } from 'vue'
 import { getSocket, studioOff } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'

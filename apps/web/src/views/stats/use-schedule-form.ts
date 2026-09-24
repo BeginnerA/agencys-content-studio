@@ -1,5 +1,5 @@
 /**
- * [M26-split] 排产日历「新建表单」状态机（自 ScheduleCalendar.vue 拆出，行为零变更）
+ * 排产日历「新建表单」状态机（自 ScheduleCalendar.vue 拆出，行为零变更）
  * 持有新建计划表单的全部状态（showForm/formXxx/formInputs）与提交逻辑；
  * 展示、日历网格与数据加载留父视图，经返回值接线（v-model 透传 ScheduleFormModal）。
  * projectId/err 为父子共享真源，由父级传入 Ref；创建成功后经 onCreated 回调触发父级刷新。

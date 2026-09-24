@@ -4,7 +4,7 @@ import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
 
-// [M25·G4] adapt_audit 一致性回查 action（spec §2.5，批 2 接线）。
+// adapt_audit 一致性回查 action（spec §2.5，批 2 接线）。
 // 语义：LLM 对照「章节原文 vs 事件/剧本产物」输出忠实度判定；产物 purpose=audit_report。
 // 模板 novel-audit.yaml + 提示词 adapt-audit.md 同批落地。
 

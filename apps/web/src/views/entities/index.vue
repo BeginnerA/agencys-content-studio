@@ -112,7 +112,7 @@ const {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
-/* [M13] 批量润色结果 notice */
+/* 批量润色结果 notice */
 .notice-box {
   margin-bottom: 12px;
   padding: 9px 12px;

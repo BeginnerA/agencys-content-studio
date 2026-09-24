@@ -24,7 +24,7 @@ const p = props.publication
 const platform = ref<string>(p?.platform ?? 'douyin')
 const url = ref(p?.url ?? '')
 const assetId = ref<number | ''>(p?.assetId ?? props.defaultAssetId ?? '')
-/** [整改] 发布标题（发布到平台时使用的实际标题，用于复盘标题模式分析）；M20 遗留未接 UI 的字段 */
+/** 发布标题（发布到平台时使用的实际标题，用于复盘标题模式分析）；早期遗留未接 UI 的字段 */
 const title = ref(p?.title ?? '')
 /** 用户是否手动改过标题：未改时允许从所选资产名自动填充 */
 const titleTouched = ref(Boolean(p?.title))
@@ -53,7 +53,7 @@ function str(n: number | undefined): string {
   return n ? String(n) : ''
 }
 
-// [整改] 选定关联资产且用户未手改标题时，用资产名自动填充标题（避免复盘时标题全为空）
+// 选定关联资产且用户未手改标题时，用资产名自动填充标题（避免复盘时标题全为空）
 watch(
   assetId,
   (id) => {
@@ -80,7 +80,7 @@ async function submit() {
       platform: platform.value,
       url: url.value.trim() || undefined,
       asset_id: assetId.value === '' ? undefined : assetId.value,
-      // [整改] 发布标题（供复盘标题模式分析；无来源时自动取关联资产名）
+      // 发布标题（供复盘标题模式分析；无来源时自动取关联资产名）
       title: title.value.trim() || undefined,
       // 日期取当地中午避免时区边界
       published_at: publishedDate.value

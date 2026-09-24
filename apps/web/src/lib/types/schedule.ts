@@ -1,4 +1,4 @@
-/** [M20] 排产计划 + 预算类型 */
+/** 排产计划 + 预算类型 */
 
 export type ScheduleStatus =
   'pending' | 'triggered' | 'completed' | 'cancelled' | 'failed'

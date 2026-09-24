@@ -47,7 +47,7 @@ export const VENDOR_SEEDS: VendorSeed[] = [
 
 /**
  * 预置供应商目录（种子）。
- * 命名原则（M2.2 统一）：一行 = 厂商 × 能力；协议实现（OpenAI 兼容 / 私有协议）
+ * 命名原则（统一）：一行 = 厂商 × 能力；协议实现（OpenAI 兼容 / 私有协议）
  * 只在 description 里说明，不进入行名。同一厂商的每类能力各占一行
  * （如 siliconflow_* / pollinations_* / aliyun_* / volcengine_* 四类）。openai_* 行 = OpenAI 官方，
  * 亦承接任意 OpenAI 兼容的自定义网关；video 各家协议互不相通，天然一家一行。
@@ -91,7 +91,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
 ]
 
 /**
- * 幂等补种（M2 起为「缺失补插 + 目录信息回填」，老库增量生效）：
+ * 幂等补种（自本特性起为「缺失补插 + 目录信息回填」，老库增量生效）：
  * - key 不存在 → 插入；
  * - 存在但 defaultUrl/presetModels 为空且种子提供 → 回填（不动用户已填内容）；
  * - 种子标记 overwritePresetModels 的行（模型名纠错场景）→ presetModels 由代码目录直接覆盖；
@@ -266,7 +266,7 @@ function extractVendor(providerKey: string): string | null {
 }
 
 /**
- * 内置常用风格预设目录（M8 风格库）。
+ * 内置常用风格预设目录（风格库）。
  * snippet 直接写**纯英文风格词块**（逗号分隔 tag）——这才是图像/视频生成模型的强触发词；
  * 不套「（画风：…）」展示壳（那是视觉提取产物的格式，对内置预设属冗余噪音），也不夹中文
  *（中文语义已由 name 与 description 承载）。description = 面向用户的中文适用场景说明。

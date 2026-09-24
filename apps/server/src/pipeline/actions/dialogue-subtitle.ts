@@ -19,7 +19,7 @@ import type { StepContext } from '../context'
 export async function dialogueSubtitle(ctx: StepContext): Promise<StepResult> {
   const recipe = recipeOf(ctx.run)
   if (!recipe || recipe.plan.performance !== 'dialogue') throw new Error('严格对白字幕缺少批准方案')
-  // [M47] 路 B 分流：免核验方案（estimatedDialogue）走零付费估算分支，strict 路线逐字不变。
+  // 路 B 分流：免核验方案（estimatedDialogue）走零付费估算分支，strict 路线逐字不变。
   if (recipe.estimatedDialogue) return estimatedSubtitle(ctx, recipe)
   if (!recipe.asr) throw new Error('严格对白字幕缺少 ASR 批准快照')
   const pin = recipe.asr
@@ -106,7 +106,7 @@ export async function dialogueSubtitle(ctx: StepContext): Promise<StepResult> {
 }
 
 /**
- * [M47] 免核验字幕步骤（路 B，零网络零付费）：逐镜抽音轨实测 + 非静音守卫（保留原声轨资产供溯源），
+ * 免核验字幕步骤（路 B，零网络零付费）：逐镜抽音轨实测 + 非静音守卫（保留原声轨资产供溯源），
  * 字幕按批准台词估算（非实测）；不建 genTasks、不写 usageRecords、不发任何请求。
  */
 async function estimatedSubtitle(ctx: StepContext, recipe: CreationRecipe): Promise<StepResult> {

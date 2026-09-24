@@ -1,7 +1,7 @@
 /**
- * [M4] 统计 REST（E4）：/stats/usage 用量聚合 + /stats/overview 看板概览
- * [M20] 增强：/stats/cost-breakdown 跨项目成本分解
- * [M20] B7：CSV 导出（runs/publications/usage）+ 趋势对比基线
+ * 统计 REST（E4）：/stats/usage 用量聚合 + /stats/overview 看板概览
+ * 增强：/stats/cost-breakdown 跨项目成本分解
+ * B7：CSV 导出（runs/publications/usage）+ 趋势对比基线
  * - 薄壳：查询参数解析 → services 直通（探针可直接断言服务层）
  */
 import { and, desc, eq, gte, lte } from 'drizzle-orm'
@@ -50,7 +50,7 @@ statsRoutes.get('/stats/overview', h(async (c) => {
   )
 }))
 
-// [M20] GET /stats/cost-breakdown?from=&to= —— 跨项目成本分解（provider_model × project 双维度）
+// GET /stats/cost-breakdown?from=&to= —— 跨项目成本分解（provider_model × project 双维度）
 statsRoutes.get('/stats/cost-breakdown', h(async (c) => {
   const num = (k: string): number | undefined => {
     const v = c.req.query(k)
@@ -67,7 +67,7 @@ statsRoutes.get('/stats/cost-breakdown', h(async (c) => {
   return c.json({ byProviderModel: byPm, byProject: byProj, byKind, totals: byPm.totals })
 }))
 
-// ---------- [M20] B7 CSV 导出 ----------
+// ---------- B7 CSV 导出 ----------
 
 /** CSV 转义（字段含逗号/引号/换行 → 双引号包裹） */
 function csvEscape(v: unknown): string {
@@ -153,7 +153,7 @@ statsRoutes.get('/stats/csv/usage', h(async (c) => {
   return c.body(csv, 200 as never, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="usage.csv"' } as never)
 }))
 
-// ---------- [M20] B7 趋势对比基线 ----------
+// ---------- B7 趋势对比基线 ----------
 
 /** GET /stats/compare?days=&project_id= —— 当前周期 vs 上一周期对比 */
 statsRoutes.get('/stats/compare', h(async (c) => {

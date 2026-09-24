@@ -85,7 +85,7 @@ const {
         >
       </div>
 
-      <!-- [M7] 镜头级轻工作台（ai_image / ai_video 步骤卡内嵌） -->
+      <!-- 镜头级轻工作台（ai_image / ai_video 步骤卡内嵌） -->
       <ShotBoard
         v-if="WB_ACTIONS.has(s.actionKey)"
         :run-id="runId"
@@ -96,14 +96,14 @@ const {
         @compose="onComposeInfo"
       />
 
-      <!-- [M9] 小说改编看板（text_split 步骤卡内嵌，只读） -->
+      <!-- 小说改编看板（text_split 步骤卡内嵌，只读） -->
       <NovelBoard
         v-if="s.actionKey === 'text_split'"
         :run-id="runId"
         :step="s"
       />
 
-      <!-- [M7] 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
+      <!-- 合成步骤：重新合成 + stale 徽标（数据来自工作台上抛） -->
       <div v-if="s.actionKey === 'ffmpeg_merge'" class="compose-ops">
         <span
           v-if="composeInfo?.stale === true"
@@ -126,7 +126,7 @@ const {
         >
           <Icon name="film" :size="12" /> 重新合成
         </button>
-        <!-- [M19] A 路径：对已有成片二次派生其他发布画幅 -->
+        <!-- A 路径：对已有成片二次派生其他发布画幅 -->
         <button
           class="btn sm"
           :disabled="busy || active || !hasFinalVideo"
@@ -141,7 +141,7 @@ const {
         </button>
       </div>
 
-      <!-- [M50] 剪辑工程交换导出：成片导出为多轨工程（FCPXML/EDL/OTIO）继续专业精剪 -->
+      <!-- 剪辑工程交换导出：成片导出为多轨工程（FCPXML/EDL/OTIO）继续专业精剪 -->
       <div
         v-if="s.actionKey === 'ffmpeg_merge' && editExFormats?.final_video"
         class="editex-ops"
@@ -160,7 +160,7 @@ const {
         </button>
       </div>
 
-      <!-- [M11] 重跑（单步或级联任一可用即展示；弹窗内再细分范围，真实门禁以服务端为准） -->
+      <!-- 重跑（单步或级联任一可用即展示；弹窗内再细分范围，真实门禁以服务端为准） -->
       <div v-if="canRerunStep(s) || canCascadeStep(s)" class="rerun-ops">
         <button
           class="btn sm"
@@ -303,14 +303,14 @@ const {
   margin: 4px 0 0;
 }
 
-/* [M3] 记忆/角色徽标：品牌靛蓝，与状态徽标区分 */
+/* 记忆/角色徽标：品牌靛蓝，与状态徽标区分 */
 .badge.mem {
   background: var(--accent-weak);
   color: var(--accent);
   border-color: rgb(99 102 241 / 26%);
 }
 
-/* [M7] 合成步骤操作行：重新合成 + stale 徽标 */
+/* 合成步骤操作行：重新合成 + stale 徽标 */
 .compose-ops {
   display: flex;
   align-items: center;
@@ -318,7 +318,7 @@ const {
   margin-top: 8px;
 }
 
-/* [M50] 剪辑工程交换导出行：标签 + 三格式按钮（窄屏自动换行） */
+/* 剪辑工程交换导出行：标签 + 三格式按钮（窄屏自动换行） */
 .editex-ops {
   display: flex;
   flex-wrap: wrap;
@@ -331,7 +331,7 @@ const {
   font-size: 12px;
 }
 
-/* [M11] 单步重跑按钮行 + 成功 notice */
+/* 单步重跑按钮行 + 成功 notice */
 .rerun-ops {
   display: flex;
   align-items: center;

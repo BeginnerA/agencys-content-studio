@@ -1,5 +1,5 @@
 /**
- * [M50] 剪辑工程格式化器共享渲染上下文：媒体引用命名（relPath → 包内路径）与工程标题。
+ * 剪辑工程格式化器共享渲染上下文：媒体引用命名（relPath → 包内路径）与工程标题。
  * 三格式化器（OTIO / FCPXML / EDL）共用，彼此不互相依赖。
  */
 import { basename } from 'node:path'

@@ -19,7 +19,7 @@ import { useCanvasSnapshots } from './use-canvas-snapshots'
 import { useCanvasCopyTo } from './use-canvas-copyto'
 import { useCanvasAdvice } from './use-canvas-advice'
 
-/** [M28] 视图装配入口；URL 与 socket 的 immediate 顺序保持原页语义。 */
+/** 视图装配入口；URL 与 socket 的 immediate 顺序保持原页语义。 */
 export function useCanvasView() {
   const state = useCanvasState()
   const target = useCanvasTarget({

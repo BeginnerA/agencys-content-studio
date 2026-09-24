@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M35 G11] 项目详情页「下一步建议」条。
+ * 项目详情页「下一步建议」条。
  * - 数据源：GET /projects/:id/next-steps（服务端规则引擎，零 LLM、零计费，≤3 条）
  * - 实时：run.completed / run.failed 触发重拉；不猜测、不自动执行（用户点击才路由）
  * - auto 条目仅作进度提示（虚线 chip、无 hover）；action 条目 = 按钮 + cta
@@ -64,7 +64,7 @@ defineExpose({ reload })
     <span class="lead muted"
       ><Icon name="sparkles" :size="12" /> 下一步</span
     >
-    <!-- [M37·G13] 来源可追溯：规则引擎是本条唯一来源（前端静态标注即事实），强化「仅建议不执行」可见性 -->
+    <!-- 来源可追溯：规则引擎是本条唯一来源（前端静态标注即事实），强化「仅建议不执行」可见性 -->
     <ProvenanceBadge
       kind="suggest"
       text="规则引擎"

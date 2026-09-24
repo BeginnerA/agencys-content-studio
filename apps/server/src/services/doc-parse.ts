@@ -1,8 +1,8 @@
 /**
- * [M25·G1] docx / epub 文档解析（spec §2.2）：二进制 → 纯文本（供 text_split 章节切分）。
- * 依赖（用户拍板 2026-09-17，M23 d3-force 例外原则）：
+ * docx / epub 文档解析（spec §2.2）：二进制 → 纯文本（供 text_split 章节切分）。
+ * 依赖（用户拍板 2026-09-17， d3-force 例外原则）：
  * - mammoth：docx → raw text（纯解析库）；
- * - fflate：epub zip 解包（自带类型；M25 探针亦用其 zipSync 合成样本）。
+ * - fflate：epub zip 解包（自带类型； 探针亦用其 zipSync 合成样本）。
  * XHTML 正文提取复用 G8 的 extractReadableText（spec §2.8 共用纯函数）。
  * 表格/文本框/批注/docx 图片保真明确排除（spec §8）；DRM epub 不支持。
  */

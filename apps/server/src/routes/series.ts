@@ -17,7 +17,7 @@ import {
 import { HttpError, h, idParam, notFound, wb } from './helpers'
 
 /**
- * [M14] 剧集实体路由（平台级通用：剧 → 集两级，一项目一剧）。
+ * 剧集实体路由（平台级通用：剧 → 集两级，一项目一剧）。
  * - 写操作统一 wb() 包装：WorkbenchError 状态码透传（404 / 409 / 400）。
  * - status 派生：列表与单集出参以「最新 run 状态」优先（listEpisodes 单查询 join）。
  */

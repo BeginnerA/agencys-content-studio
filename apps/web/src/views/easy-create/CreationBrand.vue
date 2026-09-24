@@ -3,14 +3,14 @@ import { computed } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 
 /**
- * [M45] 确认卡「应用品牌风格」开关（独立轻组件：确认卡本体已近红线长度，同 CreationResolution/ReviewGate 先例）。
+ * 确认卡「应用品牌风格」开关（独立轻组件：确认卡本体已近红线长度，同 CreationResolution/ReviewGate 先例）。
  * 默认继承平台/项目已配品牌（水印 / 片头 / 片尾 / 字幕样式）；取消勾选 = 本次成片逐次不叠加品牌。
  * 开关不入 planHash（是启动方式而非执行数据）：改勾选不作废已确认方案、不触发重新规划、零计费。
  * 仅当预检 brandSummary.available 为真时由父组件渲染（未配品牌不打扰，成片逐字节不变）。
  */
 const props = defineProps<{
   modelValue: boolean
-  /** 预检品牌摘要；M45 前的旧存 preflight JSON 或预检失败 → null（此时本组件不渲染） */
+  /** 预检品牌摘要； 前的旧存 preflight JSON 或预检失败→ null（此时本组件不渲染） */
   summary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
   /** 方案已批准的背景乐段数（参考托盘音频 role:'bgm'）；>0 时给一行可发现性提示 */
   bgmCount?: number

@@ -1,5 +1,5 @@
 /**
- * [M4] 批次服务（E1）：串行默认调度 + 崩溃恢复对齐（spec §3.5 / §D 伪代码）
+ * 批次服务（E1）：串行默认调度 + 崩溃恢复对齐（spec §3.5 / §D 伪代码）
  * - 通用表（batches 无体裁逻辑）；调度逻辑零改动（复用 engine.startRun/cancelRun）
  * - pump 幂等：每轮从 DB 重算计数与槽位；批内互斥防 settle 风暴并发重入
  */
@@ -97,13 +97,13 @@ export async function notifyRunSettled(runId: number): Promise<void> {
     .where(eq(pipelineRuns.id, runId))
     .limit(1)
   const batchId = rows[0]?.batchId
-  // [M21 C6] 槽位释放与批次无关：批 settle 释放的全局槽位同样可救起其它批的 deferred run。
+  // 槽位释放与批次无关：批 settle 释放的全局槽位同样可救起其它批的 deferred run。
   // 因此属批分支不提前 return——先推进本批，再统一扫停滞批（否则批间救援被阻断）
   if (batchId) await pump(batchId)
   await pumpStalledBatches()
 }
 
-/** [M21 C6] 有 queued run 的 running 批次 → 逐批重试（幂等：pump 内已有 status 守卫与批内互斥；30s 定时器亦复用） */
+/** 有 queued run 的 running 批次 → 逐批重试（幂等：pump 内已有 status 守卫与批内互斥；30s 定时器亦复用） */
 export async function pumpStalledBatches(): Promise<void> {
   const rows = await db
     .selectDistinct({ batchId: pipelineRuns.batchId })
@@ -222,7 +222,7 @@ export async function summarizeBatch(batchId: number): Promise<{
   return { batch, runs: runs.map((r) => ({ ...r, cost: costByRun.get(r.id) ?? null })) }
 }
 
-/** 批次视图投影（REST 层与 [M23] overview 聚合共用；自 routes/batches.ts 迁入） */
+/** 批次视图投影（REST 层与 overview 聚合共用；自 routes/batches.ts 迁入） */
 export function toBatchView(b: typeof batches.$inferSelect): Record<string, unknown> {
   return {
     id: b.id,

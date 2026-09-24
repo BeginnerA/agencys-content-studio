@@ -21,36 +21,36 @@ export const assetApi = {
   detail: (id: number) => api.get<{ asset: Asset }>(`/api/v1/assets/${id}`),
   /** 软删除（导出包清理用：列表隐藏，文件保留） */
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/assets/${id}`),
-  /** [M12] 收藏切换（PATCH 白名单 is_favorite；版本清理保留豁免） */
+  /** 收藏切换（PATCH 白名单 is_favorite；版本清理保留豁免） */
   favorite: (id: number, fav: boolean) =>
     api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, {
       is_favorite: fav ? 1 : 0,
     }),
-  /** [M21] 标签编辑（PATCH 白名单 tags；覆盖式写入字符串数组） */
+  /** 标签编辑（PATCH 白名单 tags；覆盖式写入字符串数组） */
   updateTags: (id: number, tags: string[]) =>
     api.patch<{ asset: Asset }>(`/api/v1/assets/${id}`, { tags }),
-  /** [M25] G2 文本内容覆写（白名单 purpose 的文本资产；原子覆盖 + params.content_edits 留痕） */
+  /** G2 文本内容覆写（白名单 purpose 的文本资产；原子覆盖 + params.content_edits 留痕） */
   updateContent: (id: number, content: string) =>
     api.patch<{ asset: Asset }>(`/api/v1/assets/${id}/content`, { content }),
-  /** [M25] G8 URL 抓正文 → source 资产（服务端抓取 + SSRF 守卫/限额；错误面：400 守卫拒/过短，502 抓取失败） */
+  /** G8 URL 抓正文 → source 资产（服务端抓取 + SSRF 守卫/限额；错误面：400 守卫拒/过短，502 抓取失败） */
   fetchSource: (projectId: number, url: string) =>
     api.post<{ asset: Asset }>(`/api/v1/projects/${projectId}/fetch-source`, {
       url,
     }),
-  /** [M12] 图像有效性检测（同步；仅图片；结果写 params.quality） */
+  /** 图像有效性检测（同步；仅图片；结果写 params.quality） */
   check: (id: number) =>
     api.post<{ asset: Asset }>(`/api/v1/assets/${id}/check`),
-  /** [M12] 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯） */
+  /** 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯） */
   cleanupVersions: (projectId: number) =>
     api.post<CleanupResult>(
       `/api/v1/projects/${projectId}/assets/cleanup-versions`,
     ),
-  /** [M12] 回收空间（物理删除已清理资产文件；不可逆；行保留） */
+  /** 回收空间（物理删除已清理资产文件；不可逆；行保留） */
   gc: (projectId: number) =>
     api.post<GcResult>(`/api/v1/projects/${projectId}/assets/gc`),
 }
 
-/** [M21] 全局搜索（关键词九域 + 语义文本域；模型不可用自动降级不抛错） */
+/** 全局搜索（关键词九域 + 语义文本域；模型不可用自动降级不抛错） */
 export const searchApi = {
   /** limit 默认 5、上限 20（后端 clamp）；q 空/超 100 字符 → 400 */
   search: (q: string, limit?: number) =>
@@ -67,7 +67,7 @@ export const searchApi = {
     }>('/api/v1/search/reindex'),
 }
 
-// ===== [M3/M8] 记忆 / 实体素材 =====
+// ===== 记忆 / 实体素材 =====
 
 export const memoryApi = {
   list: (params = '') =>
@@ -88,7 +88,7 @@ export const memoryApi = {
   status: () => api.get<MemoryStatus>('/api/v1/memories/status'),
 }
 
-/** [M8] 实体素材（角色/场景/道具）：/entities 统一路径 + kind 参数 */
+/** 实体素材（角色/场景/道具）：/entities 统一路径 + kind 参数 */
 export const entityApi = {
   list: (kind: EntityKind, params = '') =>
     api.get<Items<EntityItem>>(`/api/v1/entities?kind=${kind}${params}`),
@@ -101,22 +101,22 @@ export const entityApi = {
   update: (id: number, body: Record<string, unknown>) =>
     api.put<{ entity: EntityItem }>(`/api/v1/entities/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/entities/${id}`),
-  /** [M13] 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动） */
+  /** 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动） */
   polish: (ids: number[]) =>
     api.post<EntityPolishResult>('/api/v1/entities/polish', { ids }),
-  /** [M19 P6] 批量发起参考图生成（≤10 实体 × 1-4 变体；202 入队即返，完成后服务端自动挂接 ref_asset_ids） */
+  /** 批量发起参考图生成（≤10 实体 × 1-4 变体；202 入队即返，完成后服务端自动挂接 ref_asset_ids） */
   refGen: (projectId: number, entityIds: number[], variants = 1) =>
     api.post<EntityRefGenIssueResult>('/api/v1/entities/ref-gen', {
       projectId,
       entityIds,
       variants,
     }),
-  /** [M19 P6] 本项任务列表（全部在途置顶 + 近 20 条终态） */
+  /** 本项任务列表（全部在途置顶 + 近 20 条终态） */
   refGenTasks: (projectId: number) =>
     api.get<{ items: EntityRefGenTask[]; counts: Record<string, number> }>(
       `/api/v1/entities/ref-gen/tasks?project_id=${projectId}`,
     ),
-  /** [M19 P6] 取消单任务（仅 pending/processing；已发出的出图请求完成后弃存） */
+  /** 取消单任务（仅 pending/processing；已发出的出图请求完成后弃存） */
   cancelRefGenTask: (taskId: number) =>
     api.post<{ ok: boolean; note?: string }>(
       `/api/v1/entities/ref-gen/tasks/${taskId}/cancel`,
@@ -124,7 +124,7 @@ export const entityApi = {
     ),
 }
 
-/** [M13] 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；全局实体 400） */
+/** 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；全局实体 400） */
 export async function uploadEntityRefImage(
   entityId: number,
   file: File,
@@ -157,11 +157,11 @@ export async function uploadEntityRefImage(
   return (await res.json()) as { entity: EntityItem; asset: Asset }
 }
 
-/** [M8] 风格预设库（?active=1 仅启用；[M13] 项目绑定经 PATCH /projects settings.style_preset_ids） */
+/** 风格预设库（?active=1 仅启用； 项目绑定经 PATCH /projects settings.style_preset_ids） */
 export const stylePresetApi = {
   list: (params = '') =>
     api.get<Items<StylePresetItem>>(`/api/v1/style-presets${params}`),
-  /** [M13] 从项目参考图提取画风词（1..4 张；不落库，前端预填表单） */
+  /** 从项目参考图提取画风词（1..4 张；不落库，前端预填表单） */
   extract: (projectId: number, assetIds: number[]) =>
     api.post<StyleExtractResult>('/api/v1/style-presets/extract', {
       project_id: projectId,

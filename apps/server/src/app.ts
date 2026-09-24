@@ -76,7 +76,7 @@ api.route('/', versionsRoutes)
 app.route('/api/v1', api)
 
 /**
- * [M14] Web 静态托管（桌面端 / 单端口部署）：dist 存在才启用（env 无值 = 现行为零变化）。
+ * Web 静态托管（桌面端 / 单端口部署）：dist 存在才启用（env 无值 = 现行为零变化）。
  * - 非 /api GET：命中 WEB_DIST 内真实文件 → 按 MIME 返回；否则回退 index.html（SPA 路由）。
  * - 防护：路径安全归一化后必须仍在 WEB_DIST 内；/api/* 未命中保持 JSON 404。
  */
@@ -107,7 +107,7 @@ app.onError((err, c) => {
   return c.json({ error: { code: 'internal', message: (err as Error).message } }, 500)
 })
 
-/** [M14] 静态文件解析：路径安全归一化（剥离 '..' 等段）→ 仅 WEB_DIST 内真实文件命中 */
+/** 静态文件解析：路径安全归一化（剥离 '..' 等段）→ 仅 WEB_DIST 内真实文件命中 */
 function resolveWebFile(distDir: string, pathname: string): string | null {
   const rel = pathname
     .replace(/\\/g, '/')
@@ -125,7 +125,7 @@ function resolveWebFile(distDir: string, pathname: string): string | null {
   }
 }
 
-/** [M14] 扩展名 → Content-Type（未知 → octet-stream） */
+/** 扩展名 → Content-Type（未知 → octet-stream） */
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

@@ -2,8 +2,8 @@ import { parseWhenExpr, whenRefs } from './refs'
 import type { Template, TemplateStepDef } from './types'
 
 /**
- * [M15] DAG 依赖语义共享模块——单一真源。
- * 逐行迁自 engine 原私有 depsFor/whenExprs（M15 前为引擎独有）：调度（engine）与
+ * DAG 依赖语义共享模块——单一真源。
+ * 逐行迁自 engine 原私有 depsFor/whenExprs（此前为引擎独有）：调度（engine）与
  * 画布调度边（services/canvas）必须同源消费本模块，禁止第二套实现。
  * 语义：①显式 after（多值、排除自身、按键去重）取代默认；②无 after → 前一步骤 key；
  * ③平铺 when/when_any/gate.when 全部表达式的 steps.x.count 隐含引用。

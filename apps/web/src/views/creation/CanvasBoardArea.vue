@@ -425,7 +425,7 @@ const editItems = computed<ActionMenuItem[]>(() => [
   color: #fff;
 }
 
-/* [M18] 画布选择卡片：封面缩略（⑤） */
+/* 画布选择卡片：封面缩略（⑤） */
 .canvas-chip {
   display: inline-flex;
   align-items: center;

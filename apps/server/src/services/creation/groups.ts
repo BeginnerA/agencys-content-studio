@@ -1,5 +1,5 @@
 /**
- * [M18/M22] 画布节点分组服务（spec §2.6⑩ + M22 §2.4 组嵌套）：
+ * 画布节点分组服务（spec §2.6⑩ + §2.4 组嵌套）：
  * - createGroup：nodeIds（≥1，须属本画布且无既有归属）+ groupIds（顶层子组，已嵌套拒绝）+ parentId（可选父组），
  *   nodeIds/groupIds 至少一非空 → 建组 + 赋节点 groupId / 子组 parentId + 锚点=节点包围盒左上（纯组时取子组锚点）；
  * - updateGroup：title / color / collapsed / x / y / parentId（移组：null=提升顶层；自环/后代环 → 400 group_cycle）局部改；
@@ -27,9 +27,9 @@ const GROUP_COLORS = new Set([
 
 export interface CreateGroupInput {
   nodeIds?: unknown
-  /** [M22] 顶层子组集合（至少与 nodeIds 一非空；已嵌套组拒绝 group_already_nested） */
+  /** 顶层子组集合（至少与 nodeIds 一非空；已嵌套组拒绝 group_already_nested） */
   groupIds?: unknown
-  /** [M22] 可选父组（须属本画布；新组嵌套其下） */
+  /** 可选父组（须属本画布；新组嵌套其下） */
   parentId?: unknown
   title?: unknown
   color?: unknown
@@ -41,13 +41,13 @@ export interface UpdateGroupPatch {
   collapsed?: unknown
   x?: unknown
   y?: unknown
-  /** [M22] 移组：null=提升顶层；数字=移入目标组（自环/后代环 → group_cycle） */
+  /** 移组：null=提升顶层；数字=移入目标组（自环/后代环 → group_cycle） */
   parentId?: unknown
 }
 
 /** 建组：校验归属（节点+子组+父组）→ 锚点（节点包围盒左上 / 纯组取子组锚点）→ 插组（parentId）→ 批量赋属 */
 export async function createGroup(canvasId: number, input: CreateGroupInput): Promise<CanvasGroup> {
-  // [M22] nodeIds 可选（与 groupIds 至少一非空）；给空数组仍视为非法
+  // nodeIds 可选（与 groupIds 至少一非空）；给空数组仍视为非法
   const rawIds = input.nodeIds
   const hasNodeIds = rawIds !== undefined && rawIds !== null
   if (hasNodeIds && (!Array.isArray(rawIds) || rawIds.length === 0)) {
@@ -57,7 +57,7 @@ export async function createGroup(canvasId: number, input: CreateGroupInput): Pr
   if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
     throw new GroupError('bad_node_ids', 'nodeIds 需为正整数数组')
   }
-  // [M22] 子组集合：仅顶层组（parent_id IS NULL）可被装入
+  // 子组集合：仅顶层组（parent_id IS NULL）可被装入
   const rawGids = input.groupIds
   const hasGroupIds = rawGids !== undefined && rawGids !== null
   if (hasGroupIds && (!Array.isArray(rawGids) || rawGids.length === 0)) {
@@ -70,7 +70,7 @@ export async function createGroup(canvasId: number, input: CreateGroupInput): Pr
   if (ids.length === 0 && gids.length === 0) {
     throw new GroupError('bad_node_ids', 'nodeIds 与 groupIds 至少一非空（新组需直接成员）')
   }
-  // [M22] 父组（可选）：须属本画布
+  // 父组（可选）：须属本画布
   let parentId: number | null = null
   if (input.parentId !== undefined && input.parentId !== null) {
     const pid = Number(input.parentId)
@@ -153,7 +153,7 @@ export async function updateGroup(canvasId: number, gid: number, patch: UpdateGr
     if (typeof patch.y !== 'number' || !Number.isFinite(patch.y)) throw new GroupError('bad_y', 'y 需为数字')
     set.y = patch.y
   }
-  // [M22] 移组：null=提升顶层；数字=移入目标组（同画布、非自身、非自身后代）
+  // 移组：null=提升顶层；数字=移入目标组（同画布、非自身、非自身后代）
   if (patch.parentId !== undefined) {
     const raw = patch.parentId
     if (raw === null) {
@@ -190,7 +190,7 @@ export async function updateGroup(canvasId: number, gid: number, patch: UpdateGr
   return row ?? null
 }
 
-/** 解组：成员 groupId=null + [M22] 子组 parentId=null 提升顶层 + 删组行；组不属本画布 → false（路由 404） */
+/** 解组：成员 groupId=null + 子组 parentId=null 提升顶层 + 删组行；组不属本画布 → false（路由 404） */
 export async function deleteGroup(canvasId: number, gid: number): Promise<boolean> {
   const [cur] = await db
     .select()
@@ -200,7 +200,7 @@ export async function deleteGroup(canvasId: number, gid: number): Promise<boolea
   if (!cur) return false
   const now = Date.now()
   await db.update(canvasNodes).set({ groupId: null, updatedAt: now }).where(eq(canvasNodes.groupId, gid))
-  // [M22] 保守提升：子组不随删（与「删节点不删组」哲学一致，不丢组）
+  // 保守提升：子组不随删（与「删节点不删组」哲学一致，不丢组）
   await db.update(canvasGroups).set({ parentId: null }).where(eq(canvasGroups.parentId, gid))
   await db.delete(canvasGroups).where(eq(canvasGroups.id, gid))
   await touchCanvas(canvasId)

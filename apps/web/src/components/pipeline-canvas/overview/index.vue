@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M23] 全景面板（spec §2.4；E1/E2）——项目内跨批次/跨模板聚合视图
+ * 全景面板（spec §2.4；E1/E2）——项目内跨批次/跨模板聚合视图
  * - 页头：项目名 + stats（run 计数按状态 / 总成本）
  * - 批次组：批次头（名称/状态/进度/计数/时间 → 批次详情）+ 组内 run 卡（batchSeq 升序）
  * - 独立运行组：无批次归属 runs
@@ -75,7 +75,7 @@ function batchProgress(b: CanvasOverviewBatch): number {
       </div>
     </div>
 
-    <!-- [M27] 编排链区（独立于 run 数：链可在无任何运行前预先编排） -->
+    <!-- 编排链区（独立于 run 数：链可在无任何运行前预先编排） -->
     <WorkflowsSection
       :project-id="data.project.id"
       :workflows="data.workflows"

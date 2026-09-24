@@ -13,7 +13,7 @@ import { NAVS, type NavItem } from './lib/nav'
 const route = useRoute()
 const router = useRouter()
 
-// [M30] 菜单模式：轻松创作页用精简导航（含直达「设置」），专业工作台页用完整导航。
+// 菜单模式：轻松创作页用精简导航（含直达「设置」），专业工作台页用完整导航。
 // 模式随导航「粘滞」——从精简模式点击「设置」进入 /system 时保持精简导航，
 // 不会强制展开为专业工作台菜单（降低新手认知负担）。
 function isEasyRoute(path: string): boolean {
@@ -39,7 +39,7 @@ watch(
 )
 let stopPendingWatcher: (() => void) | null = null
 
-// [M21] 全局命令面板（Ctrl/Cmd+K 经 lib/hotkeys 单例注册；批 2 已迁移统一键盘流）
+// 全局命令面板（Ctrl/Cmd+K 经 lib/hotkeys 单例注册；批 2 已迁移统一键盘流）
 const paletteOpen = ref(false)
 let unbindPaletteKey: (() => void) | null = null
 
@@ -69,9 +69,9 @@ onMounted(() => {
   if (!s.connected) s.connect()
   // 全局待审阅角标：首拉 + 30s 轮询 + 可见性恢复
   stopPendingWatcher = startPendingWatcher()
-  // [M21] 浏览器通知（run 终态 / 闸门 / 批次收敛；不可用静默降级）
+  // 浏览器通知（run 终态 / 闸门 / 批次收敛；不可用静默降级）
   initNotify(router)
-  // [M21] 全局快捷键：唯一文档级监听 + Ctrl/Cmd+K 切换命令面板
+  // 全局快捷键：唯一文档级监听 + Ctrl/Cmd+K 切换命令面板
   initHotkeys()
   unbindPaletteKey = bindHotkey({ key: 'k', ctrlOrMeta: true }, () => {
     paletteOpen.value = !paletteOpen.value
@@ -193,7 +193,7 @@ onBeforeUnmount(() => {
     </main>
     <!-- 全局命令式确认弹窗（confirmDialog()）宿主 -->
     <ConfirmHost />
-    <!-- [M21] 全局命令面板（搜索直达；Ctrl/Cmd+K 或侧栏按钮打开） -->
+    <!-- 全局命令面板（搜索直达；Ctrl/Cmd+K 或侧栏按钮打开） -->
     <CommandPalette v-if="paletteOpen" @close="paletteOpen = false" />
   </div>
 </template>

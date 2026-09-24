@@ -74,15 +74,15 @@ export interface RunStep {
 export interface RunDetail {
   run: Run
   steps: RunStep[]
-  /** [恢复收口] 归属轻松创作会话 id（非创作 run 为 null；旧服务端缺字段时回退 undefined） */
+  /** 归属轻松创作会话 id（非创作 run 为 null；旧服务端缺字段时回退 undefined） */
   creationSessionId?: number | null
-  /** [方案C] 轻松创作 run 因存在「受理状态不明」任务而无法就地续跑（需回会话核验） */
+  /** 轻松创作 run 因存在「受理状态不明」任务而无法就地续跑（需回会话核验） */
   resumeNeedsVerification?: boolean
-  /** [方案C] 受理状态不明的任务 id 清单（供核验引导） */
+  /** 受理状态不明的任务 id 清单（供核验引导） */
   ambiguousTaskIds?: number[]
 }
 
-/** [M21] Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */
+/** Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */
 export interface RevisionItem {
   assetId: number
   name: string
@@ -91,7 +91,7 @@ export interface RevisionItem {
   current: boolean
 }
 
-/** [M21] 参数热调变更项（PATCH /runs/:id/params 的 applied；同构于 run.input._params_log.changes） */
+/** 参数热调变更项（PATCH /runs/:id/params 的 applied；同构于 run.input._params_log.changes） */
 export interface ParamChange {
   group: string
   key: string
@@ -125,7 +125,7 @@ export interface Asset {
   createdAt: number
   updatedAt: number
   urls: AssetUrls
-  /** [M29·R02] 可编辑文本资产的当前内容版本号（详情接口附带；供乐观锁与前端缓存串 ?v=） */
+  /** 可编辑文本资产的当前内容版本号（详情接口附带；供乐观锁与前端缓存串 ?v=） */
   contentRevision?: number
 }
 
@@ -146,7 +146,7 @@ export interface GenTask {
   provider: string
   model: string | null
   taskId: string | null
-  /** [方案C] 受理状态不明（已提交无任务号/产物）：轻松创作 run 据此隐显「重试」 */
+  /** 受理状态不明（已提交无任务号/产物）：轻松创作 run 据此隐显「重试」 */
   ambiguous: boolean
   status: TaskStatus
   attempts: number

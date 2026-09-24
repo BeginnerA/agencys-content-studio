@@ -101,7 +101,7 @@ const cv = props.cv
     </template>
   </Modal>
 
-  <!-- [M17] 导出画布产物 zip -->
+  <!-- 导出画布产物 zip -->
   <Modal
     v-if="cv.showExport && cv.exportResult"
     title="导出画布产物"

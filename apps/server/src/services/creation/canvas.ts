@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：画布 CRUD/回收站/深拷 + 资产与任务轻视图工具。
+// 自 services/creation.ts 拆分：画布 CRUD/回收站/深拷 + 资产与任务轻视图工具。
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, canvasEdges, canvasGroups, canvasNodes, canvasSnapshots, canvases, genTasks } from '../../db/schema'
@@ -42,7 +42,7 @@ export async function listCanvases(projectId: number, opts?: { trash?: boolean }
     .where(inArray(canvasNodes.canvasId, rows.map((r) => r.id)))
     .groupBy(canvasNodes.canvasId)
   const byId = new Map(counts.map((c) => [c.canvasId, Number(c.n)]))
-  // [M18] cover 派生（两次批查避 N+1）：节点 → succeeded 有产物任务（completedAt 降序）取每画布最近一条 → 批查资产
+  // cover 派生（两次批查避 N+1）：节点 → succeeded 有产物任务（completedAt 降序）取每画布最近一条 → 批查资产
   const nodeRows = await db
     .select({ id: canvasNodes.id, canvasId: canvasNodes.canvasId })
     .from(canvasNodes)
@@ -96,7 +96,7 @@ export async function createCanvas(projectId: number, name?: string): Promise<Ca
   return row!
 }
 
-/** [M18] 画布行装载（统一过滤点）：默认仅活跃画布（已软删 → null，子端点一律 404）；includeDeleted 供 restore/purge */
+/** 画布行装载（统一过滤点）：默认仅活跃画布（已软删 → null，子端点一律 404）；includeDeleted 供 restore/purge */
 export async function findCanvas(id: number, opts?: { includeDeleted?: boolean }): Promise<Canvas | null> {
   const rows = await db.select().from(canvases).where(eq(canvases.id, id)).limit(1)
   const row = rows[0] ?? null
@@ -125,11 +125,11 @@ export async function updateCanvas(
   return row ?? null
 }
 
-// 注：原 M16 硬删 deleteCanvas 已由 M18 softDeleteCanvas（软删）+ purgeCanvas（彻底删）取代
+// 注：原硬删 deleteCanvas 已由 softDeleteCanvas（软删）+ purgeCanvas（彻底删）取代
 
-// ---------- [M18] 回收站（软删 / 恢复 / purge） ----------
+// ---------- 回收站（软删 / 恢复 / purge） ----------
 
-/** [M18] 软删（进回收站）：仅标 deletedAt（子行保留；在途任务由路由层 cancelCanvasTasks 取消） */
+/** 软删（进回收站）：仅标 deletedAt（子行保留；在途任务由路由层 cancelCanvasTasks 取消） */
 export async function softDeleteCanvas(canvas: Canvas): Promise<Canvas> {
   const now = Date.now()
   const [row] = await db
@@ -141,7 +141,7 @@ export async function softDeleteCanvas(canvas: Canvas): Promise<Canvas> {
   return row!
 }
 
-/** [M18] 回收站恢复（行须为已软删；路由层已做状态判定与 404） */
+/** 回收站恢复（行须为已软删；路由层已做状态判定与 404） */
 export async function restoreCanvas(canvas: Canvas): Promise<Canvas> {
   const [row] = await db
     .update(canvases)
@@ -152,7 +152,7 @@ export async function restoreCanvas(canvas: Canvas): Promise<Canvas> {
   return row!
 }
 
-/** [M18] 彻底删除（行须为已软删；级联删 nodes/edges/groups/snapshots；gen_tasks 行保留留痕） */
+/** 彻底删除（行须为已软删；级联删 nodes/edges/groups/snapshots；gen_tasks 行保留留痕） */
 export async function purgeCanvas(canvasId: number): Promise<void> {
   await db.delete(canvasEdges).where(eq(canvasEdges.canvasId, canvasId))
   await db.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvasId))

@@ -18,7 +18,7 @@ import { HttpError, h, idParam } from './helpers'
 import { toAssetView } from './assets'
 
 /**
- * [M29·R02] 版本与追溯路由：对象版本列表 / 版本内容 / 还原 / 下游影响。
+ * 版本与追溯路由：对象版本列表 / 版本内容 / 还原 / 下游影响。
  * 只读 + 显式还原；不提供任何自动生成/返修入口（影响仅报告）。
  */
 export const versionsRoutes = new Hono()
@@ -153,7 +153,7 @@ async function readJson(c: Context): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>
 }
 
-// ---------- [M29·R02] 锁定下次执行输入（画布 gen 节点 spec.pin；三操作分离之锁版，不改选片/内容/不触发生成） ----------
+// ---------- 锁定下次执行输入（画布 gen 节点 spec.pin；三操作分离之锁版，不改选片/内容/不触发生成） ----------
 
 // GET /canvas/nodes/:id/input-locks —— 当前锁定清单
 versionsRoutes.get('/canvas/nodes/:id/input-locks', h(async (c) => {

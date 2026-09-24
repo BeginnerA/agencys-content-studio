@@ -7,9 +7,10 @@ import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { checkBudget } from '../services/budget'
 import { randomUUID } from 'node:crypto'
-import { isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
+import { isAmbiguousSubmitted, isCreationTemplate, recipeOf } from '../services/creation-chat/recipe'
 import { retryCreation } from '../services/creation-chat/execution'
 import { CreationError } from '../services/creation-chat/contract'
+import { resolveEndpoint } from '../adapters/provider'
 import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
@@ -59,7 +60,7 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
     throw err
   }
   engine.startRun(run.id)
-  // [M14] 剧集联动（后置回写 latest_run_id；宽容降级：无剧/无集/失败均不影响 run）
+  // 剧集联动（后置回写 latest_run_id；宽容降级：无剧/无集/失败均不影响 run）
   await linkEpisode(projectId, run.input, run.id)
   return c.json({ run: toRunView(run) }, 202)
 }))
@@ -73,7 +74,7 @@ runsRoutes.get('/runs/:id', h(async (c) => {
     .from(pipelineSteps)
     .where(eq(pipelineSteps.runId, run.id))
     .orderBy(asc(pipelineSteps.seq))
-  // [恢复收口] 反查归属轻松创作会话（creation_sessions.run_id 单向持有；同 run 多会话取最新一条），
+  // 反查归属轻松创作会话（creation_sessions.run_id 单向持有；同 run 多会话取最新一条），
   // 专业端据此把「断点续跑/任务重试」死路换成直达会话的恢复入口
   const sessionRows = await db
     .select({ id: creationSessions.id })
@@ -82,7 +83,7 @@ runsRoutes.get('/runs/:id', h(async (c) => {
     .orderBy(desc(creationSessions.id))
     .limit(1)
   const creationSessionId = sessionRows[0]?.id ?? null
-  // [方案C] 专业端「断点续跑」能否就地恢复：轻松创作 run 若存在「受理状态不明」任务（可能已计费），
+  // 专业端「断点续跑」能否就地恢复：轻松创作 run 若存在「受理状态不明」任务（可能已计费），
   // retryCreation 会拒 needs_verification → 前端改呈现直达会话核验链接；否则放行就地续跑。
   const ambiguousTaskIds: number[] = []
   if (isCreationTemplate(run.templateKey) && ['failed', 'cancelled'].includes(run.status)) {
@@ -93,11 +94,29 @@ runsRoutes.get('/runs/:id', h(async (c) => {
     for (const t of tRows) if (isAmbiguousSubmitted(t)) ambiguousTaskIds.push(t.id)
   }
   const resumeNeedsVerification = ambiguousTaskIds.length > 0
+  // 配置漂移就地续跑：已批准端点相对当前配置漂移（改模型/改价/删实例）→ 续跑需 accept_config_drift 确认改用当前配置。
+  const resumeConfigDrift: { service: string; from: string; to: string | null }[] = []
+  if (isCreationTemplate(run.templateKey) && ['failed', 'cancelled'].includes(run.status)) {
+    let driftRecipe = null
+    try { driftRecipe = recipeOf(run) } catch { driftRecipe = null }
+    if (driftRecipe) {
+      for (const [service, pin] of Object.entries(driftRecipe.endpoints)) {
+        if (!pin) continue
+        try { await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, pin) }
+        catch {
+          let to: string | null = null
+          try { to = (await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, { configId: pin.configId })).model ?? null } catch { to = null }
+          resumeConfigDrift.push({ service, from: pin.model, to })
+        }
+      }
+    }
+  }
   return c.json({
     run: toRunView(run),
     creationSessionId,
     resumeNeedsVerification,
     ambiguousTaskIds,
+    resumeConfigDrift,
     steps: steps.map((s) => ({
       id: s.id,
       seq: s.seq,
@@ -174,7 +193,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
-  // [方案C] 轻松创作批准链 run：不在专业端走朴素 generic resume（其迁移会把已拿到外部 taskId 的在途任务归零重投=重复计费风险），
+  // 轻松创作批准链 run：不在专业端走朴素 generic resume（其迁移会把已拿到外部 taskId 的在途任务归零重投=重复计费风险），
   // 而委派会话恢复真源 retryCreation（verified 列表留空：有 taskId 者仅恢复查询、有产物者复用缓存、仅拦「受理状态不明」）。
   // 存在受理状态不明任务时 retryCreation 抛 needs_verification(409) → 引导回会话核验；无则就地安全续跑并返回新 run。
   if (isCreationTemplate(src.templateKey)) {
@@ -188,15 +207,18 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     if (!s) {
       throw new HttpError(409, 'creation_confirmation_required', '该运行由轻松创作发起，请在轻松创作中核验并恢复，避免重复计费')
     }
-    // [方案C 就地核验] 前端在成本确认弹窗后带 confirm_ambiguous=true：服务端据单一真源 isAmbiguousSubmitted 算出
+    // 前端在成本确认弹窗后带 confirm_ambiguous=true：服务端据单一真源 isAmbiguousSubmitted 算出
     // 「受理状态不明」任务并作为 verifiedFailedTaskIds 交给 retryCreation（重发这些、其余成功复用/在途仅续轮询）。
     // 未确认时 verifiedFailedTaskIds 留空 → retryCreation 命中 needs_verification 409（引导先核验）。
     let verifiedFailedTaskIds: number[] = []
     const rawResume = await c.req.text()
     let confirmAmbiguous = false
+    let acceptConfigDrift = false
     if (rawResume.trim()) {
       try {
-        confirmAmbiguous = (JSON.parse(rawResume) as Record<string, unknown>)['confirm_ambiguous'] === true
+        const parsedResume = JSON.parse(rawResume) as Record<string, unknown>
+        confirmAmbiguous = parsedResume['confirm_ambiguous'] === true
+        acceptConfigDrift = parsedResume['accept_config_drift'] === true
       } catch {
         /* 无 / 非法 body 视为未确认 */
       }
@@ -215,6 +237,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
         planRevision: s.planRevision,
         idempotencyKey: randomUUID(),
         verifiedFailedTaskIds,
+        acceptConfigDrift,
       })
       const newRun = await findRun(newRunId)
       if (!newRun) throw new HttpError(500, 'resume_failed', '续跑已提交但新 run 未生成，请到轻松创作会话中查看')
@@ -305,12 +328,12 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     return run
   })
   engine.startRun(newRun.id)
-  // [M14] 续跑同款联动（latest_run_id 指向本集最新 run）
+  // 续跑同款联动（latest_run_id 指向本集最新 run）
   await linkEpisode(newRun.projectId, newRun.input, newRun.id)
   return c.json({ run: toRunView(newRun) }, 202)
 }))
 
-// POST /runs/:id/steps/:stepKey/rerun —— [M11] 引擎级单步重跑（复用/重置该步子任务；succeeded 步骤全跳过）
+// POST /runs/:id/steps/:stepKey/rerun —— 引擎级单步重跑（复用/重置该步子任务；succeeded 步骤全跳过）
 runsRoutes.post('/runs/:id/steps/:stepKey/rerun', h(async (c) => {
   const runId = idParam(c)
   const stepKey = c.req.param('stepKey')
@@ -381,7 +404,7 @@ runsRoutes.post('/runs/:id/steps/:stepKey/rerun-cascade', h(async (c) => {
   }, 202)
 }))
 
-// GET /runs/:id/steps/:stepKey/revisions —— [M21] 步骤文本产物版本链（倒序 + current 标记）
+// GET /runs/:id/steps/:stepKey/revisions —— 步骤文本产物版本链（倒序 + current 标记）
 // 数据源：同 run 同 step 的 kind='text' 未删资产行（每次文本写入/reject 重跑/text_override 定稿各产生一版）
 runsRoutes.get('/runs/:id/steps/:stepKey/revisions', h(async (c) => {
   const runId = idParam(c)
@@ -409,7 +432,7 @@ runsRoutes.get('/runs/:id/steps/:stepKey/revisions', h(async (c) => {
   })
 }))
 
-// PATCH /runs/:id/params —— [M21] 集级参数热调（受限 + 留痕）
+// PATCH /runs/:id/params —— 集级参数热调（受限 + 留痕）
 // 状态门：queued|running|waiting_input；组内字段级深合并（改 image.model 不影响既有 image.size）；不可删键
 // 生效：未执行步骤经 createStepContext 每步重读 run.input（已开始步骤与 in-flight 任务不受影响）
 // 留痕：run.input._params_log 追加 { at, changes:[{group,key,from,to}], source:'user' }
@@ -446,7 +469,7 @@ runsRoutes.patch('/runs/:id/params', h(async (c) => {
   plog.push({ at: Date.now(), changes, source: 'user' })
   input['_params'] = merged
   input['_params_log'] = plog
-  // [M21 评审修复] 条件写：仅当仍处可热调状态才落库（闭合前置检查与写入之间的终态竞态窗口）
+  // 条件写：仅当仍处可热调状态才落库（闭合前置检查与写入之间的终态竞态窗口）
   const upd = await db
     .update(pipelineRuns)
     .set({ input: JSON.stringify(input), updatedAt: Date.now() })
@@ -468,7 +491,7 @@ async function findRun(id: number) {
   return rows[0] ?? null
 }
 
-/** [M14] 剧集联动（后置回写；宽容降级：任何异常不阻断 run 启动） */
+/** 剧集联动（后置回写；宽容降级：任何异常不阻断 run 启动） */
 async function linkEpisode(projectId: number, inputJson: string | null, runId: number): Promise<void> {
   try {
     const epNum = (JSON.parse(inputJson ?? '{}') as { episode_number?: unknown }).episode_number

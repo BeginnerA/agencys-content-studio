@@ -8,7 +8,7 @@ import { assertRecipeSources, recipeOf } from './recipe'
 import { loadCreationProjection } from './projection'
 
 /**
- * [M42] 会话侧闸门决策代理（中途审阅暂停，配合 easy-video-review 变体模板）。
+ * 会话侧闸门决策代理（中途审阅暂停，配合 easy-video-review 变体模板）。
  * - 只接受本会话自己的 run（runId + 项目归属双校验）；不改引擎 gate 语义，仅前置校验 + 决策落库留痕
  * - 幂等：同 idempotencyKey 重复提交直接返回，不重复决策（决策消息记 requestKey）
  * - reject = 该阶段整体重做（图片/视频再生成，计费风险由前端二次确认承担）；服务端不承诺"只重做部分镜头"

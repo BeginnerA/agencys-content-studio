@@ -77,7 +77,7 @@ export function useProjectDetailPage() {
   const assetErr = ref('')
   const pubErr = ref('')
 
-  // [M20] 项目品牌预览快照（BrandSettings 表单变化时实时更新）
+  // 项目品牌预览快照（BrandSettings 表单变化时实时更新）
   const projBrandSnap = ref<BrandConfig>({})
   const projWmFileSnap = ref('')
   const projIntroFileSnap = ref('')
@@ -160,13 +160,13 @@ export function useProjectDetailPage() {
       void loadCore({ silent: true })
       // 资产区仅在已加载过后才跟随刷新（未打开过则不触发无谓请求）
       if (assetsLoaded) void loadAssets({ silent: true })
-      // [M14] 集状态派生自最新 run → 终态后静默重载剧集地图
+      // 集状态派生自最新 run → 终态后静默重载剧集地图
       seriesRef.value?.reload(true)
       schedulePendingRefresh()
     }
     const onGate = () => {
       void loadCore({ silent: true })
-      // [M14] 进入闸门 → 集徽标切「待审阅」
+      // 进入闸门 → 集徽标切「待审阅」
       seriesRef.value?.reload(true)
       schedulePendingRefresh()
     }
@@ -237,7 +237,7 @@ export function useProjectDetailPage() {
     switchTab('runs')
   }
 
-  /** [M19] 项目品牌已配置槽数（品牌 tab 角标） */
+  /** 项目品牌已配置槽数（品牌 tab 角标） */
   const brandSlotCount = computed(() => {
     const s = project.value?.settings
     const b =
@@ -391,7 +391,7 @@ export function useProjectDetailPage() {
     if (rowPage.value > rowPageCount.value) rowPage.value = rowPageCount.value
   })
 
-  // ===== [M26-split] 资产操作（收藏/清理/打标/上传/抓取）另拆 use-project-assets，同名解构保持装配面不变 =====
+  // ===== 资产操作（收藏/清理/打标/上传/抓取）另拆 use-project-assets，同名解构保持装配面不变 =====
   const {
     favOnly,
     assetNotice,
@@ -426,7 +426,7 @@ export function useProjectDetailPage() {
   // ===== 资产筛选（接口上限 200 在网格下方明示） =====
   const ASSET_LIMIT = 200
   const purposeFilter = ref('all')
-  /** [M21] 标签筛选（客户端聚合去重，'all' = 不过滤） */
+  /** 标签筛选（客户端聚合去重，'all' = 不过滤） */
   const tagFilter = ref('all')
 
   const purposes = computed(() => {
@@ -448,7 +448,7 @@ export function useProjectDetailPage() {
   const showRunForm = ref(false)
   const showBatch = ref(false)
 
-  // [M14] 剧集地图「起作」：记录集号 → 弹窗预选项目模板 + 预填 episode_number
+  // 剧集地图「起作」：记录集号 → 弹窗预选项目模板 + 预填 episode_number
   const seriesRef = ref<InstanceType<typeof SeriesBoard> | null>(null)
   const startEpisodeNumber = ref<number | null>(null)
   const runFormTplKey = computed(() =>

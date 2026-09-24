@@ -18,7 +18,7 @@ export class WorkbenchError extends Error {
 export const WORKBENCH_ACTIONS = ['ai_image', 'ai_video']
 
 /**
- * [审计·重生成收口] gen_task 归零重排队补丁（单一真源，取代各重生成入口的分叉写法）。
+ * gen_task 归零重排队补丁（单一真源，取代各重生成入口的分叉写法）。
  * 引擎执行段以 `task.taskId ? 续轮询 : 重新提交` 决定第三方任务去向（见 ai-video.ts）：
  * - regen=true（强制重新生成：单镜重生成 / 单步全量重跑 / 级联重做 / 局部返修）→ 清空外部 task_id，
  *   令其真正重新提交。保留旧 task_id 会让「重生成」直接轮回变更前的旧第三方成片（假重生成：
@@ -44,7 +44,7 @@ export interface ShotSpec {
   duration?: number
   /** LLM 分镜实际口径（storyboard-ep 提示词 schema 用 duration_sec；编辑写入 duration 时同步） */
   duration_sec?: number
-  /** [M11] 该镜配的台词句 id 数组（空数组 = 无台词镜；合成期音字对齐映射源，storyboard-ep v+1 产出） */
+  /** 该镜配的台词句 id 数组（空数组 = 无台词镜；合成期音字对齐映射源，storyboard-ep v+1 产出） */
   lines?: string[]
   [k: string]: unknown
 }
@@ -69,7 +69,7 @@ export async function getStepOrThrow(runId: number, stepKey: string): Promise<Pi
   return step
 }
 
-/** [M10] output.asset_ids → 镜头选中映射（params.shotId 解析；同镜取首个命中） */
+/** output.asset_ids → 镜头选中映射（params.shotId 解析；同镜取首个命中） */
 export async function selectedMapOf(step: PipelineStep): Promise<{ outIds: number[]; selected: Map<string, number> }> {
   const outIds = outputIdsOf(step)
   const selected = new Map<string, number>()

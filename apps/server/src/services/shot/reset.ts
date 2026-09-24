@@ -6,7 +6,7 @@ import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, selectedMapOf, same
 import { isCreationTemplate } from '../creation-chat/recipe'
 import { assertRepairable, assertChainRepairable } from './inspect'
 
-/** [M42] 返修可重置的步骤形态（生成步按镜重置 + 合成步整步重置） */
+/** 返修可重置的步骤形态（生成步按镜重置 + 合成步整步重置） */
 const REWORK_ACTIONS = ['ai_image', 'ai_video', 'ffmpeg_merge']
 
 // ---------- 重新合成 ----------
@@ -27,7 +27,7 @@ export async function resetStepForRecompose(runId: number, stepKey: string): Pro
 }
 
 /**
- * [M44] 对白本地重合成零模型重置：同时失效逐镜转写步与合成步（从选中镜头的已校验缓存重建全片字幕、
+ * 对白本地重合成零模型重置：同时失效逐镜转写步与合成步（从选中镜头的已校验缓存重建全片字幕、
  * 旧最终审阅作废），但绝不归零或删除 ASR 任务——保留 succeeded 任务以复用原声转写缓存，保证零付费。
  * 若只重置合成会残留陈旧字幕，违反「重新合成不暗改字幕/不暗中付费 ASR」红线，故对白走本专用通道。
  */
@@ -53,7 +53,7 @@ export interface ReworkStepReset {
   stepKey: string
   shots: ReworkShotReset[]
   /**
-   * [M44] 对白局部返修专用通道：该步为严格逐镜转写（dialogue_subtitle），按镜删除已存 ASR 任务，
+   * 对白局部返修专用通道：该步为严格逐镜转写（dialogue_subtitle），按镜删除已存 ASR 任务，
    * 令其随重做后的新原声重新转写；清空本步产出使全片字幕重建。未列入的镜头任务原样保留（复用零重付费）。
    * 这是对白独有的依赖失效，不改 REWORK_ACTIONS 白名单语义、不把 ASR 塞进通用重置遗漏任务状态。
    */
@@ -70,7 +70,7 @@ function shotIdOfTask(t: { params: string | null }): string | null {
 }
 
 /**
- * [M42] 局部返修的批量状态重置（与批准链改写同事务，由 creation 层 rework 传入 allowCreation）：
+ * 局部返修的批量状态重置（与批准链改写同事务，由 creation 层 rework 传入 allowCreation）：
  * - 门禁与 assertRepairable 同语义，但 failed 判定按「本次全部目标步」整体做（逐单步复用会把兄弟目标步误判成 other_failed）；
  * - 只重置目标镜任务（attempts 归零、resultAssetId 保留作历史候选），同镜其他任务仍 succeeded → 被引擎跳过；
  * - 一并把任务 prompt 同步为重新批准后的提示词：ai_image/ai_video 的「已批准任务参数发生变化」守卫比对的是任务快照，
@@ -98,7 +98,7 @@ export async function resetShotsForRework(
   for (const target of steps) {
     const row = byKey.get(target.stepKey)
     if (!row) throw new WorkbenchError('not_found', `步骤 ${target.stepKey} 不存在`, 404)
-    // [M44] 对白转写失效只认 dialogue_subtitle 步，且必须显式登记 asrInvalid；不借道通用白名单
+    // 对白转写失效只认 dialogue_subtitle 步，且必须显式登记 asrInvalid；不借道通用白名单
     if (target.asrInvalid && row.actionKey !== 'dialogue_subtitle') {
       throw new WorkbenchError('bad_action', `步骤「${row.title ?? target.stepKey}」不是严格转写步，不能按对白失效处理`)
     }
@@ -159,10 +159,10 @@ export async function resetShotsForRework(
   return { runId, resetTaskIds, resetStepKeys: steps.map((s) => s.stepKey) }
 }
 
-// ---------- [M12] 版本清理 ----------
+// ---------- 版本清理 ----------
 
 /**
- * [M12] 工作台版本清理：校验工作台步骤 → 委托 version-cleanup。
+ * 工作台版本清理：校验工作台步骤 → 委托 version-cleanup。
  * 保留规则：组内最新 / isFavorite / 被引用（在用）；其余软删（可回溯）。不触发执行。
  */
 export async function cleanupShotVersions(
@@ -174,10 +174,10 @@ export async function cleanupShotVersions(
   return { ...result, runId: run.id, stepKey: step.stepKey }
 }
 
-// ---------- [M11] 引擎级单步重跑 ----------
+// ---------- 引擎级单步重跑 ----------
 
 /**
- * [M11] 单步重跑（引擎级——不限 action）：assertRepairable → 可选子任务归零 →
+ * 单步重跑（引擎级——不限 action）：assertRepairable → 可选子任务归零 →
  * step pending / run queued；路由层随后 engine.startRun（succeeded 步骤全跳过，仅执行目标步）。
  * - resetTasks=false（默认）：不动 gen_tasks——action 幂等段「succeeded 跳过 / failed 归零」自动生效；
  * - resetTasks=true：该步全部任务置 pending（resultAssetId 保留作历史）→ 全量重新执行（计费）；
@@ -359,7 +359,7 @@ async function assertStepRow(runId: number, stepKey: string): Promise<PipelineSt
   return step
 }
 
-/** [M10] producer output 保位替换（旧分镜 id → 新分镜 id；gate/skipped 字段原样保留） */
+/** producer output 保位替换（旧分镜 id → 新分镜 id；gate/skipped 字段原样保留） */
 export async function replaceProducerOutputAsset(
   producer: PipelineStep,
   oldId: number,
@@ -379,7 +379,7 @@ export async function replaceProducerOutputAsset(
 }
 
 /**
- * [M10] 镜头步骤 output 重建：按「分镜序 × 各镜当前选中」重建 asset_ids。
+ * 镜头步骤 output 重建：按「分镜序 × 各镜当前选中」重建 asset_ids。
  * 选中映射 = 旧 output 按 params.shotId 解析；override 用于上传绑定的该镜位替换/插入；
  * 未生成/无选中镜头跳过；已删除镜头的资产自然移除（重建式——历史资产仍可在版本组找回）。
  */

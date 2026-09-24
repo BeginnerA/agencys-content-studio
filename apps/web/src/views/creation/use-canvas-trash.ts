@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasTrash；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasTrash；依赖显式注入，原函数体保持不变。 */
 import { ref } from 'vue'
 import { creationApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
@@ -12,7 +12,7 @@ type Dependencies = Pick<CanvasState, 'projectId' | 'toast'> &
 export function useCanvasTrash(deps: Dependencies) {
   const { projectId, toast, loadCanvases } = deps
 
-  // ===== [M18] 回收站（软删画布：恢复 / 彻底删除）=====
+  // ===== 回收站（软删画布：恢复 / 彻底删除）=====
   const showTrash = ref(false)
   const trashLoading = ref(false)
   const trashItems = ref<CanvasListItem[]>([])

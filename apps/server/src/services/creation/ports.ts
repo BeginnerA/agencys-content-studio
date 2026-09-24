@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：端口矩阵/环检测/源侧类型校验与编辑能力声明。
+// 自 services/creation.ts 拆分：端口矩阵/环检测/源侧类型校验与编辑能力声明。
 import { getImageAdapter, resolveEndpoint } from '../../adapters/provider'
 import { COMPOSE_CAP, EDGE_PORTS, LLM_TEXT_CAP, REF_CAP, type EditCapability, type NodeSpec } from './spec'
 
@@ -25,7 +25,7 @@ export function wouldCreateCycle(edges: Array<{ from: number; to: number }>, fro
   return false
 }
 
-/** [M17] 建边 from 侧信息（补源侧类型校验） */
+/** 建边 from 侧信息（补源侧类型校验） */
 export interface FromNodeInfo {
   id: number
   kind: string
@@ -34,7 +34,7 @@ export interface FromNodeInfo {
   assetKind?: string | null
 }
 
-/** [M17] gen 节点预期产物类型（edit 并入 image；compose 产 video） */
+/** gen 节点预期产物类型（edit 并入 image；compose 产 video） */
 export function productKindOf(spec: NodeSpec | null): string | null {
   if (!spec) return null
   switch (spec.genKind) {
@@ -47,13 +47,13 @@ export function productKindOf(spec: NodeSpec | null): string | null {
     case 'compose':
       return 'video'
     case 'llm':
-      return 'text' // [M18] 产物为 text 资产
+      return 'text' // 产物为 text 资产
     default:
       return null
   }
 }
 
-/** [M17] from 侧产物类型：asset→资产类型；gen→预期产物；text/entity→虚拟类型（供端口校验） */
+/** from 侧产物类型：asset→资产类型；gen→预期产物；text/entity→虚拟类型（供端口校验） */
 export function sourceKindOf(from: FromNodeInfo): string | null {
   if (from.kind === 'asset') return from.assetKind ?? null
   if (from.kind === 'gen') return productKindOf(from.spec ?? null)
@@ -62,7 +62,7 @@ export function sourceKindOf(from: FromNodeInfo): string | null {
   return null
 }
 
-/** 端口规则矩阵校验 v3（建边用；[M18] +text 端口 / +llm 目标；返回错误文案或 null；from 提供时执行源侧类型校验） */
+/** 端口规则矩阵校验 v3（建边用； +text 端口 / +llm 目标；返回错误文案或 null；from 提供时执行源侧类型校验） */
 export function validateNewEdge(
   to: { id: number; kind: string; spec: NodeSpec | null },
   port: string,
@@ -112,7 +112,7 @@ export function validateNewEdge(
     return null
   }
   if (port === 'text') {
-    // [M18] text 端口：仅 llm 目标；源 = text / llm 节点（素材文本，非指令）
+    // text 端口：仅 llm 目标；源 = text / llm 节点（素材文本，非指令）
     if (spec.genKind !== 'llm') return '文本素材端口仅 LLM 节点支持'
     const fromText = from != null && (from.kind === 'text' || (from.kind === 'gen' && productKindOf(from.spec ?? null) === 'text'))
     if (from && !fromText) return `文本素材来源需为文本节点或 LLM 节点（当前类型：${srcLabel}）`

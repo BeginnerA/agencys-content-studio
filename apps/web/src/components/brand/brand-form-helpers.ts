@@ -1,5 +1,5 @@
 /**
- * [M19] 品牌设置纯逻辑辅助（BrandSettings 拆分：M26 红线纯重构，函数体逐字搬移）
+ * 品牌设置纯逻辑辅助（BrandSettings 拆分：纯重构，函数体逐字搬移）
  * 无响应式依赖：类型守卫 / 百分比换算 / 位置规范化 / 常量表 / 品牌浅合并 / 槽文件路径。
  * 供 use-brand-form / use-brand-run 与 BrandSettings.vue 共用。
  */

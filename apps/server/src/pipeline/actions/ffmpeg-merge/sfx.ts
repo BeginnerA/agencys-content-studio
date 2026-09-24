@@ -1,7 +1,7 @@
 import { round3 } from './util'
 
 /**
- * [M19] SFX 起点规划（纯函数；探针直测）——每镜 ≤1 条、起点 = Σ_{j<i} d_j + 片头位移：
+ * SFX 起点规划（纯函数；探针直测）——每镜 ≤1 条、起点 = Σ_{j<i} d_j + 片头位移：
  * - 与 buildTransitionPlan offsets 同口径：转场时镜 i 起点即 offsets[i-1]（同一 Σd 公式，不随转场改变）；
  * - fileOk=false（文件缺失）或 relPath 缺失 → 计入 missing 跳过，不产出条目。
  */

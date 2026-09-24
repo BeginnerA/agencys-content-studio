@@ -1,6 +1,6 @@
 import type { WatermarkPosition } from '../../../services/brand-config'
 
-/** [M19] 水印 overlay 定位表达式（九宫格 + 边距；margin 已整数化）：tl=24:24 / mc=(W-w)/2:(H-h)/2 … */
+/** 水印 overlay 定位表达式（九宫格 + 边距；margin 已整数化）：tl=24:24 / mc=(W-w)/2:(H-h)/2 … */
 export function watermarkOverlayXY(position: WatermarkPosition, marginPx: number): string {
   const m = Math.round(marginPx)
   const row = position.charAt(0)

@@ -1,4 +1,4 @@
-// ===== [M9] 小说改编链（GET /runs/:id/novel-board 契约） =====
+// ===== 小说改编链（GET /runs/:id/novel-board 契约） =====
 
 /** 章节索引.json（切分 manifest；后端已解析，字段宽松防御） */
 export interface NovelManifestDoc {
@@ -10,10 +10,10 @@ export interface NovelManifestDoc {
   range?: string | null
   skipped_head_chars?: number
   reels?: string[]
-  /** [M25·G6] 多部合并（per_source=true 时服务端附加） */
+  /** 多部合并（per_source=true 时服务端附加） */
   per_source?: boolean
   books?: Array<{ name?: string; count?: number }>
-  /** [M25·G7] 增量连载批次记录 */
+  /** 增量连载批次记录 */
   appended_at?: unknown[]
   chapters?: Array<{
     index?: number
@@ -36,7 +36,7 @@ export interface NovelBoardChapter {
   chars: number
   /** pending/processing/succeeded/failed/cancelled；无任务 → null */
   event_status: string | null
-  /** [M25·G6] 多部合并归属书名（非 per_source → null） */
+  /** 多部合并归属书名（非 per_source → null） */
   source_book?: string | null
 }
 
@@ -70,7 +70,7 @@ export interface NovelBoardPlanDoc {
   }>
 }
 
-/** [M25·G3] 服务端确定性力导向布局（graph.layout；脏 doc → null 前端降级表视图） */
+/** 服务端确定性力导向布局（graph.layout；脏 doc → null 前端降级表视图） */
 export interface GraphLayout {
   nodes: Array<{
     id: string

@@ -23,7 +23,7 @@ export interface ShotEditItem {
 }
 
 /**
- * [M10] 结构性编辑操作（spec §2.2）：按序应用、每条在应用时点校验；
+ * 结构性编辑操作（spec §2.2）：按序应用、每条在应用时点校验；
  * 前端建议序列 add* → patch* → remove* → reorder（reorder 含最终全部 id）。
  */
 export type ShotOp =
@@ -114,10 +114,10 @@ export async function applyStoryboardEdits(
   return { assetId: newAsset.id, assetIds: ids, edited: changedItems.length }
 }
 
-// ---------- [M10] 结构性编辑（ops 协议） ----------
+// ---------- 结构性编辑（ops 协议） ----------
 
 /**
- * [M10] 结构性编辑：ops 按序应用（每条在应用时点校验）→ 写分镜新版本资产 →
+ * 结构性编辑：ops 按序应用（每条在应用时点校验）→ 写分镜新版本资产 →
  * 保位替换 producer output → 重建镜头步骤 output.asset_ids（新分镜序 × 当前选中映射）。不触发执行。
  */
 export async function applyStoryboardOps(
@@ -171,7 +171,7 @@ export async function applyStoryboardOps(
   return { assetId: newAsset.id, assetIds, shots: work.length }
 }
 
-/** [M10] 拖拽重排（单条 reorder op 的便捷入口） */
+/** 拖拽重排（单条 reorder op 的便捷入口） */
 export async function reorderShots(
   runId: number,
   stepKey: string,
@@ -294,7 +294,7 @@ function applyShotPatch(shot: ShotSpec, fields: Record<string, unknown>): void {
       }
       const v = Math.round(value * 10) / 10
       shot.duration = v
-      // 原分镜若用 duration_sec 口径（LLM 产出）则同步，防下游读取分歧（对齐 M7 applyPatches）
+      // 原分镜若用 duration_sec 口径（LLM 产出）则同步，防下游读取分歧（对齐 applyPatches）
       if (Object.prototype.hasOwnProperty.call(shot, 'duration_sec')) shot.duration_sec = v
       continue
     }
@@ -306,7 +306,7 @@ function applyShotPatch(shot: ShotSpec, fields: Record<string, unknown>): void {
       continue
     }
     if (key === 'lines') {
-      // [M11] 台词绑定（音字对齐映射源）：字符串数组（可为空 = 无台词镜），元素为非空台词 id
+      // 台词绑定（音字对齐映射源）：字符串数组（可为空 = 无台词镜），元素为非空台词 id
       if (!Array.isArray(value) || value.some((c) => typeof c !== 'string' || !c.trim())) {
         throw new WorkbenchError('bad_field', 'lines 需为字符串数组（元素为非空台词 id）')
       }

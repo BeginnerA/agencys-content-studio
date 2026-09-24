@@ -3,17 +3,17 @@ import type { StepResult } from '../types'
 import { aiImage } from './ai-image'
 import { aiText } from './ai-text'
 import { aiVideo } from './ai-video'
-// [M25] 一致性回查 + 视频解析骨架（契约纯函数已实装，action 体分别随批 2/批 3 接线）
+// 一致性回查 + 视频解析骨架（契约纯函数已实装，action 体分别随批 2/批 3 接线）
 import { adaptAudit } from './adapt-audit'
 import { characterSync } from './character-sync'
-// [M24] 摘要压缩 + 合规审核两 action 注册（与 loader.KNOWN_ACTIONS 同步）
+// 摘要压缩 + 合规审核两 action 注册（与 loader.KNOWN_ACTIONS 同步）
 import { complianceCheck } from './compliance-check'
 import { entitySync } from './entity-sync'
 import { ffmpegMerge } from './ffmpeg-merge'
 import { imageAnalyze } from './image-analyze'
 import { literal } from './literal'
 import { manualIngest } from './manual-ingest'
-// [整改] 复盘回灌专用：发布记录直接入库（取代导出 CSV 再上传）
+// 复盘回灌专用：发布记录直接入库（取代导出 CSV 再上传）
 import { publicationIngest } from './publication-ingest'
 import { memoryRecall } from './memory-recall'
 import { memorySummary } from './memory-summary'

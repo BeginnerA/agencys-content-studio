@@ -17,7 +17,7 @@ export interface ProviderConfigLite {
 }
 
 /**
- * [M31+] 视频实例「轻松创作能力声明」（存于 extra.creationCapabilities）。
+ * 视频实例「轻松创作能力声明」（存于 extra.creationCapabilities）。
  * 与服务端 preflight 的 videoCapabilitiesSchema 严格对齐：verified 恒为 true（勾选即声明已核实），
  * 字段缺一不可，且 model 必须与实例所选模型一字不差，否则预检拒绝执行（不猜测、不静默降级）。
  */
@@ -31,7 +31,7 @@ export interface VideoCreationCapabilities {
 }
 
 /**
- * [M32] 视频模型能力单一真源表只读查询结果（GET /api-configs/video-caps）。
+ * 视频模型能力单一真源表只读查询结果（GET /api-configs/video-caps）。
  * supported=true 时 caps 为平台背书档位（Tier A）——前端据此自动预填、免用户手填核实；
  * supported=false（如 siliconflow / 未知供应商）时前端回退到手填声明表单。
  */
@@ -52,7 +52,7 @@ export interface VideoCapsResult {
 }
 
 /**
- * [M33] 模型参考定价（Tier A，服务端定价真源表解析结果）。
+ * 模型参考定价（Tier A，服务端定价真源表解析结果）。
  * prices 按计价单位索引（元/百万 token、元/张、元/秒、元/千字符），与实例 apiConfigs.pricing 同口径；
  * source 为供应商公开定价页锚点 + 口径说明，供前端「为何是这个值」提示。
  */
@@ -62,9 +62,9 @@ export interface ModelPricing {
 }
 
 /**
- * [M33] GET /api-configs/model-suggest 响应：跨通道「选中即生成」Tier A 建议。
+ * GET /api-configs/model-suggest 响应：跨通道「选中即生成」Tier A 建议。
  * supported=是否有任一可自动带出的信息（参考定价 / 视频能力 / 默认通道建议）；
- * pricing 命中即预填（全通道），caps 仅视频命中（复用 M32），suggestDefault=该类型当前无实例。
+ * pricing 命中即预填（全通道），caps 仅视频命中（复用），suggestDefault=该类型当前无实例。
  */
 export interface ModelSuggestResult {
   supported: boolean
@@ -127,7 +127,7 @@ export interface VendorCredential {
 }
 
 /**
- * [M33.1] 在线模型目录条目（fetch-models 归一结果）。
+ * 在线模型目录条目（fetch-models 归一结果）。
  * pricing 仅供应商接口明确返回且可归一时给出（阿里百炼 LLM 走 DashScope 原生带价口）；
  * 给不了则缺席 → 前端回落 model-suggest 核实表 / 手填 / 未计价（绝不猜价）。context 供展示，不参与计价。
  */
@@ -146,7 +146,7 @@ export interface FetchModelsResult {
 }
 
 /**
- * [M38] 扩展参数单一真源字段描述（GET /api-configs/extra-schema）。
+ * 扩展参数单一真源字段描述（GET /api-configs/extra-schema）。
  * 服务端 adapters/extra-params.ts 逐条登记（仅核实事实，不猜）；前端据此按供应商动态渲染
  * 结构化表单（替代裸 JSON 天书框）。type 决定控件：select 下拉 / boolean 开关 / number 数字 /
  * text 文本 / url-list 多行 URL / json 对象。default 为 Tier A 预填（用户可覆盖），required 标必填。
@@ -176,9 +176,9 @@ export interface ExtraSchemaResult {
   fields: ExtraField[]
 }
 
-// ===== [M19 P8] 音色库（声音克隆） =====
+// ===== 音色库（声音克隆） =====
 
-/** [M19] 克隆音色行（voice_clones；meta 为供应商留痕 JSON 字符串） */
+/** 克隆音色行（voice_clones；meta 为供应商留痕 JSON 字符串） */
 export interface VoiceCloneItem {
   id: number
   /** 音色名（唯一；引用令牌 clone:{id} 按 id 定位） */
@@ -194,14 +194,14 @@ export interface VoiceCloneItem {
   updatedAt: number
 }
 
-/** [M19] 克隆能力位（audio 供应商目录全量；available=false → UI 置灰） */
+/** 克隆能力位（audio 供应商目录全量；available=false → UI 置灰） */
 export interface VoiceCloneProvider {
   key: string
   name: string
   available: boolean
 }
 
-// ===== [M34] 运行入参预填（G6 历史 run/brief + G8 视频合法档位） =====
+// ===== 运行入参预填（G6 历史 run/brief + G8 视频合法档位） =====
 
 /** 自动值来源（可追溯：前端据此标注「为何是这个值」） */
 export type PrefillSource = 'template_default' | 'last_run' | 'brief'
@@ -236,7 +236,7 @@ export interface PrefillResult {
   overrides: { video: VideoOverride | null }
 }
 
-// ===== [M35] G7 自然语言→模板推荐 + G11 下一步建议 =====
+// ===== G7 自然语言→模板推荐 + G11 下一步建议 =====
 
 /** G7 推荐命中项（embedding 优先、keyword 回落） */
 export interface RecommendItem {
@@ -268,10 +268,10 @@ export interface NextStep {
   auto?: boolean
 }
 
-// ===== [M36] G12 运营配置自动化 =====
+// ===== G12 运营配置自动化 =====
 
 /**
- * [M36·G12.1] 平台导出规格单一真源目录条目（GET /exports/presets/catalog）。
+ * 平台导出规格单一真源目录条目（GET /exports/presets/catalog）。
  * 前端「从目录补全」据此一键带出缺失平台预设，替代逐项手填；机器键与 publications/export 域对齐（视频号=wechat_channels）。
  */
 export interface PlatformCatalogEntry {
@@ -287,7 +287,7 @@ export interface PlatformCatalogEntry {
 }
 
 /**
- * [M36·G12.2] 合规词库只读视图（GET /compliance/rules）。
+ * 合规词库只读视图（GET /compliance/rules）。
  * source='file' 用户词库在位；'builtin' = 文件缺失启用内置《广告法》基准地板兜底（不再返空静默）。
  */
 export interface ComplianceRulesView {
@@ -297,7 +297,7 @@ export interface ComplianceRulesView {
 }
 
 /**
- * [M36·G12.3] 词库补充建议条目（GET /compliance/suggest，Tier B 零新计费）。
+ * 词库补充建议条目（GET /compliance/suggest，Tier B 零新计费）。
  * 从既有已付费复审结论聚合候选新词；level 一律 warn（升 block 属法务判断，保留人工）。
  */
 export interface SuggestedRule {
@@ -309,7 +309,7 @@ export interface SuggestedRule {
 }
 
 /**
- * [M36·G12.4] 发布节奏（Tier A 纯日期数学）：日更 / 隔 N 日 / 每周指定星期。
+ * 发布节奏（Tier A 纯日期数学）：日更 / 隔 N 日 / 每周指定星期。
  * 与服务端 services/cadence.ts 的 Cadence 严格同构。
  */
 export type Cadence =

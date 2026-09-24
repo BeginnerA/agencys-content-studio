@@ -1,6 +1,6 @@
 /**
- * [M14] 集级参数覆盖服务（run 级生成参数）。
- * - 载体：run.input._params（下划线内部键，对齐 M11 run.input._compose 先例）——
+ * 集级参数覆盖服务（run 级生成参数）。
+ * - 载体：run.input._params（下划线内部键，对齐 run.input._compose 先例）——
  *   { image: {...}, video: {...}, audio: {...}, llm: {...} }，启动时快照、随 run 固化。
  * - 校验：键白名单 + 类型 + clamp（非法 → 抛 RunParamsError，路由层转 400）。
  * - 生效：context.createStepContext 在 settings 合并链顶层叠加

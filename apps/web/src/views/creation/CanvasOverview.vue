@@ -17,7 +17,7 @@ const cv = props.cv
 </script>
 
 <template>
-  <!-- [M17] 全局状态总览抽屉（doc 派生；点击定位） -->
+  <!-- 全局状态总览抽屉（doc 派生；点击定位） -->
   <aside
     v-if="cv.showOverview && cv.canvasId != null"
     class="ov-drawer panel"

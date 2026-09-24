@@ -2,7 +2,7 @@ import type { CharacterRow } from '../db/schema'
 import { chatCompleteDetailed, loadPromptTemplate, type LlmUsage } from './llm'
 
 /**
- * [M13] 素材档案批量润色服务（对齐 Toonflow polishAssetsPrompt 语义）：
+ * 素材档案批量润色服务（对齐 Toonflow polishAssetsPrompt 语义）：
  * 单实体 appearance 润色规范化（补视觉指纹 / 短语化 / 统一语感），只更新 appearance；
  * 输出解析宽容（剥围栏 / 去包裹引号 / 取最长非空段）；
  * 调用失败/输出为空 → 不写库（由路由层逐项收集 failed，不阻断其余项）。

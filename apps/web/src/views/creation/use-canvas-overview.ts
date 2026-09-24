@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasOverview；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasOverview；依赖显式注入，原函数体保持不变。 */
 import { computed, nextTick, ref } from 'vue'
 import type { CanvasDocNode } from '../../lib/types'
 import type { CanvasState } from './use-canvas-state'
@@ -20,7 +20,7 @@ export function useCanvasOverview(deps: Dependencies) {
     boardRef,
   } = deps
 
-  // ===== [M17] 全局状态总览（doc 派生，零端点） =====
+  // ===== 全局状态总览（doc 派生，零端点） =====
   const showOverview = ref(false)
   interface OvRow {
     id: number

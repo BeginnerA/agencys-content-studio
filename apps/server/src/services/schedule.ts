@@ -1,5 +1,5 @@
 /**
- * [M20] 排产调度服务（B1/B5）
+ * 排产调度服务（B1/B5）
  * - 轻量自研调度器：60s 轮询 + 幂等触发（红线内：计划表 + 幂等触发，非重型引擎）
  * - 触发语义：scheduledAt ≤ now 且 status=pending → 创建 batch → 置 triggered
  * - 崩溃恢复：启动时立即 tick 一次（与 reconcileBatches 互补）

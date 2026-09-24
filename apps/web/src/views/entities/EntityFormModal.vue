@@ -88,7 +88,7 @@ const {
             placeholder="供应商音色令牌，如 Cherry / 网关 模型:音色（留空走默认降级）"
             class="voice-ta"
           />
-          <!-- [M19 P8] 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->
+          <!-- 选克隆音色：选中写入 clone:{id}（服务端换克隆端点并覆盖为克隆绑定模型）；选首项仅清除克隆令牌 -->
           <select
             v-model="cloneSel"
             @change="onCloneSelChange"

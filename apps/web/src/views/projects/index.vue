@@ -20,7 +20,7 @@ const router = useRouter()
 // 新建项目弹窗
 const showNew = ref(false)
 
-// [M21] ?new=1 深链接（命令面板「新建项目」直达）；消费后清 query（防刷新重复弹）
+// ?new=1 深链接（命令面板「新建项目」直达）；消费后清 query（防刷新重复弹）
 watch(
   () => route.query.new,
   (v) => {
@@ -42,7 +42,7 @@ const dangerProject = ref<Project | null>(null)
 // 恢复中的项目 id（按卡片禁用）
 const restoringId = ref(0)
 
-// ===== [M21] 标签筛选（客户端聚合去重） =====
+// ===== 标签筛选（客户端聚合去重） =====
 const tagFilter = ref('all')
 
 const allTags = computed(() => {
@@ -387,7 +387,7 @@ function cardTo(p: Project) {
   border-radius: 999px;
 }
 
-/* [M21] 标签 chips 与筛选色 */
+/* 标签 chips 与筛选色 */
 .tags {
   margin-top: 6px;
 }
@@ -413,7 +413,7 @@ function cardTo(p: Project) {
   font-size: 12px;
 }
 
-/* [M30] 轻松创作醒目入口（一句话成片 CTA 横幅） */
+/* 轻松创作醒目入口（一句话成片 CTA 横幅） */
 .ec-cta {
   display: flex;
   align-items: center;

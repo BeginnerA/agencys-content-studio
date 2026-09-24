@@ -1,15 +1,15 @@
 <script setup lang="ts">
 /**
- * [M16/M17] 创作画布渲染层（手绘零依赖；spec §2.5）
+ * 创作画布渲染层（手绘零依赖；spec §2.5）
  * - 世界层 translate(pan) scale(zoom)；边 = SVG 三次贝塞尔；节点 = 绝对定位卡片（宽 220）
  * - 模式机：box（空白左键框选）/ pan（空格+左键 / 中键）/ node（多选整组拖拽）/ link（输出口→输入口）
  * - 键盘：Del 删除 · Ctrl+Z/Y 撤销重做 · Ctrl+D 复制 · Ctrl+A 全选 · 方向键微移 · 空格平移 · F 适应 · Esc 取消
  * - 落点：空白双击建生成节点；drop 文件由父级上传后建素材节点（本组件只报世界坐标与文件）
  * - 视口：useBoardViewport（初始 = 画布持久化；settled 后 emit，父级防抖 PATCH）
- * - [M17] 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（spec §2.4，README 明示）
- * - [M23] 渲染虚拟化：renderNodes / edgePaths 按可见世界矩形裁剪（半屏外扩；尺寸未实测 → 全量兜底）；
+ * - 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（spec §2.4，README 明示）
+ * - 渲染虚拟化：renderNodes / edgePaths 按可见世界矩形裁剪（半屏外扩；尺寸未实测 → 全量兜底）；
  *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真，spec §2.2）
- * - [M26-split] 缩放栏 / 操作指南悬浮件拆至 BoardHud.vue（行为零变更）
+ * - 缩放栏 / 操作指南悬浮件拆至 BoardHud.vue（行为零变更）
  */
 import { computed, ref } from 'vue'
 import { useBoardViewport } from '../../../lib/board-viewport'
@@ -61,12 +61,12 @@ function nodeH(n: CanvasDocNode): number {
   return nodeHeights.value[n.id] ?? DEFAULT_H
 }
 
-// ---- [M18/M22] 分组：嵌套递归派生 / 折叠隐藏 / 包围盒 / 组条交互 ----
-/** [M22] 直接子组 */
+// ---- 分组：嵌套递归派生 / 折叠隐藏 / 包围盒 / 组条交互 ----
+/** 直接子组 */
 function childGroupsOf(gid: number): CanvasGroup[] {
   return props.groups.filter((g) => g.parentId === gid)
 }
-/** [M22] 全部后代组 id（不含自身；栈式遍历 + 守卫防环） */
+/** 全部后代组 id（不含自身；栈式遍历 + 守卫防环） */
 function descGroupIds(gid: number): number[] {
   const out: number[] = []
   const stack = [gid]
@@ -81,7 +81,7 @@ function descGroupIds(gid: number): number[] {
   }
   return out
 }
-/** [M22] 组子树全部成员节点（自身直接成员 + 全部后代组成员） */
+/** 组子树全部成员节点（自身直接成员 + 全部后代组成员） */
 function descendantNodesOf(gid: number): CanvasDocNode[] {
   const gset = new Set([gid, ...descGroupIds(gid)])
   return props.nodes.filter((n) => n.groupId != null && gset.has(n.groupId))
@@ -89,7 +89,7 @@ function descendantNodesOf(gid: number): CanvasDocNode[] {
 function descNodeIds(gid: number): number[] {
   return descendantNodesOf(gid).map((n) => n.id)
 }
-/** [M22] 组渲染深度（顶层 0；父链守卫防环） */
+/** 组渲染深度（顶层 0；父链守卫防环） */
 function groupDepth(g: CanvasGroup): number {
   let d = 0
   let cur = g.parentId
@@ -101,7 +101,7 @@ function groupDepth(g: CanvasGroup): number {
   }
   return d
 }
-/** [M22 实弹] 折叠组隐藏全部后代组框（父组折叠 → 整个子树收起，含子组） */
+/** 折叠组隐藏全部后代组框（父组折叠 → 整个子树收起，含子组） */
 const hiddenGroupIds = computed<Set<number>>(() => {
   const s = new Set<number>()
   for (const g of props.groups) {
@@ -118,7 +118,7 @@ const renderGroups = computed(() =>
 )
 const hiddenNodeIds = computed<Set<number>>(() => {
   const s = new Set<number>()
-  // [M22] 折叠组隐藏自身成员 + 全部后代组成员
+  // 折叠组隐藏自身成员 + 全部后代组成员
   const gset = new Set<number>()
   for (const g of props.groups) {
     if (!g.collapsed) continue
@@ -133,7 +133,7 @@ const hiddenNodeIds = computed<Set<number>>(() => {
 function isNodeHidden(n: CanvasDocNode): boolean {
   return hiddenNodeIds.value.has(n.id)
 }
-/** [M23] 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底，spec §2.2） */
+/** 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底，spec §2.2） */
 const VIEW_MARGIN = 0.5
 const visibleWorld = computed<{
   x1: number
@@ -152,7 +152,7 @@ const visibleWorld = computed<{
   const my = (y2 - y1) * VIEW_MARGIN
   return { x1: x1 - mx, y1: y1 - my, x2: x2 + mx, y2: y2 + my }
 })
-/** [M23] 节点矩形 × 可见矩形相交判定（不可见节点高度兜底 DEFAULT_H） */
+/** 节点矩形 × 可见矩形相交判定（不可见节点高度兜底 DEFAULT_H） */
 function inView(n: CanvasDocNode): boolean {
   const r = visibleWorld.value
   if (!r) return true
@@ -164,7 +164,7 @@ function inView(n: CanvasDocNode): boolean {
 const renderNodes = computed(() =>
   props.nodes.filter((n) => isNodeHidden(n) === false && inView(n)),
 )
-/** [M22] 空子树组锚点（拖拽中随 dragGroup 即时偏移） */
+/** 空子树组锚点（拖拽中随 dragGroup 即时偏移） */
 function groupAnchor(g: CanvasGroup): { x: number; y: number } {
   const d = dragGroup.value
   if (d?.moved && d.gids?.includes(g.id))
@@ -256,7 +256,7 @@ function ungroup(g: CanvasGroup): void {
   emit('group-delete', g.id)
   openGroupMenu.value = null
 }
-// [M22] 移组：候选 = 同画布非自身非后代（防环）；null = 提升顶层
+// 移组：候选 = 同画布非自身非后代（防环）；null = 提升顶层
 function parentCandidates(g: CanvasGroup): CanvasGroup[] {
   const bad = new Set([g.id, ...descGroupIds(g.id)])
   return props.groups.filter((x) => !bad.has(x.id))
@@ -273,14 +273,14 @@ function moveToTopLevel(g: CanvasGroup): void {
 // ---- 边路径（锚点：源右中 → 目标左中）----
 const edgePaths = computed<EdgePath[]>(() => {
   const out: EdgePath[] = []
-  // [M23] 虚拟化：任一端可见才渲染（两端均不可见 → 裁掉，spec §2.2）
+  // 虚拟化：任一端可见才渲染（两端均不可见 → 裁掉，spec §2.2）
   const visIds = new Set(renderNodes.value.map((n) => n.id))
   for (const e of props.edges) {
     const a = nodeById.value.get(e.from)
     const b = nodeById.value.get(e.to)
     if (!a || !b) continue
     if (hiddenNodeIds.value.has(e.from) || hiddenNodeIds.value.has(e.to))
-      continue // [M18] 折叠组成员：相关边隐藏
+      continue // 折叠组成员：相关边隐藏
     if (!visIds.has(e.from) && !visIds.has(e.to)) continue
     const pa = nodeXY(a)
     const pb = nodeXY(b)
@@ -315,7 +315,7 @@ const svgBox = computed(() => {
   }
 })
 
-// ---- 交互（M28 拆分：模式机/键盘/连线逻辑见 use-board-interactions.ts）----
+// ---- 交互（拆至：模式机/键盘/连线逻辑见 use-board-interactions.ts）----
 const {
   mode,
   spaceDown,
@@ -375,7 +375,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
       class="cb-world"
       :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }"
     >
-      <!-- [M18/M22] 分组层：递归包围盒框 + 顶部组条（折叠/重命名/改色/移组/解组；深度升序渲染）-->
+      <!-- 分组层：递归包围盒框 + 顶部组条（折叠/重命名/改色/移组/解组；深度升序渲染）-->
       <div
         v-for="g in renderGroups"
         :key="`g${g.id}`"
@@ -486,7 +486,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
     <!-- 框选矩形（视口坐标；左拖 = 框选，全包含判定） -->
     <div v-if="boxRect" class="cb-box" :style="boxStyle" />
 
-    <!-- [M26-split] 缩放栏 + 操作指南：拆至 BoardHud.vue（zoomBy/fitView 函数 props 直传） -->
+    <!-- 缩放栏 + 操作指南：拆至 BoardHud.vue（zoomBy/fitView 函数 props 直传） -->
     <BoardHud :zoom="zoom" :zoom-by="vp.zoomBy" :fit-view="fitView" />
   </div>
 </template>
@@ -544,7 +544,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   z-index: 3;
 }
 
-/* ---- [M18] 分组框与组条（spec §2.6⑩）---- */
+/* ---- 分组框与组条（spec §2.6⑩）---- */
 .cgroup {
   position: absolute;
   box-sizing: border-box;
@@ -552,7 +552,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   border-radius: 12px;
   background: rgb(var(--cg, 148 163 184) / 7%);
   pointer-events: none; /* 框体不拦截：穿框仍可点节点 / 空白框选 */
-  /* [M22 实弹] 不设 z-index：避免创建层叠上下文把菜单 z:5 锁在内部（被节点层盖住→点击穿透选节点）；组框仍按 DOM 序垫底 */
+  /* 不设 z-index：避免创建层叠上下文把菜单 z:5 锁在内部（被节点层盖住→点击穿透选节点）；组框仍按 DOM 序垫底 */
 }
 
 .cgroup.sel {
@@ -687,7 +687,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   outline-offset: 1px;
 }
 
-/* [M22] 移组区：小标题 + 候选列表（防溢出滚动） */
+/* 移组区：小标题 + 候选列表（防溢出滚动） */
 .cgroup-h {
   font-size: 11px;
   color: var(--text-3);

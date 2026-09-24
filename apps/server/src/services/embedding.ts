@@ -7,7 +7,7 @@ import { db } from '../db'
 import { settings } from '../db/schema'
 
 /**
- * M3 本地 embedding 服务（transformers.js + ONNX，默认 bge-small-zh-v1.5）。
+ * 本地 embedding 服务（transformers.js + ONNX，默认 bge-small-zh-v1.5）。
  * 懒加载单例 + inflight 互斥；normalize 后余弦 = 点积（cosine 实现）。
  * 模型目录：data/models/{modelName}/（model:prepare 就绪：config.json + tokenizer.json + onnx/*.onnx）。
  */

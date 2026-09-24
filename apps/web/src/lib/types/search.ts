@@ -1,4 +1,4 @@
-/** [M21] 全局搜索类型（GET /search 响应） */
+/** 全局搜索类型（GET /search 响应） */
 
 export interface SearchItem {
   id: number

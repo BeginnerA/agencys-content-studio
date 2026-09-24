@@ -1,6 +1,6 @@
 /**
- * [M26-split] 项目详情页「资产操作」composable（自 use-project-detail.ts 原样搬出，行为零变更）：
- * M12 收藏/版本清理/回收空间 + M21 标签聚合/批量打标 + 上传素材 + M25 URL 抓取正文入库。
+ * 项目详情页「资产操作」composable（自 use-project-detail.ts 原样搬出，行为零变更）：
+ * 收藏/版本清理/回收空间 + 标签聚合/批量打标 + 上传素材 + URL 抓取正文入库。
  * 状态真源仍归本组合（视图经 useProjectDetailPage 装配后同名解构使用）。
  */
 import { ref, computed, type Ref } from 'vue'
@@ -19,7 +19,7 @@ export function useProjectAssetOps(ctx: {
 }) {
   const { projectId, assets, assetTotal, assetErr, loadAssets, loadCore } = ctx
 
-  // ===== [M12] 收藏 / 版本清理 / 回收空间 =====
+  // ===== 收藏 / 版本清理 / 回收空间 =====
   const favOnly = ref(false)
   const assetNotice = ref('')
   const assetBusy = ref(false)
@@ -102,7 +102,7 @@ export function useProjectAssetOps(ctx: {
     }
   }
 
-  // ===== [M21] 标签：聚合 / 批量打标（追加去重；并发 ≤6） =====
+  // ===== 标签：聚合 / 批量打标（追加去重；并发 ≤6） =====
   /** 当前加载资产的标签聚合（去重排序） */
   const allTags = computed(() => {
     const set = new Set<string>()
@@ -193,7 +193,7 @@ export function useProjectAssetOps(ctx: {
     }
   }
 
-  // ===== [M25] G8 从 URL 抓取正文入库（source 资产；SSRF 守卫在后端） =====
+  // ===== G8 从 URL 抓取正文入库（source 资产；SSRF 守卫在后端） =====
   const showFetch = ref(false)
   const fetchUrl = ref('')
   const fetching = ref(false)

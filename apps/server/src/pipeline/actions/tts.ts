@@ -55,9 +55,9 @@ interface LineItem {
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
  * 抗抖重试（params.retry，默认 1 → 共 2 次尝试）：短剧长链（数十句）单句瞬时网络抖动不应拖垮整步，
  * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
- * 声线七级链（spec §6.2 + [M24] voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
+ * 声线七级链（spec §6.2 + voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
  * 情绪：emotion_hint → 实例声明 emotion_param 时透传（基调词命中 emotion_map → 枚举值；否则透传完整 emotion_hint 含六维细节）。
- * [M19 P8] 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
+ * 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
 export async function tts(ctx: StepContext): Promise<StepResult> {
   if (ctx.def.params?.strict_delivery === true) return strictTts(ctx)
@@ -68,7 +68,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const speed = typeof speedRaw === 'number' ? speedRaw : undefined
   const paramVoice = typeof params['voice'] === 'string' && params['voice'] ? params['voice'] : undefined
   const settingsVoice = typeof audCfg['voice'] === 'string' && audCfg['voice'] ? audCfg['voice'] : undefined
-  // [M24·F4] voice_map：语言→音色映射（params.voice_map { "en": "voice-x" }，当前语言 = run input.lang，spec §2.5 契约）；
+  // voice_map：语言→音色映射（params.voice_map { "en": "voice-x" }，当前语言 = run input.lang，spec §2.5 契约）；
   // lang 缺失/map 未配 → langVoice undefined → 该级整级跳过，原行为逐字不变。
   // lang 取数：ctx.input 是步骤 inputs 映射解析结果（模板显式接线 input.lang 时即有值），
   // 未接线时回落 run.input.lang（契约本源，P2 实弹发现两处不一致后修正）
@@ -89,7 +89,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const langVoice = typeof langVoiceRaw === 'string' && langVoiceRaw.trim() ? langVoiceRaw.trim() : undefined
 
   const ep = await resolveAudioEndpoint(provider)
-  // [M19 P8] 音色库整步载入一次（无克隆行 → 空索引，声线链行为逐字不变）；命中后按 provider 换端点（同 provider 复用缓存）
+  // 音色库整步载入一次（无克隆行 → 空索引，声线链行为逐字不变）；命中后按 provider 换端点（同 provider 复用缓存）
   const cloneIndex = await loadCloneIndex()
   const cloneEpCache = new Map<string, AudioEndpoint>()
 
@@ -265,7 +265,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
           speaker: line.speaker ?? null,
           voice,
           voiceSource: hit.clone ? 'clone' : hit.source,
-          // [M19 P8] 克隆溯源：命中时记音色库行 id/名称与实际命中级（voiceSource 统一 'clone'）
+          // 克隆溯源：命中时记音色库行 id/名称与实际命中级（voiceSource 统一 'clone'）
           clone_id: hit.clone?.id ?? null,
           clone_name: hit.clone?.name ?? null,
           clone_level: hit.clone ? hit.source : null,
@@ -286,7 +286,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         .where(eq(genTasks.id, task.id))
       task.status = 'succeeded'
       task.resultAssetId = asset.id
-      // [M4] 用量记录：逐句按字符数计（元/千字符）
+      // 用量记录：逐句按字符数计（元/千字符）
       await recordUsage({
         projectId: ctx.run.projectId,
         runId: ctx.run.id,
@@ -363,12 +363,12 @@ function toLines(list: unknown[]): LineItem[] {
 }
 
 /**
- * 声线七级链（spec §6.2 + [M24·F4] voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
+ * 声线七级链（spec §6.2 + voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
  * 各级仅接受「供应商 voice 令牌」（全 ASCII，如 Cherry / FunAudioLLM/CosyVoice2-0.5B:alex）；
  * [B③] 自然语言声线描述（如「成年女声、清爽亲和」）自角色库拆出后落 characters.voice_desc，不再进本链；
  * 本链「character」级只读 voice=机器音色令牌。旧行/误将 NL 写入 voice 时，isProviderVoice 作防御性合法性守卫跳过并继续降级（与拆列前逐字节一致，零音频变更）；
  * 语义短语不再靠本启发式做语义消歧（描述已分流至 voice_desc），仅留作机器字段的合法性守卫。其 NL 原文仍逐句记录于 asset.params.voiceHint 供审计。
- * [M19 P8] cloneIndex：写 `clone:{id}` 且索引命中 → 返回供应商真实 voiceId + clone 行（调用方据此换端点/模型）；
+ * cloneIndex：写 `clone:{id}` 且索引命中 → 返回供应商真实 voiceId + clone 行（调用方据此换端点/模型）；
  * 旧调用签名兼容（不传 cloneIndex 时行为逐字不变），此时 clone 令牌无法解析 → 记入 cloneSkipped 并跳过该级继续降级。
  */
 export type VoiceChainSource = 'line' | 'character' | 'voice_map' | 'params' | 'settings' | 'instance' | 'default'
@@ -376,7 +376,7 @@ export type VoiceChainSource = 'line' | 'character' | 'voice_map' | 'params' | '
 export function resolveVoiceChain(p: {
   lineVoice?: string
   charVoice?: string
-  /** [M24] voice_map[当前 lang] 命中值（调用方解析；undefined → 该级跳过，旧调用逐字不变） */
+  /** voice_map[当前 lang] 命中值（调用方解析；undefined → 该级跳过，旧调用逐字不变） */
   langVoice?: string
   paramVoice?: string
   settingsVoice?: string

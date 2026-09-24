@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 发布数据面板（B2 回采系统化 + B3 A/B 测试）
+ * 发布数据面板（B2 回采系统化 + B3 A/B 测试）
  * 三个子视图：列表 / 趋势 / A/B 对比
  */
 import { computed, onMounted, ref } from 'vue'

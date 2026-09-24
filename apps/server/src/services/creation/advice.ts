@@ -1,12 +1,12 @@
 /**
- * [M23] LLM 建议式编排（D11）：确定性摘要 + 输出归一（纯函数，探针直测）+ canvasAdvice 编排。
+ * LLM 建议式编排（D11）：确定性摘要 + 输出归一（纯函数，探针直测）+ canvasAdvice 编排。
  * - buildCanvasSummary：CanvasDoc → 确定性 JSON 摘要（节点/边/组按 id 升序；gen 关键参数白名单 + excerpt 截断）；
  * - parseAdviceOutput：LLM 文本 → 归一建议（剥围栏 / kind 白名单归一 / targetNodeId 校验 / 条数截断；
  *   坏 JSON → 单条 raw 降级——宽容不炸）；
  * - canvasAdvice：摘要 + canvas-advice.md 提示词 + chatCompleteDetailed + 用量留痕（runId null，对齐
- *   M18 llm 节点 / M17 prompt-expand 先例）；LLM 未配置 → LlmNotConfiguredError（路由 400 llm_unavailable，
+ * llm 节点 / prompt-expand 先例）；LLM 未配置→ LlmNotConfiguredError（路由 400 llm_unavailable，
  *   不生成假建议）。
- * 建议式红线：仅返回建议文本，不执行任何操作（执行式归 M27 范畴）。
+ * 建议式红线：仅返回建议文本，不执行任何操作（执行式属另一范畴）。
  */
 import { chatCompleteDetailed, loadPromptTemplate } from '../llm'
 import { recordLlmUsage } from '../usage'

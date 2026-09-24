@@ -6,7 +6,7 @@ import { recordLlmUsage } from './usage'
 import { upsertMemory } from './memory'
 import { createLogger } from '../logger'
 
-// [M24·F1] 三层记忆 / 摘要压缩：项目/剧/集（+自定义）级摘要，LLM 增量合并压缩沉淀。
+// 三层记忆 / 摘要压缩：项目/剧/集（+自定义）级摘要，LLM 增量合并压缩沉淀。
 // 承载 = memories 表开放字段（type='summary' + 具名 upsert 幂等，零新表零新列，spec §2.2）：
 //   summary:project / summary:series:{id} / summary:episode:{id} / summary:custom:{name}
 // 纯函数面（summaryName/buildMergeInput/guardSummaryLen）探针直测；

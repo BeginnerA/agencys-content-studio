@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 检查器「AI 扩写」对照弹窗（自 inspector/index.vue 原样搬出，行为零变更）：
+ * 检查器「AI 扩写」对照弹窗（自 inspector/index.vue 原样搬出，行为零变更）：
  * 原文 / 可编辑草稿双栏 + 补充要求 + 扩写/应用。状态仍归 useInspectorForm，
  * 经 v-model 双向绑定草稿与补充要求，本组件纯展示 + 事件透传。
  */

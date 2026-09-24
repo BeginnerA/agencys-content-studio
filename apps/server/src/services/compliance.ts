@@ -6,7 +6,7 @@ import { db } from '../db'
 import { assets, type Asset } from '../db/schema'
 import { createLogger } from '../logger'
 
-// [M24·F5] 合规审核服务：本地词库（workspace/compliance/words.txt，零外部服务）+ LLM 复审解析
+// 合规审核服务：本地词库（workspace/compliance/words.txt，零外部服务）+ LLM 复审解析
 // + 产物标记写回（assets.params.compliance，对齐 image-check params.quality 零新列先例）。
 // 纯函数面（parseRules/scanText/parseLlmVerdict/overallStatus/renderComplianceReport）探针直测；
 // LLM 复审调用在 compliance_check action 编排（探针不真实调用）。
@@ -22,7 +22,7 @@ export interface ComplianceRule {
 }
 
 /**
- * [M36·G12.2] 内置《广告法》极限词高频基准地板：仅在 words.txt 文件缺失/读取异常时兜底启用，
+ * 内置《广告法》极限词高频基准地板：仅在 words.txt 文件缺失/读取异常时兜底启用，
  * 修复「词库缺失 → 合规扫描静默空转、产物误导为 pass」这一真实降级隐患（违「不静默降级」）。
  * 用户词库文件在位时**绝不并入**（现网命中集逐字零变化，probe-m24 文件路径零回归）。
  * 这是标记/拦截语义的地板，非完整法务词库，不构成法务意见（沿用 spec §8 免责）。
@@ -98,7 +98,7 @@ export function parseRules(text: string): ComplianceRule[] {
 
 /**
  * 现读词库文件（每次 action 现读，编辑即用）。
- * [M36·G12.2] 文件在位 → source='file'（仅文件规则，逐字不变）；文件缺失/读失败 → 启用 BASE_RULES 兜底，source='builtin'（不再返空静默）。
+ * 文件在位 → source='file'（仅文件规则，逐字不变）；文件缺失/读失败 → 启用 BASE_RULES 兜底，source='builtin'（不再返空静默）。
  */
 export function loadRules(dir: string = COMPLIANCE_DIR): { rules: ComplianceRule[]; source: 'file' | 'builtin'; path: string } {
   const file = join(dir, 'words.txt')

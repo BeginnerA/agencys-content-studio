@@ -7,19 +7,19 @@ import { absPathOf, importFiles, kindByExt, sha256Hex } from '../storage'
 import { CreationError, refSchema, type CreationRef, type CreationRefRole } from './contract'
 import { sessionRow } from './store'
 
-// [M31] 对话式参考输入：附件上传（复用 imports 落盘链，落到会话所属项目）与规划前核验。
-// [M31+] 增加「从素材选取」：既有资产登记为参考（跨项目按字节复制进会话项目，sha256 去重）。
+// 对话式参考输入：附件上传（复用 imports 落盘链，落到会话所属项目）与规划前核验。
+// 增加「从素材选取」：既有资产登记为参考（跨项目按字节复制进会话项目，sha256 去重）。
 // 零新表零新列：附件引用以 payload{kind:'attachment',...} 记在 creation_messages，采纳的 refs 编译进方案。
 // 红线：不计费、不触发规划；类型/大小/归属/内容核验不符一律 CreationError 拒绝，绝不静默忽略。
 
 const IMAGE_MAX = 20 * 1024 * 1024
 const VIDEO_MAX = 512 * 1024 * 1024
 const AUDIO_MAX = 100 * 1024 * 1024
-// [M43] 导出供跨轮合并上限校验复用（planning.mergeRefs）
+// 导出供跨轮合并上限校验复用（planning.mergeRefs）
 export const MAX_REFS = 12
 
 const ROLE_BY_KIND: Record<string, CreationRefRole> = { image: 'style', video: 'content', audio: 'bgm' }
-// [M43] 导出供绑定端点复用（与 web REF_VALID_ROLES 同源，新增取值两端同改）
+// 导出供绑定端点复用（与 web REF_VALID_ROLES 同源，新增取值两端同改）
 export const VALID_ROLES: Record<string, CreationRefRole[]> = {
   image: ['style', 'first_frame', 'subject'],
   video: ['content'],
@@ -117,7 +117,7 @@ async function registerAttachment(
   return { assetId: asset.id, kind, role, hash, name: asset.name, thumbUrl: thumbUrlFor(kind, asset.id) }
 }
 
-/** [M31+] 从素材库存量资产登记为参考：kind/大小/用途规则与上传完全一致（服务端权威拒绝）。
+/** 从素材库存量资产登记为参考：kind/大小/用途规则与上传完全一致（服务端权威拒绝）。
  *  跨项目自动按字节复制进会话项目（importFiles sha256 去重，重复选取不产生新文件）；
  *  规划前核验仍由 resolveAttachmentRefs 把守归属，故复制是必要且充分的前置步骤。 */
 export async function addAttachmentFromAsset(
@@ -197,7 +197,7 @@ export async function resolveAttachmentRefs(sessionId: number, projectId: number
     if (!(VALID_ROLES[a.kind] ?? []).includes(role)) throw new CreationError('ref_role_mismatch', '参考素材用途与类型不匹配', 422)
     const hash = rec?.hash ?? a.sha256
     if (!hash) throw new CreationError('ref_no_hash', '参考素材缺少内容摘要，无法冻结', 422)
-    // [M43] 逐镜绑定：编译时保留登记里的 shotId（写链断点修复——此前丢弃导致绑定只存在于 payload 永远进不了方案）
+    // 逐镜绑定：编译时保留登记里的 shotId（写链断点修复——此前丢弃导致绑定只存在于 payload 永远进不了方案）
     refs.push(refSchema.parse({ assetId, kind: a.kind, role, hash, ...(rec?.shotId ? { shotId: rec.shotId } : {}) }))
   }
   return refs

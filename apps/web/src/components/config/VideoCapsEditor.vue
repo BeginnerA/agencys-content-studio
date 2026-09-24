@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M32] 视频「轻松创作能力」编辑器：视频实例专属子组件（父组件仅在 serviceType==='video' 时挂载）。
+ * 视频「轻松创作能力」编辑器：视频实例专属子组件（父组件仅在 serviceType==='video' 时挂载）。
  * Tier A 智能化：能力以服务端「单一真源表」为准——命中背书档位时默认「自动背书」（不写 creationCapabilities，
  * 交由服务端 preflight 按表推导，用户无需逐项核实）；用户可「改为手动声明」覆盖。未背书（siliconflow / 未知）
  * → 回退手动声明表单。手动声明为空 = 不写能力（服务端按表背书或 fail-closed），保留「先建实例、稍后声明」路径。
@@ -91,7 +91,7 @@ function manualHasContent(): boolean {
   )
 }
 
-/** [M32] 按供应商 + 模型拉取平台能力表背书档位；命中→默认自动背书，未命中→回退手动声明 */
+/** 按供应商 + 模型拉取平台能力表背书档位；命中→默认自动背书，未命中→回退手动声明 */
 async function refreshVideoCaps(): Promise<void> {
   capsFetching.value = true
   try {

@@ -1,5 +1,5 @@
 /**
- * [M20] 排产计划 + 预算 REST（B1/B4/B5）
+ * 排产计划 + 预算 REST（B1/B4/B5）
  * - 排产：CRUD + 日历视图 + 手动触发/重置
  * - 预算：读取/保存配置 + 概览 + 告警历史
  */
@@ -96,7 +96,7 @@ schedulesRoutes.post('/projects/:id/schedules', h(async (c) => {
   return c.json({ schedule: toScheduleView(row) }, 201)
 }))
 
-// POST /schedules/cadence-preview —— [M36·G12.4] 节奏展开预览（纯日期数学，不建库，先看日期再确认）
+// POST /schedules/cadence-preview —— 节奏展开预览（纯日期数学，不建库，先看日期再确认）
 schedulesRoutes.post('/schedules/cadence-preview', h(async (c) => {
   const body = await c.req.json().catch(() => {
     throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
@@ -110,7 +110,7 @@ schedulesRoutes.post('/schedules/cadence-preview', h(async (c) => {
   return c.json({ timestamps, errors })
 }))
 
-// POST /projects/:id/schedules/cadence —— [M36·G12.4] 批量建（逐条 createSchedule 未来校验，名称带 #序；errors → 400）
+// POST /projects/:id/schedules/cadence —— 批量建（逐条 createSchedule 未来校验，名称带 #序；errors → 400）
 schedulesRoutes.post('/projects/:id/schedules/cadence', h(async (c) => {
   const projectId = idParam(c)
   const proj = (

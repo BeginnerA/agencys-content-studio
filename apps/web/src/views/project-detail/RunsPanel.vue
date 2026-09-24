@@ -56,7 +56,7 @@ const {
       </div>
     </div>
 
-    <!-- [M14] 剧集地图（一项目一剧；起作直达 run 表单并预填集号） -->
+    <!-- 剧集地图（一项目一剧；起作直达 run 表单并预填集号） -->
     <SeriesBoard
       ref="seriesRef"
       :project-id="projectId"

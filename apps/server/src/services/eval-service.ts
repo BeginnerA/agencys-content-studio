@@ -10,7 +10,7 @@ import { assetToDataUri } from './asset-ref'
 import { writeTextAsset } from './storage'
 import { aggregateEvalMatrix, parseEvalScores, renderEvalReport, type EvalGroup, type EvalScore } from './eval'
 
-// [M24·F2] 一致性 A/B 评测编排（spec §2.3）：生成侧全复用 batch（零新调度），
+// 一致性 A/B 评测编排（spec §2.3）：生成侧全复用 batch（零新调度），
 // 评分侧 = 多模态 LLM（参考图在前，assetToDataUri 同 style-preset 先例）→ 纯函数三件套（services/eval.ts）。
 // 参数错误 → EvalParamError（fail() 兜底 400）；模板缺失沿用 InvalidRunInputError；LLM 未配置由路由层转 400 llm_unavailable。
 

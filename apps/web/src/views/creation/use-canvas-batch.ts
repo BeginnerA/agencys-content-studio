@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasBatch；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasBatch；依赖显式注入，原函数体保持不变。 */
 import { computed, ref } from 'vue'
 import { creationApi } from '../../lib/api'
 import type { CanvasArrangeMode } from '../../lib/types'
@@ -14,7 +14,7 @@ type Dependencies = Pick<
 export function useCanvasBatch(deps: Dependencies) {
   const { canvasId, nodes, history, loadDoc, toast, selectedIds } = deps
 
-  // ===== [M17] 批量编排（多选浮动条 / 顶栏整理）=====
+  // ===== 批量编排（多选浮动条 / 顶栏整理）=====
   const ARRANGE_LABEL: Record<CanvasArrangeMode, string> = {
     layered: '分层整理',
     grid: '按序号排列',
@@ -166,7 +166,7 @@ export function useCanvasBatch(deps: Dependencies) {
     }
   }
 
-  // ===== [M18] 一键停止全部（画布级在途任务；socket canvas.changed 驱动可见性） =====
+  // ===== 一键停止全部（画布级在途任务；socket canvas.changed 驱动可见性） =====
   /** 在途 gen 任务（pending/processing；doc 由 socket 静默重拉） */
   const hasLiveTasks = computed(() =>
     nodes.value.some(

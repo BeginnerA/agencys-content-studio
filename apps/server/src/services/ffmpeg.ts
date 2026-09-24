@@ -72,7 +72,7 @@ export function probeMediaDuration(file: string): number | null {
   }
 }
 
-/** 探测视频尺寸（首路视频流）；ffprobe 缺失/失败 → null（[M19] 派生画幅资产无 width 时兜底） */
+/** 探测视频尺寸（首路视频流）；ffprobe 缺失/失败 → null（ 派生画幅资产无 width 时兜底） */
 export function probeMediaSize(file: string): { width: number; height: number } | null {
   const ffprobe = resolveFfprobe()
   if (!ffprobe) return null

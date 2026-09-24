@@ -11,7 +11,7 @@ import type { StudioEventMap } from '../../lib/socket'
 const props = defineProps<{
   runId: number
   active: boolean
-  /** [方案C] 轻松创作 run：仅「受理状态不明」任务(t.ambiguous)隐藏就地重试（引导会话核验），其余仍可重试 */
+  /** 轻松创作 run：仅「受理状态不明」任务(t.ambiguous)隐藏就地重试（引导会话核验），其余仍可重试 */
   isCreation?: boolean
 }>()
 const emit = defineEmits<{ changed: []; err: [message: string] }>()
@@ -45,7 +45,7 @@ const sum = computed(() => ({
 }))
 
 async function retry(t: GenTask) {
-  // [方案C 就地核验] 轻松创作 run 的「受理状态不明」任务：重试=可能重复计费，先弹成本确认，确认后带 confirm_ambiguous
+  // 轻松创作 run 的「受理状态不明」任务：重试=可能重复计费，先弹成本确认，确认后带 confirm_ambiguous
   const needConfirm = props.isCreation === true && t.ambiguous === true
   if (needConfirm) {
     const ok = await confirmDialog({
@@ -96,7 +96,7 @@ async function openPreview(t: GenTask) {
   }
 }
 
-/** [M2] video 任务处理中：provider 侧异步轮询（转圈 + 第 N 次尝试文案） */
+/** video 任务处理中：provider 侧异步轮询（转圈 + 第 N 次尝试文案） */
 function isVideoPoll(t: GenTask): boolean {
   return t.kind === 'video' && t.status === 'processing'
 }
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-/* [M2] video 轮询转圈（替换 badge 静点） */
+/* video 轮询转圈（替换 badge 静点） */
 .badge.has-spin::before {
   display: none;
 }

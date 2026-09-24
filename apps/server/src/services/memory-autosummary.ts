@@ -5,7 +5,7 @@ import { readTextAsset } from './storage'
 import { summarizeToMemory } from './memory-summary'
 import { createLogger } from '../logger'
 
-// [M24·F1] 自动摘要钩子（双形态拍板的「可选自动」侧，spec §2.2）：
+// 自动摘要钩子（双形态拍板的「可选自动」侧，spec §2.2）：
 // settings key `memory.auto_summary`（JSON bool，缺省 false）→ onRunSettled listener：
 //   run completed + 该 run 是某集 latestRunId + 模板未含 memory_summary 步（防双份计费）
 //   → 集素材（contentAssetId 或 run 文本产物 top3）→ summarizeToMemory（与 action 共用核心）。

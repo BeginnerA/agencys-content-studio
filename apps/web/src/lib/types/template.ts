@@ -44,13 +44,13 @@ export interface TemplateMeta {
   version: number
   stepCount: number
   updatedAt: number
-  /** [M2] 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
+  /** 引用体检：存在 params.prompt_tpl 指向的提示词文件缺失 */
   promptsDirty?: boolean
   /** 展示元数据：场景分组（produce/plan/operate） */
   scene?: string
   /** 展示元数据：推荐下游模板 key 列表 */
   next?: string[]
-  /** [入口收口] 轻松创作批准链专用（easy-*）：选择器应过滤掉，展示反查方忽略（服务端 isCreationTemplate 真源注入） */
+  /** 轻松创作批准链专用（easy-*）：选择器应过滤掉，展示反查方忽略（服务端 isCreationTemplate 真源注入） */
   conversationOnly?: boolean
   /** [内置保护] 系统出厂内置模板：用户只读，不可修改/删除（服务端 isBuiltinTemplate 真源注入）；前端据此锁定编辑/删除 */
   builtin?: boolean
@@ -88,7 +88,7 @@ export interface TemplateDetail {
   steps: TemplateStepDef[]
 }
 
-// ===== [M23] 设计态编辑补丁（POST /templates/:key/edit-draft · edit-save 契约） =====
+// ===== 设计态编辑补丁（POST /templates/:key/edit-draft · edit-save 契约） =====
 
 /** 单步骤编辑（对齐服务端 applyTemplateEdits 白名单；after null = 回落缺省语义，数组 = 显式） */
 export interface TemplateEditStep {

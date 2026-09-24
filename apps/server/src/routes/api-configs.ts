@@ -214,7 +214,7 @@ apiRoutes.post('/api-configs/fetch-models', h(async (c) => {
   return c.json(result)
 }))
 
-// GET /api-configs/video-caps?provider_key=&model= —— [M32] 视频模型能力单一真源表只读查询
+// GET /api-configs/video-caps?provider_key=&model= —— 视频模型能力单一真源表只读查询
 // 命中：{ supported:true, caps }（前端据此自动背书、去「已核实」勾选）；未命中：{ supported:false }（回退手填声明）。
 apiRoutes.get('/api-configs/video-caps', h(async (c) => {
   const providerKey = c.req.query('provider_key') ?? ''
@@ -225,9 +225,9 @@ apiRoutes.get('/api-configs/video-caps', h(async (c) => {
   return c.json({ supported: true, providerKey, model, caps })
 }))
 
-// GET /api-configs/extra-schema?provider_key=&service_type=&model= —— [M38] 扩展参数单一真源只读查询
+// GET /api-configs/extra-schema?provider_key=&service_type=&model= —— 扩展参数单一真源只读查询
 // 返回该实例可结构化配置的扩展参数清单（前端据此动态渲染表单，替代裸 JSON 天书框）。零网络、零计费、零写库。
-// [M39] 可选 model：命中逐模型 profile 时返回模型级候选/默认；不传或未命中回落 provider 级（旧调用行为不变）。
+// 可选 model：命中逐模型 profile 时返回模型级候选/默认；不传或未命中回落 provider 级（旧调用行为不变）。
 apiRoutes.get('/api-configs/extra-schema', h(async (c) => {
   const providerKey = c.req.query('provider_key') ?? ''
   const serviceType = c.req.query('service_type') ?? ''
@@ -236,8 +236,8 @@ apiRoutes.get('/api-configs/extra-schema', h(async (c) => {
   return c.json({ providerKey, serviceType, fields: resolveExtraSchema(providerKey, serviceType, model || undefined) })
 }))
 
-// GET /api-configs/model-suggest?provider_key=&model=&service_type= —— [M33] 选中即生成：跨通道 Tier A 只读建议
-// 命中任一即 supported:true：参考定价（全通道，resolveModelPricing）+ 视频能力档位（复用 M32）+ 默认通道建议（该类型当前无实例）。
+// GET /api-configs/model-suggest?provider_key=&model=&service_type= —— 选中即生成：跨通道 Tier A 只读建议
+// 命中任一即 supported:true：参考定价（全通道，resolveModelPricing）+ 视频能力档位（复用）+ 默认通道建议（该类型当前无实例）。
 // 三者皆无 → { supported:false }（前端全手填）。只读、零网络、零计费、零写库；不改事后计价口径。
 apiRoutes.get('/api-configs/model-suggest', h(async (c) => {
   const providerKey = c.req.query('provider_key') ?? ''

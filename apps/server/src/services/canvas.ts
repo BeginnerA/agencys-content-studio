@@ -8,7 +8,7 @@ import { isAmbiguousSubmitted, isCreationTemplate } from './creation-chat/recipe
 import type { Template, TemplateStepDef } from '../pipeline/types'
 
 /**
- * [M15] 流水线画布读模型（纯读零写）：
+ * 流水线画布读模型（纯读零写）：
  * - buildRunCanvas：run 为单位——节点 = 步骤（状态/闸门/任务计数/产物/操作可用性），
  *   边 = 调度依赖边（pipeline/dag 与引擎同源）+ 数据引用边（def.inputs 的 steps.x.asset(s)）；
  * - buildTemplateCanvas：模板设计态——节点 = def 静态信息，边同二类（无运行字段）。
@@ -91,7 +91,7 @@ export interface RunCanvas {
   runActions: { canCancel: boolean; canResume: boolean; isCreation: boolean; resumeNeedsVerification: boolean }
 }
 
-/** [M23] 模板画布编辑模式：inputs 顶层字段视图（string 原值可编辑；其余 JSON 预览只读） */
+/** 模板画布编辑模式：inputs 顶层字段视图（string 原值可编辑；其余 JSON 预览只读） */
 export interface InputFieldView {
   key: string
   value: string
@@ -110,7 +110,7 @@ export interface TemplateCanvasNode {
   batch: { field: string; maxConcurrent?: number; retry?: number } | null
   output: { purpose: string } | null
   inputsRefs: RefEntry[]
-  /** [M23] inputs 顶层字段视图（编辑模式数据源；spec §2.5） */
+  /** inputs 顶层字段视图（编辑模式数据源；spec §2.5） */
   inputFields: InputFieldView[]
 }
 
@@ -153,7 +153,7 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     })
     .from(genTasks)
     .where(eq(genTasks.runId, runId))
-  // [方案C] run 级「受理状态不明」任务数（含孤儿行）：>0 时轻松创作 run 无法就地续跑/重试，须回会话核验
+  // run 级「受理状态不明」任务数（含孤儿行）：>0 时轻松创作 run 无法就地续跑/重试，须回会话核验
   const runAmbiguous = taskRows.filter(isAmbiguousSubmitted).length
   const tasksByStep = new Map<number, TaskAgg>()
   for (const t of taskRows) {
@@ -227,7 +227,7 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     edges,
     runActions: {
       canCancel: ['queued', 'running', 'waiting_input'].includes(run.status),
-      // [方案C] 轻松创作 run 也允许就地续跑（专业端 resume 委派 retryCreation）；存在「受理状态不明」任务时
+      // 轻松创作 run 也允许就地续跑（专业端 resume 委派 retryCreation）；存在「受理状态不明」任务时
       // 由 resumeNeedsVerification 驱动前端成本确认弹窗（confirm_ambiguous），服务端据核验后重发——不再踢回会话
       canResume: ['failed', 'cancelled'].includes(run.status),
       isCreation: isCreationTemplate(run.templateKey),
@@ -283,7 +283,7 @@ function buildRunNode(ctx: {
     ? { mode: gateDef.mode, message: gateMessage(gateDef.message, runInput), skipLabel: gateDef.skip_label, when: gateDef.when }
     : null
   const retryables = tasks.failed + tasks.cancelled
-  // [方案C] 批准链 run：无「受理状态不明」任务的节点允许就地重试（与 POST /tasks/:id/retry 逐任务守卫同源）；
+  // 批准链 run：无「受理状态不明」任务的节点允许就地重试（与 POST /tasks/:id/retry 逐任务守卫同源）；
   // 含状态不明任务的节点不呈现重试（服务端必 409），引导回会话核验
   const runAllowsRetry =
     !['completed', 'waiting_input', 'running'].includes(run.status) &&
@@ -485,7 +485,7 @@ function collectRefs(inputs: Record<string, unknown>): RefEntry[] {
   return out
 }
 
-/** [M23] inputs 顶层字段视图：string → 可编辑原值；其余 → JSON 预览（截断 400，只读） */
+/** inputs 顶层字段视图：string → 可编辑原值；其余 → JSON 预览（截断 400，只读） */
 const INPUT_PREVIEW_CAP = 400
 
 function inputFieldsOf(inputs: Record<string, unknown>): InputFieldView[] {

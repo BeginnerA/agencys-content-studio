@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 复盘数据面板（B7）
+ * 复盘数据面板（B7）
  * CSV 导出 + 趋势对比基线（当前周期 vs 上一周期）
  */
 import { computed, onMounted, ref } from 'vue'

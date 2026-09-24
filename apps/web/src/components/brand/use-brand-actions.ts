@@ -1,7 +1,7 @@
 /**
- * [M26-split] 品牌操作域（自 BrandSettings.vue script 逐字迁移，行为零变更）：
+ * 品牌操作域（自 BrandSettings.vue script 逐字迁移，行为零变更）：
  * project scope 载入 / 上传·清除 / project 槽·字幕保存 / run 水印参数可编辑性 / 表单→预览实时联动。
- * —— 装配约定：ctx 注入 + 首行同名解构，函数体逐字保留（M28 拆分纪律）；
+ * —— 装配约定：ctx 注入 + 首行同名解构，函数体逐字保留（拆分纪律）；
  * 公共表单字段真源仍在 ./use-brand-form，project 资产 refs 由本域持有并回传模板。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -99,7 +99,7 @@ export function useBrandActions(ctx: {
       typeof b.intro?.asset_id === 'number' ? b.intro.asset_id : 0
     outroAssetId.value =
       typeof b.outro?.asset_id === 'number' ? b.outro.asset_id : 0
-    // [M20 fix] project scope 也需设置文件路径，否则预览 wmFile/introFile/outroFile 永远为空
+    // project scope 也需设置文件路径，否则预览 wmFile/introFile/outroFile 永远为空
     wmFile.value = fileOf(b, 'watermark')
     introFile.value = fileOf(b, 'intro')
     outroFile.value = fileOf(b, 'outro')
@@ -237,7 +237,7 @@ export function useBrandActions(ctx: {
     () => busy.value || (props.scope === 'run' && wmMode.value !== 'custom'),
   )
 
-  // [M20] 表单 → 预览实时联动：监听所有表单字段，变化时 emit preview 供父组件 BrandPreview 即时渲染
+  // 表单 → 预览实时联动：监听所有表单字段，变化时 emit preview 供父组件 BrandPreview 即时渲染
   const formWatchSrc = computed(() => ({
     sub: {
       on: subOn.value,
@@ -263,7 +263,7 @@ export function useBrandActions(ctx: {
     wmFile: wmFile.value,
     introFile: introFile.value,
     outroFile: outroFile.value,
-    // [M20 fix2] 项目资产来源纳入监听：选择/切换项目资产（asset_id）时预览才会更新
+    // 项目资产来源纳入监听：选择/切换项目资产（asset_id）时预览才会更新
     wmAssetId: wmAssetId.value,
     introAssetId: introAssetId.value,
     outroAssetId: outroAssetId.value,
@@ -293,7 +293,7 @@ export function useBrandActions(ctx: {
           Math.min(200, Math.max(0, Number(v.wm.margin) || 0)),
         ),
       }
-      // [M20 fix2] 项目资产来源：asset_id 优先于 file（镜像服务端 resolveMaterialPath 语义）
+      // 项目资产来源：asset_id 优先于 file（镜像服务端 resolveMaterialPath 语义）
       if (v.wmAssetId > 0) brand.watermark.asset_id = v.wmAssetId
       if (!v.wm.enabled) brand.watermark.enabled = false
       brand.intro = { enabled: v.intro, file: v.introFile || undefined }

@@ -11,7 +11,7 @@ const props = defineProps<{
 </script>
 
 <template>
-  <!-- ===== [M17] entity 节点：实体直通 ===== -->
+  <!-- ===== entity 节点：实体直通 ===== -->
   <template v-if="node.kind === 'entity'">
     <section class="sec">
       <div class="sec-h">实体</div>
@@ -49,7 +49,7 @@ const props = defineProps<{
         <div class="muted mini">
           下游节点执行时按实体参考图注入（受实体截断策略约束）。
         </div>
-        <!-- [M29·R02] 实体档案「历史 · 影响」（版本快照可还原；影响仅报告不生成） -->
+        <!-- 实体档案「历史 · 影响」（版本快照可还原；影响仅报告不生成） -->
         <details class="verbox">
           <summary>历史 · 影响</summary>
           <VersionHistoryPanel kind="entity" :obj-id="node.entity.id" />
@@ -128,7 +128,7 @@ const props = defineProps<{
   word-break: break-all;
 }
 
-/* [M29·R02] 实体版本面板（折叠，避免撑高默认视图） */
+/* 实体版本面板（折叠，避免撑高默认视图） */
 .verbox {
   border-top: 1px solid var(--border);
   padding-top: 8px;

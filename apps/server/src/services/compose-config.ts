@@ -1,13 +1,13 @@
 /**
- * [M11] run 级合成设置服务（BGM 绑定 + _compose 配置）。
+ * run 级合成设置服务（BGM 绑定 + _compose 配置）。
  * - BGM 事实源：assets 行 {projectId, runId, kind='audio', purpose='bgm', deletedAt=null}
  *   （至多 1 条有效——绑定即软删旧行；复制行/上传两类来源）
  * - BGM 默认不走 refs 通道（run 级直查）：任意模板快照版本的 run 可用；产物 params.bgm 记录审计
- *   （[M31] 例外：严格交付下仅当批准方案含 role:'bgm' ref 时按该 assetId 窄口径 opt-in 消费）
+ *   （ 例外：严格交付下仅当批准方案含 role:'bgm' ref 时按该 assetId 窄口径 opt-in 消费）
  * - _compose：run.input JSON 下划线内部键（transition / transition_duration / bgm_volume / bgm_fade / brand / multi_aspect）
- * - [M19] brand：品牌 run 级覆盖（字段级合并到平台/项目层；槽值 null = 清除该槽覆盖回落继承）
- * - [M19] SFX：per-shot 音效（purpose='sfx'，params.shotId 为键；每镜 ≤1 条有效；_compose.sfx_volume clamp 0–2）
- * - [M19] multi_aspect：多画幅原生渲染（enabled + aspects 1–3 + strategy crop|pad；未启用 → 合成链逐字节不变）
+ * - brand：品牌 run 级覆盖（字段级合并到平台/项目层；槽值 null = 清除该槽覆盖回落继承）
+ * - SFX：per-shot 音效（purpose='sfx'，params.shotId 为键；每镜 ≤1 条有效；_compose.sfx_volume clamp 0–2）
+ * - multi_aspect：多画幅原生渲染（enabled + aspects 1–3 + strategy crop|pad；未启用 → 合成链逐字节不变）
  * - run 状态校验：completed/failed（活跃/取消/其他一律拒绝——与工作台 assertRepairable 同语义）
  */
 import { writeFileSync } from 'node:fs'
@@ -31,12 +31,12 @@ import {
 /** 转场枚举（对齐 ffmpeg xfade 常用子集） */
 export const TRANSITIONS = ['none', 'fade', 'fadeblack', 'slideleft', 'slideright', 'dissolve'] as const
 
-/** [M19] 派生画幅枚举（主画幅之外的常用发布比例） */
+/** 派生画幅枚举（主画幅之外的常用发布比例） */
 export const ASPECTS = ['9:16', '1:1', '4:5', '16:9'] as const
-/** [M19] 画幅适配策略：crop 居中裁切（不留边）| pad 等比缩放补黑边 */
+/** 画幅适配策略：crop 居中裁切（不留边）| pad 等比缩放补黑边 */
 export const ASPECT_STRATEGIES = ['crop', 'pad'] as const
 
-/** [M19] 多画幅原生渲染配置（_compose.multi_aspect；aspects 去重后 1–3 项） */
+/** 多画幅原生渲染配置（_compose.multi_aspect；aspects 去重后 1–3 项） */
 export interface MultiAspectConfig {
   enabled: boolean
   aspects: string[]
@@ -49,19 +49,19 @@ export interface ComposeConfig {
   transition_duration?: number
   bgm_volume?: number
   bgm_fade?: number
-  /** [M19] per-shot 音效全局音量（默认 1；clamp 0–2） */
+  /** per-shot 音效全局音量（默认 1；clamp 0–2） */
   sfx_volume?: number
-  /** [M19] 品牌 run 级覆盖（字段级合并到平台/项目层） */
+  /** 品牌 run 级覆盖（字段级合并到平台/项目层） */
   brand?: BrandConfig
-  /** [M45] 轻松创作成片是否应用品牌叠加（水印/片头尾/字幕）：缺省/true = 继承平台/项目品牌；
+  /** 轻松创作成片是否应用品牌叠加（水印/片头尾/字幕）：缺省/true = 继承平台/项目品牌；
    *  仅 false 时确认卡逐次关闭 → 严格合成分支 brand={}（与 _compose.brand 同级不同键，无碰撞）。 */
   brandApply?: boolean
-  /** [M19] 多画幅原生渲染（合成内多路输出） */
+  /** 多画幅原生渲染（合成内多路输出） */
   multi_aspect?: MultiAspectConfig
 }
 
 /**
- * [M19] multi_aspect 入参规范化（写入口共用）：enabled 必为布尔；strategy 缺省 crop、非法拒绝；
+ * multi_aspect 入参规范化（写入口共用）：enabled 必为布尔；strategy 缺省 crop、非法拒绝；
  * aspects 去重后逐项校验 ∈ ASPECTS（启用时 1–3 项，未启用允许空）。
  */
 export function normalizeMultiAspect(raw: unknown): MultiAspectConfig {
@@ -90,7 +90,7 @@ export function normalizeMultiAspect(raw: unknown): MultiAspectConfig {
   return { enabled: o.enabled, aspects, strategy: strategy as 'crop' | 'pad' }
 }
 
-/** [M19] multi_aspect 读取兜底（历史脏数据 / 结构缺失 → null = 不启用，合成链保持现行为） */
+/** multi_aspect 读取兜底（历史脏数据 / 结构缺失 → null = 不启用，合成链保持现行为） */
 export function readMultiAspect(cfg: ComposeConfig): MultiAspectConfig | null {
   const m = cfg.multi_aspect
   if (!m || typeof m !== 'object' || m.enabled !== true) return null
@@ -144,7 +144,7 @@ export async function loadBgmAsset(runId: number): Promise<Asset | null> {
   return rows[0] ?? null
 }
 
-/** [M31] 按 id 取有效资产（严格合成期 BGM opt-in 消费；项目/kind/内容摘要已由 assertRecipeSources 核验） */
+/** 按 id 取有效资产（严格合成期 BGM opt-in 消费；项目/kind/内容摘要已由 assertRecipeSources 核验） */
 export async function loadAssetById(assetId: number): Promise<Asset | null> {
   const rows = await db
     .select()
@@ -314,7 +314,7 @@ export async function removeBgm(runId: number): Promise<void> {
   await softDeleteBgmRows(runId)
 }
 
-// ===== [M19] per-shot 音效（SFX；镜像 BGM 先例，params.shotId 为键，每镜 ≤1 条有效） =====
+// ===== per-shot 音效（SFX；镜像 BGM 先例，params.shotId 为键，每镜 ≤1 条有效） =====
 
 /** 资产 params.shotId（SFX 匹配键，与 ai_image/ai_video 产物口径一致） */
 function shotIdOfParams(paramsJson: string | null): string | null {

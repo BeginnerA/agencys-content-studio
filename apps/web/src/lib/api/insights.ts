@@ -15,11 +15,11 @@ export const statsApi = {
     api.get<import('../types').CostBreakdown>(
       `/api/v1/stats/cost-breakdown${params}`,
     ),
-  // [M20] B7 CSV 导出 URL（直接下载）
+  // B7 CSV 导出 URL（直接下载）
   csvRuns: (params = '') => `/api/v1/stats/csv/runs${params}`,
   csvPublications: (params = '') => `/api/v1/stats/csv/publications${params}`,
   csvUsage: (params = '') => `/api/v1/stats/csv/usage${params}`,
-  // [M20] B7 趋势对比
+  // B7 趋势对比
   compare: (params = '') =>
     api.get<import('../types').CompareResult>(`/api/v1/stats/compare${params}`),
 }
@@ -34,7 +34,7 @@ export const exportApi = {
   /** 下载导出包（复用资产文件端点；download=1 触发浏览器下载） */
   fileUrl: (assetId: number, download = false) =>
     `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
-  // [M20] B8 平台预设
+  // B8 平台预设
   presets: () =>
     api.get<{ items: import('../types').ExportPreset[]; defaults: string[] }>(
       '/api/v1/exports/presets',
@@ -44,12 +44,12 @@ export const exportApi = {
       '/api/v1/exports/presets',
       { items },
     ),
-  // [M36·G12.1] 平台导出规格单一真源目录（供「从目录补全」）
+  // 平台导出规格单一真源目录（供「从目录补全」）
   catalog: () =>
     api.get<{ items: import('../types').PlatformCatalogEntry[] }>(
       '/api/v1/exports/presets/catalog',
     ),
-  // [M36·G12.1] 从目录补全缺失平台预设（仅填缺失，不覆盖已配；platforms 缺省 = 全目录）
+  // 从目录补全缺失平台预设（仅填缺失，不覆盖已配；platforms 缺省 = 全目录）
   seed: (platforms?: string[]) =>
     api.post<{ items: import('../types').ExportPreset[]; added: number }>(
       '/api/v1/exports/presets/seed',
@@ -57,7 +57,7 @@ export const exportApi = {
     ),
 }
 
-// ===== [M50] 剪辑工程交换导出（FCPXML / EDL / OTIO）=====
+// ===== 剪辑工程交换导出（FCPXML / EDL / OTIO）=====
 
 export type EditExchangeFormat = 'fcpxml' | 'edl' | 'otio'
 
@@ -96,7 +96,7 @@ export const publicationApi = {
     api.put<{ publication: Publication }>(`/api/v1/publications/${id}`, body),
   remove: (id: number) =>
     api.del<{ ok: boolean }>(`/api/v1/publications/${id}`),
-  // [M20] 批量导入 / 趋势 / A/B 分组
+  // 批量导入 / 趋势 / A/B 分组
   batch: (items: Array<Record<string, unknown>>) =>
     api.post<{ count: number; items: Publication[] }>(
       '/api/v1/publications/batch',
@@ -125,7 +125,7 @@ export const settingsApi = {
     ),
 }
 
-// ===== [M20] 排产计划 + 预算 =====
+// ===== 排产计划 + 预算 =====
 
 export const scheduleApi = {
   list: (params = '') =>
@@ -156,7 +156,7 @@ export const scheduleApi = {
       {},
     ),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/schedules/${id}`),
-  // [M36·G12.4] 节奏展开预览（纯日期数学，不建库，先看日期再确认）
+  // 节奏展开预览（纯日期数学，不建库，先看日期再确认）
   cadencePreview: (body: {
     start_at: number
     count: number
@@ -166,7 +166,7 @@ export const scheduleApi = {
       '/api/v1/schedules/cadence-preview',
       body,
     ),
-  // [M36·G12.4] 批量建排产（逐条未来校验，名称带 #序）
+  // 批量建排产（逐条未来校验，名称带 #序）
   cadenceCreate: (
     projectId: number,
     body: {
@@ -185,7 +185,7 @@ export const scheduleApi = {
     }>(`/api/v1/projects/${projectId}/schedules/cadence`, body),
 }
 
-// ===== [M36] G12.2/G12.3 合规词库视图 + 补充建议 =====
+// ===== G12.2/G12.3 合规词库视图 + 补充建议 =====
 
 export const complianceApi = {
   // 词库只读视图（source='file' 在位 / 'builtin' 缺失兜底）

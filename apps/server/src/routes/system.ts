@@ -73,7 +73,7 @@ systemRoutes.put('/settings/:key', h(async (c) => {
   } else {
     await db.insert(settings).values({ key, value: JSON.stringify(value), updatedAt: t })
   }
-  // [M21 C6] concurrency 配置即改即生效：刷新引擎内存缓存（否则运行中进程持续读旧上限，重启才变）
+  // concurrency 配置即改即生效：刷新引擎内存缓存（否则运行中进程持续读旧上限，重启才变）
   if (key === 'concurrency') await refreshGlobalConcurrency()
   return c.json({ ok: true, key, updatedAt: t })
 }))
@@ -86,7 +86,7 @@ function safeParseJson(s: string): unknown {
   }
 }
 
-// ---------- [M19] 平台品牌资产（BRAND_DIR；水印/片头/片尾，非项目资产） ----------
+// ---------- 平台品牌资产（BRAND_DIR；水印/片头/片尾，非项目资产） ----------
 
 /** slot 路径参数校验（watermark|intro|outro） */
 function brandSlotParam(c: { req: { param: (name: string) => string | undefined } }): BrandSlot {

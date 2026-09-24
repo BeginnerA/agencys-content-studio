@@ -3,7 +3,7 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
 /**
- * [M9] text_split：长文本按章节切分（小说改编链第 2 段）。
+ * text_split：长文本按章节切分（小说改编链第 2 段）。
  * inputs.source（资产 id 数组，按序拼接全部文本资产）→ 三级正则（用户 > AI > 默认）切分 →
  * 章节范围过滤 → min_chapters 校验 → 产物 [manifest, ...逐章资产]（顺序即契约：
  * 下游 ai_text batch 读首个资产 JSON，item.asset_id 取逐章全文）。
@@ -19,7 +19,7 @@ export interface ChapterSlice {
   reel: string | null
   /** 章节正文（含章头行，到下一章头/卷头/文末） */
   content: string
-  /** [M25·G6] per_source=true 时归属源文件名（逐 source 独立切分；缺省不落盘字段） */
+  /** per_source=true 时归属源文件名（逐 source 独立切分；缺省不落盘字段） */
   source_book?: string
 }
 
@@ -130,7 +130,7 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
   const outputPurpose =
     typeof params['output_purpose'] === 'string' && params['output_purpose'] ? params['output_purpose'] : 'chapters'
   const maxRegexChars = typeof params['regex_max_chars'] === 'number' ? params['regex_max_chars'] : 300
-  // [M25·G6] 多部合并：逐 source 独立切分、index 跨书续编（默认 false = 现行为逐字不变）
+  // 多部合并：逐 source 独立切分、index 跨书续编（默认 false = 现行为逐字不变）
   const perSource = params['per_source'] === true
 
   // —— 1. 源资产：按序拼接（非文本跳过；全非文本抛错） ——
@@ -241,7 +241,7 @@ export async function textSplit(ctx: StepContext): Promise<StepResult> {
     range: rangeRaw || null,
     skipped_head_chars: skippedHeadChars,
     reels: [...new Set(all.map((c) => c.reel).filter((r): r is string => !!r))],
-    // [M25·G6] 仅 per_source 附加（默认路径 manifest 逐字不变）；下游逐章继承，图谱归并即「合并改编」
+    // 仅 per_source 附加（默认路径 manifest 逐字不变）；下游逐章继承，图谱归并即「合并改编」
     ...(perSource ? { per_source: true, books } : {}),
     chapters: written.map(({ ch, assetId, assetName }) => ({
       index: ch.index,

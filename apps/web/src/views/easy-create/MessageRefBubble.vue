@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 对话内参考素材卡片气泡（自 ConversationPanel.vue 原样搬出，行为零变更）：
+ * 对话内参考素材卡片气泡（自 ConversationPanel.vue 原样搬出，行为零变更）：
  * 缩略图 + 文件名 + 查看角标，整卡可点（键盘可达）；点击 emit open 由父级拉详情预览。
  * 注意：`.bubble` 基础样式与 `.msg.user .bubble` 反色仍留在父级 scoped（子组件根元素同承父作用域）。
  */
@@ -12,7 +12,7 @@ defineProps<{
   m: CreationChatMessage
   /** 该素材详情拉取中（refLoading 命中） */
   loading: boolean
-  /** [M43] 当前方案镜头（镜号徽标按镜序派生；无方案回退裸 id） */
+  /** 当前方案镜头（镜号徽标按镜序派生；无方案回退裸 id） */
   shots?: CreationShot[] | null
 }>()
 const emit = defineEmits<{ open: [] }>()
@@ -56,7 +56,7 @@ const emit = defineEmits<{ open: [] }>()
 </template>
 
 <style scoped>
-/* [M31+] 参考素材卡片气泡：缩略图 + 文件名 + 查看角标（整卡可点，键盘可达） */
+/* 参考素材卡片气泡：缩略图 + 文件名 + 查看角标（整卡可点，键盘可达） */
 .ref-bubble {
   display: flex;
   align-items: center;
@@ -142,7 +142,7 @@ const emit = defineEmits<{ open: [] }>()
   gap: 3px;
 }
 
-/* [M43] 镜号徽标：不靠颜色单独表意（文本「第 N 镜」即语义） */
+/* 镜号徽标：不靠颜色单独表意（文本「第 N 镜」即语义） */
 .ref-shot-badge {
   flex: none;
   font-size: 10px;

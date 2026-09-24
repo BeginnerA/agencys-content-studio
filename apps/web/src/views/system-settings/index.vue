@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 系统设置页
+ * 系统设置页
  * 平台级统一设置入口：含「AI 配置」（由独立菜单迁入）与「品牌」「通知」「运行」「数据」Tab。
  * 支持 ?tab= 直达指定分类（旧 /settings 深链经路由重定向至 ?tab=ai）。
  */
@@ -105,7 +105,7 @@ async function refreshPreview() {
   }
 }
 
-/** [M20 fix] 表单实时预览：BrandSettings 表单变化时直接更新预览快照 */
+/** 表单实时预览：BrandSettings 表单变化时直接更新预览快照 */
 function onPreviewForm(data: { brand: BrandConfig; wmFile: string }) {
   brandSnapshot.value = data.brand
   wmFileSnapshot.value = data.wmFile
@@ -114,7 +114,7 @@ function onPreviewForm(data: { brand: BrandConfig; wmFile: string }) {
   wmPreviewTs.value = Date.now()
 }
 
-// ---------- [M21] 通知设置（settings key 'notify'；变更即存） ----------
+// ---------- 通知设置（settings key 'notify'；变更即存） ----------
 
 const PERM_TEXT: Record<string, string> = {
   granted: '已授权',
@@ -163,7 +163,7 @@ async function askPermission() {
   notifyPerm.value = notifyPermission()
 }
 
-// ---------- [M21] 运行设置（settings key 'concurrency'） ----------
+// ---------- 运行设置（settings key 'concurrency'） ----------
 
 const CONC_LO = 1
 const CONC_HI = 6
@@ -210,7 +210,7 @@ async function saveRun() {
   }
 }
 
-// ---------- [M22] 数据设置（settings key 'trash'：回收站保留期 + 自动清理） ----------
+// ---------- 数据设置（settings key 'trash'：回收站保留期 + 自动清理） ----------
 
 const TRASH_LO = 1
 const TRASH_HI = 365
@@ -352,7 +352,7 @@ loadCreation()
         />
       </aside>
     </div>
-    <!-- 通知 Tab（[M21] C2：权限 + 三类开关，变更即存） -->
+    <!-- 通知 Tab（ C2：权限 + 三类开关，变更即存） -->
     <div v-if="activeTab === 'notify'" class="sys-notify">
       <div class="panel nf-card">
         <div class="nf-head">
@@ -425,7 +425,7 @@ loadCreation()
         </div>
       </div>
     </div>
-    <!-- 运行 Tab（[M21] C6：全局并发上限） -->
+    <!-- 运行 Tab（ C6：全局并发上限） -->
     <div v-if="activeTab === 'run'" class="sys-run">
       <div class="panel rc-card">
         <div class="rc-head">
@@ -479,7 +479,7 @@ loadCreation()
             开启时：人物对白必须由已核实的 whisper-1
             分段时间戳 ASR
             逐字核验并据真实音轨生成字幕（该核验执行链仍在接线，暂不可开始制作）。
-            关闭后作为逃生阀（M47 免核验对白）：对白由视频模型原生生成人声与口型、字幕按批准台词估算（非实测），仍强制视频自带原声，交付前必须人工收听审阅；要求当前视频模型命中原生对白背书（如
+            关闭后作为逃生阀（免核验对白模式）：对白由视频模型原生生成人声与口型、字幕按批准台词估算（非实测），仍强制视频自带原声，交付前必须人工收听审阅；要求当前视频模型命中原生对白背书（如
             Seedance 2.0 / 万相 3.0 系），未命中时规划自动改走旁白。
           </span>
         </div>
@@ -504,7 +504,7 @@ loadCreation()
         </div>
       </div>
     </div>
-    <!-- 数据 Tab（[M22] ⑥：回收站保留期自动清理） -->
+    <!-- 数据 Tab（ ⑥：回收站保留期自动清理） -->
     <div v-if="activeTab === 'data'" class="sys-data">
       <div class="panel rc-card">
         <div class="rc-head">
@@ -583,7 +583,7 @@ loadCreation()
   }
 }
 
-/* [M21] 通知设置卡片 */
+/* 通知设置卡片 */
 .sys-notify {
   max-width: 640px;
 }
@@ -666,7 +666,7 @@ loadCreation()
   font-size: 11.5px;
 }
 
-/* [M21] 运行设置卡片 */
+/* 运行设置卡片 */
 .sys-run {
   max-width: 640px;
 }
@@ -724,7 +724,7 @@ loadCreation()
   font-size: 11.5px;
 }
 
-/* [M22] 数据设置卡片 */
+/* 数据设置卡片 */
 .sys-data {
   max-width: 640px;
 }

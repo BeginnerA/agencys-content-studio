@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：模板草案 v2（YAML 纯函数 + draft/template-try 两通道）+ 拓扑排序。
+// 自 services/creation.ts 拆分：模板草案 v2（YAML 纯函数 + draft/template-try 两通道）+ 拓扑排序。
 import { avoidTemplateKeyConflict, saveTemplate, validateTemplateText, type TemplateValidation } from '../../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../run-create'
 import { buildCanvasDoc } from './doc'
@@ -33,9 +33,9 @@ export function topoSortGenNodeIds(genIds: number[], edges: Array<{ from: number
   return out
 }
 
-// ---------- [M18] 模板草案 v2（literal + 主步骤 + lossy 清单） ----------
+// ---------- 模板草案 v2（literal + 主步骤 + lossy 清单） ----------
 
-/** 画布 → 流水线模板草案 v2：text/asset 节点 → inputs；gen 节点→ literal 包装 + 主步骤；llm→ ai_text prompt_inline；compose→ ffmpeg_merge；[M22] 参考/首帧边（image 源）→ literal inputs；entity/run/末帧/编辑源/编辑/转场/BGM → lossy */
+/** 画布 → 流水线模板草案 v2：text/asset 节点 → inputs；gen 节点→ literal 包装 + 主步骤；llm→ ai_text prompt_inline；compose→ ffmpeg_merge； 参考/首帧边（image 源）→ literal inputs；entity/run/末帧/编辑源/编辑/转场/BGM → lossy */
 export async function buildTemplateDraft(
   canvasId: number,
   key?: string,
@@ -270,7 +270,7 @@ export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDra
       }
     }
 
-    // [M22] 参考边保真：reference（image 源）→ inputs.refs；first_frame（image 源，video 专用，取首条）→ inputs.first_frame；
+    // 参考边保真：reference（image 源）→ inputs.refs；first_frame（image 源，video 专用，取首条）→ inputs.first_frame；
     // 末帧/编辑源/非图片源/多帧溢出 → unmapped（lossy 汇总）；literal 侧 as=storyboard-single 直通 shots[0] 保真字段
     const refExprOf = (up: CanvasDocNode): string | null => {
       if (up.kind === 'asset') {
@@ -350,7 +350,7 @@ export function buildTemplateDraftYaml(doc: CanvasDoc, key: string): TemplateDra
   return { yaml: `${lines.join('\n')}\n`, lossy }
 }
 
-// ---------- [M18] template-try（draft v2 → 保存模板 → 建 run） ----------
+// ---------- template-try（draft v2 → 保存模板 → 建 run） ----------
 
 /** template-try 失败错误（路由转 400；detail 可选附送 validation.errors 清单） */
 export class TemplateTryError extends Error {
@@ -374,7 +374,7 @@ function sanitizeTplKey(name: string): string {
 }
 
 /**
- * [M18] 画布→模板→一键试跑：
+ * 画布→模板→一键试跑：
  * - nodeIds 给定：保留该集 + 上游闭包（包含资产/文本/实体），边只保留两端均在保留集内；
  * - draft v2 同同构建 YAML + lossy；validate 失败 → TemplateTryError('validation_failed')；
  * - key 缺省 `<canvas.name>-try`（sanitize）；冲突自动后缀 -2/-3/…（最多 30 层）；

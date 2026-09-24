@@ -571,7 +571,7 @@ const form = props.form
   line-height: 1.7;
 }
 
-/* ===== [M17] 新增块：frow-ops / notes / vsel / 画廊 / 弹窗 ===== */
+/* ===== 新增块：frow-ops / notes / vsel / 画廊 / 弹窗 ===== */
 .frow-ops {
   display: flex;
   gap: 6px;

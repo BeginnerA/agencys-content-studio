@@ -1,9 +1,9 @@
 /**
- * [M35 · G10] 轻松创作方案 Tier A 后置钳制。
+ * 轻松创作 ier A 后置钳制。
  *
  * 背景：LLM 生成 `CreationPlan` 时不知道当前 video 实例能力档位（`resolveVideoCaps`）；
  * 常在 `preflightPlan` 阶段抛 `duration_unsupported` / `aspect_unsupported` / `capabilities_unverified`，
- * 用户被迫「重新规划」。M35 引入 clamp：
+ * 用户被迫「重新规划」。本特性引入 clamp：
  * - **有 caps（真源表命中）**：shot.duration 就近上取合法档位；plan.aspectRatio 不在集合内
  *   → 改为 `caps.aspectRatios[0]`（默认竖屏优先）；钳制后重算 plan.duration（保持
  *   `contract.ts` superRefine 的「镜头时长和 = 总时长」不变式）。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M15] 流水线画布页 · 空态引导（views/canvas/index.vue 拆分：M26 红线纯重构，模板/样式逐字搬移）
+ * 流水线画布页 · 空态引导（views/canvas/index.vue 拆分：纯重构，模板/样式逐字搬移）
  * 展示「最近运行 + 模板」快捷入口；点击经 emit 回页面路由跳转（goRun / goTemplate）。
  */
 import { runStatus } from '../../lib/format'

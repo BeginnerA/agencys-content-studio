@@ -8,7 +8,7 @@ import type {
   CreationReworkTarget,
 } from '../../lib/types/creation-chat'
 
-// ===== [M42] 自然语言局部返修（独立于消息输入框：默认发信「记录下一版建议」的语义不得被劫持成返修费用） =====
+// ===== 自然语言局部返修（独立于消息输入框：默认发信「记录下一版建议」的语义不得被劫持成返修费用） =====
 
 interface Host {
   currentId: number

@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasTarget；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasTarget；依赖显式注入，原函数体保持不变。 */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { creationApi, entityApi, projectApi } from '../../lib/api'
@@ -44,9 +44,9 @@ export function useCanvasTarget(deps: Dependencies) {
   const palette = ref<Asset[]>([])
   const paletteLoading = ref(false)
   const paletteErr = ref('')
-  /** [M17] 素材面板 Tab（图片/视频/音频/实体；前三个沿用资产列表查询，实体走 /entities 合并三 kind） */
+  /** 素材面板 Tab（图片/视频/音频/实体；前三个沿用资产列表查询，实体走 /entities 合并三 kind） */
   const palKind = ref<'image' | 'video' | 'audio' | 'entity'>('image')
-  /** [M17] 实体 Tab 数据（character+scene+prop 合并） */
+  /** 实体 Tab 数据（character+scene+prop 合并） */
   const palEntities = ref<EntityItem[]>([])
   const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -90,7 +90,7 @@ export function useCanvasTarget(deps: Dependencies) {
     paletteErr.value = ''
     try {
       if (palKind.value === 'entity') {
-        // [M17] 实体 Tab：项目域 + 全局（服务端 ?project_id= 视角），三 kind 合并展示
+        // 实体 Tab：项目域 + 全局（服务端 ?project_id= 视角），三 kind 合并展示
         const params = `&project_id=${pid}`
         const [c, s, p] = await Promise.all([
           entityApi.list('character', params),

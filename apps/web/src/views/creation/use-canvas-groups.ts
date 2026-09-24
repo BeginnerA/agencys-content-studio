@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasGroups；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasGroups；依赖显式注入，原函数体保持不变。 */
 import { creationApi } from '../../lib/api'
 import type { CanvasState } from './use-canvas-state'
 import type { CanvasDocument } from './use-canvas-doc'
@@ -9,7 +9,7 @@ type Dependencies = Pick<CanvasState, 'canvasId' | 'selectedIds' | 'toast'> &
 export function useCanvasGroups(deps: Dependencies) {
   const { canvasId, selectedIds, loadDoc, toast } = deps
 
-  // ===== [M18] 分组：成组 / 改组 / 解组（spec §2.6⑩）=====
+  // ===== 分组：成组 / 改组 / 解组（spec §2.6⑩）=====
   /** Ctrl+G / 批量条成组：把当前选中集（≥2）归入新组 */
   async function onGroupCreate(): Promise<void> {
     const cid = canvasId.value
@@ -44,7 +44,7 @@ export function useCanvasGroups(deps: Dependencies) {
     await loadDoc(true)
   }
 
-  /** [M22] 组条拖拽：后代组（含自身）锚点批量平移（节点平移走 moved 通道；失败重拉对账） */
+  /** 组条拖拽：后代组（含自身）锚点批量平移（节点平移走 moved 通道；失败重拉对账） */
   async function onGroupsMoved(
     moves: Array<{ id: number; x: number; y: number }>,
   ): Promise<void> {

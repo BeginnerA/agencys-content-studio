@@ -2,7 +2,7 @@ import type { RunStatus, StepStatus } from './base'
 import type { Batch } from './batch'
 import type { WorkflowStatus } from './workflow'
 
-// ===== [M15] 流水线画布（GET /runs/:id/canvas · GET /templates/:key/canvas 契约） =====
+// ===== 流水线画布（GET /runs/:id/canvas · GET /templates/:key/canvas 契约） =====
 
 /** 画布边：sched=调度依赖（origin 标注来源）；data=数据引用（def.inputs 的 steps.x.asset(s) 整串） */
 export interface CanvasEdge {
@@ -46,11 +46,11 @@ export interface CanvasTaskAgg {
   succeeded: number
   failed: number
   cancelled: number
-  /** [方案C] 受理状态不明任务数 */
+  /** 受理状态不明任务数 */
   ambiguous?: number
 }
 
-/** [M15] 运行画布节点（run 状态 × 步骤） */
+/** 运行画布节点（run 状态 × 步骤） */
 export interface RunCanvasNode {
   key: string
   /** steps 行 id（抽屉任务过滤 / 重跑弹窗计数用；孤儿行 → null） */
@@ -84,7 +84,7 @@ export interface RunCanvasNode {
   }
 }
 
-/** [M15] 运行画布读模型 */
+/** 运行画布读模型 */
 export interface RunCanvas {
   run: {
     id: number
@@ -109,14 +109,14 @@ export interface RunCanvas {
   runActions: {
     canCancel: boolean
     canResume: boolean
-    /** [恢复收口] 轻松创作批准链 run：续跑/重试真源在创作会话，顶栏改呈现直达链接 */
+    /** 轻松创作批准链 run：续跑/重试真源在创作会话，顶栏改呈现直达链接 */
     isCreation?: boolean
-    /** [方案C] 存在受理状态不明任务 → 无法就地续跑，顶栏呈现会话核验链接 */
+    /** 存在受理状态不明任务 → 无法就地续跑，顶栏呈现会话核验链接 */
     resumeNeedsVerification?: boolean
   }
 }
 
-/** [M23] 模板节点输入字段（画布内编辑数据源；string 顶层字段可编辑，其余只读 JSON 预览） */
+/** 模板节点输入字段（画布内编辑数据源；string 顶层字段可编辑，其余只读 JSON 预览） */
 export interface InputFieldView {
   key: string
   /** 当前值（string 原值；非 string → JSON.stringify 截断预览） */
@@ -125,7 +125,7 @@ export interface InputFieldView {
   editable: boolean
 }
 
-/** [M15] 模板画布节点（设计态，无运行字段） */
+/** 模板画布节点（设计态，无运行字段） */
 export interface TemplateCanvasNode {
   key: string
   seq: number
@@ -138,11 +138,11 @@ export interface TemplateCanvasNode {
   batch: { field: string; maxConcurrent?: number; retry?: number } | null
   output: { purpose: string } | null
   inputsRefs: CanvasRefEntry[]
-  /** [M23] 编辑模式逐字段视图（保序：模板 inputs 声明顺序） */
+  /** 编辑模式逐字段视图（保序：模板 inputs 声明顺序） */
   inputFields: InputFieldView[]
 }
 
-/** [M15] 模板画布读模型 */
+/** 模板画布读模型 */
 export interface TemplateCanvas {
   template: {
     key: string
@@ -155,7 +155,7 @@ export interface TemplateCanvas {
   edges: CanvasEdge[]
 }
 
-/** [M15] CanvasBoard 通用节点视图（CanvasView 归一化 run/template 两态后传入；不参与网络契约） */
+/** CanvasBoard 通用节点视图（CanvasView 归一化 run/template 两态后传入；不参与网络契约） */
 export interface CanvasBoardNode {
   key: string
   seq: number
@@ -179,7 +179,7 @@ export interface CanvasBoardNode {
   batchField?: string | null
 }
 
-// ===== [M23] 全景聚合（GET /canvas/overview 契约；E1/E2） =====
+// ===== 全景聚合（GET /canvas/overview 契约；E1/E2） =====
 
 /** 全景 run 摘要（批次组内与独立组同构；cost 口径对齐 summarizeBatch） */
 export interface OverviewRunLite {
@@ -202,7 +202,7 @@ export interface CanvasOverviewBatch extends Batch {
   runs: OverviewRunLite[]
 }
 
-/** [M27] 编排链段概览（每段取 workflowId+seq 最新 run；无 run → runId/runStatus/cost 均 null） */
+/** 编排链段概览（每段取 workflowId+seq 最新 run；无 run → runId/runStatus/cost 均 null） */
 export interface WorkflowSegmentLite {
   seq: number
   templateKey: string
@@ -212,7 +212,7 @@ export interface WorkflowSegmentLite {
   cost: number | null
 }
 
-/** [M27] 编排链概览（全景「编排链」区数据源） */
+/** 编排链概览（全景「编排链」区数据源） */
 export interface WorkflowOverviewLite {
   id: number
   name: string
@@ -221,7 +221,7 @@ export interface WorkflowOverviewLite {
   segments: WorkflowSegmentLite[]
 }
 
-/** [M23] 全景读模型（项目内跨批次/跨模板聚合） */
+/** 全景读模型（项目内跨批次/跨模板聚合） */
 export interface CanvasOverview {
   project: { id: number; name: string }
   /** 新批在前（createdAt desc） */
@@ -233,11 +233,11 @@ export interface CanvasOverview {
     byStatus: Record<string, number>
     totalCost: number
   }
-  /** [M27] 编排链（旧前端超集兼容；无链 → []） */
+  /** 编排链（旧前端超集兼容；无链 → []） */
   workflows: WorkflowOverviewLite[]
 }
 
-// ===== [M23] 模板画布内编辑（本地草稿层；不参与网络契约） =====
+// ===== 模板画布内编辑（本地草稿层；不参与网络契约） =====
 
 /** 单步骤覆盖（对齐 P3 template-edit edits.steps[]：{ key, title?, texts? }） */
 export interface StepOverride {

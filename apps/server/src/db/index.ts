@@ -91,7 +91,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M8] 实体素材库：characters.kind 泛化列（存量行 default 'character'）
+  // 实体素材库：characters.kind 泛化列（存量行 default 'character'）
   const charCols = await sqlite.execute("PRAGMA table_info('characters')")
   const charHas = new Set((charCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!charHas.has('kind')) {
@@ -103,7 +103,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M13] states 变体入库：characters.states 列（存量行 default '[]'）
+  // states 变体入库：characters.states 列（存量行 default '[]'）
   if (!charHas.has('states')) {
     try {
       await sqlite.execute("ALTER TABLE characters ADD COLUMN states text DEFAULT '[]' NOT NULL")
@@ -123,7 +123,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M16] 画布任务归属列：gen_tasks.canvas_node_id（存量行 NULL）
+  // 画布任务归属列：gen_tasks.canvas_node_id（存量行 NULL）
   const taskCols = await sqlite.execute("PRAGMA table_info('gen_tasks')")
   const taskHas = new Set((taskCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!taskHas.has('canvas_node_id')) {
@@ -135,7 +135,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M16] 创作画布建表兜底（migrate 体系外旧库；幂等）
+  // 创作画布建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS canvases (
@@ -181,7 +181,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M17] 创作画布：节点采纳/序号列（建表后补齐：新库直接带列；存量旧表 ALTER；幂等）
+  // 创作画布：节点采纳/序号列（建表后补齐：新库直接带列；存量旧表 ALTER；幂等）
   const cnCols = await sqlite.execute("PRAGMA table_info('canvas_nodes')")
   const cnHas = new Set((cnCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!cnHas.has('adopted_task_id')) {
@@ -201,7 +201,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M18] 创作画布：回收站软删列（canvases.deleted_at）+ 节点成组列（canvas_nodes.group_id）
+  // 创作画布：回收站软删列（canvases.deleted_at）+ 节点成组列（canvas_nodes.group_id）
   const cvCols = await sqlite.execute("PRAGMA table_info('canvases')")
   const cvHas = new Set((cvCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!cvHas.has('deleted_at')) {
@@ -221,7 +221,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M18] 画布分组 / 文档快照建表兜底（migrate 体系外旧库；幂等）
+  // 画布分组 / 文档快照建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS canvas_groups (
@@ -251,7 +251,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M22] 画布组嵌套列：canvas_groups.parent_id（存量行 NULL=顶层；新库建表已带列）
+  // 画布组嵌套列：canvas_groups.parent_id（存量行 NULL=顶层；新库建表已带列）
   const cgCols = await sqlite.execute("PRAGMA table_info('canvas_groups')")
   const cgHas = new Set((cgCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!cgHas.has('parent_id')) {
@@ -263,7 +263,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M8] 风格预设库建表兜底（migrate 体系外旧库）
+  // 风格预设库建表兜底（migrate 体系外旧库）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS style_presets (
@@ -281,7 +281,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M14] 剧集实体建表兜底（migrate 体系外旧库；幂等）
+  // 剧集实体建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS series (
@@ -315,7 +315,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M19] 声音克隆音色库建表兜底（migrate 体系外旧库；幂等）
+  // 声音克隆音色库建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS voice_clones (
@@ -334,7 +334,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M20] publications 表新增 title/ab_group 列（A/B 测试 + 标题识别）
+  // publications 表新增 title/ab_group 列（A/B 测试 + 标题识别）
   const pubCols = await sqlite.execute("PRAGMA table_info('publications')")
   const pubHas = new Set((pubCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!pubHas.has('title')) {
@@ -354,7 +354,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M20] 排产计划表建表兜底（migrate 体系外旧库；幂等）
+  // 排产计划表建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS schedules (
@@ -381,7 +381,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M20] 预算告警记录表建表兜底（migrate 体系外旧库；幂等）
+  // 预算告警记录表建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS budget_alerts (
@@ -400,7 +400,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M21] assets 表新增 embedding/embedding_model 列（文本资产语义索引；存量行 NULL = 未索引）
+  // assets 表新增 embedding/embedding_model 列（文本资产语义索引；存量行 NULL = 未索引）
   const assetCols = await sqlite.execute("PRAGMA table_info('assets')")
   const assetHas = new Set((assetCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   if (!assetHas.has('embedding')) {
@@ -420,7 +420,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M27] 自动编排链建表兜底（migrate 体系外旧库；幂等）
+  // 自动编排链建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS workflows (
@@ -442,7 +442,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M27] pipeline_runs +2 可空列（workflow_id / workflow_seq；存量行 NULL = 非编排 run）
+  // pipeline_runs +2 可空列（workflow_id / workflow_seq；存量行 NULL = 非编排 run）
   if (!has.has('workflow_id')) {
     try {
       await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN workflow_id integer')
@@ -470,7 +470,7 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
-  // [M29·R02] 通用追溯层三表建表兜底（migrate 体系外旧库；幂等）
+  // 通用追溯层三表建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS content_versions (
@@ -532,7 +532,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // [M30] 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
+  // 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
   await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_sessions (
     id integer PRIMARY KEY AUTOINCREMENT, project_id integer NOT NULL,
     request_key text NOT NULL, status text DEFAULT 'draft' NOT NULL,

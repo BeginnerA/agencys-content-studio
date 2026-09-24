@@ -1,11 +1,11 @@
 /**
- * [M34] 运行入参预填服务（G6 输入预填 + G8 视频覆盖合法档位）。
+ * 运行入参预填服务（G6 输入预填 + G8 视频覆盖合法档位）。
  *
  * 治理「选模板 → 填 inputs → 覆盖参数」里系统本已知/可确定推导却逼用户手填的缺口：
  *   - G6：按「上次同模板 run 真实入参（Tier A 精确复用）+ 项目 brief（Tier B 白名单放置）」预填；
- *   - G8：视频清晰度/时长覆盖项按 M32 能力真源表给合法档位（时长边界为主，域对齐防 400）。
+ *   - G8：视频清晰度/时长覆盖项按能力真源表给合法档位（时长边界为主，域对齐防 400）。
  *
- * 纪律（对齐 M32/M33，不降级）：
+ * 纪律（对齐既有真源，不降级）：
  *   - **零成本**：纯 DB 读取 + 静态真源表推导，不发起任何 LLM / 网络调用（区别于 G7）。
  *   - **不猜测 / 不误填**：媒体类（files/publications）输入不从历史 run 复用；brief 仅放置原文、不改写。
  *   - **可追溯**：每个自动值携 `source`（template_default / last_run / brief / caps_suggest），前端标注来源。
@@ -99,7 +99,7 @@ function usableScalar(v: unknown): boolean {
   return true
 }
 
-/** G8：解析有效视频实例档位（project.settings.video 优先，回落默认 video 实例），复用 M32 resolveVideoCaps */
+/** G8：解析有效视频实例档位（project.settings.video 优先，回落默认 video 实例），复用 resolveVideoCaps */
 async function resolveVideoOverride(
   template: Template,
   settingsVideo: Record<string, unknown> | null,

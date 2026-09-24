@@ -56,7 +56,7 @@ const form = props.form
     </div>
   </section>
 
-  <!-- ===== [M17] gen：显示产物 + 结果画廊（采纳） ===== -->
+  <!-- ===== gen：显示产物 + 结果画廊（采纳） ===== -->
   <section v-if="node.kind === 'gen'" class="sec">
     <div class="sec-h">
       显示产物

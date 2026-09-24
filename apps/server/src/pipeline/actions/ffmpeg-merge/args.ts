@@ -8,22 +8,22 @@ import type { AlignPlan } from './align'
 import type { TransitionPlan } from './transition'
 import type { ResolvedWatermark, SubtitleStyleConfig } from '../../../services/brand-config'
 
-/** [M19] 品牌素材输入（水印：清洗参数 + 绝对路径） */
+/** 品牌素材输入（水印：清洗参数 + 绝对路径） */
 export type ComposeWatermarkInput = ResolvedWatermark & { path: string }
 
-/** [M19] 片头/片尾输入（绝对路径 + 探测时长） */
+/** 片头/片尾输入（绝对路径 + 探测时长） */
 export interface ComposeClipInput {
   path: string
   durSec: number
 }
 
-/** [M19] per-shot 音效输入（绝对路径 + 镜起点秒；起点已含片头位移） */
+/** per-shot 音效输入（绝对路径 + 镜起点秒；起点已含片头位移） */
 export interface ComposeSfxInput {
   path: string
   startSec: number
 }
 
-/** [M19] buildComposeArgs 输入（主链解析后的纯数据） */
+/** buildComposeArgs 输入（主链解析后的纯数据） */
 export interface ComposeArgsInput {
   strictDelivery?: boolean
   /** 已通过逐镜原声与台词核验的流起点；缺省保持历史参数逐字不变。 */
@@ -40,7 +40,7 @@ export interface ComposeArgsInput {
   /** 成片总长（秒；正片 Σd，未含片头尾） */
   total: number
   srtAbs: string | null
-  /** [M32] 每路字幕文件（[0]=主，[k+1]=派生路 k）；缺省/越界 → 回落 srtAbs。多画幅各路 PlayRes 不同，需各自 ASS。 */
+  /** 每路字幕文件（[0]=主，[k+1]=派生路 k）；缺省/越界 → 回落 srtAbs。多画幅各路 PlayRes 不同，需各自 ASS。 */
   subtitlePaths?: string[]
   style: string
   bgmPath: string | null
@@ -49,11 +49,11 @@ export interface ComposeArgsInput {
   watermark: ComposeWatermarkInput | null
   intro: ComposeClipInput | null
   outro: ComposeClipInput | null
-  /** [M19] per-shot 音效（空/缺省 = 音频链与 M11 逐字节一致） */
+  /** per-shot 音效（空/缺省 = 音频链与既有实现逐字节一致） */
   sfx?: ComposeSfxInput[]
-  /** [M19] SFX 全局音量（默认 1；服务层已 clamp 0–2） */
+  /** SFX 全局音量（默认 1；服务层已 clamp 0–2） */
   sfxVolume?: number
-  /** [M19] 多画幅原生渲染（缺省/targets 空 → args 与单画幅逐字节一致） */
+  /** 多画幅原生渲染（缺省/targets 空 → args 与单画幅逐字节一致） */
   multiAspect?: {
     strategy: 'crop' | 'pad'
     targets: Array<{ aspect: string; outAbs: string }>
@@ -63,7 +63,7 @@ export interface ComposeArgsInput {
   outAbs: string
 }
 
-/** [M19] 多画幅派生输出（buildComposeArgs 算定尺寸与标签；调用方据此落资产） */
+/** 多画幅派生输出（buildComposeArgs 算定尺寸与标签；调用方据此落资产） */
 export interface ComposeDerivedOutput {
   aspect: string
   width: number
@@ -71,24 +71,24 @@ export interface ComposeDerivedOutput {
   outAbs: string
 }
 
-/** [M19] buildComposeArgs 输出（totalAll = 含片头尾总长；无片头尾时 === round3(total)） */
+/** buildComposeArgs 输出（totalAll = 含片头尾总长；无片头尾时 === round3(total)） */
 export interface ComposeArgsResult {
   args: string[]
   cwd: string | undefined
   totalAll: number
-  /** [M19] 派生路输出（与 args 中的额外输出组同序；无派生 → []） */
+  /** 派生路输出（与 args 中的额外输出组同序；无派生 → []） */
   derived: ComposeDerivedOutput[]
 }
 
 /**
- * [M19] 合成 args 组装（纯函数；探针直测）——M7/M11 组装逻辑原样搬移 + 水印/片头尾开关：
- * - 零 diff 红线：watermark/intro/outro 全 null 时 args/cwd 与 M7/M11 逐字节一致；
+ * 合成 args 组装（纯函数；探针直测）——既有组装逻辑原样搬移 + 水印/片头尾开关：
+ * - 零 diff 红线：watermark/intro/outro 全 null 时 args/cwd 与既有实现逐字节一致；
  * - 输入顺序：segments → voices → BGM → watermark → intro → outro（auxIdx 依此递推）；
  * - 片头尾：归一（scale/crop/setsar/fps/yuv420p）→ 与 [basev] concat（不参与转场）→ [basev2]；
  * - 字幕烧录于拼接后（时间轴含片头位移）；水印 overlay 在字幕之后（最顶层）→ [outv]；
  * - 配音轨 adelay（片头时长）→ apad 到 totalAll；BGM atrim/afade 末端锚定 totalAll；
- * - [M19] SFX：逐条 adelay 注入（起点含片头位移）→ 终混并入 [aout]；无 SFX → 音频链逐字节不变。
- * - [M19] 多画幅：拼接结果 split → 主路照旧 + 派生路各自几何/字幕/水印 → 每路独立输出组；未启用 → 逐字节不变。
+ * - SFX：逐条 adelay 注入（起点含片头位移）→ 终混并入 [aout]；无 SFX → 音频链逐字节不变。
+ * - 多画幅：拼接结果 split → 主路照旧 + 派生路各自几何/字幕/水印 → 每路独立输出组；未启用 → 逐字节不变。
  */
 export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const {
@@ -107,7 +107,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const maTargets = input.multiAspect?.targets ?? []
   const maStrategy = input.multiAspect?.strategy ?? 'crop'
   const maSubCfg = input.multiAspect?.subtitleCfg ?? null
-  // [M32] 每路字幕文件：[0]=主，[k+1]=派生路 k；缺省/越界回落 srtAbs（多画幅各路 PlayRes 不同，需各自 ASS）
+  // 每路字幕文件：[0]=主，[k+1]=派生路 k；缺省/越界回落 srtAbs（多画幅各路 PlayRes 不同，需各自 ASS）
   const subtitlePaths = input.subtitlePaths ?? []
   const subPathFor = (idx: number): string => subtitlePaths[idx] ?? srtAbs!
   const introDur = intro ? round3(intro.durSec) : 0
@@ -152,7 +152,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       fcParts.push(`[${srcIdx}:a]${input.strictDelivery ? 'asetpts=PTS-STARTPTS,' : ''}aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
     })
     if (alignPlan) {
-      // [M11] 对齐轨：按镜序 [句…, 镜尾静音(anullsrc)] concat（总长严格 = Σd；apad 兜底浮点）
+      // 对齐轨：按镜序 [句…, 镜尾静音(anullsrc)] concat（总长严格 = Σd；apad 兜底浮点）
       const items: string[] = []
       let silenceIdx = 0
       for (const ps of alignPlan.segments) {
@@ -176,11 +176,11 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       fcParts.push(`${aIn}concat=n=${voicePaths.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[outa]`)
     }
   }
-  // [M11] BGM 混音链：有主音轨 → amix 以主轨定长；无主音轨 → bgm 直接 [aout]
+  // BGM 混音链：有主音轨 → amix 以主轨定长；无主音轨 → bgm 直接 [aout]
   if (bgmPath) {
     const bgmIdx = segments.length + voicePaths.length
     inputArgs.push('-stream_loop', '-1', '-i', bgmPath)
-    // [M19] 淡出锚点：有片头尾 → totalAll；否则 total（零漂移）
+    // 淡出锚点：有片头尾 → totalAll；否则 total（零漂移）
     const fadeBase = intro || outro ? totalAll : total
     const fadeDur = round3(bgmFade)
     let chain =
@@ -190,11 +190,11 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       chain += `,afade=t=in:st=0:d=${fadeDur},afade=t=out:st=${round3(Math.max(0, fadeBase - bgmFade))}:d=${fadeDur}`
     }
     fcParts.push(`${chain}[bgm]`)
-    // [M19] 有 SFX 时主混先出 [amain]，由 SFX 终混统一产出 [aout]；无 SFX → 现行为逐字节不变
+    // 有 SFX 时主混先出 [amain]，由 SFX 终混统一产出 [aout]；无 SFX → 现行为逐字节不变
     if (hasAudio) fcParts.push(`[outa][bgm]amix=inputs=2:duration=first:normalize=0[${sfxCount > 0 ? 'amain' : 'aout'}]`)
     else if (sfxCount === 0) fcParts.push('[bgm]anull[aout]')
   }
-  // [M19] 品牌素材输入（水印 → 片头 → 片尾；索引递推；归一链先于 [basev] 拼接定义）
+  // 品牌素材输入（水印 → 片头 → 片尾；索引递推；归一链先于 [basev] 拼接定义）
   let auxIdx = segments.length + voicePaths.length + (bgmPath ? 1 : 0)
   if (watermark) {
     const wmIdx = auxIdx
@@ -204,7 +204,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       `[${wmIdx}:v]scale=${Math.round(width * watermark.width_pct)}:-1,format=rgba,colorchannelmixer=aa=${watermark.opacity}[wm]`,
     )
   }
-  // [M19 修复] 水印多路分流：启用水印且存在派生画幅时，同一 [wm] filter 输出 pad 不能被多个 overlay
+  // 水印多路分流：启用水印且存在派生画幅时，同一 [wm] filter 输出 pad 不能被多个 overlay
   // 重复消费（ffmpeg：一个 filter pad 仅可被消费一次，重复引用 → "Invalid stream specifier: wm" /
   // "Error initializing complex filters: Invalid argument"，整条合成命令失败而非仅缺某一路）。
   // 与音频 asplit 同理：按消费路数（主 + 派生）先 split 出每路唯一标签，供各 overlay 分别引用；
@@ -231,7 +231,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       `[${outroIdx}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[voutro]`,
     )
   }
-  // [M19] per-shot 音效输入（索引位于全部素材槽之后；起点 adelay 已含片头位移；v1 不裁剪——超镜长自然溢出）
+  // per-shot 音效输入（索引位于全部素材槽之后；起点 adelay 已含片头位移；v1 不裁剪——超镜长自然溢出）
   const sfxBaseIdx = segments.length + voicePaths.length + (bgmPath ? 1 : 0)
     + (watermark ? 1 : 0) + (intro ? 1 : 0) + (outro ? 1 : 0)
   sfxList.forEach((s, i) => {
@@ -242,7 +242,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       + `volume=${round3(sfxVolume)},adelay=${startMs}|${startMs}[sfx${i}]`,
     )
   })
-  // [M19] SFX 终混：有主音轨/BGM → amix(inputs=1+k, duration=first 以主轨定长)；
+  // SFX 终混：有主音轨/BGM → amix(inputs=1+k, duration=first 以主轨定长)；
   // 仅 SFX（无配音无 BGM）→ 组内 amix(longest) + apad 到 totalAll
   if (sfxCount > 0) {
     const sfxIns = sfxList.map((_, i) => `[sfx${i}]`).join('')
@@ -254,7 +254,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     }
   }
   if (xfadePlan.enabled) {
-    // [M11] xfade 链：offset o_k = V_k（前 n−1 镜段长 +T 补偿；末轮输出 [basev]，总长仍 Σd）
+    // xfade 链：offset o_k = V_k（前 n−1 镜段长 +T 补偿；末轮输出 [basev]，总长仍 Σd）
     let prev = 'v0'
     const boundaries = xfadePlan.offsets.length
     for (let k = 0; k < boundaries; k++) {
@@ -269,14 +269,14 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   } else {
     fcParts.push(`${segIn}concat=n=${segments.length}:v=1:a=0[basev]`)
   }
-  // [M19] 片头尾拼接：仅存在侧参与（n=2/3）；字幕轴与音频位移均以拼接后为准
+  // 片头尾拼接：仅存在侧参与（n=2/3）；字幕轴与音频位移均以拼接后为准
   const concatBase = intro || outro ? 'basev2' : 'basev'
   if (intro || outro) {
     const parts = `${intro ? '[vintro]' : ''}[basev]${outro ? '[voutro]' : ''}`
     const n = 1 + (intro ? 1 : 0) + (outro ? 1 : 0)
     fcParts.push(`${parts}concat=n=${n}:v=1:a=0[basev2]`)
   }
-  // [M19] 多画幅：split 于拼接后（含片头尾）——主路 [bm] 照旧，派生路 [b1..bk] 各自构图
+  // 多画幅：split 于拼接后（含片头尾）——主路 [bm] 照旧，派生路 [b1..bk] 各自构图
   const mainBase = maTargets.length > 0 ? 'bm' : concatBase
   if (maTargets.length > 0) {
     const labels = ['bm', ...maTargets.map((_, k) => `b${k + 1}`)].map((l) => `[${l}]`).join('')
@@ -288,14 +288,14 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       `[${mainBase}]subtitles='${basename(subPathFor(0))}':force_style='${style}'[${subOut}]`,
     )
   }
-  // [M19] 水印 overlay（最顶层；字幕烧录之后）；多路时取分流的唯一标签 wm0
+  // 水印 overlay（最顶层；字幕烧录之后）；多路时取分流的唯一标签 wm0
   if (watermark) {
     const wmIn = srtAbs && subOut ? subOut : mainBase
     fcParts.push(`[${wmIn}][${wmPad(0)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
   }
   const videoOut = watermark || srtAbs ? 'outv' : mainBase
 
-  // [M19] 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（[wm]split 分流后各取唯一标签 wm(k+1)）
+  // 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（[wm]split 分流后各取唯一标签 wm(k+1)）
   const derived: ComposeDerivedOutput[] = []
   const derivedLabels: string[] = []
   maTargets.forEach((t, k) => {
@@ -316,10 +316,10 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     derived.push({ aspect: t.aspect, width: w, height: h, outAbs: t.outAbs })
   })
 
-  // [M19] 音频终标签（有 BGM/SFX → [aout]；仅配音 → [outa]；无音频 → null）
+  // 音频终标签（有 BGM/SFX → [aout]；仅配音 → [outa]；无音频 → null）
   const audioTail = bgmPath || sfxCount > 0 ? 'aout' : hasAudio ? 'outa' : null
   const encAudio: string[] = []
-  // [M19] 多路输出时同一音频 pad 不得被两个输出重复 -map（ffmpeg：Output with label ... already used elsewhere
+  // 多路输出时同一音频 pad 不得被两个输出重复 -map（ffmpeg：Output with label ... already used elsewhere
   // → Error opening output files: Invalid argument）→ asplit=1+k 分流，每路映射唯一标签；单路 → 原标签不变
   const aMaps: string[] = []
   if (audioTail) {

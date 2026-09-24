@@ -6,7 +6,7 @@ import { extractStyleSnippetFromAssets } from '../services/style-preset'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
- * M8 风格预设库路由：CRUD（平台级通用画风词块，跨体裁跨项目复用）。
+ * 风格预设库路由：CRUD（平台级通用画风词块，跨体裁跨项目复用）。
  * 项目绑定经 PATCH /projects/:id 的 settings.style_preset_id（服务端零新增绑定端点）；
  * 删除/停用后绑定残留 → ai_image 运行时宽容降级（resolveProjectStyleSnippet 返回 null + 日志）。
  */
@@ -28,7 +28,7 @@ stylePresetsRoutes.get('/style-presets/:id', h(async (c) => {
   return c.json({ preset: toView(row) })
 }))
 
-// POST /style-presets/extract —— [M13] 参考图 → 画风词提取（视觉 LLM；不落库，前端预填新建表单）
+// POST /style-presets/extract —— 参考图 → 画风词提取（视觉 LLM；不落库，前端预填新建表单）
 stylePresetsRoutes.post('/style-presets/extract', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const pid = Number(body['project_id'])

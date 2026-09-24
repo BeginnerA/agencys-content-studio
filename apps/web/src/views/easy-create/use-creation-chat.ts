@@ -15,18 +15,18 @@ import type {
   CreationMode,
 } from '../../lib/types'
 
-// [M43] 附件视图模型迁移至 use-creation-attachments；此处再导出保持 use-first-input 等既有 import 路径不变
+// 附件视图模型迁移至 use-creation-attachments；此处再导出保持 use-first-input 等既有 import 路径不变
 export type { AttachmentItem } from './use-creation-attachments'
 
-// ===== [M30] 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
+// ===== 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
 
-// [M42] waiting_input 不在本集合内：它是「等用户决策」而不是「等在途请求」，已挂起闸门时继续 4s 轮询只会空转（见 isPollable 的 parked 分支）
+// waiting_input 不在本集合内：它是「等用户决策」而不是「等在途请求」，已挂起闸门时继续 4s 轮询只会空转（见 isPollable 的 parked 分支）
 const RUNNING = new Set(['queued', 'running', 'pending', 'processing'])
 
 function isPollable(d: CreationDetail | null): boolean {
   if (!d) return false
   const p = d.progress
-  // [M42] 投影带 review = 闸门真的在等用户点按钮 → 不轮询；waiting_input 但无待审步骤 = 决策后的瞬时态（run 行比步骤行晚一步更新），继续轮询至收敛
+  // 投影带 review = 闸门真的在等用户点按钮 → 不轮询；waiting_input 但无待审步骤 = 决策后的瞬时态（run 行比步骤行晚一步更新），继续轮询至收敛
   const parked = !!p && p.status === 'waiting_input' && !!p.review
   const runActive =
     !!p &&
@@ -46,18 +46,18 @@ const state = reactive({
   busyAction: false,
   error: '',
   notice: '',
-  // [M42] 已改选版本但还未重新合成（选片零计费、不改成片，需提示用户再走一次本地合成）
+  // 已改选版本但还未重新合成（选片零计费、不改成片，需提示用户再走一次本地合成）
   selectionDirty: false,
-  // [M31] 参考附件托盘（仅当前会话；切会话/离开即清空，避免旧素材错挂新会话）
+  // 参考附件托盘（仅当前会话；切会话/离开即清空，避免旧素材错挂新会话）
   attachments: [] as AttachmentItem[],
   // [batch5] 首轮预设选择（风格 ≤6 / 角色 ≤4）：项目级软提示旁信道，切会话 / 回首页即清
   stylePresetIds: [] as number[],
   characterPresetIds: [] as number[],
 })
 
-// [M43] 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
+// 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
 const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling })
-// [M42] 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
+// 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
 const attachments = createAttachments(state, { viewEpoch: () => viewEpoch, commit, first, errText })
 let viewEpoch = 0
@@ -79,7 +79,7 @@ function errText(e: unknown): string {
 function commit(id: number, detail: CreationDetail): void {
   if (id !== state.currentId) return
   state.detail = detail
-  // [M42] run 一旦重新推进（含本地重合成），选定版本正在落到新成片上 → 摘掉「待重新合成」提示
+  // run 一旦重新推进（含本地重合成），选定版本正在落到新成片上 → 摘掉「待重新合成」提示
   if (RUNNING.has(detail.progress?.status ?? '')) state.selectionDirty = false
   first.observe(detail)
   syncConfirmKey()
@@ -105,7 +105,7 @@ function syncConfirmKey(): void {
   confirmKey.key = hash ? newRequestKey('cfm') : ''
 }
 
-// ===== [M40] 立项信息可编辑态：默认用平台智能填写值（Tier A），用户改过的字段确认后随 confirm 提交（Tier B 可覆盖） =====
+// ===== 立项信息可编辑态：默认用平台智能填写值（Tier A），用户改过的字段确认后随 confirm 提交（Tier B 可覆盖） =====
 export const projectDraft = reactive({
   name: '',
   genre: '',
@@ -204,7 +204,7 @@ function wireSocket(): void {
   studioOn('run.completed', onRunEvent)
   studioOn('run.failed', onRunEvent)
   studioOn('run.step', onRunEvent)
-  // [M42] 闸门挂起：不靠下一轮轮询，事件到达即重拉（审阅面板即时出现）
+  // 闸门挂起：不靠下一轮轮询，事件到达即重拉（审阅面板即时出现）
   studioOn('run.gate', onRunEvent)
   studioOn('task.updated', onRunEvent)
 }
@@ -290,7 +290,7 @@ async function send(content: string, replan = false): Promise<boolean> {
   }
   state.busySend = true
   state.error = ''
-  // [M31] 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
+  // 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
   const sentAssetIds = state.detail?.session.runId ? [] : [...new Set(state.attachments
     .filter((a) => a.assetId && !a.error)
     .map((a) => a.assetId!))]
@@ -355,17 +355,17 @@ async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?:
       planHash: s.planHash,
       idempotencyKey: confirmKey.key,
       acceptUnpriced,
-      // [M40] 确认才立项：携带用户覆盖过的立项字段（不入 planHash，非法值服务端回落真源并在对话中说明）
+      // 确认才立项：携带用户覆盖过的立项字段（不入 planHash，非法值服务端回落真源并在对话中说明）
       ...(projectOverrides() ? { project: projectOverrides() } : {}),
-      // [M42] 勾选审阅 → 服务端改用同构变体模板；不勾选不传该键（缺省 false，请求体与旧版逐字一致）
+      // 勾选审阅 → 服务端改用同构变体模板；不勾选不传该键（缺省 false，请求体与旧版逐字一致）
       ...(reviewGate ? { reviewGate: true } : {}),
-      // [M43] 画质选择：不选不传键（服务端用模型默认档，请求体与旧版逐字一致）；不入 planHash，改档不触发重新规划
+      // 画质选择：不选不传键（服务端用模型默认档，请求体与旧版逐字一致）；不入 planHash，改档不触发重新规划
       ...(resolution ? { resolution } : {}),
-      // [M45] 品牌叠加：默认继承（true）不传该键（请求体与旧版逐字一致）；仅逐次关闭时传 false。不入 planHash、零计费
+      // 品牌叠加：默认继承（true）不传该键（请求体与旧版逐字一致）；仅逐次关闭时传 false。不入 planHash、零计费
       ...(brandApply === false ? { brandApply: false } : {}),
     })
     await fetchDetail(id)
-    // [M40] 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
+    // 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
     projectDraft.dirty = false
     syncProjectDraft()
     ensurePolling()
@@ -428,7 +428,7 @@ async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false): P
 }
 
 /**
- * [M42] 审阅决策：approve 继续制作；reject = 该阶段整体重做（再次调用图片/视频生成，调用方必须已二次确认费用）。
+ * 审阅决策：approve 继续制作；reject = 该阶段整体重做（再次调用图片/视频生成，调用方必须已二次确认费用）。
  * 同签名（会话+run+步骤+决策+意见）复用幂等键：连点不重复决策；改意见或改决策即新键（与 retry 同一先例）。
  */
 async function decideGate(
@@ -463,7 +463,7 @@ async function decideGate(
 }
 
 /**
- * [M42] 选定某镜的在用版本（零计费、不触发执行）：只提交这一镜的改动，
+ * 选定某镜的在用版本（零计费、不触发执行）：只提交这一镜的改动，
  * 未提及镜头由服务端按在用值补全（子集替换语义不外露）；成功后需再走重新合成才落到成片。
  */
 async function applySelection(
@@ -497,7 +497,7 @@ async function applySelection(
 }
 
 /**
- * [M42] 本地重新合成：仅重置合成步（不调用任何付费生成模型），但会重跑一段本地处理。
+ * 本地重新合成：仅重置合成步（不调用任何付费生成模型），但会重跑一段本地处理。
  * 成功后作废幂等键：下一次主动重合成必须是真的再次执行（与审阅决策同一先例）。
  */
 async function recompose(): Promise<boolean> {
@@ -551,7 +551,7 @@ function leave(): void {
 }
 
 /**
- * [M40+] 删除会话（清理「聊了一半放弃」的记录）。
+ * 删除会话（清理「聊了一半放弃」的记录）。
  * 服务端判定删除范围：未立项 → 连同影子项目一并回收（不留不可见行）；已立项 → 只删对话记录，项目保留。
  * 返回服务端结果供页面如实转告（失败时写 state.error，不假称已删）。
  */
@@ -573,7 +573,7 @@ async function removeSession(id: number): Promise<CreationDeleteResult | null> {
   }
 }
 
-// [M43] 参考附件登记与逐镜绑定域已抽至 use-creation-attachments.ts（createAttachments）；本文件仅经 attachments.* 转发，行为逐字不变
+// 参考附件登记与逐镜绑定域已抽至 use-creation-attachments.ts（createAttachments）；本文件仅经 attachments.* 转发，行为逐字不变
 
 const modeLabel = computed<CreationMode | null>(
   () => state.detail?.session.plan?.mode ?? null,

@@ -1,6 +1,6 @@
 import { stripCodeFence } from './compliance'
 
-// [M24·F2] 一致性 A/B 评测纯函数三件套（spec §2.3）：评分解析 / 矩阵聚合 / 报告渲染。
+// 一致性 A/B 评测纯函数三件套（spec §2.3）：评分解析 / 矩阵聚合 / 报告渲染。
 // LLM 调用与 batch 展开在 eval 路由层编排（P1 实装；真实调用走 e2e 实弹，探针不联网）。
 // 契约（eval-consistency.md 提示词）：{ scores: [{asset_id, consistency, style, quality, note}] }，0–10 一位小数。
 

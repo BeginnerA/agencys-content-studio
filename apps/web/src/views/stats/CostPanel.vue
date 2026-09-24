@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M20] 成本聚合增强面板（B6）
+ * 成本聚合增强面板（B6）
  * 三维度分解：按 provider:model / 按项目 / 按 kind
  */
 import { onMounted, ref } from 'vue'

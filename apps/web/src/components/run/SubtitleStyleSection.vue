@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 合成设置 · 字幕样式节（自 ComposeSettingsModal.vue 原样搬出，行为零变更）：
+ * 合成设置 · 字幕样式节（自 ComposeSettingsModal.vue 原样搬出，行为零变更）：
  * run 级 brand.subtitle 覆盖（开关 + 9 字段表单）；状态真源在本组件，
  * 初值经 subtitle prop 回填（immediate watch = 原 onMounted fillSubForm 时序），
  * 提交经父级共享 wrap（busy 互斥 / notice / emit changed 全部同源）。
@@ -306,7 +306,7 @@ function resetSubForm() {
   cursor: pointer;
 }
 
-/* ===== [M19] 字幕样式表单 ===== */
+/* ===== 字幕样式表单 ===== */
 
 .st-grid {
   display: flex;

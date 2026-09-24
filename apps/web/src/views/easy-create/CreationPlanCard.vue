@@ -16,7 +16,7 @@ const pf = computed(() => detail.value?.session.preflight ?? null)
 const exec = computed(() => pf.value?.execution ?? null)
 const est = computed(() => pf.value?.estimate ?? null)
 
-// [M31] 已采纳参考素材（来自服务端编译的 plan.refs）
+// 已采纳参考素材（来自服务端编译的 plan.refs）
 const refs = computed(() => plan.value?.refs ?? [])
 
 const modeText = computed(() =>
@@ -49,7 +49,7 @@ const providers = computed(() => {
   if (!e) return [] as Array<{ k: string; v: string }>
   const dialogue = plan.value?.performance === 'dialogue'
   const rows: Array<{ k: string; v: string }> = []
-  // [M44] 对白无独立 TTS 配音端点：不展示虚构的「配音」行，改展示严格逐镜原声转写（ASR）端点
+  // 对白无独立 TTS 配音端点：不展示虚构的「配音」行，改展示严格逐镜原声转写（ASR）端点
   if (dialogue) {
     if (e.asr)
       rows.push({ k: '原声转写核验', v: `${e.asr.provider} · ${e.asr.model}` })
@@ -80,7 +80,7 @@ const providers = computed(() => {
 const showScript = ref(false)
 const showShots = ref(false)
 const acceptUnpriced = ref(false)
-// [M45] 启动方式选项（审阅闸 + 画质 + 品牌）收敛进 CreationStartupOptions（令本卡守 ≤800 行）；父持模板 ref，confirm 时读回三值
+// 启动方式选项（审阅闸 + 画质 + 品牌）收敛进 CreationStartupOptions（令本卡守 ≤800 行）；父持模板 ref，confirm 时读回三值
 const optBox = ref<InstanceType<typeof CreationStartupOptions> | null>(null)
 
 const ready = computed(() => !!pf.value?.ready)
@@ -92,7 +92,7 @@ const confirmed = computed(
     ['starting', 'started'].includes(detail.value.session.status),
 )
 
-// ===== [M40] 「将创建的项目」：默认智能填写，确认前可逐项覆盖；点开始制作才真正立项 =====
+// ===== 「将创建的项目」：默认智能填写，确认前可逐项覆盖；点开始制作才真正立项 =====
 const proj = computed(() => detail.value?.session.project ?? null)
 const showProject = computed(() => !!proj.value?.isDraft && !confirmed.value)
 // [简化] 不提供「默认模板」设置项：轻松创作出片模板由服务端 recipe 固定，项目默认模板已按载体自动派生，
@@ -671,7 +671,7 @@ async function onConfirm(): Promise<void> {
   background: var(--accent-weak);
 }
 
-/* ---------- [M40] 将创建的项目（立项预览 + 可覆盖） ---------- */
+/* ---------- 将创建的项目（立项预览 + 可覆盖） ---------- */
 .project {
   background: var(--panel-2);
   border: 1px solid var(--border);

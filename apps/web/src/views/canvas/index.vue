@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * [M15] 流水线画布页（spec §2.4）
- * - 模式：运行画布（?run=）/ 模板画布（?template=）/ [M23] 全景（?overview=1）；三 query 互斥 run > template > overview；均无 → 空态引导
- * - 数据：canvasApi.run / canvasApi.template / [M23] canvasApi.overview（项目级聚合）；socket 手动 join/leave run room（runId 可切换，不用 useStudio 单例）
- * - 实时：run.step / run.gate / run.completed / run.failed / task.updated / [M23] batch.updated → 350ms 防抖全量对账（按当前 tab 分派）
- * - 操作：顶栏取消/续跑/启动运行；[M23] 模板态画布内编辑（本地草稿层：拖拽连线/删边/Del 键 + 导出草案/保存为新模板）；节点抽屉操作 → refresh 立即重拉（全部复用既有端点）
- * ---- [M26-split] 顶栏拆至 CanvasBar.vue（行为零变更）----
+ * 流水线画布页（spec §2.4）
+ * - 模式：运行画布（?run=）/ 模板画布（?template=）/ 全景（?overview=1）；三 query 互斥 run > template > overview；均无 → 空态引导
+ * - 数据：canvasApi.run / canvasApi.template / canvasApi.overview（项目级聚合）；socket 手动 join/leave run room（runId 可切换，不用 useStudio 单例）
+ * - 实时：run.step / run.gate / run.completed / run.failed / task.updated / batch.updated → 350ms 防抖全量对账（按当前 tab 分派）
+ * - 操作：顶栏取消/续跑/启动运行； 模板态画布内编辑（本地草稿层：拖拽连线/删边/Del 键 + 导出草案/保存为新模板）；节点抽屉操作 → refresh 立即重拉（全部复用既有端点）
+ * ---- 顶栏拆至 CanvasBar.vue（行为零变更）----
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -50,13 +50,13 @@ const empty = computed(() => runId.value == null && tplKey.value == null)
 // ===== 数据层 =====
 const runCanvas = ref<RunCanvas | null>(null)
 const tplCanvas = ref<TemplateCanvas | null>(null)
-/** [M23] 全景聚合（项目级；tab='overview' 时加载） */
+/** 全景聚合（项目级；tab='overview' 时加载） */
 const overview = ref<CanvasOverview | null>(null)
 const overviewLoading = ref(false)
 const loading = ref(false)
 const err = ref('')
 
-// ===== [M23] 画布内编辑（模板态本地草稿层；E3）=====
+// ===== 画布内编辑（模板态本地草稿层；E3）=====
 const edit = useCanvasEdit(tplCanvas)
 const { editMode, dirty: editDirty, overriddenCount: editCount } = edit
 
@@ -94,7 +94,7 @@ function syncFromQuery(): void {
     runId.value = null
     void loadTpl()
   } else if (ov) {
-    // [M23] 全景：无画布目标（项目选择器仍复用顶栏 selProject）
+    // 全景：无画布目标（项目选择器仍复用顶栏 selProject）
     const wasOv = tab.value === 'overview'
     tab.value = 'overview'
     runId.value = null
@@ -111,7 +111,7 @@ function resetView(): void {
   selectedKey.value = null
   drawerOpen.value = false
   logText.value = ''
-  // [M23] 切换画布目标 → 静默重置编辑草稿（脏确认仅用于顶栏「退出编辑」）
+  // 切换画布目标 → 静默重置编辑草稿（脏确认仅用于顶栏「退出编辑」）
   edit.exit()
   // 清数据：Board 以空数据重建 → 首次数据到达时自动 fit（避免残留上一目标的图与视口）
   runCanvas.value = null
@@ -160,7 +160,7 @@ async function loadTpl(): Promise<void> {
   }
 }
 
-/** [M23] 全景聚合（项目级；silent：socket 事件触发的对账刷新） */
+/** 全景聚合（项目级；silent：socket 事件触发的对账刷新） */
 async function loadOverview(silent = false): Promise<void> {
   const pid = projectId.value
   if (pid == null) {
@@ -197,7 +197,7 @@ async function loadLists(): Promise<void> {
     projects.value = p.items
     projectsLoaded.value = true
     if (projectId.value == null) projectId.value = projects.value[0]?.id ?? null
-    // [M23] 深链进入（?overview=1）：项目就绪后补首载
+    // 深链进入（?overview=1）：项目就绪后补首载
     if (tab.value === 'overview' && overview.value == null) void loadOverview()
     listErr.value = ''
   } catch (e) {
@@ -205,7 +205,7 @@ async function loadLists(): Promise<void> {
   }
 }
 
-// ===== 实时 / socket 房间 / 日志（M26 拆分：./use-canvas-realtime）=====
+// ===== 实时 / socket 房间 / 日志（拆至：./use-canvas-realtime）=====
 const { logText, loadLog } = useCanvasRealtime({
   tab,
   runId,
@@ -237,7 +237,7 @@ const boardNodes = computed<CanvasBoardNode[]>(() => {
       key: n.key,
       seq: n.seq,
       action: n.action,
-      // [M23] 编辑草稿 overlay：标题即时生效（未编辑 → 恒原值）
+      // 编辑草稿 overlay：标题即时生效（未编辑 → 恒原值）
       title: edit.titleOf(n),
       gateMessage: n.gate?.message ?? null,
       whenText: whenSummary(n),
@@ -249,7 +249,7 @@ const boardNodes = computed<CanvasBoardNode[]>(() => {
 
 const boardEdges = computed(() => {
   if (runId.value != null) return runCanvas.value?.edges ?? []
-  // [M23-E4] 模板态：本地草稿边叠加（连线/删边即时可见；退出编辑即还原）
+  // 模板态：本地草稿边叠加（连线/删边即时可见；退出编辑即还原）
   return tplCanvas.value ? edit.edgesOf(tplCanvas.value.edges) : []
 })
 
@@ -277,7 +277,7 @@ const drawerSel = computed(() =>
       : null,
 )
 
-// ===== [M23] 编辑装配（编辑区视图 + patch 回流；E3）=====
+// ===== 编辑装配（编辑区视图 + patch 回流；E3）=====
 const editNode = computed<EditNodeState | null>(() => {
   if (tab.value !== 'template' || !editMode.value || !selTplNode.value)
     return null
@@ -318,7 +318,7 @@ async function resetEdits(): Promise<void> {
   edit.clearAll()
 }
 
-// ===== [M23] 轻提示 + [M23-E4] 设计态编排（连线/删边/落盘通道：草案预览 / 保存为新模板）——M26 拆分：./use-canvas-design =====
+// ===== 轻提示 + 设计态编排（连线/删边/落盘通道：草案预览 / 保存为新模板）——拆至：./use-canvas-design =====
 const {
   toastMsg,
   boardEdit,
@@ -412,7 +412,7 @@ function goRun(id: number): void {
 function goTemplate(key: string): void {
   void router.replace({ query: { template: key } })
 }
-/** [M23] 全景批次头 → 批次详情页 */
+/** 全景批次头 → 批次详情页 */
 function goBatch(id: number): void {
   void router.push(`/batches/${id}`)
 }
@@ -440,7 +440,7 @@ function showTab(t: TabKey): void {
     if (k) goTemplate(k)
     else void router.replace({ query: {} })
   } else {
-    // [M23] 全景：项目选择器复用 selProject（本地状态，不进路由）
+    // 全景：项目选择器复用 selProject（本地状态，不进路由）
     void router.replace({ query: { overview: '1' } })
   }
 }
@@ -465,7 +465,7 @@ const selProject = computed({
     const id = Number(v)
     if (Number.isFinite(id) && id > 0) {
       projectId.value = id
-      // [M23] 全景态切换项目 → 重拉聚合
+      // 全景态切换项目 → 重拉聚合
       if (tab.value === 'overview') void loadOverview()
     }
   },
@@ -481,7 +481,7 @@ function onStarted(id: number): void {
   goRun(id)
 }
 
-/** [M16] 抽屉「送入创作画布」→ 跳转创作画布（带上项目与目标画布） */
+/** 抽屉「送入创作画布」→ 跳转创作画布（带上项目与目标画布） */
 function onOpenCreationCanvas(canvasId: number): void {
   const pid = runCanvas.value?.run.projectId
   if (pid == null) return
@@ -500,7 +500,7 @@ onMounted(() => {
 
 <template>
   <div class="cv-page">
-    <!-- ===== 顶栏（M26-split：拆至 CanvasBar.vue，行为零变更；目标下拉经 v-model 直连父级 writable computed）===== -->
+    <!-- ===== 顶栏（拆至 CanvasBar.vue，行为零变更；目标下拉经 v-model 直连父级 writable computed）===== -->
     <CanvasBar
       v-model:run-id="selRunId"
       v-model:tpl-sel="selTplKey"
@@ -546,7 +546,7 @@ onMounted(() => {
 
     <!-- ===== 舞台（Board + Drawer 覆盖层）===== -->
     <div class="cv-stage">
-      <!-- [M23] 全景（项目级聚合：跨批次/跨模板） -->
+      <!-- 全景（项目级聚合：跨批次/跨模板） -->
       <div v-if="tab === 'overview'" class="ov-wrap">
         <OverviewPanel
           v-if="overview"
@@ -611,7 +611,7 @@ onMounted(() => {
       @close="showStart = false"
     />
 
-    <!-- [M23] 设计态落盘 Modal 组（草案预览 / 保存为新模板 / 轻提示）——M26 拆分：./CanvasDesignModals.vue -->
+    <!-- 设计态落盘 Modal 组（草案预览 / 保存为新模板 / 轻提示）——拆至：./CanvasDesignModals.vue -->
     <CanvasDesignModals
       v-model:save-key="saveKey"
       :show-draft="showDraft"
@@ -667,7 +667,7 @@ onMounted(() => {
   background: var(--bg);
 }
 
-/* [M23] 全景容器 / 占位 */
+/* 全景容器 / 占位 */
 .ov-wrap {
   height: 100%;
   min-height: 0;
@@ -681,5 +681,5 @@ onMounted(() => {
   padding: 24px;
 }
 
-/* [M23] 空态引导样式已随 CanvasGuide.vue 拆出；草案/保存 Modal 与轻提示样式已随 CanvasDesignModals.vue 拆出 */
+/* 空态引导样式已随 CanvasGuide.vue 拆出；草案/保存 Modal 与轻提示样式已随 CanvasDesignModals.vue 拆出 */
 </style>

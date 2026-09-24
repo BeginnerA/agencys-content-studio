@@ -11,7 +11,7 @@ import { WorkbenchError } from './shot'
 import { resolveAudioEndpoint, synthSpeech, type AudioEndpoint } from './tts'
 
 /**
- * [M19 P8] 声音克隆（spec §2.2 ⑧）：能力位唯一事实源 + DashScope 复刻协议 + 平台音色库 + 声线链引用。
+ * 声音克隆（spec §2.2 ⑧）：能力位唯一事实源 + DashScope 复刻协议 + 平台音色库 + 声线链引用。
  *
  * 供应商协议（阿里云百炼「声音复刻」HTTP API，同一 customization 端点下两套 enrollment 模型）：
  * - dashscope-enrollment（Qwen-Audio-TTS / CosyVoice）：input.url 只接受**公网可访问**音频地址；

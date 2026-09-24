@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M21] 集级参数热调面板（C7）：
+ * 集级参数热调面板（C7）：
  * - 生效值：run.input._params（run 覆盖 > 项目设置 > 模板默认；仅未执行步骤读取新值）
  * - 编辑：白名单字段（image/video/audio/llm）→ PATCH /runs/:id/params → 刷新 run
  * - 留痕：run.input._params_log 倒序（时间 + group.key: from → to）
@@ -70,7 +70,7 @@ const canEdit = computed(() =>
 )
 
 /**
- * [整改] 参数组可见性：只暴露「本 run 步骤实际会读取」的组。
+ * 参数组可见性：只暴露「本 run 步骤实际会读取」的组。
  * 服务端仅这些 action 读 ctx.settings.<group>，热调对其余步骤无意义（改了不生效），隐藏以免死字段误导：
  * ai_image→image；ai_video/ffmpeg_merge→video；tts→audio；ai_text/subtitle→llm。
  * 步骤未加载或该模板无上述动作时保守全显示，避免误隐藏。

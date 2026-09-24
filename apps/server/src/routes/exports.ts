@@ -1,6 +1,6 @@
 /**
- * [M4] 导出 REST（E3）：生成/列表/run 产物/批量导出
- * [M20] B8：平台导出预设管理（CRUD + 默认预设）
+ * 导出 REST（E3）：生成/列表/run 产物/批量导出
+ * B8：平台导出预设管理（CRUD + 默认预设）
  * - 下载复用 GET /assets/:id/file?download=1（Range 已支持，不改动）
  */
 import { Hono } from 'hono'
@@ -54,13 +54,13 @@ exportsRoutes.get('/runs/:id/assets', h(async (c) => {
   return c.json({ items: rows.map((a) => ({ ...toAssetLite(a), stepId: a.stepId, sha256: a.sha256 })) })
 }))
 
-// [M50] GET /runs/:id/edit-exchange/formats —— 剪辑工程导出能力探测（成片存在=全开；无 timeline 且不可重算=置灰带提示）
+// GET /runs/:id/edit-exchange/formats —— 剪辑工程导出能力探测（成片存在=全开；无 timeline 且不可重算=置灰带提示）
 exportsRoutes.get('/runs/:id/edit-exchange/formats', h(async (c) => {
   const runId = idParam(c)
   return c.json(await probeEditExchange(runId))
 }))
 
-// [M50] POST /runs/:id/edit-exchange —— 生成剪辑工程交换包 {format:'fcpxml'|'edl'|'otio', include_media?}
+// POST /runs/:id/edit-exchange —— 生成剪辑工程交换包 {format:'fcpxml'|'edl'|'otio', include_media?}
 exportsRoutes.post('/runs/:id/edit-exchange', h(async (c) => {
   const runId = idParam(c)
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
@@ -119,9 +119,9 @@ function safeParse(s: string | null): unknown {
   }
 }
 
-// ---------- [M20] B8 平台导出预设 ----------
+// ---------- B8 平台导出预设 ----------
 
-/** [M36·G12.1] 目录条目 → 导出预设（不含 watermark，保持既有 5 键逐字零漂移；watermark 交用户在编辑态设） */
+/** 目录条目 → 导出预设（不含 watermark，保持既有 5 键逐字零漂移；watermark 交用户在编辑态设） */
 function presetFromCatalog(c: PlatformCatalogEntry): ExportPreset {
   return { platform: c.platform, label: c.label, aspect: c.aspect, maxDuration: c.maxDuration, namingPattern: c.namingPattern, includeCover: c.includeCover, includeSubtitle: c.includeSubtitle }
 }
@@ -195,10 +195,10 @@ exportsRoutes.put('/exports/presets', h(async (c) => {
   return c.json({ items: Object.values(map) })
 }))
 
-/** [M36·G12.1] GET /exports/presets/catalog —— 平台导出规格单一真源目录（供前端「从目录补全」） */
+/** GET /exports/presets/catalog —— 平台导出规格单一真源目录（供前端「从目录补全」） */
 exportsRoutes.get('/exports/presets/catalog', h(async (c) => c.json({ items: PLATFORM_CATALOG })))
 
-/** [M36·G12.1] POST /exports/presets/seed —— 从目录补全缺失平台预设（仅填缺失，用户已配/改过的不覆盖） */
+/** POST /exports/presets/seed —— 从目录补全缺失平台预设（仅填缺失，用户已配/改过的不覆盖） */
 exportsRoutes.post('/exports/presets/seed', h(async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const rawOnly = body['platforms']

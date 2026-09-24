@@ -136,7 +136,7 @@ async function init() {
       templateApi.list(),
       projectApi.assets(props.projectId, '?limit=200'),
     ])
-    // [入口收口] 批量运行不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
+    // 批量运行不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
     const selectable = filterSelectable(tRes.items)
     templates.value = selectable
     assets.value = aRes.items

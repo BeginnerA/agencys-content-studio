@@ -11,7 +11,7 @@ import { safeParseSpec, specProblems, type InputPlan, type NodeSpec } from '../s
 
 // ---------- 启动执行 ----------
 
-/** [M18] 节点预检（spec/输入计划/问题清单一次性解析）——startCanvasNodeRun 与 run-preview 共用 */
+/** 节点预检（spec/输入计划/问题清单一次性解析）——startCanvasNodeRun 与 run-preview 共用 */
 export interface NodePreflight {
   node: CanvasNode
   canvas: Canvas
@@ -52,7 +52,7 @@ export async function preflightNode(nodeId: number): Promise<NodePreflight> {
     if (!b[0] || b[0].deletedAt != null || b[0].kind !== 'audio') problems.push(`BGM 资产 #${spec.bgmAssetId} 不存在或不是本项目音频`)
   }
   if (spec.genKind === 'llm') {
-    // [M18] LLM 未配置 → readiness problem 引导 Settings（口径与 chatCompleteDetailed 抛错一致）
+    // LLM 未配置 → readiness problem 引导 Settings（口径与 chatCompleteDetailed 抛错一致）
     const ep = await resolveLlmEndpoint()
     if (!ep.baseUrl || !ep.apiKey) {
       problems.push('LLM 未配置：请在 Settings → AI 配置检查 llm 实例（或 .env 设置 AGENT_LLM_BASE_URL/AGENT_LLM_API_KEY）')
@@ -61,9 +61,9 @@ export async function preflightNode(nodeId: number): Promise<NodePreflight> {
   return { node, canvas, spec, plan, problems }
 }
 
-// ---------- [M18] 执行成本预估 ----------
+// ---------- 执行成本预估 ----------
 
-/** [M18] 预估单行（unit 行；unitPrice/subtotal 为 null = 未计价） */
+/** 预估单行（unit 行；unitPrice/subtotal 为 null = 未计价） */
 export interface PreviewUnitLine {
   unit: UsageUnit
   quantity: number
@@ -71,7 +71,7 @@ export interface PreviewUnitLine {
   subtotal: number | null
 }
 
-/** [M18] 预估节点条目（ready = 无 problems 且非 busy） */
+/** 预估节点条目（ready = 无 problems 且非 busy） */
 export interface PreviewNodeItem {
   nodeId: number
   title: string
@@ -84,14 +84,14 @@ export interface PreviewNodeItem {
   unpriced: boolean
 }
 
-/** [M18] 预估响应（total.amount 仅含有价节点；unpriced = 未计价节点数） */
+/** 预估响应（total.amount 仅含有价节点；unpriced = 未计价节点数） */
 export interface PreviewCanvasResult {
   nodes: PreviewNodeItem[]
   total: { amount: number; unpriced: number; ready: number; blocked: number; busy: number }
 }
 
 /**
- * [M18] 画布执行成本预估（零副作用：不建任务、不发外部请求）：
+ * 画布执行成本预估（零副作用：不建任务、不发外部请求）：
  * - 节点集合：nodeIds 缺省 = 全部 gen 节点；显式 → 去重正整数（画布域校验）；
  * - 单位矩阵：image → 1 张；video → spec.duration ?? 5 秒；audio → 指令文本字数（promptText ?? spec.prompt）；
  *   compose → 本地零成本（total=0）；llm → unpriced（tokens 不可预知，前端显示「按量计费」）；

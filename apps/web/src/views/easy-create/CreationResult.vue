@@ -31,7 +31,7 @@ const coverUrl = computed(() =>
     : null,
 )
 
-// ===== [M50] 剪辑工程交换导出（成片导出为多轨工程继续精剪）=====
+// ===== 剪辑工程交换导出（成片导出为多轨工程继续精剪）=====
 const editExFormats = ref<EditExchangeFormatsResult | null>(null)
 const editExBusy = ref(false)
 const editExErr = ref('')
@@ -96,7 +96,7 @@ async function exportEditEx(format: EditExchangeFormat) {
       >
     </footer>
 
-    <!-- [M50] 导出剪辑工程：成片→多轨工程（FCPXML/EDL/OTIO），到剪辑软件继续精剪 -->
+    <!-- 导出剪辑工程：成片→多轨工程（FCPXML/EDL/OTIO），到剪辑软件继续精剪 -->
     <div v-if="editExFormats?.final_video" class="editex">
       <span class="editex-lab">导出剪辑工程（多轨精剪）</span>
       <div class="editex-btns">
@@ -174,7 +174,7 @@ async function exportEditEx(format: EditExchangeFormat) {
   flex-wrap: wrap;
 }
 
-/* [M50] 剪辑工程交换导出区 */
+/* 剪辑工程交换导出区 */
 .editex {
   display: flex;
   flex-direction: column;

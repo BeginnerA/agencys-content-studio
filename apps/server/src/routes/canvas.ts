@@ -4,10 +4,10 @@ import { buildCanvasOverview } from '../services/canvas-overview'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
- * [M15] 流水线画布路由（纯读；所有写操作走既有 run/task 端点）：
+ * 流水线画布路由（纯读；所有写操作走既有 run/task 端点）：
  * - GET /runs/:id/canvas     运行画布（节点/边/操作可用性；模板取 run 快照）
  * - GET /templates/:key/canvas 模板设计态画布（节点/边；无运行字段）
- * - [M23] GET /canvas/overview 全景聚合（批次分组 + 独立 run + 项目统计；E1/E2）
+ * - GET /canvas/overview 全景聚合（批次分组 + 独立 run + 项目统计；E1/E2）
  */
 export const canvasRoutes = new Hono()
 
@@ -26,7 +26,7 @@ canvasRoutes.get('/templates/:key/canvas', h(async (c) => {
   }
 }))
 
-// [M23] GET /canvas/overview —— 全景聚合（?project_id= 必填；project 缺失 → 404）
+// GET /canvas/overview —— 全景聚合（?project_id= 必填；project 缺失 → 404）
 canvasRoutes.get('/canvas/overview', h(async (c) => {
   const raw = c.req.query('project_id')
   const projectId = raw != null && /^\d+$/.test(raw) ? Number(raw) : NaN

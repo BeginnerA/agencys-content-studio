@@ -1,5 +1,5 @@
 /**
- * [M22] 快照文档 diff 纯函数（spec §2.5）：
+ * 快照文档 diff 纯函数（spec §2.5）：
  * - 按行 id 匹配 → nodes/edges/groups × { added, removed, modified }（三表键浅比较 JSON 值）
  * - modified.changes: [{ field, before, after }]；展示值截断（字符串 >200 字符加省略；对象 stringify 后同规则）
  * - summary 计数；探针直测（不触库）。

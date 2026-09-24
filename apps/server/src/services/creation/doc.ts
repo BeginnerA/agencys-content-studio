@@ -1,4 +1,4 @@
-// [M28·批1a] 自 services/creation.ts 拆分：buildCanvasDoc 读模型组装（全型节点/端口/采纳优先/结果画廊）。
+// 自 services/creation.ts 拆分：buildCanvasDoc 读模型组装（全型节点/端口/采纳优先/结果画廊）。
 import { asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, canvasEdges, canvasGroups, canvasNodes, characters, genTasks, pipelineRuns, pipelineSteps } from '../../db/schema'
@@ -60,7 +60,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     tasksByNode.set(t.canvasNodeId, list)
   }
 
-  // [M17] entity 节点：批查实体（参考图集 + 首图缩略）
+  // entity 节点：批查实体（参考图集 + 首图缩略）
   const entityRefsByNodeId = new Map<number, number[]>()
   const entityByNodeId = new Map<number, CanvasEntityInfo>()
   const entityNodeRows = nodeRows.filter((n) => n.kind === 'entity')
@@ -78,7 +78,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     }
   }
 
-  // [M17] run 节点：批查 pipeline_runs + steps 状态计数
+  // run 节点：批查 pipeline_runs + steps 状态计数
   const runByNodeId = new Map<number, CanvasRunInfo>()
   const runNodeRows = nodeRows.filter((n) => n.kind === 'run')
   if (runNodeRows.length) {
@@ -114,7 +114,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     }
   }
 
-  // 资产：素材节点 assetId + 全部任务 resultAssetId（含历史）+ [M17] 实体首张参考图
+  // 资产：素材节点 assetId + 全部任务 resultAssetId（含历史）+ 实体首张参考图
   const assetIdSet = new Set<number>()
   for (const n of nodeRows) if (n.assetId != null) assetIdSet.add(n.assetId)
   for (const t of taskRows) if (t.resultAssetId != null) assetIdSet.add(t.resultAssetId)
@@ -339,7 +339,7 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
   }
 }
 
-/** [M17] gen 节点默认标题（按 genKind / edit 分派） */
+/** gen 节点默认标题（按 genKind / edit 分派） */
 function defaultGenTitle(spec: NodeSpec | null, id: number): string {
   if (!spec) return `节点 #${id}`
   if (spec.edit) return `编辑 #${id}`

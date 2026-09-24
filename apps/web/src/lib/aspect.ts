@@ -1,5 +1,5 @@
 /**
- * [M19] 多画幅共用常量与前端镜像工具（spec §2.3 ⑤）
+ * 多画幅共用常量与前端镜像工具（spec §2.3 ⑤）
  * - 选项与服务端 compose-config.ASPECTS / ASPECT_STRATEGIES 同值（新增比例两处同步）
  * - resolveAspectSize / isSameAspect 为 ffmpeg-merge 同名纯函数的镜像，**仅用于 UI 目标尺寸预览与置灰判定**，
  *   真实派生尺寸由服务端计算（本文件不参与编码链路）

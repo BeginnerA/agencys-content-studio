@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * [M26-split] 创作画布 · 缩放栏 + 操作指南悬浮件（自 board/index.vue 原样搬出，行为零变更）：
+ * 创作画布 · 缩放栏 + 操作指南悬浮件（自 board/index.vue 原样搬出，行为零变更）：
  * 不拦截视口手势（pointerdown/dblclick/keydown 全部 stop）；zoomBy/fitView 经函数 props 直传，
  * 状态真源仍在父级 useBoardViewport / useBoardInteractions。
  */

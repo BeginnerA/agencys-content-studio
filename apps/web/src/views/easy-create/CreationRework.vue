@@ -6,7 +6,7 @@ import type { CreationReworkTarget } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 
 /**
- * [M42] 局部返修面板（成果面板内展开，入口独立于消息输入框）。
+ * 局部返修面板（成果面板内展开，入口独立于消息输入框）。
  * 两步式：解析指令（一次文本模型小额调用、零媒体计费）→ 逐镜「原→新」+ 预估费用 → 显式确认才重置目标镜并续跑。
  * 本组件只呈现服务端解析结果：不本地估算金额、不猜镜头，unclear 时不给可确认的计费出口。
  */

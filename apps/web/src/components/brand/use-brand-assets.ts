@@ -1,5 +1,5 @@
 /**
- * [M19] 项目素材资产状态（BrandSettings 拆分：M26 红线纯重构，函数体逐字搬移）
+ * 项目素材资产状态（BrandSettings 拆分：纯重构，函数体逐字搬移）
  * 项目图片/视频资产列表 + 名称/URL 派生 + 刷新；供 project 选择与 run 继承摘要共用。
  */
 import { ref } from 'vue'

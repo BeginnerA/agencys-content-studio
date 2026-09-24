@@ -34,7 +34,7 @@ export interface StudioEventMap {
     total: number
   }
   'canvas.changed': { canvasId: number; projectId: number; nodeId?: number }
-  /** [M19 P6] 素材参考图批量生成（无 run；投递 project:{id} room） */
+  /** 素材参考图批量生成（无 run；投递 project:{id} room） */
   'entity.ref_gen': {
     projectId: number
     taskId: number

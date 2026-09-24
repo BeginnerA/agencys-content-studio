@@ -1,5 +1,5 @@
 /**
- * [M50] 时码单一真源：秒 ↔ 帧 ↔ HH:MM:SS:FF（非丢帧 NDF）。
+ * 时码单一真源：秒 ↔ 帧 ↔ HH:MM:SS:FF（非丢帧 NDF）。
  * EDL / FCPXML / OTIO 三格式化器共用，避免各自换算漂移。
  * 帧率取 params.timeline.fps（默认 25）；NDF 下每「秒」恰为 round(fps) 帧，
  * 时码不进位丢帧补偿（EDL CMX3600 常规口径）。

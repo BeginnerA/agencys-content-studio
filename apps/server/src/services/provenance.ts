@@ -1,12 +1,12 @@
 /**
- * [M29·R02] 通用追溯服务：内容/参考版本 + 执行真实输入快照 + 下游影响 + 版本还原。
+ * 通用追溯服务：内容/参考版本 + 执行真实输入快照 + 下游影响 + 版本还原。
  * 单一入口，供 asset-content / character / 各消费点 / routes/versions 调用。
  * 三条不变式：执行冻结真实输入；编辑不静默改写下游（影响只报告）；还原/锁版/选片三操作分离。
  * 设计边界：
  *  - content_versions 承载「可变对象」的版本链——可编辑文本资产（同 relPath 工作副本 + 不可变版本文件）
  *    与实体档案（无文件，doc JSON 快照）。媒体资产（图/视频/音）本身即不可变新行，无需 revision 链，
  *    其身份由 asset.id + sha256 冻结（exec_inputs.versionId=NULL，srcId 即版本身份）。
- *  - 所有物理文件写入走 versions/ 不可变目录；工作副本沿用同 relPath tmp+rename（不破坏 M25 探针与缓存 URL）。
+ *  - 所有物理文件写入走 versions/ 不可变目录；工作副本沿用同 relPath tmp+rename（不破坏探针与缓存 URL）。
  */
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -461,7 +461,7 @@ export async function downstreamImpact(p: { objKind: ObjKind; objId: number }): 
   })
 }
 
-// ---------- [M29·R02] 锁定下次执行输入（三操作分离之「锁版」） ----------
+// ---------- 锁定下次执行输入（三操作分离之「锁版」） ----------
 // 语义：把某生成节点对指定上游节点的消费输入钉到某个历史产物资产，仅在「下一次执行」生效，
 // 走既有 loadInputPlan 的 spec.pin 解析（缺省仍走最新/采纳）。与「采用历史产物」(adoptedTaskId 选片)、
 // 「还原内容版本」互不混淆——不改选片、不改内容、不触发生成。

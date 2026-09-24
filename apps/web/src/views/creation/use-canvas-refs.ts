@@ -1,4 +1,4 @@
-/** [M28] 创作画布：CanvasRefs；依赖显式注入，原函数体保持不变。 */
+/** 创作画布：CanvasRefs；依赖显式注入，原函数体保持不变。 */
 import { ref } from 'vue'
 import { creationApi, entityApi } from '../../lib/api'
 import type { EntityItem } from '../../lib/types'
@@ -12,7 +12,7 @@ type Dependencies = Pick<
 export function useCanvasRefs(deps: Dependencies) {
   const { nodes, selectedIds, projectId, toast } = deps
 
-  // ===== [M18] 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） =====
+  // ===== 加入实体参考（批量：选中节点显示产物 → 实体并集挂接） =====
   const showRefPick = ref(false)
   const refPickBusy = ref(false)
   const refPickLoading = ref(false)
