@@ -2,12 +2,14 @@
 /**
  * [M20] 排产日历视图（B1）
  * 月历形式展示排产计划，支持创建/取消/恢复/重置/删除操作。
- * ---- [M26-split] 新建弹窗拆至 ScheduleFormModal.vue（行为零变更；表单状态与提交逻辑留本文件）----
+ * ---- [M26-split] 新建弹窗拆至 ScheduleFormModal.vue（行为零变更）----
+ * ---- [M26-split2] 新建表单状态机与提交逻辑拆至 use-schedule-form.ts（行为零变更）----
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import ScheduleFormModal from './ScheduleFormModal.vue'
+import { useScheduleForm } from './use-schedule-form'
 import { projectApi, scheduleApi, templateApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { filterSelectable } from '../../lib/scene'
@@ -15,8 +17,6 @@ import type {
   Project,
   ScheduleCalendarItem,
   TemplateMeta,
-  TemplateDetail,
-  TemplateInputDef,
 } from '../../lib/types'
 import { fmtTime } from '../../lib/format'
 
@@ -31,41 +31,24 @@ const projectId = ref<number | ''>('')
 
 // 日历状态
 const viewDate = ref(new Date())
-const showForm = ref(false)
-const creating = ref(false)
 
-// 新建表单
-const formName = ref('')
-const formTemplateKey = ref('')
-const formScheduledAt = ref('') // YYYY-MM-DDTHH:mm（DatePicker withTime）
-const formNote = ref('')
-// 模板输入动态表单
-const formTemplateDetail = ref<TemplateDetail | null>(null)
-const formInputs = ref<Array<Record<string, unknown>>>([{}]) // 多组输入，每组对应一次 run
-const formInputsLoading = ref(false)
-
-// 模板切换时加载详情（含 inputs 定义）
-watch(formTemplateKey, async (key) => {
-  if (!key) {
-    formTemplateDetail.value = null
-    return
-  }
-  formInputsLoading.value = true
-  try {
-    const res = await templateApi.detail(key)
-    formTemplateDetail.value = res.template
-    // 重置为默认值（一组，按模板 defaults 预填）
-    const defaults: Record<string, unknown> = {}
-    for (const def of res.template.inputs) {
-      if (def.default !== undefined) defaults[def.key] = def.default
-    }
-    formInputs.value = [defaults]
-  } catch {
-    formTemplateDetail.value = null
-  } finally {
-    formInputsLoading.value = false
-  }
-})
+// [M26-split2] 新建表单状态机（showForm/formXxx/提交逻辑）拆至 use-schedule-form.ts
+const {
+  showForm,
+  creating,
+  formName,
+  formTemplateKey,
+  formScheduledAt,
+  formNote,
+  formTemplateDetail,
+  formInputs,
+  formInputsLoading,
+  openForm,
+  submitForm,
+  loadTemplateDetail,
+  addInputGroup,
+  removeInputGroup,
+} = useScheduleForm({ projectId, err, onCreated: () => void load() })
 
 const STATUS_MAP: Record<string, { text: string; cls: string }> = {
   pending: { text: '待触发', cls: 's-pending' },
@@ -192,124 +175,6 @@ watch(
   },
   { immediate: true },
 )
-
-/** 加载模板详情 + 预填默认值 */
-async function loadTemplateDetail(key: string) {
-  formInputsLoading.value = true
-  try {
-    const res = await templateApi.detail(key)
-    formTemplateDetail.value = res.template
-    const defaults: Record<string, unknown> = {}
-    for (const def of res.template.inputs) {
-      if (def.default !== undefined) defaults[def.key] = def.default
-    }
-    formInputs.value = [defaults]
-  } catch {
-    formTemplateDetail.value = null
-  } finally {
-    formInputsLoading.value = false
-  }
-}
-
-function openForm() {
-  formName.value = ''
-  formScheduledAt.value = ''
-  formNote.value = ''
-  formTemplateDetail.value = null // 清除旧模板，避免闪烁
-  formInputs.value = [{}]
-  showForm.value = true
-  // 重新加载当前模板详情 + 默认值
-  if (formTemplateKey.value) void loadTemplateDetail(formTemplateKey.value)
-}
-
-async function submitForm() {
-  if (!projectId.value) {
-    err.value = '请选择项目'
-    return
-  }
-  if (!formScheduledAt.value) {
-    err.value = '请设置触发时间'
-    return
-  }
-  if (formInputsLoading.value) {
-    err.value = '模板定义加载中，请稍候'
-    return
-  }
-  if (!formTemplateDetail?.value) {
-    err.value = '模板定义未加载'
-    return
-  }
-  // 序列化表单输入
-  const inputTemplate = formInputs.value
-    .map((row) =>
-      serializeInputRow(row, formTemplateDetail.value?.inputs ?? []),
-    )
-    .filter((row) => Object.keys(row).length > 0)
-  if (!inputTemplate.length) {
-    err.value = '至少填写一组输入'
-    return
-  }
-  creating.value = true
-  err.value = ''
-  try {
-    await scheduleApi.create(projectId.value as number, {
-      name: formName.value,
-      template_key: formTemplateKey.value,
-      scheduled_at: new Date(formScheduledAt.value).getTime(),
-      input_template: inputTemplate,
-      note: formNote.value || undefined,
-    })
-    showForm.value = false
-    void load()
-  } catch (e) {
-    err.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    creating.value = false
-  }
-}
-
-/** 将表单行序列化为后端期望的输入对象（类型转换 + 过滤空值） */
-function serializeInputRow(
-  row: Record<string, unknown>,
-  defs: TemplateInputDef[],
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const def of defs) {
-    const v = row[def.key]
-    if (v === undefined || v === null || v === '') continue
-    if (def.kind === 'int') {
-      const n = typeof v === 'number' ? v : Number(v)
-      if (Number.isInteger(n)) out[def.key] = n
-    } else if (def.kind === 'bool') {
-      out[def.key] = v === true || v === 'true'
-    } else if (def.kind === 'files') {
-      // files: 逗号分隔的 id 字符串 → 数字数组
-      const ids =
-        typeof v === 'string'
-          ? v
-              .split(',')
-              .map((s) => Number(s.trim()))
-              .filter((n) => Number.isInteger(n) && n > 0)
-          : Array.isArray(v)
-            ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0)
-            : []
-      if (ids.length) out[def.key] = ids
-    } else {
-      out[def.key] = typeof v === 'string' ? v : String(v)
-    }
-  }
-  return out
-}
-
-function addInputGroup() {
-  // 新增一组（复制上一组的值作为起点，或空对象）
-  const last = formInputs.value[formInputs.value.length - 1] ?? {}
-  formInputs.value.push({ ...last })
-}
-function removeInputGroup(idx: number) {
-  if (formInputs.value.length <= 1) return
-  formInputs.value.splice(idx, 1)
-}
 
 async function cancelItem(item: ScheduleCalendarItem) {
   const ok = await confirmDialog({
@@ -536,7 +401,7 @@ const monthStats = computed<MonthStats>(() => {
       </div>
     </div>
 
-    <!-- 新建弹窗（M26-split：拆至 ScheduleFormModal.vue；表单状态真源留父级，v-model 透传） -->
+    <!-- 新建弹窗（M26-split：拆至 ScheduleFormModal.vue；表单状态真源在 use-schedule-form.ts，经父级 v-model 透传） -->
     <ScheduleFormModal
       v-if="showForm"
       v-model:project-id="projectId"
