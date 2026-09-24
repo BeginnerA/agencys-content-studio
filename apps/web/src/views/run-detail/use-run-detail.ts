@@ -1,8 +1,8 @@
 /** 运行详情核心：数据流 / 闸门 / 日志 / 防抖刷新 / socket 实时；loadBadges 等附加数据经 deps 延迟注入。 */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { assetApi, runApi, shotApi, templateApi } from '../../lib/api'
-import { confirmDialog } from '../../lib/confirm'
+import { confirmDialog, confirmRunResume } from '../../lib/confirm'
 import { useStudio } from '../../lib/socket'
 import type { StudioEventMap } from '../../lib/socket'
 import type {
@@ -24,6 +24,8 @@ export function useRunDetail(deps: {
   const route = useRoute()
   const router = useRouter()
   const runId = Number(route.params.id)
+  let resumeEpoch = 0
+  watch(() => route.fullPath, () => { resumeEpoch++ }, { flush: 'sync' })
 
   const detail = ref<RunDetail | null>(null)
   const tpl = ref<TemplateDetail | null>(null)
@@ -67,9 +69,6 @@ export function useRunDetail(deps: {
   const resumeNeedsVerification = computed(
     () => detail.value?.resumeNeedsVerification === true,
   )
-  const ambiguousTaskIds = computed(() => detail.value?.ambiguousTaskIds ?? [])
-  // [配置漂移就地续跑] 已批准端点漂移清单（改模型/改价/删实例）→ 续跑需确认改用当前配置（accept_config_drift）
-  const configDrift = computed(() => detail.value?.resumeConfigDrift ?? [])
   const hasTasks = computed(() =>
     steps.value.some((s) => s.actionKey === 'ai_image'),
   )
@@ -305,35 +304,16 @@ export function useRunDetail(deps: {
   }
 
   async function resumeRun() {
-    // 两类「花钱/换配置」风险合并进同一次显式确认：
-    //  (1) 受理状态不明任务（可能已计费、继续会重发该任务）→ 带 confirm_ambiguous=true，服务端据单一真源重发；
-    //  (2) 已批准端点漂移（改模型/改价/删实例）→ 带 accept_config_drift=true，服务端按当前配置重钉快照后就地续跑。
-    const needVerify = isCreationRun.value && resumeNeedsVerification.value
-    const drift = configDrift.value
-    const hasDrift = isCreationRun.value && drift.length > 0
-    const driftNote = hasDrift
-      ? `\n已批准的供应商端点已变化：${drift.map((d) => `${d.service} ${d.from} → ${d.to ?? '（实例已删除）'}`).join('；')}。继续将改用当前配置（模型/价格可能与批准时不同）。`
-      : ''
-    const baseMsg = needVerify
-      ? `该运行由轻松创作发起，其中 ${ambiguousTaskIds.value.length} 个任务已提交但无回执（可能已被供应商计费）。继续将重新提交这些任务，可能产生重复费用。请确认你已在供应商侧核验或接受该风险。`
-      : isCreationRun.value
-        ? '该运行由轻松创作发起：将就地续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
-        : '将新建一个 run，跳过已成功步骤继续执行。'
-    const ok = await confirmDialog({
-      title: '断点续跑',
-      message: baseMsg + driftNote,
-      confirmText: needVerify ? '已核验，继续重发' : hasDrift ? '接受改用当前配置' : '开始续跑',
-    })
-    if (!ok) return
+    if (busy.value) return
+    const token = resumeEpoch
+    const isCurrent = () => token === resumeEpoch && Number(route.params.id) === runId
     busy.value = true
+    err.value = ''
     try {
-      const body: Record<string, unknown> = {}
-      if (needVerify) body.confirm_ambiguous = true
-      if (hasDrift) body.accept_config_drift = true
-      const res = await runApi.resume(runId, body)
-      router.push(`/runs/${res.run.id}`)
+      const res = await confirmRunResume(runId, isCurrent)
+      if (res && isCurrent()) void router.push(`/runs/${res.run.id}`)
     } catch (e) {
-      err.value = e instanceof Error ? e.message : String(e)
+      if (isCurrent()) err.value = e instanceof Error ? e.message : String(e)
     } finally {
       busy.value = false
     }
@@ -384,6 +364,7 @@ export function useRunDetail(deps: {
   })
 
   onBeforeUnmount(() => {
+    resumeEpoch++
     studio.leave()
     if (logTimer) window.clearInterval(logTimer)
     if (logThrottle) window.clearTimeout(logThrottle)

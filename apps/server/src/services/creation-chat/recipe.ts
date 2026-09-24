@@ -8,6 +8,7 @@ import { resolveEndpoint, type EndpointPin } from '../../adapters/provider'
 import { absPathOf, readTextAsset, sha256Hex } from '../storage'
 import { creationPlanSchema, hashJson, refSchema, type CreationRef } from './contract'
 import type { RunSettings } from '../../pipeline/context'
+import { resolveStrictAsrEndpoint } from '../strict-asr'
 
 export const endpointSnapshotSchema = z.object({
   configId: z.number().int().positive(), configHash: z.string().length(64),
@@ -69,6 +70,37 @@ export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): Creat
   if (!isCreationTemplate(run.templateKey)) return null
   const input = JSON.parse(run.input)
   return recipeSchema.parse(JSON.parse(input.recipe))
+}
+
+export interface ResumeConfigDrift { service: string; from: string; to: string | null }
+
+/** 恢复前只读配置检查，供运行详情和会话详情共用；不重钉快照、不触发供应商请求。 */
+export async function describeRunConfigDrift(run: Pick<PipelineRun, 'templateKey' | 'input' | 'status'>): Promise<ResumeConfigDrift[]> {
+  if (!isCreationTemplate(run.templateKey) || !['failed', 'cancelled'].includes(run.status)) return []
+  let recipe: CreationRecipe | null
+  try { recipe = recipeOf(run) } catch { return [] }
+  if (!recipe) return []
+  const drift: ResumeConfigDrift[] = []
+  for (const service of ['audio', 'image', 'video'] as const) {
+    const pin = recipe.endpoints[service]
+    if (!pin) continue
+    try { await resolveEndpoint(service, pin.provider, pin) }
+    catch {
+      let to: string | null = null
+      try { to = (await resolveEndpoint(service, pin.provider, { configId: pin.configId })).model ?? null } catch { /* 当前实例不可用 */ }
+      drift.push({ service, from: pin.model, to })
+    }
+  }
+  if (recipe.asr) {
+    try { await resolveStrictAsrEndpoint(recipe.asr) }
+    catch {
+      let to: string | null = null
+      // 与显式接受漂移后的 snapshotStrictAsr 同源；展示 ASR 型号，不拿语音实例的 TTS 型号替代。
+      try { to = (await resolveStrictAsrEndpoint()).model } catch { /* 无合格严格 ASR */ }
+      drift.push({ service: 'asr', from: recipe.asr.model, to })
+    }
+  }
+  return drift
 }
 
 export function pinOf(settings?: Record<string, unknown>): EndpointPin | undefined {

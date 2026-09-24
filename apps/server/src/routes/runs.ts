@@ -7,10 +7,9 @@ import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError } from '../services/run-create'
 import { checkBudget } from '../services/budget'
 import { randomUUID } from 'node:crypto'
-import { isAmbiguousSubmitted, isCreationTemplate, recipeOf } from '../services/creation-chat/recipe'
+import { describeRunConfigDrift, isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
 import { retryCreation } from '../services/creation-chat/execution'
 import { CreationError } from '../services/creation-chat/contract'
-import { resolveEndpoint } from '../adapters/provider'
 import { PARAM_GROUPS, readRunParams, validateRunParams } from '../services/run-params'
 import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
@@ -97,22 +96,7 @@ runsRoutes.get('/runs/:id', h(async (c) => {
   }
   const resumeNeedsVerification = ambiguousTaskIds.length > 0
   // 配置漂移就地续跑：已批准端点相对当前配置漂移（改模型/改价/删实例）→ 续跑需 accept_config_drift 确认改用当前配置。
-  const resumeConfigDrift: { service: string; from: string; to: string | null }[] = []
-  if (isCreationTemplate(run.templateKey) && ['failed', 'cancelled'].includes(run.status)) {
-    let driftRecipe = null
-    try { driftRecipe = recipeOf(run) } catch { driftRecipe = null }
-    if (driftRecipe) {
-      for (const [service, pin] of Object.entries(driftRecipe.endpoints)) {
-        if (!pin) continue
-        try { await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, pin) }
-        catch {
-          let to: string | null = null
-          try { to = (await resolveEndpoint(service as 'audio' | 'image' | 'video', pin.provider, { configId: pin.configId })).model ?? null } catch { to = null }
-          resumeConfigDrift.push({ service, from: pin.model, to })
-        }
-      }
-    }
-  }
+  const resumeConfigDrift = await describeRunConfigDrift(run)
   return c.json({
     run: toRunView(run),
     creationSessionId,

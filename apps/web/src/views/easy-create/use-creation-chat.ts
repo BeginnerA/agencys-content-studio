@@ -393,17 +393,23 @@ async function cancel(): Promise<void> {
   }
 }
 
-async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false): Promise<number | null> {
+async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false, acceptConfigDrift = false): Promise<number | null> {
   const s = state.detail?.session
   const p = state.detail?.progress
   const id = state.currentId
   if (!s || !p || !id || !s.planHash || state.busyAction || !p.recovery.resumable) return null
-  if (p.recovery.requiredTaskIds.some((taskId) => !verifiedFailedTaskIds.includes(taskId)) || (p.recovery.unpriced.length && !acceptUnpriced)) {
-    state.error = '请完成任务核实及未计价确认后恢复。'
+  const token = viewEpoch
+  const drift = p.recovery.configDrift ?? []
+  if (drift.some((d) => d.to === null)) {
+    state.error = '当前无可用配置，请检查实例是否启用、协议是否合格及凭据是否可用，再更新状态。'
+    return null
+  }
+  if (p.recovery.requiredTaskIds.some((taskId) => !verifiedFailedTaskIds.includes(taskId)) || (p.recovery.unpriced.length && !acceptUnpriced) || (drift.length && !acceptConfigDrift)) {
+    state.error = '请完成任务核实、未计价及配置变化确认后恢复。'
     return null
   }
   const verified = [...new Set(verifiedFailedTaskIds)].sort((a, b) => a - b)
-  const signature = JSON.stringify([id, p.runId, s.planRevision, s.planHash, p.status, p.uncertainTasks, verified, acceptUnpriced])
+  const signature = JSON.stringify([id, p.runId, s.planRevision, s.planHash, p.status, p.uncertainTasks, verified, acceptUnpriced, drift, acceptConfigDrift])
   if (signature !== retryTicket.signature) retryTicket = { signature, key: newRequestKey('rt') }
   state.busyAction = true
   state.error = ''
@@ -415,15 +421,21 @@ async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false): P
       acceptUnpriced,
       runId: p.runId,
       verifiedFailedTaskIds: verified,
+      ...(drift.length && acceptConfigDrift ? { acceptConfigDrift: true } : {}),
     })
+    if (token !== viewEpoch || id !== state.currentId) return null
     await fetchDetail(id)
+    if (token !== viewEpoch || id !== state.currentId) return null
     ensurePolling()
     return runId
   } catch (e) {
-    if (id === state.currentId) state.error = errText(e)
+    if (token === viewEpoch && id === state.currentId) {
+      state.error = errText(e)
+      if (e instanceof ApiError && e.code === 'configuration_changed') await fetchDetail(id)
+    }
     return null
   } finally {
-    state.busyAction = false
+    if (token === viewEpoch && id === state.currentId) state.busyAction = false
   }
 }
 

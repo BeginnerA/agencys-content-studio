@@ -93,9 +93,10 @@ export async function selectCreationShots(id: number, raw: unknown): Promise<{ r
       .filter((s) => wanted.has(s.shotId) || s.selectedAssetId != null)
       .map((s) => ({ shot_id: s.shotId, asset_id: wanted.get(s.shotId) ?? s.selectedAssetId! }))
     if (!picks.length) throw new CreationError('empty_selection', '该步骤还没有可用版本，请等待画面生成完成后再选', 409)
-    // 对白交付视频改选先过指纹缓存校验（写入前），避免选中陈旧版本后重合成暗改字幕或暗中付费 ASR
+    // 对白交付视频改选先过指纹缓存校验（写入前），避免选中陈旧版本后重合成暗改字幕或暗中付费 ASR；
+    // 免核验（estimated）路线本就无 ASR 转写缓存（validatedDialogueClip 依赖 recipe.asr），其诚实门在合成步估算同源重算 + 强制人工审阅，改选阶段不走此校验。
     const dialogueRecipe = dialogueRecipeOf(run)
-    if (dialogueRecipe && request.stepKey === 'motion') await assertDialogueCandidates(dialogueRecipe, picks, run.projectId)
+    if (dialogueRecipe && !dialogueRecipe.estimatedDialogue && request.stepKey === 'motion') await assertDialogueCandidates(dialogueRecipe, picks, run.projectId)
     const result = await throughShotLayer(() => applyShotSelection(run.id, request.stepKey, { picks }))
     return { runId: run.id, stepKey: request.stepKey, assetIds: result.assetIds }
   })

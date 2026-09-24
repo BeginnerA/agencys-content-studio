@@ -71,6 +71,9 @@ export interface RunStep {
   completedAt: number | null
 }
 
+/** 已批准配置与当前可用配置的差异；to=null 表示当前无可用配置。 */
+export interface ResumeConfigDrift { service: string; from: string; to: string | null }
+
 export interface RunDetail {
   run: Run
   steps: RunStep[]
@@ -81,7 +84,7 @@ export interface RunDetail {
   /** 受理状态不明的任务 id 清单（供核验引导） */
   ambiguousTaskIds?: number[]
   /** 已批准端点漂移清单（改模型/改价/删实例）；非空 → 续跑需 accept_config_drift 确认改用当前配置 */
-  resumeConfigDrift?: { service: string; from: string; to: string | null }[]
+  resumeConfigDrift?: ResumeConfigDrift[]
 }
 
 /** Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */

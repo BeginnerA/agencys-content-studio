@@ -277,7 +277,9 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
     if (shots.some((s) => taskByShotId.get(s.id)?.status !== 'succeeded')) throw new Error('原声视频核验未通过，已有产物保留，请返修对应镜头')
     const outputs = await ctx.assetsOf(assetIds)
     for (const [i, asset] of outputs.entries()) {
-      dialogueSource(recipe, shots[i]!.id, asset, ctx.run.projectId)
+      // 逐字 ASR 原声核验身份（dialogueSource）仅严格路线需要——它按 recipe.asr 配置算缓存指纹；
+      // 免核验（estimated）路线本就无 ASR 快照，诚实由估算字幕 + 合成步强制人工审阅把关，不得在此误调 strict 专用校验。
+      if (!recipe.estimatedDialogue) dialogueSource(recipe, shots[i]!.id, asset, ctx.run.projectId)
       inspectDialogueMedia(absPathOf(asset.relPath!))
     }
   }

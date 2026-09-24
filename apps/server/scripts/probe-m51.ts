@@ -7,7 +7,8 @@
  *
  * 断言面：
  *  - run：非终态 409 run_active；终态 200 级联（steps/tasks/run 行）；保留面（assets/usage_records 不动）；
- *    解绑引用（creation_sessions.run_id / episodes.latest_run_id 置 NULL）；重复删 404；批内删除后批次计数重算；
+ *    引用解绑：会话指向被删 run → 回落同项目最近存活 run，无存活才置 NULL；剧集 latest_run_id 直接解绑置 NULL；
+ *    重复删 404；批内删除后批次计数重算；
  *  - batch：批内存在未完成 run → 409 batch_running；全终态 → 批次 + 批内 run 级联删、资产保留；不存在 → 404。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
@@ -52,9 +53,14 @@ await runSections({ log, title: 'M51', checker, cleanup, sections: SECTIONS, reg
     await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, run!.id))
     const [asset] = await db.insert(assets).values({ projectId: pid, runId: run!.id, kind: 'text', purpose: 'script', name: '产物.md', createdAt: now, updatedAt: now } as never).returning()
     await db.insert(usageRecords).values({ projectId: pid, runId: run!.id, kind: 'tts', unit: 'char', quantity: 10, unitPrice: 0.1, cost: 1, currency: 'CNY', meta: '{}', createdAt: now } as never)
-    const [sess] = await db.insert(creationSessions).values({ projectId: pid, requestKey: `m51${now}`, status: 'started', plan: '{}', planRevision: 1, planHash: 'h', preflight: '{}', runHistory: '[]', runId: run!.id, createdAt: now, updatedAt: now } as never).returning()
+    // 批准锚点与被删派生 run 同步前进（端点 NEW），而回落目标 survivor 冻结旧端点（OLD）——仅端点差应触发对齐
+    const approvedPlan = JSON.stringify({ v: 1, plan: { mode: 'static' }, sources: [{ id: 1, hash: 'x' }], templateHash: 'th', endpoints: { image: { model: 'NEW' } } })
+    const survivorRecipe = JSON.stringify({ v: 1, plan: { mode: 'static' }, sources: [{ id: 1, hash: 'x' }], templateHash: 'th', endpoints: { image: { model: 'OLD' } } })
+    const [sess] = await db.insert(creationSessions).values({ projectId: pid, requestKey: `m51${now}`, status: 'started', plan: '{}', planRevision: 1, planHash: 'h', preflight: '{}', runHistory: '[]', approvedPlan, runId: run!.id, createdAt: now, updatedAt: now } as never).returning()
     const [sr] = await db.insert(series).values({ projectId: pid, name: '探针剧', createdAt: now, updatedAt: now } as never).returning()
     const [ep] = await db.insert(episodes).values({ projectId: pid, seriesId: sr!.id, number: 1, status: 'locked', latestRunId: run!.id, createdAt: now, updatedAt: now } as never).returning()
+    // 预建一个同项目存活 run（id 更大）：② 删除 run! 时会话应回落到它（不先置 NULL）
+    const [survivor] = await db.insert(pipelineRuns).values({ projectId: pid, templateKey: 'quick-video', status: 'failed', input: JSON.stringify({ recipe: survivorRecipe }), createdAt: now, updatedAt: now } as never).returning()
 
     const okRes = await app.request(`/api/v1/runs/${run!.id}`, { method: 'DELETE' })
     const okBody = await okRes.json() as { ok?: boolean; runs?: number; steps?: number; tasks?: number }
@@ -69,9 +75,16 @@ await runSections({ log, title: 'M51', checker, cleanup, sections: SECTIONS, reg
     check((await db.select().from(assets).where(eq(assets.id, asset!.id)))[0]?.deletedAt == null, '保留面：run 产物资产行仍在（素材清理走资产入口）')
     check((await db.select().from(usageRecords).where(inArray(usageRecords.runId, [run!.id]))).length === 1, '保留面：用量流水保留（成本审计事实不随记录消失）')
 
-    // ④ 引用解绑：会话/剧集不再指向已删 run
-    check((await db.select().from(creationSessions).where(eq(creationSessions.id, sess!.id)))[0]!.runId === null, '解绑：creation_sessions.run_id 置 NULL（会话不再挂死链）')
-    check((await db.select().from(episodes).where(eq(episodes.id, ep!.id)))[0]!.latestRunId === null, '解绑：episodes.latest_run_id 置 NULL')
+    // ④ 引用解绑：会话回落到同项目最近存活 run（删续跑链末端不打断会话），剧集直接置 NULL
+    check((await db.select().from(creationSessions).where(eq(creationSessions.id, sess!.id)))[0]!.runId === survivor!.id,
+      '回落：② 删除会话当前 run 后指针改指同项目最近存活 run（制作进度/续跑入口不丢）')
+    // 回落时同步把存活 run 的 input.recipe 前向对齐到批准锚点（仅端点漂移差），否则下次续跑 assertRecipeSources 被拒
+    const [survivorFresh] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, survivor!.id))
+    check(JSON.parse(survivorFresh!.input).recipe === approvedPlan, '回落锚点对齐：存活 run recipe 已推进到批准锚点（端点 NEW）')
+    // 最后一个存活 run 也被删 → 项目内无 run 才置 NULL（会话退纯规划态）
+    await app.request(`/api/v1/runs/${survivor!.id}`, { method: 'DELETE' })
+    check((await db.select().from(creationSessions).where(eq(creationSessions.id, sess!.id)))[0]!.runId === null, '回落兜底：项目已无存活 run 时置 NULL')
+    check((await db.select().from(episodes).where(eq(episodes.id, ep!.id)))[0]!.latestRunId === null, '解绑：episodes.latest_run_id 置 NULL（跨项目不可靠定位，宁可解绑不指错）')
 
     // ⑤ 重复删 → 404
     check((await app.request(`/api/v1/runs/${run!.id}`, { method: 'DELETE' })).status === 404, '幂等面：已删 run 再删 404')
@@ -125,5 +138,25 @@ await runSections({ log, title: 'M51', checker, cleanup, sections: SECTIONS, reg
 
     // ③ 不存在 → 404
     check((await app.request('/api/v1/batches/424242', { method: 'DELETE' })).status === 404, '不存在批次 → 404')
+  },
+
+  // ============ 回落锚点对齐的负向保护：plan 不一致时不得改写存活 run 历史快照 ============
+  neg: async () => {
+    const { db } = await import('../src/db')
+    const { creationSessions, pipelineRuns, projects } = await import('../src/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const { app } = await import('../src/app')
+    const now = Date.now()
+    const [p] = await db.insert(projects).values({ name: `m51neg${now}`, genre: 'other', templateKey: 'quick-video', status: 'active', settings: '{}', tags: '[]', createdAt: now, updatedAt: now } as never).returning()
+    const oldRecipe = JSON.stringify({ v: 1, plan: { script: 'B' }, sources: [{ id: 1, hash: 'x' }], templateHash: 'th', endpoints: { image: { model: 'OLD' } } })
+    const newRecipe = JSON.stringify({ v: 1, plan: { script: 'A' }, sources: [{ id: 1, hash: 'x' }], templateHash: 'th', endpoints: { image: { model: 'NEW' } } })
+    const [runOld] = await db.insert(pipelineRuns).values({ projectId: p!.id, templateKey: 'quick-video', status: 'failed', input: JSON.stringify({ recipe: oldRecipe }), createdAt: now, updatedAt: now } as never).returning()
+    const [runNew] = await db.insert(pipelineRuns).values({ projectId: p!.id, templateKey: 'quick-video', status: 'failed', input: JSON.stringify({ recipe: newRecipe }), createdAt: now + 1, updatedAt: now + 1 } as never).returning()
+    const [s2] = await db.insert(creationSessions).values({ projectId: p!.id, requestKey: `m51neg${now}`, status: 'started', plan: '{}', planRevision: 1, planHash: 'h', preflight: '{}', runHistory: '[]', approvedPlan: newRecipe, runId: runNew!.id, createdAt: now, updatedAt: now } as never).returning()
+    const res = await app.request(`/api/v1/runs/${runNew!.id}`, { method: 'DELETE' })
+    check(res.status === 200, `负向场景删除会话当前 run 200（实际 ${res.status}）`)
+    check((await db.select().from(creationSessions).where(eq(creationSessions.id, s2!.id)))[0]!.runId === runOld!.id, '负向场景仍正常回落到存活 run')
+    const [oldFresh] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runOld!.id))
+    check(JSON.parse(oldFresh!.input).recipe === oldRecipe, '负向保护：回落 run 的 plan 与锚点不一致时不整段改写其历史 recipe（仅端点差才对齐）')
   },
 } })

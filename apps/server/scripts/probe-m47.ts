@@ -27,7 +27,7 @@ import type { Asset } from '../src/db/schema'
 const { cleanup } = isolatedEnv('m47', { bridge: ['templates', 'prompts'] })
 process.env.PROBE_M47_KEY = 'offline-m47'
 
-const SECTIONS = ['recipe', 'preflight', 'execution', 'srt', 'action', 'merge', 'plan'] as const
+const SECTIONS = ['recipe', 'preflight', 'execution', 'srt', 'action', 'motion', 'merge', 'plan'] as const
 
 const { createLogger } = await import('../src/logger')
 /** 多角色对白 fixture（与 M44 探针同一份现场数据，零回归对照）。 */
@@ -142,6 +142,65 @@ async function buildEstimatedHarness(name: string, opts: { audioSource?: string;
       return ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is NonNullable<typeof r> => !!r)
     } }
   return { plan, recipe, run: run!, ctx: ctx as never }
+}
+
+/**
+ * 构造免核验/严格对白「motion 步已全镜成功」现场，直供 ai_video 动作离线复跑（queue 空→只走生成后原声核验块）。
+ * 专为补上 execution 节 stub startRun 从未真实执行 ai_video 的覆盖盲区（dialogueSource 误调 bug 因此逃逸）。
+ */
+async function buildMotionHarness(name: string, opts: { stripAudio?: boolean; strict?: boolean; tamperHash?: boolean } = {}) {
+  const { db } = await import('../src/db')
+  const { inArray } = await import('drizzle-orm')
+  const { projects, pipelineRuns, pipelineSteps, assets: assetsTbl, genTasks } = await import('../src/db/schema')
+  const { ensureProjectDirs, registerAsset, relPathOf, absPathOf } = await import('../src/services/storage')
+  const { resolveFfmpeg } = await import('../src/services/ffmpeg')
+  const { recipeSchema } = await import('../src/services/creation-chat/recipe')
+  const { compileDialogueShot } = await import('../src/services/creation-chat/dialogue')
+  const { creationPlanSchema, hashJson } = await import('../src/services/creation-chat/contract')
+  const { loadTemplate } = await import('../src/pipeline/loader')
+  const now = Date.now()
+  const plan = creationPlanSchema.parse(dialogueFixture())
+  const [project] = await db.insert(projects).values({ name, createdAt: now, updatedAt: now }).returning()
+  const recipe = recipeSchema.parse({ sessionId: 1, plan, endpoints: { video: pin(1, 'volcengine_video', 'doubao-seedance-2-0-260128') },
+    videoMode: 't2v', requestDurations: reqDurations(plan), imageSize: '1024x1024', resolution: '720p',
+    templateHash: hashJson(loadTemplate('easy-dialogue')), sources: [1, 2, 3].map((id) => ({ id, hash: 'c'.repeat(64) })), refs: [],
+    ...(opts.strict ? { asr: asrPin } : { estimatedDialogue: true }) })
+  const [run] = await db.insert(pipelineRuns).values({ projectId: project!.id, templateKey: 'easy-dialogue',
+    input: JSON.stringify({ recipe: JSON.stringify(recipe), motion: true, i2v: false }), createdAt: now, updatedAt: now }).returning()
+  const [step] = await db.insert(pipelineSteps).values({ runId: run!.id, seq: 1, stepKey: 'motion', actionKey: 'ai_video', status: 'running', createdAt: now, updatedAt: now }).returning()
+  ensureProjectDirs(project!.id)
+  const clips: Asset[] = []
+  for (const [i, shot] of plan.shots.entries()) {
+    const relPath = relPathOf(project!.id, 'shot_video', `${name}-${shot.id}`.replace(/[^\w.-]/g, '_') + '.mp4')
+    const path = absPathOf(relPath)
+    const audio = `sine=frequency=${440 + i * 100}:duration=7`
+    const gen = spawnSync(resolveFfmpeg()!, ['-n', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x240:r=25:d=8',
+      '-f', 'lavfi', '-i', audio, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', path], { encoding: 'utf8', timeout: 60_000, windowsHide: true })
+    if (gen.status !== 0) throw new Error(gen.stderr)
+    if (opts.stripAudio) {
+      const stripped = `${path}.noaudio.mp4`
+      const cut = spawnSync(resolveFfmpeg()!, ['-n', '-v', 'error', '-i', path, '-an', '-c:v', 'copy', stripped], { encoding: 'utf8', timeout: 60_000, windowsHide: true })
+      if (cut.status !== 0) throw new Error(cut.stderr ?? '去音轨失败')
+      writeFileSync(path, readFileSync(stripped))
+    }
+    const dialogueHash = opts.tamperHash && i === 0 ? 'deadbeef' : compileDialogueShot(plan, shot.id).dialogueHash
+    clips.push(await registerAsset(project!.id, { name: shot.id, kind: 'video', purpose: 'shot_video', relPath,
+      params: { shotId: shot.id, dialogueHash }, runId: run!.id }))
+    await db.insert(genTasks).values({ projectId: project!.id, runId: run!.id, stepId: step!.id, kind: 'video', status: 'succeeded',
+      params: JSON.stringify({ shotId: shot.id }), attempts: 1, resultAssetId: clips[clips.length - 1]!.id, createdAt: now, updatedAt: now, completedAt: now } as never)
+  }
+  const clipIds = clips.map((c) => c.id)
+  const ctx = { run: run!, step: step!, template: { key: 'easy-dialogue', version: 1, name: '探针', genre: 'story', inputs: [], steps: [] },
+    def: { key: 'motion', action: 'ai_video', title: '对白视频', inputs: {}, batch: { field: 'shots', maxConcurrent: 1, retry: 0 }, params: { prompt_field: 'image_prompt' } },
+    input: {}, settings: { video: { provider: 'volcengine_video', model: 'doubao-seedance-2-0-260128' } }, log: () => {},
+    assetIdsOf: (key: string) => key === 'shots' ? [clipIds[0]!] : [], readText: async () => JSON.stringify(plan.shots),
+    pathOf: async (id: number) => absPathOf(clips.find((c) => c.id === id)!.relPath!),
+    assetsOf: async (ids: number[]) => {
+      if (!ids.length) return []
+      const rows = await db.select().from(assetsTbl).where(inArray(assetsTbl.id, ids))
+      return ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is NonNullable<typeof r> => !!r)
+    } }
+  return { plan, recipe, run: run!, clips, ctx: ctx as never }
 }
 
 await runSections({ log, title: 'M47', checker, cleanup, sections: SECTIONS, runners: {
@@ -397,6 +456,28 @@ await runSections({ log, title: 'M47', checker, cleanup, sections: SECTIONS, run
       const strictCtx = { ...harness.ctx as object, run: strictRunRow }
       check(await codeOf(() => dialogueSubtitle(strictCtx as never)) === 'missing_asr', '无标记 strict 字幕步仍强制解析 ASR 快照：分流不误放（estimated 不触 ASR，strict 无实例即拒）')
     })
+  },
+
+  // ============ motion：ai_video 步原声核验块按路线分流（免核验不误调 strict 专用 dialogueSource） ============
+  motion: async () => {
+    const { aiVideo } = await import('../src/pipeline/actions/ai-video')
+    const { initDb } = await import('../src/db')
+    await initDb()
+    await noNetwork(async () => {
+      const est = await buildMotionHarness('M47 对白视频步')
+      check(est.recipe.estimatedDialogue === true && !est.recipe.asr, 'motion 基线：免核验 recipe 无 ASR 快照')
+      const res = await aiVideo(est.ctx)
+      check(res.assetIds.length === 4, '免核验对白 ai_video 全镜复用成功产物并通过原声核验（修复前此步误抛「缺少批准的严格 ASR 快照」）')
+      // 免核验跳过 strict 专用身份校验 → 篡改 dialogueHash 不影响 motion 步（改由合成/审阅把关）
+      const estTamper = await buildMotionHarness('M47 免核验-篡改哈希', { tamperHash: true })
+      check((await aiVideo(estTamper.ctx)).assetIds.length === 4, '免核验跳过 dialogueSource 身份校验：篡改 dialogueHash 不影响 motion 步')
+    })
+    // 原声音轨实测守卫不因分流而放宽（guard 不能一刀切跳过 inspectDialogueMedia）
+    const noAudio = await buildMotionHarness('M47 对白视频步-缺原声', { stripAudio: true })
+    check(String(await errOf(() => aiVideo(noAudio.ctx))).includes('音轨'), '缺原声轨视频仍被拒（媒体实测守卫不放宽）')
+    // strict 路线仍调 dialogueSource：篡改哈希被身份校验拦下（证明 guard 仅放行 estimated、不空转 strict）
+    const strict = await buildMotionHarness('M47 严格-篡改哈希', { strict: true, tamperHash: true })
+    check(String(await errOf(() => aiVideo(strict.ctx))).includes('不属于当前批准'), 'strict 路线仍执行 dialogueSource 身份校验：篡改对白哈希被拒')
   },
 
   // ============ merge：estimated 合成同源重算 + 陈旧/缺原声拒绝 ============

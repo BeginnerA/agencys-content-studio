@@ -1,5 +1,7 @@
 // ===== 对话式「一句话成片」领域类型（与 routes/creation-chat.ts + services/creation-chat 响应对齐） =====
 
+import type { ResumeConfigDrift } from './base'
+
 export interface CreationLine {
   id: string
   text: string
@@ -344,7 +346,7 @@ export interface CreationProgress {
   completedShots: number
   steps: CreationProgressStep[]
   stages: Array<{ key: string; title: string; applicable: boolean | null; status: string; completed: number | null; total: number | null }>
-  recovery: { resumable: boolean; requiredTaskIds: number[]; queryTaskCount: number; unpriced: string[] }
+  recovery: { resumable: boolean; requiredTaskIds: number[]; queryTaskCount: number; unpriced: string[]; configDrift?: ResumeConfigDrift[] }
   issue: { summary: string; details: Array<{ message: string; scopes: string[] }> } | null
 }
 
@@ -462,6 +464,8 @@ export interface CreationSelectionBody {
 export interface CreationRetryBody extends CreationConfirmBody {
   runId: number
   verifiedFailedTaskIds?: number[]
+  /** 仅用户明确接受当前配置后传 true，默认拒绝漂移。 */
+  acceptConfigDrift?: boolean
 }
 
 // ===== 自然语言局部返修（第一步解析预览 → 第二步显式确认执行） =====

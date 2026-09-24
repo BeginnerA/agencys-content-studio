@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import { runStatus, stepStatus } from '../../lib/format'
+import { configDriftText } from '../../lib/confirm'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
@@ -23,7 +24,10 @@ const settledBad = computed(
 const waiting = computed(() => prog.value?.status === 'waiting_input')
 const recovery = computed(() => prog.value?.recovery)
 const acceptUnpriced = ref(false)
-const canRetry = computed(() => !!recovery.value?.resumable && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value))
+const acceptConfigDrift = ref(false)
+const configDrift = computed(() => recovery.value?.configDrift ?? [])
+const configUnavailable = computed(() => configDrift.value.some((d) => d.to === null))
+const canRetry = computed(() => !!recovery.value?.resumable && !configUnavailable.value && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value) && (!configDrift.value.length || acceptConfigDrift.value))
 // 运行态/步骤态文案（后端 status 为宽字符串，经映射兜底，未知态原样显示）
 // waiting_input 在轻松创作里说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）；徽章复用全局 .waiting_input 色类
 const runMeta = computed(() =>
@@ -34,10 +38,11 @@ const runMeta = computed(() =>
 const stepMeta = (s: string) => s === 'not_applicable' ? { text: '不适用' } : s === 'unknown' ? { text: '信息待核实' } : s === 'waiting_input' ? { text: '等待审阅' } : stepStatus(s as never)
 // 无编号的请求必须逐项核实；有编号的未完成任务默认恢复查询。
 const resubmitIds = ref<number[]>([])
-watch(() => `${detail.value?.session.id}:${prog.value?.runId}:${detail.value?.session.planRevision}:${detail.value?.session.planHash}`, () => {
+watch(() => JSON.stringify([detail.value?.session.id, prog.value?.runId, detail.value?.session.planRevision, detail.value?.session.planHash, recovery.value]), () => {
   resubmitIds.value = []
   acceptUnpriced.value = false
-})
+  acceptConfigDrift.value = false
+}, { flush: 'sync' })
 
 function toggle(id: number): void {
   const i = resubmitIds.value.indexOf(id)
@@ -49,7 +54,7 @@ async function onCancel(): Promise<void> {
   await props.s.cancel()
 }
 async function onRetry(): Promise<void> {
-  if (canRetry.value) await props.s.retry(resubmitIds.value, acceptUnpriced.value)
+  if (canRetry.value) await props.s.retry(resubmitIds.value, acceptUnpriced.value, acceptConfigDrift.value)
 }
 </script>
 
@@ -97,6 +102,17 @@ async function onRetry(): Promise<void> {
         {{ t.label }} · 任务 #{{ t.id }}（{{ t.kind }} ·
         {{ t.provider || '供应商未知' }}）已核实失败，授权重新提交
       </label>
+      <template v-if="configDrift.length">
+        <p class="vt">已批准配置已变化，恢复需重新确认；同型号也可能发生价格或协议变化。</p>
+        <ul class="ec-progress-drift">
+          <li v-for="d in configDrift" :key="d.service">{{ configDriftText(d) }}</li>
+        </ul>
+        <p v-if="configUnavailable" class="vt" role="alert">当前无可用配置，暂不能恢复。请检查实例是否启用、协议是否合格及凭据是否可用，再点击“更新状态”。</p>
+        <label v-else class="vrow">
+          <input v-model="acceptConfigDrift" type="checkbox" :disabled="s.state.busyAction" />
+          我接受改用当前配置，模型、协议或价格可能与批准时不同，后续制作可能产生费用
+        </label>
+      </template>
       <label v-if="recovery.unpriced.length" class="vrow">
         <input v-model="acceptUnpriced" type="checkbox" :disabled="s.state.busyAction" />
         我接受未计价项目可能产生费用：{{ recovery.unpriced.join('、') }}
@@ -210,6 +226,7 @@ async function onRetry(): Promise<void> {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
+.ec-progress-drift { margin: 0; padding-left: 20px; color: var(--text-2); overflow-wrap: anywhere; }
 .ec-progress-summary { margin: 0; font-weight: 600; }
 .ec-progress-technical { overflow-wrap: anywhere; color: var(--text-2); }
 .ec-progress-technical summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }

@@ -343,6 +343,45 @@ async function main(): Promise<void> {
       'ai_video 板（视频封面 thumb?v=2 / 选中 m1）',
     )
 
+    // ---- 续跑继承：任务 resultAssetId 指向他任务产物（旧 run 版本）仍并入版本组 ----
+    // 复现场景：断点续跑只复制 gen_task 行（新 id）并保留 resultAssetId 指向旧 run 资产，
+    // 而该资产 task_id 仍属旧任务 → 正常按 taskId 分组查不到 → 缩略图丢失。修复后应显式并入。
+    const carriedRel = relPathOf(pid, 'shot_image', `m7-${s.runId}-s01-carried.png`)
+    writeFileSync(absPathOf(carriedRel), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'))
+    const carried = (
+      await db
+        .insert(assets)
+        .values({
+          projectId: pid,
+          stepId: s.imgStepId,
+          taskId: s.t3, // 他步骤任务 id：不在 gen_images 任务集内，按 taskId 分组不会命中
+          runId: s.runId,
+          kind: 'image',
+          purpose: 'shot_image',
+          name: 's01-carried.png',
+          mime: 'image/png',
+          ext: 'png',
+          fileSize: 12,
+          relPath: carriedRel,
+          width: 1024,
+          height: 1024,
+          params: JSON.stringify({ shotId: 's01' }),
+          tags: '[]',
+          createdAt: T0 + 18,
+          updatedAt: T0 + 18,
+        })
+        .returning()
+    )[0]!.id
+    await db.update(genTasks).set({ resultAssetId: carried }).where(eq(genTasks.id, s.t1))
+    const bCarry = await buildShotBoard(s.runId, 'gen_images')
+    const sh1Carry = bCarry.shots[0]!
+    check(
+      sh1Carry.versions.some((v) => v.id === carried),
+      `续跑继承产物并入版本组（resultAssetId 指向他任务资产仍展示；实际 ${sh1Carry.versions.length} 版）`,
+    )
+    check(sh1Carry.versions.length === 3, `继承后 s01 版本组 = 2 原生 + 1 继承（实际 ${sh1Carry.versions.length}）`)
+    await db.update(genTasks).set({ resultAssetId: null }).where(eq(genTasks.id, s.t1))
+
     // ---- stale 三态 ----
     await setStepOutput(s.imgStepId, { asset_ids: [s.a1v1, s.a2] })
     const bImg = await buildShotBoard(s.runId, 'gen_images')

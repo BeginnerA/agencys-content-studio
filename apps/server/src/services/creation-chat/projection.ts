@@ -4,6 +4,7 @@ import { db } from '../../db'
 import { assets, type CreationSession, type PipelineRun, type pipelineSteps, type genTasks } from '../../db/schema'
 import { absPathOf } from '../storage'
 import { creationPlanSchema } from './contract'
+import { describeRunConfigDrift, type ResumeConfigDrift } from './recipe'
 
 type Asset = typeof assets.$inferSelect
 type Step = typeof pipelineSteps.$inferSelect
@@ -52,7 +53,9 @@ export async function loadCreationProjection(session: CreationSession, run: Pipe
     ? recipe.sources.flatMap((s) => s && typeof s === 'object' && positiveId((s as { id?: unknown }).id) ? [(s as { id: number }).id] : []) : []
   const ids = [...new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.map((t) => t.resultAssetId).filter(positiveId), ...sourceIds])]
   const media = await db.select().from(assets).where(and(eq(assets.projectId, session.projectId), ids.length ? or(eq(assets.runId, run.id), inArray(assets.id, ids)) : eq(assets.runId, run.id)))
-  return projectCreation(session, run, steps, tasks, media, readable)
+  const projection = projectCreation(session, run, steps, tasks, media, readable)
+  projection.progress.recovery.configDrift = await describeRunConfigDrift(run)
+  return projection
 }
 
 /** 纯投影：阶段状态与素材可用性分开，读取详情永不触发供应商或媒体处理。 */
@@ -187,7 +190,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
       needsVerification: settledBad && uncertainTasks.length > 0, uncertainTasks,
       completedShots: stages.find((s) => s.key === (plan?.mode === 'dynamic' ? 'motion' : 'images'))?.completed ?? 0,
       steps: steps.map((s) => ({ key: s.stepKey, title: s.title, status: s.status, error: s.error })), stages,
-      recovery: { resumable: settledBad && ['failed', 'cancelled'].includes(run.status), requiredTaskIds: uncertainTasks.filter((t) => !t.hasExternalId).map((t) => t.id), queryTaskCount: uncertainTasks.filter((t) => t.hasExternalId).length, unpriced },
+      recovery: { resumable: settledBad && ['failed', 'cancelled'].includes(run.status), requiredTaskIds: uncertainTasks.filter((t) => !t.hasExternalId).map((t) => t.id), queryTaskCount: uncertainTasks.filter((t) => t.hasExternalId).length, unpriced, configDrift: [] as ResumeConfigDrift[] },
       issue: settledBad ? { summary: `${failedStage ? `${failedStage.title}未完成` : status === 'cancelled' ? '制作已取消' : '制作未完成'}；已有 ${savedCount} 项成果可查看。${uncertainTasks.length ? `有 ${uncertainTasks.length} 个请求的受理或完成状态需核实，是否已计费尚不确定。` : '请查看阶段状态后决定是否恢复。'}`, details: [...technical].map(([message, scopes]) => ({ message, scopes })) } : null,
     }, artifacts,
     result: run.status === 'completed' && delivered && final ? { videoId: final.id, coverId: cover?.id ?? null, duration: final.duration } : null,

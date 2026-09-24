@@ -108,6 +108,30 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
     versionsByTaskId.set(a.taskId, list)
   }
 
+  // 续跑继承：succeeded 任务的 resultAssetId 可能指向被取代旧 run 的产物（其 assets.task_id 仍属旧任务，
+  // 按 taskId 分组查不到）→ 显式把「任务当前产物」并入其版本组，保证续跑工作台仍展示旧 run 已出图（按引用零成本）。
+  // 正常任务其产物已按 taskId 命中 versionRows，会被 knownIds 跳过，无副作用。
+  const knownIds = new Set(versionRows.map((a) => a.id))
+  const carriedIds = tasks
+    .map((t) => t.resultAssetId)
+    .filter((id): id is number => id != null && !knownIds.has(id))
+  if (carriedIds.length) {
+    const carried = await db
+      .select()
+      .from(assets)
+      .where(and(inArray(assets.id, carriedIds), isNull(assets.deletedAt)))
+    const carriedById = new Map(carried.map((a) => [a.id, a]))
+    for (const t of tasks) {
+      const rid = t.resultAssetId
+      if (rid == null || knownIds.has(rid)) continue
+      const a = carriedById.get(rid)
+      if (!a) continue
+      const list = versionsByTaskId.get(t.id) ?? []
+      list.push(a)
+      versionsByTaskId.set(t.id, list)
+    }
+  }
+
   // 上传资产版本组：本步骤 + taskId=null（外来图入镜；与任务版本按 createdAt 升序合并）
   const uploadRows = await db
     .select()

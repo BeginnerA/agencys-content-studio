@@ -24,10 +24,11 @@ export function dialogueFixture() {
   }
 }
 
-await runSections({ log, title: 'M44', checker, cleanup, sections: ['contract', 'providers', 'asr', 'recipe', 'asr-config', 'planning', 'media', 'asr-tasks', 'preflight', 'engine', 'review', 'recovery', 'rework', 'recompose'], runners: {
+await runSections({ log, title: 'M44', checker, cleanup, sections: ['contract', 'providers', 'asr', 'recipe', 'asr-config', 'planning', 'media', 'asr-tasks', 'preflight', 'engine', 'review', 'recovery', 'recovery-client', 'rework', 'recompose'], runners: {
   recompose: async () => (await import('./probes/m44/recompose')).probeDialogueRecompose(checker, creationPlanSchema.parse(dialogueFixture())),
   rework: async () => (await import('./probes/m44/rework')).probeDialogueRework(checker, creationPlanSchema.parse(dialogueFixture())),
   recovery: async () => (await import('./probes/m44/recovery')).probeDialogueRecovery(checker, creationPlanSchema.parse(dialogueFixture())),
+  'recovery-client': async () => (await import('./probes/m44/recovery')).probeRecoveryClient(checker),
   review: async () => (await import('./probes/m44/review')).probeDialogueReview(checker, creationPlanSchema.parse(dialogueFixture())),
   engine: async () => (await import('./probes/m44/engine')).probeDialogueEngine(checker),
   preflight: async () => (await import('./probes/m44/preflight')).probeDialoguePreflight(checker, creationPlanSchema.parse(dialogueFixture())),

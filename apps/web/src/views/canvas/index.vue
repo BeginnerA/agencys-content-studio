@@ -7,7 +7,7 @@
  * - 操作：顶栏取消/续跑/启动运行； 模板态画布内编辑（本地草稿层：拖拽连线/删边/Del 键 + 导出草案/保存为新模板）；节点抽屉操作 → refresh 立即重拉（全部复用既有端点）
  * ---- 顶栏拆至 CanvasBar.vue（行为零变更）----
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CanvasBoard from '../../components/pipeline-canvas/CanvasBoard.vue'
 import CanvasDrawer from '../../components/pipeline-canvas/drawer/index.vue'
@@ -18,7 +18,7 @@ import CanvasGuide from './CanvasGuide.vue'
 import CanvasBar from './CanvasBar.vue'
 import CanvasDesignModals from './CanvasDesignModals.vue'
 import { canvasApi, projectApi, runApi, templateApi } from '../../lib/api'
-import { confirmDialog } from '../../lib/confirm'
+import { confirmDialog, confirmRunResume } from '../../lib/confirm'
 import { skipReasonText } from '../../lib/format'
 import type {
   CanvasBoardNode,
@@ -363,6 +363,9 @@ const curRun = computed(() =>
 )
 const cancelBusy = ref(false)
 const resumeBusy = ref(false)
+let resumeEpoch = 0
+watch(() => route.fullPath, () => { resumeEpoch++ }, { flush: 'sync' })
+onBeforeUnmount(() => { resumeEpoch++ })
 
 async function cancelRun(): Promise<void> {
   const id = runId.value
@@ -387,19 +390,16 @@ async function cancelRun(): Promise<void> {
 
 async function resumeRun(): Promise<void> {
   const id = runId.value
-  if (id == null) return
-  const ok = await confirmDialog({
-    title: '断点续跑',
-    message: `将从 run #${id} 的失败 / 未完成步骤创建续跑 run（已成功步骤产物复用，不重复执行）。`,
-    confirmText: '开始续跑',
-  })
-  if (!ok) return
+  if (id == null || resumeBusy.value) return
+  const token = resumeEpoch
+  const isCurrent = () => token === resumeEpoch && runId.value === id
   resumeBusy.value = true
+  err.value = ''
   try {
-    const res = await runApi.resume(id)
-    goRun(res.run.id)
+    const res = await confirmRunResume(id, isCurrent)
+    if (res && isCurrent()) goRun(res.run.id)
   } catch (e) {
-    err.value = e instanceof Error ? e.message : String(e)
+    if (isCurrent()) err.value = e instanceof Error ? e.message : String(e)
   } finally {
     resumeBusy.value = false
   }

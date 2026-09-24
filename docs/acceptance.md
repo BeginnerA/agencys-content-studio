@@ -221,3 +221,31 @@
 | 7 | zip 交付与下载一致性 | ✅ | `buildEditExchange` → unzipSync 校 manifest.media[].mediaFile 均在包 + README + `bad_format` 负例 + `probeEditExchange` 能力探测（bundle 断言）；下载复用 `GET /assets/:id/file?download=1` |
 | 8 | 行数红线 | ✅ | 新文件均 <400（最大 `timeline-source.ts` 189）；`ffmpeg-merge/index.ts` 维持 785 ≤800（redline 断言 + m26 split-audit 背书） |
 | 9 | 真实成片剪映 / DaVinci 打开目检（**手动项，本次未执行**） | ⏳ 待实机 | 需真实成片 + 剪映专业版 / DaVinci Resolve 实机打开确认多轨结构（V1/对白/BGM/SFX/字幕）。本轮为离线探针 + 构建门禁，未跑真机目检——按 plan「手动项失败不阻塞门禁但如实登记」登记为待人工实测；剪映对 FCPXML 支持随版本漂移，实测后回填版本号（不达标以 EDL / OTIO 双路保底） |
+
+## production-baseline 第一期：B1 技术结果与证据建档（2026-09-24）
+
+B1 建档已完成，技术门禁未通过，第一期整体未验收；不启动第二期。用户“继续”仅放行本期零模型费用工作。下面是本轮新采集，不替代上方 M50 历史记录。
+
+- 代码快照：`d9710d85a921327ae2ccaab658b8a3aa72a1024c`；技术命令执行区间开始/结束工作树均干净。
+- 本地档案：[manifest](../data/production-baseline/20260924-154007/manifest.json)、[observations](../data/production-baseline/20260924-154007/observations.jsonl)、[校验结果](../data/production-baseline/20260924-154007/evidence/verification.json)。`data/` 已忽略，不包含在 Git 提交中。
+- 6 个固定槽、94 条记录、50 份索引证据的 SHA-256/引用/结构回读校验通过。命令、退出码、起止时间、耗时和原始输出见 [technical-results](../data/production-baseline/20260924-154007/evidence/technical-results.json)。这只证明档案完整性，不证明作品质量。
+
+| 判据 | 本轮结果 | 证据与边界 |
+|---|---|---|
+| 双端类型检查 | passed | `pnpm -r typecheck`，EXIT=0；server 与 web 均通过 |
+| 模板校验 | passed | 19 份 / 123 步，0 错误、0 警告，EXIT=0 |
+| 全量隔离探针 | failed | 47 探针，46 通过、1 失败；4269 断言中 4268 通过、1 失败，EXIT=1；m50 的 64 断言通过 |
+| M44 recovery | failed，原因待诊断 | `probes/m44/recovery.ts:52` 期望 `asr_configuration_changed` 的断言失败；日志未输出实际错误码，不能据此断言发生隐式换实例或付费。未修改断言或业务代码 |
+| web build | not_tested（应用结果待复测） | 首轮 EXIT=1：Vite 检查 `.env` 存在后读取被本次凭据保护层阻断，属于采集环境问题；原失败输出保留。复测启动器在版本预检阶段停止，未执行第二次构建 |
+| 工具版本 | passed | Node v22.23.2；pnpm 12.3.4；FFmpeg/ffprobe 9.0.1；仅版本检查，不是实片检测 |
+| 当前样片盘点 | missing：0/6 槽可绑定 | 固定回环 GET 覆盖 2 活跃项目、0 归档、2 运行、1 会话、13 未删除资产（6 图/7 文本）；分页数量吻合，无 video/final_video；未检查 draft、已删除资产和磁盘孤立文件 |
+| 修改/质量/成本基线 | not_tested | 36 个固定修改任务尚无真实样片及冻结目标；人工耗时、真实成本、字幕偏差、镜头可用率均为 null，不是 0 或 100% |
+| 编辑器工程实测 | not_tested | 6 槽 × 3 格式 × 2 编辑器均未尝试；未启动剪映/Resolve，未安装软件，未将视频导入冒充工程导入 |
+
+采集安全边界：进程环境仅继承操作系统/工具路径白名单，屏蔽生产 `.env`/密钥读取，默认 fetch/http(s) 请求受阻；14 项保护自检通过。原探针只使用独立临时库与自身模拟响应，临时数据位于本 capture 的 `runtime/`。这是采集进程保护，不是操作系统网络沙箱。样片盘点单独使用固定回环白名单 GET；未启动生产服务或发送生产写请求。
+
+复测前出现非本轮修改：`apps/web/src/components/pipeline-canvas/drawer/index.vue`、`apps/web/src/components/pipeline-canvas/drawer/use-canvas-drawer.ts`、`apps/web/src/views/canvas/index.vue`。未触碰；本批技术结论不覆盖这些后续修改。详情见 [阻塞记录](../data/production-baseline/20260924-154007/evidence/followup-blockers.json)。交付前再核实，仓库已由其他工作推进至 `2acbf4e3e9eb5bf3b05c8fce805807dcb824dc4d`，仅本轮验收文档尚未提交；不得把 `d9710d8` 的这批测试结果当作新提交已验证。
+
+失败旁例保留 run 131；run 132 在本轮列表未返回，仅保留规格中历史 failed 记录，不推断消失原因、不恢复任务。资产列表不返回 runId，因此本地盘点中的资产 runId=null 仅表示接口未提供关联。
+
+后续放行条件：先明确稳定代码快照并复测构建，单独诊断 M44 失败；B2 需用户确认真实样片来源，新增生成另行授权预算；B3/B4 的隔离副本写入与编辑器操作另行确认。原路线、原 M50 计划和生产代码均未由本轮修改，无付费生成、无提交。
