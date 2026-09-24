@@ -85,7 +85,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'siliconflow_audio', name: 'SiliconFlow 语音', serviceType: 'audio', vendor: 'siliconflow', description: 'OpenAI /audio/speech 兼容 TTS（硅基流动，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['FunAudioLLM/CosyVoice2-0.5B']) },
   { key: 'pollinations_audio', name: 'Pollinations 语音', serviceType: 'audio', vendor: 'pollinations', description: 'OpenAI /audio/speech 兼容 TTS（ElevenLabs/Qwen 等，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['elevenlabs/eleven-flash-v2.5', 'qwen/qwen3-tts-flash', 'hexgrad/kokoro-82m']) },
   { key: 'aliyun_bailian_tts', name: '阿里百炼语音', serviceType: 'audio', vendor: 'aliyun', description: '百炼 qwen-tts 语音合成（DashScope，音色如 Cherry / Serena / Ethan；公共域 2026-09-30 起维护，建议改用业务空间专属域）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['qwen-tts']) },
-  { key: 'volcengine_audio', name: '火山方舟语音', serviceType: 'audio', vendor: 'volcengine', description: '豆包语音大模型合成 V3（/api/v3/tts/unidirectional，私有协议按 speaker 枚举 + X-Api-Resource-Id 路由 seed-tts-2.0/1.0/icl-2.0，不提供在线模型拉取；鉴权仅需 API Key（X-Api-Key，需豆包语音控制台专用 Key，与方舟 ark 模型 Key 不通用；实测：用语音控制台 Key 鉴权可过（401 消除），若返回 403 45000030 resource not granted 则需在控制台开通「语音合成大模型」服务）；音色(speaker) 在实例扩展参数配置）', defaultUrl: 'https://openspeech.bytedance.com', presetModels: JSON.stringify(['seed-tts']), overwritePresetModels: true },
+  { key: 'volcengine_audio', name: '火山方舟语音', serviceType: 'audio', vendor: 'volcengine', description: '豆包语音（openspeech，非 OpenAI 兼容）——同一实例按「模型」字段派两个不同产品/开通项：seed-audio-1.0 走「豆包音频生成模型」/api/v3/tts/create（同步 {audio:base64}，text_prompt 自然语言描述）；seed-tts 走「语音合成大模型」/api/v3/tts/unidirectional（NDJSON 流式，按 speaker 枚举 + X-Api-Resource-Id 路由）。两者需分别在豆包语音控制台开通；未开通者→ 403 45000030 resource not granted。鉴权仅需 X-Api-Key（需豆包语音控制台专用 Key，与方舟 ark 模型 Key 不通用）；音色(speaker) 仅 seed-tts 路径在实例扩展参数配置。2026-09 实机：seed-audio-1.0 已验证可出音（MP3）', defaultUrl: 'https://openspeech.bytedance.com', presetModels: JSON.stringify(['seed-audio-1.0', 'seed-tts']), overwritePresetModels: true },
   { key: 'minimax_audio', name: 'MiniMax 语音', serviceType: 'audio', vendor: 'minimax', description: 'MiniMax 语音合成 T2A V2（speech-2.8-hd/turbo 同步，响应 data.audio 为 hex 编码；私有协议 voice_id 枚举，不提供在线模型拉取；音色在实例扩展参数配置）', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['speech-2.8-hd', 'speech-2.8-turbo']), overwritePresetModels: true },
   { key: 'google_audio', name: 'Google 语音', serviceType: 'audio', vendor: 'google', description: 'Gemini 原生 TTS（/v1beta generateContent responseModalities=AUDIO，返回裸 PCM 适配包 WAV 头；音色 voiceName 为 prebuilt 枚举，走原生协议不提供 OpenAI 兼容在线拉取；音色在实例扩展参数配置）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview']), overwritePresetModels: true },
 ]
@@ -197,6 +197,11 @@ export async function migrateCredentialsFromConfigs(): Promise<void> {
 
     // 将同 vendor 下所有孤立实例关联到凭证
     for (const cfg of cfgs) {
+      // 例外：实例自带与厂商凭证不同的专用 Key（如火山语音 openspeech Key ≠ ark Key）→ 尊重其独立 Key，
+      // 不并入共享厂商凭证（否则 credential 优先会静默覆盖实例 Key，导致 openspeech 收到 ark Key 报 401）。
+      const credKey = resolveApiKey(cred.apiKeyRef)
+      const ownKey = cfg.apiKeyRef && cfg.apiKeyRef !== cred.apiKeyRef ? resolveApiKey(cfg.apiKeyRef) : ''
+      if (ownKey && credKey && ownKey !== credKey) continue
       await db.update(apiConfigs).set({ credentialId: cred.id, updatedAt: now }).where(eq(apiConfigs.id, cfg.id))
     }
   }
