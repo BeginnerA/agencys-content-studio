@@ -45,6 +45,7 @@ const {
   steps,
   canCancel,
   canResume,
+  canDelete,
   hasTasks,
   active,
   gateSkipLabel,
@@ -56,6 +57,7 @@ const {
   decide,
   cancelRun,
   resumeRun,
+  deleteRun,
   previewAssets,
   previewOpen,
   previewStart,
@@ -146,6 +148,15 @@ const {
         <button class="btn" @click="toggleLog">
           <Icon :name="showLog ? 'x' : 'doc'" :size="14" />
           {{ showLog ? '隐藏日志' : '运行日志' }}
+        </button>
+        <button
+          v-if="canDelete"
+          class="btn danger"
+          :disabled="busy"
+          title="删除运行记录（产物素材与成本记录保留）"
+          @click="deleteRun"
+        >
+          <Icon name="trash" :size="14" /> 删除运行
         </button>
       </div>
     </div>

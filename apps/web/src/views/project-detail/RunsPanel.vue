@@ -33,6 +33,9 @@ const {
   onStartEpisode,
   tplName,
   errOf,
+  runDeletable,
+  deleteRunRow,
+  deleteBatchRow,
 } = props.s
 </script>
 
@@ -131,6 +134,14 @@ const {
                 更新 {{ fmtTime(row.batch.updatedAt) }}
               </td>
               <td @click.stop>
+                <button
+                  v-if="row.batch.status !== 'running'"
+                  class="btn xs danger-ghost"
+                  title="删除批次及其批内全部运行记录（产物素材保留）"
+                  @click="deleteBatchRow(row.batch)"
+                >
+                  删除
+                </button>
                 <RouterLink class="muted" :to="`/batches/${row.batch.id}`"
                   >详情 →</RouterLink
                 >
@@ -169,7 +180,17 @@ const {
                   >→ {{ fmtTime(row.run.completedAt) }}</template
                 >
               </td>
-              <td><span class="muted">详情 →</span></td>
+              <td @click.stop>
+                <button
+                  v-if="runDeletable(row.run)"
+                  class="btn xs danger-ghost"
+                  title="删除该运行记录（产物素材保留）"
+                  @click="deleteRunRow(row.run)"
+                >
+                  删除
+                </button>
+                <span class="muted">详情 →</span>
+              </td>
             </tr>
 
             <!-- 独立运行行 -->
@@ -209,7 +230,17 @@ const {
                   >→ {{ fmtTime(row.run.completedAt) }}</template
                 >
               </td>
-              <td><span class="muted">详情 →</span></td>
+              <td @click.stop>
+                <button
+                  v-if="runDeletable(row.run)"
+                  class="btn xs danger-ghost"
+                  title="删除该运行记录（产物素材保留）"
+                  @click="deleteRunRow(row.run)"
+                >
+                  删除
+                </button>
+                <span class="muted">详情 →</span>
+              </td>
             </tr>
 
             <!-- 加载窗口提示行 -->
@@ -401,6 +432,21 @@ const {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
+}
+
+/* 行内删除（弱呈现 danger，避免整表唛头） */
+.danger-ghost {
+  margin-right: 8px;
+  padding: 1px 7px;
+  font-size: 12px;
+  color: var(--bad);
+  border: 1px solid rgb(239 68 68 / 35%);
+  background: none;
+  border-radius: 6px;
+}
+
+.danger-ghost:hover {
+  background: rgb(239 68 68 / 8%);
 }
 @keyframes blink {
   50% {

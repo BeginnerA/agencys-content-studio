@@ -24,6 +24,7 @@ const loading = ref(true)
 const err = ref('')
 const notice = ref('')
 const cancelling = ref(false)
+const deleting = ref(false)
 const exporting = ref(false)
 const exportResult = ref<Array<{
   runId: number
@@ -160,6 +161,25 @@ async function exportAll() {
   }
 }
 
+async function deleteBatch() {
+  const ok = await confirmDialog({
+    title: '删除批次',
+    message: `删除批次 #${batchId}「${batch.value?.name ?? ''}」及其批内全部 ${runs.value.length} 个运行记录？不可恢复；产物素材与成本记录保留。`,
+    confirmText: '删除批次',
+    danger: true,
+  })
+  if (!ok) return
+  deleting.value = true
+  err.value = ''
+  try {
+    await batchApi.remove(batchId)
+    await router.push(`/projects/${batch.value?.projectId ?? ''}`)
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+    deleting.value = false
+  }
+}
+
 /** 行内错误摘要 */
 function errOf(s: string | null): string {
   if (!s) return ''
@@ -189,6 +209,16 @@ function errOf(s: string | null): string {
           @click="cancelBatch"
         >
           {{ cancelling ? '取消中…' : '取消批次' }}
+        </button>
+        <button
+          v-else
+          class="btn danger"
+          :disabled="deleting"
+          title="删除批次及批内全部运行记录（产物素材保留）"
+          @click="deleteBatch"
+        >
+          <Icon name="trash" :size="14" />
+          {{ deleting ? '删除中…' : '删除批次' }}
         </button>
         <button
           class="btn primary"

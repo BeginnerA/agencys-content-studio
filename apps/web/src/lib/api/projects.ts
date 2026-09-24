@@ -157,6 +157,15 @@ export const batchApi = {
   detail: (id: number) => api.get<BatchDetail>(`/api/v1/batches/${id}`),
   cancel: (id: number) =>
     api.post<{ batch: Batch }>(`/api/v1/batches/${id}/cancel`),
+  /** 删除批次（含批内全部运行记录；仅终态可删，产物资产与成本记录保留） */
+  remove: (id: number) =>
+    api.del<{
+      ok: boolean
+      batchId: number
+      runs: number
+      steps: number
+      tasks: number
+    }>(`/api/v1/batches/${id}`),
   /** 批量导出（有产物 run 逐个全量打包；无产物记 skipped） */
   exportAll: (id: number) =>
     api.post<{

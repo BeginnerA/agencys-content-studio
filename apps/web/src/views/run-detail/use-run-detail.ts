@@ -52,6 +52,11 @@ export function useRunDetail(deps: {
     const s = run.value?.status
     return s === 'failed' || s === 'cancelled'
   })
+  // 删除仅限终态（与服务端守卫同口径）；queued/running/waiting_input 先取消
+  const canDelete = computed(() => {
+    const s = run.value?.status
+    return s === 'completed' || s === 'failed' || s === 'cancelled'
+  })
   // 轻松创作 run：专业端 resume/task-retry 服务端必 409（真源在会话核验恢复），
   // 入口统一换成直达会话链接；会话反查由 GET /runs/:id 的 creationSessionId 提供
   const creationSessionId = computed(
@@ -281,6 +286,24 @@ export function useRunDetail(deps: {
     }
   }
 
+  async function deleteRun() {
+    const ok = await confirmDialog({
+      title: '删除运行',
+      message: `删除 Run #${runId} 的运行记录？步骤与子任务一并删除，不可恢复；产物素材与成本记录保留。`,
+      confirmText: '删除运行',
+      danger: true,
+    })
+    if (!ok) return
+    busy.value = true
+    try {
+      await runApi.remove(runId)
+      await router.push(`/projects/${run.value?.projectId ?? ''}`)
+    } catch (e) {
+      err.value = e instanceof Error ? e.message : String(e)
+      busy.value = false
+    }
+  }
+
   async function resumeRun() {
     // 两类「花钱/换配置」风险合并进同一次显式确认：
     //  (1) 受理状态不明任务（可能已计费、继续会重发该任务）→ 带 confirm_ambiguous=true，服务端据单一真源重发；
@@ -485,6 +508,7 @@ export function useRunDetail(deps: {
     steps,
     canCancel,
     canResume,
+    canDelete,
     creationSessionId,
     isCreationRun,
     resumeNeedsVerification,
@@ -505,6 +529,7 @@ export function useRunDetail(deps: {
     decide,
     cancelRun,
     resumeRun,
+    deleteRun,
     studio,
     onStep,
     onTerminal,

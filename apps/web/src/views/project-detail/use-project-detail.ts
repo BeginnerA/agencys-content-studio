@@ -5,6 +5,7 @@ import {
   batchApi,
   projectApi,
   publicationApi,
+  runApi,
   templateApi,
 } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
@@ -19,7 +20,7 @@ import type {
   Run,
   TemplateMeta,
 } from '../../lib/types'
-import { PLATFORM_TEXT } from '../../lib/format'
+import { PLATFORM_TEXT, runStatus } from '../../lib/format'
 import { getSocket, studioOff, studioOn } from '../../lib/socket'
 
 export function useProjectDetailPage() {
@@ -562,6 +563,47 @@ export function useProjectDetailPage() {
     return s.length > 90 ? s.slice(0, 90) + '…' : s
   }
 
+  // ===== 删除运行 / 批次（仅终态；不可恢复，产物资产与成本记录保留） =====
+  const RUN_TERMINAL = ['completed', 'failed', 'cancelled']
+  /** 行级删除可用性（与服务端守卫同口径；waiting_input 不算终态） */
+  function runDeletable(r: Run): boolean {
+    return RUN_TERMINAL.includes(r.status)
+  }
+
+  async function deleteRunRow(r: Run) {
+    const ok = await confirmDialog({
+      title: '删除运行',
+      message: `删除 Run #${r.id}（${runStatus(r.status).text}）的运行记录？步骤与子任务一并删除，不可恢复；产物素材与成本记录保留。`,
+      confirmText: '删除运行',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await runApi.remove(r.id)
+      seriesRef.value?.reload(true)
+      await loadCore({ silent: true })
+    } catch (e) {
+      coreErr.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  async function deleteBatchRow(b: Batch) {
+    const ok = await confirmDialog({
+      title: '删除批次',
+      message: `删除批次「${b.name}」及其批内全部 ${b.total} 个运行记录？不可恢复；产物素材与成本记录保留。`,
+      confirmText: '删除批次',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await batchApi.remove(b.id)
+      seriesRef.value?.reload(true)
+      await loadCore({ silent: true })
+    } catch (e) {
+      coreErr.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   return {
     route,
     router,
@@ -673,6 +715,9 @@ export function useProjectDetailPage() {
     onEdited,
     onDeleted,
     errOf,
+    runDeletable,
+    deleteRunRow,
+    deleteBatchRow,
   }
 }
 

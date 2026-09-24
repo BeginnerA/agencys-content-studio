@@ -16,6 +16,8 @@ import { existsSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_LOGS_DIR } from '../env'
 import { HttpError, h, idParam, notFound, wb } from './helpers'
+import { isRunDeletable, purgeRunRecords, removeRunLogFiles } from '../services/run-delete'
+import { recountBatch } from '../services/batch'
 import { resetStepForRerun, describeChainRerun, resetChainForRerun } from '../services/shot'
 import { mapRunToEpisode } from '../services/series'
 
@@ -186,6 +188,21 @@ runsRoutes.post('/runs/:id/cancel', h(async (c) => {
   await engine.cancelRun(runId)
   const fresh = await findRun(runId)
   return c.json({ run: toRunView(fresh!) })
+}))
+
+// DELETE /runs/:id —— 删除运行记录（仅终态；产物资产与用量流水保留，级联删步骤/子任务/run 行与日志）
+runsRoutes.delete('/runs/:id', h(async (c) => {
+  const runId = idParam(c)
+  const run = await findRun(runId)
+  if (!run) return notFound(c, `run ${runId}`)
+  if (!isRunDeletable(run.status, engine.isRunning(runId))) {
+    throw new HttpError(409, 'run_active', `未完成或仍在执行的 run（当前 ${run.status}）不可直接删除，请先取消后再删`)
+  }
+  const purged = await purgeRunRecords([runId])
+  // 批内删除 → 批次计数权威重算（防 total/finished 悬空不收敛）
+  if (run.batchId !== null) await recountBatch(run.batchId)
+  removeRunLogFiles([runId])
+  return c.json({ ok: true, ...purged })
 }))
 
 // POST /runs/:id/resume —— 断点续跑：failed(interrupted)/cancelled → 新 run 复制（succeeded 步骤标记跳过）

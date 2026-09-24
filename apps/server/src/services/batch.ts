@@ -191,6 +191,21 @@ export async function cancelBatch(batchId: number): Promise<void> {
   emitStudioEvent({ type: 'batch.updated', runId: null, batchId, projectId: batch.projectId, status: 'cancelled', finished, total: fresh.length })
 }
 
+/** 批内 run 删除后的批次计数权威重算（不改批次状态；与 cancelBatch 收尾同口径；批已删时为空写） */
+export async function recountBatch(batchId: number): Promise<void> {
+  const runs = await db.select({ status: pipelineRuns.status }).from(pipelineRuns).where(eq(pipelineRuns.batchId, batchId))
+  await db
+    .update(batches)
+    .set({
+      total: runs.length,
+      finished: runs.filter((r) => TERMINAL.includes(r.status)).length,
+      succeeded: runs.filter((r) => r.status === 'completed').length,
+      failed: runs.filter((r) => r.status === 'failed').length,
+      updatedAt: Date.now(),
+    })
+    .where(eq(batches.id, batchId))
+}
+
 /** 启动对齐：全部 running 批次重 pump（崩溃恢复后按槽位约束继续推进） */
 export async function reconcileBatches(): Promise<void> {
   const rows = await db.select({ id: batches.id }).from(batches).where(eq(batches.status, 'running'))

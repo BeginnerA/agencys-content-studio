@@ -36,6 +36,11 @@ export const runApi = {
   gate: (id: number, body: Record<string, unknown>) =>
     api.post<RunDetail>(`/api/v1/runs/${id}/gate`, body),
   cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
+  /** 删除运行记录（仅终态；产物资产与成本记录保留，级联删步骤/子任务） */
+  remove: (id: number) =>
+    api.del<{ ok: boolean; runs: number; steps: number; tasks: number }>(
+      `/api/v1/runs/${id}`,
+    ),
   resume: (id: number, body?: Record<string, unknown>) =>
     api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`, body ?? {}),
   /** 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */

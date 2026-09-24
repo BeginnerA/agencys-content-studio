@@ -1,12 +1,14 @@
 /**
- * 批次 REST（E1）：创建/列表/详情/取消
+ * 批次 REST（E1）：创建/列表/详情/取消/删除
  * - POST /projects/:id/batches：校验 → 落批 + N run → 首轮 pump
  */
 import { Hono } from 'hono'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
-import { batches, projects } from '../db/schema'
+import { batches, pipelineRuns, projects } from '../db/schema'
 import { cancelBatch, createBatch, summarizeBatch, toBatchView } from '../services/batch'
+import { isRunDeletable, purgeRunRecords, removeRunLogFiles } from '../services/run-delete'
+import { engine } from '../pipeline/engine'
 import { InvalidRunInputError } from '../services/run-create'
 import { BudgetBlockedError } from '../services/budget'
 import { HttpError, h, idParam, notFound } from './helpers'
@@ -97,6 +99,25 @@ batchesRoutes.post('/batches/:id/cancel', h(async (c) => {
   const fresh = (await db.select().from(batches).where(eq(batches.id, batchId)).limit(1))[0]
   if (!fresh) return notFound(c, `批次 ${batchId}`)
   return c.json({ batch: toBatchView(fresh) })
+}))
+
+// DELETE /batches/:id —— 删除批次（批次 + 批内全部 run 记录；仅终态可删，产物资产与用量流水保留）
+batchesRoutes.delete('/batches/:id', h(async (c) => {
+  const batchId = idParam(c)
+  const batch = (await db.select().from(batches).where(eq(batches.id, batchId)).limit(1))[0]
+  if (!batch) return notFound(c, `批次 ${batchId}`)
+  const runs = await db
+    .select({ id: pipelineRuns.id, status: pipelineRuns.status })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.batchId, batchId))
+  const active = runs.filter((r) => !isRunDeletable(r.status, engine.isRunning(r.id)))
+  if (active.length) {
+    throw new HttpError(409, 'batch_running', `批内还有 ${active.length} 个未完成运行，请先取消批次后再删除`)
+  }
+  const purged = await purgeRunRecords(runs.map((r) => r.id))
+  await db.delete(batches).where(eq(batches.id, batchId))
+  removeRunLogFiles(runs.map((r) => r.id))
+  return c.json({ ok: true, batchId, ...purged })
 }))
 
 /** input 快照解析（宽容：失败原样返回） */
