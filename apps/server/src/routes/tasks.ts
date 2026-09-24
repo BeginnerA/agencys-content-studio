@@ -58,10 +58,21 @@ tasksRoutes.post('/tasks/:id/retry', h(async (c) => {
   const runRows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, t.runId)).limit(1)
   const run = runRows[0]
   if (!run) return notFound(c, `run ${t.runId}`)
-  // [方案C] 轻松创作 run：仅「受理状态不明」任务（已提交无任务号/产物，可能已计费）阻断就地重试 → 引导会话核验；
-  // 其余失败（纯本地校验失败、有外部 taskId 仅恢复查询、已有产物）放行，与 resume 委派 retryCreation 同口径。
+  // [方案C 就地核验] 轻松创作 run：「受理状态不明」任务（已提交无任务号/产物，可能已计费）默认阻断就地重试；
+  // 前端成本确认弹窗后带 confirm_ambiguous=true 则放行（用户显式接受可能重复计费），与 resume 委派 retryCreation 同口径。
   if (isCreationTemplate(run.templateKey) && isAmbiguousSubmitted(t)) {
-    throw new HttpError(409, 'creation_confirmation_required', '该任务受理状态不明（已提交但无外部任务号/产物），可能已被供应商计费，请在轻松创作会话中核验后恢复，避免重复计费')
+    const raw = await c.req.text()
+    let confirm = false
+    if (raw.trim()) {
+      try {
+        confirm = (JSON.parse(raw) as Record<string, unknown>)['confirm_ambiguous'] === true
+      } catch {
+        /* 无 / 非法 body 视为未确认 */
+      }
+    }
+    if (!confirm) {
+      throw new HttpError(409, 'creation_confirmation_required', '该任务已提交但无外部任务号/产物（可能已被供应商计费）。确认已在供应商侧核验或接受重复计费后，可就地重试。')
+    }
   }
   if (run.status === 'completed') throw new HttpError(400, 'bad_status', '所属 run 已完成，无需重试')
   if (run.status === 'waiting_input') throw new HttpError(400, 'bad_status', '所属 run 正等待闸门，先处理闸门')

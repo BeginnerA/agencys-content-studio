@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { Asset, GenTask } from '../../lib/types'
 import { assetApi, taskApi } from '../../lib/api'
+import { confirmDialog } from '../../lib/confirm'
 import { taskStatus, fmtTime } from '../../lib/format'
 import AssetPreviewer from '../asset/previewer/index.vue'
 import { studioOff, studioOn } from '../../lib/socket'
@@ -44,8 +45,18 @@ const sum = computed(() => ({
 }))
 
 async function retry(t: GenTask) {
+  // [方案C 就地核验] 轻松创作 run 的「受理状态不明」任务：重试=可能重复计费，先弹成本确认，确认后带 confirm_ambiguous
+  const needConfirm = props.isCreation === true && t.ambiguous === true
+  if (needConfirm) {
+    const ok = await confirmDialog({
+      title: '重试任务',
+      message: '该任务已提交但无回执（可能已被供应商计费）。重试将重新提交，可能产生重复费用。请确认已在供应商侧核验或接受该风险。',
+      confirmText: '已核验，重试',
+    })
+    if (!ok) return
+  }
   try {
-    await taskApi.retry(t.id)
+    await taskApi.retry(t.id, needConfirm ? { confirm_ambiguous: true } : {})
   } catch (e) {
     // 原先无 catch：409（如批准链拦截）被静吞，“点了没反应”——上报父级展示
     emit('err', e instanceof Error ? e.message : String(e))
@@ -193,7 +204,7 @@ onBeforeUnmount(() => {
             {{ previewBusyId === t.resultAsset.id ? '载入中…' : '查看' }}
           </button>
           <button
-            v-if="t.status === 'failed' && !(props.isCreation && t.ambiguous)"
+            v-if="t.status === 'failed'"
             class="btn sm"
             @click="retry(t)"
           >

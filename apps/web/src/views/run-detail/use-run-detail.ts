@@ -58,10 +58,11 @@ export function useRunDetail(deps: {
     () => detail.value?.creationSessionId ?? null,
   )
   const isCreationRun = computed(() => creationSessionId.value != null)
-  // [方案C] 轻松创作 run 且存在受理状态不明任务 → 无法就地续跑，改呈现直达会话核验链接
+  // [方案C] 轻松创作 run 且存在受理状态不明任务 → 就地续跑需成本确认（confirm_ambiguous），服务端据核验后重发
   const resumeNeedsVerification = computed(
     () => detail.value?.resumeNeedsVerification === true,
   )
+  const ambiguousTaskIds = computed(() => detail.value?.ambiguousTaskIds ?? [])
   const hasTasks = computed(() =>
     steps.value.some((s) => s.actionKey === 'ai_image'),
   )
@@ -279,17 +280,22 @@ export function useRunDetail(deps: {
   }
 
   async function resumeRun() {
+    // [方案C 就地核验] 存在受理状态不明任务时，明确告知「可能已计费、继续会重发该任务」并要求显式确认；
+    // 确认后带 confirm_ambiguous=true，服务端据单一真源重发这些任务（其余成功复用/在途仅续轮询）。
+    const needVerify = isCreationRun.value && resumeNeedsVerification.value
     const ok = await confirmDialog({
       title: '断点续跑',
-      message: isCreationRun.value
-        ? '该运行由轻松创作发起：将走会话恢复真源续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
-        : '将新建一个 run，跳过已成功步骤继续执行。',
-      confirmText: '开始续跑',
+      message: needVerify
+        ? `该运行由轻松创作发起，其中 ${ambiguousTaskIds.value.length} 个任务已提交但无回执（可能已被供应商计费）。继续将重新提交这些任务，可能产生重复费用。请确认你已在供应商侧核验或接受该风险。`
+        : isCreationRun.value
+          ? '该运行由轻松创作发起：将走会话恢复真源续跑（已成功任务复用、在途任务仅恢复查询、不重复计费）。'
+          : '将新建一个 run，跳过已成功步骤继续执行。',
+      confirmText: needVerify ? '已核验，继续重发' : '开始续跑',
     })
     if (!ok) return
     busy.value = true
     try {
-      const res = await runApi.resume(runId)
+      const res = await runApi.resume(runId, needVerify ? { confirm_ambiguous: true } : {})
       router.push(`/runs/${res.run.id}`)
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)

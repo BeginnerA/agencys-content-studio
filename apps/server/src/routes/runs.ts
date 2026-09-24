@@ -188,13 +188,33 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     if (!s) {
       throw new HttpError(409, 'creation_confirmation_required', '该运行由轻松创作发起，请在轻松创作中核验并恢复，避免重复计费')
     }
+    // [方案C 就地核验] 前端在成本确认弹窗后带 confirm_ambiguous=true：服务端据单一真源 isAmbiguousSubmitted 算出
+    // 「受理状态不明」任务并作为 verifiedFailedTaskIds 交给 retryCreation（重发这些、其余成功复用/在途仅续轮询）。
+    // 未确认时 verifiedFailedTaskIds 留空 → retryCreation 命中 needs_verification 409（引导先核验）。
+    let verifiedFailedTaskIds: number[] = []
+    const rawResume = await c.req.text()
+    let confirmAmbiguous = false
+    if (rawResume.trim()) {
+      try {
+        confirmAmbiguous = (JSON.parse(rawResume) as Record<string, unknown>)['confirm_ambiguous'] === true
+      } catch {
+        /* 无 / 非法 body 视为未确认 */
+      }
+    }
+    if (confirmAmbiguous) {
+      const tRows = await db
+        .select({ id: genTasks.id, status: genTasks.status, attempts: genTasks.attempts, taskId: genTasks.taskId, resultAssetId: genTasks.resultAssetId })
+        .from(genTasks)
+        .where(eq(genTasks.runId, runId))
+      verifiedFailedTaskIds = tRows.filter(isAmbiguousSubmitted).map((t) => t.id)
+    }
     try {
       const { runId: newRunId } = await retryCreation(s.id, {
         runId,
         planHash: s.planHash,
         planRevision: s.planRevision,
         idempotencyKey: randomUUID(),
-        verifiedFailedTaskIds: [],
+        verifiedFailedTaskIds,
       })
       const newRun = await findRun(newRunId)
       if (!newRun) throw new HttpError(500, 'resume_failed', '续跑已提交但新 run 未生成，请到轻松创作会话中查看')

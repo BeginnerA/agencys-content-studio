@@ -119,21 +119,20 @@ const {
         </button>
         <template v-if="canResume">
           <button
-            v-if="!u.isCreationRun.value || !u.resumeNeedsVerification.value"
             class="btn primary"
             :disabled="busy"
             @click="resumeRun"
           >
             <Icon name="refresh" :size="14" /> 断点续跑
           </button>
-          <!-- [方案C] 轻松创作 run 且存在受理状态不明任务：无法就地安全续跑（防重复计费），直达会话核验恢复 -->
+          <!-- [方案C] 轻松创作 run：续跑已可就地完成（含受理状态不明任务时弹窗确认成本后重发）；会话入口降为次要（查看完整方案/对话/供应商核验） -->
           <RouterLink
-            v-else-if="u.creationSessionId.value"
-            class="btn primary"
+            v-if="u.creationSessionId.value"
+            class="btn"
             :to="`/create/${u.creationSessionId.value}`"
-            title="该运行由轻松创作发起，存在受理状态不明任务，到会话中核验失败任务后恢复制作"
+            title="查看发起该运行的轻松创作会话（完整方案 / 对话 / 供应商核验）"
           >
-            <Icon name="refresh" :size="14" /> 去轻松创作恢复
+            去轻松创作会话
           </RouterLink>
         </template>
         <button

@@ -36,7 +36,8 @@ export const runApi = {
   gate: (id: number, body: Record<string, unknown>) =>
     api.post<RunDetail>(`/api/v1/runs/${id}/gate`, body),
   cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
-  resume: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`),
+  resume: (id: number, body?: Record<string, unknown>) =>
+    api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`, body ?? {}),
   /** [M21] 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */
   revisions: (id: number, stepKey: string) =>
     api.get<{ items: RevisionItem[] }>(
@@ -52,8 +53,8 @@ export const runApi = {
 
 export const taskApi = {
   list: (params = '') => api.get<Items<GenTask>>(`/api/v1/tasks${params}`),
-  retry: (id: number) =>
-    api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/retry`),
+  retry: (id: number, body?: Record<string, unknown>) =>
+    api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/retry`, body ?? {}),
   cancel: (id: number) =>
     api.post<{ task: GenTask }>(`/api/v1/tasks/${id}/cancel`),
 }

@@ -227,11 +227,9 @@ export async function buildRunCanvas(runId: number): Promise<RunCanvas | null> {
     edges,
     runActions: {
       canCancel: ['queued', 'running', 'waiting_input'].includes(run.status),
-      // [方案C] 轻松创作 run：无「受理状态不明」任务时可就地续跑（专业端 resume 委派 retryCreation）；
-      // 有则 canResume=false 且 resumeNeedsVerification=true → 顶栏改呈现直达会话核验链接（防重复计费）
-      canResume:
-        ['failed', 'cancelled'].includes(run.status) &&
-        (!isCreationTemplate(run.templateKey) || runAmbiguous === 0),
+      // [方案C] 轻松创作 run 也允许就地续跑（专业端 resume 委派 retryCreation）；存在「受理状态不明」任务时
+      // 由 resumeNeedsVerification 驱动前端成本确认弹窗（confirm_ambiguous），服务端据核验后重发——不再踢回会话
+      canResume: ['failed', 'cancelled'].includes(run.status),
       isCreation: isCreationTemplate(run.templateKey),
       resumeNeedsVerification: isCreationTemplate(run.templateKey) && runAmbiguous > 0,
     },
