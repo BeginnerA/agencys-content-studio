@@ -5,6 +5,7 @@ import { assets, execInputs, pipelineRuns, pipelineSteps, type Asset } from '../
 import { createLogger } from '../logger'
 import { absPathOf } from './storage'
 import { thumbAbsPath } from './thumb'
+import { parseSubtitleEdits } from './rework/ledger'
 
 // 旧版本清理 + 回收空间（物理 GC）。
 // 清理保留规则（统一）：组内最新 / isFavorite / 被任意步骤 output.asset_ids 引用（在用）→ 保留；
@@ -80,8 +81,42 @@ export async function cleanupVersions(opts: { projectId: number; runId?: number;
   return { groups: groups.size, cleaned: toClean.length, kept, cleanedIds: toClean }
 }
 
+/**
+ * 字幕引用保护集（precision-rework 规格 §5.2-104：清理/删除纳入当前指针、历史成片与执行快照）：
+ * ① 项目内所有 run 的 _subtitleEdits 指针 assetId（当前修订逻辑资产）；
+ * ② 项目内所有成片（含已软删）params.timeline.subtitle 的 assetId 与 sourceRef.assetId
+ *   （历史成片有效/源字幕仍被引用，文件不可物理消失）。
+ * 纯读；版本文件（versions/）不在 gc 射程，此处保护的是资产工作副本 relPath。
+ */
+export async function subtitleReferenceIds(projectId: number): Promise<Set<number>> {
+  const set = new Set<number>()
+  const runs = await db.select({ input: pipelineRuns.input }).from(pipelineRuns).where(eq(pipelineRuns.projectId, projectId))
+  for (const r of runs) {
+    for (const ref of Object.values(parseSubtitleEdits(r.input))) set.add(ref.assetId)
+  }
+  const finals = await db
+    .select({ id: assets.id, params: assets.params })
+    .from(assets)
+    .where(and(eq(assets.projectId, projectId), eq(assets.purpose, 'final_video')))
+  for (const f of finals) {
+    if (!f.params) continue
+    try {
+      const p = JSON.parse(f.params) as Record<string, unknown>
+      const sub = (p.timeline as Record<string, unknown> | undefined)?.subtitle as Record<string, unknown> | undefined
+      if (!sub || typeof sub !== 'object') continue
+      if (typeof sub.assetId === 'number') set.add(sub.assetId)
+      const srcRef = sub.sourceRef as Record<string, unknown> | undefined
+      if (srcRef && typeof srcRef.assetId === 'number') set.add(srcRef.assetId)
+    } catch {
+      /* 坏 params 跳过：既有消费侧容错语义 */
+    }
+  }
+  return set
+}
+
 /** 回收空间：删除项目内已软删资产的原文件 + 缩略图缓存；行保留（审计）；失败跳过、幂等 */
 export async function gcProject(projectId: number): Promise<GcResult> {
+  const protectedIds = await subtitleReferenceIds(projectId)
   const rows = await db
     .select()
     .from(assets)
@@ -89,6 +124,8 @@ export async function gcProject(projectId: number): Promise<GcResult> {
   let files = 0
   let freedBytes = 0
   for (const a of rows) {
+    // 仍被修订指针/历史成片字幕快照引用（含当前指针）：不物理删文件（规格 §5.2-104）
+    if (protectedIds.has(a.id)) continue
     if (a.relPath) {
       const size = removeFile(absPathOf(a.relPath))
       if (size >= 0) {
@@ -208,6 +245,9 @@ export async function purgeAsset(assetId: number): Promise<{ files: number; free
   const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
   const a = rows[0]
   if (!a) throw new CleanupError('not_found', `资产 ${assetId} 不存在`)
+  if ((await subtitleReferenceIds(a.projectId)).has(a.id)) {
+    throw new CleanupError('referenced', '该字幕仍被修订指针或历史成片快照引用，拒绝彻底删除（避免重合成/追溯悬空）')
+  }
   let files = 0
   let freedBytes = 0
   if (a.relPath) {

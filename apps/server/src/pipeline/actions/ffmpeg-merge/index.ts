@@ -4,16 +4,19 @@ import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
 import { loadBgmAsset, loadAssetById, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
-import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../../services/provenance'
+import { assetInput, readVersionContent, safeRecordExecSnapshot, type ExecInputSpec } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
 import { emitStudioEvent } from '../../../services/events'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
 import { srtToAss } from './subtitle-ass'
 import { isSameAspect, resolveAspectSize } from './aspect'
 import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset, buildClipDurByShotId } from './segments'
-import { loadShotAlignShots, planBestEffortTimeline, planSrtShifts, countSrtCues, shiftSrtText } from './align'
+import { loadShotAlignShots, planBestEffortTimeline } from './align'
 import { buildTransitionPlan } from './transition'
-import { buildEditTimeline } from './timeline-snapshot'
+import { buildEditTimeline, type EditTimelineSubtitle } from './timeline-snapshot'
+import { planEffectiveSubtitle } from './effective-subtitle'
+import { computeFingerprintForComposeRecheck } from '../../../services/rework/baseline'
+import { loadManualDisplay, planDisplaySubtitle, tryNoBurnManualRecompose } from './manual-display'
 import { planSfxStarts } from './sfx'
 import { buildComposeArgs } from './args'
 import { numParam, clamp, round3 } from './util'
@@ -417,62 +420,26 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 封面抽取点：有片头 → 片头时长 + 0.2s；否则 0.2s（现行为）
   const coverAt = introArg ? round3(introArg.durSec + 0.2) : 0.2
 
-  // 字幕平移：对齐逐 cue（cue ↔ 句序 = voices 序）与片头统移合并为一次重写；
-  // Δ 全 0 不写副本；数量不符不平移（原样烧录）；无片头且无对齐 → 不进入（零 diff）
+  // 显示字幕规划（§6.2 接管至 manual-display：人工修订前置分支 + 原逐句/片头平移逻辑逐字节保持；
+  // 烧录开关 _compose.subtitleBurn=false → 不喂字幕滤镜，srtRelPath 仍供对白/严格校验与快照使用）
   const introShift = introArg ? round3(introArg.durSec) : 0
-  // 字幕烧录开关（_compose.subtitleBurn，轻松创作确认卡逐次关）：false → 不喂 ffmpeg 字幕滤镜（成片不含硬字幕）；
-  // srtRelPath 保留供上方对白/严格 assertStrictSrt 校验使用，字幕文件仍照常生成可单独下载（仅切断烧录，不改严格交付前提）。
   const subtitleBurn = composeCfg.subtitleBurn !== false
-  let srtAbs: string | null = srtRelPath && subtitleBurn ? absPathOf(srtRelPath) : null
-  if (srtRelPath && !subtitleBurn) ctx.log('字幕烧录已关闭：成片不含硬字幕（字幕文件仍生成，可单独下载）')
-  let tempSrtAbs: string | null = null
-  if (!strict && subtitleBurn && srtRelPath && (alignPlan || introShift > 0)) {
-    let shifts: number[] | null = null
-    let alignMode = false
-    if (alignPlan) {
-      const alignShifts = planSrtShifts(alignPlan, voiceMetas.map((v) => v.lineId!))
-      if (alignShifts) {
-        alignMode = true
-        shifts = introShift > 0 ? alignShifts.map((d) => round3(d + introShift)) : alignShifts
-      } else if (introShift > 0) {
-        ctx.log(`字幕对齐平移跳过（cue 数与配音句数 ${voiceMetas.length} 不符），改按片头统移`)
-      } else {
-        ctx.log(`字幕平移跳过（cue 数与配音句数 ${voiceMetas.length} 不符），SRT 原样烧录`)
-      }
-    }
-    if (!shifts && introShift > 0) {
-      try {
-        const cues = countSrtCues(await ctx.readText(subtitleIds[0]!))
-        if (cues > 0) shifts = new Array<number>(cues).fill(introShift)
-        else ctx.log('字幕片头位移跳过（SRT 无有效 cue 行），原样烧录')
-      } catch (err) {
-        ctx.log(`字幕片头位移失败（原样烧录）：${(err as Error).message}`)
-      }
-    }
-    if (shifts) {
-      if (shifts.every((d) => d < 1e-3)) {
-        ctx.log('字幕平移 Δ 全 0（无静音插入），直接使用原 SRT')
-      } else {
-        try {
-          const shifted = shiftSrtText(await ctx.readText(subtitleIds[0]!), shifts)
-          if (!shifted) {
-            ctx.log(`字幕平移跳过（SRT cue 数与配音句数 ${voiceMetas.length} 不符），原样烧录`)
-          } else {
-            tempSrtAbs = join(dirname(outAbs), `${alignMode ? '.aligned-' : '.intro-'}${ctx.run.id}-${Date.now()}.srt`)
-            writeFileSync(tempSrtAbs, shifted, 'utf8')
-            srtAbs = tempSrtAbs
-            ctx.log(
-              alignMode
-                ? `字幕对齐平移：${shifts.length} 条 cue 重写（最大偏移 ${Math.max(...shifts).toFixed(2)}s${introShift > 0 ? '，含片头位移' : ''}，临时副本合成后清理）`
-                : `字幕片头位移：${shifts.length} 条 cue 统移 +${introShift}s（临时副本合成后清理）`,
-            )
-          }
-        } catch (err) {
-          ctx.log(`字幕平移失败（原样烧录）：${(err as Error).message}`)
-        }
-      }
-    }
-  }
+  const manual = await loadManualDisplay({
+    runInput: ctx.run.input,
+    stepKey: ctx.def.key,
+    readVersion: async (id) => { const v = await readVersionContent(id); if (v.kind !== 'text') throw new Error(`人工字幕修订版本 #${id} 非文本内容，已拒绝合成`); return v.text },
+    recheckFingerprint: () => computeFingerprintForComposeRecheck(ctx.run.id, ctx.def.key),
+    log: (msg) => ctx.log(msg),
+  })
+  const dplan = await planDisplaySubtitle({
+    strict, srtRelPath, subtitleBurn, alignPlan,
+    voiceLineIds: voiceMetas.map((v) => v.lineId!), voiceCount: voiceMetas.length,
+    introShift, readSource: () => ctx.readText(subtitleIds[0]!),
+    outDir: dirname(outAbs), runId: ctx.run.id, manual, log: (msg) => ctx.log(msg),
+  })
+  const srtAbs = dplan.srtAbs
+  const tempSrtAbs = dplan.tempSrtAbs
+  const srtShiftedText = dplan.shiftedText
 
   // SRT → ASS 转换：内置 ffmpeg 的 libass 不支持 CJK 换行 + force_style 吃 SRT 时按默认小
   // PlayResY 二次放大字号 → 长句横向冲出画面。改为生成显式 PlayResX/Y=输出尺寸的 ASS 喂 subtitles
@@ -552,6 +519,16 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
 
+  // 无烧录快速路径（§6.2 步骤 5）：仅改显示字幕 → 逐字节复制基准成片/派生画幅零编码；
+  // 任一其他依赖不一致 → 返回 null 继续下方正常重合成（台词/音频位置不变红线由不进入编码路径保证）
+  const fastIds = await tryNoBurnManualRecompose({
+    ctx, manual, eligible: !strict && !!manual && !subtitleBurn && !dialogueClips,
+    outName, outRel, outAbs, coverAt, wantCover, ffmpeg, runFfmpeg, derived,
+    cur: { fps, resolution, width, height, totalAll, imageCount: segments.filter((s) => s.kind === 'image').length, motionCount: segments.filter((s) => s.kind === 'video').length, voiceCount: voicePaths.length, style, srtRelPath, subtitleAssetId: subtitleIds[0] ?? null, inputs: { images: mode === 'images' ? imageIds : null, motion_clips: mode === 'clips' ? clipIds : null, shots_source: shotsIds[0] ?? null }, skipped, alignPlan, alignReason, xfade: xfadePlan, bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null, watermark: watermarkArg, intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null, outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null, sfxCount: sfxList.length, sfxVolume },
+    recordProvenance: () => recordMergeProvenance(ctx, { rows, usedSegments: segments, skipped, voiceIds: voiceMetas.map((v) => v.assetId), subtitleIds, bgmAssetId: bgmAsset?.id ?? null, shotsAssetId: shotsIds[0] ?? null }),
+  })
+  if (fastIds) return { assetIds: fastIds }
+
   ctx.log(
     `ffmpeg 开始合成（${segments.length} 段${hasAudio ? ' + 音频轨' : ''}${srtAbs ? ' + 字幕' : ''}${bgmPath ? ' + BGM' : ''}${xfadePlan.enabled ? ' + 转场' : ''}${watermarkArg ? ' + 水印' : ''}${introArg ? ' + 片头' : ''}${outroArg ? ' + 片尾' : ''}${sfxList.length > 0 ? ` + 音效×${sfxList.length}` : ''}）…`,
   )
@@ -574,6 +551,35 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       || Math.abs(timing.audioStart - timing.videoStart) > 0.05) throw new Error('原声成片音画时长或时间基准检查失败')
   }
   const size = statSync(outAbs).size
+
+  // 有效字幕快照（规格 §6.1）：记录实际生效文本/cue 与不可变文件（平移时源旁 display-<sha16>
+  // 内容寻址落盘，幂等复用）；解析失败/读取异常仅记日志省略增量字段，绝不影响合成
+  let subtitleSnapExt: Partial<EditTimelineSubtitle> = {}
+  if (srtRelPath) {
+    try {
+      const plan = planEffectiveSubtitle({
+        sourceText: await ctx.readText(subtitleIds[0]!),
+        shiftedText: srtShiftedText,
+        sourceRelPath: srtRelPath,
+        sourceAssetId: subtitleIds[0] ?? null,
+        // 对白路线时间源：估算/实测已验；其余（含严格旁白）不冒充可信来源
+        timingSource: dialogueClips && recipe ? (recipe.estimatedDialogue === true ? 'estimated' : 'measured') : 'unknown',
+        origin: manual ? 'manual' : 'source',
+        versionId: manual?.versionId ?? null,
+      })
+      if (plan) {
+        if (plan.effectiveTextToWrite) {
+          const effAbs = absPathOf(plan.ext.effectiveRelPath)
+          if (!existsSync(effAbs)) writeFileSync(effAbs, plan.effectiveTextToWrite, 'utf8')
+        }
+        subtitleSnapExt = plan.ext
+      } else {
+        ctx.log('有效字幕快照跳过（SRT 不可严格解析；不影响合成）')
+      }
+    } catch (err) {
+      ctx.log(`有效字幕快照失败（不影响合成）：${(err as Error).message}`)
+    }
+  }
 
   const tags = ['final']
   if (hasAudio) tags.push('with_audio')
@@ -627,7 +633,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         segments, rows, alignPlan, voices: voiceMetas, sfx: sfxSnap,
         bgm: bgmPath && bgmAsset?.relPath ? { assetId: bgmAsset.id, relPath: bgmAsset.relPath, volume: bgmVolume, fadeSec: bgmFade } : null,
         transition: xfadePlan.enabled ? { type: xfadePlan.type, durSec: xfadePlan.durSec } : null,
-        subtitle: srtRelPath ? { assetId: subtitleIds[0] ?? null, relPath: srtRelPath } : null,
+        subtitle: srtRelPath ? { assetId: subtitleIds[0] ?? null, relPath: srtRelPath, ...subtitleSnapExt } : null,
         watermark: !!watermarkArg,
       }),
     },

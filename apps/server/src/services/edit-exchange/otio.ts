@@ -1,13 +1,16 @@
 /**
  * OTIO JSON 格式化器（Resolve / 程序化管线）——纯函数，探针可直测。
  * 五轨固定：Video（V1 镜头序）/ Dialogue Audio（逐句配音）/ Music（BGM）/ Effects（SFX）/ Markdown（字幕）。
- * 坐标：segments/lines 为内容轴 → +introSec 落绝对轴；sfx.startSec 已绝对轴。
+ * 坐标：segments/lines 为内容轴 → +introSec 落绝对轴；sfx.startSec 已绝对轴；
+ *   字幕轨（precision-rework §8）取自有效字幕快照 cues（final 绝对轴，人工修订已体现），
+ *   不再拿 lines 文本/时码覆盖；Dialogue Audio 轨仍只读 lines。旧快照无 cues 时兜底（见 subtitle-cues.ts）。
  * 时间值统一 RationalTime（rate=fps，value=帧），轨道内用 Gap 对齐留白。
  * 媒体引用：ExternalReference.target_url = nameOf(relPath)（打包期注入包内路径，缺省用文件名）。
  */
 import type { EditTimeline } from '../../pipeline/actions/ffmpeg-merge/timeline-snapshot'
 import type { FormatCtx } from './render-context'
 import { secToFrames } from './timecode'
+import { readSubtitleCues } from './subtitle-cues'
 
 export type { FormatCtx } from './render-context'
 
@@ -103,10 +106,12 @@ export function toOtio(tl: EditTimeline, ctx: FormatCtx): Record<string, unknown
       node: clip(s.shotId ?? `sfx-${s.assetId ?? ''}`, s.relPath, s.startSec, 0, fps, ctx, { asset_id: s.assetId }),
     }))
 
-  const subtitleItems = tl.lines.map((l) => ({
-    start: intro + l.timelineStart,
-    dur: l.durSec ?? 0,
-    node: clip(l.lineId, null, intro + l.timelineStart, l.durSec ?? 0, fps, ctx, { text: l.text }),
+  // 字幕轨：cues 为 final 绝对轴（不再叠加 intro 位移）；兜底路已在 readSubtitleCues 内完成 +intro
+  const subRead = readSubtitleCues(tl)
+  const subtitleItems = subRead.cues.map((cue) => ({
+    start: cue.startSec,
+    dur: cue.durSec,
+    node: clip(cue.id, null, cue.startSec, cue.durSec, fps, ctx, { text: cue.text, subtitle_source: subRead.source, subtitle_origin: subRead.origin }),
   }))
 
   return {
@@ -124,6 +129,8 @@ export function toOtio(tl: EditTimeline, ctx: FormatCtx): Record<string, unknown
       transition: tl.transition,
       watermark: tl.watermark,
       subtitle_ref: tl.subtitle ? ctx.nameOf(tl.subtitle.relPath) : null,
+      subtitle_source: subRead.source,
+      subtitle_origin: subRead.origin,
     },
     tracks: {
       OTIO_SCHEMA: SCHEMA('Stack'),

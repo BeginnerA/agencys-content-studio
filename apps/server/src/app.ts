@@ -22,6 +22,7 @@ import { projectsRoutes } from './routes/projects'
 import { promptsRoutes } from './routes/prompts'
 import { publicationsRoutes } from './routes/publications'
 import { runsRoutes } from './routes/runs'
+import { reworkRoutes } from './routes/rework'
 import { seriesRoutes } from './routes/series'
 import { shotsRoutes } from './routes/shots'
 import { statsRoutes } from './routes/stats'
@@ -50,6 +51,7 @@ api.route('/', assetsRoutes)
 api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
+api.route('/', reworkRoutes)
 api.route('/', seriesRoutes)
 api.route('/', shotsRoutes)
 api.route('/', composeRoutes)

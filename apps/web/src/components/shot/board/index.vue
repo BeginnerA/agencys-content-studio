@@ -16,6 +16,7 @@ import StoryboardEditor from '../storyboard-editor/index.vue'
 import ShotSfxModal from '../ShotSfxModal.vue'
 import ShotCard from './ShotCard.vue'
 import ComposeBar from './ComposeBar.vue'
+import SubtitleReworkEntry from '../../run/subtitle-rework/SubtitleReworkEntry.vue'
 import { useShotBoard } from './use-shot-board'
 import type { ShotBoardEmits, ShotBoardProps } from './internals'
 
@@ -139,6 +140,10 @@ const {
     <!-- 控制条：转场设置 | 批量工具 | 合成工具，三段合并为一条深色 strip（纯呈现层重组，绑定不变） -->
     <div class="wb-strip">
       <ComposeBar :sb="sb" :save-transition="saveTransition" />
+      <!-- 字幕精确返修：与轻创作/运行详情/抽屉同一编辑器与确认流（面向 compose 步，能力由后端判定） -->
+      <div v-if="compose" class="wb-grp">
+        <SubtitleReworkEntry :run-id="props.runId" :disabled="active" @applied="emit('changed')" />
+      </div>
       <template v-if="shots.length">
         <span v-if="compose" class="wb-sep" />
         <label class="wb-ck" title="全选：批量时长应用目标">

@@ -4,7 +4,7 @@ import { db } from '../db'
 import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions } from '../db/schema'
 import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
-import { createRunRow, InvalidRunInputError } from '../services/run-create'
+import { createRunRow, InvalidRunInputError, stripResumeSubtitleEdits } from '../services/run-create'
 import { checkBudget } from '../services/budget'
 import { randomUUID } from 'node:crypto'
 import { describeRunConfigDrift, isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
@@ -269,6 +269,8 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const budgetHit = await checkBudget({ projectId: src.projectId })
   if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
   const t = Date.now()
+  // 字幕修订指针不盲目跨 run 复制（规格 §6.2）：新 run 不带 _subtitleEdits，需重新基准确认；源 run 指针保留为历史
+  const resumeInput = stripResumeSubtitleEdits(src.input)
   // [审计G4] 新 run + 步骤复制 + gen_tasks 迁移单事务原子落库（中途崩溃不留缺步孤儿 run；创作线事务先例同源）
   const newRun = await db.transaction(async (tx) => {
     const run = (
@@ -278,7 +280,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
           projectId: src.projectId,
           templateKey: src.templateKey,
           status: 'queued',
-          input: src.input,
+          input: resumeInput,
           // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
           templateSnapshot: src.templateSnapshot,
           resumedFromRunId: src.id,

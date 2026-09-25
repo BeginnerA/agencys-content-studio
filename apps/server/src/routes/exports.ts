@@ -60,17 +60,22 @@ exportsRoutes.get('/runs/:id/edit-exchange/formats', h(async (c) => {
   return c.json(await probeEditExchange(runId))
 }))
 
-// POST /runs/:id/edit-exchange —— 生成剪辑工程交换包 {format:'fcpxml'|'edl'|'otio', include_media?}
+// POST /runs/:id/edit-exchange —— 生成剪辑工程交换包 {format:'fcpxml'|'edl'|'otio', include_media?, final_asset_id?（可选固定成片版本，回传实际绑定 id）}
 exportsRoutes.post('/runs/:id/edit-exchange', h(async (c) => {
   const runId = idParam(c)
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const rawFinal = body['final_asset_id']
+  if (rawFinal !== undefined && (typeof rawFinal !== 'number' || !Number.isInteger(rawFinal) || rawFinal <= 0)) {
+    throw new HttpError(400, 'bad_input', 'final_asset_id 需为正整数资产 id')
+  }
   try {
-    const { asset, timelineSource, format } = await buildEditExchange({
+    const { asset, timelineSource, format, finalAssetId } = await buildEditExchange({
       runId,
       format: body['format'],
       includeMedia: body['include_media'] !== false,
+      finalAssetId: rawFinal === undefined ? undefined : (rawFinal as number),
     })
-    return c.json({ asset: toAssetLite(asset), timeline_source: timelineSource, format }, 201)
+    return c.json({ asset: toAssetLite(asset), timeline_source: timelineSource, format, final_asset_id: finalAssetId }, 201)
   } catch (err) {
     if (err instanceof EditExchangeError) throw new HttpError(400, err.code, err.message)
     throw err

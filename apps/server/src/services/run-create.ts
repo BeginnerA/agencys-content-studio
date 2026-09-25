@@ -9,6 +9,7 @@ import { loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
 import type { Template, TemplateInputDef } from '../pipeline/types'
 import { isCreationTemplate } from './creation-chat/recipe'
+import { SUBTITLE_EDITS_KEY } from './rework/ledger'
 import { RunParamsError, normalizeRunParamsOrThrow, type RunParams } from './run-params'
 
 /** 输入/模板非法（路由层转 400；与 HttpError 解耦，services 不依赖路由层） */
@@ -88,6 +89,23 @@ export async function createRunRow(p: {
     })
     .returning()
   return row[0]!
+}
+
+/**
+ * 断点续跑派生新 run 时剥除字幕修订指针（precision-rework 规格 §6.2：不得盲目跨 run 复制
+ * _subtitleEdits；新 run 无成片基准，需重新基准确认）。源 run 指针保留为历史，不删除。
+ * 解析失败/无该键 → 原样返回（不改变既有续跑语义）。retryCreation 无需此函数：
+ * 其经 createRunRow→prepareRunInput→normalizeInput 只保留模板声明键与 _params，内部指针键天然不随行（_compose 在建好后显式克隆）。
+ */
+export function stripResumeSubtitleEdits(inputJson: string): string {
+  try {
+    const o = JSON.parse(inputJson) as Record<string, unknown>
+    if (!o || typeof o !== 'object' || o[SUBTITLE_EDITS_KEY] === undefined) return inputJson
+    delete o[SUBTITLE_EDITS_KEY]
+    return JSON.stringify(o)
+  } catch {
+    return inputJson
+  }
 }
 
 /** 按模板 inputs 声明归一化：int 转 number、bool 转 boolean、files 保持 id 数组、text 收 string */

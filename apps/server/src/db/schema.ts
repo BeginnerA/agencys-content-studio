@@ -116,7 +116,7 @@ export const assets = sqliteTable(
     taskId: integer('task_id'),
     runId: integer('run_id'), // 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
-    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|final_video_derived|subtitle|thumbnail|export|chapters|events|graph|plan|regex|sfx
+    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|final_video_derived|subtitle|subtitle_display|thumbnail|export|chapters|events|graph|plan|regex|sfx
     name: text('name').notNull(),
     mime: text('mime'),
     ext: text('ext'),
@@ -607,6 +607,37 @@ export const execInputs = sqliteTable(
 export type ContentVersion = typeof contentVersions.$inferSelect
 export type ExecSnapshot = typeof execSnapshots.$inferSelect
 export type ExecInput = typeof execInputs.$inferSelect
+
+// ---------- 精确返修操作台账（precision-rework 规格 §5.1；只记操作与幂等回执，不存媒体副本/时间轴） ----------
+
+/** 返修请求：同键同载荷回放、异载荷冲突；applied 为终态回执（resultJson 固定版本/产物关联） */
+export const reworkRequests = sqliteTable(
+  'rework_requests',
+  {
+    id: text('id').primaryKey(), // UUID（调用方 randomUUID 生成）
+    projectId: integer('project_id').notNull(),
+    runId: integer('run_id').notNull(),
+    stepKey: text('step_key').notNull(),
+    sessionId: integer('session_id'), // 可空：非轻松创作入口无会话
+    requestKey: text('request_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    // parsing|uncertain|ready|blocked|applied
+    state: text('state').notNull().default('parsing'),
+    baseFingerprint: text('base_fingerprint'), // 基准指纹（ready 起必填；异基准预览失效）
+    changesJson: text('changes_json').notNull().default('[]'),
+    previewJson: text('preview_json').notNull().default('{}'),
+    resultJson: text('result_json').notNull().default('{}'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_rework_requests_run_key').on(t.runId, t.requestKey),
+    index('idx_rework_requests_project').on(t.projectId),
+    index('idx_rework_requests_run').on(t.runId),
+  ],
+)
+
+export type ReworkRequest = typeof reworkRequests.$inferSelect
 
 /** 创作控制态；生产状态始终由关联 run 投影。 */
 export const creationSessions = sqliteTable('creation_sessions', {

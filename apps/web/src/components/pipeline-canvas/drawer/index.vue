@@ -27,6 +27,7 @@ import GateDialog from '../../run/GateDialog.vue'
 import Icon from '../../common/Icon.vue'
 import RerunModal from '../../run/RerunModal.vue'
 import SubtitleBurnToggle from '../../run/SubtitleBurnToggle.vue'
+import SubtitleReworkEntry from '../../run/subtitle-rework/SubtitleReworkEntry.vue'
 
 const props = defineProps<{
   runId: number | null
@@ -182,6 +183,12 @@ const {
           v-if="runId != null && rn.actions.recompose"
           :run-id="runId"
           :disabled="!rn.actions.recompose.allowed"
+        />
+        <!-- 字幕精确返修：与其他三入口同一编辑器与确认流；独立 creation/gen 链由后端 capability 返回真实原因 -->
+        <SubtitleReworkEntry
+          v-if="runId != null"
+          :run-id="runId"
+          @applied="emit('refresh')"
         />
         <span v-if="!rn.actions.rerun && !rn.actions.recompose" class="muted"
           >当前状态无可用操作</span

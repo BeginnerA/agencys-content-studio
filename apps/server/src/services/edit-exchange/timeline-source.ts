@@ -4,6 +4,8 @@
  * - recomputed：无 timeline 的存量成片，用分镜 + 配音资产就地经 planBestEffortTimeline 重算段/句位置，
  *   再复用 buildEditTimeline 组装（媒体路径/BGM/转场/字幕等非位置字段取自成片既有 params）——同源算法，不造第三条时间轴逻辑；
  * - 双失败（native_dialogue / strict / 无 lines 字段 / 映射不一致 / 无镜头输入）→ 抛 no_timeline。
+ * 版本固定（precision-rework §8）：可选 finalAssetId 指定解析哪一版成片（旧调用缺省取首版并回传实际 id），
+ *   指定资产必须属于该 run 的 final_video，拒绝跨 run/跨用途携带。
  */
 import { readFileSync } from 'node:fs'
 import { collectRunAssets } from '../export'
@@ -30,6 +32,8 @@ export class EditExchangeError extends Error {
 export interface ResolvedTimeline {
   source: 'stored' | 'recomputed'
   timeline: EditTimeline
+  /** 实际解析定稿的成片资产 id（工程与字幕 sidecar 的版本绑定基准） */
+  finalAssetId: number
 }
 
 /** params.timeline 结构校验（stored 直通前；缺字段/旧产物 → null 转 recomputed） */
@@ -54,15 +58,21 @@ function numOr(v: unknown, fb: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fb
 }
 
-/** 读 run 成片 params.timeline（stored）；无则按分镜+配音重算（recomputed）；双失败抛 no_timeline */
-export async function resolveEditTimeline(runId: number): Promise<ResolvedTimeline> {
+/** 读 run 成片 params.timeline（stored）；无则按分镜+配音重算（recomputed）；双失败抛 no_timeline；可选固定 finalAssetId */
+export async function resolveEditTimeline(runId: number, finalAssetId?: number): Promise<ResolvedTimeline> {
   const rows = await collectRunAssets(runId)
-  const final = rows.find((a) => a.purpose === 'final_video' && a.kind === 'video')
-  if (!final) throw new EditExchangeError('no_final_video', '该 run 无成片（final_video 产物），无法导出剪辑工程')
+  let final: Asset | undefined
+  if (finalAssetId != null) {
+    final = rows.find((a) => a.id === finalAssetId && a.purpose === 'final_video' && a.kind === 'video')
+    if (!final) throw new EditExchangeError('no_final_video', `指定成片 ${finalAssetId} 不属于 run ${runId} 或不是 final_video 产物`)
+  } else {
+    final = rows.find((a) => a.purpose === 'final_video' && a.kind === 'video')
+    if (!final) throw new EditExchangeError('no_final_video', '该 run 无成片（final_video 产物），无法导出剪辑工程')
+  }
   const fp = safeObj(final.params)
   const stored = parseStoredTimeline(fp)
-  if (stored) return { source: 'stored', timeline: stored }
-  return { source: 'recomputed', timeline: await recomputeTimeline(rows, final, fp) }
+  if (stored) return { source: 'stored', timeline: stored, finalAssetId: final.id }
+  return { source: 'recomputed', timeline: await recomputeTimeline(rows, final, fp), finalAssetId: final.id }
 }
 
 /** 存量成片兜底重算：位置（段/句）走 planBestEffortTimeline，其余字段取成片 params 既有溯源 */

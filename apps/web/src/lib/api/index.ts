@@ -50,3 +50,5 @@ export { workflowApi } from './workflows'
 export type { WorkflowCreateBody, WorkflowPatchBody } from './workflows'
 
 export { assetVersionApi, entityVersionApi, canvasLockApi } from './versions'
+
+export { subtitleReworkApi, ReworkApiError } from './rework'

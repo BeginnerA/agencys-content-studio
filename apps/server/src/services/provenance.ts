@@ -44,9 +44,9 @@ export class ProvenanceError extends Error {
   }
 }
 
-/** 对象当前最新版本号（无版本返回 0） */
-export async function currentRevision(objKind: ObjKind, objId: number): Promise<number> {
-  const rows = await db
+/** 对象当前最新版本号（无版本返回 0）；executor 可指向事务连接（精确返修 apply 同事务领用版本） */
+export async function currentRevision(objKind: ObjKind, objId: number, executor: Pick<typeof db, 'select'> = db): Promise<number> {
+  const rows = await executor
     .select({ revision: contentVersions.revision })
     .from(contentVersions)
     .where(and(eq(contentVersions.objKind, objKind), eq(contentVersions.objId, objId)))
@@ -72,15 +72,18 @@ export async function recordAssetTextVersion(p: {
   source: VersionSource
   label?: string | null
   meta?: Record<string, unknown>
+  /** 事务内记录版本时传入 tx（文件仍先于行写入：事务失败时未引用文件不发布） */
+  executor?: Pick<typeof db, 'select' | 'insert'>
 }): Promise<ContentVersion> {
   const { asset, content, source } = p
+  const executor = p.executor ?? db
   const data = new TextEncoder().encode(content)
   const sha = sha256Hex(data)
-  const revision = (await currentRevision('asset', asset.id)) + 1
+  const revision = (await currentRevision('asset', asset.id, executor)) + 1
   const { abs, relPath } = versionFilePath(asset.projectId, asset.id, revision, sha, asset.ext ?? 'txt')
   writeFileSync(abs, data)
   const now = Date.now()
-  const rows = await db
+  const rows = await executor
     .insert(contentVersions)
     .values({
       projectId: asset.projectId,
@@ -172,6 +175,15 @@ export async function listVersions(objKind: ObjKind, objId: number): Promise<Con
     .from(contentVersions)
     .where(and(eq(contentVersions.objKind, objKind), eq(contentVersions.objId, objId)))
     .orderBy(desc(contentVersions.revision))
+}
+
+/** 版本下载文件引用（P8 投影：下载固定具体不可变版本文件；仅 file 载荷可下载） */
+export async function versionFileForDownload(versionId: number): Promise<{ version: ContentVersion; abs: string }> {
+  const rows = await db.select().from(contentVersions).where(eq(contentVersions.id, versionId)).limit(1)
+  const v = rows[0]
+  if (!v) throw new ProvenanceError('not_found', `版本 ${versionId} 不存在`)
+  if (v.payloadKind !== 'file' || !v.relPath) throw new ProvenanceError('no_file', `版本 ${versionId} 无不可变版本文件（非文件载荷）`)
+  return { version: v, abs: absPathOf(v.relPath) }
 }
 
 /** 读取指定版本内容：file → 文本；json → 快照对象。 */

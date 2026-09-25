@@ -4,6 +4,7 @@ import AssetPreviewer from '../../components/asset/previewer/index.vue'
 import CreationCandidates from './CreationCandidates.vue'
 import CreationRework from './CreationRework.vue'
 import Icon from '../../components/common/Icon.vue'
+import SubtitleReworkEntry from '../../components/run/subtitle-rework/SubtitleReworkEntry.vue'
 import { assetApi, creationChatApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import type {
@@ -82,6 +83,8 @@ watch(
 )
 // 仅当已有成片（run completed 且已交付）时才展示字幕开关与常驻重合成入口
 const hasFilm = computed(() => !!props.s.state.detail?.result)
+// 字幕精确返修面向 pipeline run（与其余三入口同一 runId）；从真实进度的 runId 取，非会话 id
+const filmRunId = computed(() => props.s.state.detail?.progress?.runId ?? null)
 let boardEpoch = 0
 
 function resetCandidates(): void {
@@ -296,6 +299,13 @@ const shotActions = (shot: Shot): ShotActions => ({
           <input type="checkbox" :checked="subBurn" :disabled="s.state.busyAction" aria-label="在成片烧录字幕" @change="subBurn = ($event.target as HTMLInputElement).checked" />
           <span><Icon name="doc" :size="13" /> 成片字幕</span>
         </label>
+        <!-- 字幕精确返修：与其他三入口同一编辑器与确认流（本地修订、零模型计费） -->
+        <SubtitleReworkEntry
+          v-if="hasFilm && filmRunId"
+          :run-id="filmRunId!"
+          :disabled="s.state.busyAction"
+          @applied="s.refreshStatus()"
+        />
         <button
           v-if="s.state.selectionDirty || hasFilm"
           class="btn sm primary"

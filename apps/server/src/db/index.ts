@@ -532,6 +532,33 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
+  // 精确返修台账建表兜底（precision-rework 规格 §5.1；migrate 体系外旧库；幂等。缺表时 ledger 查询报错 fail closed，不静默降级）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS rework_requests (
+        id text PRIMARY KEY,
+        project_id integer NOT NULL,
+        run_id integer NOT NULL,
+        step_key text NOT NULL,
+        session_id integer,
+        request_key text NOT NULL,
+        request_hash text NOT NULL,
+        state text DEFAULT 'parsing' NOT NULL,
+        base_fingerprint text,
+        changes_json text DEFAULT '[]' NOT NULL,
+        preview_json text DEFAULT '{}' NOT NULL,
+        result_json text DEFAULT '{}' NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_rework_requests_run_key ON rework_requests (run_id, request_key)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_rework_requests_project ON rework_requests (project_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_rework_requests_run ON rework_requests (run_id)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
   // 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
   await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_sessions (
     id integer PRIMARY KEY AUTOINCREMENT, project_id integer NOT NULL,

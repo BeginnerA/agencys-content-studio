@@ -11,6 +11,7 @@ import ShotBoard from '../../components/shot/board/index.vue'
 import NovelBoard from '../../components/NovelBoard.vue'
 import Icon from '../../components/common/Icon.vue'
 import SubtitleBurnToggle from '../../components/run/SubtitleBurnToggle.vue'
+import SubtitleReworkEntry from '../../components/run/subtitle-rework/SubtitleReworkEntry.vue'
 import { fmtTime, stepStatus } from '../../lib/format'
 import {
   EDIT_EX_FORMATS,
@@ -129,6 +130,13 @@ const {
         </button>
         <!-- 成片字幕开关（与轻松创作同一 _compose 真源）：改后点「重新合成」方落入成片 -->
         <SubtitleBurnToggle :run-id="runId" :disabled="busy || active" />
+        <!-- 字幕精确返修：与轻创作/工作台/抽屉同一编辑器与确认流，能力由后端判定 -->
+        <SubtitleReworkEntry
+          v-if="s.status === 'succeeded'"
+          :run-id="runId"
+          :disabled="busy || active"
+          @applied="loadDetail()"
+        />
         <!-- A 路径：对已有成片二次派生其他发布画幅 -->
         <button
           class="btn sm"

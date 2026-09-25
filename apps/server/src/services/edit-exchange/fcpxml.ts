@@ -3,11 +3,14 @@
  * 结构：resources（format + 每媒体一 asset + 标题/转场声明）→ library/event/project/sequence → spines（多轨）。
  * 轨道映射（§决策 3）：V1=镜头段顺序（转场启用时段间 <transition> fade）；对白逐句 asset-clip；
  *   BGM 独立 spine；SFX 独立 spine；字幕逐句 <title> 挂 generator（文本纯净轴）。
+ * 字幕轨数据源（precision-rework §8）：subtitle spine 取自有效字幕快照 cues（final 绝对轴，人工修订已体现），
+ *   不再用 lines 覆盖；对白 spine 仍只读 lines。旧快照无 cues 时按兜底规则构造（见 subtitle-cues.ts）。
  * 时间值统一 rational seconds `帧/fps s`（帧精度，免浮点漂移）。
  */
 import type { EditTimeline } from '../../pipeline/actions/ffmpeg-merge/timeline-snapshot'
 import type { FormatCtx } from './render-context'
 import { secToFrames } from './timecode'
+import { readSubtitleCues } from './subtitle-cues'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -121,13 +124,13 @@ export function toFcpxml(tl: EditTimeline, ctx: FormatCtx): string {
     lines.push('            </spine>')
   }
 
-  // 字幕 title 轨（逐句挂 generator，文本纯净轴）
-  if (tl.lines.length > 0) {
+  // 字幕 title 轨（逐句挂 generator；cues 为 final 绝对轴，不再叠加 intro 位移）
+  const subRead = readSubtitleCues(tl)
+  if (subRead.cues.length > 0) {
     lines.push('            <spine>')
-    for (const l of tl.lines) {
-      const dur = l.durSec ?? 2
-      lines.push(`              <title ref="rTitle" style="ts1" offset="${tr(intro + l.timelineStart, fps)}" duration="${tr(dur, fps)}" name="${esc(l.lineId)}">`)
-      lines.push(`                <text><text-style ref="ts1">${esc(l.text)}</text-style></text>`)
+    for (const cue of subRead.cues) {
+      lines.push(`              <title ref="rTitle" style="ts1" offset="${tr(cue.startSec, fps)}" duration="${tr(cue.durSec, fps)}" name="${esc(cue.id)}">`)
+      lines.push(`                <text><text-style ref="ts1">${esc(cue.text)}</text-style></text>`)
       lines.push('              </title>')
     }
     lines.push('            </spine>')

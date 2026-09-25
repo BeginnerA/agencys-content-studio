@@ -1,6 +1,7 @@
 import type { Asset } from '../../../db/schema'
 import type { AlignPlan } from './align'
 import type { Segment } from './segments'
+import type { SubtitleCue } from '../../../services/rework/subtitle-text'
 import { shotIdOfAsset } from './segments'
 import { round3 } from './util'
 
@@ -53,8 +54,30 @@ export interface EditTimeline {
   sfx: Array<{ shotId: string | null; assetId: number | null; startSec: number; relPath: string }>
   bgm: { assetId: number | null; relPath: string; volume: number; fadeSec: number } | null
   transition: { type: string; durSec: number } | null
-  subtitle: { assetId: number | null; relPath: string } | null
+  subtitle: EditTimelineSubtitle | null
   watermark: boolean
+}
+
+/**
+ * 字幕快照（precision-rework §6.1 增量扩展）：assetId/relPath 语义不变（源字幕资产）；
+ * 有效字幕快照字段全部可选——旧 v=1 快照可缺省，读取端按「损坏拒绝不回退」处理。
+ * coordinate 恒 'final'（成片绝对轴，已含片头/平移位移），与内容轴 lines 区分。
+ */
+export interface EditTimelineSubtitle {
+  assetId: number | null
+  /** 源字幕资产文件相对路径（不随平移改写） */
+  relPath: string
+  /** 有效字幕不可变文件：未平移时同 relPath；平移后为源旁 display-<sha16> 内容寻址文件 */
+  effectiveRelPath?: string
+  /** 人工修订版本 id；无人工修订为 null */
+  versionId?: number | null
+  /** 有效字幕文本 sha256 */
+  sha256?: string
+  coordinate?: 'final'
+  /** 实际生效 cue（§4 结构，标识锚定源基准 tag） */
+  cues?: SubtitleCue[]
+  origin?: 'source' | 'manual'
+  sourceRef?: { assetId: number | null; sha256: string; timingSource: 'estimated' | 'measured' | 'unknown' }
 }
 
 /** 合成期输入 → 快照（纯函数，探针可直测） */
@@ -72,7 +95,7 @@ export function buildEditTimeline(p: {
   sfx: Array<{ shotId: string | null; assetId?: number | null; startSec: number; relPath: string }>
   bgm: { assetId: number | null; relPath: string; volume: number; fadeSec: number } | null
   transition: { type: string; durSec: number } | null
-  subtitle: { assetId: number | null; relPath: string } | null
+  subtitle: EditTimelineSubtitle | null
   watermark: boolean
 }): EditTimeline {
   const relByAsset = new Map(p.rows.map((a) => [a.id, a.relPath]))

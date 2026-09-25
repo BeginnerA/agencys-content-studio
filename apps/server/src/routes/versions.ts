@@ -1,5 +1,9 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import { existsSync } from 'node:fs'
+import { createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
+import { eq } from 'drizzle-orm'
 import {
   assertVersionOwned,
   downstreamImpact,
@@ -12,8 +16,10 @@ import {
   currentRevision,
   unlockCanvasInput,
   listCanvasInputLocks,
+  versionFileForDownload,
 } from '../services/provenance'
-import type { ContentVersion } from '../db/schema'
+import { db } from '../db'
+import { assets, type ContentVersion } from '../db/schema'
 import { HttpError, h, idParam } from './helpers'
 import { toAssetView } from './assets'
 
@@ -81,6 +87,29 @@ versionsRoutes.get('/assets/:id/versions/:versionId/content', h(async (c) => {
     const content = await readVersionContent(versionId)
     if (content.kind !== 'text') throw new HttpError(400, 'bad_version', '该版本非文本内容')
     return c.json({ content: content.text })
+  })
+}))
+
+// GET /assets/:id/versions/:versionId/download —— 不可变版本文件附件下载
+// （precision-rework P8：下载指向具体不可变字幕版本；历史版本内容永不随当前指针变，故可 long cache）
+versionsRoutes.get('/assets/:id/versions/:versionId/download', h(async (c) => {
+  const id = idParam(c)
+  const versionId = Number(c.req.param('versionId'))
+  if (!Number.isInteger(versionId) || versionId <= 0) throw new HttpError(400, 'bad_id', 'versionId 非法')
+  return mapProvenance(async () => {
+    await assertVersionOwned(versionId, 'asset', id)
+    const { version, abs } = await versionFileForDownload(versionId)
+    if (!existsSync(abs)) throw new HttpError(404, 'no_file', `版本 ${versionId} 的不可变文件已缺失（外部删除），不会伪造内容`)
+    const assetRows = await db.select({ name: assets.name, ext: assets.ext }).from(assets).where(eq(assets.id, id)).limit(1)
+    const base = (assetRows[0]?.name ?? `asset-${id}`).replace(/["\\/]/g, '_')
+    const fileName = `${base}-r${version.revision}.${assetRows[0]?.ext ?? 'txt'}`
+    return new Response(Readable.toWeb(createReadStream(abs)), {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      },
+    })
   })
 }))
 
