@@ -10,6 +10,7 @@ import {
 import ShotBoard from '../../components/shot/board/index.vue'
 import NovelBoard from '../../components/NovelBoard.vue'
 import Icon from '../../components/common/Icon.vue'
+import SubtitleBurnToggle from '../../components/run/SubtitleBurnToggle.vue'
 import { fmtTime, stepStatus } from '../../lib/format'
 import {
   EDIT_EX_FORMATS,
@@ -126,6 +127,8 @@ const {
         >
           <Icon name="film" :size="12" /> 重新合成
         </button>
+        <!-- 成片字幕开关（与轻松创作同一 _compose 真源）：改后点「重新合成」方落入成片 -->
+        <SubtitleBurnToggle :run-id="runId" :disabled="busy || active" />
         <!-- A 路径：对已有成片二次派生其他发布画幅 -->
         <button
           class="btn sm"

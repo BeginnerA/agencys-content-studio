@@ -214,6 +214,19 @@ export async function updateComposeConfig(runId: number, patch: Record<string, u
       next.brand = Object.keys(merged).length > 0 ? merged : undefined
       continue
     }
+    if (key === 'subtitleBurn') {
+      // 成片是否烧录硬字幕（与轻松创作确认卡同一 _compose 键、同一 ffmpeg-merge 烧录门）：
+      // 布尔直存；null = 清除该键回落缺省（烧录）。改后需「重新合成」进入成片（与 BGM/转场同一生效语义）。
+      if (value === null) {
+        delete next.subtitleBurn
+        continue
+      }
+      if (typeof value !== 'boolean') {
+        throw new WorkbenchError('bad_field', 'subtitleBurn 需为布尔')
+      }
+      next.subtitleBurn = value
+      continue
+    }
     throw new WorkbenchError('bad_field', `未知配置键：${key}`)
   }
   let inputObj: Record<string, unknown>

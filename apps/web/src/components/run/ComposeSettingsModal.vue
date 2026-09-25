@@ -28,6 +28,7 @@ import BrandSettings from '../brand/BrandSettings.vue'
 import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 import SubtitleStyleSection from './SubtitleStyleSection.vue'
+import SubtitleBurnToggle from './SubtitleBurnToggle.vue'
 
 const props = defineProps<{ runId: number; projectId: number }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -355,6 +356,14 @@ function fmtDur(sec: number | null): string {
               保存音效音量
             </button>
           </div>
+        </div>
+
+        <div class="bg-sep" />
+
+        <!-- ===== 成片字幕开关（有无硬字幕）：与轻创作确认卡/运行详情同一 _compose 真源，重新合成后生效 ===== -->
+        <div class="bg-sec">
+          <SubtitleBurnToggle :run-id="runId" :disabled="busy" />
+          <div class="muted bg-none">关闭后重新合成：成片画面不含字幕；字幕文件（.srt）仍生成，可在成果页单独下载。</div>
         </div>
 
         <div class="bg-sep" />

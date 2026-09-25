@@ -89,6 +89,20 @@ export async function sectionBgm(ctx: M11Ctx): Promise<void> {
   const eNaN = await errOf(() => compose.updateComposeConfig(s.runId, { bgm_volume: Number.NaN }))
   check(eNaN instanceof WorkbenchError && eNaN.code === 'bad_field', 'NaN 拒绝（非有限数）')
 
+  // ---- subtitleBurn（成片字幕烧录开关）：通用 run 级写入（运行详情/工作台/节点抽屉经此白名单，与轻松创作确认卡同一 _compose 键）----
+  const sbOff = await compose.updateComposeConfig(s.runId, { subtitleBurn: false })
+  check(sbOff.subtitleBurn === false, 'subtitleBurn=false 白名单接受')
+  check(
+    (JSON.parse((await getRun(s.runId)).input) as { _compose?: { subtitleBurn?: boolean } })._compose?.subtitleBurn === false,
+    'subtitleBurn=false 落 run.input._compose（ffmpeg-merge 合成期读取）',
+  )
+  const sbOn = await compose.updateComposeConfig(s.runId, { subtitleBurn: true })
+  check(sbOn.subtitleBurn === true, 'subtitleBurn=true 写入')
+  const sbClr = await compose.updateComposeConfig(s.runId, { subtitleBurn: null })
+  check(sbClr.subtitleBurn === undefined, 'subtitleBurn: null → 清除该键（回落缺省烧录）')
+  const eSb = await errOf(() => compose.updateComposeConfig(s.runId, { subtitleBurn: 'no' }))
+  check(eSb instanceof WorkbenchError && eSb.code === 'bad_field', 'subtitleBurn 非布尔拒绝')
+
   // ---- readComposeConfig 容错 + 聚合读 ----
   check(JSON.stringify(compose.readComposeConfig(null)) === '{}', 'null → {}')
   check(JSON.stringify(compose.readComposeConfig('junk')) === '{}', '坏 JSON → {}')

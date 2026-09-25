@@ -26,6 +26,7 @@ import CanvasTargetModal from '../../creation/CanvasTargetModal.vue'
 import GateDialog from '../../run/GateDialog.vue'
 import Icon from '../../common/Icon.vue'
 import RerunModal from '../../run/RerunModal.vue'
+import SubtitleBurnToggle from '../../run/SubtitleBurnToggle.vue'
 
 const props = defineProps<{
   runId: number | null
@@ -176,6 +177,12 @@ const {
           <Icon name="film" :size="12" />
           {{ recomposeBusy ? '提交中…' : '重新合成' }}
         </button>
+        <!-- 成片字幕开关：与轻创作确认卡同一 _compose 真源；本抽屉 recompose 读同一键，改后重合成生效 -->
+        <SubtitleBurnToggle
+          v-if="runId != null && rn.actions.recompose"
+          :run-id="runId"
+          :disabled="!rn.actions.recompose.allowed"
+        />
         <span v-if="!rn.actions.rerun && !rn.actions.recompose" class="muted"
           >当前状态无可用操作</span
         >

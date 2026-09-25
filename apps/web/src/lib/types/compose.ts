@@ -71,6 +71,9 @@ export interface ComposeConfig {
   sfx_volume?: number
   /** 多画幅原生渲染（B 路径：合成内多路；PUT null = 清除 = 不启用） */
   multi_aspect?: MultiAspectConfig | null
+  /** 成片是否烧录硬字幕（缺省/true = 烧录；false = 画面不含字幕，字幕文件仍生成可下载）；
+   *  与轻松创作确认卡同一 _compose 键、同一 ffmpeg-merge 烧录门；PUT null = 清除回落缺省（烧录） */
+  subtitleBurn?: boolean
 }
 
 /** 镜头音效绑定项（GET /runs/:id/compose/sfx；每镜 ≤1 条有效） */
