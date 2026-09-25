@@ -355,9 +355,7 @@ async function onReject(): Promise<void> {
   flex-wrap: wrap;
 }
 
-.rrow .btn {
-  min-height: 44px;
-}
+/* 驳回/取消按钮尺寸由全局 .btn 管（桌面紧凑 / 触屏兜底） */
 
 .warnline {
   display: flex;

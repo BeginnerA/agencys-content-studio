@@ -232,5 +232,5 @@ async function onRetry(): Promise<void> {
 .ec-progress-technical summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .ec-progress-count, .ec-progress-local { color: var(--text-2); }
 .vrow { min-height: 44px; font-size: 13px; }
-.pf .btn { min-height: 44px; }
+/* 按钮尺寸统一由全局 .btn（桌面紧凑 / 触屏 media query 兜底 44px）管，此处不再写死 */
 </style>

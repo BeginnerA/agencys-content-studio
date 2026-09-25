@@ -4,7 +4,7 @@ import Icon from '../../components/common/Icon.vue'
 import type { CreationArtifact, ShotBoardData } from '../../lib/types'
 
 /**
- * 单镜候选版本选择（成果面板行内展开）。
+ * 单镜候选版本选择（成果面板展开块，父级受控：只在展开时挂载）。
  * 可用性只认投影 candidates（文件在不在 / 是否删除），时间来源等富信息用工作台同一份 board 按 assetId 叠加（展开时才拉，只读）。
  * 改选别的版本只落本地 pending，点「应用选择」才提交：选片零计费、不触发执行，重新合成后才落到成片。
  */
@@ -17,26 +17,30 @@ const props = defineProps<{
   candidates: CreationArtifact[]
   selectedId: number | null
   pending: number | null
-  open: boolean
   busy: boolean
   board: ShotBoardData | null
 }>()
 const emit = defineEmits<{
-  (e: 'toggle'): void
   (e: 'pick', assetId: number): void
   (e: 'apply'): void
   (e: 'cancel'): void
 }>()
 
 const groupLabel = computed(() => `第 ${props.index} 镜候选${props.label}`)
-const usableCount = computed(() => props.candidates.filter((c) => c.available).length)
+const usableCount = computed(
+  () => props.candidates.filter((c) => c.available).length,
+)
 /** 单选态：已改选未应用时以 pending 为准（这才是要提交的目标） */
 const activeId = computed(() => props.pending ?? props.selectedId)
-const dirty = computed(() => props.pending != null && props.pending !== props.selectedId)
+const dirty = computed(
+  () => props.pending != null && props.pending !== props.selectedId,
+)
 
 /** board 里该镜该资产的版本元信息（未取到 board 或该版本不在册 → null，只降级为不带时间来源） */
 const versionOf = (assetId: number) =>
-  props.board?.shots.find((s) => s.shotId === props.shotId)?.versions.find((v) => v.id === assetId) ?? null
+  props.board?.shots
+    .find((s) => s.shotId === props.shotId)
+    ?.versions.find((v) => v.id === assetId) ?? null
 const thumbOf = (c: CreationArtifact) =>
   versionOf(c.assetId)?.urls.thumb ?? `/api/v1/assets/${c.assetId}/thumb?v=2`
 const metaOf = (c: CreationArtifact): string => {
@@ -59,52 +63,67 @@ function badgeOf(c: CreationArtifact, i: number): string {
 
 <template>
   <div class="ec-cand">
-    <button
-      class="ec-cand-toggle"
-      type="button"
-      :aria-expanded="open"
-      :aria-label="`${open ? '收起' : '展开'}${groupLabel}`"
-      @click="emit('toggle')"
-    >
-      <Icon name="chevron-down" :size="13" :class="['ec-cand-caret', { folded: !open }]" />
-      候选 {{ usableCount }} {{ label }}
-    </button>
-
-    <template v-if="open">
-      <p v-if="!board" role="status" class="muted ec-cand-loading">正在读取版本信息…</p>
-      <ul class="ec-cand-list" role="radiogroup" :aria-label="groupLabel">
-        <li v-for="(c, i) in candidates" :key="c.assetId">
-          <button
-            class="ec-cand-item"
-            type="button"
-            role="radio"
-            :aria-checked="activeId === c.assetId"
-            :disabled="!c.available || busy"
-            :aria-label="`第 ${index} 镜${label}版本 ${i + 1}（${badgeOf(c, i)}）`"
-            @click="emit('pick', c.assetId)"
+    <p class="ec-cand-title">
+      第 {{ index }} 镜 · {{ label }}候选 {{ usableCount }} 版
+    </p>
+    <p v-if="!board" role="status" class="muted ec-cand-loading">
+      正在读取版本信息…
+    </p>
+    <ul class="ec-cand-list" role="radiogroup" :aria-label="groupLabel">
+      <li v-for="(c, i) in candidates" :key="c.assetId">
+        <button
+          class="ec-cand-item"
+          type="button"
+          role="radio"
+          :aria-checked="activeId === c.assetId"
+          :disabled="!c.available || busy"
+          :aria-label="`第 ${index} 镜${label}版本 ${i + 1}（${badgeOf(c, i)}）`"
+          @click="emit('pick', c.assetId)"
+        >
+          <img
+            v-if="c.available"
+            :src="thumbOf(c)"
+            :alt="`${groupLabel} ${i + 1}`"
+            loading="lazy"
+          />
+          <span v-else class="ec-cand-missing">文件已删除<br />不可选</span>
+          <span
+            class="ec-cand-badge"
+            :class="{ used: c.assetId === selectedId }"
+            >{{ badgeOf(c, i) }}</span
           >
-            <img v-if="c.available" :src="thumbOf(c)" :alt="`${groupLabel} ${i + 1}`" loading="lazy" />
-            <span v-else class="ec-cand-missing">文件已删除<br />不可选</span>
-            <span class="ec-cand-badge" :class="{ used: c.assetId === selectedId }">{{ badgeOf(c, i) }}</span>
-            <span class="ec-cand-meta">{{ metaOf(c) }}</span>
-          </button>
-        </li>
-      </ul>
+          <span class="ec-cand-meta">{{ metaOf(c) }}</span>
+        </button>
+      </li>
+    </ul>
 
-      <div v-if="dirty" class="ec-cand-apply">
-        <span class="ec-cand-hint">
-          <Icon name="alert" :size="13" />
-          应用后仅改用这一版，重新合成时才会落到成片。
-        </span>
-        <span class="ec-cand-rows">
-          <button class="btn sm" type="button" :disabled="busy" @click="emit('apply')">应用选择</button>
-          <button class="btn sm" type="button" :disabled="busy" @click="emit('cancel')">取消</button>
-        </span>
-      </div>
-      <p v-else-if="pending == null" class="muted ec-cand-hint">
-        选其他版本再点「应用选择」即可改用；这一步不产生费用。
-      </p>
-    </template>
+    <div v-if="dirty" class="ec-cand-apply">
+      <span class="ec-cand-hint">
+        <Icon name="alert" :size="13" />
+        应用后仅改用这一版，重新合成时才会落到成片。
+      </span>
+      <span class="ec-cand-rows">
+        <button
+          class="btn sm"
+          type="button"
+          :disabled="busy"
+          @click="emit('apply')"
+        >
+          应用选择
+        </button>
+        <button
+          class="btn sm"
+          type="button"
+          :disabled="busy"
+          @click="emit('cancel')"
+        >
+          取消
+        </button>
+      </span>
+    </div>
+    <p v-else-if="pending == null" class="muted ec-cand-hint">
+      选其他版本再点「应用选择」即可改用；这一步不产生费用。
+    </p>
   </div>
 </template>
 
@@ -117,28 +136,11 @@ function badgeOf(c: CreationArtifact, i: number): string {
   min-width: 0;
 }
 
-.ec-cand-toggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 44px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--text-2);
-  font: inherit;
+.ec-cand-title {
+  margin: 0;
   font-size: 12.5px;
-  cursor: pointer;
-}
-
-.ec-cand-caret {
-  transition: transform 0.18s ease;
-}
-
-.ec-cand-caret.folded {
-  transform: rotate(-90deg);
+  font-weight: 600;
+  color: var(--text);
 }
 
 .ec-cand-loading {
@@ -250,9 +252,7 @@ function badgeOf(c: CreationArtifact, i: number): string {
   flex-wrap: wrap;
 }
 
-.ec-cand-rows .btn {
-  min-height: 44px;
-}
+/* 应用/取消按钮尺寸由全局 .btn 管（桌面紧凑 / 触屏兜底） */
 
 .ec-cand :is(button):focus-visible {
   outline: 2px solid var(--accent);

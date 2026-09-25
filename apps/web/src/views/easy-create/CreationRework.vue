@@ -174,9 +174,7 @@ async function onApply(): Promise<void> {
   flex-wrap: wrap;
 }
 
-.ec-rework-rows .btn {
-  min-height: 44px;
-}
+/* 解析/确认按钮尺寸由全局 .btn 管（桌面紧凑 / 触屏兜底） */
 
 .ec-rework-unclear {
   display: flex;

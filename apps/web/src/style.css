@@ -310,6 +310,14 @@ a:hover {
   font-weight: 400;
 }
 
+/* 触控目标 ≥44px 只在触屏/窄屏兜底（HIG/MD 面向 touch 设备）；
+   桌面密排侧栏按自然紧凑尺寸出，避免「按钮过大」（各组件不再逐处写死 min-height:44px） */
+@media (pointer: coarse), (max-width: 600px) {
+  .btn {
+    min-height: 44px;
+  }
+}
+
 /* ---------- 表单 ---------- */
 /* input:not([type]) = 未声明 type 的输入框（语义即 text），缺失会导致回落浏览器默认样式 */
 /* url/email/search/tel 同属文本类输入，显式补入以免回落浏览器默认白底 inset（对齐 URL 抓取框主题） */
