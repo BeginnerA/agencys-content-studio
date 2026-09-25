@@ -83,8 +83,8 @@ export const creationChatApi = {
   /** 选定在用版本：只报改动镜头，服务端补全为全量；不触发执行、零计费 */
   selectShots: (id: number, body: CreationSelectionBody) =>
     api.post<CreationDetail>(`${BASE}/${id}/selection`, body),
-  /** 本地重新合成：仅重置合成步（不调用付费模型），回 202 + 最新快照 */
-  recompose: (id: number, body: { idempotencyKey: string }) =>
+  /** 本地重新合成：仅重置合成步（不调用付费模型），回 202 + 最新快照；可选 subtitleBurn 逐次改写字幕烧录 */
+  recompose: (id: number, body: { idempotencyKey: string; subtitleBurn?: boolean }) =>
     api.post<CreationDetail>(`${BASE}/${id}/recompose`, body),
   /** 返修第一步 · 解析指令：只调用一次文本模型（小额费用），零媒体计费，不启动任何生成 */
   reworkPlan: (id: number, body: { instruction: string; requestKey: string }) =>

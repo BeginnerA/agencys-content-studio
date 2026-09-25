@@ -514,16 +514,17 @@ async function applySelection(
  * 本地重新合成：仅重置合成步（不调用任何付费生成模型），但会重跑一段本地处理。
  * 成功后作废幂等键：下一次主动重合成必须是真的再次执行（与审阅决策同一先例）。
  */
-async function recompose(): Promise<boolean> {
+async function recompose(subtitleBurn?: boolean): Promise<boolean> {
   const id = state.currentId
   const runId = state.detail?.progress?.runId
   if (!id || !runId || state.busyAction) return false
-  const signature = JSON.stringify([id, runId, 'recompose'])
+  // 签名含 subtitleBurn：开关取值一变→换新幂等键（否则同键会被服务端去重→重合成不生效）
+  const signature = JSON.stringify([id, runId, 'recompose', subtitleBurn ?? null])
   if (signature !== recomposeTicket.signature) recomposeTicket = { signature, key: newRequestKey('rec') }
   state.busyAction = true
   state.error = ''
   try {
-    commit(id, await creationChatApi.recompose(id, { idempotencyKey: recomposeTicket.key }))
+    commit(id, await creationChatApi.recompose(id, { idempotencyKey: recomposeTicket.key, ...(subtitleBurn === undefined ? {} : { subtitleBurn }) }))
     if (id === state.currentId) state.selectionDirty = false
     ensurePolling()
     recomposeTicket = { signature: '', key: '' }

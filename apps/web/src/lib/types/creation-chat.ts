@@ -348,6 +348,8 @@ export interface CreationProgress {
   stages: Array<{ key: string; title: string; applicable: boolean | null; status: string; completed: number | null; total: number | null }>
   recovery: { resumable: boolean; requiredTaskIds: number[]; queryTaskCount: number; unpriced: string[]; configDrift?: ResumeConfigDrift[] }
   issue: { summary: string; details: Array<{ message: string; scopes: string[] }> } | null
+  /** 成片字幕烧录当前态（来自 run._compose.subtitleBurn，缺省=true）：驱动「已有成果」面板字幕开关回显 */
+  subtitleBurn: boolean
 }
 
 export interface CreationArtifact {

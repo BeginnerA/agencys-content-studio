@@ -3,6 +3,7 @@ import { and, eq, inArray, or } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, type CreationSession, type PipelineRun, type pipelineSteps, type genTasks } from '../../db/schema'
 import { absPathOf } from '../storage'
+import { readComposeConfig } from '../compose-config'
 import { creationPlanSchema } from './contract'
 import { describeRunConfigDrift, type ResumeConfigDrift } from './recipe'
 
@@ -187,6 +188,8 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
   } : null
   return {
     progress: { runId: run.id, status, currentStep: run.currentStepKey, error, review,
+      // 字幕烧录当前态（从 run._compose.subtitleBurn 解析，缺省=true）：驱动「已有成果」面板字幕开关回显，与 ffmpeg-merge 同读一份真源。
+      subtitleBurn: readComposeConfig(run.input).subtitleBurn !== false,
       needsVerification: settledBad && uncertainTasks.length > 0, uncertainTasks,
       completedShots: stages.find((s) => s.key === (plan?.mode === 'dynamic' ? 'motion' : 'images'))?.completed ?? 0,
       steps: steps.map((s) => ({ key: s.stepKey, title: s.title, status: s.status, error: s.error })), stages,

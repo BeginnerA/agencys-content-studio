@@ -113,6 +113,14 @@ export async function recomposeCreation(id: number, raw: unknown): Promise<{ run
     const prior = await db.select().from(creationMessages)
       .where(and(eq(creationMessages.sessionId, id), eq(creationMessages.requestKey, request.idempotencyKey)))
     if (prior.length) return null
+    // 字幕烧录开关：重新合成也能逐次改写（confirm 卡之外的入口，覆盖「已有成果 → 重新合成」路径）。
+    // 仅显式传入时落 _compose.subtitleBurn（与 confirm 同内部键，合成期 ffmpeg-merge 读取；不传=不改，沿用 run 既有值）。
+    if (request.subtitleBurn !== undefined) {
+      const cur = JSON.parse(run.input) as Record<string, unknown>
+      const prevCompose = cur['_compose']
+      const base = prevCompose && typeof prevCompose === 'object' && !Array.isArray(prevCompose) ? (prevCompose as Record<string, unknown>) : {}
+      await db.update(pipelineRuns).set({ input: JSON.stringify({ ...cur, _compose: { ...base, subtitleBurn: request.subtitleBurn } }), updatedAt: Date.now() }).where(eq(pipelineRuns.id, run.id))
+    }
     // 对白重合成同时失效逐镜转写与合成（从选中版本的已校验缓存重建全片字幕、旧审阅作废），仍零模型调用
     const dialogue = dialogueRecipeOf(run) !== null
     await throughShotLayer(() => (dialogue ? resetDialogueForRecompose(run.id) : resetStepForRecompose(run.id, 'compose')))

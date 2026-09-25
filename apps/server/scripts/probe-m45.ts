@@ -235,6 +235,14 @@ async function main(): Promise<void> {
       // 契约：confirmationSchema 缺省 subtitleBurn=true
       check(confirmationSchema.parse({ planRevision: 1, planHash: 'a'.repeat(64), idempotencyKey: 'm45-sub-def', acceptUnpriced: false }).subtitleBurn === true, 'confirmationSchema 缺省 subtitleBurn=true（不传 = 维持烧录）')
 
+      // 重新合成入口契约（覆盖「已有成果 → 重新合成」这一 confirm 之外的写入口）：subtitleBurn 可选、缺省不改写、.strict 拒未知键
+      const { recomposeSchema } = await import('../src/services/creation-chat/contract')
+      check(recomposeSchema.parse({ idempotencyKey: 'm45-rec-absent' }).subtitleBurn === undefined, 'recomposeSchema 不传 subtitleBurn → undefined（不传=不改，沿用 run 既有值）')
+      check(recomposeSchema.parse({ idempotencyKey: 'm45-rec-off', subtitleBurn: false }).subtitleBurn === false, 'recomposeSchema 接受 subtitleBurn=false（重合成时逐次关硬字幕）')
+      let recThrew = false
+      try { recomposeSchema.parse({ idempotencyKey: 'm45-rec-strict', hacker: 1 }) } catch { recThrew = true }
+      check(recThrew, 'recomposeSchema .strict() 拒未知键（与 confirm 两端契约对齐）')
+
       // 契约：confirmationSchema 默认 true / .strict() 拒未知键 / 路由级放行 false
       check(confirmationSchema.parse({ planRevision: 1, planHash: 'a'.repeat(64), idempotencyKey: 'm45-key-default', acceptUnpriced: false }).brandApply === true, 'confirmationSchema 缺省 brandApply=true')
       let threw = false

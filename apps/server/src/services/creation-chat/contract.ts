@@ -188,8 +188,10 @@ export const shotSelectionSchema = z.object({
 }).strict()
 export type ShotSelection = z.infer<typeof shotSelectionSchema>
 
-/** 本地重新合成：仅重置 ffmpeg_merge 步，不调用任何付费模型 */
-export const recomposeSchema = z.object({ idempotencyKey: requestKeySchema }).strict()
+/** 本地重新合成：仅重置 ffmpeg_merge 步，不调用任何付费模型；
+ *  可选 subtitleBurn 逐次改写成片字幕烧录（落 _compose，与 confirm 同内部键）——覆盖「已有成果 → 重新合成」这一 confirm 卡之外的入口；
+ *  不传 = 不改，沿用 run 既有值（默认烧录）。 */
+export const recomposeSchema = z.object({ idempotencyKey: requestKeySchema, subtitleBurn: z.boolean().optional() }).strict()
 
 /**
  * 参考登记变更（用途 + 逐镜绑定共用一个写入口）：role 缺省不改；

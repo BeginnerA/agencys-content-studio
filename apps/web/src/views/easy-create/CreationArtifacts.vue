@@ -73,6 +73,15 @@ const boardError = reactive<Partial<Record<CreationCandidateStep, string>>>({})
 const boardLoading = ref<CreationCandidateStep | null>(null)
 // 重合成说明按需展开（不常驻，避免和「应用选择」的提示抢视线）
 const recomposing = ref(false)
+// 成片字幕开关（「已有成果 → 重新合成」入口）：回显 progress.subtitleBurn；改动后点「重新合成」才落 _compose 生效（零计费、本地重合成）
+const subBurn = ref(true)
+watch(
+  () => props.s.state.detail?.progress?.subtitleBurn,
+  (v) => { subBurn.value = v !== false },
+  { immediate: true },
+)
+// 仅当已有成片（run completed 且已交付）时才展示字幕开关与常驻重合成入口
+const hasFilm = computed(() => !!props.s.state.detail?.result)
 let boardEpoch = 0
 
 function resetCandidates(): void {
@@ -154,12 +163,12 @@ async function onRecompose(): Promise<void> {
   const ok = await confirmDialog({
     title: '重新合成成片',
     message:
-      '本地合成：只把现有素材重新拼成成片，不调用任何付费生成模型、不产生生成费用。确认开始？',
+      `本地合成：只把现有素材重新拼成成片，不调用任何付费生成模型、不产生生成费用。${subBurn.value ? '成片将烧录字幕。' : '成片将不含字幕（字幕文件仍生成，可单独下载）。'}确认开始？`,
     confirmText: '重新合成',
   })
   if (!ok) return
   recomposing.value = false
-  await props.s.recompose()
+  await props.s.recompose(subBurn.value)
 }
 
 const selected = (choice: {
@@ -279,8 +288,16 @@ const shotActions = (shot: Shot): ShotActions => ({
         >
           <Icon name="pencil" :size="13" /> 局部返修
         </button>
+        <label
+          v-if="hasFilm"
+          class="ec-art-sub"
+          :title="subBurn ? '成片烧录硬字幕；取消后下次重新合成成片不含字幕' : '已关闭：重新合成后成片不含字幕（字幕文件仍生成可下载）'"
+        >
+          <input type="checkbox" :checked="subBurn" :disabled="s.state.busyAction" aria-label="在成片烧录字幕" @change="subBurn = ($event.target as HTMLInputElement).checked" />
+          <span><Icon name="doc" :size="13" /> 成片字幕</span>
+        </label>
         <button
-          v-if="s.state.selectionDirty"
+          v-if="s.state.selectionDirty || hasFilm"
           class="btn sm primary"
           type="button"
           :disabled="s.state.busyAction"
@@ -567,6 +584,23 @@ const shotActions = (shot: Shot): ShotActions => ({
   flex-wrap: wrap;
 }
 /* 局部返修/重新合成按钮尺寸由全局 .btn 管（桌面紧凑 / 触屏兜底） */
+/* 成片字幕开关：与同排按钮对齐；整行可点（命中区≥个 44px），不依赖文字大小 */
+.ec-art-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.ec-art-sub input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 /* 改选待合成提示条 */
 .ec-art-banner {
