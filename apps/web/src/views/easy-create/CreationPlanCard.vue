@@ -108,6 +108,7 @@ async function onConfirm(): Promise<void> {
     optBox.value?.reviewGate ?? false,
     optBox.value?.resolution || undefined,
     optBox.value?.brandApply ?? true,
+    optBox.value?.subtitleBurn ?? true,
   )
   acceptUnpriced.value = false
 }

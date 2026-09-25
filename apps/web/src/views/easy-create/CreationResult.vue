@@ -72,7 +72,7 @@ async function exportEditEx(format: EditExchangeFormat) {
       }}</span>
     </header>
     <p class="note">
-      已通过基础交付检查（可解码、时长与旁白字幕完整）。基础检查不等于内容质量或事实准确性保证。
+      已通过基础交付检查（可解码、时长与旁白字幕文件完整）。基础检查不等于内容质量或事实准确性保证。
     </p>
 
     <video

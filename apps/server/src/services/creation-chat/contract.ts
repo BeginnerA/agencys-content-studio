@@ -158,6 +158,9 @@ export const confirmationSchema = z.object({
   // 仅显式传 false 时确认卡逐次关闭。与 reviewGate/resolution 同一先例：是启动方式而非执行数据，
   // 不入 planHash（改开关不作废已确认方案）；缺省 true 时请求体与旧版逐字一致。
   brandApply: z.boolean().default(true),
+  // 字幕烧录开关：默认 true = 成片烧录硬字幕；仅显式传 false 时确认卡逐次关闭 → 成片画面不含字幕，
+  // 但 captions 步骤字幕文件（.srt）仍照常生成/校验、可单独下载。同 brandApply 先例：不入 planHash、零计费。
+  subtitleBurn: z.boolean().default(true),
 }).strict()
 export type Confirmation = z.infer<typeof confirmationSchema>
 

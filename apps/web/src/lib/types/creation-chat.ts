@@ -432,6 +432,8 @@ export interface CreationConfirmBody {
   resolution?: string
   /** 品牌叠加开关：缺省/true = 继承品牌；仅逐次关闭时传 false（不入 planHash，缺省不传键 → 请求体与旧版逐字一致） */
   brandApply?: boolean
+  /** 字幕烧录开关：缺省/true = 成片烧硬字幕；仅逐次关闭时传 false（成片不含硬字幕、字幕文件仍生成可下载；不入 planHash，缺省不传键） */
+  subtitleBurn?: boolean
 }
 
 /** 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */

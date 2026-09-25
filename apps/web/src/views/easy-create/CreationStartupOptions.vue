@@ -20,6 +20,8 @@ const reviewGate = ref(false)
 const resolution = ref('')
 // 品牌叠加：默认 on = 继承平台/项目已配品牌；取消 = 本次成片逐次不叠加（仅 false 时 confirm 传键）
 const brandApply = ref(true)
+// 字幕烧录：默认 on = 成片烧硬字幕；取消 = 成片不含字幕（字幕文件仍生成可单独下载）。独立于品牌，始终展示
+const subtitleBurn = ref(true)
 
 watch(
   () => props.pf?.resolutionOptions,
@@ -33,7 +35,7 @@ const bgmCount = computed(() => props.plan?.refs.filter((r) => r.role === 'bgm')
 // 免核验对白路线提示：仅预检判定当前对白方案走 estimated 时展示（诚实告知字幕非实测）
 const dialogueEstimated = computed(() => props.plan?.performance === 'dialogue' && props.pf?.dialogueMode === 'estimated')
 
-defineExpose({ reviewGate, resolution, brandApply })
+defineExpose({ reviewGate, resolution, brandApply, subtitleBurn })
 </script>
 
 <template>
@@ -42,6 +44,16 @@ defineExpose({ reviewGate, resolution, brandApply })
   <CreationResolution v-if="dynamic && pf?.resolutionOptions" v-model="resolution" :options="pf.resolutionOptions" />
   <!-- 品牌风格：仅平台/项目已配品牌（brandSummary.available）时展示；未配品牌不打扰 -->
   <CreationBrand v-if="pf?.brandSummary?.available" v-model="brandApply" :summary="pf.brandSummary" :bgm-count="bgmCount" />
+  <!-- 字幕烧录：独立于品牌（成片画面是否含硬字幕）；取消不删字幕文件，仍可单独下载 -->
+  <div class="ec-sub">
+    <label class="ec-sub-row">
+      <input type="checkbox" :checked="subtitleBurn" aria-label="在成片烧录字幕" @change="subtitleBurn = ($event.target as HTMLInputElement).checked" />
+      <span><Icon name="doc" :size="13" /> 在成片烧录字幕</span>
+    </label>
+    <p class="ec-sub-hint">
+      {{ subtitleBurn ? '台词将作为硬字幕烧进画面（不可在播放器关闭）。' : '已关闭：成片画面不含字幕；字幕文件（.srt）仍会生成，可在成果页单独下载或导入剪辑器。' }}
+    </p>
+  </div>
   <!-- 免核验对白告知条：模型原生出声、字幕按台词估算（非实测），交付前强制人工审阅 -->
   <p v-if="dialogueEstimated" class="ec-est-hint">
     <Icon name="alert" :size="13" /> 免核验对白：由视频模型原生生成人声与口型，字幕按批准台词估算（非实测），成片必须经你收听审阅后才会交付；如需逐字核验可在设置中恢复「严格 ASR 核验」。
@@ -63,5 +75,50 @@ defineExpose({ reviewGate, resolution, brandApply })
 .ec-est-hint .ic {
   color: var(--accent-h);
   vertical-align: -2px;
+}
+
+/* 字幕烧录开关：与 .ec-brand 同族版式（主控件与说明分行，触控区 ≥44px） */
+.ec-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.ec-sub-row {
+  font-size: 13px;
+  color: var(--text);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  line-height: 1.5;
+}
+
+.ec-sub-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ec-sub-row .ic {
+  color: var(--accent-h);
+}
+
+.ec-sub-row input {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.ec-sub-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.55;
 }
 </style>

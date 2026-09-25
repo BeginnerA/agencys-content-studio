@@ -72,12 +72,17 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
       const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',
       } }, tx)
-      // 品牌开关：仅逐次关闭时落 _compose.brandApply=false（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
+      // 启动方式开关落 _compose（brandApply / subtitleBurn）：仅逐次关闭时落对应 false 键（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
       // createRunRow→normalizeInput 只保留模板声明 inputs 与 _params（非声明的 _compose 会被静默丢弃），
       // 故与工作台 updateComposeConfig 同法在建好后直接落库该内部键；合成期 ffmpeg-merge 读取；retryCreation 显式克隆 _compose → 开关随续跑保留。
-      if (request.brandApply === false) {
+      const composeFlags: Record<string, boolean> = {}
+      if (request.brandApply === false) composeFlags.brandApply = false
+      if (request.subtitleBurn === false) composeFlags.subtitleBurn = false
+      if (Object.keys(composeFlags).length) {
         const cur = JSON.parse(run.input) as Record<string, unknown>
-        await tx.update(pipelineRuns).set({ input: JSON.stringify({ ...cur, _compose: { brandApply: false } }), updatedAt: Date.now() }).where(eq(pipelineRuns.id, run.id))
+        const prev = cur['_compose']
+        const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? (prev as Record<string, unknown>) : {}
+        await tx.update(pipelineRuns).set({ input: JSON.stringify({ ...cur, _compose: { ...base, ...composeFlags } }), updatedAt: Date.now() }).where(eq(pipelineRuns.id, run.id))
       }
       await tx.update(assets).set({ runId: run.id }).where(eq(assets.id, sources[0]!.id))
       await tx.update(creationSessions).set({ approvedPlan: JSON.stringify(recipe), status: 'started', runId: run.id, updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
@@ -180,7 +185,7 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       const newInput = JSON.parse(src.input) as Record<string, unknown>
       if (recipeRewritten) newInput.recipe = JSON.stringify(recipe)
       const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id, resumedFromRunId: src.id }, tx)
-      // 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
+      // 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply/subtitleBurn）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
       const srcCompose = (JSON.parse(src.input) as Record<string, unknown>)['_compose']
       if (srcCompose && typeof srcCompose === 'object' && !Array.isArray(srcCompose)) {
         const cur = JSON.parse(newRun.input) as Record<string, unknown>

@@ -336,7 +336,7 @@ async function refreshPreflight(): Promise<void> {
   }
 }
 
-async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?: string, brandApply = true): Promise<number | null> {
+async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?: string, brandApply = true, subtitleBurn = true): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
   if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction)
@@ -363,6 +363,8 @@ async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?:
       ...(resolution ? { resolution } : {}),
       // 品牌叠加：默认继承（true）不传该键（请求体与旧版逐字一致）；仅逐次关闭时传 false。不入 planHash、零计费
       ...(brandApply === false ? { brandApply: false } : {}),
+      // 字幕烧录：默认烧（true）不传该键；仅逐次关闭时传 false（成片不含硬字幕、字幕文件仍生成）。不入 planHash、零计费
+      ...(subtitleBurn === false ? { subtitleBurn: false } : {}),
     })
     await fetchDetail(id)
     // 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）

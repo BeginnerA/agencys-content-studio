@@ -56,6 +56,9 @@ export interface ComposeConfig {
   /** 轻松创作成片是否应用品牌叠加（水印/片头尾/字幕）：缺省/true = 继承平台/项目品牌；
    *  仅 false 时确认卡逐次关闭 → 严格合成分支 brand={}（与 _compose.brand 同级不同键，无碰撞）。 */
   brandApply?: boolean
+  /** 轻松创作成片是否烧录硬字幕：缺省/true = 烧录；仅 false 时确认卡逐次关闭 → ffmpeg-merge 不喂字幕滤镜，
+   *  但 captions 步骤字幕文件仍照常生成/校验（可单独下载）。与 brandApply 同级不同键（一个管有无字幕、一个管品牌样式）。 */
+  subtitleBurn?: boolean
   /** 多画幅原生渲染（合成内多路输出） */
   multi_aspect?: MultiAspectConfig
 }

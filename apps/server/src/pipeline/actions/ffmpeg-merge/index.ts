@@ -153,7 +153,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     } catch {
       // params 损坏不影响烧录
     }
-    ctx.log(`烧录字幕 ${basename(srtRelPath)}（SRT 时间轴${srtEndMs ? `，末条结束 ${Math.round(srtEndMs / 1000)}s` : ''}）`)
+    ctx.log(`字幕就绪 ${basename(srtRelPath)}（SRT 时间轴${srtEndMs ? `，末条结束 ${Math.round(srtEndMs / 1000)}s` : ''}）`)
   } else if (params['subtitle'] === true) {
     ctx.log('subtitle=true 但 inputs.subtitle 无 SRT 资产，已跳过烧录')
   }
@@ -420,9 +420,13 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 字幕平移：对齐逐 cue（cue ↔ 句序 = voices 序）与片头统移合并为一次重写；
   // Δ 全 0 不写副本；数量不符不平移（原样烧录）；无片头且无对齐 → 不进入（零 diff）
   const introShift = introArg ? round3(introArg.durSec) : 0
-  let srtAbs: string | null = srtRelPath ? absPathOf(srtRelPath) : null
+  // 字幕烧录开关（_compose.subtitleBurn，轻松创作确认卡逐次关）：false → 不喂 ffmpeg 字幕滤镜（成片不含硬字幕）；
+  // srtRelPath 保留供上方对白/严格 assertStrictSrt 校验使用，字幕文件仍照常生成可单独下载（仅切断烧录，不改严格交付前提）。
+  const subtitleBurn = composeCfg.subtitleBurn !== false
+  let srtAbs: string | null = srtRelPath && subtitleBurn ? absPathOf(srtRelPath) : null
+  if (srtRelPath && !subtitleBurn) ctx.log('字幕烧录已关闭：成片不含硬字幕（字幕文件仍生成，可单独下载）')
   let tempSrtAbs: string | null = null
-  if (!strict && srtRelPath && (alignPlan || introShift > 0)) {
+  if (!strict && subtitleBurn && srtRelPath && (alignPlan || introShift > 0)) {
     let shifts: number[] | null = null
     let alignMode = false
     if (alignPlan) {
@@ -549,7 +553,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   ctx.log(
-    `ffmpeg 开始合成（${segments.length} 段${hasAudio ? ' + 音频轨' : ''}${srtRelPath ? ' + 字幕' : ''}${bgmPath ? ' + BGM' : ''}${xfadePlan.enabled ? ' + 转场' : ''}${watermarkArg ? ' + 水印' : ''}${introArg ? ' + 片头' : ''}${outroArg ? ' + 片尾' : ''}${sfxList.length > 0 ? ` + 音效×${sfxList.length}` : ''}）…`,
+    `ffmpeg 开始合成（${segments.length} 段${hasAudio ? ' + 音频轨' : ''}${srtAbs ? ' + 字幕' : ''}${bgmPath ? ' + BGM' : ''}${xfadePlan.enabled ? ' + 转场' : ''}${watermarkArg ? ' + 水印' : ''}${introArg ? ' + 片头' : ''}${outroArg ? ' + 片尾' : ''}${sfxList.length > 0 ? ` + 音效×${sfxList.length}` : ''}）…`,
   )
   try {
     await runFfmpeg(ctx, ffmpeg, args, cwd)
@@ -573,7 +577,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
 
   const tags = ['final']
   if (hasAudio) tags.push('with_audio')
-  if (srtRelPath) tags.push('with_subtitle')
+  if (srtAbs) tags.push('with_subtitle')
   const videoAsset = await registerAsset(ctx.run.projectId, {
     runId: ctx.run.id,
     name: outName,
@@ -630,7 +634,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     tags,
     stepId: ctx.step.id,
   })
-  ctx.log(`成片落盘 asset#${videoAsset.id} → ${outRel}（${Math.round(size / 1024 / 1024)} MB${hasAudio ? '，含音轨' : ''}${srtRelPath ? '，含字幕' : ''}${introArg || outroArg ? '，含片头尾' : ''}）`)
+  ctx.log(`成片落盘 asset#${videoAsset.id} → ${outRel}（${Math.round(size / 1024 / 1024)} MB${hasAudio ? '，含音轨' : ''}${srtAbs ? '，含字幕' : ''}${introArg || outroArg ? '，含片头尾' : ''}）`)
 
   const assetIds = [videoAsset.id]
   if (wantCover) {

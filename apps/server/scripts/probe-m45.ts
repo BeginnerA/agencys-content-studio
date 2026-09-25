@@ -134,6 +134,19 @@ async function main(): Promise<void> {
       const both = readComposeConfig('{"_compose":{"brand":{"subtitle":{"color":"#FFFFFF"}},"brandApply":false}}')
       check(both.brandApply === false && !!both.brand, 'brand（对象覆盖）与 brandApply（开关）同级不同键，无碰撞')
 
+      // 字幕烧录开关解析（与 brandApply 同族：缺省=烧录，不误判为关）
+      check(readComposeConfig(null).subtitleBurn === undefined, '空 input → subtitleBurn=undefined（缺省烧录，不误判为关）')
+      check(readComposeConfig('{"_compose":{"subtitleBurn":false}}').subtitleBurn === false, '解析 _compose.subtitleBurn=false（关字幕烧录）')
+      check(readComposeConfig('{"_compose":{"subtitleBurn":true}}').subtitleBurn === true, '解析 _compose.subtitleBurn=true')
+      const bothSub = readComposeConfig('{"_compose":{"brandApply":false,"subtitleBurn":false}}')
+      check(bothSub.brandApply === false && bothSub.subtitleBurn === false, 'brandApply（品牌样式）与 subtitleBurn（有无硬字幕）同级不同键，无碰撞')
+
+      // 烧录门真值表：burn = srtExists && subtitleBurn !== false（ffmpeg-merge index.ts L423 同口径）
+      const burn = (srtExists: boolean, subtitleBurn: boolean | undefined): boolean => srtExists && subtitleBurn !== false
+      check(burn(true, undefined) === true, '缺省 subtitleBurn → 烧录（现状逐字节不变）')
+      check(burn(true, false) === false, 'subtitleBurn=false → 不烧（srtAbs 置空，无 subtitles 滤镜）')
+      check(burn(false, undefined) === false, '无 SRT 资产 → 无从烧录（与开关无关）')
+
       // ffmpeg-merge 门条件真值表：apply = !strict || (isCreationTemplate(key) && brandApply !== false)
       const apply = (strict: boolean, key: string, brandApply: boolean | undefined): boolean =>
         !strict || (isCreationTemplate(key) && brandApply !== false)
@@ -205,6 +218,22 @@ async function main(): Promise<void> {
       const rt = await retryCreation(d2.sessionId, { runId: rOff.runId, planRevision: s2After.planRevision, planHash: s2After.planHash, idempotencyKey: 'm45-retry1', acceptUnpriced: false, verifiedFailedTaskIds: [] })
       const runRetry = await runRow(rt.runId)
       check(readComposeConfig(runRetry.input).brandApply === false, '断点续跑克隆 _compose → brandApply=false 随续跑保留（开关非一次性消耗）')
+
+      // subtitleBurn=false：逐次关硬字幕 → 落 _compose.subtitleBurn=false（同 brandApply 通道，normalizeInput 丢弃后建后直写补回），不影响 brandApply
+      const dSub = await makeReadySession('dynamic', { branded: true })
+      const sSub = await sessRow(dSub.sessionId)
+      const rSub = await confirmCreation(dSub.sessionId, { planRevision: sSub.planRevision, planHash: sSub.planHash, idempotencyKey: 'm45-sub001', acceptUnpriced: false, subtitleBurn: false })
+      const runSub = await runRow(rSub.runId)
+      check((JSON.parse(runSub.input)._compose as { subtitleBurn?: unknown } | undefined)?.subtitleBurn === false, 'subtitleBurn=false → 落 run.input._compose.subtitleBurn=false')
+      check(readComposeConfig(runSub.input).subtitleBurn === false, 'ffmpeg-merge 门经 readComposeConfig 见 subtitleBurn=false → 不烧硬字幕')
+      check(readComposeConfig(runSub.input).brandApply === undefined, 'subtitleBurn 不影响 brandApply（两键独立，不误伤品牌叠加）')
+      // 断点续跑：_compose 整体克隆 → subtitleBurn=false 随续跑保留
+      await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, rSub.runId))
+      const sSubAfter = await sessRow(dSub.sessionId)
+      const rtSub = await retryCreation(dSub.sessionId, { runId: rSub.runId, planRevision: sSubAfter.planRevision, planHash: sSubAfter.planHash, idempotencyKey: 'm45-subretry', acceptUnpriced: false, verifiedFailedTaskIds: [] })
+      check(readComposeConfig((await runRow(rtSub.runId)).input).subtitleBurn === false, '断点续跑克隆 _compose → subtitleBurn=false 随续跑保留')
+      // 契约：confirmationSchema 缺省 subtitleBurn=true
+      check(confirmationSchema.parse({ planRevision: 1, planHash: 'a'.repeat(64), idempotencyKey: 'm45-sub-def', acceptUnpriced: false }).subtitleBurn === true, 'confirmationSchema 缺省 subtitleBurn=true（不传 = 维持烧录）')
 
       // 契约：confirmationSchema 默认 true / .strict() 拒未知键 / 路由级放行 false
       check(confirmationSchema.parse({ planRevision: 1, planHash: 'a'.repeat(64), idempotencyKey: 'm45-key-default', acceptUnpriced: false }).brandApply === true, 'confirmationSchema 缺省 brandApply=true')
