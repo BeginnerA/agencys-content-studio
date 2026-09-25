@@ -12,14 +12,21 @@ import AssetPreviewer from './previewer/index.vue'
 import AssetThumb from './AssetThumb.vue'
 import Icon from '../common/Icon.vue'
 
-const props = defineProps<{
-  assets: Asset[]
-  loading?: boolean
-  pickable?: boolean
-  selectable?: boolean
-  checkedIds?: number[]
-  removable?: boolean
-}>()
+// 注意：removable 是 Boolean 型 prop，Vue 对「省略的布尔 prop」会强制转成 false（非 undefined）。
+// 因此「默认开放删除」必须用 withDefaults 显式给 true，绝不能用 `removable !== false` 惯用法
+// （该写法在本组件里会退化成 false !== false === false，导致删除按钮永不出现）。
+const props = withDefaults(
+  defineProps<{
+    assets: Asset[]
+    loading?: boolean
+    pickable?: boolean
+    selectable?: boolean
+    checkedIds?: number[]
+    /** 是否开放预览器顶栏「删除」入口；默认 true（本组件唯一宿主=项目资产页需要删除） */
+    removable?: boolean
+  }>(),
+  { loading: false, pickable: false, selectable: false, removable: true },
+)
 const emit = defineEmits<{
   pick: [asset: Asset]
   favorite: [asset: Asset]
@@ -158,7 +165,7 @@ function qualityWarn(a: Asset): string | null {
       v-if="previewIdx !== null"
       :assets="assets"
       :index="previewIdx"
-      :removable="removable !== false"
+      :removable="removable"
       @close="previewIdx = null"
       @changed="(u) => emit('changed', u)"
       @removed="(u) => emit('removed', u)"

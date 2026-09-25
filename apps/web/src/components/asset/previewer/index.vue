@@ -374,6 +374,8 @@ const {
 .head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* 顶栏操作多时换行，避免窄窗口 / 长名称下最右的下载/新标签/删除/关闭被 .viewer 的 overflow:hidden 裁切 */
+  row-gap: 8px;
   gap: 10px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--border);
@@ -419,6 +421,7 @@ const {
   margin-left: auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
