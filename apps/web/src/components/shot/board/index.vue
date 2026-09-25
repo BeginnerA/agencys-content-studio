@@ -188,7 +188,7 @@ const {
         </button>
         <button
           class="wb-ab"
-          title="每组保留最新 / 收藏 / 在用版本，其余软删（回收空间前可回溯）"
+          title="每组保留最新 / 收藏 / 在用版本，其余移入回收站（资产页可还原）"
           :disabled="!canOperate"
           @click="doCleanupVersions"
         >

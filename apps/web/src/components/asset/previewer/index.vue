@@ -184,7 +184,7 @@ const {
               v-if="removable && !readonly"
               class="btn sm danger"
               :disabled="removeBusy"
-              title="软删除该资产（回收空间前可回溯）"
+              title="删除该资产（移入回收站，可还原）"
               @click="doRemove"
             >
               <Icon name="trash" :size="12" />

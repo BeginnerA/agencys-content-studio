@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AssetGrid from '../../components/asset/AssetGrid.vue'
+import AssetTrashModal from '../../components/asset/AssetTrashModal.vue'
 import { purposeText } from '../../lib/format'
 import type { ProjectDetailApi } from './use-project-detail'
 const props = defineProps<{ s: ProjectDetailApi }>()
@@ -30,6 +31,13 @@ const {
   onAssetRemoved,
   doCleanupVersions,
   doGc,
+  showTrash,
+  trashLoading,
+  trashItems,
+  trashActing,
+  openTrash,
+  restoreTrashed,
+  purgeTrashed,
 } = props.s
 </script>
 
@@ -90,18 +98,17 @@ const {
           <button
             class="btn sm"
             :disabled="assetBusy"
-            title="每组保留最新 / 收藏 / 在用版本，其余软删（可回溯）"
+            title="每组保留最新 / 收藏 / 在用版本，其余移入回收站（可还原）"
             @click="doCleanupVersions"
           >
             清理历史版本
           </button>
           <button
-            class="btn sm danger"
-            :disabled="assetBusy"
-            title="物理删除已清理资产的磁盘文件（不可逆）"
-            @click="doGc"
+            class="btn sm"
+            title="浏览已删除资产：逐条还原或彻底删除（清空回收站文件入口在弹窗内）"
+            @click="openTrash"
           >
-            回收空间
+            回收站
           </button>
           <button class="btn sm" @click="loadAssets()">刷新</button>
         </div>
@@ -146,6 +153,17 @@ const {
         仅显示前 {{ assets.length }} 个资产（共 {{ assetTotal }} 个）
       </div>
     </div>
+    <AssetTrashModal
+      v-if="showTrash"
+      :loading="trashLoading"
+      :items="trashItems"
+      :acting="trashActing"
+      :gc-busy="assetBusy"
+      @close="showTrash = false"
+      @restore="restoreTrashed"
+      @purge="purgeTrashed"
+      @gc="doGc"
+    />
   </section>
 </template>
 

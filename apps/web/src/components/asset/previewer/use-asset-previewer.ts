@@ -361,7 +361,7 @@ export function useAssetPreviewer(
     void saveTags(curTags.value.filter((x) => x !== t))
   }
 
-  // ===== 资产删除（removable 宿主开放；软删可回溯；成功即关预览，列表刷新由宿主处理） =====
+  // ===== 资产删除（removable 宿主开放；移入回收站可还原；成功即关预览，列表刷新由宿主处理） =====
   const removeBusy = ref(false)
   const removeErr = ref('')
 
@@ -370,7 +370,7 @@ export function useAssetPreviewer(
     if (props.readonly || !a || removeBusy.value) return
     const ok = await confirmDialog({
       title: '删除资产',
-      message: `将删除资产「${a.name}」：软删除（回收空间前可回溯；磁盘文件待 GC 回收）。确定删除？`,
+      message: `将删除资产「${a.name}」：移入回收站（可在资产页「回收站」还原或彻底删除；磁盘文件保留）。确定删除？`,
       confirmText: '确认删除',
       danger: true,
     })

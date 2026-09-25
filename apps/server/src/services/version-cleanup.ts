@@ -166,3 +166,63 @@ function removeFile(abs: string): number {
     return -1
   }
 }
+
+/** 单个文件是否存在（还原前校验物理文件未被 GC 清除） */
+function fileExists(abs: string): boolean {
+  try { statSync(abs); return true } catch { return false }
+}
+
+/** 资产回收站领域错误（路由映射 HTTP 状态码：not_found→404 / bad_state|file_purged→409 / 其余→400） */
+export class CleanupError extends Error {
+  constructor(public code: string, message: string) {
+    super(message)
+  }
+}
+
+/**
+ * 回收站还原：清除软删标记（deletedAt→null）使资产重回列表。
+ * 拒绝：未删除（幂等提示）；物理文件已被「回收空间/清空回收站」删除 → 无法还原（否则会得到坏资产）。
+ */
+export async function restoreAsset(assetId: number): Promise<Asset> {
+  const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
+  const a = rows[0]
+  if (!a) throw new CleanupError('not_found', `资产 ${assetId} 不存在`)
+  if (a.deletedAt === null) throw new CleanupError('bad_state', '该资产未被删除')
+  if (a.relPath && !fileExists(absPathOf(a.relPath)))
+    throw new CleanupError('file_purged', '该资产文件已被清除，无法还原')
+  const updated = await db
+    .update(assets)
+    .set({ deletedAt: null, updatedAt: Date.now() })
+    .where(eq(assets.id, assetId))
+    .returning()
+  log.info(`还原资产 #${assetId}`)
+  return updated[0]!
+}
+
+/**
+ * 回收站彻底删除（单条，不可逆）：物理删原文件 + 缩略图缓存，并硬删数据行。
+ * 说明：区别于项目级 gcProject（仅删文件、保留审计行）——本操作连记录一并移除，条目从回收站消失。
+ * 历史运行 / 画布对该 assetId 的软引用将变悬空（消费侧已按「已删除/不可用」容错）。
+ */
+export async function purgeAsset(assetId: number): Promise<{ files: number; freedBytes: number }> {
+  const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
+  const a = rows[0]
+  if (!a) throw new CleanupError('not_found', `资产 ${assetId} 不存在`)
+  let files = 0
+  let freedBytes = 0
+  if (a.relPath) {
+    const s = removeFile(absPathOf(a.relPath))
+    if (s >= 0) {
+      files += 1
+      freedBytes += s
+    }
+  }
+  const ts = removeFile(thumbAbsPath(a.projectId, a.id))
+  if (ts >= 0) {
+    files += 1
+    freedBytes += ts
+  }
+  await db.delete(assets).where(eq(assets.id, assetId))
+  log.info(`彻底删除资产 #${assetId}：${files} 文件 / ${freedBytes} 字节`)
+  return { files, freedBytes }
+}

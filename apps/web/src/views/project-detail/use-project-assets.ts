@@ -1,10 +1,10 @@
 /**
  * 项目详情页「资产操作」composable（自 use-project-detail.ts 原样搬出，行为零变更）：
- * 收藏/版本清理/回收空间 + 标签聚合/批量打标 + 上传素材 + URL 抓取正文入库。
+ * 收藏/版本清理/清空回收站文件/回收站还原与彻底删除 + 标签聚合/批量打标 + 上传素材 + URL 抓取正文入库。
  * 状态真源仍归本组合（视图经 useProjectDetailPage 装配后同名解构使用）。
  */
 import { ref, computed, type Ref } from 'vue'
-import { assetApi, uploadFiles } from '../../lib/api'
+import { assetApi, projectApi, uploadFiles } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { fmtSize } from '../../lib/format'
 import type { Asset } from '../../lib/types'
@@ -19,7 +19,7 @@ export function useProjectAssetOps(ctx: {
 }) {
   const { projectId, assets, assetTotal, assetErr, loadAssets, loadCore } = ctx
 
-  // ===== 收藏 / 版本清理 / 回收空间 =====
+  // ===== 收藏 / 版本清理 / 回收站 =====
   const favOnly = ref(false)
   const assetNotice = ref('')
   const assetBusy = ref(false)
@@ -47,20 +47,20 @@ export function useProjectAssetOps(ctx: {
     if (i >= 0) assets.value[i] = u
   }
 
-  /** 资产删除（预览器 removed → 列表原地移除 + 通知；后端软删可回溯） */
+  /** 资产删除（预览器 removed → 列表原地移除 + 通知；后端软删进回收站可还原） */
   function onAssetRemoved(a: Asset) {
     const i = assets.value.findIndex((x) => x.id === a.id)
     if (i >= 0) assets.value.splice(i, 1)
     assetTotal.value = Math.max(0, assetTotal.value - 1)
-    assetNotice.value = `已删除资产「${a.name}」（软删除，回收空间前可回溯）`
+    assetNotice.value = `已删除资产「${a.name}」，可在「回收站」还原或彻底删除`
   }
 
-  /** 项目级版本组批量清理（保留最新 / 收藏 / 在用；软删可回溯） */
+  /** 项目级版本组批量清理（保留最新 / 收藏 / 在用；其余移入回收站） */
   async function doCleanupVersions() {
     const ok = await confirmDialog({
       title: '清理历史版本',
       message:
-        '将清理本项目图片 / 视频的历史版本：每组保留最新 1 个、已收藏的、以及正在被流水线引用的；其余软删除（回收空间前可回溯）。',
+        '将清理本项目图片 / 视频的历史版本：每组保留最新 1 个、已收藏的、以及正在被流水线引用的；其余移入回收站（可在回收站还原）。',
       confirmText: '开始清理',
     })
     if (!ok) return
@@ -78,13 +78,13 @@ export function useProjectAssetOps(ctx: {
     }
   }
 
-  /** 回收空间（物理删除已清理资产文件；不可逆） */
+  /** 清空回收站文件（入口在回收站弹窗内；物理删除回收站内资产的磁盘文件；不可恢复；记录保留在回收站可继续彻底删除） */
   async function doGc() {
     const ok = await confirmDialog({
-      title: '回收空间',
+      title: '清空回收站文件',
       message:
-        '将物理删除本项目「已清理」资产的磁盘文件（不可恢复；数据库记录保留）。建议先执行「清理历史版本」。',
-      confirmText: '确认回收',
+        '将物理删除回收站内所有资产的磁盘文件（不可恢复；无法再还原）。数据库记录保留，可在本弹窗逐条彻底删除记录。',
+      confirmText: '确认清空',
       danger: true,
     })
     if (!ok) return
@@ -93,12 +93,80 @@ export function useProjectAssetOps(ctx: {
     assetNotice.value = ''
     try {
       const r = await assetApi.gc(projectId)
-      assetNotice.value = `已回收 ${r.files} 个文件，释放 ${fmtSize(r.freed_bytes)}`
+      assetNotice.value = `已清空回收站文件：${r.files} 个，释放 ${fmtSize(r.freed_bytes)}`
       await loadAssets({ silent: true })
+      // 弹窗内操作：文件清空后同步刷新回收站列表（记录保留、还原将不可用）
+      if (showTrash.value) await loadTrash()
     } catch (e) {
       assetErr.value = e instanceof Error ? e.message : String(e)
     } finally {
       assetBusy.value = false
+    }
+  }
+
+  // ===== 回收站（软删资产浏览 / 还原 / 彻底删除） =====
+  const showTrash = ref(false)
+  const trashLoading = ref(false)
+  const trashItems = ref<Asset[]>([])
+  /** 正在操作的回收站条目 id（还原/彻底删除互斥，null = 空闲） */
+  const trashActing = ref<number | null>(null)
+
+  async function loadTrash() {
+    trashLoading.value = true
+    try {
+      const r = await projectApi.assets(projectId, '?trash=1&limit=500')
+      trashItems.value = r.items
+    } catch (e) {
+      assetErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      trashLoading.value = false
+    }
+  }
+
+  function openTrash() {
+    showTrash.value = true
+    void loadTrash()
+  }
+
+  /** 还原：清软删标记回活跃列表（文件已被「清空回收站文件」删除 → 后端 409 拒绝） */
+  async function restoreTrashed(a: Asset) {
+    if (trashActing.value != null) return
+    trashActing.value = a.id
+    assetErr.value = ''
+    try {
+      await assetApi.restore(a.id)
+      trashItems.value = trashItems.value.filter((x) => x.id !== a.id)
+      assetNotice.value = `已还原资产「${a.name}」`
+      await loadAssets({ silent: true })
+      // 项目详情 assetCount 随软删状态变化 → 静默刷核心区
+      void loadCore({ silent: true })
+    } catch (e) {
+      assetErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      trashActing.value = null
+    }
+  }
+
+  /** 彻底删除：物理删文件 + 硬删记录（不可逆，二次确认） */
+  async function purgeTrashed(a: Asset) {
+    if (trashActing.value != null) return
+    const ok = await confirmDialog({
+      title: '彻底删除资产',
+      message: `将物理删除「${a.name}」的磁盘文件并移除记录，不可恢复。`,
+      confirmText: '彻底删除',
+      danger: true,
+    })
+    if (!ok) return
+    trashActing.value = a.id
+    assetErr.value = ''
+    try {
+      const r = await assetApi.purge(a.id)
+      trashItems.value = trashItems.value.filter((x) => x.id !== a.id)
+      assetNotice.value = `已彻底删除「${a.name}」，释放 ${fmtSize(r.freed_bytes)}`
+    } catch (e) {
+      assetErr.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      trashActing.value = null
     }
   }
 
@@ -227,6 +295,14 @@ export function useProjectAssetOps(ctx: {
     onAssetRemoved,
     doCleanupVersions,
     doGc,
+    showTrash,
+    trashLoading,
+    trashItems,
+    trashActing,
+    openTrash,
+    loadTrash,
+    restoreTrashed,
+    purgeTrashed,
     allTags,
     tagSelectMode,
     checkedIds,

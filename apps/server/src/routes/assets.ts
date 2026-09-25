@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { readFileSync, statSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
@@ -11,7 +11,7 @@ import { ContentEditError, updateAssetContent, EDITABLE_PURPOSES } from '../serv
 import { currentRevision } from '../services/provenance'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
-import { cleanupVersions, gcProject } from '../services/version-cleanup'
+import { cleanupVersions, gcProject, restoreAsset, purgeAsset, CleanupError } from '../services/version-cleanup'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -30,7 +30,9 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(Math.floor(limitNum), 500) : 200
   const offsetNum = Number(offsetRaw)
   const offset = Number.isFinite(offsetNum) && offsetNum > 0 ? Math.floor(offsetNum) : 0
-  const conds = [eq(assets.projectId, projectId), isNull(assets.deletedAt)]
+  // ?trash=1 → 回收站视图（仅已软删行）；默认列表仅未删行
+  const trash = c.req.query('trash') === '1'
+  const conds = [eq(assets.projectId, projectId), trash ? isNotNull(assets.deletedAt) : isNull(assets.deletedAt)]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))
   // tag 过滤下推 SQL（json_each 展开数组做 JSON 精确成员匹配——含引号/反斜杠/跨元素拼接串均无误配漏配；
@@ -214,12 +216,42 @@ assetsRoutes.patch('/assets/:id/content', h(async (c) => {
   }
 }))
 
-// DELETE /assets/:id —— 逻辑删除（物理文件留待 GC）
+// DELETE /assets/:id —— 逻辑删除（进入回收站，可还原；物理文件留待 GC）
 assetsRoutes.delete('/assets/:id', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
   await db.update(assets).set({ deletedAt: Date.now(), updatedAt: Date.now() }).where(eq(assets.id, a.id))
   return c.json({ ok: true })
+}))
+
+// POST /assets/:id/restore —— 回收站还原（清 deletedAt；文件已被清除 → 409 file_purged）
+assetsRoutes.post('/assets/:id/restore', h(async (c) => {
+  const id = idParam(c)
+  try {
+    const a = await restoreAsset(id)
+    return c.json({ asset: toAssetView(a) })
+  } catch (err) {
+    if (err instanceof CleanupError) {
+      const status = err.code === 'not_found' ? 404 : err.code === 'bad_state' || err.code === 'file_purged' ? 409 : 400
+      throw new HttpError(status, err.code, err.message)
+    }
+    throw err
+  }
+}))
+
+// DELETE /assets/:id/purge —— 回收站彻底删除（物理删文件 + 硬删行，不可逆）
+assetsRoutes.delete('/assets/:id/purge', h(async (c) => {
+  const id = idParam(c)
+  try {
+    const r = await purgeAsset(id)
+    return c.json({ ok: true, files: r.files, freed_bytes: r.freedBytes })
+  } catch (err) {
+    if (err instanceof CleanupError) {
+      const status = err.code === 'not_found' ? 404 : 400
+      throw new HttpError(status, err.code, err.message)
+    }
+    throw err
+  }
 }))
 
 // POST /assets/:id/check —— 单资产图像有效性检测（同步；仅图片；结果写 params.quality）
@@ -232,7 +264,7 @@ assetsRoutes.post('/assets/:id/check', h(async (c) => {
   return c.json({ asset: toAssetView(updated) })
 }))
 
-// POST /projects/:id/assets/cleanup-versions —— 项目级版本组批量清理（保留最新/收藏/在用；软删可回溯）
+// POST /projects/:id/assets/cleanup-versions —— 项目级版本组批量清理（保留最新/收藏/在用；其余移入回收站可还原）
 assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
   const projectId = idParam(c)
   const result = await cleanupVersions({ projectId })
@@ -245,7 +277,7 @@ assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
   })
 }))
 
-// POST /projects/:id/assets/gc —— 回收空间（删除已清理资产的物理文件；不可逆；行保留）
+// POST /projects/:id/assets/gc —— 清空回收站文件（删除回收站内资产的物理文件；不可逆；行保留可逐条 purge）
 assetsRoutes.post('/projects/:id/assets/gc', h(async (c) => {
   const projectId = idParam(c)
   const result = await gcProject(projectId)
@@ -289,6 +321,7 @@ export function toAssetView(a: typeof assets.$inferSelect): Record<string, unkno
     params,
     tags,
     isFavorite: a.isFavorite,
+    deletedAt: a.deletedAt,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
     urls: {

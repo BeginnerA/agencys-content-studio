@@ -12,6 +12,8 @@
  *   imagecheck ffmpeg lavfi 样本（黑 / 灰 / 正常 / 截断 / 缺失）→ 判定矩阵 + parseStats 容错 +
  *              checkAndRecordAsset 集成（params 他键保留）+ recordQuality 容错（null / 坏 JSON / 数组）
  *   gc         gcProject：原文件 + thumb 回收 / freedBytes 精确 / 行保留审计 / 活跃不碰 / 幂等
+ *   trash      回收站服务层：restoreAsset（软删→还原 / bad_state / file_purged / not_found）+
+ *              purgeAsset（物理删文件 + 硬删行 / freedBytes / not_found）
  *   board      toVersionView：source / isFavorite / quality 摘要（stats/checkedAt 不下发）+ 参数容错
  *   merge-guard computeShotSegments warnings：异常图警示文案矩阵 + 正常/缺失零警告 + clips 不检 + M7 不破
  *   regression M7/M11 关键纯函数交叉（三时长路径 / 双口径 / 对齐回退）
@@ -44,7 +46,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['cleanup', 'imagecheck', 'gc', 'board', 'merge-guard', 'regression'] as const
+const SECTIONS = ['cleanup', 'imagecheck', 'gc', 'trash', 'board', 'merge-guard', 'regression'] as const
 
 async function main(): Promise<void> {
   // src 模块全部动态加载（环境变量已隔离）
@@ -396,6 +398,49 @@ async function main(): Promise<void> {
     check(g2.files === 0 && g2.freedBytes === 0, `回收幂等（files=${g2.files} freed=${g2.freedBytes}）`)
   }
 
+  const sectionTrash = async (): Promise<void> => {
+    const { restoreAsset, purgeAsset, CleanupError } = await import('../src/services/version-cleanup')
+    const pid = await mkProject('M12 探针项目（回收站）')
+    const mkRow = async (relPath: string | null, deleted: boolean, name: string): Promise<number> =>
+      (
+        await db
+          .insert(assets)
+          .values({ projectId: pid, kind: 'image', name, relPath, tags: '[]', createdAt: T0, updatedAt: T0, deletedAt: deleted ? T0 + 1 : null })
+          .returning()
+      )[0]!.id
+
+    // r1：已软删 + 文件在 → 可还原
+    const rel1 = relPathOf(pid, 'shot_image', 'tr-r1.png')
+    writeFileSync(absPathOf(rel1), Buffer.alloc(90, 5))
+    const r1 = await mkRow(rel1, true, 'tr-r1.png')
+    const restored = await restoreAsset(r1)
+    check(restored.deletedAt === null && (await getAsset(r1)).deletedAt === null, 'restore：软删行 → deletedAt=null')
+    check(existsSync(absPathOf(rel1)), 'restore：物理文件不受影响')
+
+    // 幂等拒绝：未删除行 → bad_state；不存在 → not_found；文件已被 GC → file_purged
+    const eBad = await errOf(() => restoreAsset(r1))
+    check(eBad instanceof CleanupError && eBad.code === 'bad_state', 'restore：未删除行 → bad_state')
+    const eNF = await errOf(() => restoreAsset(999_999))
+    check(eNF instanceof CleanupError && eNF.code === 'not_found', 'restore：不存在 id → not_found')
+    const rel2 = relPathOf(pid, 'shot_image', 'tr-r2.png') // 不写文件（模拟已被回收空间清除）
+    const r2 = await mkRow(rel2, true, 'tr-r2.png')
+    const ePurged = await errOf(() => restoreAsset(r2))
+    check(ePurged instanceof CleanupError && ePurged.code === 'file_purged', 'restore：文件已清除 → file_purged')
+    check((await getAsset(r2)).deletedAt !== null, 'restore 被拒：行保持软删状态')
+
+    // purge：物理删原文件 + thumb，硬删行
+    const rel3 = relPathOf(pid, 'shot_image', 'tr-r3.png')
+    writeFileSync(absPathOf(rel3), Buffer.alloc(70, 6))
+    const r3 = await mkRow(rel3, true, 'tr-r3.png')
+    writeFileSync(thumbAbsPath(pid, r3), Buffer.alloc(30, 7))
+    const pr = await purgeAsset(r3)
+    check(pr.files === 2 && pr.freedBytes === 100, `purge：files=2 / freed=100B（实际 ${pr.files} / ${pr.freedBytes}）`)
+    check(!existsSync(absPathOf(rel3)) && !existsSync(thumbAbsPath(pid, r3)), 'purge：原文件 + thumb 均物理删除')
+    check((await db.select().from(assets).where(eq(assets.id, r3)).limit(1)).length === 0, 'purge：数据行硬删（回收站条目消失）')
+    const ePrNF = await errOf(() => purgeAsset(999_999))
+    check(ePrNF instanceof CleanupError && ePrNF.code === 'not_found', 'purge：不存在 id → not_found')
+  }
+
   const sectionBoard = async (): Promise<void> => {
     const { toVersionView } = await import('../src/services/shot')
     const stub = (over: Partial<Asset>): Asset =>
@@ -552,6 +597,7 @@ async function main(): Promise<void> {
     cleanup: sectionCleanup,
     imagecheck: sectionImagecheck,
     gc: sectionGc,
+    trash: sectionTrash,
     board: sectionBoard,
     'merge-guard': sectionMergeGuard,
     regression: sectionRegression,

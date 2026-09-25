@@ -108,7 +108,7 @@ export interface CleanupResult {
   note: string
 }
 
-/** 回收空间结果（物理删除已清理资产文件；files=回收文件数） */
+/** 清空回收站文件结果（物理删除回收站内资产文件；files=回收文件数；记录保留） */
 export interface GcResult {
   ok: boolean
   files: number

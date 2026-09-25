@@ -131,6 +131,8 @@ export interface Asset {
   isFavorite: number
   createdAt: number
   updatedAt: number
+  /** 软删时间戳（非空 = 在回收站；?trash=1 列表附带） */
+  deletedAt?: number | null
   urls: AssetUrls
   /** 可编辑文本资产的当前内容版本号（详情接口附带；供乐观锁与前端缓存串 ?v=） */
   contentRevision?: number

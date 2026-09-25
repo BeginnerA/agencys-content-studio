@@ -309,7 +309,7 @@ export const shotApi = {
       `/api/v1/runs/${runId}/recompose`,
       { step_key: stepKey },
     ),
-  /** 版本组批量清理（保留最新/收藏/在用；软删可回溯；不触发执行） */
+  /** 版本组批量清理（保留最新/收藏/在用；其余移入回收站可还原；不触发执行） */
   cleanup: (runId: number, stepKey: string) =>
     api.post<CleanupResult & { run_id: number; step_key: string }>(
       `/api/v1/runs/${runId}/shots/cleanup`,

@@ -363,12 +363,12 @@ export function useShotBoardOps(ctx: {
     }
   }
 
-  /** 版本组批量清理（每组保留最新 / 收藏 / 在用；软删可回溯） */
+  /** 版本组批量清理（每组保留最新 / 收藏 / 在用；其余移入回收站可还原） */
   async function doCleanupVersions() {
     const ok = await confirmDialog({
       title: '清理旧版本',
       message:
-        '将清理本步骤的历史产物：每个镜头保留最新 1 版、已收藏的、以及正在使用的（成片引用）；其余软删除（回收空间前可回溯）。不影响当前选中与成片。',
+        '将清理本步骤的历史产物：每个镜头保留最新 1 版、已收藏的、以及正在使用的（成片引用）；其余移入回收站（可在资产页「回收站」还原）。不影响当前选中与成片。',
       confirmText: '开始清理',
     })
     if (!ok) return
