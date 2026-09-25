@@ -80,6 +80,12 @@ export async function applyShotSelection(
     .from(genTasks)
     .where(and(eq(genTasks.runId, runId), eq(genTasks.stepId, step.id)))
   const taskIds = new Set(tasks.map((t) => t.id))
+  // 续跑继承产物：succeeded 任务的 resultAssetId 可指向旧 run 资产（其行 task_id 仍属旧任务）。
+  // board 版本组已按引用并入这类资产（展示可选）→ 校验同口径放行，否则合并全量 picks 时
+  // 未被动过的复用镜会把整单改选拦死在「不属于该步骤生成任务」（仅限本步任务的当前产物，不放宽到任意跨 run 资产）。
+  const carriedResultIds = new Set(
+    tasks.filter((t) => t.status === 'succeeded' && t.resultAssetId != null).map((t) => t.resultAssetId as number),
+  )
   const shotOrder = new Map(src.shots.map((s, i) => [s.id, i]))
   const kindNeed = step.actionKey === 'ai_video' ? 'video' : 'image'
 
@@ -126,7 +132,7 @@ export async function applyShotSelection(
       if (a.kind !== kindNeed) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 类型不符（需 ${kindNeed}）`)
       if (shotIdOfAsset(a) !== r.shotId) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 与镜头 ${r.shotId} 不匹配`)
       if (a.taskId != null) {
-        if (!taskIds.has(a.taskId)) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤生成任务`)
+        if (!taskIds.has(a.taskId) && !carriedResultIds.has(r.assetId)) throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤生成任务`)
       } else if (a.stepId !== step.id || a.runId !== run.id) {
         // 上传资产（taskId=null）：须为本步骤本 run 的入库行
         throw new WorkbenchError('bad_asset', `资产 #${r.assetId} 不属于该步骤上传资产`)

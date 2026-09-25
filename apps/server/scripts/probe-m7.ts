@@ -582,6 +582,83 @@ async function main(): Promise<void> {
     const eKind = await errOf(() => applyShotSelection(s.runId, 'gen_motion', { picks: [{ shot_id: 's01', asset_id: s.a1v2 }] }))
     check(eKind instanceof WorkbenchError && eKind.code === 'bad_asset' && eKind.message.includes('video'), 'ai_video 步骤拒绝 image 资产（需 video）')
 
+    // ---- 续跑继承产物（复用资产）可改选：资产行 task_id 属旧 run 任务，但为本 run succeeded 任务的 resultAssetId ----
+    const s5 = await seedRun()
+    const legacyTask = (
+      await db
+        .insert(genTasks)
+        .values({
+          projectId: pid,
+          runId: s5.runId - 1,
+          stepId: s5.imgStepId,
+          kind: 'image',
+          provider: 'probe-legacy',
+          params: JSON.stringify({ shotId: 's01' }),
+          status: 'succeeded',
+          attempts: 1,
+          createdAt: T0 - 10,
+          updatedAt: T0 - 10,
+          completedAt: T0 - 10,
+        })
+        .returning()
+    )[0]!.id
+    const legacyImgBytes = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')
+    const legacyRel = relPathOf(pid, 'shot_image', `m7-legacy-${s5.runId}.png`)
+    writeFileSync(absPathOf(legacyRel), legacyImgBytes)
+    const legacyAsset = (
+      await db
+        .insert(assets)
+        .values({
+          projectId: pid,
+          stepId: s5.imgStepId,
+          taskId: legacyTask,
+          runId: s5.runId - 1,
+          kind: 'image',
+          purpose: 'shot_image',
+          name: 'legacy.png',
+          relPath: legacyRel,
+          params: JSON.stringify({ shotId: 's01' }),
+          tags: '[]',
+          createdAt: T0 - 5,
+          updatedAt: T0 - 5,
+        })
+        .returning()
+    )[0]!.id
+    await db.update(genTasks).set({ resultAssetId: legacyAsset }).where(eq(genTasks.id, s5.t1))
+    const r5 = await applyShotSelection(s5.runId, 'gen_images', {
+      picks: [
+        { shot_id: 's01', asset_id: s5.a1v1 },
+        { shot_id: 's02', asset_id: s5.a2 },
+      ],
+    })
+    check(JSON.stringify(r5.assetIds) === JSON.stringify([s5.a1v1, s5.a2]), '混合提交（含未动过的在用镜）不被继承资产拦死')
+    const r6 = await applyShotSelection(s5.runId, 'gen_images', { picks: [{ shot_id: 's01', asset_id: legacyAsset }] })
+    check(JSON.stringify(r6.assetIds) === JSON.stringify([legacyAsset]), '改选命中续跑继承产物（与 board 版本组同口径放行）')
+    const legacyOrphan = (
+      await db
+        .insert(assets)
+        .values({
+          projectId: pid,
+          stepId: s5.imgStepId,
+          taskId: legacyTask,
+          runId: s5.runId - 1,
+          kind: 'image',
+          purpose: 'shot_image',
+          name: 'legacy-orphan.png',
+          relPath: legacyRel,
+          params: JSON.stringify({ shotId: 's01' }),
+          tags: '[]',
+          createdAt: T0 - 4,
+          updatedAt: T0 - 4,
+        })
+        .returning()
+    )[0]!.id
+    const eCarry = await errOf(() => applyShotSelection(s5.runId, 'gen_images', { picks: [{ shot_id: 's01', asset_id: legacyOrphan }] }))
+    check(
+      eCarry instanceof WorkbenchError && eCarry.code === 'bad_asset' && eCarry.message.includes('不属于该步骤'),
+      `旧 run 任务但非本步任务当前产物 → 仍拒（放行不扩大化；实际 ${eCarry instanceof WorkbenchError ? `${eCarry.code}：${eCarry.message}` : String(eCarry)}）`,
+    )
+
     // ---- 边缘资产 ----
     const pid2 = (
       await db
