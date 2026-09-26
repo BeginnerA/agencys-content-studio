@@ -26,6 +26,15 @@ export interface ComposeInputForm {
   sfxVolume: number
   subtitleBurn: boolean
   bgmChoice: BgmChoice
+  /** 逐镜音效换绑/移除（仅覆盖当前有音效的镜；键=shotId，值语义同 BgmChoice） */
+  sfxChoices: Record<string, BgmChoice>
+}
+
+/** 每镜在用音效基线（来自 listSfx；无音效镜不入表） */
+export interface SfxBaseline {
+  shotId: string
+  assetId: number
+  name: string | null
 }
 
 export interface ComposeInputReworkHooks {
@@ -35,7 +44,12 @@ export interface ComposeInputReworkHooks {
 const numOr = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
 
 /** 表单草稿 → 结构化变更：与 baseline 逐字段 diff；无变化返回空数组（交 UI 禁用以避免 no_effect） */
-export function buildComposeInputChanges(form: ComposeInputForm, base: ComposeConfig, bgmAssetId: number | null): ComposeInputChangeView[] {
+export function buildComposeInputChanges(
+  form: ComposeInputForm,
+  base: ComposeConfig,
+  bgmAssetId: number | null,
+  sfxByShot: Record<string, number> = {},
+): ComposeInputChangeView[] {
   const patch: Record<string, unknown> = {}
   const baseTransition = base.transition ?? 'none'
   if (form.transition !== baseTransition) patch.transition = form.transition
@@ -57,6 +71,12 @@ export function buildComposeInputChanges(form: ComposeInputForm, base: ComposeCo
   } else if (typeof form.bgmChoice === 'number') {
     if (form.bgmChoice !== bgmAssetId) changes.push({ kind: 'bgm', assetId: form.bgmChoice })
   }
+  // sfx：仅覆盖当前有音效的镜（换绑到同类另一音频 / 移除）；新增音效走原绑定路径，不入本返修闸
+  for (const shotId of Object.keys(sfxByShot).sort()) {
+    const choice = form.sfxChoices[shotId]
+    if (choice === 'remove') changes.push({ kind: 'sfx', shotId, assetId: null })
+    else if (typeof choice === 'number' && choice !== sfxByShot[shotId]) changes.push({ kind: 'sfx', shotId, assetId: choice })
+  }
   return changes
 }
 
@@ -74,6 +94,7 @@ export function useComposeInputRework(
   const capability = ref<ComposeInputCapabilityView | null>(null)
   const baseConfig = ref<ComposeConfig>({})
   const baseBgm = ref<{ assetId: number | null; name: string | null }>({ assetId: null, name: null })
+  const baseSfx = ref<SfxBaseline[]>([])
   const candidates = ref<Asset[]>([])
   const form = ref<ComposeInputForm>({
     transition: 'none',
@@ -83,6 +104,7 @@ export function useComposeInputRework(
     sfxVolume: 1,
     subtitleBurn: true,
     bgmChoice: 'keep',
+    sfxChoices: {},
   })
 
   const loading = ref(false)
@@ -97,12 +119,19 @@ export function useComposeInputRework(
   let epoch = 0
 
   const supported = computed(() => capability.value?.supported === true)
-  const changes = computed(() => buildComposeInputChanges(form.value, baseConfig.value, baseBgm.value.assetId))
+  const sfxByShot = computed<Record<string, number>>(() => {
+    const m: Record<string, number> = {}
+    for (const s of baseSfx.value) m[s.shotId] = s.assetId
+    return m
+  })
+  const changes = computed(() => buildComposeInputChanges(form.value, baseConfig.value, baseBgm.value.assetId, sfxByShot.value))
   const dirty = computed(() => changes.value.length > 0)
   const changeCount = computed(() => changes.value.length)
 
   /** 用后端返回的基准配置回填表单初值（显示口径与 ComposeSettingsModal 一致） */
-  function seedForm(cfg: ComposeConfig, bgmAssetId: number | null): void {
+  function seedForm(cfg: ComposeConfig, bgmAssetId: number | null, sfxShots: string[]): void {
+    const sfxChoices: Record<string, BgmChoice> = {}
+    for (const shotId of sfxShots) sfxChoices[shotId] = 'keep'
     form.value = {
       transition: cfg.transition ?? 'none',
       transitionDuration: numOr(cfg.transition_duration, 0.5),
@@ -111,6 +140,7 @@ export function useComposeInputRework(
       sfxVolume: numOr(cfg.sfx_volume, 1),
       subtitleBurn: cfg.subtitleBurn !== false,
       bgmChoice: 'keep',
+      sfxChoices,
     }
     void bgmAssetId
   }
@@ -128,11 +158,18 @@ export function useComposeInputRework(
         loading.value = false
         return
       }
-      const [cfgRes, bgmRes] = await Promise.all([composeApi.getConfig(runId.value), composeApi.getBgm(runId.value)])
+      const [cfgRes, bgmRes, sfxRes] = await Promise.all([
+        composeApi.getConfig(runId.value),
+        composeApi.getBgm(runId.value),
+        composeApi.listSfx(runId.value),
+      ])
       if (token !== epoch) return
       baseConfig.value = (cfgRes.config ?? {}) as ComposeConfig
       baseBgm.value = { assetId: bgmRes.bgm?.id ?? null, name: bgmRes.bgm?.name ?? null }
-      seedForm(baseConfig.value, baseBgm.value.assetId)
+      baseSfx.value = (sfxRes.items ?? [])
+        .map((x) => ({ shotId: x.shotId, assetId: x.asset.id, name: x.asset.name }))
+        .sort((a, b) => (a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0))
+      seedForm(baseConfig.value, baseBgm.value.assetId, baseSfx.value.map((s) => s.shotId))
       if (projectId.value > 0) {
         const r = await projectApi.assets(projectId.value, '?kind=audio&limit=50')
         if (token !== epoch) return
@@ -239,7 +276,9 @@ export function useComposeInputRework(
     capability,
     baseConfig,
     baseBgm,
+    baseSfx,
     candidates,
+    sfxByShot,
     form,
     loading,
     submitting,

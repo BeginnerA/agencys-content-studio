@@ -3,7 +3,7 @@
  * 合成输入本地返修弹窗（切片2 §6 受控闸）：表单本地收集变更（不预先直写草稿）→ 服务端结构化预览
  * （逐处旧→新 + 影响 + 成本诚实 + 风险，零执行）→ 原子确认（本地续跑、零付费、旧 gate 作废必复审）。
  * 预览/影响/费用/过期一律展示后端返回值，前端零推算（规格 §4/§9）。能力不支持时显示真实原因，不伪造可编辑态。
- * 仅覆盖真实 ComposeConfig 字段（转场/时长/BGM·SFX 音量/BGM 淡入/字幕烧录 + BGM 换绑/移除）；
+ * 仅覆盖真实 ComposeConfig 字段（转场/时长/BGM·SFX 音量/BGM 淡入/字幕烧录 + BGM 换绑/移除 + 逐镜音效换绑/移除）；
  * clamp/枚举/assetId 归属/同步骤候选由服务端真源裁决，非法变更在预览期 fail closed。
  */
 import { computed, ref, toRef } from 'vue'
@@ -16,7 +16,7 @@ const props = defineProps<{ runId: number; projectId: number; stepKey?: string }
 const emit = defineEmits<{ close: []; applied: [requestId: string] }>()
 
 const {
-  capability, baseBgm, candidates, form, loading, submitting, applying, loadError, previewError,
+  capability, baseBgm, baseSfx, candidates, form, loading, submitting, applying, loadError, previewError,
   preview, supported, dirty, changeCount, load, onFormEdited, requestPreview, applyConfirmed, guardClose,
 } = useComposeInputRework(toRef(props, 'runId'), computed(() => props.stepKey), computed(() => props.projectId), {
   onApplied: (id) => emit('applied', id),
@@ -44,20 +44,24 @@ const FIELD_LABELS: Record<string, string> = {
 
 function fieldLabel(d: ComposeInputDiffView): string {
   if (d.kind === 'bgm') return 'BGM 配乐'
+  if (d.kind === 'sfx') return `音效 · ${d.field}`
   return FIELD_LABELS[d.field] ?? d.field
 }
 
 function assetLabel(id: unknown): string {
   if (id === null || id === undefined) return '（无）'
-  const hit = candidates.value.find((a) => a.id === id)
-  return hit ? hit.name : `#${String(id)}`
+  const c = candidates.value.find((a) => a.id === id)
+  if (c) return c.name
+  const s = baseSfx.value.find((x) => x.assetId === id)
+  if (s) return s.name || `#${String(id)}`
+  return `#${String(id)}`
 }
 
-/** diff 值显示：布尔→开/关；bgm/选片数字→资产名；其余原样 */
+/** diff 值显示：布尔→开/关；bgm/sfx/选片数字→资产名；其余原样 */
 function fmtVal(d: ComposeInputDiffView, v: unknown): string {
   if (v === null || v === undefined) return '（无）'
   if (typeof v === 'boolean') return v ? '开' : '关'
-  if ((d.kind === 'bgm' || d.kind === 'shot-select') && typeof v === 'number') return assetLabel(v)
+  if ((d.kind === 'bgm' || d.kind === 'sfx' || d.kind === 'shot-select') && typeof v === 'number') return assetLabel(v)
   return String(v)
 }
 
@@ -73,6 +77,22 @@ async function onApply() {
 
 function chooseBgm(v: number | 'keep' | 'remove') {
   form.value.bgmChoice = v
+  onFormEdited()
+}
+
+/** 逐镜音效下拉：'keep' | 'remove' | String(assetId) → 回写归一化到 BgmChoice 语义 */
+function sfxSelectValue(shotId: string): string {
+  const c = form.value.sfxChoices[shotId]
+  if (c === undefined || c === 'keep') return 'keep'
+  if (c === 'remove') return 'remove'
+  return String(c)
+}
+
+function onSfxSelect(shotId: string, raw: string) {
+  form.value.sfxChoices = {
+    ...form.value.sfxChoices,
+    [shotId]: raw === 'keep' ? 'keep' : raw === 'remove' ? 'remove' : Number(raw),
+  }
   onFormEdited()
 }
 
@@ -153,6 +173,27 @@ load()
           </div>
         </div>
         <div v-else class="crw-hint">项目内暂无可换绑的音频素材（上传新素材请在「合成设置」走原绑定路径，不进入本返修闸）。</div>
+      </section>
+
+      <!-- ===== 逐镜音效（per-shot SFX）换绑 / 移除（仅当前已绑音效的镜；不在此新增） ===== -->
+      <section v-if="baseSfx.length" class="crw-sec">
+        <div class="crw-lb"><Icon name="speaker-wave" :size="12" /> 镜头音效（SFX）</div>
+        <div class="crw-hint">仅列出当前已绑定音效的镜头——可换成项目内其它音频或移除；新增音效请走「合成设置 / 镜头工作台」的原绑定路径。</div>
+        <div class="crw-sfx">
+          <div v-for="s in baseSfx" :key="s.shotId" class="crw-sfxrow">
+            <span class="crw-sfxnm" :title="s.shotId">{{ s.name || s.shotId }}</span>
+            <select
+              class="crw-sfxsel"
+              :value="sfxSelectValue(s.shotId)"
+              :disabled="submitting || applying"
+              @change="onSfxSelect(s.shotId, ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="keep">保持当前音效</option>
+              <option value="remove">移除音效</option>
+              <option v-for="a in candidates" :key="a.id" :value="String(a.id)" :disabled="a.id === s.assetId">换成：{{ a.name }}</option>
+            </select>
+          </div>
+        </div>
       </section>
 
       <div class="crw-actions">
@@ -277,6 +318,37 @@ load()
 .crw-btnrow {
   display: flex;
   gap: 8px;
+}
+.crw-sfx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.crw-sfxrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.crw-sfxnm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.crw-sfxsel {
+  flex: 0 0 auto;
+  min-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
 }
 .crw-list {
   display: flex;

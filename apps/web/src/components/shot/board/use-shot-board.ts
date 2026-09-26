@@ -7,6 +7,9 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { assetApi, shotApi } from '../../../lib/api'
 import { confirmDialog } from '../../../lib/confirm'
+import { composeInputReworkApi, ReworkApiError } from '../../../lib/api/rework'
+import { newRequestKey } from '../../../lib/api/creation-chat'
+import type { ComposeInputChangeView, ComposeInputPreviewView } from '../../../lib/types/rework'
 import type {
   Asset,
   ComposeConfig,
@@ -67,6 +70,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const cfgBusy = ref(false)
   const bgm = ref<Asset | null>(null)
   const composeSettingsOpen = ref(false)
+  // 合成返修可用性（成片已产出→候选改选走本地返修闸；仅换版本可表达，结构性启用/剔除仍走原草稿+重合成）
+  const composeRework = ref<{ supported: boolean; message: string }>({ supported: false, message: '' })
   // per-shot 音效（shotId → 绑定资产；镜头卡片「音效」按钮用）
   const sfxMap = ref<Record<string, Asset>>({})
   const sfxShotId = ref<string | null>(null)
@@ -175,6 +180,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
         if (shotIds.has(sid)) nextDur[sid] = raw
       }
       durationDrafts.value = nextDur
+      if (data.compose?.stepKey) void probeComposeRework(data.compose.stepKey)
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -333,6 +339,15 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       err.value = '至少保留一个有产物的镜头才能应用选择'
       return
     }
+    // 合成返修闸：成片已产出且本次为「纯换版本」（候选改选）→ 走 preview→确认→本地重合成；
+    // 结构性启用/剔除镜头不在 compose-input 四类内，保持原草稿直写 + 手动重合成（T5 在重合成时仍复验指纹/作废旧 gate）。
+    if (composeRework.value.supported && !hasStructuralSelection()) {
+      const changes = selectionReworkChanges()
+      if (changes.length > 0) {
+        await applySelectionViaRework(changes)
+        return
+      }
+    }
     const res = await run(() =>
       shotApi.select(props.runId, props.step.stepKey, { picks }),
     )
@@ -340,6 +355,89 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
       draftSelected.value = {}
       draftExcluded.value = []
       notice.value = '镜头选择已应用（重新合成后生效）'
+    }
+  }
+
+  /** 是否存在结构性改动（剔除当前在用镜 / 新启用未曾入选的镜）——这些不属于候选改选 */
+  function hasStructuralSelection(): boolean {
+    return shots.value.some((s) => {
+      if (draftExcluded.value.includes(s.shotId) && s.selectedAssetId !== null) return true
+      if (draftSelected.value[s.shotId] !== undefined && s.selectedAssetId === null) return true
+      return false
+    })
+  }
+
+  /** 暂存的纯换版本 → shot-select 变更集（仅当前已入选且版本改变的镜） */
+  function selectionReworkChanges(): ComposeInputChangeView[] {
+    const changes: ComposeInputChangeView[] = []
+    for (const s of shots.value) {
+      const d = draftSelected.value[s.shotId]
+      if (d === undefined || s.selectedAssetId === null) continue
+      if (d !== s.selectedAssetId) changes.push({ kind: 'shot-select', shotId: s.shotId, assetId: d })
+    }
+    return changes
+  }
+
+  /** 版本 id → 名称（未命中降级 #id） */
+  function versionNameOf(shotId: string, assetId: unknown): string {
+    if (assetId === null || assetId === undefined) return '（无）'
+    const v = shots.value.find((x) => x.shotId === shotId)?.versions.find((x) => x.id === assetId)
+    return v ? v.name : `#${String(assetId)}`
+  }
+
+  /** 确认文案：逐镜旧→新（取服务端 diff）+ 成本/影响诚实（前端零推算） */
+  function buildSelectionConfirmMessage(pv: ComposeInputPreviewView): string {
+    const lines = pv.diffs
+      .filter((d) => d.kind === 'shot-select')
+      .map((d) => `· 镜头 ${d.field}：${versionNameOf(d.field, d.before)} → ${versionNameOf(d.field, d.after)}`)
+    const impact = pv.impact.resetSteps.length ? `重置步骤：${pv.impact.resetSteps.join('、')}` : ''
+    return [
+      ...lines,
+      '',
+      '本地重新合成：0 次模型调用、不计费，但需编码时间。',
+      impact,
+      '新版本需重新复核：旧成片批准不自动沿用。',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  /** 候选改选走合成返修闸：幂等预览→确认（携 previewHash）→本地重合成入队 */
+  async function applySelectionViaRework(changes: ComposeInputChangeView[]): Promise<void> {
+    if (opBusy.value) return
+    const stepKey = compose.value?.stepKey ?? 'compose'
+    const key = newRequestKey('selrw')
+    opBusy.value = true
+    err.value = ''
+    notice.value = ''
+    try {
+      const pv = await composeInputReworkApi.preview(props.runId, key, changes, stepKey)
+      const ok = await confirmDialog({
+        title: '确认候选改选并本地重合成',
+        message: buildSelectionConfirmMessage(pv.preview),
+        confirmText: '确认并本地重合成',
+        cancelText: '取消',
+      })
+      if (!ok) return
+      await composeInputReworkApi.apply(props.runId, pv.request_id, pv.preview.previewHash)
+      draftSelected.value = {}
+      draftExcluded.value = []
+      notice.value = '候选改选已确认：本地重合成已入队，旧成片批准已作废待复审'
+      await load()
+    } catch (e) {
+      err.value = e instanceof ReworkApiError ? e.message : e instanceof Error ? e.message : '候选改选失败'
+    } finally {
+      opBusy.value = false
+    }
+  }
+
+  /** 合成返修能力探测（单一真源，不前端自行判断；失败降级为不支持→回退直写） */
+  async function probeComposeRework(stepKey: string): Promise<void> {
+    try {
+      const c = await composeInputReworkApi.capability(props.runId, stepKey)
+      composeRework.value = { supported: c.capability.supported, message: c.capability.message }
+    } catch {
+      composeRework.value = { supported: false, message: '' }
     }
   }
 

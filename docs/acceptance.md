@@ -376,9 +376,12 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 - 后端：`services/rework/capability.ts`、`compose-input.ts`（契约+预览编译+apply 确认）、`compose-input-preview.ts`、`compose-input-apply.ts`（新）；`routes/rework.ts` 加 `GET .../compose-input/capability` + `POST .../preview` + `POST .../:requestId/apply`（专属端点，字幕 preview/apply 端点与语义逐字不变）。
 - 入口收口（方案 A·共享原语一处收口）：`services/shot/reset.ts` 的 `resetStepForRecompose`（通用 recompose + 轻松创作 recomposeCreation 皆经此）与 `resetStepForRerun`（单步重跑）在 compose 步（`ffmpeg_merge`）重置为 pending 时一并剥离 `output.gate`——覆盖全部本地重合成入口，无需改各调用点；仅约束合成步，非 compose 步 gate 不动。
 - 前端（方案 A·新增独立自治探测弹窗，不动 `ComposeSettingsModal` 直写草稿语义）：`components/run/compose-input-rework/` 下 `use-compose-input-rework.ts` + `ComposeInputReworkEntry.vue` + `ComposeInputReworkModal.vue`；`types/rework.ts` + `api/rework.ts` 加 compose-input 视图与 API。双模判据=后端 `capability.supported`：有可返修成片时「合成设置」顶部出现「合成返修」入口（本地收集变更不预先直写→预览→确认→本地重合成），无成片时入口自动隐藏、沿用原草稿直写。预览/影响/费用/过期一律展示后端返回值，前端零推算、不伪造可编辑态。
+- 前端补全（本切片四类变更 UI 全部收口）：① **逐镜音效 SFX 换绑/移除**并入专属返修弹窗（`ComposeInputReworkModal`/`use-compose-input-rework` 复用既有只读 `GET /runs/:id/compose/sfx` 取每镜在用音效基线 + 项目音频候选，仅覆盖当前已绑音效的镜，`buildComposeInputChanges` 产出 `sfx` 变更；新增音效仍走原绑定路径）。② **候选改选 shot-select 接入镜头工作台选片闸**（`components/shot/board/use-shot-board.ts` 的 `applySelection`）：`board.compose.stepKey` 探测 `capability.supported`，成片已产出且本次为「纯换版本」（无启用/剔除等结构性改动）时，改走 `compose-input` preview→确认（携服务端 `previewHash`）→本地重合成，**不再直写 `shotApi.select`**；无成片或含结构性改动时保持原草稿直写逐字不变（T5 在重合成时仍复验指纹/作废旧 gate，无回退）。依据 M7 语义边界，启用/剔除镜不属 compose-input 四类，故不经此闸。`use-shot-board.ts` 增至 733 行（≤800）。
+
+本轮补全验证（本机实测）：`pnpm -r typecheck` 双端绿（含 `vue-tsc`）；`pnpm --filter @acs/web build` 绿；`--only=precision-rework --section=compose-input` 349 断言仍全绿（后端四类契约本就已实现并测过，本轮纯前端接线，未改后端）；m26 `split-audit` 破线文件仍恰为既有 3 个（本轮改动的 3 个前端文件均 ≤800，净新增违规为零）。
 
 自动门禁（本机实测，全绿）：`--only=precision-rework` 349 断言全绿（含切片2 compose-input 分节，字幕首切片断言不变）；`--only=m7` 110 全绿；`--only=m11` 184 全绿；`pnpm -r typecheck` 双端绿（含 `vue-tsc`）；`pnpm --filter @acs/web build` 绿（663 模块）。零新增依赖、零付费、未自动提交。
 
 红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本切片曾把自有探针 `probe-precision-rework.ts` 撑到 882 行，已按其既有拆分惯例把 compose-input 分节抽到 `precision-rework-compose-input.ts`（主探针 545 + 新库 344，均 ≤800，断言文案逐字未改），**本切片净新增违规为零**。该门禁现仍红，唯一原因是 3 个早于切片2、本切片一行未改的既有存量文件：`CreationArtifacts.vue`(998)、`probe-m7.ts`(865)、`use-project-detail.ts`(803)。经用户拍板：此 3 项记为独立技术债、不在本切片内处理（重构与功能加分分离），另立后续单独拆分项，故 m26 的 `split-audit` 分节在本切片收口时**保持已知红**、非本切片回归。
 
-待人工门（未声称）：浏览器端「合成返修」入口的挂载位置/文案/候选选择与本地重合成端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩，不等同于产品内真实 FFmpeg 重编码路径的可视验收。
+待人工门（未声称）：浏览器端「合成返修」入口的挂载位置/文案/逐镜音效换绑与候选改选确认弹窗（成片已产出时工作台「应用选择」触发：逐镜旧→新 + 本地重合成入队 + 旧批准作废）的端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩，不等同于产品内真实 FFmpeg 重编码路径的可视验收。
