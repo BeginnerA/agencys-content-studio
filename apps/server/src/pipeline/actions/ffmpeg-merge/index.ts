@@ -91,6 +91,15 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
   const perShotDur = await loadPerShotDurations(ctx, shotsIds)
+  // [切片2b] 镜头时长本地返修：_compose.shot_durations 覆盖分镜 per-shot 显示时长（零重生媒体、零付费）。
+  // 两条互斥生效路径：① 无对白/未对齐→经此 perShotDur（仅 images 分支消费，motion clips 段长=clip 实测不受影响）；
+  // ② 音频对齐→经下方 alignShots[].durationSec（plan 会在映射一致时回写 seg.durSec）。motion 已在预览 blocked，此处按模式防御性跳过。
+  const shotDurOverride = readComposeConfig(ctx.run.input).shot_durations ?? {}
+  if (mode === 'images') {
+    for (const [sid, sec] of Object.entries(shotDurOverride)) {
+      if (typeof sec === 'number' && Number.isFinite(sec) && sec > 0) perShotDur.set(sid, sec)
+    }
+  }
   const { segments, skipped, warnings } = recipe
     ? { segments: strictSegments(recipe.plan, rows, ctx.run.projectId), skipped: [] as number[], warnings: [] as string[] }
     : computeShotSegments(rows, mode, perShotDur, durationPerShot)
@@ -193,6 +202,14 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   } else {
     const planMode: 'images' | 'motion' = mode === 'images' ? 'images' : 'motion'
     const { shots: alignShots, hasLinesField } = await loadShotAlignShots(ctx, shotsIds)
+    // [切片2b] 音频对齐路径：用 shot_durations 覆盖分镜显式时长（仅 images；motion 预览已 blocked，按 planMode 防御性跳过）。
+    // 不改 planBestEffortTimeline 纯函数语义——覆盖仅作用于喂入的 durationSec，Σ-clamp（请求<句和→落句和）/字幕位置由既有算法同源重算。
+    if (planMode === 'images') {
+      for (const s of alignShots) {
+        const sec = shotDurOverride[s.id]
+        if (typeof sec === 'number' && Number.isFinite(sec) && sec > 0) s.durationSec = sec
+      }
+    }
     const voiceDur = new Map(voiceMetas.map((v) => [v.lineId!, v.durSec!]))
     const clipDurByShotId = planMode === 'motion' ? buildClipDurByShotId(segments, rows) : undefined
     const plan = planBestEffortTimeline(alignShots, voiceDur, durationPerShot, { hasLinesField, mode: planMode, clipDurByShotId })

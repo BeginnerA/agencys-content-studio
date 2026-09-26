@@ -385,3 +385,19 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本切片曾把自有探针 `probe-precision-rework.ts` 撑到 882 行，已按其既有拆分惯例把 compose-input 分节抽到 `precision-rework-compose-input.ts`（主探针 545 + 新库 344，均 ≤800，断言文案逐字未改），**本切片净新增违规为零**。该门禁现仍红，唯一原因是 3 个早于切片2、本切片一行未改的既有存量文件：`CreationArtifacts.vue`(998)、`probe-m7.ts`(865)、`use-project-detail.ts`(803)。经用户拍板：此 3 项记为独立技术债、不在本切片内处理（重构与功能加分分离），另立后续单独拆分项，故 m26 的 `split-audit` 分节在本切片收口时**保持已知红**、非本切片回归。
 
 待人工门（未声称）：浏览器端「合成返修」入口的挂载位置/文案/逐镜音效换绑与候选改选确认弹窗（成片已产出时工作台「应用选择」触发：逐镜旧→新 + 本地重合成入队 + 旧批准作废）的端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩，不等同于产品内真实 FFmpeg 重编码路径的可视验收。
+
+## 切片2b 验收快照：镜头时长本地返修（轻档）（2026-09-26，探针门禁）
+
+第二期 precision-rework 切片2 的子切片 2b「改某镜显示时长但不重生任何媒体」交付（T1–T8）。纳入与字幕/合成输入返修同一受控闭环（结构化预览→指纹过期即拒→幂等原子确认→仅作废合成步本地重编码→回执可核验）。唯一实现真源（位于仓库外层 AI 工作区 `d:/work/AI/docs/superpowers/`）：规格 `specs/2026-09-26-agencys-content-studio-precision-rework-shot-durations-design.md`（§8 八断言为验收依据）+ 计划 `plans/2026-09-26-agencys-content-studio-precision-rework-shot-durations.md`。已锁决策：run 级独立覆盖 `_compose.shot_durations`（不碰分镜源/批准链）；轻档仅图片镜 + 音频对齐镜覆盖，motion 视频镜文件级裁切排除（属中档另立项）；Q1 `shot_durations` 只经返修闸（`updateComposeConfig` 草稿直写排除该键）；Q2 motion 镜预览 fail-closed `blocked`（不静默 no-op）。
+
+- 写侧真源（T1）：`services/compose-config.ts` `normalizeComposeConfigPatch` 加 `shot_durations` 分支（对象/非空 shotId/值有限正数 clamp `(0, SHOT_DURATION_MAX_SEC=600]`/整键 null 清除），与返修共用单一规范化真源；`updateComposeConfig` 在 `requireEditableRun` 后拒绝该键草稿直写（Q1）。
+- 契约（T2）：`services/rework/compose-input.ts` `ComposeInputChange` 加第 5 支 `{kind:'shot-duration'; shotId; sec}` + zod 严格校验 + 同镜唯一冲突检测；compile 折进 `shot_durations` 配置键并逐镜单列 diff。**关键修正**：canonical `normalized.changes` 显式保留独立 `shot-duration` 条目（不折进 compose-config 后丢语义），否则 apply 期从 `changesJson` 重编译时 `durationChanges` 空、config 键又跳过 `shot_durations` → diffs 空 → 误判 `no_effect`（探针暴露的真实缺陷，非夹具产物）。
+- 基准/预览/确认（T3–T5）：`capability.ts` 从 `params.timeline.segments` 只读派生 `shotAxis`（遵「params.timeline 唯一真源」，不造第二时轴算法）；`compose-input-preview.ts` 加轴校验（无快照→`no_timeline_axis`、shotId 不在轴→`bad_shot`、视频镜→`unsupported_motion`）+ Σ-clamp（请求短于对齐语音时长 Σ=durSec−silenceSec → `willClampToSec`/`warn`）+ 有效段长无变化（含 clamp 落回原值）→ `no_effect`；`compose-input-apply.ts` 复用既有 `inputObj._compose = nextConfig` 事务/gate 作废/幂等，回执加 `durations:{shotId,fromSec,toSec}` 明细（容错校验保父切片既有回执回放不判 corrupt）。
+- 合成期消费（T6，最高风险）：`pipeline/actions/ffmpeg-merge/index.ts` 两条互斥时长生效路径（`perShotDur` images base/无对白回退 + `alignShots[].durationSec` 音频对齐 plan）都注入 `_compose.shot_durations` 覆盖，均按 `images` 模式防御性跳过 motion；**不改 `planVoiceAlignedSegments`/`planBestEffortTimeline` 纯函数语义**，段/句/字幕位置由既有算法同源重算。
+- 前端（T8，四类→五类 UI 收口）：`ComposeInputReworkModal.vue` 新增「镜头时长」段（仅图片镜渲染「保持/覆盖为 X 秒」输入，motion 视频镜只读标「不适用」）；`use-compose-input-rework.ts` 采集 `shot-duration` 变更 + `buildComposeInputChanges` 产出第 5 类；预览展示后端返回的旧→新（含 clamp/warn 文案），复用 capability 双模探测 / guardClose / 幂等 ticket。`routes/rework.ts` capability 端点加 `shot_axis`（透传 `baseline.shotAxis` 单一真源），`types/rework.ts` 契约对齐加 `shot-duration`/`willClampToSec`/`warn`。
+
+自动门禁（本机实测，全绿）：`--only=precision-rework` **374 断言全绿**（新增 `--section=shot-duration` 分节 25 断言覆盖规格 §8 八条 + 空轴 fail-closed + 预览零执行 + 冲突/非法 sec/超 MAX clamp + Q1 写侧排除；字幕首切片与父切片 compose-input 四类断言逐字不变不回归）；`pnpm -C apps/server typecheck`（`tsc --noEmit`）绿；`pnpm --filter @acs/web build`（`vue-tsc` + vite 663 模块）绿。零新增依赖、零付费、未自动提交、加法优先（四类既有路径逐字不变）。
+
+红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本切片按既有拆分惯例把 shot-duration 探针分节抽到 `precision-rework-shot-duration.ts`（141 行，被主探针 import 而非独立扫描；主探针 548 行），本轮改动的 5 个文件（后端 4 + 探针库 1）与前端 3 文件均 ≤800，**净新增违规为零**。m26 `split-audit` 仍恰为既有 3 个早于本切片的存量文件（`CreationArtifacts.vue`(998)、`probe-m7.ts`(865)、`use-project-detail.ts`(803)）保持已知红、非本切片回归（用户已拍板记为独立技术债另立拆分项）。
+
+待人工门（未声称）：浏览器端「镜头时长」输入行→预览（旧有效→新含 clamp 落回文案）→确认→本地重合成入队→新成片逐镜时长实际变化的端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩 + 假时轴快照，不等同于产品内真实 FFmpeg 重编码路径的可视验收。

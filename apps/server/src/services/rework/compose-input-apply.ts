@@ -43,6 +43,8 @@ export interface ComposeInputApplyReceipt {
   bgmTo: number | null
   /** 候选改选明细（在用旧值→新候选） */
   selections: Array<{ shotId: string; fromAssetId: number; toAssetId: number }>
+  /** 镜头时长返修明细（切片2b）：shotId → 旧覆盖秒（null=无覆盖）→ 新覆盖秒；已增量合并进 _compose.shot_durations */
+  durations: Array<{ shotId: string; fromSec: number | null; toSec: number }>
   /** 已入队标记（回执固定；真实执行由既有引擎/恢复路径推进） */
   enqueued: true
   appliedAt: number
@@ -69,7 +71,7 @@ function receiptOf(row: ReworkRequest): ComposeInputApplyReceipt | null {
       Array.isArray(r.resetSteps) && typeof r.gateInvalidated === 'boolean' &&
       (r.bgmFrom === null || typeof r.bgmFrom === 'number') &&
       (r.bgmTo === null || typeof r.bgmTo === 'number') &&
-      Array.isArray(r.selections) && r.enqueued === true && typeof r.appliedAt === 'number'
+      Array.isArray(r.selections) && (r.durations === undefined || Array.isArray(r.durations)) && r.enqueued === true && typeof r.appliedAt === 'number'
     ) return r
     return null
   } catch {
@@ -132,6 +134,10 @@ export async function applyComposeInputRework(p: { requestId: string; previewHas
   if (repreviewHash !== preview.previewHash) return stale(row.id, '当前基准重算的预览指纹与确认时不一致（基准已漂移）')
 
   const { nextConfig } = compiled.normalized
+  // 时长返修明细（旧→新）：从 diff 取（仅记录实际改变者），与 nextConfig.shot_durations 增量合并一致
+  const durations = compiled.normalized.diffs
+    .filter((d) => d.kind === 'shot-duration')
+    .map((d) => ({ shotId: d.field, fromSec: (d.before as number | null) ?? null, toSec: d.after as number }))
   const bgmChange = compiled.normalized.changes.find((c) => c.kind === 'bgm') as Extract<ComposeInputChange, { kind: 'bgm' }> | undefined
   const bgmFrom = baseline.bgm.assetId
   const bgmTo = bgmChange ? bgmChange.assetId : baseline.bgm.assetId
@@ -221,6 +227,7 @@ export async function applyComposeInputRework(p: { requestId: string; previewHas
         bgmFrom,
         bgmTo,
         selections: selections.map((s) => ({ shotId: s.shotId, fromAssetId: s.fromAssetId, toAssetId: s.toAssetId })),
+        durations,
         enqueued: true,
         appliedAt: now,
       }

@@ -48,6 +48,8 @@ export interface ComposeInputBaseline {
   bgm: { assetId: number | null; sha256: string | null }
   /** 各镜在用 SFX（shotId 升序；无音效镜不入表） */
   sfx: Array<{ shotId: string; assetId: number; sha256: string | null }>
+  /** 各镜当前入轴段（源自成片 params.timeline.segments，时间轴唯一真源只读派生）：供时长返修取 kind（motion 拦截）/段长/Σ（=durSec-silenceSec）；无快照→空表 */
+  shotAxis: Array<{ shotId: string; kind: 'image' | 'video'; durSec: number; silenceSec: number }>
   /** 完整依赖指纹（baseFingerprint）：预览/确认共用，任一变即过期 */
   fingerprint: string
 }
@@ -82,6 +84,29 @@ interface Core {
 }
 
 /**
+ * 从成片 params.timeline.segments 只读派生每镜当前入轴段（不重算时轴，遵「params.timeline 唯一真源」）。
+ * 无快照/非数组/无 shotId → 跳过；时长返修据此判定 motion 镜与 Σ 下限（shotAxis 为空→时长返修 fail closed）。
+ */
+function shotAxisFromParams(params: Record<string, unknown>): ComposeInputBaseline['shotAxis'] {
+  const tl = params['timeline']
+  if (!tl || typeof tl !== 'object' || Array.isArray(tl)) return []
+  const segs = (tl as { segments?: unknown }).segments
+  if (!Array.isArray(segs)) return []
+  const out: ComposeInputBaseline['shotAxis'] = []
+  for (const s of segs) {
+    if (!s || typeof s !== 'object') continue
+    const o = s as Record<string, unknown>
+    const shotId = typeof o['shotId'] === 'string' && o['shotId'] ? o['shotId'] : null
+    if (!shotId) continue
+    const kind: 'image' | 'video' = o['kind'] === 'video' ? 'video' : 'image'
+    const durSec = typeof o['durSec'] === 'number' && Number.isFinite(o['durSec']) ? o['durSec'] : 0
+    const silenceSec = typeof o['silenceSec'] === 'number' && Number.isFinite(o['silenceSec']) ? o['silenceSec'] : 0
+    out.push({ shotId, kind, durSec, silenceSec })
+  }
+  return out
+}
+
+/**
  * 从已固定的成片/步骤核心组装基准 + 指纹（门禁通过后调用）。timeline 缺失按全 null 计入
  * timelineCore（无字幕快照/旧成片仍可返修正由本函数不依赖字幕字段体现）。
  */
@@ -92,6 +117,7 @@ async function buildBaseline(core: Core): Promise<ComposeInputBaseline> {
   const sfx: ComposeInputBaseline['sfx'] = []
   for (const [shotId, a] of sfxMap) sfx.push({ shotId, assetId: a.id, sha256: a.sha256 ?? null })
   sfx.sort((x, y) => (x.shotId < y.shotId ? -1 : x.shotId > y.shotId ? 1 : 0))
+  const shotAxis = shotAxisFromParams(params)
   const fingerprint = await buildComposeInputFingerprint({ ...core, bgm, sfx })
   return {
     projectId: run.projectId,
@@ -102,6 +128,7 @@ async function buildBaseline(core: Core): Promise<ComposeInputBaseline> {
     config: readComposeConfig(run.input),
     bgm: { assetId: bgm?.id ?? null, sha256: bgm?.sha256 ?? null },
     sfx,
+    shotAxis,
     fingerprint,
   }
 }

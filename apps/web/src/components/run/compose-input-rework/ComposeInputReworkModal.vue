@@ -3,8 +3,8 @@
  * 合成输入本地返修弹窗（切片2 §6 受控闸）：表单本地收集变更（不预先直写草稿）→ 服务端结构化预览
  * （逐处旧→新 + 影响 + 成本诚实 + 风险，零执行）→ 原子确认（本地续跑、零付费、旧 gate 作废必复审）。
  * 预览/影响/费用/过期一律展示后端返回值，前端零推算（规格 §4/§9）。能力不支持时显示真实原因，不伪造可编辑态。
- * 仅覆盖真实 ComposeConfig 字段（转场/时长/BGM·SFX 音量/BGM 淡入/字幕烧录 + BGM 换绑/移除 + 逐镜音效换绑/移除）；
- * clamp/枚举/assetId 归属/同步骤候选由服务端真源裁决，非法变更在预览期 fail closed。
+ * 仅覆盖真实 ComposeConfig 字段（转场/时长/BGM·SFX 音量/BGM 淡入/字幕烧录 + BGM 换绑/移除 + 逐镜音效换绑/移除 + 逐镜时长覆盖）；
+ * clamp/枚举/assetId 归属/同步骤候选/时长有效边界由服务端真源裁决，非法变更在预览期 fail closed。
  */
 import { computed, ref, toRef } from 'vue'
 import Modal from '../../common/Modal.vue'
@@ -16,13 +16,17 @@ const props = defineProps<{ runId: number; projectId: number; stepKey?: string }
 const emit = defineEmits<{ close: []; applied: [requestId: string] }>()
 
 const {
-  capability, baseBgm, baseSfx, candidates, form, loading, submitting, applying, loadError, previewError,
+  capability, baseBgm, baseSfx, shotAxis, candidates, form, loading, submitting, applying, loadError, previewError,
   preview, supported, dirty, changeCount, load, onFormEdited, requestPreview, applyConfirmed, guardClose,
 } = useComposeInputRework(toRef(props, 'runId'), computed(() => props.stepKey), computed(() => props.projectId), {
   onApplied: (id) => emit('applied', id),
 })
 
 const appliedNote = ref('')
+
+/** 可编辑图片镜（仅这些镜渲染时长输入）；motion 视频镜另列只读 */
+const durImageShots = computed(() => shotAxis.value.filter((s) => s.kind === 'image'))
+const durVideoShots = computed(() => shotAxis.value.filter((s) => s.kind === 'video'))
 
 const TRANSITIONS: Array<{ value: string; label: string }> = [
   { value: 'none', label: '无转场' },
@@ -45,6 +49,7 @@ const FIELD_LABELS: Record<string, string> = {
 function fieldLabel(d: ComposeInputDiffView): string {
   if (d.kind === 'bgm') return 'BGM 配乐'
   if (d.kind === 'sfx') return `音效 · ${d.field}`
+  if (d.kind === 'shot-duration') return `时长 · ${d.field}`
   return FIELD_LABELS[d.field] ?? d.field
 }
 
@@ -92,6 +97,20 @@ function onSfxSelect(shotId: string, raw: string) {
   form.value.sfxChoices = {
     ...form.value.sfxChoices,
     [shotId]: raw === 'keep' ? 'keep' : raw === 'remove' ? 'remove' : Number(raw),
+  }
+  onFormEdited()
+}
+
+/** 逐镜时长输入：空字符串=null（保持当前）；否则数值（NaN 经 buildComposeInputChanges 非有限过滤自然忽略） */
+function durInputValue(shotId: string): string {
+  const v = form.value.durations[shotId]
+  return typeof v === 'number' ? String(v) : ''
+}
+function onDurInput(shotId: string, raw: string) {
+  const trimmed = raw.trim()
+  form.value.durations = {
+    ...form.value.durations,
+    [shotId]: trimmed === '' ? null : Number(trimmed),
   }
   onFormEdited()
 }
@@ -196,6 +215,33 @@ load()
         </div>
       </section>
 
+      <!-- ===== 逐镜时长（切片2b 轻档）：仅图片镜可覆盖显示时长（本地重合成、零付费）；motion 视频镜显式不适用 ===== -->
+      <section v-if="shotAxis.length" class="crw-sec">
+        <div class="crw-lb"><Icon name="clock" :size="12" /> 镜头时长</div>
+        <div class="crw-hint">仅图片镜可覆盖显示时长（留空=保持当前）；改后仅本地重新合成、不重生任何媒体。视频镜（motion）时长由源素材决定，属中档文件级裁切，本入口不适用。</div>
+        <div v-if="durImageShots.length" class="crw-dur">
+          <div v-for="s in durImageShots" :key="s.shotId" class="crw-durrow">
+            <span class="crw-durnm" :title="s.shotId">{{ s.shotId }}</span>
+            <span class="crw-durcur">当前 {{ s.durSec }}秒</span>
+            <input
+              class="crw-durinput"
+              type="number"
+              min="0.1"
+              step="0.1"
+              placeholder="保持当前"
+              :value="durInputValue(s.shotId)"
+              :disabled="submitting || applying"
+              @input="onDurInput(s.shotId, ($event.target as HTMLInputElement).value)"
+            />
+            <span class="crw-dunits">秒</span>
+          </div>
+        </div>
+        <div v-else class="crw-hint">无可覆盖的图片镜（成片均为视频镜或缺时轴快照）。</div>
+        <div v-if="durVideoShots.length" class="crw-durv">
+          <span v-for="s in durVideoShots" :key="s.shotId" class="crw-tag">{{ s.shotId }}（视频镜·不适用）</span>
+        </div>
+      </section>
+
       <div class="crw-actions">
         <button class="btn btn-primary" :disabled="!dirty || submitting || applying" @click="requestPreview()">
           {{ submitting ? '预览请求中…' : '预览变更（' + changeCount + '）' }}
@@ -210,9 +256,17 @@ load()
         <ul class="crw-diffs">
           <li v-for="(d, i) in preview.diffs" :key="i">
             <b>{{ fieldLabel(d) }}</b>
-            <span class="crw-before">{{ fmtVal(d, d.before) }}</span>
-            →
-            <span class="crw-after">{{ fmtVal(d, d.after) }}</span>
+            <template v-if="d.kind === 'shot-duration'">
+              <span class="crw-before">{{ d.before === null ? '当前' : d.before + '秒' }}</span>
+              →
+              <span class="crw-after">{{ d.after }}秒</span>
+              <span v-if="d.warn" class="crw-clamp">（受「音画不脱节」约束，将落回 {{ d.willClampToSec }} 秒，不截断台词）</span>
+            </template>
+            <template v-else>
+              <span class="crw-before">{{ fmtVal(d, d.before) }}</span>
+              →
+              <span class="crw-after">{{ fmtVal(d, d.after) }}</span>
+            </template>
           </li>
         </ul>
         <ul class="crw-impact">
@@ -349,6 +403,57 @@ load()
   background: transparent;
   color: inherit;
   font-size: 12.5px;
+}
+.crw-dur {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.crw-durrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.crw-durnm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.crw-durcur {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.crw-durinput {
+  flex: 0 0 auto;
+  width: 96px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+}
+.crw-dunits {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.crw-durv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.crw-clamp {
+  margin-left: 6px;
+  font-size: 11.5px;
+  color: var(--warn, #b45309);
 }
 .crw-list {
   display: flex;

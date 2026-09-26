@@ -169,25 +169,40 @@ export interface ComposeInputCapabilityView {
   message: string
 }
 
+/** 每镜当前入轴段（服务端从 params.timeline 唯一真源只读派生；供前端逐镜时长输入行） */
+export interface ComposeInputShotAxisView {
+  shotId: string
+  kind: 'image' | 'video'
+  durSec: number
+  silenceSec: number
+}
+
 /** GET capability 响应 */
 export interface ComposeInputCapabilityResponse {
   capability: ComposeInputCapabilityView
   final_asset_id: number | null
+  /** 逐镜时轴基准（切片2b）：无时轴快照时为 []（时长返修不可用，前端仍展示不伪可编） */
+  shot_axis: ComposeInputShotAxisView[]
 }
 
-/** 单一变更契约（四类均本地重合成、零付费；服务端为唯一裁决） */
+/** 单一变更契约（五类均本地重合成、零付费；服务端为唯一裁决） */
 export type ComposeInputChangeView =
   | { kind: 'compose-config'; patch: Record<string, unknown> }
   | { kind: 'bgm'; assetId: number | null }
   | { kind: 'sfx'; shotId: string; assetId: number | null }
   | { kind: 'shot-select'; shotId: string; assetId: number }
+  | { kind: 'shot-duration'; shotId: string; sec: number }
 
-/** 逐处旧→新差异（compose-config 按被改键一行；bgm/sfx/shot-select 按目标一行） */
+/** 逐处旧→新差异（compose-config 按被改键一行；bgm/sfx/shot-select/shot-duration 按目标一行） */
 export interface ComposeInputDiffView {
   kind: ComposeInputChangeView['kind']
   field: string
   before: unknown
   after: unknown
+  /** 仅 shot-duration：请求短于该镜对齐语音时长 Σ → 合成期强制落回该值 */
+  willClampToSec?: number
+  /** 仅 shot-duration：true 时 willClampToSec 必存在（音画不脱节约束告警） */
+  warn?: boolean
 }
 
 /** 影响声明（服务端编译，前端只展示不推算） */

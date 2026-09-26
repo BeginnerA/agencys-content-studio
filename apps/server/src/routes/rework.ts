@@ -76,12 +76,13 @@ reworkRoutes.post('/runs/:id/rework/preview', h(async (c) => {
 // GET /runs/:id/rework/compose-input/capability —— 合成输入返修能力探测（切片2 §6 双模）：
 // 有可返修成片（supported）→ 前端展示受控返修入口（preview/apply）；无成片→沿用 compose 草稿直写。
 // 纯转发 assessComposeInputCapability（其门禁/指纹已在 precision-rework 探针 compose-input 分节覆盖），零写入。
+// shot_axis（切片2b）：透传 baseline.shotAxis（params.timeline 唯一真源只读派生），供前端逐镜时长输入行渲染当前段长/镜型，不另起第二时轴来源。
 reworkRoutes.get('/runs/:id/rework/compose-input/capability', h(async (c) => {
   const runId = idParam(c)
   if (!(await findRun(runId))) return notFound(c, `run ${runId}`)
   const stepKey = c.req.query('stepKey') || 'compose'
   const { capability, baseline } = await assessComposeInputCapability(runId, stepKey)
-  return c.json({ capability, final_asset_id: baseline?.finalAssetId ?? null })
+  return c.json({ capability, final_asset_id: baseline?.finalAssetId ?? null, shot_axis: baseline?.shotAxis ?? [] })
 }))
 
 // POST /runs/:id/rework/compose-input/preview —— 合成输入本地返修结构化预览（切片2 §3/§4，零执行）

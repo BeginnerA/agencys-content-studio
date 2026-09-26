@@ -12,6 +12,7 @@ import type {
   ComposeInputCapabilityView,
   ComposeInputChangeView,
   ComposeInputPreviewView,
+  ComposeInputShotAxisView,
 } from '../../../lib/types/rework'
 
 /** BGM 换绑选择：保持当前 / 移除 / 换成指定资产 id */
@@ -28,6 +29,8 @@ export interface ComposeInputForm {
   bgmChoice: BgmChoice
   /** 逐镜音效换绑/移除（仅覆盖当前有音效的镜；键=shotId，值语义同 BgmChoice） */
   sfxChoices: Record<string, BgmChoice>
+  /** 逐镜显示时长覆盖（切片2b）：键=shotId，值=请求秒（null=保持当前）；仅图片镜可编，motion 镜不入表 */
+  durations: Record<string, number | null>
 }
 
 /** 每镜在用音效基线（来自 listSfx；无音效镜不入表） */
@@ -49,6 +52,7 @@ export function buildComposeInputChanges(
   base: ComposeConfig,
   bgmAssetId: number | null,
   sfxByShot: Record<string, number> = {},
+  shotAxis: ComposeInputShotAxisView[] = [],
 ): ComposeInputChangeView[] {
   const patch: Record<string, unknown> = {}
   const baseTransition = base.transition ?? 'none'
@@ -77,6 +81,17 @@ export function buildComposeInputChanges(
     if (choice === 'remove') changes.push({ kind: 'sfx', shotId, assetId: null })
     else if (typeof choice === 'number' && choice !== sfxByShot[shotId]) changes.push({ kind: 'sfx', shotId, assetId: choice })
   }
+  // 镜头时长（切片2b）：仅对已渲染的可编镜（图片镜）且输入为有限正数、与当前段长不同才产出变更；
+  //   motion 视频镜 UI 不渲染输入（后端对其 fail-closed blocked），故不在此发变更。
+  //   clamp 落回/无有效变化由服务端预览裁决（可能回传 no_effect），前端不重复实现 Σ 算法。
+  const axisByShot = new Map(shotAxis.map((s) => [s.shotId, s]))
+  for (const shotId of Object.keys(form.durations).sort()) {
+    const sec = form.durations[shotId]
+    if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) continue
+    const seg = axisByShot.get(shotId)
+    if (!seg || seg.kind === 'video') continue
+    if (Math.abs(sec - seg.durSec) > 1e-6) changes.push({ kind: 'shot-duration', shotId, sec })
+  }
   return changes
 }
 
@@ -95,6 +110,7 @@ export function useComposeInputRework(
   const baseConfig = ref<ComposeConfig>({})
   const baseBgm = ref<{ assetId: number | null; name: string | null }>({ assetId: null, name: null })
   const baseSfx = ref<SfxBaseline[]>([])
+  const shotAxis = ref<ComposeInputShotAxisView[]>([])
   const candidates = ref<Asset[]>([])
   const form = ref<ComposeInputForm>({
     transition: 'none',
@@ -105,6 +121,7 @@ export function useComposeInputRework(
     subtitleBurn: true,
     bgmChoice: 'keep',
     sfxChoices: {},
+    durations: {},
   })
 
   const loading = ref(false)
@@ -124,14 +141,16 @@ export function useComposeInputRework(
     for (const s of baseSfx.value) m[s.shotId] = s.assetId
     return m
   })
-  const changes = computed(() => buildComposeInputChanges(form.value, baseConfig.value, baseBgm.value.assetId, sfxByShot.value))
+  const changes = computed(() => buildComposeInputChanges(form.value, baseConfig.value, baseBgm.value.assetId, sfxByShot.value, shotAxis.value))
   const dirty = computed(() => changes.value.length > 0)
   const changeCount = computed(() => changes.value.length)
 
   /** 用后端返回的基准配置回填表单初值（显示口径与 ComposeSettingsModal 一致） */
-  function seedForm(cfg: ComposeConfig, bgmAssetId: number | null, sfxShots: string[]): void {
+  function seedForm(cfg: ComposeConfig, bgmAssetId: number | null, sfxShots: string[], durationShots: string[]): void {
     const sfxChoices: Record<string, BgmChoice> = {}
     for (const shotId of sfxShots) sfxChoices[shotId] = 'keep'
+    const durations: Record<string, number | null> = {}
+    for (const shotId of durationShots) durations[shotId] = null
     form.value = {
       transition: cfg.transition ?? 'none',
       transitionDuration: numOr(cfg.transition_duration, 0.5),
@@ -141,6 +160,7 @@ export function useComposeInputRework(
       subtitleBurn: cfg.subtitleBurn !== false,
       bgmChoice: 'keep',
       sfxChoices,
+      durations,
     }
     void bgmAssetId
   }
@@ -158,6 +178,7 @@ export function useComposeInputRework(
         loading.value = false
         return
       }
+      shotAxis.value = Array.isArray(cap.shot_axis) ? cap.shot_axis : []
       const [cfgRes, bgmRes, sfxRes] = await Promise.all([
         composeApi.getConfig(runId.value),
         composeApi.getBgm(runId.value),
@@ -169,7 +190,7 @@ export function useComposeInputRework(
       baseSfx.value = (sfxRes.items ?? [])
         .map((x) => ({ shotId: x.shotId, assetId: x.asset.id, name: x.asset.name }))
         .sort((a, b) => (a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0))
-      seedForm(baseConfig.value, baseBgm.value.assetId, baseSfx.value.map((s) => s.shotId))
+      seedForm(baseConfig.value, baseBgm.value.assetId, baseSfx.value.map((s) => s.shotId), shotAxis.value.filter((s) => s.kind === 'image').map((s) => s.shotId))
       if (projectId.value > 0) {
         const r = await projectApi.assets(projectId.value, '?kind=audio&limit=50')
         if (token !== epoch) return
@@ -277,6 +298,7 @@ export function useComposeInputRework(
     baseConfig,
     baseBgm,
     baseSfx,
+    shotAxis,
     candidates,
     sfxByShot,
     form,

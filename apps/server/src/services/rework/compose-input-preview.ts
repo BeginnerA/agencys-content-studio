@@ -205,18 +205,67 @@ export async function buildComposeInputPreview(p: {
     return { outcome: 'blocked', requestId, code: assetErrors[0]?.code ?? 'bad_asset', message: assetErrors[0]?.message ?? '资产校验失败', errors: assetErrors }
   }
 
+  // 镜头时长返修校验（切片2b 规格 §4）：从 baseline.shotAxis（params.timeline 只读派生）判定有效边界，fail closed。
+  //   无时轴快照 → 整体拒绝（不可判定 Σ）；shotId 不在段内 → bad_shot；命中视频镜（motion）→ unsupported_motion（Q2 显式拒绝，不静默 no-op）。
+  const durationChanges = parsed.changes.filter(
+    (c): c is Extract<ComposeInputChange, { kind: 'shot-duration' }> => c.kind === 'shot-duration',
+  )
+  const axisByShot = new Map(baseline.shotAxis.map((s) => [s.shotId, s]))
+  if (durationChanges.length > 0) {
+    const axisErrors: ComposeInputError[] = []
+    if (baseline.shotAxis.length === 0) {
+      axisErrors.push({ code: 'no_timeline_axis', message: '成片缺少时轴快照（params.timeline），无法判定镜头有效时长边界，时长返修不可用' })
+    } else {
+      for (const c of durationChanges) {
+        const seg = axisByShot.get(c.shotId)
+        if (!seg) { axisErrors.push({ code: 'bad_shot', message: `镜头 ${c.shotId} 不在成片时轴段内，无法覆盖其显示时长` }); continue }
+        if (seg.kind === 'video') axisErrors.push({ code: 'unsupported_motion', message: `镜头 ${c.shotId} 为视频镜（motion），其时长返修属中档（文件级裁切），本切片未含` })
+      }
+    }
+    if (axisErrors.length > 0) {
+      const { requestId } = await registerBlocked({ baseline, stepKey, requestKey: p.requestKey, sessionId: p.sessionId, rawChanges: p.changes, errors: axisErrors })
+      return { outcome: 'blocked', requestId, code: axisErrors[0]?.code ?? 'bad_shot', message: axisErrors[0]?.message ?? '时长返修校验失败', errors: axisErrors }
+    }
+  }
+
   const compiled = compileComposeInputChanges({ changes: parsed.changes, current })
   if (!compiled.ok) {
     const { requestId } = await registerBlocked({ baseline, stepKey, requestKey: p.requestKey, sessionId: p.sessionId, rawChanges: p.changes, errors: compiled.errors })
     return { outcome: 'blocked', requestId, code: compiled.errors[0]?.code ?? 'compile_failed', message: compiled.errors[0]?.message ?? '变更编译失败', errors: compiled.errors }
   }
   const { normalized } = compiled
+  // 时长 diff 附有效边界（Σ = durSec - silenceSec = 该镜对齐语音时长；请求短于 Σ → 合成期强制落 Σ 并告警，音画不脱节）。
+  // 同时检测「有效段长无变化」（含 clamp 落回原值）：若唯一变更均不改变入轴段长 → 整体 no_effect（规格 §3/§8#4）。
+  let durationEffectiveChanged = false
+  for (const d of normalized.diffs) {
+    if (d.kind !== 'shot-duration') continue
+    const seg = axisByShot.get(d.field)
+    if (!seg) continue
+    const sigma = Math.max(0, Math.round((seg.durSec - seg.silenceSec) * 1000) / 1000)
+    const requested = typeof d.after === 'number' ? d.after : null
+    if (requested == null) continue
+    if (requested < sigma) {
+      d.willClampToSec = sigma
+      d.warn = true
+    }
+    const effectiveNew = Math.max(requested, sigma)
+    if (Math.abs(effectiveNew - seg.durSec) > 1e-6) durationEffectiveChanged = true
+  }
+  const onlyDurations = normalized.diffs.length > 0 && normalized.diffs.every((d) => d.kind === 'shot-duration')
+  if (onlyDurations && !durationEffectiveChanged) {
+    const errs: ComposeInputError[] = [{ code: 'no_effect', message: '时长覆盖后的有效段长与当前入轴段长一致（含短于语音时长被强制回落），成片不会产生任何变化' }]
+    const { requestId } = await registerBlocked({ baseline, stepKey, requestKey: p.requestKey, sessionId: p.sessionId, rawChanges: p.changes, errors: errs })
+    return { outcome: 'blocked', requestId, code: 'no_effect', message: errs[0]!.message, errors: errs }
+  }
   const previewHash = hashJson({ f: baseline.fingerprint, c: normalized.changes })
   const risks: string[] = [
     '将本地重新合成：不产生模型费用，但需编码时间，且不承诺逐字节一致（音频混合/时间轴已变，无字幕式关烧录快速路径）',
     '新版本需重新审阅：旧 gate 批准不自动沿用',
     '依赖指纹任一变（旁路改配置/换绑/上游重跑）→ 本预览过期须重算',
   ]
+  if (durationChanges.length > 0) {
+    risks.push('镜头显示时长受「音画不脱节」约束：请求短于该镜对齐语音时长时自动延长至语音时长（预览 willClampToSec/warn 已标注），不截断台词；仅图片镜适用')
+  }
   const preview: ComposeInputPreview = {
     stepKey,
     baseFingerprint: baseline.fingerprint,

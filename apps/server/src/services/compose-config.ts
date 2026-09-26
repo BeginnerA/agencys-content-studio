@@ -31,6 +31,9 @@ import {
 /** 转场枚举（对齐 ffmpeg xfade 常用子集） */
 export const TRANSITIONS = ['none', 'fade', 'fadeblack', 'slideleft', 'slideright', 'dissolve'] as const
 
+/** 镜头时长返修单镜上限（秒，防御性上界；normalizeComposeConfigPatch 与 shot-duration 契约共用真源） */
+export const SHOT_DURATION_MAX_SEC = 600
+
 /** 派生画幅枚举（主画幅之外的常用发布比例） */
 export const ASPECTS = ['9:16', '1:1', '4:5', '16:9'] as const
 /** 画幅适配策略：crop 居中裁切（不留边）| pad 等比缩放补黑边 */
@@ -61,6 +64,9 @@ export interface ComposeConfig {
   subtitleBurn?: boolean
   /** 多画幅原生渲染（合成内多路输出） */
   multi_aspect?: MultiAspectConfig
+  /** 镜头时长本地返修覆盖（切片2b）：shotId → 显示时长秒；仅经 compose-input 返修闸写入（草稿直写排除本键，Q1）。
+   *  有效段长仍受音频对齐下限约束（短于该镜对齐语音 Σ → 合成期 planVoiceAlignedSegments 回落 Σ，不音画脱节）。 */
+  shot_durations?: Record<string, number>
 }
 
 /**
@@ -233,6 +239,23 @@ export function normalizeComposeConfigPatch(base: ComposeConfig, patch: Record<s
       next.brandApply = value
       continue
     }
+    if (key === 'shot_durations') {
+      // 镜头时长覆盖（切片2b）：{ shotId: 秒 }；键非空 shotId、值逐项有限正数并封顶到 MAX。整键 null 走函数头统一清除。
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new WorkbenchError('bad_field', 'shot_durations 需为 { shotId: 秒 } 对象')
+      }
+      const map: Record<string, number> = {}
+      for (const [sid, sec] of Object.entries(value as Record<string, unknown>)) {
+        const shotKey = typeof sid === 'string' ? sid.trim() : ''
+        if (!shotKey) throw new WorkbenchError('bad_field', 'shot_durations 键需为非空 shotId')
+        if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) {
+          throw new WorkbenchError('bad_field', `shot_durations.${shotKey} 需为有限正数秒`)
+        }
+        map[shotKey] = Math.min(sec, SHOT_DURATION_MAX_SEC)
+      }
+      next.shot_durations = map
+      continue
+    }
     throw new WorkbenchError('bad_field', `未知配置键：${key}`)
   }
   return next
@@ -241,6 +264,10 @@ export function normalizeComposeConfigPatch(base: ComposeConfig, patch: Record<s
 /** 配置合并写（字段白名单 + 枚举 + clamp；只动 _compose 键） */
 export async function updateComposeConfig(runId: number, patch: Record<string, unknown>): Promise<ComposeConfig> {
   const run = await requireEditableRun(runId)
+  // 切片2b Q1：镜头时长覆盖只经受控返修闸（compose-input apply）写入，草稿直写口不放开本键。
+  if ('shot_durations' in patch) {
+    throw new WorkbenchError('bad_field', 'shot_durations 需经合成返修闸修改，不支持草稿直写')
+  }
   const next = normalizeComposeConfigPatch(readComposeConfig(run.input), patch)
   let inputObj: Record<string, unknown>
   try {

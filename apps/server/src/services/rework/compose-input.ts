@@ -1,9 +1,10 @@
 /**
  * 精确返修 · 合成输入本地返修：单一变更契约（切片2 规格 §3，纯函数段）。
  *
- * 与字幕 SubtitleChange 并列、不并入字幕 schema。四类变更均收敛到「本地重合成、零付费生成」：
+ * 与字幕 SubtitleChange 并列、不并入字幕 schema。五类变更均收敛到「本地重合成、零付费生成」：
  *   compose-config（字段级补丁，值=null 清除回落缺省）/ bgm（换绑 assetId 或 null 移除）/
- *   sfx（逐镜换绑/null 移除）/ shot-select（某镜在用资产换成同类另一 assetId）。
+ *   sfx（逐镜换绑/null 移除）/ shot-select（某镜在用资产换成同类另一 assetId）/
+ *   shot-duration（某镜显示时长覆盖，切片2b 轻档；compile 期折进 _compose.shot_durations，apply 复用配置写路径）。
  * 本段只做**纯语义**：schema 判别 + 冲突检测 + 配置规范化（委托 compose-config 真源，不重抄 clamp/枚举）
  * + 逐处 原值→新值 diff + no_effect 整体拒绝。资产存在性/kind/项目归属/「同一生成步骤 output 同类候选」
  * 属**需查库**的校验，置于 preview（T3）；本模块不触 DB、不触执行。
@@ -16,6 +17,8 @@ export type ComposeInputChange =
   | { kind: 'bgm'; assetId: number | null }
   | { kind: 'sfx'; shotId: string; assetId: number | null }
   | { kind: 'shot-select'; shotId: string; assetId: number }
+  // 镜头时长覆盖（切片2b）：把某镜(shotId)显示时长设为 sec 秒；compile 期折进 _compose.shot_durations。
+  | { kind: 'shot-duration'; shotId: string; sec: number }
 
 /** 单请求变更数上限（切片2 规格 §3） */
 export const MAX_COMPOSE_INPUT_CHANGES = 500
@@ -38,6 +41,7 @@ export const composeInputChangeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('bgm'), assetId: intId.nullable() }).strict(),
   z.object({ kind: z.literal('sfx'), shotId: shotIdSchema, assetId: intId.nullable() }).strict(),
   z.object({ kind: z.literal('shot-select'), shotId: shotIdSchema, assetId: intId }).strict(),
+  z.object({ kind: z.literal('shot-duration'), shotId: shotIdSchema, sec: z.number().finite().positive() }).strict(),
 ])
 
 export const composeInputChangesSchema = z.array(composeInputChangeSchema).min(1).max(MAX_COMPOSE_INPUT_CHANGES)
@@ -71,10 +75,14 @@ export interface ComposeInputCurrentState {
 /** 逐处旧→新差异（compose-config 按被改键一行；bgm/sfx/shot-select 按目标一行） */
 export interface ComposeInputDiffEntry {
   kind: ComposeInputChange['kind']
-  /** compose-config：字段键名；sfx/shot-select：shotId；bgm：'bgm' */
+  /** compose-config：字段键名；sfx/shot-select/shot-duration：shotId；bgm：'bgm' */
   field: string
   before: unknown
   after: unknown
+  /** 镜头时长返修（切片2b）：请求短于该镜对齐语音时长 Σ 时，实际将落到该值（音画不脱节强制延长；未触发则不出现） */
+  willClampToSec?: number
+  /** 镜头时长返修：请求短于 Σ 触发自动延长告警（true 时 willClampToSec 必存在） */
+  warn?: boolean
 }
 
 export interface NormalizedComposeInput {
@@ -114,10 +122,20 @@ export function compileComposeInputChanges(args: {
   }
 
   // 3) compose-config：合并多个补丁；同键异值冲突；委托真源逐键规范化（clamp/枚举/白名单/brand/multi_aspect）
+  //    镜头时长（shot-duration，切片2b）折进同一 shot_durations 键，共用 nextConfig/apply 配置写路径（零新增 apply 分支）。
   const configChanges = changes.filter((c) => c.kind === 'compose-config') as Array<Extract<ComposeInputChange, { kind: 'compose-config' }>>
+  const durationChanges = changes.filter((c) => c.kind === 'shot-duration') as Array<Extract<ComposeInputChange, { kind: 'shot-duration' }>>
+  // 时长同镜唯一
+  {
+    const seen = new Set<string>()
+    for (const c of durationChanges) {
+      if (seen.has(c.shotId)) errors.push({ code: 'conflicting_changes', message: `镜头 ${c.shotId} 的时长被重复指定` })
+      seen.add(c.shotId)
+    }
+  }
   const mergedPatch: Record<string, unknown> = {}
   let nextConfig: ComposeConfig | null = null
-  if (configChanges.length > 0) {
+  if (configChanges.length > 0 || durationChanges.length > 0) {
     for (const c of configChanges) {
       for (const [key, value] of Object.entries(c.patch)) {
         if (key in mergedPatch && !jsonEq(mergedPatch[key], value)) {
@@ -126,6 +144,15 @@ export function compileComposeInputChanges(args: {
         }
         mergedPatch[key] = value
       }
+    }
+    if (durationChanges.length > 0) {
+      const base = current.config.shot_durations ?? {}
+      const fromConfig = mergedPatch['shot_durations'] && typeof mergedPatch['shot_durations'] === 'object' && !Array.isArray(mergedPatch['shot_durations'])
+        ? (mergedPatch['shot_durations'] as Record<string, unknown>)
+        : base
+      const merged: Record<string, unknown> = { ...fromConfig }
+      for (const c of durationChanges) merged[c.shotId] = c.sec
+      mergedPatch['shot_durations'] = merged
     }
     if (errors.length === 0) {
       try {
@@ -137,14 +164,22 @@ export function compileComposeInputChanges(args: {
   }
   if (errors.length > 0) return { ok: false, errors }
 
-  // 4) 逐处 diff（旧→新）；仅记录实际改变者
+  // 4) 逐处 diff（旧→新）；仅记录实际改变者（shot_durations 逐镜单列，不并入配置键 diff）
   const diffs: ComposeInputDiffEntry[] = []
   if (nextConfig) {
     for (const key of Object.keys(mergedPatch)) {
+      if (key === 'shot_durations') continue
       const before = (current.config as Record<string, unknown>)[key] ?? null
       const after = (nextConfig as Record<string, unknown>)[key] ?? null
       if (!jsonEq(before, after)) diffs.push({ kind: 'compose-config', field: key, before, after })
     }
+  }
+  const durNext = nextConfig?.shot_durations ?? {}
+  const durCur = current.config.shot_durations ?? {}
+  for (const c of durationChanges) {
+    const before = durCur[c.shotId] ?? null
+    const after = durNext[c.shotId] ?? null
+    if (before !== after) diffs.push({ kind: 'shot-duration', field: c.shotId, before, after })
   }
   for (const c of bgmChanges) {
     if (c.assetId !== current.bgmAssetId) diffs.push({ kind: 'bgm', field: 'bgm', before: current.bgmAssetId, after: c.assetId })
@@ -178,6 +213,12 @@ export function compileComposeInputChanges(args: {
   }
   for (const c of [...selectChanges].sort((a, b) => (a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0))) {
     normalized.push({ kind: 'shot-select', shotId: c.shotId, assetId: c.assetId })
+  }
+  // shot-duration 显式保留为独立 canonical 条目（不折进 compose-config 后丢失语义）：
+  //   apply 期从 changesJson 重编译时据此复现 shot-duration diff（否则 durationChanges 空、
+  //   而 config 键又跳过 shot_durations → diffs 空 → 误判 no_effect）。
+  for (const c of [...durationChanges].sort((a, b) => (a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0))) {
+    normalized.push({ kind: 'shot-duration', shotId: c.shotId, sec: c.sec })
   }
   return { ok: true, normalized: { changes: normalized, nextConfig, diffs } }
 }
