@@ -29,6 +29,7 @@ import Icon from '../common/Icon.vue'
 import Modal from '../common/Modal.vue'
 import SubtitleStyleSection from './SubtitleStyleSection.vue'
 import SubtitleBurnToggle from './SubtitleBurnToggle.vue'
+import ComposeInputReworkEntry from './compose-input-rework/ComposeInputReworkEntry.vue'
 
 const props = defineProps<{ runId: number; projectId: number }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -221,6 +222,21 @@ function fmtDur(sec: number | null): string {
     <div class="bg">
       <div v-if="loading" class="muted">加载中…</div>
       <template v-else>
+        <!-- ===== 合成返修（双模入口，自治探测）：有可返修成片且依赖可复验时出现受控返修闸（本地收集→预览→确认→本地重合成，零付费）；无成片/不可返修时本入口自动隐藏，下方各节仍为原「直写草稿 + 重新合成后生效」语义，逐字节不变 ===== -->
+        <div class="bg-sec">
+          <div class="bg-row">
+            <ComposeInputReworkEntry
+              :run-id="runId"
+              :project-id="projectId"
+              :disabled="busy"
+              @applied="emit('changed')"
+            />
+            <span class="muted bg-lb-tip">成片已产出后改配置/换配乐请用「合成返修」：预览逐处旧→新、零模型费用、旧批准必复审</span>
+          </div>
+        </div>
+
+        <div class="bg-sep" />
+
         <!-- ===== 配乐（BGM） ===== -->
         <div class="bg-sec">
           <div class="bg-lb">

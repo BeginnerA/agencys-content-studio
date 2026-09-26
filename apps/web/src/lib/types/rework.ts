@@ -159,3 +159,85 @@ export interface ReworkRequestView {
   createdAt: number
   updatedAt: number
 }
+
+/* ===== 合成输入本地返修（切片2）：与 apps/server services/rework/compose-input* 逐字段对齐 ===== */
+
+/** 能力门禁判定（不支持时 code/message 即真实原因，UI 不伪造可返修态） */
+export interface ComposeInputCapabilityView {
+  supported: boolean
+  code: string
+  message: string
+}
+
+/** GET capability 响应 */
+export interface ComposeInputCapabilityResponse {
+  capability: ComposeInputCapabilityView
+  final_asset_id: number | null
+}
+
+/** 单一变更契约（四类均本地重合成、零付费；服务端为唯一裁决） */
+export type ComposeInputChangeView =
+  | { kind: 'compose-config'; patch: Record<string, unknown> }
+  | { kind: 'bgm'; assetId: number | null }
+  | { kind: 'sfx'; shotId: string; assetId: number | null }
+  | { kind: 'shot-select'; shotId: string; assetId: number }
+
+/** 逐处旧→新差异（compose-config 按被改键一行；bgm/sfx/shot-select 按目标一行） */
+export interface ComposeInputDiffView {
+  kind: ComposeInputChangeView['kind']
+  field: string
+  before: unknown
+  after: unknown
+}
+
+/** 影响声明（服务端编译，前端只展示不推算） */
+export interface ComposeInputImpactView {
+  localReencode: true
+  modelCalls: 0
+  charged: false
+  resetSteps: string[]
+  keepNotes: string[]
+  newReviewRequired: true
+}
+
+/** 固定预览（previewHash 为确认回执，逐字回传） */
+export interface ComposeInputPreviewView {
+  stepKey: string
+  baseFingerprint: string
+  previewHash: string
+  finalAssetId: number
+  currentConfig: Record<string, unknown>
+  bgmAssetId: number | null
+  diffs: ComposeInputDiffView[]
+  impact: ComposeInputImpactView
+  risks: string[]
+}
+
+/** POST compose-input preview 响应 */
+export interface ComposeInputPreviewResponse {
+  outcome: 'ready' | 'replayed'
+  request_id: string
+  preview: ComposeInputPreviewView
+}
+
+/** 应用回执（applied 成功/回放结果；enqueued=已入队本地续跑） */
+export interface ComposeInputApplyReceiptView {
+  runId: number
+  stepKey: string
+  baseFingerprint: string
+  previewHash: string
+  resetSteps: string[]
+  gateInvalidated: boolean
+  bgmFrom: number | null
+  bgmTo: number | null
+  selections: Array<{ shotId: string; fromAssetId: number; toAssetId: number }>
+  enqueued: true
+  appliedAt: number
+}
+
+/** POST compose-input apply 响应 */
+export interface ComposeInputApplyResponse {
+  outcome: 'applied' | 'replayed'
+  request_id: string
+  result: ComposeInputApplyReceiptView
+}

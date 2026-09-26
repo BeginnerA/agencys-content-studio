@@ -368,3 +368,17 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 - 初次静帧采集在全部子命令成功、产物写完后因同步入口误调用 `.catch` 退出 1；已修正隔离采集器为 async，并独立核验全部子命令退出码和候选。没有覆盖采集证据或再次生成。
 
 [归档验证](../data/production-baseline/20260925-140900/evidence/verification.json)通过：62 项索引、6 条观察、92 项受保护文件哈希未变。原片、A 版、业务源码及总计划未改，未回写生产或提交代码。纸袋整体问题尚未关闭，六槽仍为 0/6、36 项固定任务未执行，总路线保持 Executing。
+
+## 切片2 验收快照：compose-input 合成输入本地返修（2026-09-26，探针门禁）
+
+第二期 precision-rework 切片2「不需媒体生成的修改」之合成输入部分（T1–T7）交付。唯一实现真源（位于仓库外层 AI 工作区 `d:/work/AI/docs/superpowers/`）：规格 `specs/2026-09-26-agencys-content-studio-precision-rework-compose-inputs-design.md` + 计划 `plans/2026-09-26-agencys-content-studio-precision-rework-compose-inputs.md`。能力范围：对已产出成片，在受控返修闸内改合成配置（转场/时长/BGM·SFX 音量/BGM 淡入/字幕烧录）、对已存在项目音频换绑/移除 BGM、候选改选；本地重新合成，零模型调用、零计费，旧成片终审批准一律作废必复审。
+
+- 后端：`services/rework/capability.ts`、`compose-input.ts`（契约+预览编译+apply 确认）、`compose-input-preview.ts`、`compose-input-apply.ts`（新）；`routes/rework.ts` 加 `GET .../compose-input/capability` + `POST .../preview` + `POST .../:requestId/apply`（专属端点，字幕 preview/apply 端点与语义逐字不变）。
+- 入口收口（方案 A·共享原语一处收口）：`services/shot/reset.ts` 的 `resetStepForRecompose`（通用 recompose + 轻松创作 recomposeCreation 皆经此）与 `resetStepForRerun`（单步重跑）在 compose 步（`ffmpeg_merge`）重置为 pending 时一并剥离 `output.gate`——覆盖全部本地重合成入口，无需改各调用点；仅约束合成步，非 compose 步 gate 不动。
+- 前端（方案 A·新增独立自治探测弹窗，不动 `ComposeSettingsModal` 直写草稿语义）：`components/run/compose-input-rework/` 下 `use-compose-input-rework.ts` + `ComposeInputReworkEntry.vue` + `ComposeInputReworkModal.vue`；`types/rework.ts` + `api/rework.ts` 加 compose-input 视图与 API。双模判据=后端 `capability.supported`：有可返修成片时「合成设置」顶部出现「合成返修」入口（本地收集变更不预先直写→预览→确认→本地重合成），无成片时入口自动隐藏、沿用原草稿直写。预览/影响/费用/过期一律展示后端返回值，前端零推算、不伪造可编辑态。
+
+自动门禁（本机实测，全绿）：`--only=precision-rework` 349 断言全绿（含切片2 compose-input 分节，字幕首切片断言不变）；`--only=m7` 110 全绿；`--only=m11` 184 全绿；`pnpm -r typecheck` 双端绿（含 `vue-tsc`）；`pnpm --filter @acs/web build` 绿（663 模块）。零新增依赖、零付费、未自动提交。
+
+红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本切片曾把自有探针 `probe-precision-rework.ts` 撑到 882 行，已按其既有拆分惯例把 compose-input 分节抽到 `precision-rework-compose-input.ts`（主探针 545 + 新库 344，均 ≤800，断言文案逐字未改），**本切片净新增违规为零**。该门禁现仍红，唯一原因是 3 个早于切片2、本切片一行未改的既有存量文件：`CreationArtifacts.vue`(998)、`probe-m7.ts`(865)、`use-project-detail.ts`(803)。经用户拍板：此 3 项记为独立技术债、不在本切片内处理（重构与功能加分分离），另立后续单独拆分项，故 m26 的 `split-audit` 分节在本切片收口时**保持已知红**、非本切片回归。
+
+待人工门（未声称）：浏览器端「合成返修」入口的挂载位置/文案/候选选择与本地重合成端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩，不等同于产品内真实 FFmpeg 重编码路径的可视验收。

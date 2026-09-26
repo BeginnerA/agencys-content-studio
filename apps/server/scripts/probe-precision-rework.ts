@@ -9,12 +9,13 @@
  * §4 输入限制、整体拒绝语义（无部分生效）、稳定标识与规范化序，
  * §6.1 有效字幕快照（普通平移/严格路径/一句多 cue/片头/关闭烧录证据），
  * §5.1/§5.2 台账与字幕版本持久化（隔离库 initDb：幂等回放/冲突/终态回执/不可变版本链/受控键），
- * 以及 §5/§6 能力判定与结构化预览（跨项目/在途/缺快照/快照损坏/下游付费/受理不确定均拦断；预览零执行态写入），
+ * 以及 §5/§6 能力判定与结构化预览（跨项目/在途/缺快照/快照损坏/下游付费均拦断；预览零执行态写入），
  * 以及 §5.3 原子确认（同事务领用版本/指针/重置合成步与回执；并发只应用一次、响应丢失可回放、指纹漂移拒绝），
  * 以及 §6.2 合成消费（人工修订显示输入接管 fail closed / 无烧录快速路径逐字节复制与任一依赖漂移拒绝），
  * 以及 §6.2/§5.2-104/§7 重合成过期复验（依赖指纹消费前终检、内部键不绕白名单、续跑不盲拷指针、被引用字幕不可清理），
  * 以及 §7/P8 成果版本投影（运行级 API 幂等面、当前修订/待审/待重合成四态区分、下载固定不可变版本、旧成片不伪装已更新），
  * 以及 §8/P9 工程字幕与 sidecar（共享 cue 读取、FCPXML/OTIO 字幕轨取有效快照不覆盖人工修订、对白轨不动、EDL 不伪装字幕）。
+ * compose-input 分节（切片2）拆至 ./precision-rework-compose-input（m26 split-audit 红线单文件 ≤800 行）。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
@@ -24,10 +25,11 @@ import {
   runComposeSection, runStaleSection, runProjectionSection, runExchangeSection, runParseSection,
   type SubtitleCueT, type EffSnap, type ApiShape,
 } from './precision-rework-sections'
+import { runComposeInputSection } from './precision-rework-compose-input'
 
 const { cleanup } = isolatedEnv('precision-rework')
 
-const SECTIONS = ['contract', 'snapshot', 'ledger', 'preview', 'apply', 'compose', 'stale', 'projection', 'exchange', 'parse'] as const
+const SECTIONS = ['contract', 'snapshot', 'ledger', 'preview', 'apply', 'compose', 'compose-input', 'stale', 'projection', 'exchange', 'parse'] as const
 
 
 async function main(): Promise<void> {
@@ -530,13 +532,12 @@ async function main(): Promise<void> {
     }
   }
 
-
   await runSections({
     log,
     title: 'precision-rework',
     checker,
     sections: SECTIONS,
-    runners: { contract: runContract, snapshot: runSnapshot, ledger: runLedger, preview: runPreview, apply: runApply, compose: () => runComposeSection(check), stale: () => runStaleSection(check), projection: () => runProjectionSection(check), exchange: () => runExchangeSection(check), parse: () => runParseSection(check) },
+    runners: { contract: runContract, snapshot: runSnapshot, ledger: runLedger, preview: runPreview, apply: runApply, compose: () => runComposeSection(check), 'compose-input': () => runComposeInputSection(check), stale: () => runStaleSection(check), projection: () => runProjectionSection(check), exchange: () => runExchangeSection(check), parse: () => runParseSection(check) },
     cleanup,
   })
 }

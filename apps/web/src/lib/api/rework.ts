@@ -4,6 +4,10 @@
 import { ApiError } from './core'
 import type {
   ApplyResponseView,
+  ComposeInputApplyResponse,
+  ComposeInputCapabilityResponse,
+  ComposeInputChangeView,
+  ComposeInputPreviewResponse,
   PreviewResponseView,
   ReworkErrorView,
   ReworkRequestView,
@@ -91,6 +95,31 @@ export const subtitleReworkApi = {
   /** 原子确认：逐字回传 previewHash；冲突抛 ReworkApiError（409 族） */
   apply: (runId: number, requestId: string, previewHash: string) =>
     reworkRequest<ApplyResponseView>('POST', `${V}/runs/${runId}/rework/${requestId}/apply`, {
+      preview_hash: previewHash,
+    }),
+}
+
+// 合成输入本地返修 API（切片2）：与 routes/rework.ts compose-input 端点对齐；复用同款带
+// 领域错误明细的 reworkRequest 封装（blocked/冲突携 errors[]/request_id）。
+export const composeInputReworkApi = {
+  /** 能力探测（双模判据：supported→展示受控返修入口；否则仅草稿直写） */
+  capability: (runId: number, stepKey = 'compose') =>
+    reworkRequest<ComposeInputCapabilityResponse>(
+      'GET',
+      `${V}/runs/${runId}/rework/compose-input/capability?stepKey=${encodeURIComponent(stepKey)}`,
+    ),
+
+  /** 结构化预览：同 requestKey 同签名幂等回放；blocked 抛 ReworkApiError */
+  preview: (runId: number, requestKey: string, changes: ComposeInputChangeView[], stepKey?: string) =>
+    reworkRequest<ComposeInputPreviewResponse>('POST', `${V}/runs/${runId}/rework/compose-input/preview`, {
+      request_key: requestKey,
+      ...(stepKey ? { step_key: stepKey } : {}),
+      changes,
+    }),
+
+  /** 原子确认：逐字回传 previewHash；成功即本地续跑（零付费） */
+  apply: (runId: number, requestId: string, previewHash: string) =>
+    reworkRequest<ComposeInputApplyResponse>('POST', `${V}/runs/${runId}/rework/compose-input/${requestId}/apply`, {
       preview_hash: previewHash,
     }),
 }

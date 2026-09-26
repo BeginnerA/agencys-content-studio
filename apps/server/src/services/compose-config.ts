@@ -164,11 +164,21 @@ export async function getComposeConfig(runId: number): Promise<{ config: Compose
   return { config: readComposeConfig(run.input), bgm }
 }
 
-/** 配置合并写（字段白名单 + 枚举 + clamp；只动 _compose 键） */
-export async function updateComposeConfig(runId: number, patch: Record<string, unknown>): Promise<ComposeConfig> {
-  const run = await requireEditableRun(runId)
-  const next: ComposeConfig = { ...readComposeConfig(run.input) }
+/**
+ * _compose 配置逐键规范化真源（纯函数，无 DB）：枚举/范围 clamp/结构校验全部收敛于此，
+ * 供 updateComposeConfig（草稿直写）与合成输入返修（compose-input）共用，杜绝两套 magic number 漂移。
+ * - 白名单外键 → bad_field「未知配置键」（内部键如 _subtitleEdits 无法伪造写入）；
+ * - value===null → 删除该键回落缺省（统一清除语义：transition/时长/音量/开关/brand/multi_aspect 同规则）；
+ * - brandApply：成片是否应用品牌叠加（与确认卡同一 _compose 键），布尔直存 / null 清除。
+ * 抛 WorkbenchError（bad_field），与既有 updateComposeConfig 逐字一致的 code/message。
+ */
+export function normalizeComposeConfigPatch(base: ComposeConfig, patch: Record<string, unknown>): ComposeConfig {
+  const next: ComposeConfig = { ...base }
   for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      delete (next as Record<string, unknown>)[key]
+      continue
+    }
     if (key === 'transition') {
       if (typeof value !== 'string' || !(TRANSITIONS as readonly string[]).includes(value)) {
         throw new WorkbenchError('bad_field', `transition 需为 ${TRANSITIONS.join('|')}`)
@@ -187,25 +197,17 @@ export async function updateComposeConfig(runId: number, patch: Record<string, u
       continue
     }
     if (key === 'multi_aspect') {
-      if (value === null) {
-        delete next.multi_aspect
-        continue
-      }
       next.multi_aspect = normalizeMultiAspect(value)
       continue
     }
     if (key === 'brand') {
-      if (value === null) {
-        delete next.brand
-        continue
-      }
-      let patch: BrandConfig
+      let brandPatch: BrandConfig
       try {
-        patch = normalizeBrandPatch(value)
+        brandPatch = normalizeBrandPatch(value)
       } catch (err) {
         throw new WorkbenchError('bad_field', (err as Error).message)
       }
-      const merged = mergeBrand(next.brand, patch)
+      const merged = mergeBrand(next.brand, brandPatch)
       // 槽级清除：patch 显式 null 的槽从 run 覆盖删除（回落继承）
       const raw = value as Record<string, unknown>
       for (const slot of ['subtitle', 'watermark', 'intro', 'outro'] as const) {
@@ -216,19 +218,30 @@ export async function updateComposeConfig(runId: number, patch: Record<string, u
     }
     if (key === 'subtitleBurn') {
       // 成片是否烧录硬字幕（与轻松创作确认卡同一 _compose 键、同一 ffmpeg-merge 烧录门）：
-      // 布尔直存；null = 清除该键回落缺省（烧录）。改后需「重新合成」进入成片（与 BGM/转场同一生效语义）。
-      if (value === null) {
-        delete next.subtitleBurn
-        continue
-      }
+      // 布尔直存；null = 清除该键回落缺省（烧录，见函数头统一 null 分支）。改后需「重新合成」进入成片。
       if (typeof value !== 'boolean') {
         throw new WorkbenchError('bad_field', 'subtitleBurn 需为布尔')
       }
       next.subtitleBurn = value
       continue
     }
+    if (key === 'brandApply') {
+      // 成片是否应用品牌叠加（与 subtitleBurn 同级不同键）：布尔直存；null 清除回落缺省（继承）。
+      if (typeof value !== 'boolean') {
+        throw new WorkbenchError('bad_field', 'brandApply 需为布尔')
+      }
+      next.brandApply = value
+      continue
+    }
     throw new WorkbenchError('bad_field', `未知配置键：${key}`)
   }
+  return next
+}
+
+/** 配置合并写（字段白名单 + 枚举 + clamp；只动 _compose 键） */
+export async function updateComposeConfig(runId: number, patch: Record<string, unknown>): Promise<ComposeConfig> {
+  const run = await requireEditableRun(runId)
+  const next = normalizeComposeConfigPatch(readComposeConfig(run.input), patch)
   let inputObj: Record<string, unknown>
   try {
     inputObj = JSON.parse(run.input) as Record<string, unknown>

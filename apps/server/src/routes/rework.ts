@@ -4,8 +4,11 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { pipelineRuns } from '../db/schema'
 import { buildSubtitlePreview, getReworkRequestView } from '../services/rework/preview'
+import { buildComposeInputPreview } from '../services/rework/compose-input-preview'
+import { assessComposeInputCapability } from '../services/rework/capability'
 import { parseSubtitleInstruction } from '../services/rework/parse'
 import { applySubtitleRework } from '../services/rework/apply'
+import { applyComposeInputRework } from '../services/rework/compose-input-apply'
 import { subtitleReadModel } from '../services/rework/readmodel'
 import { getReworkRequest, ReworkLedgerError } from '../services/rework/ledger'
 import { HttpError, h, idParam, notFound } from './helpers'
@@ -64,6 +67,39 @@ reworkRoutes.post('/runs/:id/rework/preview', h(async (c) => {
   }
   if (res.outcome === 'blocked') {
     // 带 requestId 的 blocked 是载荷错误（可回放原因）；不带的是能力拦断（stale/付费链等按 409）
+    const status = res.requestId ? 400 : 409
+    return c.json({ error: { code: res.code, message: res.message }, request_id: res.requestId, ...(res.errors ? { errors: res.errors } : {}) }, status as 400 | 409)
+  }
+  return c.json({ outcome: res.outcome, request_id: res.requestId, preview: res.preview })
+}))
+
+// GET /runs/:id/rework/compose-input/capability —— 合成输入返修能力探测（切片2 §6 双模）：
+// 有可返修成片（supported）→ 前端展示受控返修入口（preview/apply）；无成片→沿用 compose 草稿直写。
+// 纯转发 assessComposeInputCapability（其门禁/指纹已在 precision-rework 探针 compose-input 分节覆盖），零写入。
+reworkRoutes.get('/runs/:id/rework/compose-input/capability', h(async (c) => {
+  const runId = idParam(c)
+  if (!(await findRun(runId))) return notFound(c, `run ${runId}`)
+  const stepKey = c.req.query('stepKey') || 'compose'
+  const { capability, baseline } = await assessComposeInputCapability(runId, stepKey)
+  return c.json({ capability, final_asset_id: baseline?.finalAssetId ?? null })
+}))
+
+// POST /runs/:id/rework/compose-input/preview —— 合成输入本地返修结构化预览（切片2 §3/§4，零执行）
+// 幂等：request_key 必填；同键同载荷回放，同键异载荷 409。四类变更（配置/BGM·SFX 换绑/候选改选）均本地重编码、零付费。
+reworkRoutes.post('/runs/:id/rework/compose-input/preview', h(async (c) => {
+  const runId = idParam(c)
+  if (!(await findRun(runId))) return notFound(c, `run ${runId}`)
+  const body = await readJson(c)
+  const requestKey = body['request_key']
+  if (typeof requestKey !== 'string' || requestKey.length === 0 || requestKey.length > 100) {
+    throw new HttpError(400, 'bad_request_key', 'request_key 需为 1-100 字符的字符串（幂等键）')
+  }
+  const stepKey = typeof body['step_key'] === 'string' ? body['step_key'] : undefined
+  const res = await buildComposeInputPreview({ runId, stepKey, requestKey, changes: body['changes'] })
+  if (res.outcome === 'conflict') {
+    return c.json({ error: { code: res.code, message: res.message }, request_id: res.requestId }, 409)
+  }
+  if (res.outcome === 'blocked') {
     const status = res.requestId ? 400 : 409
     return c.json({ error: { code: res.code, message: res.message }, request_id: res.requestId, ...(res.errors ? { errors: res.errors } : {}) }, status as 400 | 409)
   }
@@ -129,6 +165,34 @@ reworkRoutes.post('/runs/:id/rework/:requestId/apply', h(async (c) => {
     throw new HttpError(400, 'bad_preview_hash', 'preview_hash 必填：确认必须携带与服务端固定预览逐字一致的回执')
   }
   const res = await applySubtitleRework({ requestId, previewHash })
+  if (res.outcome === 'rejected') {
+    // 行不归属本 run 时按不存在处理（防跨 run 携带 requestId）
+    if (res.requestId) {
+      try {
+        const row = await getReworkRequest(res.requestId)
+        if (row.runId !== runId) return notFound(c, `run ${runId} 的返修请求 ${requestId}`)
+      } catch {
+        /* not_found 由下方 code 映射 */
+      }
+    }
+    return c.json({ error: { code: res.code, message: res.message } }, reworkStatus(res.code) as 404)
+  }
+  return c.json({ outcome: res.outcome, request_id: res.requestId, result: res.result })
+}))
+
+// POST /runs/:id/rework/compose-input/:requestId/apply —— 合成输入返修确认应用（切片2 §5/§10）：
+// 只接 preview_hash（不接任意新 changes）；预飞行重验通过→Phase-1 资产/选片落真源→Phase-2 末事务原子领用+入队→Phase-3 启动引擎。
+// rejected 携 requestId 跨 run 时按不存在处理（防携带他 run requestId）；成功即本地续跑（零付费）。
+reworkRoutes.post('/runs/:id/rework/compose-input/:requestId/apply', h(async (c) => {
+  const runId = idParam(c)
+  const requestId = c.req.param('requestId')
+  if (!requestId) return notFound(c, '返修请求')
+  const body = await readJson(c)
+  const previewHash = body['preview_hash']
+  if (typeof previewHash !== 'string' || previewHash.length === 0) {
+    throw new HttpError(400, 'bad_preview_hash', 'preview_hash 必填：确认必须携带与服务端固定预览逐字一致的回执')
+  }
+  const res = await applyComposeInputRework({ requestId, previewHash })
   if (res.outcome === 'rejected') {
     // 行不归属本 run 时按不存在处理（防跨 run 携带 requestId）
     if (res.requestId) {

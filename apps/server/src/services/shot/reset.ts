@@ -11,13 +11,28 @@ const REWORK_ACTIONS = ['ai_image', 'ai_video', 'ffmpeg_merge']
 
 // ---------- 重新合成 ----------
 
+/**
+ * 本地重合成入口统一作废旧终审批 gate（切片2 T5「旧批准不自动沿用」不变量）：
+ * 合成步（ffmpeg_merge）重置为 pending 时剥离 output.gate，新成片必复审；历史 asset_ids 原样保留。
+ * 非合成步不受本不变量约束（其 gate 由各自批准链管理）→ 返回空补丁，不触碰 output。
+ * 一处收口：通用 recompose（resetStepForRecompose）、轻松创作 recomposeCreation、单步重跑（resetStepForRerun）
+ * 皆经此，避免任一本地重合成入口沿用过期成片终审批。parseOutputJson 对 null/损坏返 {}，无需额外兵底。
+ */
+function gateStrip(step: PipelineStep): { output?: string } {
+  if (step.actionKey !== 'ffmpeg_merge') return {}
+  const out = parseOutputJson(step.output)
+  if (!('gate' in out)) return {}
+  const { gate: _void, ...rest } = out
+  return { output: JSON.stringify(rest) }
+}
+
 /** 重新合成：校验 + 重置 ffmpeg_merge 步骤 / run。路由层随后 engine.startRun（succeeded 镜头步骤全跳过）。 */
 export async function resetStepForRecompose(runId: number, stepKey: string): Promise<{ runId: number }> {
   const { run, step } = await assertRepairable(runId, stepKey, ['ffmpeg_merge'])
   const now = Date.now()
   await db
     .update(pipelineSteps)
-    .set({ status: 'pending', error: null, completedAt: null, updatedAt: now })
+    .set({ status: 'pending', error: null, completedAt: null, ...gateStrip(step), updatedAt: now })
     .where(eq(pipelineSteps.id, step.id))
   await db
     .update(pipelineRuns)
@@ -213,7 +228,7 @@ export async function resetStepForRerun(
   }
   await db
     .update(pipelineSteps)
-    .set({ status: 'pending', error: null, completedAt: null, updatedAt: now })
+    .set({ status: 'pending', error: null, completedAt: null, ...gateStrip(step), updatedAt: now })
     .where(eq(pipelineSteps.id, step.id))
   await db
     .update(pipelineRuns)
