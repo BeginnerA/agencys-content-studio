@@ -431,3 +431,15 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本期净新增违规为零——后端 3 文件（types 77 / analyze 207 / certify 319）、前端 3 文件（types 56 / api 21 / RunDeliveryCertPanel 234）与 `probe-m50.ts`（448）均 ≤800。`--only=m50` 现 98 断言 97 通过 / **1 失败=「红线：`ffmpeg-merge/index.ts` ≤800」（实测 812 行）**——经 git 核实该文件最后由 commit `32cd7f7`（切片2b 镜头时长本地返修）修改、本期一行未改且不在本期工作树变更集内，判定为**早于本期的既有基线漂移**、非本期回归；越界修复须动引擎/merge、不合本期只读边界，故记为独立技术债（NOTICED BUT NOT TOUCHING），另立后续拆分项。此外本机工作树尚有若干与本任务无关的未提交改动（`pipeline/{types,loader,builtin-assets}.ts`、`services/creation-chat/{execution,recipe}.ts`、`probe-m42.ts`/`probe-m7.ts`、`workspace/templates/*.yaml`），本期一律不触碰、不纳入本期验收。
 
 待人工门（未声称）：**结构认证 ≠ 编辑器已验证通过**——① `editor_import_certified` 恒 `not_tested`/`manual_review`，产品永不代答「编辑器导入通过」，真实把 FCPXML/EDL/OTIO 导入 DaVinci/Premiere/FCP 后核对须人工实测；② 源时轴 `params.timeline` 对成片 mp4 的新鲜度（retry/resume/崩溃恢复路径是否最新值）本期未实测，无法确认新鲜时 `timeline_source_bound` 降为 `not_tested`、绝不 `passed`（归第四期/待人工）；③ 探针为隔离库 + 本地假包，不等同于产品内真实交付包在浏览器面板上的可视验收；④ 第一期六槽样片验收本身（0/6、36 项固定任务未执行）不因本期认证面板而标为完成。总路线保持 Executing。
+
+## m26 红线拆分快照：ffmpeg_merge 单文件 ≤800 归零（质量可验证 / 少返工卫生项）（2026-09-28，探针门禁）
+
+承接第五期收口时记录的既有基线漂移——`--only=m50` 唯一 FAIL「红线：`pipeline/actions/ffmpeg-merge/index.ts` ≤800」（实测 812 行，由 commit `32cd7f7` 切片2b 引入、第五期一行未改）。本快照记录该红线项的闭合（用户批准档位 **A1·最小安全**）。**纯行为保真拆分**：不动合成语义 / 滤镜图 / 时长 / 字幕 / 批准链，只把两个「已是独立顶层函数、参数全显式、零闭包捕获局部变量」的辅助从 `index.ts` 原样搬迁到同目录聚焦模块，对齐仓内 align/args/segments/sfx 既有粒度惯例——
+
+- `exec.ts`（27 行）：`runFfmpeg`（spawn ffmpeg 子进程、stderr 逐行转 step.log 事件、非零退出抛错）。
+- `merge-provenance.ts`（49 行）：`recordMergeProvenance`（镜头/配音/字幕/BGM/分镜输入汇成 exec 快照落库，失败仅告警）。
+- `index.ts`：改为 import 调用（813 → **750 行**）；仅剪随函数迁出而变死的 import（`spawn`/`emitStudioEvent`/`assetInput`/`safeRecordExecSnapshot`/`ExecInputSpec`），保留主函数仍用的 `readVersionContent`/`Asset`/`shotIdOfAsset`（逐一实测调用点计数确认）；**re-export 公共 API 桶逐字不动**。
+
+自动门禁（本机实测，全绿）：`pnpm -C apps/server exec tsc -p tsconfig.json --noEmit` 绿（EXIT=0）；`--only=m50` **98/98 全绿**（红线项由 97/98 转绿，含第五期 certify 分节在内全分节不回归）；`--only=precision-rework` **401/401** 逐字不回归；`--only=m50` 的 `redline` 分节持「ffmpeg-merge/index.ts ≤800」断言（本项红线由 m50 把守、非 m26），随拆分由 97/98 转 98/98；`--only=m26` split-audit 仅扫 `server/scripts` 与 `web/src`（**不含 `server/src`**），故本项拆分不触其计数、净新增违规 = 0。零新增依赖、零付费、零模型、未自动提交、加法优先。
+
+红线存量（不变，非本项回归）：`--only=m26` split-audit 仍报「存量归零」红，系其扫面内 **3 个早于本项的既有 >800 文件**（`CreationArtifacts.vue`(998)、`probe-m7.ts`、`use-project-detail.ts`(803)）所致——均在 `web/src`/`server/scripts`，与本项 `server/src` 拆分无涉；系用户先前已拍板记为独立技术债另立拆分项，不在本次 ffmpeg_merge 闭合范围。上位路线与原 M50 计划不修改；本项为质量可验证 / 少返工维度的卫生闭合，不新增产品能力面。

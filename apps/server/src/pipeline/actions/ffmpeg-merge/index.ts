@@ -1,12 +1,10 @@
-import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
 import { loadBgmAsset, loadAssetById, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
-import { assetInput, readVersionContent, safeRecordExecSnapshot, type ExecInputSpec } from '../../../services/provenance'
+import { readVersionContent } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
-import { emitStudioEvent } from '../../../services/events'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
 import { srtToAss } from './subtitle-ass'
 import { isSameAspect, resolveAspectSize } from './aspect'
@@ -20,6 +18,8 @@ import { loadManualDisplay, planDisplaySubtitle, tryNoBurnManualRecompose } from
 import { planSfxStarts } from './sfx'
 import { buildComposeArgs } from './args'
 import { numParam, clamp, round3 } from './util'
+import { runFfmpeg } from './exec'
+import { recordMergeProvenance } from './merge-provenance'
 import type { ComposeSfxInput } from './args'
 import type { Segment } from './segments'
 import type { AlignPlan } from './align'
@@ -732,70 +732,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   return { assetIds }
 }
 
-/**
- * 合成输入旁路快照（失败仅告警，不触碰 buildComposeArgs 零漂移红线与成片产物）。
- * 媒体资产不可变→ versionId=null（身份即资产 id）；分镜 JSON 为可编辑文本→携版本指针（编辑分镜→下游成片可报）。
- */
-async function recordMergeProvenance(
-  ctx: StepContext,
-  p: {
-    rows: Asset[]
-    usedSegments: Array<{ id: number }>
-    skipped: number[]
-    voiceIds: number[]
-    subtitleIds: number[]
-    bgmAssetId: number | null
-    shotsAssetId: number | null
-  },
-): Promise<void> {
-  try {
-    const inputs: ExecInputSpec[] = []
-    const byId = new Map(p.rows.map((a) => [a.id, a]))
-    let ordinal = 0
-    for (const seg of p.usedSegments) {
-      const a = byId.get(seg.id)
-      const shotId = a ? shotIdOfAsset(a) : null
-      inputs.push(await assetInput('source', seg.id, { shotId, port: 'images', ordinal: ordinal++ }))
-    }
-    for (const id of p.skipped) inputs.push(await assetInput('source', id, { used: false, skipReason: '缺文件或类型不符', port: 'images' }))
-    for (let i = 0; i < p.voiceIds.length; i++) inputs.push(await assetInput('voice', p.voiceIds[i]!, { ordinal: i }))
-    for (const id of p.subtitleIds.slice(0, 1)) inputs.push(await assetInput('subtitle', id))
-    if (p.bgmAssetId != null) inputs.push(await assetInput('bgm', p.bgmAssetId))
-    if (p.shotsAssetId != null) inputs.push(await assetInput('text', p.shotsAssetId))
-    await safeRecordExecSnapshot({
-      projectId: ctx.run.projectId,
-      execKind: 'pipeline_step',
-      runId: ctx.run.id,
-      stepId: ctx.step.id,
-      templateKey: ctx.def.key,
-      inputs,
-    })
-  } catch (err) {
-    ctx.log(`执行快照记录失败（已忽略，不影响合成）：${(err as Error).message}`)
-  }
-}
+// runFfmpeg → ./exec.ts；recordMergeProvenance → ./merge-provenance.ts（行为保真拆分，index ≤800）
 
-/** ffmpeg 执行：stderr 逐行 → step.log 事件；非零退出抛错（含尾部输出） */
-function runFfmpeg(ctx: StepContext, ffmpeg: string, args: string[], cwd?: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(ffmpeg, args, { windowsHide: true, cwd })
-    let tail = ''
-    child.stderr?.on('data', (buf: Buffer) => {
-      const chunk = buf.toString('utf8')
-      for (const line of chunk.split(/\r?\n/)) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        tail = trimmed.length > 300 ? trimmed.slice(-300) : trimmed
-        emitStudioEvent({ type: 'step.log', runId: ctx.run.id, stepId: ctx.step.id, seq: Date.now(), chunk: trimmed })
-      }
-    })
-    child.on('error', (err) => reject(new Error(`ffmpeg 启动失败: ${err.message}`)))
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`ffmpeg 退出码 ${code}：${tail}`))
-    })
-  })
-}
 
 export { defaultSubtitleStyle, toAssColor, buildSubtitleStyle } from './subtitle-style'
 export { estimateMaxCharsPerLine, wrapSingleLine, wrapSrtText } from './subtitle-wrap'
