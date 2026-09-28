@@ -4,6 +4,7 @@ import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '..
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { recordLlmUsage } from '../../services/usage'
 import { buildBilingualSrt } from '../../services/creation/gen/subtitle'
+import { numParam, clamp } from './ffmpeg-merge/util'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { recipeOf } from '../../services/creation-chat/recipe'
@@ -18,10 +19,12 @@ export interface TimingLine {
 
 /**
  * subtitle：对白/口播切句定时 → SRT 字幕资产（spec §5.3/§7.1）。
- * 双模式：
+ * 三模式：
  *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
  *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
- *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时。
+ *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时；
+ *  - fixed（M53 G4）：params.mode=fixed → 零 LLM，输入台词逐行定长计时（planFixedSrt，
+ *    ms_per_line 每行时长 / lead_in_ms 起始延时 / total_ms 可选末行收敛），供标题/祝福语烧录。
  * 双语扩展：params.target_lang（ISO 639-1，非空启用）定时完成后台词逐句翻译（translate-lines.md），
  *  params.bilingual='both'（缺省：双语 + 纯目标语两条）| 'merged'（仅双语）；缺失句回退原文 + log；
  *  产物命名 subtitle.zh-{lang}.srt / subtitle.{lang}.srt，params.lang 标注；不传 target_lang 现行为逐字不变。
@@ -40,11 +43,12 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   if (strict && !recipe) throw new Error('严格字幕缺少批准方案')
   ctx.log(`字幕切句输入：${source.lines.length} 句台词（${source.text.length} 字符）`)
 
-  // mode 判定（spec §7.1）：提供 voices → measured 实测对齐；params.mode 可强制 estimated
+  // mode 判定（spec §7.1）：params.mode=fixed → 定长零 LLM；提供 voices → measured 实测对齐；params.mode 可强制 estimated
   const voiceIds = ctx.assetIdsOf('voices')
   const modeParam = typeof params['mode'] === 'string' ? params['mode'] : undefined
-  let mode: 'measured' | 'estimated' = voiceIds.length > 0 ? 'measured' : 'estimated'
+  let mode: 'measured' | 'estimated' | 'fixed' = voiceIds.length > 0 ? 'measured' : 'estimated'
   if (modeParam === 'estimated') mode = 'estimated'
+  if (modeParam === 'fixed') mode = 'fixed'
   if (strict && voiceIds.length === 0) throw new Error('严格字幕需要完整配音，不允许 LLM 估时')
   if (modeParam === 'measured' && voiceIds.length === 0) {
     mode = 'estimated'
@@ -54,7 +58,18 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   let timed: TimingLine[]
   let assetParams: Record<string, unknown>
   let promptSnapshot: string
-  if (mode === 'measured') {
+  if (mode === 'fixed') {
+    const msPerLine = clamp(Math.round(numParam(params['ms_per_line'], 4000)), 500, 120_000)
+    const leadInMs = clamp(Math.round(numParam(params['lead_in_ms'], 300)), 0, 600_000)
+    const totalMs = typeof params['total_ms'] === 'number' && Number.isFinite(params['total_ms']) && params['total_ms'] > 0
+      ? Math.round(params['total_ms']) : undefined
+    timed = planFixedSrt(source.lines, { ms_per_line: msPerLine, lead_in_ms: leadInMs, total_ms: totalMs })
+    if (timed.length === 0) throw new Error('fixed 字幕无有效行（台词为空或 total_ms 过短）')
+    ctx.log(`字幕 fixed：${timed.length} 行定长 ${msPerLine}ms（起始延时 ${leadInMs}ms${totalMs ? `，总长收敛 ${totalMs}ms` : ''}，零 LLM）`)
+    const lastEnd = timed[timed.length - 1]!.end_ms
+    assetParams = { mode, lines: timed.length, durationMs: lastEnd, ms_per_line: msPerLine, lead_in_ms: leadInMs, ...(totalMs ? { total_ms: totalMs } : {}) }
+    promptSnapshot = `fixed 定长计时：lines=${source.lines.length} ms_per_line=${msPerLine} lead_in_ms=${leadInMs}${totalMs ? ` total_ms=${totalMs}` : ''}`
+  } else if (mode === 'measured') {
     if (voiceIds.length !== source.lines.length) {
       throw new Error(`measured 字幕：voices 数量(${voiceIds.length}) 与台词句数(${source.lines.length}) 不一致（防错位）`)
     }
@@ -268,12 +283,14 @@ export function parseLineTranslations(raw: string): Map<string, string> {
   return out
 }
 
-/** 汇集台词来源：script 全文优先；否则 lines JSON（est_ms 注入提示词作参考） */
+/** 汇集台词来源：text 纯文本（M53 标题类输入，非资产）与 script 全文合并优先；否则 lines JSON（est_ms 注入提示词作参考） */
 async function collectSource(ctx: StepContext): Promise<{ text: string; lines: Array<{ id: string; text: string; estMs?: number }> }> {
+  // text 输入为解析后原样透传的字符串（input.x 引用 kind:text 输入）；存量模板无此键 → '' = 行为不变
+  const literal = typeof ctx.input['text'] === 'string' && ctx.input['text'].trim() ? ctx.input['text'].trim() : ''
   const scriptIds = ctx.assetIdsOf('script')
   if (scriptIds.length > 0) {
     const text = await ctx.readText(scriptIds[0]!).catch(() => '')
-    const trimmed = text.trim()
+    const trimmed = [literal, text.trim()].filter(Boolean).join('\n')
     if (trimmed) {
       return {
         text: trimmed,
@@ -285,8 +302,16 @@ async function collectSource(ctx: StepContext): Promise<{ text: string; lines: A
       }
     }
   }
+  if (literal) {
+    const lines = literal
+      .split(/\r?\n/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t, i) => ({ id: String(i + 1), text: t }))
+    return { text: literal, lines }
+  }
   const lineIds = ctx.assetIdsOf('lines')
-  if (lineIds.length === 0) throw new Error('subtitle 需要 inputs.script（对白全文）或 inputs.lines（台词 JSON）')
+  if (lineIds.length === 0) throw new Error('subtitle 需要 inputs.script（对白全文）或 inputs.lines（台词 JSON）或 text（纯文本行）')
   const raw = await ctx.readText(lineIds[0]!)
   const obj = JSON.parse(raw) as { lines?: unknown[] } | unknown[]
   const list = Array.isArray(obj) ? obj : ((obj as { lines?: unknown[] }).lines ?? [])
@@ -400,6 +425,36 @@ export function splitDisplayLines(text: string, maxChars: number): string[] {
         const piece = chars.slice(i, i + max).join('').trim()
         if (piece) out.push(piece)
       }
+    }
+  }
+  return out
+}
+
+/**
+ * fixed 定长计时（M53 G4，纯函数；探针直测）：逐行 [cursor, cursor+d)，lead_in 先行；
+ * total_ms 提供时末行向总长收敛（放不下则弃行，防 SRT 非单调）。空行/纯空白行跳过。
+ */
+export function planFixedSrt(
+  lines: Array<{ id: string; text: string }>,
+  opts: { ms_per_line: number; lead_in_ms?: number; total_ms?: number },
+): TimingLine[] {
+  const d = Math.max(1, Math.round(opts.ms_per_line))
+  let cursor = Math.max(0, Math.round(opts.lead_in_ms ?? 0))
+  const out: TimingLine[] = []
+  for (const line of lines) {
+    const text = line.text.trim()
+    if (!text) continue
+    out.push({ id: line.id, text, start_ms: cursor, end_ms: cursor + d })
+    cursor += d
+  }
+  if (typeof opts.total_ms === 'number' && opts.total_ms > 0 && out.length > 0) {
+    const total = Math.round(opts.total_ms)
+    // 逐行回退收敛：末行超总长 → 裁到总长；放不下（start>=end）弃行后对新末行重复，直到单调合法
+    while (out.length > 0 && out[out.length - 1]!.end_ms > total) {
+      const last = out[out.length - 1]!
+      last.end_ms = total
+      if (last.end_ms <= last.start_ms) out.pop()
+      else break
     }
   }
   return out

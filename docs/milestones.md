@@ -726,6 +726,22 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M53 能力速览（素材混剪成片：照片+视频任意组合零 LLM 出片）
+
+> 痛点：用户持有一批现成照片 / 短视频（婚宴大屏、纪念册、快闪成片类场景），想直接拼成一支完整成片——既有 `ffmpeg_merge` 对「照片+视频混排」会崩（图片 `-loop 1` 无时长上界与视频段时长不同基，unlimited 图片流污染 concat），且视频段原声在既有单段链中必丢、纯照片幻灯片无缓推动效、定长标题字幕无零 LLM 计时模式。本里程碑引入**两段式混剪引擎**（phase-1 逐段归一化 → phase-2 轻量拼接）+ 内置模板 `photo-montage`（零 LLM 零付费全链）；详规：`docs/photo-montage-spec.md`。**非目标**：逐镜精细排期（混合时间轴编辑器）、多画幅输出同片、转场全库开放（混剪态仅无重叠 concat 与 fade 系 xfade 可用，余者自动降级直拼）。
+
+- **M53.1 mixed 段序列（`segments.ts`）**：`computeShotSegments` 新增 `'mixed'` mode——images + motion_clips 双输入按行 kind 分流为统一段序列（图段定长 = per-shot 覆盖 > duration_per_shot；视频段按资产 duration 实测），音频行 / 缺文件 skip+warn；照片在前、视频在后 = 时间轴顺序契约。
+- **M53.2 两段式归一化（`montage.ts` 新文件）**：phase-1 `normalizeSegmentsToClips` 逐段产出定长带音轨临时 mp4（图段：kb 时 zoompan（底图 ×2 超采样、step=0.25/帧数）或定帧 + anullsrc；视段：tpad/trim 定长 + 原声 apad/atrim，探测无声则 anullsrc 兑底；`probeHasAudioStream` ffprobe 三态 true/false/null 宽容）；phase-2 `buildComposeArgs({montage:true})` 归一段 `-i` 直读 + 轻量 tpad/trim/fps/settb 链（无 `-loop`）。
+- **M53.3 原声保留 + Ken Burns（触发真源 `montageEnabled`）**：`keep_clip_audio` → per-seg `[i:a]` concat 连续现场轨 `[clipa]`，与配音并存 `amix(normalize=0)` 叠加 `[outa2]`、与 BGM 并存既有 `duration=first` 收口；`ken_burns: alternate/in/out` 纯照片也走 phase-1；触发态 = params.montage / 图视双输入混排 / keep_clip_audio+视频段 / kb≠none（strict_delivery 恒 false）。
+- **M53.4 定长字幕（`subtitle.ts` 第三模式 `fixed`）**：`planFixedSrt` 纯函数定长计时（ms_per_line + lead_in_ms，空行跳过，total_ms 超界逐行回退收敛），零 LLM；`collectSource` 新增 `ctx.input['text']` 纯文本通道（与 script 资产合并优先）。
+- **M53.5 标量调参桥（`ffmpeg-merge/index.ts`）**：compose 步 inputs 映射同名模板输入（int/text/bool 标量）时桥入 params（白名单 7 键：fps/resolution/duration_per_shot/transition/transition_duration/ken_burns/keep_clip_audio；params 既有键优先；数组/空值不入桥），run 输入直连合成参数，存量模板逐字节不变。
+- **M53.6 内置模板 `photo-montage` v1**（builtin 只读，输入面 10 键）：photos/clips 双 files + title/lines_text 字幕源 + 5 标量调参 + confirm 审阅开关；两步链 captions（subtitle fixed，when_any 可选）→ compose（ffmpeg_merge montage/cover + fade 默认，`after_skipped: continue` 防条件跳过传播误伤）；BGM 经运行详情「合成设置」上传，零必填 LLM 输入。
+- **红线**：零 diff——未触发混剪时 legacy args 逐字节不变（探针字节级断言锁定）；无音频输入不伪造音轨（hasAudio 判定与 legacy 一致）；模板/引擎改动不动存量 18 模板行为；轻松创作批准链（strict）不受触发面影响。
+
+验证：`probe-m53`（四节 **54 项断言全绿**：pure 触发真值表/KB 方向/planFixedSrt/mixed 分流；args legacy 零 diff + phase-2/phase-1 形态 + 现场轨混音标签；template 静态面；live 真引擎实弹——混排 4 段成片 10.08s/320x240@12/1 音轨非静音/溯源齐全，单图态 captions skip + 审阅闸挂起→批准收敛；本地生成素材 + fetch 桩封死零网络零计费）。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。

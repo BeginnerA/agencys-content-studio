@@ -21,11 +21,12 @@ export interface Segment {
  * 镜头段组装（纯函数；探针直测）——段组装 + 时长决策 + 容错判定收敛于此：
  * - 缺本地文件 / 文件缺失 / kind 不符 → skipped（不再整体失败；全 skip 由调用方拦抛）；
  * - 静态图：分镜 per-shot 覆盖优先（explicit 标记）→ duration_per_shot；
- * - 动效片：asset.duration → ffprobe → duration_per_shot 估算（estimated 标记）。
+ * - 动效片：asset.duration → ffprobe → duration_per_shot 估算（estimated 标记）；
+ * - mixed（M53 混剪）：按行 kind 分流——image 行走图片语义、video 行走视频语义、其余 skip。
  */
 export function computeShotSegments(
   rows: Asset[],
-  mode: 'images' | 'clips',
+  mode: 'images' | 'clips' | 'mixed',
   perShotDur: Map<string, number>,
   durationPerShot: number,
 ): { segments: Segment[]; skipped: number[]; warnings: string[] } {
@@ -44,7 +45,7 @@ export function computeShotSegments(
       skipped.push(a.id)
       continue
     }
-    if (mode === 'images') {
+    if (mode === 'images' || (mode === 'mixed' && a.kind === 'image')) {
       if (a.kind !== 'image') {
         skipped.push(a.id)
         continue
@@ -55,7 +56,7 @@ export function computeShotSegments(
       const shotId = shotIdOfAsset(a)
       const override = shotId !== null ? perShotDur.get(shotId) : undefined
       segments.push({ id: a.id, path, kind: 'image', durSec: override ?? durationPerShot, explicit: override !== undefined })
-    } else {
+    } else if (mode === 'clips' || mode === 'mixed') {
       if (a.kind !== 'video') {
         skipped.push(a.id)
         continue
@@ -70,6 +71,8 @@ export function computeShotSegments(
         }
       }
       segments.push({ id: a.id, path, kind: 'video', durSec: dur, estimated })
+    } else {
+      skipped.push(a.id)
     }
   }
   return { segments, skipped, warnings }

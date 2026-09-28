@@ -60,6 +60,13 @@ export interface ComposeArgsInput {
     /** 结构化字幕配置（非空时派生路按该路高度重算字号；null = 整串模式复用主串） */
     subtitleCfg?: SubtitleStyleConfig | null
   }
+  /** 混剪态 phase-2（M53）：segments 均为两段式归一化后的定长带音轨视频段——
+   *  per-seg 输入不再 -loop/-t，链仅 trim/setpts/兜底 tpad+fps/settb（尺寸sar已归一）；
+   *  缺省 false → args 与既有实现逐字节一致。 */
+  montage?: boolean
+  /** 混剪原声保留（keep_clip_audio）：per-seg [i:a] 拼连续现场轨入 [outa] 槽（voices 并存时 amix 叠加）；
+   *  仅 montage=true 生效；false → 现场轨丢弃（行为同 legacy clips 态）。 */
+  clipAudio?: boolean
   outAbs: string
 }
 
@@ -104,6 +111,8 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const sfxList = input.sfx ?? []
   const sfxCount = sfxList.length
   const sfxVolume = input.sfxVolume ?? 1
+  const montage = input.montage === true
+  const clipAudio = montage && input.clipAudio === true && !nativeAudio
   const maTargets = input.multiAspect?.targets ?? []
   const maStrategy = input.multiAspect?.strategy ?? 'crop'
   const maSubCfg = input.multiAspect?.subtitleCfg ?? null
@@ -121,6 +130,14 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const fcParts: string[] = []
   segments.forEach((seg, i) => {
     const segLen = xfadePlan.enabled ? xfadePlan.videoLens[i]! : seg.durSec
+    if (montage) {
+      // 归一段（定长、必带 a 流、尺寸/fps/sar 已一）：轻量时基对齐 + 超短兜底 tpad 撑长（kb 动效在 phase-1）
+      inputArgs.push('-i', seg.path)
+      fcParts.push(
+        `[${i}:v]setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${seg.durSec},trim=duration=${segLen},setpts=PTS-STARTPTS,fps=${fps},settb=AVTB[v${i}]`,
+      )
+      return
+    }
     if (seg.kind === 'image') {
       inputArgs.push('-loop', '1', '-t', String(segLen), '-i', seg.path)
     } else {
@@ -136,7 +153,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     )
   })
   const segIn = segments.map((_, i) => `[v${i}]`).join('')
-  const hasAudio = voicePaths.length > 0 || !!nativeAudio
+  const hasAudio = voicePaths.length > 0 || !!nativeAudio || clipAudio
   if (nativeAudio) {
     nativeAudio.forEach((timing, i) => {
       const offset = timing.audioStart - timing.videoStart
@@ -145,7 +162,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       const delay = offset > 0 ? `adelay=${Math.round(offset * 44100)}S:all=1,` : ''
       fcParts.push(`[${i}:a]${trim}asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,${delay}apad=whole_dur=${segments[i]!.durSec},atrim=duration=${segments[i]!.durSec}[native${i}]`)
     })
-  } else if (hasAudio) {
+  } else if (voicePaths.length > 0) {
     voicePaths.forEach((p, i) => {
       inputArgs.push('-i', p)
       const srcIdx = segments.length + i
@@ -176,6 +193,15 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       fcParts.push(`${aIn}concat=n=${voicePaths.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[outa]`)
     }
   }
+  // 混剪现场轨（M53 keep_clip_audio）：per-seg [i:a] 按镜序 concat 为连续轨占 [outa] 槽；
+  // 与配音并存 → amix(normalize=0) 叠加（xfade 重叠 T 由末尾 atrim 收敛）
+  if (clipAudio) {
+    const caIn = segments.map((_, i) => `[${i}:a]`).join('')
+    fcParts.push(`${caIn}concat=n=${segments.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[clipa]`)
+    if (voicePaths.length > 0) {
+      fcParts.push(`[clipa][outa]amix=inputs=2:duration=longest:normalize=0,atrim=0:${totalAllStr}[outa2]`)
+    }
+  }
   // BGM 混音链：有主音轨 → amix 以主轨定长；无主音轨 → bgm 直接 [aout]
   if (bgmPath) {
     const bgmIdx = segments.length + voicePaths.length
@@ -191,7 +217,8 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     }
     fcParts.push(`${chain}[bgm]`)
     // 有 SFX 时主混先出 [amain]，由 SFX 终混统一产出 [aout]；无 SFX → 现行为逐字节不变
-    if (hasAudio) fcParts.push(`[outa][bgm]amix=inputs=2:duration=first:normalize=0[${sfxCount > 0 ? 'amain' : 'aout'}]`)
+    const mainTag = clipAudio ? (voicePaths.length > 0 ? '[outa2]' : '[clipa]') : '[outa]'
+    if (hasAudio) fcParts.push(`${mainTag}[bgm]amix=inputs=2:duration=first:normalize=0[${sfxCount > 0 ? 'amain' : 'aout'}]`)
     else if (sfxCount === 0) fcParts.push('[bgm]anull[aout]')
   }
   // 品牌素材输入（水印 → 片头 → 片尾；索引递推；归一链先于 [basev] 拼接定义）
@@ -247,7 +274,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   if (sfxCount > 0) {
     const sfxIns = sfxList.map((_, i) => `[sfx${i}]`).join('')
     if (hasAudio || bgmPath) {
-      const mainIn = hasAudio && bgmPath ? '[amain]' : hasAudio ? '[outa]' : '[bgm]'
+      const mainIn = hasAudio && bgmPath ? '[amain]' : hasAudio ? (clipAudio ? (voicePaths.length > 0 ? '[outa2]' : '[clipa]') : '[outa]') : '[bgm]'
       fcParts.push(`${mainIn}${sfxIns}amix=inputs=${1 + sfxCount}:duration=first:normalize=0[aout]`)
     } else {
       fcParts.push(`${sfxIns}amix=inputs=${sfxCount}:duration=longest:normalize=0,apad=whole_dur=${totalAllStr}[aout]`)
@@ -267,6 +294,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   } else if (nativeAudio) {
     fcParts.push(`${segments.map((_, i) => `[v${i}][native${i}]`).join('')}concat=n=${segments.length}:v=1:a=1[basev][outa]`)
   } else {
+    // 混剪态：现场轨已占 [outa]/[outa2]，concat 仍纯视频（a=0）与 legacy 图链同构
     fcParts.push(`${segIn}concat=n=${segments.length}:v=1:a=0[basev]`)
   }
   // 片头尾拼接：仅存在侧参与（n=2/3）；字幕轴与音频位移均以拼接后为准
@@ -316,8 +344,9 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     derived.push({ aspect: t.aspect, width: w, height: h, outAbs: t.outAbs })
   })
 
-  // 音频终标签（有 BGM/SFX → [aout]；仅配音 → [outa]；无音频 → null）
-  const audioTail = bgmPath || sfxCount > 0 ? 'aout' : hasAudio ? 'outa' : null
+  // 音频终标签（有 BGM/SFX → [aout]；混剪现场轨单独 → [clipa]；仅配音 → [outa]；无音频 → null）
+  const mainFinal = clipAudio ? (voicePaths.length > 0 ? 'outa2' : 'clipa') : 'outa'
+  const audioTail = bgmPath || sfxCount > 0 ? 'aout' : hasAudio ? mainFinal : null
   const encAudio: string[] = []
   // 多路输出时同一音频 pad 不得被两个输出重复 -map（ffmpeg：Output with label ... already used elsewhere
   // → Error opening output files: Invalid argument）→ asplit=1+k 分流，每路映射唯一标签；单路 → 原标签不变

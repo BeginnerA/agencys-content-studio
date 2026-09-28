@@ -1,0 +1,58 @@
+key: photo-montage
+builtin: true
+version: 1
+name: 素材混剪成片
+description: 现成照片/视频片段一键拼成完整成片——照片 Ken Burns 缓推慢移、视频保留原声并与 BGM 自动混音、标题/祝福语字幕烧录、xfade 转场；全程零 LLM 零付费，适合婚宴大屏、年会回顾、纪念相册片。BGM 在启动后的「合成设置」里上传绑定（既有 run 级能力）。
+genre: other
+scene: produce
+inputs:
+  - key: photos
+    label: 照片（jpg/png/webp 等；勾选顺序即成片时间轴顺序）
+    kind: files
+    required: false
+    accept: [.png, .jpg, .jpeg, .webp, .gif, .bmp]
+  - key: clips
+    label: 视频片段（mp4/mov 等；排在照片之后，原声默认保留）
+    kind: files
+    required: false
+    accept: [.mp4, .mov, .webm, .mkv, .avi]
+  - label: 开场标题（选填；每行一条，如 新人姓名、日期、祝福语）
+    key: title
+    kind: text
+    required: false
+  - key: lines_text
+    label: 字幕文本（选填，txt/srt 多行；接在标题之后逐行展示）
+    kind: files
+    required: false
+    accept: [.txt, .srt, .md]
+  - { key: duration_per_shot, label: 每张照片停留秒数, kind: int, required: false, default: 4 }
+  - { key: fps, label: 帧率（大屏建议 30）, kind: int, required: false, default: 30 }
+  - { key: resolution, label: 分辨率（横屏大屏 1920x1080；竖屏 1080x1920）, kind: text, required: false, default: 1920x1080 }
+  - { key: ken_burns, label: 照片缓推动效（none/in/out/alternate）, kind: text, required: false, default: alternate }
+  - { key: keep_clip_audio, label: 保留视频片段原声, kind: bool, required: false, default: true }
+  - { key: confirm, label: 成片人工审阅闸（取消勾选 = 免审直出）, kind: bool, required: false, default: true }
+steps:
+  - key: captions
+    action: subtitle
+    title: 标题与祝福字幕定长计时
+    when_any: [input.title exists, input.lines_text exists]
+    inputs:
+      text: input.title
+      script: input.lines_text
+    params: { mode: fixed, ms_per_line: 4000, lead_in_ms: 500 }
+  - key: compose
+    action: ffmpeg_merge
+    title: 素材混剪合成成片
+    after: [captions]
+    after_skipped: continue
+    inputs:
+      images: input.photos
+      motion_clips: input.clips
+      subtitle: steps.captions.assets
+      duration_per_shot: input.duration_per_shot
+      fps: input.fps
+      resolution: input.resolution
+      ken_burns: input.ken_burns
+      keep_clip_audio: input.keep_clip_audio
+    params: { montage: true, cover: true, transition: fade, transition_duration: 0.7 }
+    gate: { mode: required, message: '请审阅成片（混排顺序/时长/原声与 BGM 混音/字幕烧录）：批准即交付，驳回可附意见重新合成', when: input.confirm == true, reject: stop }

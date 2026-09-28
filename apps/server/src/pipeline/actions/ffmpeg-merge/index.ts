@@ -31,6 +31,7 @@ import { hashJson } from '../../../services/creation-chat/contract'
 import { validatedDialogueClip } from '../../../services/creation-chat/dialogue-cache'
 import { dialogueSrt, estimateDialogueClip, estimatedDialogueSrt, estimatedValidationHash, inspectDialogueMedia, type EstimatedDialogueClip } from '../../../services/creation-chat/dialogue-media'
 import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } from './strict'
+import { montageEnabled, normalizeSegmentsToClips, type KenBurns } from './montage'
 
 /**
  * ffmpeg_merge：镜头序列 → 成片 + 封面（spec §5.4 三流合成）。
@@ -59,7 +60,16 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       + '或 winget install ffmpeg，或在 .env 设 CSTUDIO_FFMPEG_PATH 指向 ffmpeg.exe',
     )
   }
-  const params = (ctx.def.params ?? {}) as Record<string, unknown>
+  const params: Record<string, unknown> = { ...((ctx.def.params ?? {}) as Record<string, unknown>) }
+  // run 输入标量调参桥（M53）：compose 步 inputs 映射了同名模板输入（int/text/bool）时参与解析，
+  // 既有 params 同名键优先；资产数组/空值不入桥。存量模板 inputs 无这些键 → params 逐字节不变
+  for (const k of ['fps', 'resolution', 'duration_per_shot', 'transition', 'transition_duration', 'ken_burns', 'keep_clip_audio']) {
+    if (params[k] !== undefined) continue
+    const v = ctx.input[k]
+    if (typeof v === 'number' && Number.isFinite(v)) params[k] = v
+    else if (typeof v === 'boolean') params[k] = v
+    else if (typeof v === 'string' && v.trim()) params[k] = v.trim()
+  }
   const strict = params['strict_delivery'] === true
   const recipe = strict ? recipeOf(ctx.run) : null
   const dialogue = recipe?.plan.performance === 'dialogue'
@@ -78,15 +88,19 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const width = Number(m[1])
   const height = Number(m[2])
 
-  // 镜头段：images（静态）与 motion_clips（动效）互斥，模板 when 分支保证单路
+  // 镜头段：images（静态）与 motion_clips（动效）双输入；M53 混剪：混排（或显式 montage=true）时
+  // 按 photos→clips 拼接序统一段列（kind 分流），否则保持单路互斥现状（存量模板误写双输入仍拒）
   const imageIds = ctx.assetIdsOf('images')
   const clipIds = ctx.assetIdsOf('motion_clips')
-  if (imageIds.length === 0 && clipIds.length === 0) throw new Error('inputs.images / inputs.motion_clips 均无镜头资产')
-  if (imageIds.length > 0 && clipIds.length > 0) {
-    throw new Error('images 与 motion_clips 互斥：模板 when 应按 motion 开关只给一路输入')
+  if (imageIds.length === 0 && clipIds.length === 0) throw new Error('inputs.images / inputs.motion_clips 均无镜头资产（照片/视频至少选择其一）')
+  const montageReq = params['montage'] === true
+  const mixedInput = imageIds.length > 0 && clipIds.length > 0
+  if (mixedInput && !montageReq && params['montage'] !== false) {
+    throw new Error('images 与 motion_clips 并存：混排需显式 params.montage=true（或 ken_burns/keep_clip_audio 触发）；存量互斥模板 when 应保证单路输入')
   }
-  const mode: 'images' | 'clips' = imageIds.length > 0 ? 'images' : 'clips'
-  const rows = await ctx.assetsOf(mode === 'images' ? imageIds : clipIds)
+  const mode: 'images' | 'clips' | 'mixed' = mixedInput && params['montage'] !== false ? 'mixed' : imageIds.length > 0 ? 'images' : 'clips'
+  const shotIdSeq = mode === 'mixed' ? [...imageIds, ...clipIds] : mode === 'images' ? imageIds : clipIds
+  const rows = await ctx.assetsOf(shotIdSeq)
   if (rows.length === 0) throw new Error('镜头资产均不可用（资产不存在或已删除）')
   // shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
@@ -95,7 +109,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 两条互斥生效路径：① 无对白/未对齐→经此 perShotDur（仅 images 分支消费，motion clips 段长=clip 实测不受影响）；
   // ② 音频对齐→经下方 alignShots[].durationSec（plan 会在映射一致时回写 seg.durSec）。motion 已在预览 blocked，此处按模式防御性跳过。
   const shotDurOverride = readComposeConfig(ctx.run.input).shot_durations ?? {}
-  if (mode === 'images') {
+  if (mode === 'images' || mode === 'mixed') {
     for (const [sid, sec] of Object.entries(shotDurOverride)) {
       if (typeof sec === 'number' && Number.isFinite(sec) && sec > 0) perShotDur.set(sid, sec)
     }
@@ -118,11 +132,14 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     ctx.log(`共跳过 ${skipped.length} 个镜头资产（合成继续；溯源见产物 params.skipped_shots）`)
   }
   if (segments.length === 0) throw new Error('无可用镜头资产（全部缺文件或类型不符），请检查镜头产物后重新合成')
-  if (mode === 'clips') {
+  if (mode === 'clips' || mode === 'mixed') {
     for (const seg of segments) {
       if (seg.estimated) ctx.log(`镜头视频 #${seg.id} 时长未知（无 duration 字段且 ffprobe 不可用），按 ${seg.durSec}s 估算`)
     }
   }
+  // 混剪态（M53）：双输入混排 / keep_clip_audio / ken_burns 任一触发；严格交付（批准链）恒不触发逐字节不变
+  const hasVideoSeg = segments.some((s) => s.kind === 'video')
+  const montageOn = !strict && montageEnabled(params, { hasMixed: mode === 'mixed', hasVideoSeg, strict })
   // voices：tts 产物逐句 concat 为连续音轨； 逐句 meta（lineId/durSec）供对齐/fit_voice/撑长共用
   const voiceIds = ctx.assetIdsOf('voices')
   const voicePaths: string[] = []
@@ -199,6 +216,9 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     alignReason = 'no_voices'
   } else if (!voiceMetas.every((v) => v.lineId !== null && v.durSec !== null && v.durSec > 0)) {
     alignReason = 'no_lineid'
+  } else if (montageOn) {
+    alignReason = 'montage'
+    ctx.log('混剪态：音字对齐不启用（镜头时长由用户逐段控制），配音按连续轨混入')
   } else {
     const planMode: 'images' | 'motion' = mode === 'images' ? 'images' : 'motion'
     const { shots: alignShots, hasLinesField } = await loadShotAlignShots(ctx, shotsIds)
@@ -312,11 +332,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
-  // 转场计划（仅静态图 ≥2 镜生效；_compose 覆盖模板 params；禁用时 filter 与既有实现逐字节一致）
+  // 转场计划（静态图 ≥2 镜生效；M53 混剪态图+视归一段亦可 xfade；_compose 覆盖模板 params；禁用时 filter 与既有实现逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
-  const transitionReq = strict ? 'none' : composeCfg.transition ?? (typeof params['transition'] === 'string' ? params['transition'] : 'none')
+  const transitionReq = strict ? 'none' : composeCfg.transition ?? (typeof params['transition'] === 'string' && params['transition'] ? params['transition'] : 'none')
   const transitionDurReq = composeCfg.transition_duration ?? numParam(params['transition_duration'], 0.5)
-  const transitionUsable = mode === 'images' && segments.length >= 2
+  const transitionUsable = (mode === 'images' || montageOn) && segments.length >= 2
   const xfadePlan = buildTransitionPlan(
     segments.map((s) => s.durSec),
     transitionUsable ? transitionReq : 'none',
@@ -498,12 +518,26 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
 
+  // 混剪态 phase-1（M53）：全部时长定案后、最终合成前，逐段归一化为定长带音轨临时 mp4（图段 Ken Burns/
+  // 静音轨、视段原声/兜底静音）；段 kind 原始形状留存 segKindOrig 供溯源；未触发 → 零改动 legacy 链
+  let montageSegments = segments
+  let montageTemps: string[] = []
+  const segKindOrig = segments.map((s) => s.kind)
+  if (montageOn) {
+    const kbRaw = typeof params['ken_burns'] === 'string' && params['ken_burns'] ? params['ken_burns'] : 'none'
+    const kb = (['in', 'out', 'alternate'].includes(kbRaw) ? kbRaw : 'none') as KenBurns
+    ctx.log(`混剪态启用：${segments.length} 段归一化（照片 ${segments.filter((s) => s.kind === 'image').length} + 视频 ${segments.filter((s) => s.kind === 'video').length}，Ken Burns ${kb}${params['keep_clip_audio'] === true ? '，原声保留' : ''}）`)
+    const norm = await normalizeSegmentsToClips(ctx, ffmpeg, segments, { width, height, fps, kb, outDir: dirname(outAbs) })
+    montageSegments = norm.segments
+    montageTemps = norm.temps
+  }
+
   // 组装 filter_complex 与编码参数（提炼 buildComposeArgs 纯函数；无水印/片头尾→ 与既有实现逐字节一致）
-  const hasAudio = voicePaths.length > 0 || !!dialogueClips
+  const hasAudio = voicePaths.length > 0 || !!dialogueClips || (montageOn && params['keep_clip_audio'] === true)
   const { args, cwd, totalAll, derived } = buildComposeArgs({
     strictDelivery: strict,
     ...(dialogueClips ? { nativeAudio: dialogueClips.map((clip) => clip.timing) } : {}),
-    segments,
+    segments: montageOn ? montageSegments : segments,
     width,
     height,
     fps,
@@ -523,6 +557,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     outro: outroArg,
     sfx: sfxList,
     sfxVolume,
+    montage: montageOn,
+    clipAudio: montageOn && params['keep_clip_audio'] === true,
     multiAspect:
       multiAspect && maTargets.length > 0
         ? { strategy: multiAspect.strategy, targets: maTargets, subtitleCfg: brand.subtitle ?? null }
@@ -539,7 +575,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 无烧录快速路径（§6.2 步骤 5）：仅改显示字幕 → 逐字节复制基准成片/派生画幅零编码；
   // 任一其他依赖不一致 → 返回 null 继续下方正常重合成（台词/音频位置不变红线由不进入编码路径保证）
   const fastIds = await tryNoBurnManualRecompose({
-    ctx, manual, eligible: !strict && !!manual && !subtitleBurn && !dialogueClips,
+    ctx, manual, eligible: !strict && !!manual && !subtitleBurn && !dialogueClips && !montageOn,
     outName, outRel, outAbs, coverAt, wantCover, ffmpeg, runFfmpeg, derived,
     cur: { fps, resolution, width, height, totalAll, imageCount: segments.filter((s) => s.kind === 'image').length, motionCount: segments.filter((s) => s.kind === 'video').length, voiceCount: voicePaths.length, style, srtRelPath, subtitleAssetId: subtitleIds[0] ?? null, inputs: { images: mode === 'images' ? imageIds : null, motion_clips: mode === 'clips' ? clipIds : null, shots_source: shotsIds[0] ?? null }, skipped, alignPlan, alignReason, xfade: xfadePlan, bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null, watermark: watermarkArg, intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null, outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null, sfxCount: sfxList.length, sfxVolume },
     recordProvenance: () => recordMergeProvenance(ctx, { rows, usedSegments: segments, skipped, voiceIds: voiceMetas.map((v) => v.assetId), subtitleIds, bgmAssetId: bgmAsset?.id ?? null, shotsAssetId: shotsIds[0] ?? null }),
@@ -552,12 +588,12 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   try {
     await runFfmpeg(ctx, ffmpeg, args, cwd)
   } finally {
-    for (const tmp of [tempSrtAbs, ...assTempAbs]) {
+    for (const tmp of [tempSrtAbs, ...assTempAbs, ...montageTemps]) {
       if (!tmp) continue
       try {
         unlinkSync(tmp)
       } catch {
-        // 临时字幕清理失败不影响成片
+        // 临时字幕/归一段清理失败不影响成片
       }
     }
   }
@@ -618,19 +654,23 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       ...(dialogueClips ? { performance: 'dialogue', dialogue_review_required: true, ...(recipe?.estimatedDialogue ? { dialogue_subtitles_estimated: true } : {}), dialogue_clips: dialogueClips } : {}),
       fps,
       resolution,
-      images: segments.filter((s) => s.kind === 'image').length,
-      motion_clips: segments.filter((s) => s.kind === 'video').length,
+      images: segments.filter((s, i) => (montageOn ? segKindOrig[i] : s.kind) === 'image').length,
+      motion_clips: segments.filter((s, i) => (montageOn ? segKindOrig[i] : s.kind) === 'video').length,
       voices: voicePaths.length,
       subtitle: srtRelPath ? 1 : 0,
       subtitle_style: style,
       duration: Math.round(totalAll * 1000) / 1000,
-      // 输入快照（stale 检测数据源：与 output.asset_ids 同口径）+ 容错溯源（旧键全部保留不动）
+      // 输入快照（stale 检测数据源：与 output.asset_ids 同口径）+ 容错溯源（旧键全部保留不动；混剪态记真实资产列）
       inputs: {
-        images: mode === 'images' ? imageIds : null,
-        motion_clips: mode === 'clips' ? clipIds : null,
+        images: mode === 'mixed' ? imageIds : mode === 'images' ? imageIds : null,
+        motion_clips: mode === 'mixed' ? clipIds : mode === 'clips' ? clipIds : null,
         shots_source: shotsIds[0] ?? null,
       },
       skipped_shots: skipped,
+      // 混剪态溯源（M53；未启用 → null 逐字节不变）
+      montage: montageOn
+        ? { mixed: mode === 'mixed', keep_clip_audio: params['keep_clip_audio'] === true, ken_burns: String(params['ken_burns'] ?? 'none'), normalized_segments: montageSegments.length }
+        : null,
       // 三增强溯源（禁用时记录原因，不影响既有语义；partial/warn_lines 标记 best-effort 部分命中）
       align: alignPlan
         ? { aligned: true, reason: null, lines: alignPlan.lines.length, shots: alignPlan.segments.length, total_dur: alignPlan.totalDur, mode: alignPlan.mode ?? null, partial: alignPlan.partial ?? false, warn_lines: alignPlan.warnLines?.length ?? 0 }
