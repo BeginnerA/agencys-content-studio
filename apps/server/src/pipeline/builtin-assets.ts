@@ -9,11 +9,10 @@
  * 漏项的后果是「该出厂资产变成可改」（偏宽松，不会破坏数据）；多项则命中不存在的文件，天然无害。
  */
 
-/** 出厂内置模板 key（workspace/templates/*.yaml，共 19 份） */
+/** 出厂内置模板 key（workspace/templates/*.yaml，共 18 份） */
 export const BUILTIN_TEMPLATE_KEYS: ReadonlySet<string> = new Set<string>([
   'article-clip',
   'easy-dialogue',
-  'easy-dialogue-review',
   'easy-video',
   'easy-video-review',
   'image-reverse',

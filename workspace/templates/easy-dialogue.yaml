@@ -1,7 +1,7 @@
 key: easy-dialogue
-version: 1
+version: 2
 name: 轻松创作 · 原生人物对白
-description: 原生音画人物交谈，逐镜保留原声音轨合成；按设置走严格 ASR 逐字核验或免核验估算字幕，最终须人工确认台词、角色与口型。
+description: 首帧确认后生成原生音画并保留原声合成，逐镜保留原声音轨；按设置走严格 ASR 逐字核验或免核验估算字幕，最终须人工确认台词、角色与口型。
 genre: story
 scene: produce
 inputs:
@@ -21,6 +21,7 @@ steps:
       shots: input.shots
     batch: { field: shots, max_concurrent: 2, retry: 0 }
     params: { use_character_refs: false, use_style_preset: false }
+    gate: { mode: required, message: '请检查角色外貌和同框关系；确认后将开始原生对白视频生成（按设置可能包含 ASR 核验等后续付费环节）。' }
   - key: motion
     action: ai_video
     title: 生成原生人物对白视频

@@ -54,7 +54,7 @@ export type { CreationRef }
 
 /** 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
  *  执行期守卫、恢复校验与专业端阻断一律按集合判定，不逐处硬编码单键。 */
-export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue', 'easy-dialogue-review'])
+export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue'])
 export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
 
 /**

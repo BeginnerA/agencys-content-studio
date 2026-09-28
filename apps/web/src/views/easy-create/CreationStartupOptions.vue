@@ -14,7 +14,7 @@ import CreationBrand from './CreationBrand.vue'
  */
 const props = defineProps<{ pf: CreationPreflight | null; plan: CreationPlan | null }>()
 
-// 中途审阅：勾选即本次用带闸门的同构变体模板（easy-video-review），不勾选 = 免审（行为与旧版逐字一致）
+// 中途审阅：勾选即本次用带闸门的同构变体模板（仅旁白 easy-video → easy-video-review）；对白 easy-dialogue 已内置首帧审阅闸（恒走带闸模板，不展示本勾选）
 const reviewGate = ref(false)
 // 画质档位：'' = 模型默认（confirm 不传键）。预检重建后所选档不在新 choices 内 → 清空，不拿旧档撞 422
 const resolution = ref('')
@@ -31,6 +31,8 @@ watch(
 )
 
 const dynamic = computed(() => props.plan?.mode === 'dynamic')
+// 对白模板已内置首帧审阅闸（原 easy-dialogue-review 已合并入 easy-dialogue）→ 无“免审/审阅”可选项，隐藏审阅勾选
+const dialogue = computed(() => props.plan?.performance === 'dialogue')
 const bgmCount = computed(() => props.plan?.refs.filter((r) => r.role === 'bgm').length ?? 0)
 // 免核验对白路线提示：仅预检判定当前对白方案走 estimated 时展示（诚实告知字幕非实测）
 const dialogueEstimated = computed(() => props.plan?.performance === 'dialogue' && props.pf?.dialogueMode === 'estimated')
@@ -39,7 +41,7 @@ defineExpose({ reviewGate, resolution, brandApply, subtitleBurn })
 </script>
 
 <template>
-  <CreationReviewGate v-model="reviewGate" :dynamic="dynamic" />
+  <CreationReviewGate v-if="!dialogue" v-model="reviewGate" :dynamic="dynamic" />
   <!-- 画质选择：仅 dynamic 且预检透出了已背书档位时展示（slideshow / 无视频实例不现） -->
   <CreationResolution v-if="dynamic && pf?.resolutionOptions" v-model="resolution" :options="pf.resolutionOptions" />
   <!-- 品牌风格：仅平台/项目已配品牌（brandSummary.available）时展示；未配品牌不打扰 -->

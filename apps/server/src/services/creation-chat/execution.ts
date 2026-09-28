@@ -64,10 +64,10 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
         const a = await writeTextAsset(s.projectId, { ...specs[i]!, content: contents[i]!, params: { creationSessionId: id, revision: s.planRevision } }, tx)
         sources.push({ id: a.id, hash: hashJson(contents[i]) })
       }
-      // 审阅闸：勾选即用变体模板（同构步骤 + 画面/首帧后 gate）；模板哈希随所选键重算，
-      // planHash 不受该标志影响（启动方式不是执行数据，与立项覆盖同一先例）。
+      // 审阅闸：旁白（easy-video）仍按勾选切 -review 同构变体；对白（easy-dialogue）已内置首帧审阅闸（原 easy-dialogue-review 已合并），
+      // 勾选对对白无效（恒走带闸 easy-dialogue）。模板哈希随所选键重算，planHash 不受该标志影响（启动方式不是执行数据，与立项覆盖同一先例）。
       const baseTemplate = plan.performance === 'dialogue' ? 'easy-dialogue' : 'easy-video'
-      const templateKey = request.reviewGate ? `${baseTemplate}-review` : baseTemplate
+      const templateKey = plan.performance === 'dialogue' || !request.reviewGate ? baseTemplate : `${baseTemplate}-review`
       const recipe = recipeSchema.parse({ ...pf.execution, sessionId: id, sources, templateHash: hashJson(loadTemplate(templateKey)) })
       const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',

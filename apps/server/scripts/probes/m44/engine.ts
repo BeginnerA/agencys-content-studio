@@ -24,7 +24,7 @@ export async function probeDialogueEngine({ check }: Checker): Promise<void> {
   const fetch = globalThis.fetch
   globalThis.fetch = async () => { throw new Error('引擎探针禁止联网') }
   try {
-    for (const key of ['easy-dialogue', 'easy-dialogue-review']) {
+    for (const key of ['easy-dialogue']) {
       for (const i2v of [false, true]) {
         const template = structuredClone(loadTemplate(key))
         template.key = 'm44-offline-engine'
@@ -34,8 +34,8 @@ export async function probeDialogueEngine({ check }: Checker): Promise<void> {
         const id = run!.id
         engine.startRun(id)
         let current = await settle(id)
-        if (i2v && key.endsWith('-review')) {
-          check(current.status === 'waiting_input' && current.currentStepKey === 'frames', '首帧审阅变体先等待画面批准')
+        if (i2v) {
+          check(current.status === 'waiting_input' && current.currentStepKey === 'frames', '对白模板（已内置首帧审阅闸）先等待画面批准')
           await engine.approveGate(id, 'frames')
           current = await settle(id)
         }

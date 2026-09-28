@@ -38,11 +38,11 @@ export async function probeRecipe({ check }: Checker, plan: CreationPlan): Promi
   ]) check(hashJson(changed) !== hashJson(dialogue), 'ASR 价格、配置和角色声线变化均改变批准摘要')
   const { loadTemplate } = await import('../../../src/pipeline/loader')
   const { getAction } = await import('../../../src/pipeline/actions')
-  for (const key of ['easy-dialogue', 'easy-dialogue-review']) {
+  for (const key of ['easy-dialogue']) {
     check(isCreationTemplate(key), '对白模板纳入统一批准链与专业端阻断集合')
     const template = loadTemplate(key)
     check(template.steps.every((s) => s.action !== 'tts') && template.steps.find((s) => s.key === 'captions')?.action === 'dialogue_subtitle', '对白 DAG 原声转写且不含 TTS')
-    check(template.steps.find((s) => s.key === 'compose')?.gate?.mode === 'required', '两种对白模板均强制最终人工审阅')
+    check(template.steps.find((s) => s.key === 'compose')?.gate?.mode === 'required' && template.steps.find((s) => s.key === 'frames')?.gate?.mode === 'required', '对白模板同时强制首帧与最终人工审阅')
     check(template.steps.every((s) => typeof getAction(s.action) === 'function'), '对白模板 action 均已注册')
   }
 }

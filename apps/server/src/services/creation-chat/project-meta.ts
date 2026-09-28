@@ -25,7 +25,7 @@ import { isCreationTemplate } from './recipe'
 
 /** 载体 → 项目「专业工作台默认模板」映射（与 web/src/lib/scene GENRE_DEFAULT_TPL 同源）。
  *  注意：此值只决定项目之后到专业工作台可跑的默认模板，与本次轻松创作执行模板
- *  （execution.ts 硬编码 easy-video / easy-dialogue ±review）完全解耦。 */
+ *  （execution.ts 按载体与审阅勾选选 easy-video / easy-video-review / easy-dialogue；对白单模板已内置首帧闸无 -review）完全解耦。 */
 const GENRE_DEFAULT_TPL: Record<string, string> = {
   drama_short: 'mengbao-episode',
   note: 'note-clip',
