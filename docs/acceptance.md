@@ -401,3 +401,17 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本切片按既有拆分惯例把 shot-duration 探针分节抽到 `precision-rework-shot-duration.ts`（141 行，被主探针 import 而非独立扫描；主探针 548 行），本轮改动的 5 个文件（后端 4 + 探针库 1）与前端 3 文件均 ≤800，**净新增违规为零**。m26 `split-audit` 仍恰为既有 3 个早于本切片的存量文件（`CreationArtifacts.vue`(998)、`probe-m7.ts`(865)、`use-project-detail.ts`(803)）保持已知红、非本切片回归（用户已拍板记为独立技术债另立拆分项）。
 
 待人工门（未声称）：浏览器端「镜头时长」输入行→预览（旧有效→新含 clamp 落回文案）→确认→本地重合成入队→新成片逐镜时长实际变化的端到端观感，需人工在真实运行上核验；探针为隔离库 + 引擎桩 + 假时轴快照，不等同于产品内真实 FFmpeg 重编码路径的可视验收。
+
+## 第四期验收快照：统一 QC 面板（成片质量可验证 / 交付可信只读核验）（2026-09-28，探针门禁）
+
+第四期 `qc-panel`「把第一期已确立的证据口径产品化为应用内一条只读按需核验服务」交付（T1–T7）。上位路线与原 M50 计划不修改；第一期 `production-baseline` 与切片2b 规格不重写，本期纯**加法**新建只读核验面。唯一实现真源（仓库外层 AI 工作区 `d:/work/AI/docs/superpowers/`）：规格 `specs/2026-09-28-agencys-content-studio-qc-panel-design.md`（已批准，§8 九断言为验收依据）+ 计划 `plans/2026-09-28-agencys-content-studio-qc-panel.md`。已锁决策：Q1 verdict **只读**（绝不改 `delivery_checked`、不触批准链、不新增写路径）；Q2 音频**纳入客观测量不判失真**（dBTP/LUFS 记录，削波/失真置 `manual_review_required`）；Q3 **仅成片级**（逐镜图像质量引用既有 `image-check`，面板不重做）。结果/evidenceType 词表与第一期 §5.3 逐字对齐，避免两套口径漂移。
+
+- 后端只读服务（T1–T4，`services/qc/`）：`types.ts`（契约+常量，纯类型不触 DB/执行）；`measure.ts`（本地 ffprobe JSON 取容器/流/分辨率/帧率/实测时长 + ffmpeg ebur128 取真峰值/积分响度，工具缺失/超时→`null` 宽容，镜像 `image-check` 保守策略，不判失真）；`consistency.ts`（纯函数：五项一致性核验 `timeline_source`/`duration_vs_timeline`/`shot_duration_applied`/`rework_receipt_consistency`/`subtitle_alignment_present`，只读解析 `params.timeline` 唯一真源不反推、覆盖未入轴→failed、台账 applied 指纹漂移→failed、门禁不足→not_tested 不伪造）；`report.ts`（编排 `runQcCheck`：定位成片→测量→一致性→聚合三态 verdict+`missing[]`→`merge` 进 `assets.params.qc` **零新列**镜像 `recordQuality`；`readQcCache` 成片 hash 变→旧 local/offline 结论标 `stale`、ready 降级）。
+- 只读端点（T5）：`routes/qc.ts` 加 `GET /api/v1/runs/:id/qc?refresh=0`（缺省按需重算并刷新缓存，`refresh=0` 优先命中缓存并标 `fromCache`）；`app.ts` 挂载 `qcRoutes`。门禁不足按 404 语义，`no_final_video`/`not_found` 分列供前端区分文案。全程不 import 引擎、不写业务表（除 `params.qc` 缓存）。
+- 前端只读面板（T7）：`components/run/qc/RunQcPanel.vue`（运行详情右栏辅助面板，与「合成返修/导出包」同级、独立只读）——挂载读缓存→无成片自动隐藏（能力探测驱动显隐，不打扰）、逐条渲染客观测量/一致性/交付标记/主观缺项（带 status/source/value/reason）、verdict 徽标 + `missing[]`、`重新核验`按钮（refresh=1 按需重算）。**前端零推算**：Σ/clamp/verdict 一律取后端返回值，无任何写/重合成按钮；状态徽标复用全局 `.badge` 语义修饰（主题 token 同源，不新造配色）。`types/qc.ts` + `api/qc.ts`（camelCase 与后端逐字段对齐）。
+
+自动门禁（本机实测，全绿）：`--only=precision-rework --section=qc-panel` **26 断言全绿**（覆盖规格 §8 九条：合成真实 mp4 客观值/造差 failed、缺时轴不反推、时长入轴 passed/未入轴 failed、台账指纹漂移四态、audio_peak 客观测量失真留人工、verdict 三态 ready/needs_review/not_ready、缺测降级 not_tested、缓存 merge 保留其余键+hash 变 stale、零 gen_tasks/零 usage_records 不变量；本地 lavfi 合成假片标 synthetic，零模型零付费）；`--only=precision-rework` 全量 **401 断言全绿 / 0 失败**（字幕/compose-input/shot-duration 三既有分节逐字不回归）；`pnpm -r typecheck` 双端绿（含 `vue-tsc`）；`pnpm --filter @acs/web build` 绿（668 模块，1.97s）。零新增依赖、零付费、未自动提交、加法优先。
+
+红线存量（m26 `split-audit` 单文件 ≤800 行归零门禁）：本期按既有拆分惯例把 qc-panel 探针分节抽到 `precision-rework-qc-panel.ts`（173 行，被主探针 import 而非独立扫描；主探针 548 行）；后端 4 文件（types 71 / measure 119 / consistency 153 / report 211）与前端 3 文件（types 49 / api 16 / RunQcPanel 224）均 ≤800，**净新增违规为零**。m26 `split-audit` 仍恰为既有 3 个早于本期的存量文件（`CreationArtifacts.vue`(998)、`probe-m7.ts`(907)、`use-project-detail.ts`(803)）保持已知红、非本期回归（用户已拍板记为独立技术债另立拆分项）。
+
+待人工门（未声称）：**面板不等于成片质量通过**——只把「可客观测得的事实 + 一致性 + 交付就绪判定」如实汇总。① 主观项（视觉一致性/道具连续/听感失真）恒 `not_tested` 列缺项，须人工看片听审，浏览器端「质量核验」面板在真实成片上的观感待人工核验；② 探针为隔离库 + 本地合成假片，不等同于产品内真实成片的 ffprobe/ebur128 可视验收；③ 第一期六槽样片验收本身（0/6、36 项固定任务未执行）不因本期面板而标为完成；④ 编辑器能否真实导入工程文件属**第五期**实测，本期不下「编辑器通过」结论。总路线保持 Executing。

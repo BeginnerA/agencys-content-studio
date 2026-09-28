@@ -83,6 +83,12 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   )
   const locked = computed(() => props.active || opBusy.value)
   const canOperate = computed(() => repairable.value.ok && !locked.value)
+  // 审阅闸门暂停：整块工作台仍锁（canOperate=false），但逐镜重出可用——只点亮「重生成该镜」按钮，
+  // 改词 / 选片 / 上传 / 重合成 / 级联仍走 canOperate（闸门下保持禁用），与后端 gatePause 放行口径一一对应。
+  const gateRegenerate = computed(() => board.value?.gateRegenerate === true)
+  const canRegenerate = computed(
+    () => !locked.value && (repairable.value.ok || gateRegenerate.value),
+  )
   const isVideoStep = computed(() => props.step.actionKey === 'ai_video')
 
   const summary = computed(() => {
@@ -497,6 +503,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   async function doRegenerate(shot: ShotBoardShot, withPrompt = false) {
+    if (!canRegenerate.value) return
     const text = promptDraft.value.trim()
     const dirty = withPrompt && text !== '' && text !== primaryPromptOf(shot)
     const ok = await confirmDialog({
@@ -650,6 +657,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     repairable,
     locked,
     canOperate,
+    gateRegenerate,
+    canRegenerate,
     isVideoStep,
     summary,
     promptField,
@@ -669,6 +678,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     compose,
     repairable,
     canOperate,
+    canRegenerate,
     summary,
     draftCount,
     allPicked,

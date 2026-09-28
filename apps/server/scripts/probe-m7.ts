@@ -10,6 +10,7 @@
  *   board      聚合读：shots×tasks×版本组×选中×compose 五合一 + stale 三态 + repairable 判定
  *   edit       分镜编辑：合法编辑（新资产 + output 保位 + 引擎回写消费）+ 非法矩阵
  *   regenerate 单镜重生成重置：task/step/run 三表语义 + resultAssetId 保留 + 防呆矩阵
+ *   gate-reroll 审阅闸门暂停（waiting_input）单镜重出：allowGatePause 放行 + board.gateRegenerate 透出 + 反例仍锁定
  *   select     选片/选镜：picks 校验矩阵 + 分镜序保序 + 子集剔除 + reset 全量
  *   recompose  重新合成重置：ffmpeg_merge 限定 + 三表语义 + 重复触发防护
  *   merge-plan 段组装纯函数：时长决策（explicit/estimated）+ 逐镜容错 skip
@@ -41,7 +42,7 @@ process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
 
-const SECTIONS = ['board', 'edit', 'regenerate', 'select', 'recompose', 'merge-plan'] as const
+const SECTIONS = ['board', 'edit', 'regenerate', 'gate-reroll', 'select', 'recompose', 'merge-plan'] as const
 
 /** 分镜 JSON（2 镜；s01 无时长 → null；s02 用 LLM 口径 duration_sec=2.5 → 回退读取） */
 const SHOTS_JSON = JSON.stringify(
@@ -553,6 +554,46 @@ async function main(): Promise<void> {
     check(eOther instanceof WorkbenchError && eOther.code === 'other_failed', '其他 failed 步骤 → other_failed')
   }
 
+  const sectionGateReroll = async (): Promise<void> => {
+    // 审阅闸门暂停（run 与挂闸生成步同时 waiting_input）下的单镜重出双向断言：
+    // assertRepairable(allowGatePause) 放行 → resetShotForRegenerate 成功三表重置；
+    // board 透出 gateRegenerate=true 且把误导性「正在执行/排队」语换成「审阅暂停中」；
+    // 反例（闸在别步 / 挂闸步非工作台步）仍逐字锁定，证明解锁面只到「单镜重出」。
+    const s = await seedRun()
+    await setRunStatus(s.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s.imgStepId))
+
+    const b = await buildShotBoard(s.runId, 'gen_images')
+    check(b.gateRegenerate === true, '闸门暂停：board.gateRegenerate=true（仅放行单镜重出）')
+    check(b.repairable.ok === false, '闸门暂停：repairable 仍 false（改词/选片/重合成等仍锁）')
+    check(typeof b.repairable.reason === 'string' && b.repairable.reason.includes('审阅暂停中'), '闸门暂停提示语友好化（含「审阅暂停中」）')
+
+    const r = await resetShotForRegenerate(s.runId, 'gen_images', 's01')
+    check(r.taskId === s.t1, '闸门重出命中目标任务（s01/t1）')
+    const t1 = await getTask(s.t1)
+    check(t1.status === 'pending' && t1.attempts === 0 && t1.resultAssetId === s.a1v2, '闸门重出重置 task（pending/attempts=0/保留历史产物）')
+    check((await getStep(s.imgStepId)).status === 'pending', '闸门重出重置 step→pending')
+    check((await getRun(s.runId)).status === 'queued', '闸门重出后 run→queued（引擎仅重跑目标镜后自动回到审阅闸）')
+
+    // 反例 A：run waiting_input 但挂闸步在别处（gen_images 仍 succeeded）→ gatePause=false → 活跃拒绝
+    const s2 = await seedRun()
+    await setRunStatus(s2.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s2.sbStepId))
+    const b2 = await buildShotBoard(s2.runId, 'gen_images')
+    check(b2.gateRegenerate === false, '闸在别步：gen_images.gateRegenerate=false（本步非挂闸步）')
+    const e2 = await errOf(() => resetShotForRegenerate(s2.runId, 'gen_images', 's01'))
+    check(e2 instanceof WorkbenchError && e2.code === 'run_active', '闸在别步：单镜重出仍 run_active 拒绝')
+
+    // 反例 B：挂闸步为非工作台步（compose_video/ffmpeg_merge）→ 不放行重出（bad_action），gateRegenerate 亦 false
+    const s3 = await seedRun()
+    await setRunStatus(s3.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s3.mergeStepId))
+    const b3 = await buildShotBoard(s3.runId, 'compose_video')
+    check(b3.gateRegenerate === false, '非工作台步挂闸：compose_video.gateRegenerate=false')
+    const e3 = await errOf(() => resetShotForRegenerate(s3.runId, 'compose_video', 's01'))
+    check(e3 instanceof WorkbenchError && e3.code === 'bad_action', '非工作台步挂闸：单镜重出仍 bad_action')
+  }
+
   const sectionSelect = async (): Promise<void> => {
     type SelOpts = Parameters<typeof applyShotSelection>[2]
     const s = await seedRun()
@@ -825,6 +866,7 @@ async function main(): Promise<void> {
     board: sectionBoard,
     edit: sectionEdit,
     regenerate: sectionRegenerate,
+    'gate-reroll': sectionGateReroll,
     select: sectionSelect,
     recompose: sectionRecompose,
     'merge-plan': sectionMergePlan,

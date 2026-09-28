@@ -1,8 +1,10 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
-import { assets, genTasks, pipelineRuns, pipelineSteps, type GenTask } from '../../db/schema'
+import { assets, genTasks, pipelineRuns, pipelineSteps, type GenTask, type PipelineRun } from '../../db/schema'
 import { WORKBENCH_ACTIONS, WorkbenchError, parseOutputJson, shotIdOfAsset, requeuePatch } from './helpers'
-import { isCreationTemplate } from '../creation-chat/recipe'
+import { isCreationTemplate, recipeOf } from '../creation-chat/recipe'
+import { checkBudget } from '../budget'
+import { resolveUnitPrice } from '../usage'
 import { assertRepairable, resolveStoryboardSource } from './inspect'
 
 export interface ShotPick {
@@ -15,6 +17,9 @@ export interface ShotPick {
 /**
  * 单镜重生成：校验 + 重置（task 保留 resultAssetId 作历史 / step pending / run queued）。
  * 路由层随后 engine.startRun——action 幂等段「succeeded 任务跳过」只重跑目标镜。
+ *
+ * 审阅闸门暂停（gatePause）：run 与本步同时 waiting_input 时，允许对挂闸生成步做同提示词单镜重出
+ * （首帧审阅时挑出不满意的一镜重投）；不改分镜/不动批准链，仅补一次服务端预算门禁。
  */
 export async function resetShotForRegenerate(
   runId: number,
@@ -22,8 +27,13 @@ export async function resetShotForRegenerate(
   shotId: string,
 ): Promise<{ runId: number; taskId: number }> {
   if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'shot_id 非法')
-  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
-  if (isCreationTemplate(run.templateKey)) throw new WorkbenchError('creation_confirmation_required', '额外镜头生成需复制需求并确认新方案；失败恢复请回轻松创作', 409)
+  const { run, step, gatePause } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS, { allowGatePause: true })
+  // 轻松创作批准链：常规（已完成/失败）额外生成仍须回会话费用确认通道；
+  // 但审阅闸门暂停下的「同提示词单镜重出」不改分镜、不越批准链（ai_image 参数变化守卫不触发），
+  // 属审阅环节内正当操作，放行——仅补一次服务端预算门禁（与断点续跑/会话返修同源 checkBudget）。
+  if (isCreationTemplate(run.templateKey) && !gatePause) {
+    throw new WorkbenchError('creation_confirmation_required', '额外镜头生成需复制需求并确认新方案；失败恢复请回轻松创作', 409)
+  }
 
   const tasks = await db
     .select()
@@ -43,6 +53,15 @@ export async function resetShotForRegenerate(
   }
   if (!target) throw new WorkbenchError('no_task', `镜头 ${shotId} 无对应生成任务`)
 
+  // 闸门重出前服务端预算门禁：按单张图计费，超限即拦（未知价 → 不拦，客户端确认已提示重新计费）
+  if (gatePause) {
+    const cost = await estimateGateRerollCost(run, target)
+    if (cost !== null) {
+      const budget = await checkBudget({ projectId: run.projectId, estimatedCost: cost })
+      if (budget) throw new WorkbenchError(budget.code, budget.message, 409)
+    }
+  }
+
   const now = Date.now()
   // 单镜重生成（用户点“重出该镜”）→ regen=true 清外部 task_id，令引擎重新提交而非续轮询旧成片（requeuePatch 单一真源，
   // 与 resetStepForRerun / resetChainForRerun / [F03] 同规则）；失败重试/续跑保留 task_id 的语义在本入口不适用。
@@ -59,6 +78,20 @@ export async function resetShotForRegenerate(
     .set({ status: 'queued', error: null, completedAt: null, currentStepKey: null, updatedAt: now })
     .where(eq(pipelineRuns.id, run.id))
   return { runId: run.id, taskId: target.id }
+}
+
+/**
+ * 审阅闸门单镜重出的费用估算（一张图）：轻松创作取批准实例单价，否则按任务供应商/型号解析当前单价；
+ * 未知（无快照价且解析不出）→ null，调用方据此跳过预算拦截（不臆造成费用）。
+ */
+async function estimateGateRerollCost(run: PipelineRun, task: GenTask): Promise<number | null> {
+  try {
+    const recipe = recipeOf(run)
+    if (recipe) return recipe.endpoints.image?.unitPrice ?? null
+    return await resolveUnitPrice({ kind: 'image', unit: 'image', provider: task.provider, model: task.model })
+  } catch {
+    return null
+  }
 }
 
 // ---------- 多版本选片 / 选镜 ----------

@@ -64,6 +64,8 @@ export interface ShotBoardData {
   compose: ShotBoardCompose | null
   /** 返修可用性（不抛错判定：活跃 run / 其他 failed 步骤等） */
   repairable: { ok: boolean; reason: string | null }
+  /** 审阅闸门暂停：本步持有 waiting_input 人工闸→仅开放逐镜重出（其余工作台操作仍锁） */
+  gateRegenerate: boolean
 }
 
 /** 分镜字段级编辑项（edit / regenerate 复用） */

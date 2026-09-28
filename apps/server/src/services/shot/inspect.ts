@@ -6,7 +6,7 @@ import { templateForRun } from '../../pipeline/loader'
 import type { Template } from '../../pipeline/types'
 import { readTextAsset } from '../storage'
 import { isAmbiguousSubmitted, isCreationTemplate } from '../creation-chat/recipe'
-import { WorkbenchError, getRunOrThrow, getStepOrThrow, outputIdsOf, type ShotSpec } from './helpers'
+import { WorkbenchError, WORKBENCH_ACTIONS, getRunOrThrow, getStepOrThrow, outputIdsOf, type ShotSpec } from './helpers'
 
 export interface StoryboardSource {
   asset: Asset
@@ -21,24 +21,39 @@ export interface StoryboardSource {
  * 返修通用校验（spec §3.6 决策表）：
  * run ∈ {completed, failed}（活跃 400 / cancelled 提示续跑）；目标步骤 ∈ {succeeded, failed}；
  * 该 run 内除目标步骤外无 failed（失败收敛先于执行，否则重跑必失败）。
+ *
+ * opts.allowGatePause：审阅闸门暂停放行。当 run 与「目标步」同时停在 waiting_input（人工暂停、
+ * 引擎空闲）时，本步正处于审阅闸——放行对挂闸步的单镜重出（resetShotForRegenerate 专用），
+ * 使「首帧审阅时挑出不满意的一镜重投」成为可能。仅这一个入口传该标志；改词/选片/重合成/级联
+ * 等价仍走默认门禁（闸门下保持锁定），避免破坏轻松创作批准链与误触下游付费步。
  */
 export async function assertRepairable(
   runId: number,
   stepKey: string,
   allowActions?: string[],
-): Promise<{ run: PipelineRun; step: PipelineStep }> {
+  opts?: { allowGatePause?: boolean },
+): Promise<{ run: PipelineRun; step: PipelineStep; gatePause: boolean }> {
   const run = await getRunOrThrow(runId)
-  if (run.status === 'running' || run.status === 'queued' || run.status === 'waiting_input') {
-    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再操作`)
-  }
   if (run.status === 'cancelled') {
     throw new WorkbenchError('run_cancelled', 'run 已取消，请走「断点续跑」创建续跑 run')
   }
-  if (run.status !== 'completed' && run.status !== 'failed') {
-    throw new WorkbenchError('bad_status', `run 状态 ${run.status} 不支持返修`)
+  if (run.status === 'running' || run.status === 'queued') {
+    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再操作`)
+  }
+  // 未申请闸门放行的入口：waiting_input 一律视为活跃（与历史语义逐字一致，不额外读步骤行）
+  if (run.status === 'waiting_input' && opts?.allowGatePause !== true) {
+    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再操作`)
   }
   const step = await getStepOrThrow(runId, stepKey)
-  if (step.status !== 'succeeded' && step.status !== 'failed') {
+  // 闸门暂停态：run 与本步同时 waiting_input = 本步持有审阅闸；否则（如闸门在别的步）仍视为活跃
+  const gatePause = run.status === 'waiting_input' && step.status === 'waiting_input'
+  if (run.status === 'waiting_input' && !gatePause) {
+    throw new WorkbenchError('run_active', `run 正在执行/排队（${run.status}），请等待收敛后再操作`)
+  }
+  if (!gatePause && run.status !== 'completed' && run.status !== 'failed') {
+    throw new WorkbenchError('bad_status', `run 状态 ${run.status} 不支持返修`)
+  }
+  if (!gatePause && step.status !== 'succeeded' && step.status !== 'failed') {
     throw new WorkbenchError('bad_step_status', `步骤「${step.title ?? stepKey}」状态为 ${step.status}，仅 succeeded/failed 可返修`)
   }
   if (allowActions && !allowActions.includes(step.actionKey)) {
@@ -52,7 +67,7 @@ export async function assertRepairable(
   if (others.length > 0) {
     throw new WorkbenchError('other_failed', `存在其他失败步骤（${others.map((r) => r.stepKey).join('、')}），请先修复后再操作`)
   }
-  return { run, step }
+  return { run, step, gatePause }
 }
 
 /** 模板步骤图（run 快照优先，缺失/损坏 → null；与引擎执行图同源，避免快照漂移） */
@@ -191,6 +206,15 @@ export async function checkRepairable(
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : '校验失败' }
   }
+}
+
+/**
+ * 审阅闸门暂停判定（单一真源，与 assertRepairable 的 gatePause 同口径）：
+ * run 与本步同时停在 waiting_input 且本步为工作台类步（ai_image/ai_video）→ 本步正持有审阅闸，
+ * 允许逐镜重出（不放开改词/选片/重合成等其余操作）。shot-board 据此下发 gate_regenerate 标志。
+ */
+export function isGateReviewStep(run: PipelineRun, step: PipelineStep): boolean {
+  return run.status === 'waiting_input' && step.status === 'waiting_input' && WORKBENCH_ACTIONS.includes(step.actionKey)
 }
 
 /** 分镜源定位：目标步骤 input.shots[0] → 分镜资产（产出侧最新优先）→ JSON 解析（裸数组 / {shots:[]}） */

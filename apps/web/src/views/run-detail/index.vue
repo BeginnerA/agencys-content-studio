@@ -13,6 +13,7 @@ import RunTimeline from './RunTimeline.vue'
 import RunLogPanel from './RunLogPanel.vue'
 import RunCostPanel from './RunCostPanel.vue'
 import RunExportsPanel from './RunExportsPanel.vue'
+import RunQcPanel from '../../components/run/qc/RunQcPanel.vue'
 import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
@@ -233,6 +234,9 @@ const {
           <RunCostPanel :e="e" />
 
           <RunExportsPanel :e="e" />
+
+          <!-- 质量核验（只读）：成片客观测量 + 一致性 + 交付就绪判定；无成片时自动隐藏 -->
+          <RunQcPanel :run-id="runId" />
 
           <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>

@@ -176,7 +176,7 @@ const sb = props.sb
       </button>
       <button
         class="wb-ib"
-        :disabled="!sb.canOperate || !shot.task"
+        :disabled="!sb.canRegenerate || !shot.task"
         aria-label="重生成该镜"
         :title="shot.task ? '重生成该镜（重新计费）' : '该镜无生成任务'"
         @click="doRegenerate(shot)"

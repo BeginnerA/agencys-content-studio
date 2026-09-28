@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, genTasks, pipelineSteps, type Asset, type GenTask, type PipelineRun, type PipelineStep } from '../../db/schema'
 import { WORKBENCH_ACTIONS, getRunOrThrow, getStepOrThrow, outputIdsOf, sameIds, selectedMapOf, shotIdOfAsset, type ShotSpec } from './helpers'
-import { checkRepairable, resolveStoryboardSource } from './inspect'
+import { checkRepairable, isGateReviewStep, resolveStoryboardSource } from './inspect'
 
 /** 分镜时长双口径读取：duration 优先，回退 duration_sec（LLM 原始分镜字段）；非法值 → null */
 export function shotDurationSec(shot: object): number | null {
@@ -57,6 +57,8 @@ export interface ShotBoard {
   shots: BoardShot[]
   compose: { stepKey: string; composedAt: number | null; stale: boolean | null } | null
   repairable: { ok: boolean; reason: string | null }
+  /** 审阅闸门暂停：本步正持有 waiting_input 人工闸→允许逐镜重出（其余工作台操作仍锁） */
+  gateRegenerate: boolean
 }
 
 // ---------- 聚合读 ----------
@@ -170,14 +172,22 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
   })
 
   const compose = await buildComposeInfo(run)
+  // 审阅闸门暂停：整块工作台仍锁（repairable.ok=false），但单镜重出可用；把默认「正在执行/排队」
+  // 误导语换成与闸门语义一致的提示（避免用户误以为引擎在跑而干等）。
+  const gateRegenerate = isGateReviewStep(run, step)
+  const shownRepairable =
+    gateRegenerate && !repairable.ok
+      ? { ok: false, reason: '审阅暂停中：可逐镜重出不满意的首帧（重新计费），其余操作待收敛后进行' }
+      : repairable
   const finalRepairable =
-    repairable.ok && parseError ? { ok: false, reason: `分镜解析失败：${parseError}` } : repairable
+    shownRepairable.ok && parseError ? { ok: false, reason: `分镜解析失败：${parseError}` } : shownRepairable
 
   return {
     step: { id: step.id, key: step.stepKey, title: step.title, action: step.actionKey, status: step.status },
     shots: boardShots,
     compose,
     repairable: finalRepairable,
+    gateRegenerate,
   }
 }
 

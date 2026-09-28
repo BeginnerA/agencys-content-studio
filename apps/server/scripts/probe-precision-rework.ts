@@ -27,10 +27,11 @@ import {
 } from './precision-rework-sections'
 import { runComposeInputSection } from './precision-rework-compose-input'
 import { runShotDurationSection } from './precision-rework-shot-duration'
+import { runQcPanelSection } from './precision-rework-qc-panel'
 
 const { cleanup } = isolatedEnv('precision-rework')
 
-const SECTIONS = ['contract', 'snapshot', 'ledger', 'preview', 'apply', 'compose', 'compose-input', 'shot-duration', 'stale', 'projection', 'exchange', 'parse'] as const
+const SECTIONS = ['contract', 'snapshot', 'ledger', 'preview', 'apply', 'compose', 'compose-input', 'shot-duration', 'qc-panel', 'stale', 'projection', 'exchange', 'parse'] as const
 
 
 async function main(): Promise<void> {
@@ -538,7 +539,7 @@ async function main(): Promise<void> {
     title: 'precision-rework',
     checker,
     sections: SECTIONS,
-    runners: { contract: runContract, snapshot: runSnapshot, ledger: runLedger, preview: runPreview, apply: runApply, compose: () => runComposeSection(check), 'compose-input': () => runComposeInputSection(check), 'shot-duration': () => runShotDurationSection(check), stale: () => runStaleSection(check), projection: () => runProjectionSection(check), exchange: () => runExchangeSection(check), parse: () => runParseSection(check) },
+    runners: { contract: runContract, snapshot: runSnapshot, ledger: runLedger, preview: runPreview, apply: runApply, compose: () => runComposeSection(check), 'compose-input': () => runComposeInputSection(check), 'shot-duration': () => runShotDurationSection(check), 'qc-panel': () => runQcPanelSection(check), stale: () => runStaleSection(check), projection: () => runProjectionSection(check), exchange: () => runExchangeSection(check), parse: () => runParseSection(check) },
     cleanup,
   })
 }
