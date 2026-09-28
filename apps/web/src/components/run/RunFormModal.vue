@@ -88,6 +88,7 @@ function resetAdv(): void {
   }
 }
 const err = ref('')
+const notice = ref('')
 const busy = ref(false)
 const loading = ref(false)
 const loadingDetail = ref(false)
@@ -166,6 +167,13 @@ function backToPicker() {
   videoOverride.value = null
   resetAdv()
   err.value = ''
+}
+
+/** 表单内上传新素材：并入 assets 选择源（按 id 去重，新的置前） */
+function onAssetsAppended(added: Asset[]): void {
+  const existing = new Set(assets.value.map((a) => a.id))
+  const fresh = added.filter((a) => !existing.has(a.id))
+  if (fresh.length) assets.value = [...fresh, ...assets.value]
 }
 
 async function submit() {
@@ -291,7 +299,10 @@ init()
             :publications="publications"
             :values="form"
             :sources="sourceMap"
+            :project-id="projectId"
             @change="onFieldChange"
+            @assets-appended="onAssetsAppended"
+            @notice="notice = $event"
           />
           <!-- 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
           <details v-if="hasOverride" class="adv">
@@ -365,6 +376,7 @@ init()
         </template>
       </template>
 
+      <div v-if="notice" class="muted" style="margin-top: 8px">{{ notice }}</div>
       <div v-if="err" class="err-text">{{ err }}</div>
     </template>
 

@@ -7,6 +7,7 @@ import type {
   TemplateDetail,
 } from '../../lib/types'
 import { fmtTime, PLATFORM_TEXT, purposeText } from '../../lib/format'
+import { uploadFiles } from '../../lib/api'
 import AssetPreviewer from '../asset/previewer/index.vue'
 import Icon from '../common/Icon.vue'
 import ProvenanceBadge from '../common/ProvenanceBadge.vue'
@@ -23,12 +24,63 @@ const props = defineProps<{
   sources?: Record<string, PrefillSource>
   /** 紧凑模式（批量表单行内：text 单行、files 折叠为计数按钮） */
   dense?: boolean
+  /** 项目 id：传入则 files 字段支持表单内直接上传素材（无需先回项目页） */
+  projectId?: number
 }>()
 
-const emit = defineEmits<{ change: [key: string, value: unknown] }>()
+const emit = defineEmits<{
+  change: [key: string, value: unknown]
+  /** 表单内上传成功：把新资产回传父层并入 assets 选择源（去重由父层负责） */
+  'assets-appended': [added: Asset[]]
+  /** 上传失败/提示（父层可选展示） */
+  notice: [message: string]
+}>()
 
 /** dense 模式下展开的 files 字段 key */
 const openKey = ref('')
+
+/** 表单内上传：隐藏 input 触发中的 files 字段 key + 进行中标记 */
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploadTargetKey = ref('')
+const uploading = ref(false)
+
+function acceptOf(key: string): string {
+  const inp = props.tpl?.inputs.find((i) => i.key === key)
+  return inp?.accept?.length ? inp.accept.join(',') : ''
+}
+
+/** 点击「上传素材」→ 记录目标字段并打开系统文件选择器 */
+function triggerUpload(key: string) {
+  if (!props.projectId || uploading.value) return
+  uploadTargetKey.value = key
+  fileInput.value?.click()
+}
+
+/** 文件选定 → 上传入库 → 回传父层并入选择源 → 自动勾选新资产 */
+async function onFilesChosen(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = '' // 清空以便重复选同一文件
+  const key = uploadTargetKey.value
+  if (!key || !props.projectId || !files.length) return
+  uploading.value = true
+  try {
+    const created = await uploadFiles(props.projectId, 'source', files)
+    if (created.length) {
+      emit('assets-appended', created)
+      // 自动勾选本次上传的资产（去重合并到当前已选）
+      const merged = [...picked(key)]
+      for (const a of created) if (!merged.includes(a.id)) merged.push(a.id)
+      emit('change', key, merged)
+    }
+    emit('notice', `已上传 ${created.length} 个素材并勾选`)
+  } catch (err) {
+    emit('notice', `上传失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    uploading.value = false
+    uploadTargetKey.value = ''
+  }
+}
 
 function textOf(k: string): string {
   const v = props.values[k]
@@ -81,6 +133,16 @@ function srcChip(k: string): string {
 
 <template>
   <div class="tif" :class="{ dense }">
+    <!-- 表单内上传：全局隐藏 input，由 files 字段的「上传素材」按钮触发 -->
+    <input
+      v-if="projectId"
+      ref="fileInput"
+      type="file"
+      multiple
+      :accept="uploadTargetKey ? acceptOf(uploadTargetKey) : ''"
+      class="tif-file-input"
+      @change="onFilesChosen"
+    />
     <template v-for="inp in tpl?.inputs ?? []" :key="inp.key">
       <label v-if="inp.kind === 'text'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
@@ -133,6 +195,15 @@ function srcChip(k: string): string {
             {{ inp.label }}（{{ picked(inp.key).length }}）
             <span class="caret">{{ openKey === inp.key ? '▴' : '▾' }}</span>
           </button>
+          <button
+            v-if="projectId"
+            type="button"
+            class="btn sm upl"
+            :disabled="uploading"
+            @click="triggerUpload(inp.key)"
+          >
+            <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传' }}
+          </button>
           <div v-if="openKey === inp.key" class="picklist">
             <label v-for="a in assets" :key="a.id" class="opt">
               <input
@@ -167,6 +238,15 @@ function srcChip(k: string): string {
               >仅 {{ inp.accept.join(' / ') }}</em
             >
             <span class="muted">（选 {{ picked(inp.key).length }} 项）</span>
+            <button
+              v-if="projectId"
+              type="button"
+              class="btn sm upl"
+              :disabled="uploading"
+              @click="triggerUpload(inp.key)"
+            >
+              <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传素材' }}
+            </button>
           </div>
           <p v-if="!inp.required" class="tif-hint muted">
             可留空；不必全选，只勾选与本次创作相关的文件即可（多选会一并作为参考叠加，选多无关项会稀释重点）。
@@ -193,7 +273,9 @@ function srcChip(k: string): string {
               </span>
             </label>
           </div>
-          <div v-else class="muted">项目暂无资产——可先在项目页上传素材。</div>
+          <div v-else class="muted">
+            项目暂无资产——点上方「上传素材」直接添加，或先到项目页上传。
+          </div>
         </template>
       </div>
 
@@ -241,6 +323,18 @@ function srcChip(k: string): string {
 </template>
 
 <style scoped>
+.tif-file-input {
+  display: none;
+}
+
+.upl {
+  margin-left: 8px;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .caret {
   font-size: 10px;
   color: var(--text-3);

@@ -18,6 +18,14 @@ const tplKey = ref('')
 const tpl = ref<TemplateDetail | null>(null)
 const assets = ref<Asset[]>([])
 const err = ref('')
+const notice = ref('')
+
+/** 表单内上传新素材：并入 assets 选择源（按 id 去重，新的置前） */
+function onAssetsAppended(added: Asset[]): void {
+  const existing = new Set(assets.value.map((a) => a.id))
+  const fresh = added.filter((a) => !existing.has(a.id))
+  if (fresh.length) assets.value = [...fresh, ...assets.value]
+}
 
 // 输入组：每行完整一份值（独立可改；添加行=复制末行并递增 episode 类 int）
 const rows = ref<Array<Record<string, unknown>>>([])
@@ -280,13 +288,17 @@ async function submit() {
               :tpl="tpl"
               :assets="assets"
               :values="row"
+              :project-id="projectId"
               dense
               @change="(k, v) => (row[k] = v)"
+              @assets-appended="onAssetsAppended"
+              @notice="notice = $event"
             />
           </div>
         </div>
       </template>
 
+      <div v-if="notice" class="muted" style="margin: 6px 0">{{ notice }}</div>
       <div v-if="err" class="err-text">{{ err }}</div>
     </template>
 
