@@ -461,14 +461,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v11：版本 11 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸） ——
+    // —— T1 mengbao-episode v12：版本 12 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接） ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 11, `version=11（实际 ${t.version}）`)
+        check(t.version === 12, `version=12（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
         check(
           ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
@@ -483,6 +483,8 @@ async function main(): Promise<void> {
           'mengbao-episode 含场景道具链（set_profile/set_ref_prompts/gen_set_refs/sync_set）',
         )
         check(t.inputs.some((i) => i.key === 'with_set_refs'), 'inputs 含 with_set_refs')
+        check(t.inputs.some((i) => i.key === 'prev_script' && !i.required), 'inputs 含 prev_script 选填（v12 集间承接）')
+        check(stepOf('write_script')?.inputs['prev_script'] === 'input.prev_script', 'v12 write_script.inputs 接 prev_script（上集剧本直注）')
         const gsr = stepOf('gen_set_refs')
         check(typeof gsr?.when === 'string' && gsr.when.includes('with_set_refs'), `gen_set_refs.when 绑 with_set_refs（${String(gsr?.when)}）`)
         check(gsr?.params?.['output_purpose'] === 'reference_scene', 'gen_set_refs.output_purpose=reference_scene')

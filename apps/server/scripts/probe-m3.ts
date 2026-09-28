@@ -667,15 +667,19 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode v10：版本 10 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 —
+    // —— T3 mengbao-episode v12：版本 12 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 / v12 集间承接 ——
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 11, `mengbao-episode version=11（实际 ${t3.version}）`)
+        check(t3.version === 12, `mengbao-episode version=12（实际 ${t3.version}）`)
         check(t3.steps.length === 21, `mengbao-episode steps=21（实际 ${t3.steps.length}）`)
+        // [v12] 集间承接：prev_script 选填文件输入声明 + write_script 接线（多段工作流 $prev.asset:script 灌入点）
+        const psDef = t3.inputs.find((i) => i.key === 'prev_script')
+        check(!!psDef && psDef.kind === 'files' && psDef.required === false, 'inputs 含 prev_script（files 选填）')
+        check(stepOf('write_script')?.inputs['prev_script'] === 'input.prev_script', 'write_script.inputs.prev_script 接线 input.prev_script')
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),
           'mengbao-episode 含 char_profile/ref_prompts/gen_refs/sync_characters',
