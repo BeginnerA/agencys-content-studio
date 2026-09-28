@@ -1,8 +1,8 @@
 key: quick-video
 builtin: true
-version: 1
+version: 2
 name: 快速视频
-description: 适合：一句话创意快速出片（默认免审直出）。流程：快脚本 → 逐句配音 → 精确字幕 → 单图成片 → 风格沉淀。
+description: 适合：一句话创意快速出片（默认免审直出）。流程：快脚本 → 合规审核（可关）→ 逐句配音 → 精确字幕 → 单图成片 → 风格沉淀。
 genre: talking_head
 scene: produce
 next: [review-restock]
@@ -26,6 +26,11 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: with_compliance
+    label: 脚本合规审核（false=跳过；词库命中 block 级会拦截进配音合成）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.7, max_tokens: 12000 }
   image: { provider: pollinations_image, size: "1536x1024" }
@@ -55,6 +60,14 @@ steps:
       message: 请审阅快脚本「{input.idea}」，批准后进入配音合成；驳回可附修改意见重跑
       when: input.confirm == true
       skip_label: 免审快出
+  - key: compliance
+    action: compliance_check
+    title: 脚本合规审核
+    when: input.with_compliance != false
+    after: [draft]
+    inputs:
+      content: steps.draft.asset
+    params: { llm_review: true, on_block: fail }
   - key: cast_lines
     action: ai_text
     title: 台词切句

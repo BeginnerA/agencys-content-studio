@@ -1,8 +1,8 @@
 key: talking-clip
 builtin: true
-version: 3
+version: 4
 name: 对白口播
-description: 适合：把选题做成对白口播视频（配音 + 精确字幕）。流程：口播文案（可审阅）→ 逐句配音 → 精确字幕 → 单图成片 → 平台发布文案（可选）。
+description: 适合：把选题做成对白口播视频（配音 + 精确字幕）。流程：口播文案（可审阅）→ 逐句配音 → 精确字幕 → 单图成片 → 平台发布文案（可选）→ 合规审核（可关，block 级拦截）。
 genre: talking_head
 scene: produce
 next: [review-restock]
@@ -46,6 +46,11 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: with_compliance
+    label: 文案合规审核（false=跳过；口播稿与平台文案均检，block 级拦截）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.7, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "1536x1024" }
@@ -162,3 +167,19 @@ steps:
       prompt_tpl: adapt-video.md
       output_purpose: export
       name_tpl: "platform-copy.md"
+  - key: compliance
+    action: compliance_check
+    title: 口播文案合规审核
+    when: input.with_compliance != false
+    after: [draft]
+    inputs:
+      content: steps.draft.asset
+    params: { llm_review: true, on_block: fail }
+  - key: compliance_platform_copy
+    action: compliance_check
+    title: 平台文案合规审核
+    when: [input.with_compliance != false, input.with_platform_copy == true]
+    after: [platform_copy]
+    inputs:
+      content: steps.platform_copy.asset
+    params: { llm_review: true, on_block: fail }

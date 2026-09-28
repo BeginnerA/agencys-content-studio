@@ -5,6 +5,7 @@ import type {
   PrefillSource,
   Publication,
   TemplateDetail,
+  TemplateInputDef,
 } from '../../lib/types'
 import { fmtTime, PLATFORM_TEXT, purposeText } from '../../lib/format'
 import { uploadFiles } from '../../lib/api'
@@ -49,10 +50,56 @@ function acceptOf(key: string): string {
   return inp?.accept?.length ? inp.accept.join(',') : ''
 }
 
+/**
+ * accept 扩展名 → 资产 kind 映射（与服务端 storage.kindByExt 同源）。
+ * docx/epub 导入时已在服务端转成 md 文本资产，故归 text。
+ */
+const EXT_KIND: Record<string, string> = {
+  png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image', bmp: 'image',
+  mp4: 'video', mov: 'video', webm: 'video', mkv: 'video', avi: 'video',
+  mp3: 'audio', wav: 'audio', aac: 'audio', m4a: 'audio', flac: 'audio',
+  md: 'text', txt: 'text', json: 'text', yaml: 'text', yml: 'text', csv: 'text',
+  srt: 'text', vtt: 'text', log: 'text', ini: 'text', toml: 'text',
+  docx: 'text', epub: 'text',
+}
+const KIND_WORDS = new Set(['image', 'video', 'audio', 'text', 'archive'])
+
+/** 单个资产是否契合该 files 字段的 accept（无 accept / 无法识别的 accept → 一律放行，绝不误藏） */
+function assetMatchesAccept(asset: Asset, accept?: string[]): boolean {
+  if (!accept?.length) return true
+  const exts = new Set<string>()
+  const kinds = new Set<string>()
+  for (const raw of accept) {
+    const t = raw.trim().toLowerCase()
+    if (!t) continue
+    if (t.startsWith('.')) {
+      const e = t.slice(1)
+      exts.add(e)
+      const k = EXT_KIND[e]
+      if (k) kinds.add(k)
+    } else if (KIND_WORDS.has(t)) {
+      kinds.add(t)
+    }
+  }
+  // accept 既非扩展名也非已知 kind 词（历史/自定义写法）→ 无法判定，放行避免误藏合法资产
+  if (!exts.size && !kinds.size) return true
+  const aext = (asset.ext || '').toLowerCase().replace(/^\./, '')
+  if (aext && exts.has(aext)) return true
+  if (asset.kind && kinds.has(asset.kind)) return true
+  return false
+}
+
+/** files 字段的候选列表：按 accept 智能过滤后的项目资产 */
+function visibleAssets(inp: TemplateInputDef): Asset[] {
+  return props.assets.filter((a) => assetMatchesAccept(a, inp.accept))
+}
+
 /** 点击「上传素材」→ 记录目标字段并打开系统文件选择器 */
 function triggerUpload(key: string) {
   if (!props.projectId || uploading.value) return
   uploadTargetKey.value = key
+  // 先命令式写 accept 再 click：避免 :accept 响应式绑定要到 nextTick 才更新、首次点击过滤失效
+  if (fileInput.value) fileInput.value.accept = acceptOf(key)
   fileInput.value?.click()
 }
 
@@ -205,7 +252,7 @@ function srcChip(k: string): string {
             <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传' }}
           </button>
           <div v-if="openKey === inp.key" class="picklist">
-            <label v-for="a in assets" :key="a.id" class="opt">
+            <label v-for="a in visibleAssets(inp)" :key="a.id" class="opt">
               <input
                 type="checkbox"
                 :checked="picked(inp.key).includes(a.id)"
@@ -225,7 +272,13 @@ function srcChip(k: string): string {
                 </button>
               </span>
             </label>
-            <div v-if="!assets.length" class="muted">项目暂无资产</div>
+            <div v-if="!visibleAssets(inp).length" class="muted">
+              {{
+                assets.length
+                  ? `项目内无符合「${inp.accept?.join(' / ') || inp.label}」的资产——点上方上传` 
+                  : '项目暂无资产'
+              }}
+            </div>
           </div>
         </template>
         <template v-else>
@@ -251,8 +304,8 @@ function srcChip(k: string): string {
           <p v-if="!inp.required" class="tif-hint muted">
             可留空；不必全选，只勾选与本次创作相关的文件即可（多选会一并作为参考叠加，选多无关项会稀释重点）。
           </p>
-          <div v-if="assets.length" class="picklist">
-            <label v-for="a in assets" :key="a.id" class="opt">
+          <div v-if="visibleAssets(inp).length" class="picklist">
+            <label v-for="a in visibleAssets(inp)" :key="a.id" class="opt">
               <input
                 type="checkbox"
                 :checked="picked(inp.key).includes(a.id)"
@@ -274,7 +327,11 @@ function srcChip(k: string): string {
             </label>
           </div>
           <div v-else class="muted">
-            项目暂无资产——点上方「上传素材」直接添加，或先到项目页上传。
+            {{
+              assets.length
+                ? `项目里有 ${assets.length} 个资产，但没有符合「${inp.accept?.join(' / ') || inp.label}」类型的——点上方「上传素材」添加`
+                : '项目暂无资产——点上方「上传素材」直接添加，或先到项目页上传。'
+            }}
           </div>
         </template>
       </div>

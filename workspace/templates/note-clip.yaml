@@ -1,8 +1,8 @@
 key: note-clip
 builtin: true
-version: 2
+version: 3
 name: 图文笔记
-description: 适合：把一段素材或想法做成可直接发布的小红书式图文笔记。流程：主稿（可审阅）→ 封面/配图 → 多平台适配（可选）→ 发布稿。
+description: 适合：把一段素材或想法做成可直接发布的小红书式图文笔记。流程：主稿（可审阅）→ 封面/配图 → 多平台适配（可选）→ 发布稿 → 合规审核（可关，block 级拦截）。
 genre: note
 scene: produce
 next: [platform-adapt, review-restock]
@@ -35,6 +35,11 @@ inputs:
     label: 多平台适配（选填，逗号分隔：公众号/小红书/知乎/头条/抖音/快手/视频号/B站；留空=仅原稿）
     kind: text
     required: false
+  - key: with_compliance
+    label: 发布稿合规审核（false=跳过；词库命中 block 级会拦截出稿）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.7, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "768x1024" }
@@ -128,6 +133,14 @@ steps:
       prompt_tpl: publish-note.md
       output_purpose: export
       name_tpl: "publish.md"
+  - key: compliance
+    action: compliance_check
+    title: 发布稿合规审核
+    when: input.with_compliance != false
+    after: [publish]
+    inputs:
+      content: steps.publish.asset
+    params: { llm_review: true, on_block: fail }
   - key: remember
     action: memory_write
     title: 沉淀风格样本

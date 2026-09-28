@@ -4,13 +4,16 @@
  * 表单状态与提交逻辑真源留父级（watch 模板加载 / submitForm 校验 / err 同源），本组件纯装配：
  * v-model 透传六个表单字段，操作经 emit 转交；复用全局 Modal（Teleport + backdrop + Esc）。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import Modal from '../../components/common/Modal.vue'
 import DatePicker from '../../components/common/DatePicker.vue'
+import TemplateInputFields from '../../components/template/TemplateInputFields.vue'
 import { filterSelectable } from '../../lib/scene'
 import type {
+  Asset,
   Project,
+  Publication,
   TemplateDetail,
   TemplateMeta,
 } from '../../lib/types'
@@ -22,15 +25,23 @@ const props = defineProps<{
   formInputsLoading: boolean
   err: string
   creating: boolean
+  /** 所选项目资产（files 字段勾选源，与启动/批量表单同源） */
+  assets: Asset[]
+  /** 所选项目发布记录（publications 字段勾选源） */
+  publications?: Publication[]
 }>()
 // 排程选模板不呈现轻松创作批准链模板（无 recipe、到点必失败）
 const selectableTpls = computed(() => filterSelectable(props.templates))
+
+// files/publications 字段内联上传/提示反馈（就地展示，不离开弹窗）
+const notice = ref('')
 
 const emit = defineEmits<{
   close: []
   submit: []
   'add-group': []
   'remove-group': [idx: number]
+  'assets-appended': [added: Asset[]]
 }>()
 
 const projectId = defineModel<number | ''>('projectId', { required: true })
@@ -112,54 +123,16 @@ const formInputs = defineModel<Array<Record<string, unknown>>>('formInputs', {
             </button>
           </div>
           <div class="tpl-card-body">
-            <div
-              v-for="def in formTemplateDetail!.inputs"
-              :key="def.key"
-              class="fld-row"
-              :class="{
-                'fld-wide': def.kind === 'text' || def.kind === 'files',
-              }"
-            >
-              <label class="fld-sm">
-                {{ def.label || def.key }}
-                <span v-if="def.required" class="req">*</span>
-              </label>
-              <input
-                v-if="def.kind === 'text'"
-                v-model="row[def.key]"
-                type="text"
-                :placeholder="
-                  def.default !== undefined ? String(def.default) : ''
-                "
-              />
-              <input
-                v-else-if="def.kind === 'int'"
-                v-model="row[def.key]"
-                type="number"
-                step="1"
-                :placeholder="
-                  def.default !== undefined ? String(def.default) : ''
-                "
-              />
-              <label v-else-if="def.kind === 'bool'" class="toggle">
-                <input
-                  v-model="row[def.key]"
-                  type="checkbox"
-                  :true-value="true"
-                  :false-value="false"
-                />
-                <span class="toggle-track"></span>
-                <span class="toggle-text">{{
-                  row[def.key] ? '是' : '否'
-                }}</span>
-              </label>
-              <input
-                v-else-if="def.kind === 'files'"
-                v-model="row[def.key]"
-                type="text"
-                placeholder="资产 id，逗号分隔"
-              />
-            </div>
+            <TemplateInputFields
+              :tpl="formTemplateDetail"
+              :assets="assets"
+              :publications="publications"
+              :values="row"
+              :project-id="typeof projectId === 'number' ? projectId : undefined"
+              @change="(k, v) => (row[k] = v)"
+              @assets-appended="emit('assets-appended', $event)"
+              @notice="notice = $event"
+            />
           </div>
         </div>
         <button
@@ -178,6 +151,7 @@ const formInputs = defineModel<Array<Record<string, unknown>>>('formInputs', {
       <input v-model="formNote" placeholder="可选" />
     </label>
 
+    <div v-if="notice" class="notice-text muted">{{ notice }}</div>
     <div v-if="err" class="err-text" role="alert">{{ err }}</div>
 
     <template #footer>
@@ -275,91 +249,11 @@ const formInputs = defineModel<Array<Record<string, unknown>>>('formInputs', {
 }
 .tpl-card-body {
   padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 14px;
-}
-.fld-wide {
-  grid-column: 1 / -1;
-}
-.fld-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.fld-sm {
-  font-size: 11px;
-  color: var(--text-3);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.fld-sm .req {
-  color: var(--bad);
-  font-size: 12px;
-}
-.fld-row > input[type='text'],
-.fld-row > input[type='number'] {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: var(--text);
-  font-size: 13px;
-  transition: border-color 0.15s;
-}
-.fld-row > input:focus {
-  border-color: var(--accent);
-  outline: none;
 }
 
-/* toggle 开关 */
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
+.notice-text {
   font-size: 12px;
-  color: var(--text);
-}
-.toggle input[type='checkbox'] {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.toggle-track {
-  width: 32px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--border-strong);
-  position: relative;
-  transition: background 0.2s;
-  flex-shrink: 0;
-}
-.toggle-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.2s;
-}
-.toggle input:checked + .toggle-track {
-  background: var(--accent);
-}
-.toggle input:checked + .toggle-track::after {
-  transform: translateX(14px);
-}
-.toggle input:focus-visible + .toggle-track {
-  box-shadow: 0 0 0 2px var(--accent-weak);
-}
-.toggle-text {
-  font-size: 12px;
-  color: var(--text-2);
+  margin-bottom: 8px;
 }
 
 .tpl-add {

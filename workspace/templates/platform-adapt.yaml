@@ -1,8 +1,8 @@
 key: platform-adapt
 builtin: true
-version: 2
+version: 3
 name: 多平台适配
-description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注），支持出海目标语言。流程：源稿入库 → 八平台规则改写（可审阅）→ 风险标注留痕。
+description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注），支持出海目标语言。流程：源稿入库 → 八平台规则改写（可审阅）→ 合规审核（可关，block 级拦截）。
 genre: other
 scene: operate
 next: [review-restock]
@@ -32,6 +32,11 @@ inputs:
     kind: text
     required: false
     default: zh
+  - key: with_compliance
+    label: 适配稿合规审核（false=跳过；词库命中 block 级会拦截导出）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.7, max_tokens: 24000 }
 steps:
@@ -59,3 +64,11 @@ steps:
       mode: required
       message: 请审阅多平台适配稿（目标：{input.platforms}），批准后导出发布；驳回可附修改意见重跑
       skip_label: 认可适配稿
+  - key: compliance
+    action: compliance_check
+    title: 适配稿合规审核
+    when: input.with_compliance != false
+    after: [adapt]
+    inputs:
+      content: steps.adapt.asset
+    params: { llm_review: true, on_block: fail }

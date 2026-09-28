@@ -5,7 +5,7 @@
  * 零网络零计费，隔离临时库（acs-probe-m26-*）。验证 M26 交付的机械正确性：
  *   runner       —— run-probes 的纯函数 parseProbeOutput（PASS/FAIL 逐行计数）+ formatSummary（对齐表）
  *   probe-lib     —— makeChecker 计数语义 + isolatedEnv 目录前缀隔离与清理
- *   split-audit   —— ≤800 行红线扫描器在位；M26 新基建脚本自身合规；发现待拆文件数（P1/P3 后归零）
+ *   split-audit   —— ≤800 行红线扫描器在位（scripts + server/src + web/src）；M26 基建脚本自身合规；红线存量归零门禁；registry 与 KNOWN_ACTIONS 集合相等防漂移
  *   ollama-seed   —— initDb 后 api_providers 查得 ollama_llm（vendor=ollama/service_type=llm/11434）+ 幂等重放不重复插
  *   stress        —— percentile 数学对拍 + 小样本 projects/assets 落隔离库（bench-stress 种子原语背书）
  *
@@ -25,6 +25,7 @@ const SECTIONS = ['runner', 'probe-lib', 'split-audit', 'ollama-seed', 'stress']
 const SERVER_DIR = join(REPO_ROOT, 'apps', 'server')
 const SCRIPTS_DIR = join(SERVER_DIR, 'scripts')
 const WEB_SRC_DIR = join(REPO_ROOT, 'apps', 'web', 'src')
+const SRC_DIR = join(SERVER_DIR, 'src')
 const LINE_LIMIT = 800
 
 function lineCount(file: string): number {
@@ -136,15 +137,29 @@ async function main(): Promise<void> {
         const p = join(SCRIPTS_DIR, f)
         check(lineCount(p) <= LINE_LIMIT, `M26 基建脚本 ≤${LINE_LIMIT}: ${f}（${lineCount(p)} 行）`)
       }
-      // 全量红线扫描（scripts + web/src）：P0 阶段待拆存量 = 5 探针 + 5 前端；P1/P3 逐一收敛，P4 收口为 0
-      const over = [...walk(SCRIPTS_DIR), ...walk(WEB_SRC_DIR)]
+      // 全量红线扫描（scripts + server/src + web/src）：P0 阶段待拆存量 = 5 探针 + 5 前端；P1/P3 逐一收敛，P4 收口为 0
+      // [M3 收编] server/src 纳入扫描（此前仅 scripts + web/src，src 膨胀无拦截）；当前 src 最大 751 行 ≤800，纳入即绿。
+      const over = [...walk(SCRIPTS_DIR), ...walk(SRC_DIR), ...walk(WEB_SRC_DIR)]
         .map((f) => ({ f, n: lineCount(f) }))
         .filter((x) => x.n > LINE_LIMIT)
         .sort((a, b) => b.n - a.n)
       log.warn(`[split-audit] 当前 >${LINE_LIMIT} 行文件 ${over.length} 个：${over.map((o) => `${basename(o.f)}(${o.n})`).join(' ') || '（无）'}`)
-      // P4 收口门禁：红线存量必须归零（P1 拆 5 探针 + P3 拆前端存量后，scripts + web/src 不得有任何 >800 文件）
-      // [2026-09 已归零] 尾项 ScheduleCalendar.vue(928→813→677) 拆为 view + use-schedule-form.ts（[M26-split2]，行为零变更）；本门禁保持绿，后续任何文件撞线即红
+      // P4 收口门禁：红线存量必须归零（scripts + server/src + web/src 不得有任何 >800 文件）
+      // 本门禁是常红约束：任何文件撞线即红。最近一次回归（CreationArtifacts.vue 998 / probe-m7.ts 944 / use-project-detail.ts 803）已再次归零：
+      // CreationArtifacts.vue 拆 view + use-creation-artifacts.ts；probe-m7.ts 拆主探针 + m7-seed.ts（种子夹具注入）；use-project-detail.ts 拆 use-project-detail + use-resume-chains.ts（均 [M26-split]，行为零变更）。
       check(over.length === 0, `split-audit 红线存量归零（当前 ${over.length} 个 >${LINE_LIMIT}：${over.map((o) => basename(o.f)).join(' ') || '无'}）`)
+      // [L1 防漂移] action 真源双份：引擎执行经 actions/index.ts registry 派发、模板加载期校验用 loader.KNOWN_ACTIONS 放行；
+      //   两处靠注释人工同步，任一侧漏加 → 模板能过校验但运行期 getAction 抛「未注册」（或反之）。断言二者集合相等。
+      const { listActionKeys } = await import('../src/pipeline/actions')
+      const { KNOWN_ACTIONS } = await import('../src/pipeline/loader')
+      const regSet = new Set(listActionKeys())
+      const knownSet = new Set<string>(KNOWN_ACTIONS)
+      const onlyReg = [...regSet].filter((k) => !knownSet.has(k))
+      const onlyKnown = [...knownSet].filter((k) => !regSet.has(k))
+      check(
+        onlyReg.length === 0 && onlyKnown.length === 0,
+        `registry 与 KNOWN_ACTIONS 集合相等（registry 独有：${onlyReg.join('/') || '无'}；KNOWN 独有：${onlyKnown.join('/') || '无'}；各 ${regSet.size}/${knownSet.size}）`,
+      )
     },
 
     // ============ ollama-seed：一等 provider 种子 ============

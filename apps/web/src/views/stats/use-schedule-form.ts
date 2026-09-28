@@ -5,8 +5,18 @@
  * projectId/err 为父子共享真源，由父级传入 Ref；创建成功后经 onCreated 回调触发父级刷新。
  */
 import { ref, watch, type Ref } from 'vue'
-import { scheduleApi, templateApi } from '../../lib/api'
-import type { TemplateDetail, TemplateInputDef } from '../../lib/types'
+import {
+  projectApi,
+  publicationApi,
+  scheduleApi,
+  templateApi,
+} from '../../lib/api'
+import type {
+  Asset,
+  Publication,
+  TemplateDetail,
+  TemplateInputDef,
+} from '../../lib/types'
 
 export function useScheduleForm(opts: {
   projectId: Ref<number | ''>
@@ -26,6 +36,39 @@ export function useScheduleForm(opts: {
   const formTemplateDetail = ref<TemplateDetail | null>(null)
   const formInputs = ref<Array<Record<string, unknown>>>([{}]) // 多组输入，每组对应一次 run
   const formInputsLoading = ref(false)
+  // files/publications 选择源（随所选项目加载，与启动/批量表单同源）
+  const assets = ref<Asset[]>([])
+  const publications = ref<Publication[]>([])
+
+  /** 拉取所选项目的资产与发布记录（files/publications 字段的勾选源） */
+  async function loadProjectData() {
+    const pid = projectId.value
+    if (!pid) {
+      assets.value = []
+      publications.value = []
+      return
+    }
+    try {
+      const [aRes, pRes] = await Promise.all([
+        projectApi.assets(pid, '?limit=200'),
+        publicationApi.list(`?project_id=${pid}`),
+      ])
+      assets.value = aRes.items
+      publications.value = pRes.items
+    } catch {
+      /* 静默：资产/发布加载失败不阻断排产表单（仍可手填/后补） */
+    }
+  }
+
+  /** 表单内上传新素材：并入 assets 选择源（按 id 去重，新的置前） */
+  function onAssetsAppended(added: Asset[]): void {
+    const existing = new Set(assets.value.map((a) => a.id))
+    const fresh = added.filter((a) => !existing.has(a.id))
+    if (fresh.length) assets.value = [...fresh, ...assets.value]
+  }
+
+  // 切换项目 → 重拉资产/发布（files 勾选源随之刷新）
+  watch(projectId, () => void loadProjectData())
 
   // 模板切换时加载详情（含 inputs 定义）
   watch(formTemplateKey, async (key) => {
@@ -75,6 +118,7 @@ export function useScheduleForm(opts: {
     formTemplateDetail.value = null // 清除旧模板，避免闪烁
     formInputs.value = [{}]
     showForm.value = true
+    void loadProjectData() // 刷新 files/publications 勾选源（项目可能已预选）
     // 重新加载当前模板详情 + 默认值
     if (formTemplateKey.value) void loadTemplateDetail(formTemplateKey.value)
   }
@@ -143,6 +187,9 @@ export function useScheduleForm(opts: {
     formTemplateDetail,
     formInputs,
     formInputsLoading,
+    assets,
+    publications,
+    onAssetsAppended,
     openForm,
     submitForm,
     loadTemplateDetail,

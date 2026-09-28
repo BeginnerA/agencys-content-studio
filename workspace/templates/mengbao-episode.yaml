@@ -72,6 +72,23 @@ defaults:
   video: { provider: pollinations_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
   # tts 兜底参数（provider 可在项目 settings 覆盖；声线六级链见 tts action）
   audio: { provider: pollinations_audio, voice: "Cherry" }
+  # ── 开关 × 步骤依赖矩阵（11 输入开关 → 步骤触发；改任一开关前先查此表，避免静默跳步）──
+  # 【互斥主分支】motion=false → gen_images（静态图合成，when: motion!=true）；
+  #                motion=true  → gen_motion（ai_video 动效出片，when: motion==true）
+  # 【i2v 子分支】i2v=true 仅在 motion=true 时生效：追加 gen_frames 首帧批量出图
+  #                （when: motion==true 且 i2v==true），gen_motion 改以首帧驱动
+  #                （motion_prompt 缺则回退 image_prompt）；出图+视频双重计费。
+  #                ⚠ motion=false 时 i2v 无效（gen_frames/gen_motion 均不触发，仍走静态路径）
+  # 【审阅闸·不改执行】with_storyboard_review=true → make_storyboard 后挂人工审阅闸（步本身恒执行，仅闸开关）
+  # 【出图开关】with_character_refs=true → gen_refs 定妆照生成；false 仅 char_profile 建档，sync_characters 用空参考图
+  #           with_set_refs=true → gen_set_refs 场景/道具参考图；false 仅 set_profile 建档，sync_set 用空参考图
+  #           （四出图步 gen_refs/gen_set_refs/gen_images/gen_frames 均挂 required 可跳过审阅闸）
+  # 【可选附加步】with_deep_review=true → script_review（+其审阅闸）；
+  #               with_narrative_doc=true → storyboard_narrative；with_edit_review=true → edit_audit
+  # 【配音字幕链】with_voice=false（默认 true）→ 跳过 cast_lines → 连带 voice/subtitle 无输入 → 默片直出；
+  #               compose_video.fit_voice 无配音实测时长可依，退回 duration_per_shot 估长
+  # 【恒执行步（不受上述开关）】ingest_docs / write_script(必审闸) / char_profile / ref_prompts /
+  #               sync_characters / set_profile / set_ref_prompts / sync_set / make_storyboard / compose_video
 steps:
   - key: ingest_docs
     action: manual_ingest

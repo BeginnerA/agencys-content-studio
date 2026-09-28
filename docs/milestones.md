@@ -284,6 +284,17 @@ M18 后缺口集群「创作画布深化」九项一次交付：**批 1** 画布
 
 验证：`pnpm --filter @acs/server probe:m22`（十一节 **169 项断言**，零网络零计费：spec-fields 9 / trash 12 / schema 2 / align 25 / refs 12 / group-nest 18 / snapshot-diff 18 / fit 4 / copy-to 23 / export-svg 23 / multi-frame 23）；`probe:m2a ~ m19 + m21` 全量回归 **零适配全绿**（18 探针）；`tsc` + `vue-tsc` 双端全绿；三层实弹（HTTP API 16 PASS〔真实库跨项目 P10→P14：9 复制 / 1 run 跳过 / 6 资产级联 / 0 警告〕/ 浏览器 e2e 8/8〔复制弹窗、SVG / PNG 双 toast、均匀抽帧 3 帧落板〕/ 修复复核 PASS）。
 
+## M23 能力速览（画布规模化与智能编排 · 补录）
+
+创作画布从「能用」跨到「能扛规模 + 会编排」：**力导向自动布局**（引入 `d3-force`：确定性可复现坐标 / round 取整 / 分离度 / 锚定双例 / 幽灵边过滤 / layered·grid 既有布局零漂移）、**模板序列化与编辑**（`parse ∘ stringify` 往返保真；编辑应用物化三态 / 加边去重 / 删边 / `after` null 回落 / 非前置·未知引用·越白名单拒绝 / 模板 key 避让防命名冲突）、**全景聚合**（批次分组 / 独立 run / cost 映射 / 空项目）、**智能建议**（`buildCanvasSummary` 确定性 + `parseAdviceOutput` 归一降级矩阵）。设计取向：纯函数与聚合层直测、零网络零计费（LLM 通道走 e2e 实弹），力导向与序列化对存量零漂移。
+
+- **力导向布局（force）**：server `package.json` 新增 `d3-force` / `@types/d3-force`；同图同布局确定性、坐标 round 取整、节点分离度、锚定双例、单节点 / 空集 / 两点无边 / 幽灵边过滤、layered·grid 零漂移
+- **模板序列化与编辑（serialize / edit）**：`parse ∘ stringify` 往返（全字段 / 最小模板 / 特殊字符转义 / snake_case / 键序稳定 / key 覆盖）；编辑物化三态、加边去重、删边、`after` null 回落、非前置 / 未知引用 / 越白名单拒绝、模板 key 避让
+- **全景与建议（overview / advice）**：批次分组 / 独立 run / cost 映射 / 空项目聚合；`buildCanvasSummary` 确定性摘要 + `parseAdviceOutput` 归一降级（坏输出不崩）
+- **基准（bench）**：300 / 600 / 1000 节点 `buildCanvasDoc` 耗时，隔离库种子（60% gen / 30% text / 10% asset + 链式边）为规模化背书
+
+验证：`probe-m23`（六节 **92 项断言全绿**：force / serialize / edit / overview / advice / bench；隔离临时库 `acs-probe-m23-*` 独立 studio.db + workspace，零网络零计费——直测服务层纯函数与聚合，不触发引擎执行 / 真实生成 / LLM 调用）。
+
 ## M24 能力速览（内容质量与国际化）
 
 纲领 F 组五项一次交付：**批 1** 三层记忆摘要（双形态）+ 图像角色一致性 A/B 评测；**批 2** 翻译链双形态 + 双语字幕/多语言配音；**批 3** 内容合规审核（词库 + LLM 双轨）。设计三原则：**零新表零新列**（摘要走 memories 开放 type；合规标记落 `assets.params.compliance` 对齐 params.quality 先例）、**宽容降级全链**（LLM 复审不可用 → `llm:null` 不阻断；评分坏行跳过；翻译缺失句回退原文）、**缺省零漂移**（自动钩子默认关；`target_lang` 缺省 zh 产物逐字不变；voice_map 不传旧行为不变）。
@@ -626,6 +637,18 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 
 ---
 
+## M46 能力速览（轻松创作第五批：角色 / 风格预设软提示注入 · 补录）
+
+轻松创作第五批：把项目已配的**风格预设**与**角色预设**以「软提示」形式注入创作规划模型，提升成片风格一致性与角色识别——**非硬约束、非新链路**，仅在规划 messages 里追加一段 system 软提示，不携带预设时零变更。核心两函数：`applyCreationPresets`（读-合并写：仅写提供键 / 去重保序 / 截断 cap）、`resolveCreationPresetHint`（据项目绑定拼「画风基线 + 可复用角色」软提示，跳过已停用风格、如实标注缺项，未绑定 → `null`）。前端首轮新增风格 / 角色预设下拉 UI。
+
+- **软提示合并（unit）**：`applyCreationPresets` 仅写提供键、去重保序、超 `cap` 截断；`resolveCreationPresetHint` 据项目绑定生成软提示文案（跳过停用风格、如实标注缺项），未绑定返回 `null`（零注入）
+- **规划注入（inject）**：`sendCreationMessage` 携带 `stylePresetIds` / `characterPresetIds` 时，规划模型收到的 `messages` 出现软提示 system 分片（含所选风格名 + 角色名）；不携带则零变更（无该分片）
+- **契约与幂等（contract）**：`messageSchema` 接受合法预设 id 数组、拒越界 / 未知键；`messageFingerprint` **不含预设**——改预选不作废幂等（同文案重发不破去重）
+
+验证：`probe-m46`（三节 **23 项断言全绿**：unit / inject / contract；`isolatedEnv('m46')` + 模板只读拷贝进隔离区 + prompts junction 桥接 + `fetch` 全阻断仅放行假 LLM `/chat/completions` 并捕获 messages 供注入断言，零网络零付费）。
+
+---
+
 ## M47 能力速览（免 ASR 核验对白执行链 · 路 B：模型原生出声 + 估算字幕）
 
 M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `dialogue_unavailable`」，关掉 ASR 逃生阀又被强制降级旁白（路 A）。本里程碑接通**免核验对白执行链**（huobao / 即梦式：由视频模型原生发声、字幕按批准台词估算），触发条件 = `resolveDialogueAsrPolicy(projectId).strict === false` **且**当前视频实例命中 `resolveNativeDialogueCaps`（volcengine Seedance 2.0 系 / 阿里万相 3.0 系，单一真源不动）；能力不达标时保留路 A 降级旁白。**保留红线（不放宽）**：原生对白逐型号背书、视频必带非静音原声轨（ffprobe 实测 + volumedetect）、台词容量预检、对白禁用 TTS、人工审阅闸强制；**降级的红线（改诚实标注）**：逐字 ASR 核验 → 估算字幕 + 必审提示。
@@ -636,6 +659,30 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 - **规划与文案（`planning.ts` / 模板 / Web）**：`planning.ts` 能力注入改三段式（每条以 `【人物对白能力】` 前缀、每轮仅一条）——`asrStrictOff && hasNativeDialogue` 允许产出 `performance=dialogue` 并声明「免逐字核验 / 字幕估算 / 须人工审阅」；`asrStrictOff && !hasNativeDialogue` 维持路 A 降级 narration；ON 分支逐字保留现状。`easy-dialogue.yaml` / `easy-dialogue-review.yaml` captions 步 title 与 compose gate message 改模式中性且诚实（「估算或实测」「免核验路线字幕未逐字核对，请收听原声比对台词」；改动仅影响新会话哈希，无存量 dialogue run）。`system-settings/index.vue` 与 `project-detail/CreationPanel.vue` 逃生阀文案：关闭后语义由「降级旁白」改为「免核验对白（需视频模型原生对白背书，否则仍降级旁白）」；前端确认卡读 `preflight.dialogueMode`，estimated 显示「免 ASR：模型原生出声，字幕按台词估算（非实测）」提示条，成果视图字幕资产带 `params.estimated` 显示「估算」badge。
 
 验证：`probe-m47`（**7 节 55 断言全绿**：recipe / preflight / execution / srt / action / merge / plan；isolatedEnv + 除 plan 节 stub 回放 LLM 外 `globalThis.fetch` 全阻断零联网零付费 + 真实 FFmpeg lavfi 合成带音轨样片；覆盖 estimatedDialogue 三分支互斥与存量 narration/strict recipe 哈希逐字不变回归、策略三层分流与 `native_dialogue_unsupported`/`missing_asr` 零回归、`dialogueMode` 顶层不进 execution、冻结闸条件放行、估算 SRT 分配 / 单调 / 越界 / 空台词拒绝、estimated 字幕步零 genTasks/usageRecords 与静音守卫、合成同源重算 / 陈旧字幕拒绝 / 缺原声轨拒绝、规划注入三段式）；server `tsc --noEmit`、web `vue-tsc --noEmit`、`validate:templates`（19 份 / 123 步 / 0 错 0 警）全 EXIT=0。实弹（需 Seedance 2.0 / 万相 3.0 实例）：一条多角色对白需求 → 确认卡显示免核验路线 → 出片含原声与估算字幕 → 审阅闸通过交付。
+
+---
+
+## M48 能力速览（统一取消 / 续跑 / 预算执行保障 · 审计 F02/F03-TTS/F06 · 补录）
+
+阶段二执行保障审计修复：**取消停提交、续跑不二次计费、预算超限拦截**三条不变量。`runCancelled` 抽取为 `pipeline/cancel.ts` 单一真源（`ai_text` / `ai_image` / `ai_video` / `strict_tts` 去重）；**F02+F03-TTS**：tts 逐句纳入 `gen_tasks` 生命周期——run 被置 cancelled 时 cooperative 退出抛 `RunCancelledError`、后续句不再提交（不重复计费），续跑同 run/step 复用既有音频资产、`audioCount` 不增、返回资产逐字一致、tts 用量行不翻倍；**F03-video**：普通运行续跑复用已受理 `taskId` 只轮询、内容变更无条件清 `taskId`；**F06**：`POST /projects/:id/runs` 与 `startWorkflow` 首段接入 `checkBudget` 闸门（月费超限 → `budget_monthly_exceeded` / 全局超限 → `budget_global_monthly_exceeded`）。
+
+- **取消（cancel / F02）**：首句合成期间 cancelled → 第二句不再提交（`audioCount` 恒为 1），终态 1 succeeded + 1 cancelled
+- **续跑（resume / F03-TTS）**：3 句首跑各提交一次；同 run/step 再执行 → 全 succeeded 复用既有音频、`audioCount` 不增、用量行仍 3（续跑零二次计费）
+- **预算（budget / F06）**：未配置放行 → 月费超限 project → `budget_monthly_exceeded` → 高阈值放行 → 全局超限 `budget_global_monthly_exceeded`
+
+验证：`probe-m48`（三节 **13 项断言全绿**：cancel / resume / budget；`isolatedEnv('m48')` + `globalThis.fetch` 全阻断仅放行 `${baseUrl}/audio/speech` 并计数 `audioCount`（即「向第三方提交一次合成」的计费替身），据此断言取消停提交 / 续跑零新增合成 / 预算超限拦截，零付费）。
+
+---
+
+## M49 能力速览（计费与幂等深化 · 审计修复 G1–G4 · 补录）
+
+审计修复 G1–G4，把「无人值守可双扣费 / 双击可双派生 / 新入口漏预算 / 落库半事务」四处幂等与计费缺口一次收口：**G1 排产触发 CAS claim**——条件 `UPDATE pending→triggered` 原子翻转（单赢家），修复 `setInterval` tick 重叠可双建批次（= 无人值守双扣费），空 `inputTemplate` 定 `failed` 终态不再悬 pending 风暴；**G2 resume 防双击**——`pipeline_runs` 新列 `resumed_from_run_id`（`ensureColumn` 兜底），同一源 run 存在进行中派生 run 时 `409 already_resumed`，派生终态后可再续跑；**G3 新承诺入口预算闸门收口**——`resume` 与 `createBatch`（service 层单一真源，覆盖 REST 直建 + 排产触发）接入 `checkBudget`，`BudgetBlockedError` → 路由 `409`，与 runs POST / workflow 同口径；**G4 落库事务化**——resume 新 run + 步骤复制 + `gen_tasks` 迁移单事务；createBatch 批行 + N run 行单事务（pump 在提交后）；resume 启动前 `refreshGlobalConcurrency` 防陈旧缓存误拉起。
+
+- **排产 CAS（claim / G1）**：同一 pending 计划并发双触发 → 单赢家、仅建 1 批 2 run；重复触发零新建；空 `inputTemplate` → `failed` 终态
+- **续跑去重（resume / G2+G4）**：首跑 202 派生新 run（`resumed_from_run_id` 戳记 / 步骤复制终态保留 / `gen_tasks` 整体迁移 succeeded 保产物、非终态归零）；派生进行中二次 resume `409 already_resumed`；派生终态后允许再续跑
+- **预算收口（budget / G3）**：超限项目 resume `409 budget_monthly_exceeded`；`createBatch` service 抛 `BudgetBlockedError`；`POST /projects/:id/batches` 路由 `409` 同 code
+
+验证：`probe-m49`（三节 **17 项断言全绿**：claim / resume / budget；`isolatedEnv('m49')` + 占槽策略 `concurrency.max=1` 哨兵预占 → 所有 `engine.startRun` deferred 归一 queued（不拉起真实执行链、零第三方提交），真实模板经复制 `quick-video.yaml` 进隔离区提供，零网络零付费）。
 
 ---
 
@@ -650,6 +697,17 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 - **M50.5 Web 入口单一真源（`lib/edit-exchange.ts`）**：`lib/api/insights.ts` 加 `editExchangeApi`（formats/create/fileUrl）+ `EditExchangeFormat`/`EditExchangeFormatsResult` 类型（`api/index.ts` 再导出）；新 `lib/edit-exchange.ts`（格式能力表 + `editExEnabled`/`editExTitle` 纯函数 + `probeEditExchangeFormats`/`createEditExchangeDownload` 序列）供两处入口复用，避免逻辑漂移；新 `lib/download.ts` `triggerDownload`。运行详情成片卡（`RunStepCard.vue`：run 级探测经 `use-run-extras`，`ffmpeg_merge` 步 `editExFormats.final_video` 时呈现 FCPXML/EDL/OTIO 三按钮，不可用置灰回服务端 `reason`，recomputed 时提示「时间轴按分镜重算」）+ 轻松创作成片区（`CreationResult.vue`：`watch` 成片就绪后探测，同组件复用）。
 
 验证：`probe-m50`（**6 节 64 断言全绿**：timecode / formatters / snapshot / sources / bundle / redline；isolatedEnv 隔离临时库 + `globalThis.fetch` 阻断零网络零计费）——覆盖时码换算对拍（fps=25 整帧 / 非整帧舍入 / NDF 10800s 边界 / 负秒 / fps=0 兜底）、三格式化器结构断言（OTIO 可 `JSON.parse` 且五轨命名固定 + clipCount、FCPXML 含 format/sequence/title/transition、EDL record 时码升序 + Dissolve 行）、`buildEditTimeline` 坐标口径（segments 累计 / relPath 反查 / 计划句 vs concat 句 timelineStart / text≤200 截断 / sfx 绝对轴）、`timeline-source` stored 直通 / recomputed 兜底 / 双失败 `no_timeline` / 无成片 `no_final_video`、zip manifest 与 media 引用一致性 + `bad_format` + `probeEditExchange` 能力探测、≤800 红线自查。**合成链路零回归背书**：timeline 落库为纯加法字段，全量 `run-probes` **4244 断言 / 46 探针全绿**（零红灯，含 m26 红线），其中合成链路 m7/m11/m18/m19/m42/m44 全绿即证明「不改变任何 ffmpeg 参数与音频结果」（B② 同源红线）；`pnpm -r typecheck`（server tsc + web vue-tsc）、web `vite build` 全 EXIT=0。新文件均 <400 行（最大 `timeline-source.ts` 189 行），`ffmpeg-merge/index.ts` 维持 785 行 ≤800 红线。遗留（残差登记，不扩范围）：工程导入回读、剪映 draft 私有格式、多画幅多版本一并打包、云端直传——均不做；剪映对 FCPXML 支持随版本漂移（社区口径）以 acceptance 实测版本登记，不达标时 EDL/OTIO 双路保底。
+
+---
+
+## M51 能力速览（批次与运行删除 · 记录级清理 · 补录）
+
+补齐「只能造不能删」的记录级清理缺口：新增 `runs DELETE` 与 `batches DELETE` 两端点，仅允许删**终态**运行 / 批次（非终态 `409 run_active`；批内存在未完成 run `409 batch_running`）。删除时**级联清理** `pipeline_steps` 与 `gen_tasks`、解绑 `creation_sessions.run_id`（指向被删 run → 回落同项目最近存活 run，无存活才置 `NULL`）与 `episodes.latest_run_id`（直接解绑置 `NULL`）、删除运行日志文件；但**保留产物资产 `assets` 与用量流水 `usage_records`**（可追溯、不追回已计费）。批内删除后**批次计数权威重算**，防批次状态与计数不一致；重复删除 `404`；不存在 `404`。前端补运行 / 批次删除入口（确认弹窗 + 按钮态管理）。
+
+- **run 删除（run）**：非终态 `409 run_active`；终态 200 级联 steps/tasks/run 行；`assets` / `usage_records` 保留；会话解绑回落最近存活 run、无存活才 `NULL`；`episodes.latest_run_id` 直接 `NULL`；重复删 `404`；批内删除后批次计数重算
+- **batch 删除（batch）**：批内有未完成 run `409 batch_running`；全终态 → 批次 + 批内 run 级联删、资产保留；不存在 `404`
+
+验证：`probe-m51`（两节 **18 项断言全绿**：run / batch；`isolatedEnv('m51')` + 全部场景直插 DB（不经 engine / 模板执行链），删除守卫仅走 REST 路由层，零网络零计费）。
 
 ---
 

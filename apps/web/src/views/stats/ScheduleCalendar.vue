@@ -43,6 +43,9 @@ const {
   formTemplateDetail,
   formInputs,
   formInputsLoading,
+  assets,
+  publications,
+  onAssetsAppended,
   openForm,
   submitForm,
   loadTemplateDetail,
@@ -414,12 +417,15 @@ const monthStats = computed<MonthStats>(() => {
       :templates="templates"
       :form-template-detail="formTemplateDetail"
       :form-inputs-loading="formInputsLoading"
+      :assets="assets"
+      :publications="publications"
       :err="err"
       :creating="creating"
       @close="showForm = false"
       @submit="submitForm"
       @add-group="addInputGroup"
       @remove-group="removeInputGroup"
+      @assets-appended="onAssetsAppended"
     />
   </div>
 </template>

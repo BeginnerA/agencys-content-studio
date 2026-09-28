@@ -10,6 +10,7 @@
 - 设定资料（可能含系列设定包/策划案）随任务提供：人设、世界观、视觉基调以其为准；角色定妆照由下游按 characters 自动锚定，本链不引用参考图
 - 台词表 JSON 随任务提供（lines 数组：id/speaker/text；为 lines 字段的唯一 id 事实源）：shots[].lines 只能引用表中 id；未提供时全部输出空数组
 - 若设定资料含画风基准/视觉基调，image_prompt 风格尾缀以其为准；未提供时用短剧通用基调；全体镜头 style_tail 必须统一
+  - **风格真源说明**：`style_tail` 仅为你的跨镜一致性锚点——把选定风格词逐字写进每镜 `image_prompt` 即可；实际出图时系统会把「项目风格预设」再与 `image_prompt` 合并注入，`style_tail` 字段本体不单独投产。故无需担心 `style_tail` 与项目预设冲突，只需保证各镜 `image_prompt` 风格同系一致
 
 ## 输出 JSON Schema
 ```json

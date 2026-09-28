@@ -325,7 +325,7 @@ async function main(): Promise<void> {
     const { loadPromptTemplate } = await import('../src/services/llm')
     // ---- 形态 A：platform-adapt v2（target_lang 缺省 zh = 回归基准）----
     const pa = loadTemplate('platform-adapt')
-    check(pa.version === 2, `T1 platform-adapt 升级 v2（实际 version=${pa.version}）`)
+    check(pa.version === 3, `T1 platform-adapt 现行 v3（v2 target_lang + v3 合规末步；实际 version=${pa.version}）`)
     const tl = pa.inputs.find((i) => i.key === 'target_lang') as { kind?: string; required?: boolean; default?: unknown } | undefined
     check(tl?.default === 'zh' && tl?.kind === 'text' && tl?.required !== true, `T2 target_lang 缺省 zh（${canon(tl)}）`)
     const adaptStep = pa.steps.find((s) => s.key === 'adapt')

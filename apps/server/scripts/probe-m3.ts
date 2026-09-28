@@ -637,30 +637,31 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 note-clip：9 步结构 + 记忆闭环关键步 ——
+    // —— T1 note-clip：10 步结构 + 记忆闭环关键步 + 合规末步 ——
     if (copyTpl('note-clip')) {
       const t1 = tryLoad('note-clip')
       check(t1 !== null, 'note-clip 加载成功')
       if (t1) {
         const keys = t1.steps.map((s) => s.key)
-        check(t1.steps.length === 9, `note-clip steps=9（实际 ${t1.steps.length}）`)
+        check(t1.steps.length === 10, `note-clip steps=10（实际 ${t1.steps.length}）`)
         check(
-          ['recall', 'draft', 'publish', 'remember'].every((k) => keys.includes(k)),
-          'note-clip 含 recall/draft/publish/remember',
+          ['recall', 'draft', 'publish', 'remember', 'compliance'].every((k) => keys.includes(k)),
+          'note-clip 含 recall/draft/publish/remember/compliance',
         )
       }
     }
 
-    // —— T2 talking-clip v3：版本 3 / 10 步 / 记忆闭环与字幕前置 ——
+    // —— T2 talking-clip v4：版本 4 / 12 步 / 记忆闭环、字幕前置与双合规末步 ——
     if (copyTpl('talking-clip')) {
       const t2 = tryLoad('talking-clip')
       check(t2 !== null, 'talking-clip 加载成功')
       if (t2) {
         const keys = t2.steps.map((s) => s.key)
         const afterOf = (k: string): string[] => t2.steps.find((s) => s.key === k)?.after ?? []
-        check(t2.version === 3, `talking-clip version=3（实际 ${t2.version}）`)
-        check(t2.steps.length === 10, `talking-clip steps=10（实际 ${t2.steps.length}）`)
+        check(t2.version === 4, `talking-clip version=4（实际 ${t2.version}）`)
+        check(t2.steps.length === 12, `talking-clip steps=12（实际 ${t2.steps.length}）`)
         check(['recall', 'remember'].every((k) => keys.includes(k)), 'talking-clip 含 recall/remember')
+        check(['compliance', 'compliance_platform_copy'].every((k) => keys.includes(k)), 'talking-clip 含口播稿/平台文案双合规末步')
         check(afterOf('subtitle').includes('voice'), 'talking-clip subtitle.after 含 voice')
         check(afterOf('remember').includes('draft'), 'talking-clip remember.after 含 draft')
       }
