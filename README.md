@@ -33,6 +33,8 @@ pnpm dev    # 并行起双端：
 
 首次启动自动建库（drizzle migrate）与 seed（供应商目录）。密钥只存 `data/secrets.json`（0600），不入库不进 git。
 
+**AI 适配器依赖**：`@agencys/ai-provider-kit`（图像/视频/语音/LLM 协议适配层）按 **Git 版本标签依赖** 声明在 `apps/server/package.json`（当前钉 `#v0.2.0`），`pnpm install` 会自动从 `https://gitee.com/agencys/ai-provider-kit.git` 拉取，**无需把它克隆到本工程旁边的固定路径**（锁文件已记录标签指向的具体 commit，构建可复现；Git 依赖不支持 `^x.y.z` 这类 semver 范围，只能钉标签/分支/commit）。两个动作：升级适配器→ 先在 kit 仓库提版本号并打标签推送（如 `v0.3.0`），再把本仓库依赖行的标签号改掉后 `pnpm install`；本地改适配器源码联调→ 把 `apps/server/package.json` 那一行临时改成 `"file:../../../ai-provider-kit"`（要求 kit 与本仓库同级目录），联调完毕改回 Git 依赖并还原锁文件后再提交——请勿把本地路径提交进 `package.json` / `pnpm-lock.yaml`。
+
 **质量门禁**：`pnpm ci:check` 一键跑双端 typecheck + 模板校验 + 全量探针（fail-fast）；`pnpm probe:all` 并行全量探针 / `pnpm probe:ci` 串行快失败 / `pnpm validate:templates` 模板校验；`pnpm --filter @acs/server bench` 规模化压测基准（非阻断）。可选启用推送前钩子：`git config core.hooksPath .githooks`。
 
 ## 四步上手
