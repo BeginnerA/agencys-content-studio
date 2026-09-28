@@ -3,8 +3,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import type { CanvasNode } from '../db/schema'
 import { characters, projects } from '../db/schema'
-import { assertProjectAssets } from '../pipeline/refs'
-import { attachRefAssets, type EntityKind } from '../services/character'
+import { assertRefAssetsForScope } from '../services/global-pool'
+import { attachRefAssetsById } from '../services/character'
 import {
   addAssetNode,
   addEdge,
@@ -550,22 +550,19 @@ creationRoutes.delete('/canvases/:id/groups/:gid', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /entities/:id/ref-assets —— 联动：资产并集挂接实体 { asset_ids }（项目域校验；全局实体拒绝）
+// POST /entities/:id/ref-assets —— 联动：资产并集挂接实体 { asset_ids }（[M52] 项目域校验本项目、全局域仅接受全局素材池资产）
 creationRoutes.post('/entities/:id/ref-assets', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(characters).where(eq(characters.id, id)).limit(1)
   const cur = rows[0]
   if (!cur) return notFound(c, `素材 ${id}`)
-  if (cur.projectId === null) {
-    throw new HttpError(400, 'bad_ref_assets', '全局素材库不接受项目资产引用（请在项目素材页操作）')
-  }
   const body = await readJson(c)
   const rawIds = body['asset_ids']
   if (!Array.isArray(rawIds)) throw new HttpError(400, 'bad_asset_ids', 'asset_ids 需为正整数数组')
   const ids = [...new Set(rawIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
   if (ids.length === 0) throw new HttpError(400, 'bad_asset_ids', 'asset_ids 需为正整数数组')
-  const verified = await assertProjectAssets(cur.projectId, ids, 'asset_ids')
-  const added = await attachRefAssets(cur.projectId, cur.name, verified, cur.kind as EntityKind)
+  const verified = await assertRefAssetsForScope(cur.projectId, ids, 'asset_ids')
+  const added = await attachRefAssetsById(cur.id, verified, 'edit', cur.projectId)
   return c.json({ ok: true, added })
 }))
 

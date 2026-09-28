@@ -118,8 +118,9 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check((await codeOf(() => startEntityRefGen(pid, [cA], 5))) === 'bad_variants:400', 'variants=5 → bad_variants')
     check((await codeOf(() => startEntityRefGen(pid, [cA], 0))) === 'bad_variants:400', 'variants=0 → bad_variants')
     check((await codeOf(() => startEntityRefGen(pid, [999999]))) === 'bad_entity_ids:400', '素材不存在 → bad_entity_ids')
-    const scopeErr = await errOf(() => startEntityRefGen(pid, [cGlobal]))
-    check(scopeErr instanceof WorkbenchError && scopeErr.code === 'bad_entity_scope', '全局库素材（跨域）→ bad_entity_scope')
+    // [M52] 全局行单独发起已放开（宿主=请求项目）；与项目行混选仍整单拒（产物归属歧义）
+    const scopeErr = await errOf(() => startEntityRefGen(pid, [cA, cGlobal]))
+    check(scopeErr instanceof WorkbenchError && scopeErr.code === 'bad_entity_scope', '全局与项目素材混选 → bad_entity_scope（整单拒）')
     check(scopeErr instanceof WorkbenchError && scopeErr.message.includes('全局角色'), 'bad_entity_scope 文案点名素材（前端直接展示）')
     const appErr = await errOf(() => startEntityRefGen(pid, [cNoApp]))
     check(appErr instanceof WorkbenchError && appErr.code === 'no_appearance' && appErr.message.includes('缺外观角色'), '缺 appearance → no_appearance（提示先补全/润色）')
@@ -330,6 +331,19 @@ export async function run(ctx: M19Ctx): Promise<void> {
       const addedAgain = await attachRefAssets(pidImg, '出图角色', [newAssets[0]!.id, newAssets[1]!.id], 'character')
       const merged2 = JSON.parse(((await db.select().from(characters).where(eq(characters.id, cImg)))[0])!.refAssetIds) as number[]
       check(addedAgain === 0 && merged2.length === 3, '重复挂接幂等（并集去重，二次追加 0 条）')
+
+      // [M52] 全全局批次：宿主 = pidImg（出图配置/事件路由），产物落全局素材池并挂回全局行
+      const cGlob = await mkChar('池出图全局角色', { projectId: null, appearance: '圆脸大眼，池出图' })
+      const issuedG = await startEntityRefGen(pidImg, [cGlob], 1)
+      const idG = issuedG.tasks[0]!.id
+      const stG = await settleTasks([idG])
+      check(stG.get(idG) === 'succeeded', `全局素材单独发起（宿主=项目）→ succeeded（实际 ${stG.get(idG)}）`)
+      const poolAssets = await db.select().from(assetTbl).where(eq(assetTbl.projectId, 0))
+      check(poolAssets.length === 1 && poolAssets[0]!.purpose === 'reference_character', `全局批次产物落全局池而非宿主项目（project_id=${poolAssets[0]?.projectId}）`)
+      const gMerged = JSON.parse(((await db.select().from(characters).where(eq(characters.id, cGlob)))[0])!.refAssetIds) as number[]
+      check(gMerged.length === 1 && gMerged[0] === poolAssets[0]!.id, '全局行按行 id 自动挂接池产物（不遮蔽同名项目行）')
+      const rowG = (await db.select().from(genTasks).where(eq(genTasks.id, idG)))[0]!
+      check(rowG.projectId === pidImg, '任务行归宿主项目（列表/用量记账随宿主）')
 
       // 取消竞态：出图不可中断 → 完成后弃存（不落资产、不挂接）
       imgDelayMs = 700

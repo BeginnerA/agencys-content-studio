@@ -17,7 +17,7 @@
  *                映射与 erase 默认词）+ editCapabilityOf 无端点 → 全 false + 未声明适配器 → undefined
  *   draft        buildTemplateDraftYaml 纯夹具快照（拓扑序·after·注释）+ buildTemplateDraft 与
  *                validateTemplateText 同源一致性
- *   linkage      ref-assets 并集挂接（去重·全局拒绝·项目域）/ 送入画布建素材节点 /
+ *   linkage      ref-assets 并集挂接（去重·[M52] 全局仅池资产·项目域）/ 送入画布建素材节点 /
  *                prepareRunInput prefill 键安全性（未声明键静默丢弃）
  *   regression   probe:m15 子进程全绿（内含 m2a/m4/m14：引擎调度语义零漂移 + 新列兼容抽样）
  *

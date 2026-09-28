@@ -16,6 +16,8 @@ const {
   uploadEl,
   uploading,
   upNote,
+  poolUploadEl,
+  poolUploading,
   clones,
   cloneSel,
   onCloneSelChange,
@@ -24,6 +26,8 @@ const {
   save,
   pickUpload,
   onUploadPick,
+  pickPoolUpload,
+  onPoolUploadPick,
 } = props.s
 </script>
 
@@ -141,7 +145,7 @@ const {
             style="width: 200px"
             @change="onPickProject"
           >
-            <option :value="0">全局（不挂参考图）</option>
+            <option :value="0">全局（挂全局池参考图）</option>
             <option v-for="p in projects" :key="p.id" :value="p.id">
               项目#{{ p.id }} {{ p.name }}
             </option>
@@ -151,11 +155,11 @@ const {
           >归属：{{
             form.projectId
               ? `项目#${form.projectId}（不可改）`
-              : '全局（不可挂图）'
+              : '全局（挂全局池参考图，不可改）'
           }}</span
         >
         <button
-          v-if="form.id && form.projectId"
+          v-if="form.id"
           class="btn tiny"
           type="button"
           style="margin-left: auto"
@@ -163,7 +167,19 @@ const {
           @click="pickUpload"
         >
           <Icon name="plus" :size="12" />
-          {{ uploading ? '上传中…' : '上传新图' }}
+          {{ uploading ? '上传中…' : form.projectId ? '上传新图' : '上传入池并挂接' }}
+        </button>
+        <!-- [M52] 新建全局态：无实体可挂，文件直传全局素材池，入池后在下方缩略图勾选 -->
+        <button
+          v-else-if="!form.projectId"
+          class="btn tiny"
+          type="button"
+          style="margin-left: auto"
+          :disabled="poolUploading"
+          @click="pickPoolUpload"
+        >
+          <Icon name="plus" :size="12" />
+          {{ poolUploading ? '上传中…' : '上传到全局池' }}
         </button>
         <input
           ref="uploadEl"
@@ -172,9 +188,17 @@ const {
           class="hidden-file"
           @change="onUploadPick"
         />
+        <input
+          ref="poolUploadEl"
+          type="file"
+          accept="image/*"
+          multiple
+          class="hidden-file"
+          @change="onPoolUploadPick"
+        />
       </div>
       <div v-if="upNote" class="up-note">{{ upNote }}</div>
-      <template v-if="form.projectId">
+      <template>
         <div v-if="assetsLoading" class="muted" style="font-size: 12px">
           图片加载中…
         </div>
@@ -183,7 +207,11 @@ const {
           class="muted"
           style="font-size: 12px"
         >
-          该项目暂无图片资产（先出图或导入素材）
+          {{
+            form.projectId
+              ? '该项目暂无图片资产（先出图或导入素材）'
+              : '全局素材池暂无图片（可「上传到全局池」/ 上传新图，或全局素材批量生成）'
+          }}
         </div>
         <div v-else class="thumbs">
           <button
@@ -206,11 +234,9 @@ const {
         </div>
         <div class="muted" style="font-size: 11.5px">
           已选 {{ form.refIds.length }} 张（点击切换；建议覆盖主要角度/光线）
+          <template v-if="!form.projectId">；全局实体仅可挂全局素材池图片</template>
         </div>
       </template>
-      <div v-else class="muted" style="font-size: 12px">
-        先选项目再挑图（全局素材库不接受项目资产引用）
-      </div>
     </div>
 
     <div v-if="formErr" class="err-text">{{ formErr }}</div>

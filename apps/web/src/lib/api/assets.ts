@@ -132,7 +132,7 @@ export const entityApi = {
     ),
 }
 
-/** 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；全局实体 400） */
+/** 上传参考图并挂接实体（multipart：file；服务端 10MB/图片类型校验；[M52] 全局实体放开：文件入全局素材池并挂接） */
 export async function uploadEntityRefImage(
   entityId: number,
   file: File,
@@ -163,6 +163,40 @@ export async function uploadEntityRefImage(
     throw new ApiError(res.status, code, message)
   }
   return (await res.json()) as { entity: EntityItem; asset: Asset }
+}
+
+/** [M52] 全局素材池（虚拟项目 #0）：全局实体（角色/场景/道具）的参考图域；
+ * 挂接经 entityApi.create/update 的 ref_asset_ids（服务端仅接受池资产） */
+export const globalAssetApi = {
+  list: (params = '') => api.get<Items<Asset>>(`/api/v1/global/assets${params}`),
+  /** 批量上传入池（multipart，字段 file 可多张；仅图片；sha256 去重） */
+  upload: async (files: File[], purpose = 'source'): Promise<Asset[]> => {
+    const form = new FormData()
+    form.append('purpose', purpose)
+    for (const f of files) form.append('file', f, f.name)
+    let res: Response
+    try {
+      res = await fetch('/api/v1/global/assets', { method: 'POST', body: form })
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
+    }
+    if (!res.ok) {
+      let code = 'http_' + res.status
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as ApiErrorBody
+        if (data?.error?.message) {
+          code = data.error.code
+          message = data.error.message
+        }
+      } catch {
+        // 非 JSON 错误体，保留默认
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    const r = (await res.json()) as Items<Asset>
+    return r.items
+  },
 }
 
 /** 风格预设库（?active=1 仅启用； 项目绑定经 PATCH /projects settings.style_preset_ids） */

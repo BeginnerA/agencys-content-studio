@@ -1,4 +1,5 @@
 import { attachRefAssets, upsertEntity, type EntityKind } from '../../services/character'
+import { GLOBAL_POOL_ID } from '../../services/global-pool'
 import { writeTextAsset } from '../../services/storage'
 import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
@@ -46,7 +47,8 @@ export async function entitySync(ctx: StepContext): Promise<StepResult> {
 
   const refAttached = await attachRefImages(ctx, projectId, scenes, props)
   if (refAttached > 0) ctx.log(`参考图挂接 ${refAttached} 张`)
-  if (!toProject && ctx.assetIdsOf('ref_images').length > 0) ctx.log('全局素材库不接受项目资产引用，ref_images 已跳过')
+  if (!toProject && ctx.assetIdsOf('ref_images').length > 0)
+    ctx.log('全局素材仅挂全局池参考图（项目 ref_images 不越界入全局，已跳过）')
 
   const scope = toProject ? 'project' : 'global'
   const result = {
@@ -133,12 +135,16 @@ function normalizeSpec(v: unknown): EntitySpec | null {
   }
 }
 
-/** 参考图归属：asset.params.shotId（场景/道具名/别名）优先，未命中按资产名包含兜底 → attachRefAssets 并集入档 */
+/** 参考图归属：asset.params.shotId（场景/道具名/别名）优先，未命中按资产名包含兜底 → attachRefAssets 并集入档。
+ * [M52] projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
 async function attachRefImages(ctx: StepContext, projectId: number | null, scenes: EntitySpec[], props: EntitySpec[]): Promise<number> {
-  if (projectId === null) return 0 // 全局素材库不接受项目资产引用
   const ids = ctx.assetIdsOf('ref_images')
   if (ids.length === 0) return 0
-  const assets = await ctx.assetsOf(ids)
+  let assets = await ctx.assetsOf(ids)
+  if (projectId === null) {
+    assets = assets.filter((a) => a.projectId === GLOBAL_POOL_ID)
+    if (assets.length === 0) return 0
+  }
 
   const ownerOf = new Map<string, { kind: EntityKind; name: string }>() // 名称/别名（含小写）→ 档案归属
   for (const [kind, specs] of [['scene', scenes], ['prop', props]] as const) {

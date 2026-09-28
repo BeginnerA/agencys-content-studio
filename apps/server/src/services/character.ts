@@ -15,22 +15,30 @@ export type EntityKind = 'character' | 'scene' | 'prop'
 /** 实体类型全集（路由/服务校验复用） */
 export const ENTITY_KINDS = ['character', 'scene', 'prop'] as const
 
-/** 实体索引：kind 限定（项目域 + 全局行 → Map（name/aliases → 行））；供 ai_image 注入与 tts 声线链复用 */
-export async function loadEntityIndex(projectId: number, kind: EntityKind = 'character'): Promise<Map<string, CharacterRow>> {
+/** 实体索引：kind 限定（项目域 + 全局行 → Map（name/aliases → 行））；供 ai_image 注入与 tts 声线链复用。
+ * projectId=null → 仅全局域行（全局实体按名挂图用，不遮蔽进项目私有行）。 */
+export async function loadEntityIndex(projectId: number | null, kind: EntityKind = 'character'): Promise<Map<string, CharacterRow>> {
   const rows = await db
     .select()
     .from(characters)
-    .where(and(eq(characters.kind, kind), or(eq(characters.projectId, projectId), isNull(characters.projectId))))
+    .where(
+      and(
+        eq(characters.kind, kind),
+        projectId === null ? isNull(characters.projectId) : or(eq(characters.projectId, projectId), isNull(characters.projectId)),
+      ),
+    )
   const index = new Map<string, CharacterRow>()
   // 全局先入、项目后入 → 同名时项目行覆盖（项目优先）
-  for (const r of [...rows.filter((x) => x.projectId === null), ...rows.filter((x) => x.projectId === projectId)]) {
+  const globalRows = rows.filter((x) => x.projectId === null)
+  const projectRows = projectId === null ? [] : rows.filter((x) => x.projectId === projectId)
+  for (const r of [...globalRows, ...projectRows]) {
     putKeys(index, r)
   }
   return index
 }
 
-/** 单实体查询（name 含别名命中；kind 限定） */
-export async function findEntity(projectId: number, name: string, kind: EntityKind = 'character'): Promise<CharacterRow | null> {
+/** 单实体查询（name 含别名命中；kind 限定）；projectId=null → 仅全局域行 */
+export async function findEntity(projectId: number | null, name: string, kind: EntityKind = 'character'): Promise<CharacterRow | null> {
   const index = await loadEntityIndex(projectId, kind)
   return index.get(name) ?? index.get(name.toLowerCase()) ?? null
 }
@@ -113,9 +121,9 @@ export async function upsertEntity(p: {
 }
 
 /** 参考图挂接（kind 限定）：与已有 refAssetIds 并集去重后更新，返回新增数量（未命中实体 / 无新增 → 0）。
- * 有新增时记实体版本（source 由调用上下文区分上传/生成）。 */
+ * 有新增时记实体版本（source 由调用上下文区分上传/生成）。projectId=null → 命中全局域行。 */
 export async function attachRefAssets(
-  projectId: number,
+  projectId: number | null,
   name: string,
   assetIds: number[],
   kind: EntityKind = 'character',
@@ -123,12 +131,26 @@ export async function attachRefAssets(
 ): Promise<number> {
   const row = await findEntity(projectId, name, kind)
   if (!row || assetIds.length === 0) return 0
+  return attachRefAssetsById(row.id, assetIds, source, projectId)
+}
+
+/** 按实体行 id 直接挂接（上传/联动通道已持有行 id，免按名解析——避免同名项目行遮蔽全局行）。 */
+export async function attachRefAssetsById(
+  entityId: number,
+  assetIds: number[],
+  source: VersionSource = 'edit',
+  projectId: number | null = null,
+): Promise<number> {
+  if (assetIds.length === 0) return 0
+  const rows = await db.select().from(characters).where(eq(characters.id, entityId)).limit(1)
+  const row = rows[0]
+  if (!row) return 0
   const existing = safeArrNum(row.refAssetIds)
   const merged = [...new Set([...existing, ...assetIds])]
   const added = merged.length - existing.length
   if (added > 0) {
     await db.update(characters).set({ refAssetIds: JSON.stringify(merged), updatedAt: Date.now() }).where(eq(characters.id, row.id))
-    await recordEntityVersion({ entityId: row.id, projectId, source, label: `参考图挂接 +${added}` })
+    await recordEntityVersion({ entityId: row.id, projectId: projectId ?? row.projectId, source, label: `参考图挂接 +${added}` })
   }
   return added
 }

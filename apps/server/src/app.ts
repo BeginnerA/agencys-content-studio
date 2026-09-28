@@ -16,6 +16,7 @@ import { creationRoutes } from './routes/creation'
 import { creationChatRoutes } from './routes/creation-chat'
 import { exportsRoutes } from './routes/exports'
 import { evalRoutes } from './routes/eval'
+import { globalPoolRoutes } from './routes/global-pool'
 import { memoriesRoutes } from './routes/memories'
 import { novelRoutes } from './routes/novel'
 import { projectsRoutes } from './routes/projects'
@@ -49,6 +50,7 @@ api.route('/', templatesRoutes)
 api.route('/', promptsRoutes)
 api.route('/', projectsRoutes)
 api.route('/', assetsRoutes)
+api.route('/', globalPoolRoutes)
 api.route('/', memoriesRoutes)
 api.route('/', charactersRoutes)
 api.route('/', runsRoutes)

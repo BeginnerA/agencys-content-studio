@@ -14,7 +14,7 @@
  *               （messages content 数组含 image_url data URI）+ 失败路径（空/超限/跨项目/非图）+ 用量 runId=NULL
  *   video-refs  collectSetRefAssetIds 矩阵（场景/别名/道具/无图跳过/双命中 ≤2/同图去重）+ planVideoRefs 四分支
  *   upload      POST /entities/:id/ref-images（app.request 内存 HTTP new FormData）：入库/挂接/sha256 复用/
- *               purpose=reference_kind/失败路径（全局/非图/空文件/超限 413/404）
+ *               purpose=reference_kind/[M52] 全局实体入池上传/失败路径（非图/空文件/超限 413/404）
  *   polish      parsePolishOutput 矩阵 + polishAppearance stub + POST /entities/polish 批量容错（失败收集不阻断/
  *               空白输出 failed/全局跳过用量/去重/边界 400）
  *   states      PRAGMA 迁移列（默认 '[]' NOT NULL + 幂等）+ upsertEntity 覆盖语义（非空覆盖/空数组不覆盖）+
@@ -389,10 +389,13 @@ async function main(): Promise<void> {
     const up3 = await upload(eid, fd('ref-b.png', new TextEncoder().encode('upload-ref-2')))
     check(up3.status === 201 && up3.body?.entity?.refAssetIds?.length === 2, '并集追加第二张（长度 2）')
 
-    // 失败路径
-    const globalE = await upsertEntity({ projectId: null, kind: 'scene', name: '全局场景（上传拒绝）' })
+    // [M52] 全局实体上传放开：文件入全局素材池（project_id=0）并按行 id 挂接
+    const globalE = await upsertEntity({ projectId: null, kind: 'scene', name: '全局场景（入池上传）' })
     const upG = await upload(globalE.id, fd('g.png', new TextEncoder().encode('g1')))
-    check(upG.status === 400 && upG.body?.error?.code === 'bad_ref_assets', `全局实体 → 400 bad_ref_assets（${upG.status}）`)
+    check(upG.status === 201 && upG.body?.entity?.refAssetIds?.length === 1, `全局实体上传 → 201 + 挂接（${upG.status}）`)
+    const gAsset = await assetRow(upG.body?.asset?.id as number)
+    check(gAsset.projectId === 0 && gAsset.purpose === 'reference_scene', `全局上传产物入全局池（project_id=${gAsset.projectId} purpose=${gAsset.purpose}）`)
+    check(!!gAsset.relPath && existsSync(absPathOf(gAsset.relPath)), '池文件真实落盘（隔离 workspace）')
     const upTxt = await upload(eid, fd('note.txt', new TextEncoder().encode('hello')))
     check(upTxt.status === 400 && upTxt.body?.error?.code === 'not_image', `非图片扩展 → 400 not_image（${upTxt.status}）`)
     const upEmpty = await upload(eid, fd('empty.png', new Uint8Array(0)))

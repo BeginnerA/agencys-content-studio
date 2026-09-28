@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { assets } from '../db/schema'
 import { absPathOf, mimeOfExt } from './storage'
+import { GLOBAL_POOL_ID } from './global-pool'
 
 /** 单张参考图内联上限（超限跳过该图并记日志，不使任务失败） */
 export const MAX_REF_IMAGE_BYTES = 8 * 1024 * 1024
@@ -17,6 +18,8 @@ export const MAX_REF_IMAGE_BYTES = 8 * 1024 * 1024
  * [审计·跨项目隔离 chokepoint] projectId 必传：本函数是唯一把任意 assetId 转成可注入图的收口点，
  * 在此强校验资产归属，防止参考图 / 首帧 / 尾帧 / 蒙版等按 id 注入拉取到其它项目的图片（数据越界）。
  * 不匹配 → 抛错（沿用调用方跳图契约）；无需额外查询，已按 id 载入行。
+ * [M52 唯一例外] 全局素材池资产（projectId=GLOBAL_POOL_ID）对任意项目放行——池内均为有意跨项目
+ * 共享的参考图（全局实体挂图）；项目私有资产（projectId>0 且≠当前项目）依旧拒绝，隔离不放宽。
  */
 export async function assetToDataUri(assetId: number, projectId: number, cache?: Map<number, string>): Promise<string> {
   const cached = cache?.get(assetId)
@@ -25,7 +28,9 @@ export async function assetToDataUri(assetId: number, projectId: number, cache?:
   const row = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
   const asset = row[0]
   if (!asset) throw new Error(`资产 ${assetId} 不存在`)
-  if (asset.projectId !== projectId) throw new Error(`资产 ${assetId} 不属于项目 ${projectId}（跨项目引用被拒）`)
+  if (asset.projectId !== projectId && asset.projectId !== GLOBAL_POOL_ID) {
+    throw new Error(`资产 ${assetId} 不属于项目 ${projectId}（跨项目引用被拒）`)
+  }
   if (asset.kind !== 'image') throw new Error(`资产 ${assetId} 非图片（kind=${asset.kind}）`)
   if (!asset.relPath) throw new Error(`资产 ${assetId} 无本地文件`)
 

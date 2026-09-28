@@ -21,6 +21,7 @@ export {
   memoryApi,
   entityApi,
   uploadEntityRefImage,
+  globalAssetApi,
   stylePresetApi,
   uploadFiles,
 } from './assets'

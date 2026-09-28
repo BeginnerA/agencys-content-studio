@@ -3,8 +3,8 @@ import { extname } from 'node:path'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, characters, type CharacterRow } from '../db/schema'
-import { assertProjectAssets } from '../pipeline/refs'
-import { attachRefAssets, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
+import { assertRefAssetsForScope, GLOBAL_POOL_ID } from '../services/global-pool'
+import { attachRefAssetsById, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
 import { recordEntityVersion } from '../services/provenance'
 import { cancelEntityRefTask, listEntityRefTasks, startEntityRefGen } from '../services/entity-refgen'
 import { polishAppearance } from '../services/entity-polish'
@@ -76,10 +76,8 @@ const createEntity = h(async (c) => {
   let refAssetIds: number[] | undefined
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
-    if (body['ref_asset_ids'].length > 0 && projectId === null) {
-      throw new HttpError(400, 'bad_ref_assets', '全局素材库不接受项目资产引用（请提供 project_id）')
-    }
-    refAssetIds = projectId !== null ? await assertProjectAssets(projectId, body['ref_asset_ids'], 'ref_asset_ids') : []
+    // [M52] 全局域放开：仅接受全局素材池资产（项目资产依旧拒）
+    refAssetIds = await assertRefAssetsForScope(projectId, body['ref_asset_ids'], 'ref_asset_ids')
   }
   const summary = strField(body, 'summary')
   const appearance = strField(body, 'appearance')
@@ -207,12 +205,8 @@ const updateEntity = h(async (c) => {
   }
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
-    if (cur.projectId === null) {
-      if (body['ref_asset_ids'].length > 0) throw new HttpError(400, 'bad_ref_assets', '全局素材库不接受项目资产引用')
-      patch['refAssetIds'] = JSON.stringify([])
-    } else {
-      patch['refAssetIds'] = JSON.stringify(await assertProjectAssets(cur.projectId, body['ref_asset_ids'], 'ref_asset_ids'))
-    }
+    // [M52] 替换语义不变；全局域仅接受池资产
+    patch['refAssetIds'] = JSON.stringify(await assertRefAssetsForScope(cur.projectId, body['ref_asset_ids'], 'ref_asset_ids'))
   }
   const rows = await db.update(characters).set(patch).where(eq(characters.id, id)).returning()
   // 实质字段变更时记版本
@@ -234,12 +228,12 @@ const removeEntity = h(async (c) => {
 charactersRoutes.delete('/entities/:id', removeEntity)
 charactersRoutes.delete('/characters/:id', removeEntity)
 
-// POST /entities/:id/ref-images —— 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；全局实体拒绝）
+// POST /entities/:id/ref-images —— 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；
+// [M52] 全局实体放开：文件入全局素材池（虚拟项目 #0）并按行 id 挂接，避免同名项目行遮蔽）
 const uploadEntityRefImage = h(async (c) => {
   const id = idParam(c)
   const cur = await findEntityRow(id)
   if (!cur) return notFound(c, `素材 ${id}`)
-  if (cur.projectId === null) throw new HttpError(400, 'bad_ref_assets', '全局素材库不接受项目资产引用（请在项目素材页上传）')
   const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })
   const fileRaw = form.get('file')
   if (!fileRaw || typeof fileRaw === 'string') throw new HttpError(400, 'no_file', '未收到文件（字段名 file）')
@@ -248,8 +242,9 @@ const uploadEntityRefImage = h(async (c) => {
   if (kindByExt(extname(file.name)) !== 'image') throw new HttpError(400, 'not_image', '仅支持图片文件（png/jpg/jpeg/webp/gif/bmp）')
   const buf = new Uint8Array(await file.arrayBuffer())
   if (buf.byteLength === 0) throw new HttpError(400, 'no_file', '文件内容为空')
-  const [asset] = await importFiles(cur.projectId, [{ name: file.name || `ref-${cur.kind}-${Date.now()}`, data: buf }], { purpose: `reference_${cur.kind}` })
-  await attachRefAssets(cur.projectId, cur.name, [asset!.id], cur.kind as EntityKind, 'ref-upload')
+  const ownerProjectId = cur.projectId ?? GLOBAL_POOL_ID
+  const [asset] = await importFiles(ownerProjectId, [{ name: file.name || `ref-${cur.kind}-${Date.now()}`, data: buf }], { purpose: `reference_${cur.kind}` })
+  await attachRefAssetsById(cur.id, [asset!.id], 'ref-upload', cur.projectId)
   const fresh = await findEntityRow(id)
   const byId = await refAssetsOf([fresh!])
   return c.json({ entity: toEntityView(fresh!, byId), asset: toAssetView(asset!) }, 201)

@@ -1,4 +1,5 @@
 import { attachRefAssets, upsertCharacter } from '../../services/character'
+import { GLOBAL_POOL_ID } from '../../services/global-pool'
 import { writeTextAsset } from '../../services/storage'
 import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
@@ -42,7 +43,8 @@ export async function characterSync(ctx: StepContext): Promise<StepResult> {
 
   const refAttached = await attachRefImages(ctx, projectId, specs)
   if (refAttached > 0) ctx.log(`定妆照挂接 ${refAttached} 张`)
-  if (!toProject && ctx.assetIdsOf('ref_images').length > 0) ctx.log('全局角色库不接受项目资产引用，ref_images 已跳过')
+  if (!toProject && ctx.assetIdsOf('ref_images').length > 0)
+    ctx.log('全局角色仅挂全局池定妆照（项目 ref_images 不越界入全局，已跳过）')
 
   const scope = toProject ? 'project' : 'global'
   const result = { scope, created, updated, refAttached }
@@ -104,12 +106,16 @@ async function resolveSpecs(ctx: StepContext): Promise<{ specs: CharacterSpec[];
   throw new StepError(`角色档案解析失败（${failures.join('；')}）`)
 }
 
-/** 定妆照归属：asset.params.shotId（角色名/别名）优先，未命中按资产名含角色名兜底 → attachRefAssets 并集入档 */
+/** 定妆照归属：asset.params.shotId（角色名/别名）优先，未命中按资产名含角色名兜底 → attachRefAssets 并集入档。
+ * [M52] projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
 async function attachRefImages(ctx: StepContext, projectId: number | null, specs: CharacterSpec[]): Promise<number> {
-  if (projectId === null) return 0 // 全局角色库不接受项目资产引用
   const ids = ctx.assetIdsOf('ref_images')
   if (ids.length === 0) return 0
-  const assets = await ctx.assetsOf(ids)
+  let assets = await ctx.assetsOf(ids)
+  if (projectId === null) {
+    assets = assets.filter((a) => a.projectId === GLOBAL_POOL_ID)
+    if (assets.length === 0) return 0
+  }
 
   const ownerOf = new Map<string, string>() // 名称/别名（含小写）→ 档案角色名
   for (const s of specs) {

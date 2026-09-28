@@ -707,7 +707,22 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 - **run 删除（run）**：非终态 `409 run_active`；终态 200 级联 steps/tasks/run 行；`assets` / `usage_records` 保留；会话解绑回落最近存活 run、无存活才 `NULL`；`episodes.latest_run_id` 直接 `NULL`；重复删 `404`；批内删除后批次计数重算
 - **batch 删除（batch）**：批内有未完成 run `409 batch_running`；全终态 → 批次 + 批内 run 级联删、资产保留；不存在 `404`
 
-验证：`probe-m51`（两节 **18 项断言全绿**：run / batch；`isolatedEnv('m51')` + 全部场景直插 DB（不经 engine / 模板执行链），删除守卫仅走 REST 路由层，零网络零计费）。
+验证：`probe-m51`（两节 **18 项断言全绿**：run / batch；`isolatedEnv('m51')` +  全部场景直插 DB（不经 engine / 模板执行链），删除守卫仅走 REST 路由层，零网络零 计费）。
+
+---
+
+## M52 能力速览（全局素材池：全局角色可挂定妆照——参考图注入体系开唯一受控例外）
+
+> 痛点：出图一致性锚定的参考图注入收口 `assetToDataUri` 强校验「资产须属当前项目」（跨项目隔离 chokepoint），而 `assets.project_id NOT NULL` 使全局实体（`projectId=null`）没有可归属的文件域——五条挂图通道（POST/PUT `/entities` ref_asset_ids、`/entities/:id/ref-images` 上传、`/entities/:id/ref-assets` 联动、批量「生成参考图」、模板 `character_sync`/`entity_sync` 挂图）对全局实体全部拒绝。结果：全局角色档案在出图时文字锚点之外照片完全不生效，跨项目复用只能建「全局文字层 + 项目挂图层」双档（易漂移）。本里程碑引入**虚拟项目 #0 = 全局素材池**（纯约定，零 DDL——SQLite 改列约束需重建表，否决），全局实体仅可挂池资产，注入收口为池资产开唯一例外；**非目标（登记不混入）**：池文件回收站/GC、全局实体批量出图自动选宿主页（仍需筛选到项目域提供出图配置）、项目资产升级为池资产的工具链。
+
+- **M52.1 全局池基建（`services/global-pool.ts`，纯增量小文件）**：常量 `GLOBAL_POOL_ID = 0`（保留 id，任何真实项目/资产归属不得写 0 以外的池语义）；`GET /global/assets?kind=image`（列未删池资产）+ `POST /global/assets`（multipart 多图上传，仅图片、单文件 ≤10MB、sha256 去重，purpose 白名单 `reference_character|reference_scene|reference_prop|source`）；文件落 `PROJECTS_DIR/0/<subDir>/`，复用 `importFiles`（去重查询天然按 projectId 分域，池与项目互不可见）。缩略/文件流端点按 relPath 服务，池资产零改动可用。
+- **M52.2 注入收口唯一例外（`asset-ref.ts`）**：归属判定改「属当前项目 **或** 属全局池」；其余跨项目隔离语义不变（项目 A 私有资产依旧不可被项目 B 拉取），16+ 调用点（ai_image/ai_video/canvas/refgen/eval/style/planning/image-analyze）零签名改动、全线自动生效。
+- **M52.3 挂图五通道放开（单一守卫真源 `assertRefAssetsForScope`）**：全局域 → 仅接受池资产（非池 → 400 `bad_ref_assets`，文案改「全局素材仅可挂全局素材池资产」）；项目域 → 仅本项目（现状不变）。接线：routes/characters POST/PUT、ref-images 上传（全局行 → 文件入池 + 按行 id 挂接，新增 `attachRefAssetsById` 避免同名项目行遮蔽）、routes/creation ref-assets 联动、`character-sync`/`entity-sync` 动作（toProject=false 时池资产按名称命中挂全局行，非池照旧跳过 + 日志）。
+- **M52.4 全局实体批量生成参考图（entity-refgen）**：`bad_entity_scope` 拒全局行改为放行（所选全为全局行时以请求 projectId 为**出图配置宿主**：settings/风格词/用量记账）；产物落**全局池**（而非宿主项目），挂接改按实体行 id；混选（全局+项目）仍拒。
+- **M52.5 Web 接线（entities 素材页）**：表单归属下拉「全局（不挂参考图）」→「全局（挂全局池参考图）」；全局域挑图选择器改拉 `/global/assets`，新建态即可上传入池；批量生成门禁 `selProjectId` 识别全全局批次（宿主 = 当前项目筛选，未筛项目给可操作提示）；`lib/api` 补 `globalAssetApi.list/upload`。
+- **红线**：不改 `assets` 表结构与既有 NOT NULL 约束（零 DDL 零迁移）；项目间隔离不放宽（池是唯一例外且池内均为有意公开的共享图）；`loadEntityIndex` 同名项目行覆盖全局行的分层规则不变；引擎/模板/提示词零改动。
+
+验证：`probe-m52`（全局池专属断言：池上传/列表、全局实体挂池资产 201、挂项目资产 400、`assetToDataUri` 池放行 + 跨项目仍拒、refgen 全局批次宿主语义与产物入池、同步动作全局挂图）；既有探针口径同步校正：`probe-m8`（全局引用拒非池资产——语义不变保留）、`probe-m13`（全局上传 400 → 201 入池，断言翻转）、`probes/m19/ref-gen`（bad_entity_scope 全局拒 → 混选拒/全局批次放行）。全量 `run-probes --jobs=1` 零红灯 + 双端 typecheck + web build 绿。
 
 ---
 

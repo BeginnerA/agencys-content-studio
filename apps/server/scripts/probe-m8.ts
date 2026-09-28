@@ -387,7 +387,7 @@ async function main(): Promise<void> {
     const g = await jreq('POST', '/api/v1/entities', { kind: 'prop', name: '全局香炉' })
     check(g.body?.entity?.scope === 'global', '无 project_id → 全局行')
     const gBad = await jreq('POST', '/api/v1/entities', { kind: 'prop', name: '全局违规', ref_asset_ids: [1] })
-    check(gBad.status === 400 && gBad.body?.error?.code === 'bad_ref_assets', '全局域引用项目资产 → 400 bad_ref_assets')
+    check(gBad.status === 400 && gBad.body?.error?.code === 'bad_ref_assets', '全局域挂非池资产 → 400 bad_ref_assets（[M52] 仅放行全局池）')
 
     const list = await jreq('GET', `/api/v1/entities?project_id=${pid}&kind=scene`)
     check(list.body?.items?.every((x: any) => x.kind === 'scene'), 'kind=scene 过滤（列表全为场景）')

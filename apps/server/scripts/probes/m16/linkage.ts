@@ -22,7 +22,12 @@ export async function run(ctx: M16Ctx): Promise<void> {
       .values({ projectId: null, kind: 'character', name: '全局角色', aliases: '[]', states: '[]', refAssetIds: '[]', meta: '{}', createdAt: T0, updatedAt: T0 })
       .returning()
   )[0]!
-  check((await jreq('POST', `/api/v1/entities/${entG.id}/ref-assets`, { asset_ids: [A1] })).status === 400, 'ref-assets 全局实体拒绝 → 400')
+  check((await jreq('POST', `/api/v1/entities/${entG.id}/ref-assets`, { asset_ids: [A1] })).status === 400, 'ref-assets 全局实体挂非池资产 → 400（[M52] 仅放行全局池）')
+  // [M52] 全局实体挂池资产 → 200（项目资产不得越界入全局，池资产可）
+  const A_POOL = await mkAsset(0, 'image', '池定妆照', 'reference_character')
+  const rg = await jreq('POST', `/api/v1/entities/${entG.id}/ref-assets`, { asset_ids: [A_POOL] })
+  const gRow = (await db.select().from(characters).where(eq(characters.id, entG.id)))[0]!
+  check(rg.status === 200 && rg.body?.added === 1 && JSON.parse(gRow.refAssetIds).join(',') === String(A_POOL), 'ref-assets 全局实体挂池资产 → 200 落库')
   check((await jreq('POST', `/api/v1/entities/${ent.id}/ref-assets`, { asset_ids: [] })).status === 400, 'ref-assets 空数组 → 400')
   check((await jreq('POST', `/api/v1/entities/${ent.id}/ref-assets`, { asset_ids: [A_OTHER] })).status === 400, 'ref-assets 他项目资产 → 400（项目域）')
 

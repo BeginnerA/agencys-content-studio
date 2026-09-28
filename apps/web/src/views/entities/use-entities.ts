@@ -1,7 +1,7 @@
 /**
  * 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
  * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
- * 声线仅角色 Tab；挑图选择器 + 全局/项目域约束与旧角色页一致。
+ * 声线仅角色 Tab；挑图选择器：项目域拉项目图片资产，全局域拉全局素材池（/global/assets，[M52]）。
  * 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
  * 多选批量生成参考图：弹窗选变体（≤10 素材 × 1-4）→ 无 run 异步队列 → 页内进度（socket 驱动 + 轮询兜底）
  *   → 服务端自动挂接 ref_asset_ids；行内可取消 / 失败重试（重新发起）。
@@ -9,6 +9,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   entityApi,
+  globalAssetApi,
   projectApi,
   uploadEntityRefImage,
   voiceCloneApi,
@@ -25,71 +26,9 @@ import type {
   Project,
   VoiceCloneItem,
 } from '../../lib/types'
+import { KINDS } from './entity-kinds'
 
 export function useEntitiesPage() {
-  interface KindCfg {
-    kind: EntityKind
-    label: string
-    icon: string
-    nameLabel: string
-    namePh: string
-    aliasPh: string
-    apLabel: string
-    apPh: string
-    negPh: string
-    summaryPh: string
-    refLabel: string
-    empty: string
-  }
-
-  const KINDS: KindCfg[] = [
-    {
-      kind: 'character',
-      label: '角色',
-      icon: 'users',
-      nameLabel: '角色名',
-      namePh: '如：萌宝',
-      aliasPh: '如：小宝、团团',
-      apLabel: '形象锚定 appearance（出图一致性核心，注入分镜提示词）',
-      apPh: '如：三岁半男孩，圆脸大眼，虎头帽红袄，矮胖灵动',
-      negPh: '如：成人化五官、替换服装配色',
-      summaryPh: '一句话人物设定（可空）',
-      refLabel: '定妆照',
-      empty:
-        '还没有角色。运行角色建档类模板（character_sync）自动入库，或手动新建；定妆照用于出图一致性锚定。',
-    },
-    {
-      kind: 'scene',
-      label: '场景',
-      icon: 'map',
-      nameLabel: '场景名',
-      namePh: '如：村口老槐树',
-      aliasPh: '如：村口、老树下',
-      apLabel: '视觉短语 appearance（空间布局/陈设/色调，注入分镜提示词）',
-      apPh: '如：北方村落土坯房，灰瓦屋顶，门口石磨，暖黄夕照',
-      negPh: '如：布局改变、陈设增减、色调偏移',
-      summaryPh: '一句话说明（地点类型 + 剧情作用，可空）',
-      refLabel: '场景参考图',
-      empty:
-        '还没有场景。运行素材建档模板（entity_sync）自动入库，或手动新建；场景参考图用于空镜一致性锚定。',
-    },
-    {
-      kind: 'prop',
-      label: '道具',
-      icon: 'cube',
-      nameLabel: '道具名',
-      namePh: '如：虎头帽',
-      aliasPh: '如：小帽子',
-      apLabel: '外观描述 appearance（外形/材质/颜色，注入分镜提示词）',
-      apPh: '如：大红绸面虎头帽，金线刺绣，两只毛绒虎耳',
-      negPh: '如：形状改变、颜色偏移、材质错误',
-      summaryPh: '一句话说明（物件属性 + 剧情作用，可空）',
-      refLabel: '道具参考图',
-      empty:
-        '还没有道具。运行素材建档模板（entity_sync）自动入库，或手动新建；道具参考图用于出图一致性锚定。',
-    },
-  ]
-
   const kind = ref<EntityKind>('character')
   const cfg = computed(() => KINDS.find((k) => k.kind === kind.value)!)
 
@@ -127,10 +66,13 @@ export function useEntitiesPage() {
   const formErr = ref('')
   const assetOptions = ref<Asset[]>([])
   const assetsLoading = ref(false)
-  // 参考图上传（仅编辑态；全局实体无入口）
+  // 参考图上传：编辑态任一归属可用（全局实体 → 服务端自动入全局池并挂接，[M52]）
   const uploadEl = ref<HTMLInputElement | null>(null)
   const uploading = ref(false)
   const upNote = ref('')
+  // [M52] 新建全局态：直传全局素材池（入池后可在挑图区勾选）
+  const poolUploadEl = ref<HTMLInputElement | null>(null)
+  const poolUploading = ref(false)
 
   // 克隆音色（角色声线写 clone:{id}；下拉选中即回填，可清除）
   const clones = ref<VoiceCloneItem[]>([])
@@ -224,15 +166,13 @@ export function useEntitiesPage() {
     if (joinedRefPid) getSocket().emit('leave', `project:${joinedRefPid}`)
   })
 
-  /** 参考图候选：仅项目域可行（全局素材库不接受项目资产引用） */
+  /** 参考图候选 [M52]：项目域 = 该项目图片资产；全局域（pid=0）= 全局素材池图片 */
   async function loadAssets(pid: number) {
-    if (!pid) {
-      assetOptions.value = []
-      return
-    }
     assetsLoading.value = true
     try {
-      const d = await projectApi.assets(pid)
+      const d = pid
+        ? await projectApi.assets(pid)
+        : await globalAssetApi.list('?kind=image')
       assetOptions.value = d.items.filter((a) => a.kind === 'image')
     } catch {
       assetOptions.value = []
@@ -325,7 +265,8 @@ export function useEntitiesPage() {
           .filter(Boolean)
       }
       if (form.id) {
-        if (form.projectId) body.ref_asset_ids = form.refIds
+        // [M52] 全局实体亦可挂图（服务端校验须属全局池）；两域统一送 ref_asset_ids
+        body.ref_asset_ids = form.refIds
         await entityApi.update(form.id, body)
       } else {
         body.kind = kind.value
@@ -421,7 +362,7 @@ export function useEntitiesPage() {
   const refSubmitting = ref(false)
   const refBusyTask = ref(0)
   const refErr = ref('')
-  /** 本批次归属项目（打开弹窗时由所选素材推导；服务端要求同项目且非全局） */
+  /** 本批次出图宿主项目 id（发起时由所选素材推导；[M52] 全全局批次宿主 = 当前项目筛选） */
   const refPid = ref(0)
   /** 已认领任务 id（发起结果 + 服务端在途任务）：事件与轮询只更新这批 */
   const refBatch = ref(new Set<number>())
@@ -435,10 +376,22 @@ export function useEntitiesPage() {
   const selItems = computed(() =>
     items.value.filter((c) => selected.value.has(c.id)),
   )
-  /** 所选素材的唯一项目 id（0 = 跨项目或含全局素材，服务端会整单拒绝 → 客户端先拦） */
+  /** 所选素材的唯一项目 id（0 = 跨项目或含全局素材） */
   const selProjectId = computed(() => {
     const pids = [...new Set(selItems.value.map((c) => c.projectId ?? 0))]
     return pids.length === 1 ? pids[0]! : 0
+  })
+  /** [M52] 批量出图宿主：同项目批次 = 该项目；全全局批次 = 当前项目筛选（具体项目，提供出图配置）；其余 0 不可发起 */
+  const refHostPid = computed(() => {
+    const list = selItems.value
+    if (!list.length) return 0
+    const globals = list.filter((c) => c.projectId === null).length
+    if (globals === list.length)
+      return projectFilter.value && projectFilter.value !== 'global'
+        ? Number(projectFilter.value)
+        : 0
+    if (globals > 0) return 0 // 全局与项目混选 → 服务端整单拒，客户端先拦
+    return selProjectId.value
   })
   const selNoAppearance = computed(() =>
     selItems.value
@@ -568,8 +521,16 @@ export function useEntitiesPage() {
       err.value = `单次最多 ${REFGEN_MAX_ITEMS} 个素材（当前已选 ${list.length} 个）`
       return false
     }
-    if (!selProjectId.value) {
-      err.value = '所选素材须同属一个项目（全局素材不参与批量生成，请在右上「按归属」筛选到具体项目后再勾选）'
+    const globals = list.filter((c) => c.projectId === null).length
+    if (globals > 0 && globals < list.length) {
+      err.value = '所选素材不得混选全局与项目素材（全局素材请单独勾选发起）'
+      return false
+    }
+    if (!refHostPid.value) {
+      err.value =
+        globals === list.length
+          ? '全局素材批量生成：请先在右上「按归属」筛选到具体项目作为出图配置宿主（产物入全局素材池并自动挂接），再勾选全局素材'
+          : '所选素材须同属一个项目（跨项目不可批量生成）'
       return false
     }
     err.value = ''
@@ -579,7 +540,7 @@ export function useEntitiesPage() {
   async function openRefGen() {
     refErr.value = ''
     if (!guardRefGenSelection()) return
-    const pid = selProjectId.value
+    const pid = refHostPid.value
     refPid.value = pid
     refVariants.value = 1
     showRefGen.value = true
@@ -597,11 +558,13 @@ export function useEntitiesPage() {
     }
     refSubmitting.value = true
     try {
+      const allGlobal = selItems.value.every((c) => c.projectId === null)
       const r = await entityApi.refGen(refPid.value, ids, refVariants.value)
       for (const t of r.tasks) refBatch.value.add(t.id)
       showRefGen.value = false
       selected.value = new Set()
-      notice.value = `已入队 ${r.count} 个出图任务（项目#${refPid.value}），完成后自动挂接参考图。`
+      notice.value =
+        `已入队 ${r.count} 个出图任务（宿主项目#${refPid.value}${allGlobal ? '，全局素材：产物入全局素材池' : ''}），完成后自动挂接参考图。`
       ensureRefPolling()
       await refreshRefTasks()
     } catch (e) {
@@ -647,7 +610,7 @@ export function useEntitiesPage() {
     uploadEl.value?.click()
   }
 
-  /** 上传参考图 → 入库 + 挂接（form.refIds 同步最新；失败不关闭弹窗） */
+  /** 上传参考图 → 入库 + 挂接（全局实体入池挂接，[M52]；form.refIds 同步最新；失败不关闭弹窗） */
   async function onUploadPick(ev: Event) {
     const input = ev.target as HTMLInputElement
     const file = input.files?.[0]
@@ -666,6 +629,37 @@ export function useEntitiesPage() {
       formErr.value = ex instanceof ApiError ? ex.message : String(ex)
     } finally {
       uploading.value = false
+    }
+  }
+
+  /** [M52] 新建全局态：文件直传全局素材池（可多选），入池后自动勾选进 refIds */
+  function pickPoolUpload() {
+    poolUploadEl.value?.click()
+  }
+
+  async function onPoolUploadPick(ev: Event) {
+    const input = ev.target as HTMLInputElement
+    const files = [...(input.files ?? [])]
+    input.value = ''
+    if (!files.length) return
+    poolUploading.value = true
+    formErr.value = ''
+    upNote.value = ''
+    try {
+      const purpose =
+        kind.value === 'character'
+          ? 'reference_character'
+          : kind.value === 'scene'
+            ? 'reference_scene'
+            : 'reference_prop'
+      const created = await globalAssetApi.upload(files, purpose)
+      await loadAssets(0)
+      for (const a of created) if (!form.refIds.includes(a.id)) form.refIds.push(a.id)
+      upNote.value = `已入全局素材池 ${created.length} 张并勾选（共 ${form.refIds.length} 张）`
+    } catch (ex) {
+      formErr.value = ex instanceof ApiError ? ex.message : String(ex)
+    } finally {
+      poolUploading.value = false
     }
   }
 
@@ -700,6 +694,8 @@ export function useEntitiesPage() {
     uploadEl,
     uploading,
     upNote,
+    poolUploadEl,
+    poolUploading,
     clones,
     cloneSel,
     loadClones,
@@ -731,6 +727,7 @@ export function useEntitiesPage() {
     refTasks,
     selItems,
     selProjectId,
+    refHostPid,
     selNoAppearance,
     refPlanned,
     refLive,
@@ -749,6 +746,8 @@ export function useEntitiesPage() {
     retryRefTask,
     pickUpload,
     onUploadPick,
+    pickPoolUpload,
+    onPoolUploadPick,
     photoOf,
     ratioCls,
   }
