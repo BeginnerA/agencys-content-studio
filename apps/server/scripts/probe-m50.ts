@@ -294,7 +294,7 @@ async function main(): Promise<void> {
   const certify = async (): Promise<void> => {
     const { createHash } = await import('node:crypto')
     const { zipSync } = await import('fflate')
-    const { and, eq } = await import('drizzle-orm')
+    const { and, desc, eq } = await import('drizzle-orm')
     const { genTasks, usageRecords } = await import('../src/db/schema')
     const { runDeliveryCert, readCertCache } = await import('../src/services/delivery-cert/certify')
     const { analyzeProjectFile } = await import('../src/services/delivery-cert/analyze')
@@ -420,6 +420,28 @@ async function main(): Promise<void> {
     check(findC(c5ok, 'cross_format_consistency')?.status === 'passed', '#5 三格式事实一致 → cross_format=passed')
     rewriteProject(iFcpxml, (t) => t.replace(/<sequence\b([^>]*?)duration="[^"]*"/, '<sequence$1duration="9999/25s"'))
     check(findC(ok(await runDeliveryCert(ruI, { format: 'otio' })), 'cross_format_consistency')?.status === 'failed', '#5 人为改其一总帧 → cross_format=failed')
+
+    // #F 源时轴新鲜度锁定（B）：认证比对「最新 located final」的 params.timeline，绝不对着陈旧快照放行
+    const ruJ = await seedHealthy()
+    await buildEditExchange({ runId: ruJ, format: 'otio', includeMedia: true })
+    const fJ0 = ok(await runDeliveryCert(ruJ, { format: 'otio' }))
+    check(findC(fJ0, 'timeline_source_bound')?.status === 'passed', '#F 初始交付包 ↔ 最新成片 timeline 一致 → timeline_source_bound=passed')
+    // 模拟返修后重合成 = 新增一条更新的 final_video 行（id 更大、timeline 总时长变更；架构上从不原地改旧行 params.timeline）
+    const [origFinal] = await db.select().from(assets).where(and(eq(assets.runId, ruJ), eq(assets.purpose, 'final_video'))).orderBy(desc(assets.id)).limit(1)
+    const timeline2 = {
+      v: 1, fps: 25, totalSec: 12, introSec: 0, outroSec: 0,
+      segments: [
+        { shotId: 's1', kind: 'image', durSec: 6, startSec: 0, lineIds: ['l1'], silenceSec: 0 },
+        { shotId: 's2', kind: 'image', durSec: 6, startSec: 6, lineIds: [], silenceSec: 0 },
+      ],
+      lines: [], sfx: [], bgm: null, transition: null, watermark: false, subtitle: null,
+    }
+    const final2Rel = relPathOf(origFinal!.projectId, 'final_video', 'final2.mp4'); mkFile(final2Rel, 2048)
+    await mkAsset(origFinal!.projectId, ruJ, 'video', 'final2.mp4', { purpose: 'final_video', relPath: final2Rel, duration: 12, params: { fps: 25, resolution: '1080x1920', duration: 12, timeline: timeline2 } })
+    const fJ1 = ok(await runDeliveryCert(ruJ, { format: 'otio' }))
+    const tbF = findC(fJ1, 'timeline_source_bound')
+    check(tbF?.status === 'failed' && fJ1.verdict === 'package_broken', '#F 更新成片 timeline 变更后旧包不再一致 → timeline_source_bound=failed（认证取最新 located final、不对着陈旧快照放行）')
+    check(!!tbF?.reason && tbF.reason.includes('250') && tbF.reason.includes('300'), '#F 比对实证以最新成片总帧(300) vs 旧包(250)：locateFinal 命中最新行、源时轴新鲜度随最新走')
 
     // #8 zip hash 变 → 下次读取旧 passed 结论标 stale
     const ruH = await seedHealthy()

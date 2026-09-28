@@ -443,3 +443,13 @@ B1 建档已完成，技术门禁未通过，第一期整体未验收；不启�
 自动门禁（本机实测，全绿）：`pnpm -C apps/server exec tsc -p tsconfig.json --noEmit` 绿（EXIT=0）；`--only=m50` **98/98 全绿**（红线项由 97/98 转绿，含第五期 certify 分节在内全分节不回归）；`--only=precision-rework` **401/401** 逐字不回归；`--only=m50` 的 `redline` 分节持「ffmpeg-merge/index.ts ≤800」断言（本项红线由 m50 把守、非 m26），随拆分由 97/98 转 98/98；`--only=m26` split-audit 仅扫 `server/scripts` 与 `web/src`（**不含 `server/src`**），故本项拆分不触其计数、净新增违规 = 0。零新增依赖、零付费、零模型、未自动提交、加法优先。
 
 红线存量（不变，非本项回归）：`--only=m26` split-audit 仍报「存量归零」红，系其扫面内 **3 个早于本项的既有 >800 文件**（`CreationArtifacts.vue`(998)、`probe-m7.ts`、`use-project-detail.ts`(803)）所致——均在 `web/src`/`server/scripts`，与本项 `server/src` 拆分无涉；系用户先前已拍板记为独立技术债另立拆分项，不在本次 ffmpeg_merge 闭合范围。上位路线与原 M50 计划不修改；本项为质量可验证 / 少返工维度的卫生闭合，不新增产品能力面。
+
+## B 源时轴新鲜度：探针锁定不变量（交付可信实证补强）（2026-09-28，探针门禁）
+
+承接第五期 `delivery-certification` 待人工门②「源时轴 `params.timeline` 对成片 mp4 的新鲜度本期未实测」。本轮先做只读调研，再按用户选择以**加性探针**把结论钉成实证门禁，**不改业务代码**（`certify.ts` 的 `timelineBoundCheck` 逻辑逐字不动）。
+
+只读调研结论（`params.timeline` 新鲜度=按设计已满足）：`params.timeline` 唯一写入者为 `ffmpegMerge` 的 `registerAsset`（`index.ts`，经 `buildEditTimeline`），每次合成以 `Date.now()` 新文件名产出**新资产行**、mp4 与 `params.timeline` 同源原子写；`locateFinal`（`qc/report.ts` 与 `delivery-cert/certify.ts`）恒按 `and(runId, purpose=final_video, kind=video, isNull(deletedAt)) orderBy(desc(id)).limit(1)` **取最新行**；retry/resume/recover 复用 succeeded 步的 output 不原地改旧行，rework 作废 compose 步→重跑→新行；无任何代码事后单独改 `params.timeline`（仅 `writeQcCache` 加 `.qc` / `writeCertCache` 加 `.cert` 键 merge 保留其余键）。故 `timeline_source_bound=passed` 诚实可信——第五期计划里「新鲜度未证则降 `not_tested`」的对冲既不需要、当前实现也未采用（mp4↔timeline 内容级新鲜度仍归第四期 Q5，本轮不越界）。
+
+`#F` 加性探针锁定（`probe-m50.ts` certify 分节）：`seedHealthy()` 产 10s timeline（→250 帧）→ `buildEditExchange` → `timeline_source_bound=passed`；随后**插入一条更新的 `final_video` 行**（`timeline2` totalSec:12→300 帧、段数仍 2 与包一致，模拟返修后重合成产出新行）→ 重跑 `runDeliveryCert` → `locateFinal` 命中 `desc(id)` 最新行 → 旧包(250 帧)≠最新成片(300 帧)→ 认证翻 `failed` + `package_broken`，`reason` 含「包=250 vs timeline=300」。实证「认证对着最新 located final 比对、绝不对陈旧快照放行」——若取错陈旧行则帧数一致不会翻红，故该断言精确锁住新鲜度不变量。
+
+自动门禁（本机实测，全绿）：`probe-m50 --section=certify` 含 `#F` 三条断言全绿；`--only=m50` **103/103 全绿**（较拆分闭合的 98 净增 5=`#F` 三条 check + 两次 `ok()` 编排断言）；`--only=precision-rework` **401/401** 逐字不回归；`pnpm -C apps/server exec tsc -p tsconfig.json --noEmit` 绿（EXIT=0，探针 `scripts/` 不被 tsc 覆盖、由 tsx 运行验证）；`probe-m50.ts` **471 行 ≤800**。零新增依赖、零付费、零模型、零新列、未自动提交、加法优先。本项把交付可信维度「源时轴新鲜度」由「未实测留人工」升级为「不变量已被实证门禁锁死」，不新增产品能力面。
