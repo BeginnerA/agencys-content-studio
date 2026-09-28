@@ -1,4 +1,5 @@
 key: note-clip
+builtin: true
 version: 2
 name: 图文笔记
 description: 适合：把一段素材或想法做成可直接发布的小红书式图文笔记。流程：主稿（可审阅）→ 封面/配图 → 多平台适配（可选）→ 发布稿。

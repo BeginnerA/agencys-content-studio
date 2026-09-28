@@ -9,7 +9,7 @@
  */
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { unzipSync } from 'fflate'
 import { db } from '../../db'
 import { assets, pipelineRuns, type Asset } from '../../db/schema'
@@ -99,20 +99,15 @@ function openPackage(a: Asset): UnzippedPackage | null {
   return { manifest, projectText, analyzed, entryNames, sha256: createHash('sha256').update(bytes).digest('hex') }
 }
 
-/** 定位本 run 当前最新成片（取 params.timeline 唯一真源做时轴绑定）。 */
+/** 定位本 run 当前最新未删除成片（取 params.timeline 唯一真源做时轴绑定；镜像第四期 report.ts 单查询）。 */
 async function locateFinal(runId: number): Promise<Asset | null> {
   const rows = await db
     .select()
     .from(assets)
-    .where(eq(assets.runId, runId))
+    .where(and(eq(assets.runId, runId), eq(assets.purpose, 'final_video'), eq(assets.kind, 'video'), isNull(assets.deletedAt)))
+    .orderBy(desc(assets.id))
     .limit(1)
-  void rows
-  const finals = await db
-    .select()
-    .from(assets)
-    .where(eq(assets.runId, runId))
-  const final = finals.filter((a) => a.purpose === 'final_video' && a.kind === 'video' && !a.deletedAt).sort((x, y) => y.id - x.id)[0]
-  return final ?? null
+  return rows[0] ?? null
 }
 
 /** 时轴绑定：包内段数/总帧 vs 成片当前 params.timeline Σ（暴露「导出后时轴又改了但包未重生成」漂移）。 */
@@ -193,7 +188,7 @@ function crossFormatCheck(pkgs: Map<CertFormat, UnzippedPackage | null>, targetF
   return { key: 'cross_format_consistency', status: 'passed', evidenceType: 'offline_probe', source: 'project_file', value: `${others.length + 1} 格式一致` }
 }
 
-/** 保守 verdict + missing（editor_import 恒缺 → 正常包实际至多 needs_attention，package_sound 为保留语义位、实际不达）。 */
+/** 保守 verdict + missing（editor_import 恒人工缺项 → 正常包实际至多 needs_attention，package_sound 为保留语义位、人工确认前实际不达）。 */
 function decide(checks: CertCheck[], packageBroken: boolean): { verdict: CertVerdict; missing: string[] } {
   const byKey = new Map(checks.map((c) => [c.key, c]))
   const missing: string[] = []
@@ -210,7 +205,12 @@ function decide(checks: CertCheck[], packageBroken: boolean): { verdict: CertVer
       missing.push(key)
     }
   }
-  missing.push('editor_import_certified')
+  // editor_import 是恒人工门（不属客观自动项），其缺项拉低天花板至 needs_attention——除非已记录人工导入确认（本期永不发生）
+  const ei = byKey.get('editor_import_certified')
+  if (!ei || ei.status !== 'passed') {
+    anyUnclean = true
+    missing.push('editor_import_certified')
+  }
   const verdict: CertVerdict = anyFailedOrStale ? 'package_broken' : anyUnclean ? 'needs_attention' : 'package_sound'
   return { verdict, missing }
 }

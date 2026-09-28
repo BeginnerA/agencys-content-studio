@@ -17,7 +17,7 @@
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +41,9 @@ process.env.CSTUDIO_DATA = join(TMP, 'data')
 process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
+// 桥接真实出厂模板进隔离 workspace：模板分类判定（isCreationTemplate / gateEdit）现派生自各 YAML 顶层 visibility 元数据（单一真源在文件自身），
+// 需真实模板文件在场（同 probe-m44 bridge / probe-m45 cpSync 先例）；否则空 workspace 会让判定退化为 false。仍零网络、零计费。
+cpSync(join(REPO_ROOT, 'workspace', 'templates'), join(process.env.CSTUDIO_WORKSPACE, 'templates'), { recursive: true })
 
 const SECTIONS = ['board', 'edit', 'regenerate', 'gate-reroll', 'select', 'recompose', 'merge-plan'] as const
 

@@ -1,4 +1,5 @@
 key: article-clip
+builtin: true
 version: 1
 name: 深度长文
 description: 适合：把素材与观点写成有头图、插图的深度长文。流程：主稿（可审阅）→ 头图 → 文中插图（可选）→ 多平台适配（可选）→ 发布稿。

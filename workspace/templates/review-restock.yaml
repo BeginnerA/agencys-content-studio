@@ -1,4 +1,5 @@
 key: review-restock
+builtin: true
 version: 1
 name: 复盘回灌
 description: 适合：直接勾选本项目发布记录做复盘并把结论回灌为下一轮选题。流程：发布记录入库（含创作链路）→ 记忆召回 → 数据复盘（可审阅）→ 回灌选题（可选）→ 复盘记忆沉淀。

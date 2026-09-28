@@ -10,6 +10,8 @@ import { pipelineRuns, projects, settings, type Asset } from '../db/schema'
 import { summarizeBatch } from '../services/batch'
 import { ExportError, buildRunExport, collectRunAssets, listExports } from '../services/export'
 import { buildEditExchange, probeEditExchange, EditExchangeError } from '../services/edit-exchange'
+import { readCertCache, runDeliveryCert } from '../services/delivery-cert/certify'
+import type { CertFormat } from '../services/delivery-cert/types'
 import { PLATFORM_CATALOG, seedMissing, type PlatformCatalogEntry } from '../services/platform-catalog'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -80,6 +82,25 @@ exportsRoutes.post('/runs/:id/edit-exchange', h(async (c) => {
     if (err instanceof EditExchangeError) throw new HttpError(400, err.code, err.message)
     throw err
   }
+}))
+
+// GET /runs/:id/delivery-cert?format=&refresh= —— 交付包**只读**认证（第五期）：默认按需重算并回写该导出资产 params.cert（零新列）；
+// refresh=0 优先命中缓存（标 fromCache），无缓存则回退重算。无已生成包 → verdict=needs_package（不为认证造包）。全程零写业务表/零付费。
+const CERT_FORMATS: CertFormat[] = ['fcpxml', 'edl', 'otio']
+exportsRoutes.get('/runs/:id/delivery-cert', h(async (c) => {
+  const runId = idParam(c)
+  const fmt = c.req.query('format')
+  if (fmt !== undefined && !CERT_FORMATS.includes(fmt as CertFormat)) {
+    throw new HttpError(400, 'bad_format', `format 需为 ${CERT_FORMATS.join('/')} 之一`)
+  }
+  const format = fmt === undefined ? undefined : (fmt as CertFormat)
+  if (c.req.query('refresh') === '0') {
+    const cached = await readCertCache(runId, format)
+    if (cached) return c.json(cached)
+  }
+  const r = await runDeliveryCert(runId, { format, refreshCache: true })
+  if (r.outcome === 'blocked') throw new HttpError(404, r.code, r.message)
+  return c.json(r.cert)
 }))
 
 // POST /batches/:id/exports —— 批量导出（对有产物的 run 逐个全量打包；无产物 run 记 skipped）

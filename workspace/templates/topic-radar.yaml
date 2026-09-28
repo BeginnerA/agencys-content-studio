@@ -1,4 +1,5 @@
 key: topic-radar
+builtin: true
 version: 1
 name: 选题雷达
 description: 适合：从定位与素材里找出可做的选题（记忆去重调分）。流程：定位/素材入库 → 记忆召回（可选）→ 选题清单（可审阅）→ 选题库沉淀。

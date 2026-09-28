@@ -1,6 +1,6 @@
 /**
  * M50 探针（剪辑工程交换导出）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m50.ts [--section=timecode|formatters|snapshot|sources|bundle|redline]
+ *   cd apps/server && npx tsx scripts/probe-m50.ts [--section=timecode|formatters|snapshot|sources|bundle|redline|certify]
  *
  * 隔离：CSTUDIO_ROOT/DATA/WORKSPACE 指一次性临时目录（独立 studio.db + workspace，零网络零计费）。
  * 断言面（规格 §探针）：
@@ -10,6 +10,7 @@
  *   sources       params.timeline stored 直通 / 旧产物 recomputed 兜底 / 双失败 no_timeline / 无成片 no_final_video
  *   bundle        buildEditExchange 落 archive 资产 + zip 内 manifest↔media 引用一致 + bad_format
  *   redline       ffmpeg-merge/index.ts ≤800 / edit-exchange 各文件 <400 行数自查
+ *   certify       第五期交付包认证（delivery-cert）：正常包 needs_attention / 破损 / 时长差 / 媒体悬空 / 跨格式 / editor_import 恒人工红线 / 缓存 stale / 零写守卫
  * 退出码：0 = 全通过；1 = 有 FAIL。
  */
 import { writeFileSync, readFileSync, statSync } from 'node:fs'
@@ -20,7 +21,7 @@ const { tmp: _TMP, cleanup: envCleanup } = isolatedEnv('m50')
 process.env.AGENT_LLM_BASE_URL = ''
 process.env.AGENT_LLM_API_KEY = ''
 
-const SECTIONS = ['timecode', 'formatters', 'snapshot', 'sources', 'bundle', 'redline'] as const
+const SECTIONS = ['timecode', 'formatters', 'snapshot', 'sources', 'bundle', 'redline', 'certify'] as const
 
 const stubFetch = (async (): Promise<Response> => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
 
@@ -289,8 +290,156 @@ async function main(): Promise<void> {
     }
   }
 
+  // ---- section: certify（第五期 交付包认证，规格 §8 九断言；本地假包零付费零模型零新依赖）----
+  const certify = async (): Promise<void> => {
+    const { createHash } = await import('node:crypto')
+    const { zipSync } = await import('fflate')
+    const { and, eq } = await import('drizzle-orm')
+    const { genTasks, usageRecords } = await import('../src/db/schema')
+    const { runDeliveryCert, readCertCache } = await import('../src/services/delivery-cert/certify')
+    const { analyzeProjectFile } = await import('../src/services/delivery-cert/analyze')
+    type CertR = Awaited<ReturnType<typeof runDeliveryCert>>
+    type DCert = Extract<CertR, { outcome: 'ok' }>['cert']
+    const healthy: DCert[] = []
+    const findC = (c: DCert, key: string) => c.checks.find((x) => x.key === key)
+    const ok = (r: CertR): DCert => { check(r.outcome === 'ok', '认证产出报告（非门禁阻断）'); return (r as { outcome: 'ok'; cert: DCert }).cert }
+
+    // 一次性假包改写原语（读→改 entry→重 zip 回写；仅测试夹具造破损/漂移，非产品写路径）
+    const unz = (a: { relPath: string | null }): Record<string, Uint8Array> => unzipSync(new Uint8Array(readFileSync(absPathOf(a.relPath!))))
+    const projEntry = (files: Record<string, Uint8Array>): string => {
+      const mf = JSON.parse(new TextDecoder().decode(files['manifest.json']!)) as { projectFile?: string }
+      return mf.projectFile ?? Object.keys(files).find((n) => /\.(fcpxml|edl|otio)$/.test(n)) ?? ''
+    }
+    const rewriteProject = (a: { relPath: string | null }, mut: (t: string) => string): void => {
+      const files = unz(a); const pn = projEntry(files)
+      files[pn] = new TextEncoder().encode(mut(new TextDecoder().decode(files[pn] ?? new Uint8Array())))
+      writeFileSync(absPathOf(a.relPath!), Buffer.from(zipSync(files)))
+    }
+    const rewriteManifest = (a: { relPath: string | null }, mut: (m: Record<string, unknown>) => void): void => {
+      const files = unz(a); const m = JSON.parse(new TextDecoder().decode(files['manifest.json']!)) as Record<string, unknown>
+      mut(m); files['manifest.json'] = new TextEncoder().encode(JSON.stringify(m))
+      writeFileSync(absPathOf(a.relPath!), Buffer.from(zipSync(files)))
+    }
+
+    // 健康 run 夹具：完整 stored params.timeline + 有效字幕快照 cues（sha256 吻合 → deliveryConsistent=true，产真 needs_attention）
+    const seedHealthy = async (): Promise<number> => {
+      const projectId = await mkProject('cert-h')
+      const runId = await mkRun(projectId)
+      const s1 = relPathOf(projectId, 'shot_image', 's1.png'); mkFile(s1, 512)
+      const s2 = relPathOf(projectId, 'shot_image', 's2.png'); mkFile(s2, 512)
+      const v1 = relPathOf(projectId, 'voice', 'v1.mp3'); mkFile(v1, 128)
+      const sa1 = await mkAsset(projectId, runId, 'image', 's1.png', { purpose: 'shot_image', relPath: s1, params: { shotId: 's1' } })
+      const sa2 = await mkAsset(projectId, runId, 'image', 's2.png', { purpose: 'shot_image', relPath: s2, params: { shotId: 's2' } })
+      const va1 = await mkAsset(projectId, runId, 'audio', 'v1.mp3', { purpose: 'voice', relPath: v1, params: { lineId: 'l1' }, duration: 4, prompt: '第一句' })
+      const subRel = relPathOf(projectId, 'subtitle', 'sub.srt')
+      const srt = '1\n00:00:00,000 --> 00:00:04,000\n第一句台词\n'
+      writeFileSync(absPathOf(subRel), Buffer.from(srt, 'utf8'))
+      const sha = createHash('sha256').update(srt, 'utf8').digest('hex')
+      const timeline = {
+        v: 1, fps: 25, width: 1080, height: 1920, totalSec: 10, introSec: 0, outroSec: 0,
+        segments: [
+          { shotId: 's1', assetId: sa1, relPath: s1, kind: 'image', durSec: 5, startSec: 0, lineIds: ['l1'], silenceSec: 0 },
+          { shotId: 's2', assetId: sa2, relPath: s2, kind: 'image', durSec: 5, startSec: 5, lineIds: [], silenceSec: 0 },
+        ],
+        lines: [{ lineId: 'l1', assetId: va1, relPath: v1, timelineStart: 0, durSec: 4, text: '第一句' }],
+        sfx: [], bgm: null, transition: null, watermark: false,
+        subtitle: { assetId: va1, relPath: subRel, effectiveRelPath: subRel, cues: [{ id: 'cue-1', startMs: 0, endMs: 4000, text: '第一句台词' }], origin: 'source', sha256: sha, versionId: null },
+      }
+      const finalRel = relPathOf(projectId, 'final_video', 'final.mp4'); mkFile(finalRel, 1024)
+      const finalId = await mkAsset(projectId, runId, 'video', 'final.mp4', { purpose: 'final_video', relPath: finalRel, duration: 10, params: { fps: 25, resolution: '1080x1920', duration: 10, timeline } })
+      await mkStep(runId, [sa1, sa2, va1, finalId])
+      return runId
+    }
+
+    // #7 无包 → needs_package（不为认证造包，零写守卫）
+    const bareRun = await mkRun(await mkProject('cert-bare'))
+    const c7 = ok(await runDeliveryCert(bareRun))
+    check(c7.verdict === 'needs_package', '#7 无已生成包 → verdict=needs_package')
+    check(findC(c7, 'package_present')?.status === 'not_tested', '#7 package_present=not_tested')
+    check((await db.select().from(assets).where(and(eq(assets.runId, bareRun), eq(assets.purpose, 'edit_exchange')))).length === 0, '#7 认证不为 needs_package 自动生成 archive（零写）')
+
+    // #1/#6/#8缓存保留/#9零写 —— 健康 otio 包（include_media）
+    const ruB = await seedHealthy()
+    const bPkg = (await buildEditExchange({ runId: ruB, format: 'otio', includeMedia: true })).asset
+    const cArchB = (await db.select().from(assets)).filter((a) => a.purpose === 'edit_exchange').length
+    const cGenB = (await db.select().from(genTasks)).length
+    const cUseB = (await db.select().from(usageRecords)).length
+    const c1 = ok(await runDeliveryCert(ruB, { format: 'otio' }))
+    healthy.push(c1)
+    check(c1.verdict === 'needs_attention', '#1 健康包 verdict=needs_attention（editor_import 恒缺，绝不 package_sound）')
+    for (const k of ['project_file_wellformed', 'duration_math_consistent', 'media_refs_resolvable', 'timeline_source_bound', 'subtitle_delivery_bound']) {
+      check(findC(c1, k)?.status === 'passed', `#1 客观项 ${k}=passed`)
+    }
+    check(findC(c1, 'cross_format_consistency')?.status === 'not_applicable', '#1 单格式 cross=not_applicable')
+    const ei = findC(c1, 'editor_import_certified')
+    check(ei?.status === 'not_tested' && ei?.evidenceType === 'manual_review', '#6 editor_import 恒 not_tested+manual_review（产品不代答编辑器）')
+    const [bCur] = await db.select().from(assets).where(eq(assets.id, bPkg.id))
+    const bParams = JSON.parse(bCur.params!) as Record<string, unknown>
+    check(!!bParams.cert && bParams.format === 'otio' && 'finalAssetId' in bParams && 'includeMedia' in bParams, '#8 params.cert 写入且保留 format/finalAssetId/includeMedia 等其余键（零新列）')
+    check((await db.select().from(assets)).filter((a) => a.purpose === 'edit_exchange').length === cArchB && (await db.select().from(genTasks)).length === cGenB && (await db.select().from(usageRecords)).length === cUseB, '#9 认证全程零 gen_tasks/零 usage_records/零新增 archive')
+
+    // #4 EDL include_media=false → media_refs=not_applicable
+    const ruC = await seedHealthy()
+    await buildEditExchange({ runId: ruC, format: 'edl', includeMedia: false })
+    check(findC(ok(await runDeliveryCert(ruC, { format: 'edl' })), 'media_refs_resolvable')?.status === 'not_applicable', '#4 include_media=false → media_refs=not_applicable')
+
+    // #2 破损 zip（不可解压）→ package_present=failed → package_broken
+    const ruD = await seedHealthy()
+    const dPkg = (await buildEditExchange({ runId: ruD, format: 'otio', includeMedia: true })).asset
+    writeFileSync(absPathOf(dPkg.relPath!), Buffer.from('这不是一个 zip 文件', 'utf8'))
+    const c2 = ok(await runDeliveryCert(ruD, { format: 'otio' }))
+    check(findC(c2, 'package_present')?.status === 'failed' && c2.verdict === 'package_broken', '#2 破损不可解压包 → package_broken')
+
+    // #3 时长数学：首段 offset 越出 sequence duration → duration_math=failed（结构仍良构）
+    const ruE = await seedHealthy()
+    const ePkg = (await buildEditExchange({ runId: ruE, format: 'fcpxml', includeMedia: true })).asset
+    rewriteProject(ePkg, (t) => t.replace(/offset="[^"]*"/, 'offset="99999/25s"'))
+    const c3 = ok(await runDeliveryCert(ruE, { format: 'fcpxml' }))
+    check(findC(c3, 'project_file_wellformed')?.status === 'passed' && findC(c3, 'duration_math_consistent')?.status === 'failed' && c3.verdict === 'package_broken', '#3 clip 越出总时长 → wellformed=passed 且 duration_math=failed → package_broken')
+
+    // #4 媒体悬空：工程引用包内不存在的 media → media_refs=failed
+    const ruF = await seedHealthy()
+    const fPkg = (await buildEditExchange({ runId: ruF, format: 'fcpxml', includeMedia: true })).asset
+    rewriteProject(fPkg, (t) => t.replace('</fcpxml>', '<asset id="rBogus" src="file://media/nope.mp4"/></fcpxml>'))
+    check(findC(ok(await runDeliveryCert(ruF, { format: 'fcpxml' })), 'media_refs_resolvable')?.status === 'failed', '#4 悬空媒体引用 → media_refs=failed（编辑器将找不到素材）')
+
+    // #1 字幕交付：manifest.deliveryConsistent=false → subtitle=failed → package_broken
+    const ruG = await seedHealthy()
+    const gPkg = (await buildEditExchange({ runId: ruG, format: 'otio', includeMedia: true })).asset
+    rewriteManifest(gPkg, (m) => { (m.subtitle as Record<string, unknown>).deliveryConsistent = false })
+    const c1sf = ok(await runDeliveryCert(ruG, { format: 'otio' }))
+    check(findC(c1sf, 'subtitle_delivery_bound')?.status === 'failed' && c1sf.verdict === 'package_broken', '#1 deliveryConsistent=false → subtitle=failed → package_broken（不声称字幕交付一致）')
+
+    // #5 跨格式一致：同 run 三格式段数/总帧一致 → passed；人为改其一总帧 → failed
+    const ruI = await seedHealthy()
+    await buildEditExchange({ runId: ruI, format: 'otio', includeMedia: true })
+    const iFcpxml = (await buildEditExchange({ runId: ruI, format: 'fcpxml', includeMedia: true })).asset
+    await buildEditExchange({ runId: ruI, format: 'edl', includeMedia: true })
+    const c5ok = ok(await runDeliveryCert(ruI, { format: 'otio' }))
+    healthy.push(c5ok)
+    check(findC(c5ok, 'cross_format_consistency')?.status === 'passed', '#5 三格式事实一致 → cross_format=passed')
+    rewriteProject(iFcpxml, (t) => t.replace(/<sequence\b([^>]*?)duration="[^"]*"/, '<sequence$1duration="9999/25s"'))
+    check(findC(ok(await runDeliveryCert(ruI, { format: 'otio' })), 'cross_format_consistency')?.status === 'failed', '#5 人为改其一总帧 → cross_format=failed')
+
+    // #8 zip hash 变 → 下次读取旧 passed 结论标 stale
+    const ruH = await seedHealthy()
+    const hPkg = (await buildEditExchange({ runId: ruH, format: 'otio', includeMedia: true })).asset
+    const hShaBefore = ok(await runDeliveryCert(ruH, { format: 'otio' })).packageSha256
+    rewriteProject(hPkg, (t) => `${t}\n/* touched */`)
+    const c8after = await readCertCache(ruH, 'otio')
+    check(!!c8after && c8after.fromCache === true, '#8 readCertCache 命中缓存标 fromCache')
+    check(!!c8after && c8after.packageSha256 === hShaBefore && findC(c8after, 'project_file_wellformed')?.status === 'stale', '#8 zip hash 变 → 旧 passed 结论降级 stale')
+
+    // #6 汇总红线：所有健康包终值均非 package_sound（结构可信天花板）
+    check(healthy.every((c) => c.verdict !== 'package_sound'), '#6 无任何包达到 package_sound（editor_import 恒缺天花板）')
+
+    // T2 纯解析器破损不抛契约（畸形 OTIO → wellformed=false）
+    const broken = analyzeProjectFile('{"OTIO_SCHEMA":"', 'otio')
+    check(broken.wellformed === false && broken.fps === null, '#2 纯解析器对畸形 OTIO 返回 wellformed=false 且不抛')
+  }
+
   try {
-    await runSections({ log, title: 'M50', checker, sections: SECTIONS, cleanup: envCleanup, runners: { timecode, formatters, snapshot, sources, bundle, redline } })
+    await runSections({ log, title: 'M50', checker, sections: SECTIONS, cleanup: envCleanup, runners: { timecode, formatters, snapshot, sources, bundle, redline, certify } })
   } finally {
     globalThis.fetch = origFetch
   }

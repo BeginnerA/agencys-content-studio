@@ -137,9 +137,9 @@ async function main(): Promise<void> {
       const { db } = await import('../src/db')
       const { apiConfigs, creationSessions, pipelineRuns, pipelineSteps, genTasks, projects } = await import('../src/db/schema')
       const { eq } = await import('drizzle-orm')
-      const { loadTemplate } = await import('../src/pipeline/loader')
+      const { loadTemplate, listTemplates } = await import('../src/pipeline/loader')
       const { hashJson } = await import('../src/services/creation-chat/contract')
-      const { CREATION_TEMPLATE_KEYS, isCreationTemplate, recipeOf, assertRecipeSources } = await import('../src/services/creation-chat/recipe')
+      const { isCreationTemplate, recipeOf, assertRecipeSources } = await import('../src/services/creation-chat/recipe')
       const { confirmCreation, retryCreation } = await import('../src/services/creation-chat/execution')
       const engine = await import('../src/pipeline/engine')
       const origStart = engine.engine.startRun.bind(engine.engine)
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
       engine.engine.startRun = ((runId: number) => { void runId; started += 1; return 'started' }) as typeof engine.engine.startRun
 
       try {
-        check(isCreationTemplate('easy-video') && isCreationTemplate('easy-video-review') && isCreationTemplate('easy-dialogue') && !isCreationTemplate('easy-dialogue-review') && CREATION_TEMPLATE_KEYS.size === 3 && !isCreationTemplate('quick-video') && !isCreationTemplate('talking-clip'), '创作模板键集合含旁白原模板与审阅变体 + 对白单模板（-review 已合并），且不误伤其它模板')
+        check(isCreationTemplate('easy-video') && isCreationTemplate('easy-video-review') && isCreationTemplate('easy-dialogue') && !isCreationTemplate('easy-dialogue-review') && listTemplates().filter((t) => isCreationTemplate(t.key)).length === 3 && !isCreationTemplate('quick-video') && !isCreationTemplate('talking-clip'), '创作内部模板判定由 visibility 元数据派生（单一真源）：含旁白原模板+审阅变体+对白单模板恰 3 份（-review 已合并），且不误伤其它模板')
         const dlg = loadTemplate('easy-dialogue')
         check(!!dlg.steps.find((s) => s.key === 'frames')?.gate && dlg.version === 2, '对白单模板已内置首帧审阅闸（version 2）')
         const base = loadTemplate('easy-video')

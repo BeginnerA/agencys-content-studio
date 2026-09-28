@@ -1,4 +1,5 @@
 key: video-plan
+builtin: true
 version: 1
 name: 创作策划
 description: 适合：为短剧做单条策划案（五节 + 视觉方向基准）。流程：记忆召回 → 参考素材（可选）→ 五节策划案（可审阅）→ 策划记忆沉淀。

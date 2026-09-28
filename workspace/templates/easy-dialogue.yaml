@@ -1,4 +1,6 @@
 key: easy-dialogue
+builtin: true
+visibility: conversation
 version: 2
 name: 轻松创作 · 原生人物对白
 description: 首帧确认后生成原生音画并保留原声合成，逐镜保留原声音轨；按设置走严格 ASR 逐字核验或免核验估算字幕，最终须人工确认台词、角色与口型。

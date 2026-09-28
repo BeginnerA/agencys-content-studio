@@ -1,4 +1,6 @@
 key: easy-video-review
+builtin: true
+visibility: conversation
 version: 1
 name: 轻松创作 · 首帧审阅后成片
 description: 与「轻松创作」同链，仅画面/首帧生成后挂人工审阅闸：确认画面后才开始动态镜头等高费用生成。

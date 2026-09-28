@@ -1,4 +1,5 @@
 key: novel-adapt
+builtin: true
 version: 2
 name: 小说改编·切分→图谱→剧本
 description: 适合：把小说文本（txt/md/docx/epub，可多份）改编为可投入短剧生产链的分集剧本。流程：小说入库 → 章节切分（识别失败可开 AI 正则兜底；可审阅范围）→ 逐章事件提取（批量）→ 事件图谱归并 → 分集规划（可审阅）→ 逐集改编剧本（批量，可选审阅）。docx/epub 入库时自动转纯文本。

@@ -1,4 +1,5 @@
 key: talking-clip
+builtin: true
 version: 3
 name: 对白口播
 description: 适合：把选题做成对白口播视频（配音 + 精确字幕）。流程：口播文案（可审阅）→ 逐句配音 → 精确字幕 → 单图成片 → 平台发布文案（可选）。

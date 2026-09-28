@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { PROMPTS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
-import { isBuiltinTemplate } from './builtin-assets'
 import type { Template, TemplateInputDef, TemplateMeta, TemplateStepDef } from './types'
 import { parseWhenExpr, whenRefs } from './refs'
 
@@ -277,6 +276,44 @@ export function loadTemplate(key: string, force = false): Template {
   return tpl
 }
 
+/** 分类元数据标记位：独立于 loadTemplate 的原始 YAML 顶层读取路径，绝不进入被哈希的 Template 对象，
+ *  因此改这些字段不改 templateHash、不误伤存量 run（分类是治理属性，非执行数据）。 */
+export interface TemplateFlags {
+  /** 轻松创作批准链内部模板（仅对话页调度，专业端选择器据此过滤） */
+  conversationOnly: boolean
+  /** 出厂内置模板（用户只读，不可改删） */
+  builtin: boolean
+  /** 审阅闸勾选时切换到的同构带闸变体模板 key（缺省 → 勾选无效） */
+  reviewVariant?: string
+}
+
+const flagCache = new Map<string, TemplateFlags>()
+
+/**
+ * 读取模板分类元数据（单一真源 = 各 YAML 顶层 visibility/builtin/review_variant 字段）。
+ * 自带缓存；文件缺失或解析失败保守返回全 false（不抛错，执行合法性由 loadTemplate 另管）。
+ */
+export function templateFlags(key: string): TemplateFlags {
+  const k = key.toLowerCase()
+  const hit = flagCache.get(k)
+  if (hit) return hit
+  const flags: TemplateFlags = { conversationOnly: false, builtin: false }
+  const file = templateFileOf(k)
+  if (file) {
+    try {
+      const raw = parseYaml(readFileSync(file, 'utf8')) as Record<string, unknown>
+      flags.conversationOnly = raw['visibility'] === 'conversation'
+      flags.builtin = raw['builtin'] === true
+      const rv = raw['review_variant']
+      if (typeof rv === 'string' && rv) flags.reviewVariant = rv
+    } catch {
+      /* 坏文件视为非内置/非专用；真正的解析错误由 loadTemplate 负责抛出 */
+    }
+  }
+  flagCache.set(k, flags)
+  return flags
+}
+
 /** prompt_tpl 引用体检：返回缺失的提示词文件（相对 PROMPTS_DIR 路径）列表 */
 export function missingPromptsOf(tpl: Template): string[] {
   const missing = new Set<string>()
@@ -342,7 +379,7 @@ export function validateTemplateText(text: string, expectKey?: string): Template
 export function saveTemplate(key: string, text: string): Template {
   if (!/^[\w-]+$/.test(key)) throw new Error(`模板 key「${key}」非法`)
   // [内置保护] 兜底拦截：系统内置模板不可覆盖（routes 层已先行 409；此处防任何未来调用路径误伤出厂资产）
-  if (isBuiltinTemplate(key)) throw new Error(`模板「${key}」是系统内置模板，不可修改`)
+  if (templateFlags(key).builtin) throw new Error(`模板「${key}」是系统内置模板，不可修改`)
   const res = validateTemplateText(text, key)
   if (!res.ok || !res.template) throw new Error(`模板「${key}」校验未通过：${res.errors.join('；')}`)
   const target = templateFileOf(key) ?? join(TEMPLATES_DIR, `${key}.yaml`)
@@ -368,7 +405,7 @@ export function deleteTemplate(key: string): void {
   const file = templateFileOf(key)
   if (!file) throw new Error(`模板「${key}」不存在`)
   // [内置保护] 兜底拦截：系统内置模板不可删除（routes 层已先行 409）
-  if (isBuiltinTemplate(key)) throw new Error(`模板「${key}」是系统内置模板，不可删除`)
+  if (templateFlags(key).builtin) throw new Error(`模板「${key}」是系统内置模板，不可删除`)
   unlinkSync(file)
   invalidateTemplate(key)
   log.info(`模板「${key}」已删除`)
@@ -404,8 +441,13 @@ export function listTemplates(): TemplateMeta[] {
 
 /** 清除缓存（模板文件热更新时用） */
 export function invalidateTemplate(key?: string): void {
-  if (key) cache.delete(key)
-  else cache.clear()
+  if (key) {
+    cache.delete(key)
+    flagCache.delete(key.toLowerCase())
+  } else {
+    cache.clear()
+    flagCache.clear()
+  }
 }
 
 export interface RunTemplateSource {

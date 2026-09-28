@@ -1,4 +1,7 @@
 key: easy-video
+builtin: true
+visibility: conversation
+review_variant: easy-video-review
 version: 1
 name: 轻松创作 · 已批准方案成片
 description: 对话方案确认后自动制作；动态与图文明确区分，严格交付且无自动付费重试。

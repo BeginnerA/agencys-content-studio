@@ -1,4 +1,5 @@
 key: platform-adapt
+builtin: true
 version: 2
 name: 多平台适配
 description: 适合：把一篇源稿改写成多平台版本（事实不变性 + 风险标注），支持出海目标语言。流程：源稿入库 → 八平台规则改写（可审阅）→ 风险标注留痕。

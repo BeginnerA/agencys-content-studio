@@ -1,4 +1,5 @@
 key: translate-export
+builtin: true
 version: 1
 name: 出海翻译链
 description: 适合：把一篇源稿完整翻译成目标语言（结构逐字保留）。流程：源稿入库 → 全文翻译（可审阅）→ 译文导出 → 翻译经验沉淀。

@@ -14,6 +14,7 @@ import RunLogPanel from './RunLogPanel.vue'
 import RunCostPanel from './RunCostPanel.vue'
 import RunExportsPanel from './RunExportsPanel.vue'
 import RunQcPanel from '../../components/run/qc/RunQcPanel.vue'
+import RunDeliveryCertPanel from '../../components/run/cert/RunDeliveryCertPanel.vue'
 import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
@@ -237,6 +238,9 @@ const {
 
           <!-- 质量核验（只读）：成片客观测量 + 一致性 + 交付就绪判定；无成片时自动隐藏 -->
           <RunQcPanel :run-id="runId" />
+
+          <!-- 交付包认证（只读）：编辑交换包结构/时长/媒体/字幕一致性 + 交付可信四态；无交付包时自动隐藏 -->
+          <RunDeliveryCertPanel :run-id="runId" />
 
           <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>

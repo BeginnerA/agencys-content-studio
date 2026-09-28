@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, projects, creationSessions, type PipelineRun } from '../../db/schema'
-import { loadTemplate } from '../../pipeline/loader'
+import { loadTemplate, templateFlags } from '../../pipeline/loader'
 import { resolveEndpoint, type EndpointPin } from '../../adapters/provider'
 import { absPathOf, readTextAsset, sha256Hex } from '../storage'
 import { creationPlanSchema, hashJson, refSchema, type CreationRef } from './contract'
@@ -52,10 +52,9 @@ export const recipeSchema = z.object({
 export type CreationRecipe = z.infer<typeof recipeSchema>
 export type { CreationRef }
 
-/** 轻松创作批准链 run 模板集合（easy-video-review = 首帧审阅闸变体）：
- *  执行期守卫、恢复校验与专业端阻断一律按集合判定，不逐处硬编码单键。 */
-export const CREATION_TEMPLATE_KEYS: ReadonlySet<string> = new Set(['easy-video', 'easy-video-review', 'easy-dialogue'])
-export const isCreationTemplate = (key: string): boolean => CREATION_TEMPLATE_KEYS.has(key)
+/** 轻松创作批准链内部模板判定（单一真源 = 各 easy-* YAML 顶层 `visibility: conversation` 标记，经 loader.templateFlags 派生）：
+ *  执行期守卫、恢复校验与专业端阻断一律按此判定，不维护中心键集；新增/下架内部模板只需改该模板自身 YAML。 */
+export const isCreationTemplate = (key: string): boolean => templateFlags(key).conversationOnly
 
 /**
  * 「受理状态不明」任务判定（单一真源）：已提交过（attempts>0）但既无第三方任务号（taskId）
