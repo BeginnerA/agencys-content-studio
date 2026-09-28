@@ -565,7 +565,8 @@ async function main(): Promise<void> {
 
     const b = await buildShotBoard(s.runId, 'gen_images')
     check(b.gateRegenerate === true, '闸门暂停：board.gateRegenerate=true（仅放行单镜重出）')
-    check(b.repairable.ok === false, '闸门暂停：repairable 仍 false（改词/选片/重合成等仍锁）')
+    check(b.gateEdit === true, '闸门暂停（非轻松创作）：board.gateEdit=true（开放逐镜改词重生成）')
+    check(b.repairable.ok === false, '闸门暂停：repairable 仍 false（选片/上传/重合成等仍锁）')
     check(typeof b.repairable.reason === 'string' && b.repairable.reason.includes('审阅暂停中'), '闸门暂停提示语友好化（含「审阅暂停中」）')
 
     const r = await resetShotForRegenerate(s.runId, 'gen_images', 's01')
@@ -592,6 +593,39 @@ async function main(): Promise<void> {
     check(b3.gateRegenerate === false, '非工作台步挂闸：compose_video.gateRegenerate=false')
     const e3 = await errOf(() => resetShotForRegenerate(s3.runId, 'compose_video', 's01'))
     check(e3 instanceof WorkbenchError && e3.code === 'bad_action', '非工作台步挂闸：单镜重出仍 bad_action')
+
+    // ==== gate-edit：审阅闸门期改词重生成双向断言 ====
+    // 正例：drama 模板（mengbao-episode）闸门暂停 → 提示词编辑放行（写新分镜版本）
+    const s4 = await seedRun()
+    await setRunStatus(s4.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s4.imgStepId))
+    const ed = await applyStoryboardEdits(s4.runId, 'gen_images', [{ shot_id: 's01', image_prompt: '闸门改词：雪夜中的小镇' }], { allowGatePause: true })
+    check(ed.edited === 1 && ed.assetId > 0, '闸门期改词（drama）：applyStoryboardEdits 放行并写新分镜版本')
+    // 改词后单镜重生成：先写分镜再重置入队（task 同步新 prompt、三表重置）
+    const r4 = await resetShotForRegenerate(s4.runId, 'gen_images', 's01', { image_prompt: '闸门改词二次：黎明海面' })
+    check(r4.taskId === s4.t1, '闸门改词重生成命中目标任务（s01/t1）')
+    check((await getRun(s4.runId)).status === 'queued', '闸门改词重生成后 run→queued')
+
+    // 反例 C：闸门期改 duration → gate_edit_limited 拒（需收敛后整链返修）
+    const s5 = await seedRun()
+    await setRunStatus(s5.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s5.imgStepId))
+    const eDur = await errOf(() => applyStoryboardEdits(s5.runId, 'gen_images', [{ shot_id: 's01', duration: 5 }], { allowGatePause: true }))
+    check(eDur instanceof WorkbenchError && eDur.code === 'gate_edit_limited', '闸门期改 duration → gate_edit_limited 拒绝')
+
+    // 反例 D：轻松创作（批准链冻结 prompt）闸门期改词 → creation_prompt_locked 硬拒；同词重出仍放行
+    const s6 = await seedRun()
+    await db.update(pipelineRuns).set({ templateKey: 'easy-dialogue' }).where(eq(pipelineRuns.id, s6.runId))
+    await setRunStatus(s6.runId, 'waiting_input')
+    await db.update(pipelineSteps).set({ status: 'waiting_input' }).where(eq(pipelineSteps.id, s6.imgStepId))
+    const b6 = await buildShotBoard(s6.runId, 'gen_images')
+    check(b6.gateRegenerate === true && b6.gateEdit === false, '轻松创作闸门：gateRegenerate=true 但 gateEdit=false（批准链冻结 prompt）')
+    const eEdit = await errOf(() => applyStoryboardEdits(s6.runId, 'gen_images', [{ shot_id: 's01', image_prompt: '越链改词' }], { allowGatePause: true }))
+    check(eEdit instanceof WorkbenchError && eEdit.code === 'creation_prompt_locked', '轻松创作闸门期改词 → creation_prompt_locked 硬拒')
+    const eRe = await errOf(() => resetShotForRegenerate(s6.runId, 'gen_images', 's01', { image_prompt: '越链改词重生成' }))
+    check(eRe instanceof WorkbenchError && eRe.code === 'creation_prompt_locked', '轻松创作闸门期改词重生成 → creation_prompt_locked 硬拒')
+    const r6 = await resetShotForRegenerate(s6.runId, 'gen_images', 's01')
+    check(r6.taskId === s6.t1, '轻松创作闸门：同词重出仍放行（不越批准链）')
   }
 
   const sectionSelect = async (): Promise<void> => {

@@ -84,10 +84,16 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const locked = computed(() => props.active || opBusy.value)
   const canOperate = computed(() => repairable.value.ok && !locked.value)
   // 审阅闸门暂停：整块工作台仍锁（canOperate=false），但逐镜重出可用——只点亮「重生成该镜」按钮，
-  // 改词 / 选片 / 上传 / 重合成 / 级联仍走 canOperate（闸门下保持禁用），与后端 gatePause 放行口径一一对应。
+  // 选片 / 上传 / 重合成 / 级联仍走 canOperate（闸门下保持禁用），与后端 gatePause 放行口径一一对应。
   const gateRegenerate = computed(() => board.value?.gateRegenerate === true)
   const canRegenerate = computed(
     () => !locked.value && (repairable.value.ok || gateRegenerate.value),
+  )
+  // 闸门改词（后端 gateEdit 仅对非轻松创作下发 true）：点亮改词铅笔/提示词框/保存/保存并重生成；
+  // 轻松创作批准链冻结 prompt，gateEdit=false → 仍只可同词重出（与后端 creation_prompt_locked 硬拒同口径）。
+  const gateEdit = computed(() => board.value?.gateEdit === true)
+  const canEdit = computed(
+    () => !locked.value && (repairable.value.ok || gateEdit.value),
   )
   const isVideoStep = computed(() => props.step.actionKey === 'ai_video')
 
@@ -482,6 +488,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   async function savePrompt(shot: ShotBoardShot) {
+    if (!canEdit.value) return
     const text = promptDraft.value.trim()
     if (!text) {
       err.value = '提示词不能为空'
@@ -504,6 +511,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
 
   async function doRegenerate(shot: ShotBoardShot, withPrompt = false) {
     if (!canRegenerate.value) return
+    if (withPrompt && !canEdit.value) return
     const text = promptDraft.value.trim()
     const dirty = withPrompt && text !== '' && text !== primaryPromptOf(shot)
     const ok = await confirmDialog({
@@ -659,6 +667,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     canOperate,
     gateRegenerate,
     canRegenerate,
+    gateEdit,
+    canEdit,
     isVideoStep,
     summary,
     promptField,
@@ -679,6 +689,7 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     repairable,
     canOperate,
     canRegenerate,
+    canEdit,
     summary,
     draftCount,
     allPicked,

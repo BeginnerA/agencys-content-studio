@@ -3,6 +3,7 @@ import { db } from '../../db'
 import { assets } from '../../db/schema'
 import { writeTextAsset } from '../storage'
 import { WORKBENCH_ACTIONS, WorkbenchError, type ShotSpec } from './helpers'
+import { isCreationTemplate } from '../creation-chat/recipe'
 import { assertRepairable, findProducerStep, resolveStoryboardSource } from './inspect'
 import { rebuildShotOutput, replaceProducerOutputAsset } from './reset'
 import { shotDurationSec } from './board'
@@ -37,15 +38,32 @@ export type ShotOp =
 /**
  * 分镜编辑：时长/提示词字段级编辑 → 写分镜新版本资产 + 替换产出步骤 output 保位。
  * 不触发执行、不改 run 状态；生效路径：重生成 / 重新合成时经引用解析自然消费新分镜。
+ * opts.allowGatePause：审阅闸门暂停期放行（单镜改词重生成同源入口专用；轻松创作在调用方硬拒）。
  */
 export async function applyStoryboardEdits(
   runId: number,
   stepKey: string,
   items: ShotEditItem[],
+  opts?: { allowGatePause?: boolean },
 ): Promise<{ assetId: number; assetIds: number[]; edited: number }> {
   if (!Array.isArray(items) || items.length === 0) throw new WorkbenchError('bad_items', 'shots 需为非空数组')
-  const { run, step } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS)
+  const { run, step, gatePause } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS, opts)
   const src = await resolveStoryboardSource(run, step)
+  // 闸门暂停期双门禁：①轻松创作硬拒（批准链冻结 prompt，工作台改词既进不了 prompt 也绕过费用批准，
+  // 只允许驳回后回会话重批）；②仅提示词可改（duration 依赖配音/字幕链路，需收敛后整链返修）
+  if (gatePause) {
+    const hasPromptEdit = items.some((it) => it.image_prompt !== undefined || it.motion_prompt !== undefined)
+    if (hasPromptEdit && isCreationTemplate(run.templateKey)) {
+      throw new WorkbenchError(
+        'creation_prompt_locked',
+        '轻松创作批准的提示词由批准方案编译生成，工作台不可修改；请在闸门点「驳回」后回轻松创作会话改需求并重新批准',
+        409,
+      )
+    }
+    if (items.some((it) => it.duration !== undefined)) {
+      throw new WorkbenchError('gate_edit_limited', '审阅闸门期仅可修改提示词；时长需待收敛后在工作台修改')
+    }
+  }
 
   // 产出步骤溯源（写新资产 stepId + 替换 output 保位皆依赖）
   const producer = await findProducerStep(src.asset, run)

@@ -528,11 +528,14 @@ async function main(): Promise<void> {
     cpSync(join(REPO_ROOT, 'workspace', 'templates', 'mengbao-episode.yaml'), join(TEMPLATES_DIR, 'mengbao-episode.yaml'))
 
     const tpl = loadTemplate('mengbao-episode', true)
-    // v10（3660aef「以音定画」）：gen_motion 新增 after=voice + inputs.voices；步骤数/其余结构不变
-    check(tpl.version === 10, `version=10（实际 ${tpl.version}）`)
+    // v11：四个出图步（gen_refs/gen_set_refs/gen_images/gen_frames）均挂人工审阅闸；步骤数/其余结构不变
+    check(tpl.version === 11, `version=11（实际 ${tpl.version}）`)
     const gm = tpl.steps.find((s) => s.key === 'gen_motion')
     check(!!gm && (gm.after ?? []).includes('voice') && gm.inputs['voices'] === 'steps.voice.assets', 'v10 以音定画：gen_motion 依赖 voice 并注入实测音频')
     const stepOf = (k: string) => tpl.steps.find((s) => s.key === k)
+    for (const k of ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames']) {
+      check(stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label, `${k} 挂人工审阅闸（required + 可跳过）`)
+    }
     const ms = stepOf('make_storyboard')
     check(!!ms && (ms.after ?? []).includes('cast_lines'), 'make_storyboard.after 含 cast_lines')
     check(ms?.inputs['lines'] === 'steps.cast_lines.asset', `inputs.lines 指向台词表（实际 ${String(ms?.inputs['lines'])}）`)
@@ -563,11 +566,11 @@ async function main(): Promise<void> {
     const lmg = loadedV8.steps.find((s) => s.key === 'compose_video')!
     check(!('transition' in (lmg.params ?? {})), 'v8 快照 compose 参数无 M11 键')
 
-    // ---- 无快照 → 文件 v10；损坏快照 → 回退文件 ----
+    // ---- 无快照 → 文件 v11；损坏快照 → 回退文件 ----
     const noSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: null })
-    check(noSnap.version === 10, '无快照 → v10 文件加载')
+    check(noSnap.version === 11, '无快照 → v11 文件加载')
     const badSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: 'junk' })
-    check(badSnap.version === 10, '损坏快照 → 回退文件加载')
+    check(badSnap.version === 11, '损坏快照 → 回退文件加载')
   }
 
   // ================= 分发 =================

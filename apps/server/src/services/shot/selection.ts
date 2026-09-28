@@ -6,6 +6,8 @@ import { isCreationTemplate, recipeOf } from '../creation-chat/recipe'
 import { checkBudget } from '../budget'
 import { resolveUnitPrice } from '../usage'
 import { assertRepairable, resolveStoryboardSource } from './inspect'
+import { applyStoryboardEdits } from './edits'
+import type { ShotEditItem } from './edits'
 
 export interface ShotPick {
   shot_id: string
@@ -18,21 +20,36 @@ export interface ShotPick {
  * 单镜重生成：校验 + 重置（task 保留 resultAssetId 作历史 / step pending / run queued）。
  * 路由层随后 engine.startRun——action 幂等段「succeeded 任务跳过」只重跑目标镜。
  *
- * 审阅闸门暂停（gatePause）：run 与本步同时 waiting_input 时，允许对挂闸生成步做同提示词单镜重出
- * （首帧审阅时挑出不满意的一镜重投）；不改分镜/不动批准链，仅补一次服务端预算门禁。
+ * 审阅闸门暂停（gatePause）：run 与本步同时停在 waiting_input 时——
+ * ① 同提示词重出：不改分镜、不越批准链，所有模板放行；
+ * ② 改词重生成（edits，仅 image_prompt/motion_prompt）：分镜是提示词唯一事实源，仅非轻松创作
+ *   （drama 等）模板放行——轻松创作对白 prompt 由批准方案 compileDialogueShot 编译，工作台改词
+ *   既进不了 prompt 也绕过费用批准链，硬拒并引导回会话重批；
+ * duration 闸门期禁改（配音/字幕已按原时长生成，需回工作台整链返修）。
+ * 两种重出均补一次服务端预算门禁（与断点续跑/会话返修同源 checkBudget）。
  */
 export async function resetShotForRegenerate(
   runId: number,
   stepKey: string,
   shotId: string,
+  edits?: Pick<ShotEditItem, 'image_prompt' | 'motion_prompt'>,
 ): Promise<{ runId: number; taskId: number }> {
   if (typeof shotId !== 'string' || !shotId) throw new WorkbenchError('bad_shot', 'shot_id 非法')
   const { run, step, gatePause } = await assertRepairable(runId, stepKey, WORKBENCH_ACTIONS, { allowGatePause: true })
+  const hasEdits = !!(edits && (edits.image_prompt !== undefined || edits.motion_prompt !== undefined))
   // 轻松创作批准链：常规（已完成/失败）额外生成仍须回会话费用确认通道；
   // 但审阅闸门暂停下的「同提示词单镜重出」不改分镜、不越批准链（ai_image 参数变化守卫不触发），
-  // 属审阅环节内正当操作，放行——仅补一次服务端预算门禁（与断点续跑/会话返修同源 checkBudget）。
+  // 属审阅环节内正当操作，放行。
   if (isCreationTemplate(run.templateKey) && !gatePause) {
     throw new WorkbenchError('creation_confirmation_required', '额外镜头生成需复制需求并确认新方案；失败恢复请回轻松创作', 409)
+  }
+  // 闸门期改词重生成：轻松创作硬拒（批准链冻结 prompt，改词只允许回会话重新批准方案）
+  if (gatePause && hasEdits && isCreationTemplate(run.templateKey)) {
+    throw new WorkbenchError(
+      'creation_prompt_locked',
+      '轻松创作批准的提示词由批准方案编译生成，工作台不可修改；请在闸门点「驳回」后回轻松创作会话改需求并重新批准',
+      409,
+    )
   }
 
   const tasks = await db
@@ -60,6 +77,12 @@ export async function resetShotForRegenerate(
       const budget = await checkBudget({ projectId: run.projectId, estimatedCost: cost })
       if (budget) throw new WorkbenchError(budget.code, budget.message, 409)
     }
+  }
+
+  // 闸门期改词重生成：先写分镜新版本（校验失败则整体不动作），重跑时 ai_image 幂等段
+  // 对未成功任务同步新 prompt（requeuePatch 已归零 attempts → 必进队列重新提交）
+  if (gatePause && hasEdits) {
+    await applyStoryboardEdits(runId, stepKey, [{ shot_id: shotId, ...edits }], { allowGatePause: true })
   }
 
   const now = Date.now()

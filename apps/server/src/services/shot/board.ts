@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db'
 import { assets, genTasks, pipelineSteps, type Asset, type GenTask, type PipelineRun, type PipelineStep } from '../../db/schema'
 import { WORKBENCH_ACTIONS, getRunOrThrow, getStepOrThrow, outputIdsOf, sameIds, selectedMapOf, shotIdOfAsset, type ShotSpec } from './helpers'
+import { isCreationTemplate } from '../creation-chat/recipe'
 import { checkRepairable, isGateReviewStep, resolveStoryboardSource } from './inspect'
 
 /** 分镜时长双口径读取：duration 优先，回退 duration_sec（LLM 原始分镜字段）；非法值 → null */
@@ -59,6 +60,8 @@ export interface ShotBoard {
   repairable: { ok: boolean; reason: string | null }
   /** 审阅闸门暂停：本步正持有 waiting_input 人工闸→允许逐镜重出（其余工作台操作仍锁） */
   gateRegenerate: boolean
+  /** 闸门暂停且非轻松创作：开放逐镜改词+保存并重生成（轻松创作批准链冻结 prompt，仍只可同词重出） */
+  gateEdit: boolean
 }
 
 // ---------- 聚合读 ----------
@@ -175,9 +178,15 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
   // 审阅闸门暂停：整块工作台仍锁（repairable.ok=false），但单镜重出可用；把默认「正在执行/排队」
   // 误导语换成与闸门语义一致的提示（避免用户误以为引擎在跑而干等）。
   const gateRegenerate = isGateReviewStep(run, step)
+  // 改词能力分层：非轻松创作（drama 等）分镜是提示词唯一事实源，闸门期可改词重生成；
+  // 轻松创作批准链冻结 prompt，提示引导驳回回会话重批。
+  const gateEdit = gateRegenerate && !isCreationTemplate(run.templateKey)
+  const gateReason = gateEdit
+    ? '审阅暂停中：可逐镜重出或修改提示词后重生成（均重新计费），其余操作待收敛后进行'
+    : '审阅暂停中：可逐镜重出不满意的首帧（重新计费）；提示词由批准方案冻结，需改词请驳回后回轻松创作会话重新批准'
   const shownRepairable =
     gateRegenerate && !repairable.ok
-      ? { ok: false, reason: '审阅暂停中：可逐镜重出不满意的首帧（重新计费），其余操作待收敛后进行' }
+      ? { ok: false, reason: gateReason }
       : repairable
   const finalRepairable =
     shownRepairable.ok && parseError ? { ok: false, reason: `分镜解析失败：${parseError}` } : shownRepairable
@@ -188,6 +197,7 @@ export async function buildShotBoard(runId: number, stepKey: string): Promise<Sh
     compose,
     repairable: finalRepairable,
     gateRegenerate,
+    gateEdit,
   }
 }
 

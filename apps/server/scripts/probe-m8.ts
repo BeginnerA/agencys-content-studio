@@ -461,15 +461,19 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v10：版本 10 / 21 步 / 角色链 + 场景道具链与注入前置 ——
+    // —— T1 mengbao-episode v11：版本 11 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸） ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 10, `version=10（实际 ${t.version}）`)
+        check(t.version === 11, `version=11（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
+        check(
+          ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
+          'mengbao-episode 四个出图步均挂人工审阅闸（required + 可跳过）',
+        )
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),
           'mengbao-episode 含角色链（char_profile/ref_prompts/gen_refs/sync_characters）',
@@ -502,15 +506,19 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2 series-setup v2：版本 2 / 12 步 / 场景道具链 ——
+    // —— T2 series-setup v3：版本 3 / 12 步 / 场景道具链（出图步挂人工审阅闸） ——
     if (copyTpl('series-setup')) {
       const t = tryLoad('series-setup')
       check(t !== null, 'series-setup 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 2, `series-setup version=2（实际 ${t.version}）`)
+        check(t.version === 3, `series-setup version=3（实际 ${t.version}）`)
         check(t.steps.length === 12, `series-setup steps=12（实际 ${t.steps.length}）`)
+        check(
+          ['gen_refs', 'gen_set_refs'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
+          'series-setup 出图步均挂人工审阅闸（required + 可跳过）',
+        )
         check(
           ['set_profile', 'set_ref_prompts', 'gen_set_refs', 'sync_set'].every((k) => keys.includes(k)),
           'series-setup 含场景道具链',

@@ -36,13 +36,14 @@ shotsRoutes.get('/runs/:id/shot-board', h(async (c) => {
 }))
 
 // POST /runs/:id/shots/edit —— 分镜字段级编辑（写新分镜版本资产；不触发执行）
+// 审阅闸门暂停期放行提示词编辑（服务层双门禁：轻松创作硬拒 / duration 拒）；结构编辑 mutate 仍锁
 shotsRoutes.post('/runs/:id/shots/edit', h(async (c) => {
   const runId = idParam(c)
   const body = await bodyJson(c)
   const stepKey = requireStepKey(body['step_key'])
   const items = body['shots']
   if (!Array.isArray(items)) throw new HttpError(400, 'bad_shots', 'shots 需为非空数组')
-  const result = await wb(() => applyStoryboardEdits(runId, stepKey, items as ShotEditItem[]))
+  const result = await wb(() => applyStoryboardEdits(runId, stepKey, items as ShotEditItem[], { allowGatePause: true }))
   return c.json({ ok: true, asset_id: result.assetId, asset_ids: result.assetIds, edited: result.edited })
 }))
 
@@ -71,15 +72,33 @@ shotsRoutes.post('/runs/:id/shots/regenerate', h(async (c) => {
   const shotId = body['shot_id']
   if (typeof shotId !== 'string' || !shotId) throw new HttpError(400, 'bad_shot', 'shot_id 非法')
 
-  // 可选编辑字段：先走分镜编辑（失败则整体不动作），再重置执行状态
+  // 可选编辑字段：提示词改动移交服务层统一入口（含闸门期权限/轻松创作批准链/字段校验，
+  // 失败则整体不动作）；duration 仅收敛后路径可用，仍先走独立分镜编辑（失败则整体不动作）。
   const editItem: ShotEditItem = { shot_id: shotId }
   let hasEdit = false
-  if (body['image_prompt'] !== undefined) { editItem.image_prompt = body['image_prompt'] as string; hasEdit = true }
-  if (body['motion_prompt'] !== undefined) { editItem.motion_prompt = body['motion_prompt'] as string; hasEdit = true }
-  if (body['duration'] !== undefined) { editItem.duration = body['duration'] as number; hasEdit = true }
-  if (hasEdit) await wb(() => applyStoryboardEdits(runId, stepKey, [editItem]))
+  const promptEdits: Pick<ShotEditItem, 'image_prompt' | 'motion_prompt'> = {}
+  if (body['image_prompt'] !== undefined) {
+    editItem.image_prompt = body['image_prompt'] as string
+    promptEdits.image_prompt = body['image_prompt'] as string
+    hasEdit = true
+  }
+  if (body['motion_prompt'] !== undefined) {
+    editItem.motion_prompt = body['motion_prompt'] as string
+    promptEdits.motion_prompt = body['motion_prompt'] as string
+    hasEdit = true
+  }
+  if (body['duration'] !== undefined) {
+    editItem.duration = body['duration'] as number
+    hasEdit = true
+  }
+  const hasPromptEdit = promptEdits.image_prompt !== undefined || promptEdits.motion_prompt !== undefined
+  if (hasEdit && !hasPromptEdit && editItem.duration !== undefined) {
+    await wb(() => applyStoryboardEdits(runId, stepKey, [editItem]))
+  }
 
-  const { taskId } = await wb(() => resetShotForRegenerate(runId, stepKey, shotId))
+  const { taskId } = await wb(() =>
+    resetShotForRegenerate(runId, stepKey, shotId, hasPromptEdit ? promptEdits : undefined),
+  )
   engine.startRun(runId)
   return c.json({
     ok: true,

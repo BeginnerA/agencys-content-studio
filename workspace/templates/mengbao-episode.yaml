@@ -1,7 +1,7 @@
 key: mengbao-episode
-version: 10
+version: 11
 name: 短剧·单集
-description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选）→ 场景道具档案与参考图（可选）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（动效镜时长按配音实测）→ 字幕 → 合成。
+description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]
@@ -154,6 +154,10 @@ steps:
     params:
       output_purpose: reference_character
     batch: { field: shots, max_concurrent: 1, retry: 1 }
+    gate:
+      mode: required
+      message: 第 {input.episode_number} 集定妆照已生成，请逐张审阅角色形象是否与档案一致；不满意可在镜头工作台重出单张后回到本闸复审。定妆照将作为后续全部出图的角色参考，请先确认再进入建档
+      skip_label: 免审直接建档
   - key: sync_characters
     action: character_sync
     title: 角色建档
@@ -196,6 +200,10 @@ steps:
       output_purpose: reference_scene
       output_purpose_by_category: { prop: reference_prop }
     batch: { field: shots, max_concurrent: 1, retry: 1 }
+    gate:
+      mode: required
+      message: 第 {input.episode_number} 集场景/道具参考图已生成，请逐张审阅；不满意可在镜头工作台重出单张后回到本闸复审。参考图将作为后续出图的场景/道具锚定，请先确认再进入建档
+      skip_label: 免审直接建档
   - key: sync_set
     action: entity_sync
     title: 场景/道具建档
@@ -271,6 +279,10 @@ steps:
     inputs:
       shots: steps.make_storyboard.asset
     batch: { field: shots, max_concurrent: 2, retry: 1 }
+    gate:
+      mode: required
+      message: 第 {input.episode_number} 集全部镜头图已生成，请在镜头工作台逐镜审阅；不满意可重出单镜（仅该镜重新计费），避免单张废镜带崩后续合成。确认后进入配音字幕合成
+      skip_label: 免审直接合成
   - key: gen_frames
     action: ai_image
     title: 首帧图生成（i2v）
@@ -281,6 +293,10 @@ steps:
     params:
       output_purpose: first_frame
     batch: { field: shots, max_concurrent: 2, retry: 1 }
+    gate:
+      mode: required
+      message: 第 {input.episode_number} 集首帧图已生成，请检查角色长相与同框关系；不满意可在镜头工作台重出单镜。确认后将开始费用较高的图生视频（出图+视频双重计费），请先审阅再继续
+      skip_label: 免审直接动效
   - key: gen_motion
     action: ai_video
     title: 批量镜头动效

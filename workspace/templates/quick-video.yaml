@@ -95,7 +95,7 @@ steps:
       name_tpl: "cover-prompt.json"
   - key: cover
     action: ai_image
-    title: 封面出图（兼成片背景）
+    title: 封面出图
     after: [cover_prompt]
     inputs:
       shots: steps.cover_prompt.asset

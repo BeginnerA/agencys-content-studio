@@ -673,7 +673,7 @@ async function main(): Promise<void> {
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 10, `mengbao-episode version=10（实际 ${t3.version}）`)
+        check(t3.version === 11, `mengbao-episode version=11（实际 ${t3.version}）`)
         check(t3.steps.length === 21, `mengbao-episode steps=21（实际 ${t3.steps.length}）`)
         check(
           ['char_profile', 'ref_prompts', 'gen_refs', 'sync_characters'].every((k) => keys.includes(k)),

@@ -162,14 +162,14 @@ const sb = props.sb
       <span class="muted">s</span>
     </div>
 
-    <!-- [UI-B] 图标动作行：改词 / 重生成 / 上传替换 / 版本 / 音效（逻辑不变，仅呈现层） -->
+    <!-- 图标动作行：改词 / 重生成 / 上传替换 / 版本 / 音效（逻辑不变，仅呈现层） -->
     <div class="wb-icons">
       <button
         class="wb-ib"
         :class="{ on: sb.promptShotId === shot.shotId }"
-        :disabled="!sb.canOperate"
+        :disabled="!sb.canEdit"
         aria-label="改提示词"
-        :title="sb.promptShotId === shot.shotId ? '收起改词' : '改提示词'"
+        :title="sb.promptShotId === shot.shotId ? '收起改词' : (sb.canEdit ? '改提示词' : '审阅闸门下仅非轻松创作模板可改词，其余待收敛后进行')"
         @click="togglePrompt(shot)"
       >
         <Icon name="pencil" :size="14" />
@@ -227,19 +227,19 @@ const sb = props.sb
         v-model="sb.promptDraft"
         rows="3"
         spellcheck="false"
-        :disabled="!sb.canOperate"
+        :disabled="!sb.canEdit"
       ></textarea>
       <div class="wb-pa">
         <button
           class="btn sm"
-          :disabled="!sb.canOperate"
+          :disabled="!sb.canEdit"
           @click="savePrompt(shot)"
         >
           保存到分镜
         </button>
         <button
           class="btn sm"
-          :disabled="!sb.canOperate"
+          :disabled="!sb.canEdit"
           @click="doRegenerate(shot, true)"
         >
           保存并重生成

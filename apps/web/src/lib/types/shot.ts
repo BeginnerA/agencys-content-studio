@@ -66,6 +66,8 @@ export interface ShotBoardData {
   repairable: { ok: boolean; reason: string | null }
   /** 审阅闸门暂停：本步持有 waiting_input 人工闸→仅开放逐镜重出（其余工作台操作仍锁） */
   gateRegenerate: boolean
+  /** 闸门暂停且非轻松创作：开放逐镜改词＋保存并重生成（批准链模板仍只可同词重出） */
+  gateEdit: boolean
 }
 
 /** 分镜字段级编辑项（edit / regenerate 复用） */
