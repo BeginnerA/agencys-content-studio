@@ -1,7 +1,7 @@
-# DB 迁移体系 re-baseline 规格（M1 审计整改 · 待拍板）
+# DB 迁移体系 re-baseline 规格（M1 审计整改 · 已执行）
 
-> 状态：**提案 / 待决策**（未执行）。本文件是审计项 M1「DB 迁移体系漂移」的取证 + 路线权衡 + 推荐执行方案。
-> 因涉及**不可逆** schema 变更且**存在真实数据**（`data/studio.db` 8.3MB + WAL 4MB），须由用户拍板选定路线后方可实施。实施前**强制备份**。
+> 状态：**已执行（方案 A）+ 验证通过**。本文件留存 M1「DB 迁移体系漂移」的取证 + 路线权衡 + 推荐方案作为决策依据；最终落地路线与实际验证见 §9。
+> 涉及**不可逆** schema 变更且**存在真实数据**（`data/studio.db` 8.3MB + WAL 4MB），已按规范先拍板（方案 A）、强制备份（`data/backup-rebaseline-20260928-133503/`），真实库全程零触碰（仅在临时副本验证）。改动已由用户批准入库（commit `535d703`）。
 
 ## 1. 问题陈述（取证）
 
@@ -77,3 +77,22 @@
 - 不做任何**破坏性**列改造（无重命名/类型收窄/删除）——所有漂移皆纯加法。
 - 不引入数据迁移脚本（无数据形态变更需求）。
 - 不在拍板前执行任何一条 DDL 或账本操纵。
+
+## 9. 执行与验证记录（2026-09-28，方案 A 落地）
+
+**实际路线与 §4/§6 提案的差集（更安全的优化）**：新基线全部 DDL 改为**幂等**（`CREATE TABLE IF NOT EXISTS` ×32、`CREATE INDEX IF NOT EXISTS` ×48、`CREATE UNIQUE INDEX IF NOT EXISTS` ×11，0 DROP / 0 ALTER / 0 非幂等残留）。由此**无需清账本、无需「账本认领」、无需停服**：存量库下次启动时 `migrate()` 对新基线哈希干净 no-op（IF NOT EXISTS 全部跳过）并记账；真实 `data/studio.db` 全程零触碰（验证只在临时副本上进行）。
+
+**步骤实做**：
+1. 备份：`data/backup-rebaseline-20260928-133503/`（studio.db 8308KB + wal/shm + 旧 `drizzle/` 归档 `drizzle-old/`）。服务器运行中（port 3001），未停服。
+2. 生成：先删旧 `0000_typical_nova.sql` + meta，以空 `_journal.json` 占位后 `drizzle-kit generate` 全量生成 `0000_furry_rawhide_kid.sql`（schema.ts 32 表权威真源）。
+3. 幂等化：一次性脚本 `_db_idempotent.cjs` 改写（保 `IF NOT EXISTS` 全量达成，plain 残留=0）。
+4. 兜底定位：`ensureSchemaColumns()` 保留为运行期防呆，头注释升级为「schema 权威真源 = db/schema.ts + drizzle/0000 全量基线；新增列正确姿势：改 schema.ts → db:generate 后继迁移（0001…）」。
+5. 取证/验证脚本：`_db_inspect.cjs`（表数/行数/ledger/列抽查）、`scripts/_verify_rebaseline.ts`（fresh|upgrade 双模式，副本上 initDb）——经用户决策作为取证工具保留入库（commit `535d703`），覆盖本文档原「验证后删除」计划。
+
+**验证结果（全部通过）**：
+- **UPGRADE 冒烟**（真实库副本 → initDb）：`INITDB_OK`、无 migrate-skipped 警告；TABLE_COUNT=33 不变；用户数据零损（projects=1 / assets=4 / runs=1 / steps=4 / settings=4）；ledger 5→6，新基线哈希 `1790573818538:1788b9d6bd` 记入。
+- **FRESH 冒烟**（空临时库）：33 表、ledger=1；原漂移列 `resumed_from_run_id` / `embedding` / `voice_desc` 全在。
+- **全量 run-probes**：4831 断言 / 7 fail——失败集合经 A/B 归因与 re-baseline **无关**：新/老基线下 probe-m11 standalone 完全一致（PASS=186 / FAIL=1，仅 E2b；另 E3 仅在 full-run 上下文出现，属 harness 上下文相关），其余 5 项为 m13/14/15/16 内嵌「probe:mNN 全绿」级联。
+- **typecheck**：server `tsc --noEmit` EXIT=0；web `vue-tsc --noEmit` EXIT=0（H1 验证时测）。split-audit（probe-m26）：>800 存量归零 + L1 集合相等 20/20 绿。
+
+**交付**：改动经用户审阅后入库（commit `535d703`，未 push 动作由用户自行完成）；回滚路径：还原备份目录 + git revert。

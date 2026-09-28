@@ -82,6 +82,16 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   const { pipelineRuns, pipelineSteps, genTasks } = await import('../../../../src/db/schema')
   const { db, pid, T0, check, errOf, getStep, getRun, getTask, setStepStatus, setRunStatus, mkStep } = ctx
 
+  // [隔离环境种子] E2b/E3 断言依赖 isCreationTemplate('easy-video')——其真源是 easy-video.yaml 顶层
+  // `visibility: conversation`（经 loader.templateFlags 读文件派生，非中心键集）。本探针在隔离的空
+  // TEMPLATES_DIR 运行，须先把该 YAML 拷入令 templateFileOf 命中，否则 conversationOnly 保守为 false、
+  // 创建守卫不触发。与 sectionTemplate 拷 mengbao-episode.yaml 同构（各节自带其所需模板种子）。
+  const { cpSync, mkdirSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { TEMPLATES_DIR } = await import('../../../../src/env')
+  mkdirSync(TEMPLATES_DIR, { recursive: true })
+  cpSync(join(ctx.REPO_ROOT, 'workspace', 'templates', 'easy-video.yaml'), join(TEMPLATES_DIR, 'easy-video.yaml'))
+
   // 线性快照模板（无 after → 默认依赖前一步），与种子步骤键一一对应；templateForRun 采用快照
   const chainKeysList = ['make_storyboard', 'gen_images', 'voice', 'subtitle', 'compose_video']
   const actionOf = (k: string): string =>
