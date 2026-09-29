@@ -41,7 +41,7 @@ name: 类型自检
 genre: other
 inputs:
   - { key: vol, label: 音量, kind: float, required: false, default: 0.6 }
-  - { key: style, label: 风格, kind: select, required: true, options: [清新, 复古, 水墨], default: 清新 }
+  - { key: style, label: 风格, kind: select, required: true, options: [清新, 复古, 水墨], option_labels: [小清新, 怀旧, 国画], default: 清新 }
   - { key: tags, label: 标签, kind: multi_select, required: false, options: [搞笑, 催泪, 干货], default: [干货] }
   - { key: onair, label: 上线日期, kind: date, required: false, default: 2026-10-01 }
   - { key: eps, label: 集数, kind: int, required: false, default: 3 }
@@ -81,6 +81,7 @@ await runSections({
       check(t.inputs.length === 6, '合法六类模板加载成功（6 个输入）')
       check(byKey['vol']?.kind === 'float' && byKey['vol']?.default === 0.6, 'float 默认值 0.6 透传')
       check(byKey['style']?.kind === 'select' && byKey['style']?.options?.join(',') === '清新,复古,水墨', 'select options 解析（3 候选）')
+      check(byKey['style']?.option_labels?.join(',') === '小清新,怀旧,国画', 'select option_labels 中文显示名透传（与 options 逐位对齐）')
       check(Array.isArray(byKey['tags']?.default) && (byKey['tags']?.default as string[]).join() === '干货', 'multi_select 数组默认值透传')
       check(byKey['onair']?.kind === 'date' && byKey['onair']?.default === '2026-10-01', 'date 默认值字符串透传')
 
@@ -96,6 +97,9 @@ await runSections({
         ['bad-date-default', '{ key: x, label: X, kind: date, required: false, default: 2026-13-45 }', /default 需为合法日期（YYYY-MM-DD）/],
         ['bad-float-default', '{ key: x, label: X, kind: float, required: false, default: "0.6" }', /default 类型与 kind\(float\) 不一致/],
         ['bad-int-default', '{ key: x, label: X, kind: int, required: false, default: 3.5 }', /default 类型与 kind\(int\) 不一致/],
+        ['bad-labels-mismatch', '{ key: x, label: X, kind: select, required: false, options: [a, b], option_labels: [甲] }', /option_labels 需为非空字符串数组且与 options 逐位对齐/],
+        ['bad-labels-noopts', '{ key: x, label: X, kind: text, required: false, option_labels: [甲] }', /声明了 option_labels 但无 options/],
+        ['bad-labels-blank', '{ key: x, label: X, kind: select, required: false, options: [a, b], option_labels: [甲, ""] }', /option_labels 需为非空字符串数组且与 options 逐位对齐/],
       ]
       for (const [key, line, re] of cases) {
         oneInput(key, line)

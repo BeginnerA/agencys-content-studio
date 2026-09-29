@@ -95,6 +95,15 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       } else if (d['options'] !== undefined) {
         return fail(`输入 ${ik} 声明了 options 但 kind(${kind}) 不支持（仅 select/multi_select）`)
       }
+      // option_labels 候选显示名：仅随 options 出现，需与 options 逐位对齐且非空字符串（仅供 UI 展示，存储/校验仍用原值）
+      let optionLabels: string[] | undefined
+      if (d['option_labels'] !== undefined) {
+        if (!options) return fail(`输入 ${ik} 声明了 option_labels 但无 options（仅 select/multi_select 可用）`)
+        if (!Array.isArray(d['option_labels']) || d['option_labels'].length !== options.length || d['option_labels'].some((o) => typeof o !== 'string' || !o.trim())) {
+          return fail(`输入 ${ik} 的 option_labels 需为非空字符串数组且与 options 逐位对齐`)
+        }
+        optionLabels = d['option_labels'] as string[]
+      }
       const dv = d['default']
       if (dv !== undefined) {
         const typeOk =
@@ -115,6 +124,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
         required: d['required'] === true,
         accept: Array.isArray(d['accept']) ? (d['accept'] as string[]) : undefined,
         options,
+        option_labels: optionLabels,
         default: dv as TemplateInputDef['default'],
       })
       declaredInputs.add(ik as string)

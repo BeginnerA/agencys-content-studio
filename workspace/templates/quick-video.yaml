@@ -12,9 +12,10 @@ inputs:
     kind: text
     required: true
   - key: platform
-    label: 目标平台（抖音/快手/视频号/B站）
-    kind: text
+    label: 目标平台
+    kind: select
     required: false
+    options: [公众号, 小红书, 知乎, 头条, 抖音, 快手, 视频号, B站]
     default: 抖音
   - key: duration_hint
     label: 目标秒数

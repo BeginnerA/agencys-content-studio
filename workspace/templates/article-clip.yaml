@@ -12,9 +12,10 @@ inputs:
     kind: text
     required: true
   - key: platform
-    label: 首发平台（公众号/知乎）
-    kind: text
+    label: 首发平台
+    kind: select
     required: false
+    options: [微信公众号, 知乎, 小红书, 头条]
     default: 微信公众号
   - key: profile
     label: 账号档案（人设/受众称呼/口头禅/禁用词）
@@ -37,9 +38,10 @@ inputs:
     required: false
     default: 3
   - key: to_platforms
-    label: 多平台适配（选填，逗号分隔：公众号/小红书/知乎/头条/抖音/快手/视频号/B站；留空=仅原稿）
-    kind: text
+    label: 多平台适配（选填，可多选；留空=仅原稿）
+    kind: multi_select
     required: false
+    options: [公众号, 小红书, 知乎, 头条, 抖音, 快手, 视频号, B站]
   - key: with_compliance
     label: 发布稿合规审核（false=跳过；词库命中 block 级会拦截出稿）
     kind: bool

@@ -13,6 +13,8 @@ export interface TemplateInputDef {
   accept?: string[]
   /** select / multi_select 的候选项列表（这两种 kind 必填且为非空字符串数组） */
   options?: string[]
+  /** 候选项显示名（与 options 逐位对齐，仅供 UI 展示中文含义；存储/校验仍用 options 原值） */
+  option_labels?: string[]
   /** 启动时用户未传则回填（落库前完成；UI 表单预填同源；multi_select 默认为字符串数组） */
   default?: string | number | boolean | string[]
 }

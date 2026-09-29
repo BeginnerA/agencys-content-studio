@@ -37,9 +37,10 @@ inputs:
     required: false
     default: false
   - key: platform
-    label: 目标平台（抖音/快手/视频号/B站）
-    kind: text
+    label: 目标平台
+    kind: select
     required: false
+    options: [公众号, 小红书, 知乎, 头条, 抖音, 快手, 视频号, B站]
     default: 抖音
   - key: with_platform_copy
     label: 平台发布文案（true=产物标题/描述/话题/时段文案；false=关闭）

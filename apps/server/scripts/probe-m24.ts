@@ -326,8 +326,8 @@ async function main(): Promise<void> {
     // ---- 形态 A：platform-adapt v2（target_lang 缺省 zh = 回归基准）----
     const pa = loadTemplate('platform-adapt')
     check(pa.version === 3, `T1 platform-adapt 现行 v3（v2 target_lang + v3 合规末步；实际 version=${pa.version}）`)
-    const tl = pa.inputs.find((i) => i.key === 'target_lang') as { kind?: string; required?: boolean; default?: unknown } | undefined
-    check(tl?.default === 'zh' && tl?.kind === 'text' && tl?.required !== true, `T2 target_lang 缺省 zh（${canon(tl)}）`)
+    const tl = pa.inputs.find((i) => i.key === 'target_lang') as { kind?: string; required?: boolean; default?: unknown; options?: string[] } | undefined
+    check(tl?.default === 'zh' && tl?.kind === 'select' && tl?.required !== true && (tl?.options ?? []).includes('zh'), `T2 target_lang 缺省 zh（下拉单选、zh ∈ options；${canon(tl)}）`)
     const adaptStep = pa.steps.find((s) => s.key === 'adapt')
     check((adaptStep?.inputs as Record<string, unknown> | undefined)?.['target_lang'] === 'input.target_lang', 'T3 adapt 步接线 input.target_lang（ai_text 全量注入自动进 prompt）')
     check(adaptStep?.params?.['name_tpl'] === 'adapt.md' && adaptStep?.params?.['output_purpose'] === 'export', 'T4 zh 回归：产物名/purpose 逐字不变')

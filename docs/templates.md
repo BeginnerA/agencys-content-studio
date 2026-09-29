@@ -25,7 +25,7 @@
 | `novel-audit` v1 | 改编一致性回查（plan） | 章节 + 剧本 → `adapt_audit` 批量 LLM 审计（omission/alteration/addition/order 差异 + severity）→ 差异报告 md（purpose=audit_report）；独立形态不侵入 novel-adapt 现链 | M25·G4 |
 | `video-reverse` v1 | 视频反推链（drama_short） | 视频入库 → `video_analyze`（抽帧≤24 + ASR 音轨转写含宽容降级 + 多模态时间轴 JSON）→ 分镜反推（storyboard-json，必审门控，直通 `ai_video` 消费契约）→ 文案包；M25·G9/G10 | M25·G10 |
 | `image-reverse` v1 | 图片反推链（note） | 图片入库 → `image_analyze`（等比缩宽 ≤1280 临时编码含原图回退 + 多模态 LLM 逐图反推主体/风格/构图/光线/色板 → 可投产 image_prompt/negative_prompt，必审门控，产物 json+md 双资产 purpose=image_analysis）→ 文案包（标题/描述/话题/逐图配文）；原图只读不改，video-reverse 同源图片形态 | 同 video-reverse 反推方法论 |
-| `photo-montage` v1 | 素材混剪成片（other，M53） | 现成照片/视频 → 一支完整成片，**全程零 LLM 零付费**（婚宴大屏 / 纪念册 / 快闪成片类场景）；photos+clips 双输入按「照片在前」混排，引擎两段式混剪（M53）：逐段归一化（Ken Burns 缓推 alternate/in/out + 定长带音轨临时 mp4）→ 轻量拼接合成（fade 等转场、视频原声保留 keep_clip_audio 与配音/BGM 并存混音）；定长字幕 mode:fixed（标题/台词行零 LLM 计时）；每镜时长/帧率/分辨率/KB 模式经标量调参桥直连 run 输入，BGM 经合成设置上传；成片审阅闸（confirm 默认开） | M53（无外部技能，纯本地 ffmpeg） |
+| `photo-montage` v1 | 素材混剪成片（other，M53） | 现成照片/视频 → 一支完整成片，**全程零 LLM 零付费**（婚宴大屏 / 纪念册 / 快闪成片类场景）；photos+clips 双输入按「照片在前」混排，引擎两段式混剪（M53）：逐段归一化（Ken Burns 缓推 alternate/in/out + 定长带音轨临时 mp4）→ 轻量拼接合成（fade 等转场、视频原声保留 keep_clip_audio 与配音/BGM 并存混音）；定长字幕 mode:fixed（标题/台词行零 LLM 计时）；每镜时长/帧率/分辨率/KB 模式经标量调参桥直连 run 输入（分辨率/照片缓推动效为下拉单选，缓推项显中文含义如“缓推（由远及近）”），BGM 经合成设置上传；成片审阅闸（confirm 默认开） | M53（无外部技能，纯本地 ffmpeg） |
 
 **轻松创作专用模板**（`CREATION_TEMPLATE_KEYS`，仅由 `easy-create` 对话页在方案确认后内部调度，**不出现在「启动流水线」选卡**；它们是「纯执行已批准方案」的批准链载体：全步 `retry:0` + `strict_delivery`、不自动付费重试，`recipe` 钉死 `templateHash`/端点/素材来源供恢复校验）：
 

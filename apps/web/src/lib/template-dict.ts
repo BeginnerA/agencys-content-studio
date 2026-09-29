@@ -71,8 +71,8 @@ const KIND_DESC: Record<string, string> = {
   int: '整数（如：目标秒数、数量）',
   float: '小数（如：音量比例、倍速）',
   bool: '是 / 否 开关',
-  select: '从 options 候选项里单选（下拉框，如：风格、分辨率）',
-  multi_select: '从 options 候选项里多选（如：目标平台、标签）',
+  select: '从 options 候选项里单选（下拉框，如：风格、分辨率；可用 option_labels 配中文显示名）',
+  multi_select: '从 options 候选项里多选（如：目标平台、标签；可用 option_labels 配中文显示名）',
   date: '日期（YYYY-MM-DD，日期选择器）',
   files: '图片 / 音频等文件（可用 accept 限定格式）',
   publications: '勾选项目发布记录（复盘回灌专用，无需导 CSV）',
@@ -147,6 +147,11 @@ export const HELP_GROUPS: HelpGroup[] = [
         name: 'options',
         desc: 'kind 为 select / multi_select 时的候选项列表（必填，非空字符串数组）',
         example: '[抖音, 小红书, 视频号]',
+      },
+      {
+        name: 'option_labels',
+        desc: '候选项的中文显示名（可选，与 options 逐位对齐；仅供下拉展示，存储/校验仍用原值）',
+        example: '[缓推, 缓拉, 交替]',
       },
       {
         name: 'default',

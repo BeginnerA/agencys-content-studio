@@ -149,6 +149,10 @@ function selOf(k: string): string {
 function pickedOpts(k: string): string[] {
   return (props.values[k] as string[] | undefined) ?? []
 }
+/** 候选项显示名（option_labels 逐位对齐，缺省回落原值；取值仍是原值） */
+function optLabel(inp: TemplateInputDef, i: number, o: string): string {
+  return inp.option_labels?.[i] ?? o
+}
 function onText(k: string, e: Event) {
   emit('change', k, (e.target as HTMLTextAreaElement).value)
 }
@@ -254,7 +258,7 @@ function srcChip(k: string): string {
           @change="emit('change', inp.key, ($event.target as HTMLSelectElement).value)"
         >
           <option value="" :disabled="inp.required">（未选）</option>
-          <option v-for="o in inp.options ?? []" :key="o" :value="o">{{ o }}</option>
+          <option v-for="(o, oi) in inp.options ?? []" :key="o" :value="o">{{ optLabel(inp, oi, o) }}</option>
         </select>
       </label>
 
@@ -268,13 +272,13 @@ function srcChip(k: string): string {
           <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
         </div>
         <div class="picklist">
-          <label v-for="o in inp.options ?? []" :key="o" class="opt">
+          <label v-for="(o, oi) in inp.options ?? []" :key="o" class="opt">
             <input
               type="checkbox"
               :checked="pickedOpts(inp.key).includes(o)"
               @change="toggleOpt(inp.key, o)"
             />
-            <span>{{ o }}</span>
+            <span>{{ optLabel(inp, oi, o) }}</span>
           </label>
         </div>
       </div>

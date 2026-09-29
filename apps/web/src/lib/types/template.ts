@@ -6,6 +6,8 @@ export interface TemplateInputDef {
   accept?: string[]
   /** select / multi_select 的候选项列表 */
   options?: string[]
+  /** 候选项显示名（与 options 逐位对齐，仅供展示中文含义；取值仍用 options 原值） */
+  option_labels?: string[]
   default?: string | number | boolean | string[]
 }
 

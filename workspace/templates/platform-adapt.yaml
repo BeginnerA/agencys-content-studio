@@ -13,14 +13,17 @@ inputs:
     required: true
     accept: [.md, .txt]
   - key: platforms
-    label: 目标平台（逗号分隔，支持中英文名：公众号/小红书/知乎/头条/抖音/快手/视频号/B站）
-    kind: text
+    label: 目标平台（可多选）
+    kind: multi_select
     required: false
-    default: xiaohongshu
+    options: [公众号, 小红书, 知乎, 头条, 抖音, 快手, 视频号, B站]
+    default: [小红书]
   - key: content_type
-    label: 源稿形态（article/note/talking-head，影响视频平台匹配）
-    kind: text
+    label: 源稿形态（影响视频平台匹配）
+    kind: select
     required: false
+    options: [article, note, talking-head]
+    option_labels: [文章, 图文笔记, 口播视频脚本]
     default: note
   - key: protect_facts
     label: 事实保护（true=风险只标注；false=允许按建议替换 L3 风险并留痕）
@@ -28,9 +31,11 @@ inputs:
     required: false
     default: true
   - key: target_lang
-    label: 目标语言（ISO 639-1；zh=中文现状，en/ja/ko/es 等=适配稿以目标语言产出）
-    kind: text
+    label: 目标语言（zh=中文现状；其他=适配稿以目标语言产出）
+    kind: select
     required: false
+    options: [zh, en, ja, ko, es, fr, de]
+    option_labels: [中文（现状）, 英语, 日语, 韩语, 西班牙语, 法语, 德语]
     default: zh
   - key: with_compliance
     label: 适配稿合规审核（false=跳过；词库命中 block 级会拦截导出）

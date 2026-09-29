@@ -13,8 +13,9 @@ inputs:
     required: true
   - key: platform
     label: 主发布平台
-    kind: text
+    kind: select
     required: false
+    options: [公众号, 小红书, 知乎, 头条, 抖音, 快手, 视频号, B站]
     default: 抖音
   - key: episodes
     label: 规划集数（单集节奏规划总集数）

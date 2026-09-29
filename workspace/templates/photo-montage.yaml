@@ -27,8 +27,8 @@ inputs:
     accept: [.txt, .srt, .md]
   - { key: duration_per_shot, label: 每张照片停留秒数, kind: int, required: false, default: 4 }
   - { key: fps, label: 帧率（大屏建议 30）, kind: int, required: false, default: 30 }
-  - { key: resolution, label: 分辨率（横屏大屏 1920x1080；竖屏 1080x1920）, kind: text, required: false, default: 1920x1080 }
-  - { key: ken_burns, label: 照片缓推动效（none/in/out/alternate）, kind: text, required: false, default: alternate }
+  - { key: resolution, label: 分辨率, kind: select, required: false, options: [1920x1080, 1080x1920, 1080x1080, 720x1280], option_labels: ['1920×1080 横屏全高清（大屏首选）', '1080×1920 竖屏全高清（手机全屏）', '1080×1080 方屏（社媒 feed）', '720×1280 竖屏高清（轻渲染快出）'], default: 1920x1080 }
+  - { key: ken_burns, label: 照片缓推动效, kind: select, required: false, options: [none, in, out, alternate], option_labels: [无动效（静帧）, 缓推（由远及近）, 缓拉（由近及远）, 逐镜交替推拉（推荐）], default: alternate }
   - { key: keep_clip_audio, label: 保留视频片段原声, kind: bool, required: false, default: true }
   - { key: confirm, label: 成片人工审阅闸（取消勾选 = 免审直出）, kind: bool, required: false, default: true }
 steps:
