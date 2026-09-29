@@ -15,6 +15,8 @@ export interface Segment {
   explicit?: boolean
   /** 动效片：时长未知按 duration_per_shot 估算（日志溯源） */
   estimated?: boolean
+  /** M54 collage 拼贴段成员本地路径（path 恒 = paths[0]；仅 phase-1 消费，缺省 = 单图段） */
+  paths?: string[]
 }
 
 /**
@@ -76,6 +78,68 @@ export function computeShotSegments(
     }
   }
   return { segments, skipped, warnings }
+}
+
+/**
+ * M54 多图同屏拼贴分组（纯函数；探针直测）：single → 原样同引用（零 diff）；
+ * 仅连续图片段成组，视频段原样透传且充当组边界；拼屏段 durSec = durationPerShot、explicit=false。
+ *  - duo：相邻两图并排（奇数末段保持单图）；grid：四四合并（余 1 单、余 2/3 降级 duo/三拼）；
+ *  - auto：图片总数 <4 全单图；≥4 首尾单图 hero，中间每 3 张一组（不足 3 降级）。
+ */
+export function planCollageSegments(
+  segments: Segment[],
+  layout: 'single' | 'duo' | 'grid' | 'auto',
+  durationPerShot: number,
+): Segment[] {
+  if (layout === 'single') return segments
+  const isStill = (s: Segment) => s.kind === 'image'
+  const combine = (group: Segment[]): Segment =>
+    group.length === 1 ? group[0]! : {
+      id: group[0]!.id,
+      path: group[0]!.path,
+      paths: group.map((s) => s.path),
+      kind: 'image',
+      durSec: durationPerShot,
+      explicit: false,
+    }
+  // 分段：连续图片段游程与视频段交替
+  const out: Segment[] = []
+  let i = 0
+  const flushRun = (run: Segment[]): void => {
+    if (layout === 'duo') {
+      for (let j = 0; j < run.length; j += 2) out.push(combine(run.slice(j, j + 2)))
+      return
+    }
+    if (layout === 'grid') {
+      for (let j = 0; j < run.length; j += 4) {
+        const chunk = run.slice(j, j + 4)
+        // 余 1 保持单图；余 2/3 降级 duo/三拼（combine 统一成段）
+        if (chunk.length === 1) out.push(chunk[0]!)
+        else out.push(combine(chunk))
+      }
+      return
+    }
+    // auto：全量游程上首尾 hero + 中间三三组（调用方按总图数 <4 先短路）
+    if (run.length < 4) { out.push(...run); return }
+    out.push(run[0]!)
+    const mid = run.slice(1, -1)
+    for (let j = 0; j < mid.length; j += 3) {
+      const chunk = mid.slice(j, j + 3)
+      if (chunk.length === 1) out.push(chunk[0]!)
+      else out.push(combine(chunk))
+    }
+    out.push(run[run.length - 1]!)
+  }
+  while (i < segments.length) {
+    if (!isStill(segments[i]!)) { out.push(segments[i]!); i++; continue }
+    let j = i
+    while (j < segments.length && isStill(segments[j]!)) j++
+    const run = segments.slice(i, j)
+    if (layout === 'auto' && run.length < 4) out.push(...run)
+    else flushRun(run)
+    i = j
+  }
+  return out
 }
 
 /** 图像检测异常警示（params.quality.ok === false；缺失/坏数据 → null） */

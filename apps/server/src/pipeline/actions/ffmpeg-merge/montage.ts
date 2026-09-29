@@ -1,23 +1,26 @@
 /**
- * 混剪态（M53 photo-montage）：两段式合成的 phase-1 与触发判定。
+ * 混剪态（M53 photo-montage + M54 智能增强）：两段式合成的 phase-1 与触发判定。
  * - 触发（montageEnabled 纯函数）：params.montage=true / 镜头序列混排（图+视并存）/
- *   keep_clip_audio=true / ken_burns≠none；strict_delivery 下恒 false（批准链逐字节红线）。
+ *   keep_clip_audio=true / ken_burns≠none（M54 含 auto）；strict_delivery 下恒 false（批准链逐字节红线）。
  * - phase-1（normalizeSegmentsToClips）：逐段归一化为「定长 + 同尺寸/fps + 必带音轨」的临时 mp4——
  *   图片段 zoompan（Ken Burns，单帧产出 d=fps×dur）或定长静帧 + anullsrc 静音轨；
  *   视频段 trim/tpad 精确截长 + 原声（缺 a 流探测后 anullsrc 兜底）。
+ * - M54：kb:auto 按照片横竖比定缓推/缓拉方向；构图锚点（LLM composition 分类）偏置 zoompan x/y；
+ *   collage 拼贴段（seg.paths 多成员）先 xstack 成整屏再走同一归一链；BGM 库内选曲 pickBgm 纯函数。
  * - phase-2 由 buildComposeArgs({ montage: true }) 消费：段全部按 -i 直读 + 轻滤镜，
  *   per-seg [i:a] 拼为连续现场轨参与既有 BGM/SFX 混音收口。
- * 零 diff 红线：未触发混剪 → index 不进本模块，legacy 单段链逐字节不变。
+ * 零 diff 红线：未触发混剪 → index 不进本模块，legacy 单段链逐字节不变；
+ *   M54 新键缺省（kb 非 auto / 无 paths / 无 anchor）→ 表达式与 args 逐字节 = M53。
  */
 import { spawnSync } from 'node:child_process'
-import { unlinkSync } from 'node:fs'
+import { readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveFfprobe } from '../../../services/ffmpeg'
 import { round3 } from './util'
 import type { Segment } from './segments'
 import type { StepContext } from '../../context'
 
-export type KenBurns = 'none' | 'in' | 'out' | 'alternate'
+export type KenBurns = 'none' | 'in' | 'out' | 'alternate' | 'auto'
 
 /** 混剪触发判定（纯函数；探针直测真值表） */
 export function montageEnabled(params: Record<string, unknown>, opts: { hasMixed: boolean; hasVideoSeg: boolean; strict: boolean }): boolean {
@@ -44,11 +47,117 @@ export function probeHasAudioStream(file: string): boolean | null {
   }
 }
 
-/** Ken Burns 方向（alternate：偶数镜推近、奇数镜拉远；下标从 0 计） */
-export function kbDirectionFor(mode: KenBurns, index: number): 'in' | 'out' | null {
+/** kb:auto 方向提示：图片实测宽高（缺一维 → null 宽容推近） */
+export interface KbHint { w: number | null; h: number | null }
+/** zoompan 锚点权重（1 = 现行居中形态；x 0.7 偏左/1.3 偏右，y 同理） */
+export interface KbAnchor { xw: number; yw: number }
+
+/** Ken Burns 方向（alternate：偶数镜推近、奇数镜拉远，下标从 0 计；auto：横图/方形推近、竖图拉远） */
+export function kbDirectionFor(mode: KenBurns, index: number, hint?: KbHint): 'in' | 'out' | null {
   if (mode === 'in' || mode === 'out') return mode
   if (mode === 'alternate') return index % 2 === 0 ? 'in' : 'out'
+  if (mode === 'auto') {
+    if (!hint || hint.w === null || hint.h === null || hint.h <= 0) return 'in'
+    const ratio = hint.w / hint.h
+    // 阈值对称带：横图（≥1.05）缓推沉浸、竖图（≤1/1.05）缓拉舒展、方形/近方推近
+    return ratio >= 1.05 || ratio <= 1 / 1.05 ? (ratio >= 1.05 ? 'in' : 'out') : 'in'
+  }
   return null
+}
+
+/** LLM composition 文本 → 主体方位三分（纯函数；关键词中英文容错，无法判定 → center） */
+export function classifyAnchor(text: string | null | undefined): 'left' | 'right' | 'center' {
+  const t = (text ?? '').toLowerCase()
+  if (!t) return 'center'
+  const left = /左|偏左|left/.test(t)
+  const right = /右|偏右|right/.test(t)
+  if (left && !right) return 'left'
+  if (right && !left) return 'right'
+  return 'center'
+}
+
+/** 方向 + 主体方位 → zoompan 锚点权重（纯函数）：center/无信息 → null（现行居中公式逐字节）；
+ *  in 推向主体侧（权重向主体收敛 0.7/1.3）、out 由主体拉远（反向 1.3/0.7） */
+export function kbAnchorFor(dir: 'in' | 'out', subject: 'left' | 'right' | 'center'): KbAnchor | null {
+  if (subject === 'center') return null
+  const toward = dir === 'in' ? 0.7 : 1.3
+  const away = dir === 'in' ? 1.3 : 0.7
+  return subject === 'left' ? { xw: toward, yw: 1 } : { xw: away, yw: 1 }
+}
+
+/** 多成员 composition → 主体方位多数决（纯函数）：左/右严格多数才偏移，平票/无信息 → center */
+export function voteSubject(texts: Array<string | null | undefined>): 'left' | 'right' | 'center' {
+  let left = 0
+  let right = 0
+  for (const t of texts) {
+    const c = classifyAnchor(t)
+    if (c === 'left') left++
+    else if (c === 'right') right++
+  }
+  if (left > right) return 'left'
+  if (right > left) return 'right'
+  return 'center'
+}
+
+/** 图片实测宽高（ffprobe 唯一事实源：source 图片资产 width/height 不保证填充）；失败 → null 宽容 */
+export function probeImageSize(file: string): { w: number; h: number } | null {
+  const ffprobe = resolveFfprobe()
+  if (!ffprobe) return null
+  try {
+    const r = spawnSync(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file],
+      { encoding: 'utf8', timeout: 10_000, windowsHide: true })
+    if (r.error || r.status !== 0) return null
+    const m = /^(\d+)x(\d+)\s*$/.exec(String(r.stdout ?? '').trim())
+    if (!m) return null
+    const w = Number(m[1]); const h = Number(m[2])
+    return w > 0 && h > 0 ? { w, h } : null
+  } catch {
+    return null
+  }
+}
+
+/** BGM 候选（库内自动选曲输入；durationSec null = 探测失败，排最后） */
+export interface BgmCandidate { id: number; path: string; durationSec: number | null; updatedAt: number }
+
+/** 选曲规则（纯函数）：时长 ≥ 片长优先 → 其中与片差最小 → updated_at desc 稳定序；0 候选 → null */
+export function pickBgm(candidates: BgmCandidate[], totalSec: number): BgmCandidate | null {
+  if (candidates.length === 0) return null
+  const scored = candidates.map((c, i) => ({ c, i }))
+  scored.sort((a, b) => {
+    const sa = a.c.durationSec; const sb = b.c.durationSec
+    const fa = sa !== null && sa >= totalSec ? 0 : 1
+    const fb = sb !== null && sb >= totalSec ? 0 : 1
+    if (fa !== fb) return fa - fb
+    if (fa === 0) return (sa! - totalSec) - (sb! - totalSec)
+    const da = sa === null ? Infinity : Math.abs(sa - totalSec)
+    const db = sb === null ? Infinity : Math.abs(sb - totalSec)
+    if (da !== db) return da - db
+    return b.c.updatedAt - a.c.updatedAt
+  })
+  return scored[0]!.c
+}
+
+/** MONTAGE_BGM_DIR 曲库目录扫描（mp3/m4a/wav/flac 普通文件）；env 未设/目录不存在 → []（不抛错） */
+export function scanBgmLibrary(dir: unknown): Array<{ name: string; abs: string }> {
+  if (typeof dir !== 'string' || !dir.trim()) return []
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return []
+  }
+  const out: Array<{ name: string; abs: string }> = []
+  for (const name of entries.sort()) {
+    if (!/\.(mp3|m4a|wav|flac)$/i.test(name)) continue
+    const abs = join(dir, name)
+    try {
+      if (!statSync(abs).isFile()) continue
+    } catch {
+      continue
+    }
+    out.push({ name, abs })
+  }
+  return out
 }
 
 /** 归一化目标尺寸与图段超采样底尺寸（×2 冗余抑制 zoompan 亚像素抖动） */
@@ -56,12 +165,15 @@ export function normalizeSizes(width: number, height: number): { ssW: number; ss
   return { ssW: width * 2, ssH: height * 2 }
 }
 
-/** phase-1 单段归一 args（纯函数；探针直测 filter 形状）：产物定长 dur + 同尺寸/fps + 必带音轨 */
+/** phase-1 单段归一 args（纯函数；探针直测 filter 形状）：产物定长 dur + 同尺寸/fps + 必带音轨；
+ *  seg.paths 多成员（M54 collage）→ 先各路等分裁切 xstack 成整屏再走同一归一链；
+ *  anchor 缺省/null → zoompan x/y 现行居中公式逐字节 */
 export function buildNormalizeArgs(seg: Segment, opts: {
   width: number
   height: number
   fps: number
   kb: 'in' | 'out' | null
+  anchor?: KbAnchor | null
   clipHasAudio: boolean | null
   outAbs: string
 }): string[] {
@@ -75,6 +187,11 @@ export function buildNormalizeArgs(seg: Segment, opts: {
     '-t', String(dur), '-movflags', '+faststart', opts.outAbs]
 
   if (seg.kind === 'image') {
+    // zoompan 锚点：权重 1 时表达式逐字节 = M53 现行居中形态；非 1 插乘数（0.7 偏左/1.3 偏右）
+    const xw = opts.anchor?.xw ?? 1
+    const yw = opts.anchor?.yw ?? 1
+    const xExpr = xw === 1 ? `x='iw-iw/zoom'` : `x='(iw-iw/zoom)*${round3(xw)}'`
+    const yExpr = yw === 1 ? `y='ih-ih/zoom'` : `y='(ih-ih/zoom)*${round3(yw)}'`
     // 单帧产出：不 -loop；kb 分支 zoompan d=帧数一次出满段；定帧分支 -frames:v 1 出单帧
     //（两相均物化为视频段入 phase-2；phase-2 montage 对超短段用 tpad clone 撑回 dur，见 args.ts）
     const vChain = kb
@@ -83,10 +200,46 @@ export function buildNormalizeArgs(seg: Segment, opts: {
           const step = round3(0.25 / frames)
           const z = kb === 'in' ? `min(1+${step}*on,1.25)` : `max(1.25-${step}*on,1)`
           return `scale=${ssW}:${ssH}:force_original_aspect_ratio=increase,crop=${ssW}:${ssH},`
-            + `zoompan=z='${z}':d=${frames}:x='iw-iw/zoom':y='ih-ih/zoom':s=${width}x${height},`
+            + `zoompan=z='${z}':d=${frames}:${xExpr}:${yExpr}:s=${width}x${height},`
             + `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p`
         })()
       : `${geometry},setsar=1,fps=${fps},format=yuv420p`
+    const members = seg.paths && seg.paths.length > 1 ? seg.paths : null
+    if (members) {
+      // M54 collage 拼贴段：N 路 -i → 各路等分 cell 裁切 → xstack 整屏 → 接既有 zoompan/定帧链
+      const n = members.length
+      const cols = n >= 4 ? 2 : 1
+      const rowsN = Math.ceil(n / cols)
+      const cellW = Math.floor(width / cols / 2) * 2
+      const cellH = Math.floor(height / rowsN / 2) * 2
+      const cellGeo = `scale=${cellW}:${cellH}:force_original_aspect_ratio=increase,crop=${cellW}:${cellH}`
+      // xstack 布局表：duo 横排、四宫格 2x2、3 张上排两张 + 下排居左（不足区域黑底，整屏后再裁）
+      const layoutStr = n === 2 ? '0_0|w0_0' : n === 3 ? '0_0|w0_0|0_h0' : '0_0|w0_0|0_h0|w0_h0'
+      const stacked = cols === 1
+        ? Array.from({ length: n }, (_, i) => `[${i}:v]${cellGeo}[c${i}]`).join(';')
+          + `;${Array.from({ length: n }, (_, i) => `[c${i}]`).join('')}vstack=inputs=${n}[tile]`
+        : Array.from({ length: n }, (_, i) => `[${i}:v]${cellGeo}[c${i}]`).join(';')
+          + `;${Array.from({ length: n }, (_, i) => `[c${i}]`).join('')}xstack=inputs=${n}:layout=${layoutStr}[tile]`
+      const fullChain = `[tile]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1${kb ? '' : `,fps=${fps},format=yuv420p`}[pre]`
+      const kbFromTile = kb
+        ? (() => {
+            const step = round3(0.25 / frames)
+            const z = kb === 'in' ? `min(1+${step}*on,1.25)` : `max(1.25-${step}*on,1)`
+            return `[tile]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},zoompan=z='${z}':d=${frames}:${xExpr}:${yExpr}:s=${width}x${height},crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[pre]`
+          })()
+        : fullChain
+      const audioIdx = n
+      return [
+        '-y',
+        ...members.flatMap((p) => ['-i', p]),
+        '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo:d=${dur}`,
+        '-filter_complex',
+        `${stacked};${kbFromTile}[v];[${audioIdx}:a]${aTail},atrim=duration=${dur}[a]`,
+        '-map', '[v]', '-map', '[a]',
+        ...(kb ? [] : ['-frames:v', '1']),
+        ...encTail,
+      ]
+    }
     return [
       '-y', '-i', seg.path,
       '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo:d=${dur}`,
@@ -122,23 +275,39 @@ export function buildNormalizeArgs(seg: Segment, opts: {
   ]
 }
 
-/** phase-1 执行：逐段归一化 → 新 segments（kind 统一 'video'、path=临时 mp4；临时件返回 cleanup） */
+/** phase-1 执行：逐段归一化 → 新 segments（kind 统一 'video'、path=临时 mp4、collage 段成员计数随 origPaths 留存；临时件返回 cleanup）。
+ *  kb=auto 逐段 resolveHint 实测宽高定方向；anchors 供构图锚点偏置（缺省 null → 居中公式逐字节） */
 export async function normalizeSegmentsToClips(
   ctx: StepContext,
   ffmpeg: string,
   segments: Segment[],
-  opts: { width: number; height: number; fps: number; kb: KenBurns; outDir: string },
-): Promise<{ segments: Segment[]; temps: string[] }> {
+  opts: {
+    width: number
+    height: number
+    fps: number
+    kb: KenBurns
+    outDir: string
+    resolveHint?: (seg: Segment) => KbHint | null
+    anchors?: Array<KbAnchor | null | undefined>
+  },
+): Promise<{ segments: Segment[]; temps: string[]; collageSegments: number; kbApplied: number }> {
   const stamp = Date.now()
   const out: Segment[] = []
   const temps: string[] = []
+  let collageSegments = 0
+  let kbApplied = 0
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
     const tmp = join(opts.outDir, `.mseg-${ctx.run.id}-${ctx.step.id}-${i}-${stamp}.mp4`)
-    const kb = seg.kind === 'image' ? kbDirectionFor(opts.kb, i) : null
+    // M54 auto：逐段按实测宽高定方向（resolveHint 缺失/探测失败 → null 宽容推近）
+    const hint = seg.kind === 'image' && opts.kb === 'auto' ? opts.resolveHint?.(seg) ?? null : null
+    const kb = seg.kind === 'image' ? kbDirectionFor(opts.kb, i, hint ?? undefined) : null
+    const anchor = kb ? opts.anchors?.[i] ?? null : null
     const clipHasAudio = seg.kind === 'video' ? probeHasAudioStream(seg.path) : null
-    const args = buildNormalizeArgs(seg, { width: opts.width, height: opts.height, fps: opts.fps, kb, clipHasAudio, outAbs: tmp })
-    ctx.log(`混剪归一化 ${i + 1}/${segments.length}（${seg.kind === 'image' ? `图片段${kb ? ` + Ken Burns ${kb}` : ''}` : `视频段${clipHasAudio === false ? '（无原声，补静音）' : ''}`}）：${seg.durSec}s`)
+    if (kb) kbApplied++
+    if (seg.paths && seg.paths.length > 1) collageSegments++
+    const args = buildNormalizeArgs(seg, { width: opts.width, height: opts.height, fps: opts.fps, kb, anchor, clipHasAudio, outAbs: tmp })
+    ctx.log(`混剪归一化 ${i + 1}/${segments.length}（${seg.kind === 'image' ? `${seg.paths && seg.paths.length > 1 ? `拼贴段 x${seg.paths.length}` : '图片段'}${kb ? ` + Ken Burns ${opts.kb === 'auto' ? `auto→${kb}` : kb}` : ''}` : `视频段${clipHasAudio === false ? '（无原声，补静音）' : ''}`}）：${seg.durSec}s`)
     try {
       const r = spawnSync(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'], timeout: 600_000, windowsHide: true })
       if (r.status !== 0) {
@@ -152,5 +321,5 @@ export async function normalizeSegmentsToClips(
     temps.push(tmp)
     out.push({ id: seg.id, path: tmp, kind: 'video', durSec: seg.durSec, explicit: seg.explicit })
   }
-  return { segments: out, temps }
+  return { segments: out, temps, collageSegments, kbApplied }
 }
