@@ -41,6 +41,7 @@ export function kindText(k: string): string {
 export function fmtDefault(v: unknown): string {
   if (v === undefined || v === null || v === '') return '—'
   if (typeof v === 'boolean') return v ? 'true' : 'false'
+  if (Array.isArray(v)) return v.length ? v.join(' / ') : '—'
   return String(v)
 }
 

@@ -8,11 +8,24 @@
 export interface TemplateInputDef {
   key: string
   label?: string
-  kind: 'text' | 'files' | 'int' | 'bool' | 'publications'
+  kind: 'text' | 'files' | 'int' | 'float' | 'bool' | 'select' | 'multi_select' | 'date' | 'publications'
   required: boolean
   accept?: string[]
-  /** 启动时用户未传则回填（落库前完成；UI 表单预填同源） */
-  default?: string | number | boolean
+  /** select / multi_select 的候选项列表（这两种 kind 必填且为非空字符串数组） */
+  options?: string[]
+  /** 启动时用户未传则回填（落库前完成；UI 表单预填同源；multi_select 默认为字符串数组） */
+  default?: string | number | boolean | string[]
+}
+
+/** 日期输入（kind=date）存储格式：YYYY-MM-DD（loader/refs/run-create 三处消费共用，防正则漂移） */
+export const DATE_INPUT_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** 日历级合法性（闰年/大小月）：正则过形后真 Date 回读校验 */
+export function isValidDateInput(s: unknown): boolean {
+  if (typeof s !== 'string' || !DATE_INPUT_RE.test(s)) return false
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y!, m! - 1, d!))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m! - 1 && dt.getUTCDate() === d
 }
 
 export interface TemplateGate {

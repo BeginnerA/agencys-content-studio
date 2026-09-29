@@ -81,9 +81,9 @@ function safeJsonObject(raw: string | null): Record<string, unknown> | null {
   }
 }
 
-/** 按输入 kind 归一标量值（int→number、bool→boolean、其余→string） */
+/** 按输入 kind 归一标量值（int/float→number、bool→boolean、其余→string；multi_select 数组值由 usableScalar 拦在预填之外） */
 function coerce(v: unknown, inp: TemplateInputDef): string | number | boolean {
-  if (inp.kind === 'int') {
+  if (inp.kind === 'int' || inp.kind === 'float') {
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }

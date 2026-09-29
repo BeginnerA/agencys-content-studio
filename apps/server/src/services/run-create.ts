@@ -8,6 +8,7 @@ import { pipelineRuns, type PipelineRun } from '../db/schema'
 import { loadTemplate } from '../pipeline/loader'
 import { validateRunInput } from '../pipeline/refs'
 import type { Template, TemplateInputDef } from '../pipeline/types'
+import { isValidDateInput } from '../pipeline/types'
 import { isCreationTemplate } from './creation-chat/recipe'
 import { SUBTITLE_EDITS_KEY } from './rework/ledger'
 import { RunParamsError, normalizeRunParamsOrThrow, type RunParams } from './run-params'
@@ -108,7 +109,7 @@ export function stripResumeSubtitleEdits(inputJson: string): string {
   }
 }
 
-/** 按模板 inputs 声明归一化：int 转 number、bool 转 boolean、files 保持 id 数组、text 收 string */
+/** 按模板 inputs 声明归一化：int/float 转 number、bool 转 boolean、files 保持 id 数组、multi_select 收敛字符串数组、text/select/date 收 string */
 function normalizeInput(defs: TemplateInputDef[], raw: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const def of defs) {
@@ -117,6 +118,10 @@ function normalizeInput(defs: TemplateInputDef[], raw: Record<string, unknown>):
     if (def.kind === 'int') {
       const n = typeof v === 'number' ? v : Number(v)
       if (!Number.isInteger(n)) throw new InvalidRunInputError('bad_input', `input.${def.key} 需为整数`)
+      out[def.key] = n
+    } else if (def.kind === 'float') {
+      const n = typeof v === 'number' ? v : Number(v)
+      if (!Number.isFinite(n)) throw new InvalidRunInputError('bad_input', `input.${def.key} 需为数字`)
       out[def.key] = n
     } else if (def.kind === 'bool') {
       if (typeof v === 'boolean') out[def.key] = v
@@ -136,6 +141,15 @@ function normalizeInput(defs: TemplateInputDef[], raw: Record<string, unknown>):
         throw new InvalidRunInputError('bad_input', `input.${def.key} 需为发布记录 id 数组`)
       }
       out[def.key] = ids
+    } else if (def.kind === 'multi_select') {
+      // 候选项多选：数组直取；兼容批量 JSON 粘贴/排产表单的逗号分隔字符串写法
+      const opts = (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,，]/) : null)
+      if (!opts) throw new InvalidRunInputError('bad_input', `input.${def.key} 需为选项字符串数组`)
+      out[def.key] = opts.map((s) => String(s).trim()).filter(Boolean)
+    } else if (def.kind === 'date') {
+      const s = typeof v === 'string' ? v.trim() : String(v)
+      if (!isValidDateInput(s)) throw new InvalidRunInputError('bad_input', `input.${def.key} 需为日期（YYYY-MM-DD）`)
+      out[def.key] = s
     } else {
       out[def.key] = typeof v === 'string' ? v : JSON.stringify(v)
     }

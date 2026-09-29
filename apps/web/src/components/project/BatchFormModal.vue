@@ -48,6 +48,7 @@ function makeRow(): Record<string, unknown> {
     if (inp.kind === 'int') row[inp.key] = d ?? ''
     else if (inp.kind === 'bool') row[inp.key] = d === true
     else if (inp.kind === 'files') row[inp.key] = []
+    else if (inp.kind === 'multi_select') row[inp.key] = Array.isArray(d) ? [...d] : []
     else row[inp.key] = d ?? ''
   }
   return row
@@ -181,8 +182,10 @@ async function submit() {
         return
       }
       if (inp.kind === 'int') input[inp.key] = Number(v)
+      else if (inp.kind === 'float') input[inp.key] = Number(v)
       else if (inp.kind === 'bool') input[inp.key] = v === true
       else if (inp.kind === 'files') input[inp.key] = (v as number[]) ?? []
+      else if (inp.kind === 'multi_select') input[inp.key] = (v as string[]) ?? []
       else input[inp.key] = v ?? ''
     }
     inputs.push(input)

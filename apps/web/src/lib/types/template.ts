@@ -1,10 +1,12 @@
 export interface TemplateInputDef {
   key: string
   label: string
-  kind: 'text' | 'int' | 'bool' | 'files' | 'publications'
+  kind: 'text' | 'int' | 'float' | 'bool' | 'select' | 'multi_select' | 'date' | 'files' | 'publications'
   required: boolean
   accept?: string[]
-  default?: string | number | boolean
+  /** select / multi_select 的候选项列表 */
+  options?: string[]
+  default?: string | number | boolean | string[]
 }
 
 export interface TemplateGate {

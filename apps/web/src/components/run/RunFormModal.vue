@@ -124,6 +124,7 @@ async function selectTemplate(key: string) {
       else if (inp.kind === 'bool') form.value[inp.key] = d === true
       else if (inp.kind === 'files') form.value[inp.key] = []
       else if (inp.kind === 'publications') form.value[inp.key] = []
+      else if (inp.kind === 'multi_select') form.value[inp.key] = Array.isArray(d) ? [...d] : []
       else form.value[inp.key] = d ?? ''
     }
     // G6 输入预填（历史 run + brief）+ G8 视频合法档位；失败非致命→回落模板默认
@@ -190,9 +191,11 @@ async function submit() {
       return
     }
     if (inp.kind === 'int') input[inp.key] = Number(v)
+    else if (inp.kind === 'float') input[inp.key] = Number(v)
     else if (inp.kind === 'bool') input[inp.key] = v === true
     else if (inp.kind === 'files') input[inp.key] = (v as number[]) ?? []
     else if (inp.kind === 'publications') input[inp.key] = (v as number[]) ?? []
+    else if (inp.kind === 'multi_select') input[inp.key] = (v as string[]) ?? []
     else input[inp.key] = v ?? ''
   }
   // 集级参数覆盖（非空才附 _params；服务端白名单校验 + clamp，非法会 400）

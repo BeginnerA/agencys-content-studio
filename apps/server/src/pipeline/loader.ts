@@ -4,6 +4,7 @@ import { parse as parseYaml } from 'yaml'
 import { PROMPTS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import type { Template, TemplateInputDef, TemplateMeta, TemplateStepDef } from './types'
+import { isValidDateInput } from './types'
 import { parseWhenExpr, whenRefs } from './refs'
 
 const log = createLogger('loader')
@@ -68,7 +69,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
     throw new Error(`模板「${name}」(${key}.yaml) 非法：${msg}`)
   }
   if (!Array.isArray(raw.steps) || raw.steps.length === 0) fail('steps 缺失或为空')
-  // inputs 声明深校验（kind 合法集 + default 类型与 kind 一致）
+  // inputs 声明深校验（kind 合法集 + options 约束 + default 类型与 kind 一致）
   const inputDefs: TemplateInputDef[] = []
   const declaredInputs = new Set<string>()
   if (raw.inputs !== undefined) {
@@ -77,17 +78,35 @@ function validate(raw: Record<string, unknown>, key: string): Template {
       const ik = d['key']
       if (typeof ik !== 'string' || !ik) fail('inputs 存在缺 key 的项')
       const kind = d['kind']
-      if (!['text', 'files', 'int', 'bool', 'publications'].includes(String(kind))) {
-        return fail(`输入 ${ik} 的 kind「${kind}」非法（支持 text/files/int/bool/publications）`)
+      if (!['text', 'files', 'int', 'float', 'bool', 'select', 'multi_select', 'date', 'publications'].includes(String(kind))) {
+        return fail(`输入 ${ik} 的 kind「${kind}」非法（支持 text/files/int/float/bool/select/multi_select/date/publications）`)
       }
       if (d['required'] !== undefined && typeof d['required'] !== 'boolean') {
         return fail(`输入 ${ik} 的 required 需为布尔`)
       }
+      // select / multi_select 候选项：非空字符串数组且选项不重复
+      let options: string[] | undefined
+      if (kind === 'select' || kind === 'multi_select') {
+        if (!Array.isArray(d['options']) || d['options'].length === 0 || d['options'].some((o) => typeof o !== 'string' || !o.trim())) {
+          return fail(`输入 ${ik}（kind: ${kind}）的 options 需为非空字符串数组`)
+        }
+        options = d['options'] as string[]
+        if (new Set(options).size !== options.length) return fail(`输入 ${ik} 的 options 存在重复选项`)
+      } else if (d['options'] !== undefined) {
+        return fail(`输入 ${ik} 声明了 options 但 kind(${kind}) 不支持（仅 select/multi_select）`)
+      }
       const dv = d['default']
       if (dv !== undefined) {
         const typeOk =
-          kind === 'bool' ? typeof dv === 'boolean' : kind === 'int' ? typeof dv === 'number' : typeof dv === 'string'
+          kind === 'bool' ? typeof dv === 'boolean'
+          : kind === 'int' ? typeof dv === 'number' && Number.isInteger(dv)
+          : kind === 'float' ? typeof dv === 'number' && Number.isFinite(dv)
+          : kind === 'multi_select' ? Array.isArray(dv) && dv.every((x) => typeof x === 'string')
+          : typeof dv === 'string'
         if (!typeOk) return fail(`输入 ${ik} 的 default 类型与 kind(${kind}) 不一致`)
+        if (kind === 'select' && !options!.includes(dv as string)) return fail(`输入 ${ik} 的 default「${String(dv)}」不在 options 候选项内`)
+        if (kind === 'multi_select' && (dv as string[]).some((x) => !options!.includes(x))) return fail(`输入 ${ik} 的 default 含不在 options 候选项内的选项`)
+        if (kind === 'date' && !isValidDateInput(dv)) return fail(`输入 ${ik} 的 default 需为合法日期（YYYY-MM-DD）`)
       }
       inputDefs.push({
         key: ik as string,
@@ -95,6 +114,7 @@ function validate(raw: Record<string, unknown>, key: string): Template {
         kind: kind as TemplateInputDef['kind'],
         required: d['required'] === true,
         accept: Array.isArray(d['accept']) ? (d['accept'] as string[]) : undefined,
+        options,
         default: dv as TemplateInputDef['default'],
       })
       declaredInputs.add(ik as string)

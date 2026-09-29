@@ -140,6 +140,15 @@ function numOf(k: string): string {
 function picked(k: string): number[] {
   return (props.values[k] as number[] | undefined) ?? []
 }
+/** select/date 的字符串受控值（复用 text 取值链；非字符串视为未选） */
+function selOf(k: string): string {
+  const v = props.values[k]
+  return typeof v === 'string' ? v : ''
+}
+/** multi_select 已选候选项 */
+function pickedOpts(k: string): string[] {
+  return (props.values[k] as string[] | undefined) ?? []
+}
 function onText(k: string, e: Event) {
   emit('change', k, (e.target as HTMLTextAreaElement).value)
 }
@@ -151,6 +160,14 @@ function toggleAsset(k: string, id: number) {
   const i = arr.indexOf(id)
   if (i >= 0) arr.splice(i, 1)
   else arr.push(id)
+  emit('change', k, arr)
+}
+/** multi_select 勾选/取消候选项（字符串版 toggleAsset） */
+function toggleOpt(k: string, opt: string) {
+  const arr = [...pickedOpts(k)]
+  const i = arr.indexOf(opt)
+  if (i >= 0) arr.splice(i, 1)
+  else arr.push(opt)
   emit('change', k, arr)
 }
 
@@ -214,6 +231,60 @@ function srcChip(k: string): string {
         <input
           type="number"
           :value="numOf(inp.key)"
+          @input="onNum(inp.key, $event)"
+        />
+      </label>
+
+      <label v-else-if="inp.kind === 'float'" class="fld">
+        {{ inp.label }} <span v-if="inp.required" class="req">*</span>
+        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <input
+          type="number"
+          step="any"
+          :value="numOf(inp.key)"
+          @input="onNum(inp.key, $event)"
+        />
+      </label>
+
+      <label v-else-if="inp.kind === 'select'" class="fld">
+        {{ inp.label }} <span v-if="inp.required" class="req">*</span>
+        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <select
+          :value="selOf(inp.key)"
+          @change="emit('change', inp.key, ($event.target as HTMLSelectElement).value)"
+        >
+          <option value="" :disabled="inp.required">（未选）</option>
+          <option v-for="o in inp.options ?? []" :key="o" :value="o">{{ o }}</option>
+        </select>
+      </label>
+
+      <div v-else-if="inp.kind === 'multi_select'" class="fld">
+        <div class="tlabel">
+          {{ inp.label }}
+          <span class="req-badge" :class="inp.required ? 'must' : 'opt'">{{
+            inp.required ? '必填' : '选填'
+          }}</span>
+          <span class="muted">（选 {{ pickedOpts(inp.key).length }} 项）</span>
+          <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        </div>
+        <div class="picklist">
+          <label v-for="o in inp.options ?? []" :key="o" class="opt">
+            <input
+              type="checkbox"
+              :checked="pickedOpts(inp.key).includes(o)"
+              @change="toggleOpt(inp.key, o)"
+            />
+            <span>{{ o }}</span>
+          </label>
+        </div>
+      </div>
+
+      <label v-else-if="inp.kind === 'date'" class="fld">
+        {{ inp.label }} <span v-if="inp.required" class="req">*</span>
+        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <input
+          type="date"
+          :value="selOf(inp.key)"
           @input="onNum(inp.key, $event)"
         />
       </label>

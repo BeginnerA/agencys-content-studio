@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, pipelineSteps } from '../db/schema'
 import type { Template } from './types'
-import { RefResolveError } from './types'
+import { RefResolveError, isValidDateInput } from './types'
 
 /**
  * 引用解析器（spec §5.2，engine 内置 ~100 行）。
@@ -279,8 +279,21 @@ export function validateRunInput(tpl: Template, input: Record<string, unknown>):
     if (def.kind === 'int' && !Number.isInteger(v)) {
       throw new Error(`输入「${def.label ?? def.key}」需为整数`)
     }
+    if (def.kind === 'float' && !(typeof v === 'number' && Number.isFinite(v))) {
+      throw new Error(`输入「${def.label ?? def.key}」需为数字`)
+    }
     if (def.kind === 'bool' && typeof v !== 'boolean') {
       throw new Error(`输入「${def.label ?? def.key}」需为布尔（true/false）`)
+    }
+    if (def.kind === 'date' && !isValidDateInput(v)) {
+      throw new Error(`输入「${def.label ?? def.key}」需为日期（YYYY-MM-DD）`)
+    }
+    // 候选项收敛（fail-fast 不 clamp）：非 options 内的值属非法输入，与 int/bool 同口径拒绝
+    if (def.kind === 'select' && (typeof v !== 'string' || !def.options?.includes(v))) {
+      throw new Error(`输入「${def.label ?? def.key}」取值需在候选项内（${def.options?.join(' / ')}）`)
+    }
+    if (def.kind === 'multi_select' && (!Array.isArray(v) || !v.every((x) => typeof x === 'string' && def.options?.includes(x)))) {
+      throw new Error(`输入「${def.label ?? def.key}」需为候选项数组（可选：${def.options?.join(' / ')}）`)
     }
   }
   // 防未知键注入

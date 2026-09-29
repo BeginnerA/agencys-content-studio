@@ -210,10 +210,13 @@ function serializeInputRow(
     if (def.kind === 'int') {
       const n = typeof v === 'number' ? v : Number(v)
       if (Number.isInteger(n)) out[def.key] = n
+    } else if (def.kind === 'float') {
+      const n = typeof v === 'number' ? v : Number(v)
+      if (Number.isFinite(n)) out[def.key] = n
     } else if (def.kind === 'bool') {
       out[def.key] = v === true || v === 'true'
-    } else if (def.kind === 'files') {
-      // files: 逗号分隔的 id 字符串 → 数字数组
+    } else if (def.kind === 'files' || def.kind === 'publications') {
+      // files/publications: 逗号分隔的 id 字符串 → 数字数组
       const ids =
         typeof v === 'string'
           ? v
@@ -224,6 +227,18 @@ function serializeInputRow(
             ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0)
             : []
       if (ids.length) out[def.key] = ids
+    } else if (def.kind === 'multi_select') {
+      // 候选项多选：逗号分隔字符串 → 字符串数组（数组直接透传）
+      const opts =
+        typeof v === 'string'
+          ? v
+              .split(/[,，]/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : Array.isArray(v)
+            ? v.map(String)
+            : []
+      if (opts.length) out[def.key] = opts
     } else {
       out[def.key] = typeof v === 'string' ? v : String(v)
     }

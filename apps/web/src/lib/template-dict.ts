@@ -53,19 +53,29 @@ export function actionText(a: string): string {
   return ACTION_TEXT[a] ?? a
 }
 
-/** 输入字段类型：中文名 + 说明（说明书视图与速查表共用） */
+/** 输入字段类型：中文名 + 说明（说明书视图与速查表共用；键须与服务端 loader inputs kind 合法集同步维护） */
 export const KIND_TEXT: Record<string, string> = {
   text: '文本',
   int: '整数',
+  float: '小数',
   bool: '开关',
+  select: '单选',
+  multi_select: '多选',
+  date: '日期',
   files: '文件',
+  publications: '发布记录',
 }
 
 const KIND_DESC: Record<string, string> = {
   text: '一句话或一段话（如：创意、目标平台）',
   int: '整数（如：目标秒数、数量）',
+  float: '小数（如：音量比例、倍速）',
   bool: '是 / 否 开关',
+  select: '从 options 候选项里单选（下拉框，如：风格、分辨率）',
+  multi_select: '从 options 候选项里多选（如：目标平台、标签）',
+  date: '日期（YYYY-MM-DD，日期选择器）',
   files: '图片 / 音频等文件（可用 accept 限定格式）',
+  publications: '勾选项目发布记录（复盘回灌专用，无需导 CSV）',
 }
 
 /** 字段速查弹层的分组内容（新建模板「能配什么」的完整字典） */
@@ -134,8 +144,13 @@ export const HELP_GROUPS: HelpGroup[] = [
         example: '[image/*]',
       },
       {
+        name: 'options',
+        desc: 'kind 为 select / multi_select 时的候选项列表（必填，非空字符串数组）',
+        example: '[抖音, 小红书, 视频号]',
+      },
+      {
         name: 'default',
-        desc: '默认值，类型须与 kind 一致（可选）',
+        desc: '默认值，类型须与 kind 一致（multi_select 默认值为数组，需均在 options 内；可选）',
         example: '抖音',
       },
     ],
@@ -237,7 +252,7 @@ export const HELP_GROUPS: HelpGroup[] = [
     })),
   },
   {
-    title: '输入类型 kind（输入字段的四种类型）',
+    title: '输入类型 kind（输入字段的可选类型）',
     items: Object.entries(KIND_TEXT).map(([k, v]) => ({
       name: k,
       desc: KIND_DESC[k] ?? v,
