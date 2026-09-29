@@ -1,17 +1,20 @@
 /**
- * 音乐多供应商适配探针（kit music 注册表：MiniMax/百炼 Fun-Music/火山 GenBGM）——手动执行：
+ * 音乐多供应商适配探针（kit music 注册表：MiniMax/百炼 Fun-Music/火山 GenBGM/Pollinations /audio）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-music-multi.ts [--section=pure|live]
  *
  * 隔离策略：isolatedEnv('musicx') 一次性临时目录（独立 studio.db），registry 节断言 seed 目录行；
  * live 节 globalThis.fetch 桩做全链路契约测试（零真实付费）：百炼同步直返 URL+下载、
- * 火山 提交→轮询(1→2)→音频下载 状态机、签名头形态、派发与未注册 key 报错口径。
+ * 火山 提交→轮询(1→2)→音频下载 状态机、Pollinations GET /audio/{text} 直返字节+401/402 语义、
+ * 签名头形态、派发与未注册 key 报错口径。
  *
- * 断言面（官方 schema 核实 2026：help.aliyun.com fun-music-api / docs.volcengine.com 音视频理解+签名调用指南）：
+ * 断言面（官方 schema 核实 2026：help.aliyun.com fun-music-api / docs.volcengine.com 音视频理解+签名调用指南 / gen.pollinations.ai openapi getAudioByText）：
  *  - pure：buildAliyunMusicBody/parseAliyunMusicResponse/aliyunMusicError 契约；
  *    parseVolcCredentials 双形态、volcDates/volcCanonicalQuery 规范化、signVolcRequest 确定性与格式、
  *    buildVolcMusicBody 两族形态、parseVolcSubmit/QueryResponse 状态机（Status 2 才是成功）；
+ *    pollinationsMusicFamily/Text/Params/Url 家族参数面与 401/402 错误归一；
  *  - live：generateAliyunMusic URL 拼接（/api/v1 去重 + compatible-mode 互斥）+ Bearer + 官方样例响应 + 下载字节；
- *    generateVolcMusic 全链路（Action 式 + Authorization 头 + 轮询节奏 + 失败态抛错）；getMusicAdapter 派发。
+ *    generateVolcMusic 全链路（Action 式 + Authorization 头 + 轮询节奏 + 失败态抛错）；
+ *    generatePollinationsMusic GET /audio 字节直收 + 查询串出线 + 402 透出；getMusicAdapter 派发。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
@@ -42,8 +45,8 @@ await runSections({
     const rows = await db.select().from(apiProviders)
     const music = rows.filter((r) => r.serviceType === 'music').map((r) => r.key).sort()
     check(
-      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'minimax_music', 'volcengine_music']),
-      `三供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
+      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'minimax_music', 'pollinations_music', 'volcengine_music']),
+      `四供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
     )
     check(JSON.stringify(kit.listMusicAdapterKeys().sort()) === JSON.stringify(music), 'kit 音乐注册表 key 集与 seed 目录行同源对齐')
   },
@@ -104,8 +107,25 @@ await runSections({
       const fail = kit.parseVolcQueryResponse({ Code: 0, Result: { Status: 3, FailureReason: { Code: 300061, Msg: 'InputLyricsPlagiarized' } } })
       check(fail.state === 'failed' && fail.error?.includes('[300061]') === true, '火山任务 3=失败：FailureReason 带码文案（2 才是成功的枚举红线）')
 
+      // —— Pollinations 音乐（/audio/{text} 家族参数面） ——
+      check(kit.pollinationsMusicFamily('elevenlabs/music-v2.5') === 'elevenmusic' && kit.pollinationsMusicFamily('google/lyria-3.5') === 'lyria' && kit.pollinationsMusicFamily('stability-ai/stable-audio-3-medium') === 'stableaudio' && kit.pollinationsMusicFamily('') === 'elevenmusic', 'Pollinations 家族判型：elevenmusic/lyria/stableaudio + 缺省归 ElevenLabs 面')
+      const pp1 = kit.buildPollinationsMusicParams('', { prompt: 'p' }, { duration_seconds: 45 })
+      check(pp1.model === 'elevenlabs/music-v2' && pp1.instrumental === 'true' && pp1.duration === '45', 'Pollinations 默认体：elevenlabs/music-v2 + instrumental + duration(3-300)')
+      const pp2 = kit.buildPollinationsMusicParams('elevenlabs/music-v2', { prompt: 'p', instrumental: false, lyrics: '歌词' }, { duration_seconds: 2 })
+      check(pp2.instrumental === undefined && pp2.duration === undefined, 'Pollinations 越界/歌曲形态：duration<3 不下发、instrumental 不强制')
+      const pp3 = kit.buildPollinationsMusicParams('stability-ai/stable-audio-3', { prompt: 'p' }, { duration_seconds: 300, steps: 8, seed: 42, negative_prompt: 'vocals' })
+      check(pp3.seconds === '300' && pp3.steps === '8' && pp3.seed === '42' && pp3.negative_prompt === 'vocals' && pp3.duration === undefined, 'Pollinations Stable Audio 面：seconds/steps/seed/negative_prompt，不发 duration')
+      const pp4 = kit.buildPollinationsMusicParams('google/lyria-3.5', { prompt: 'p' }, { duration_seconds: 60 })
+      check(pp4.duration === undefined && pp4.seconds === undefined, 'Pollinations Lyria 不接受时长参数（写进 prompt 文本）')
+      check(kit.pollinationsMusicText('google/lyria-3.5', { prompt: '爵士' }, { duration_seconds: 60.4 }).includes('approximately 60 seconds') === true, 'Pollinations Lyria 约时长写入 prompt（取整）')
+      check(kit.pollinationsMusicText('elevenlabs/music-v2', { prompt: 'p', instrumental: false, lyrics: '歌词正文' }) === '歌词正文', 'Pollinations 歌曲形态 lyrics 优先')
+      const pu = kit.buildPollinationsMusicUrl('https://gen.pollinations.ai/v1', '钢琴 纯音乐', '', { prompt: '钢琴 纯音乐' })
+      check(pu === 'https://gen.pollinations.ai/audio/%E9%92%A2%E7%90%B3%20%E7%BA%AF%E9%9F%B3%E4%B9%90?instrumental=true&model=elevenlabs%2Fmusic-v2', 'Pollinations URL 契约：/v1 剥根域 + text 路径编码 + 查询串升序')
+      check(kit.pollinationsMusicError(401, '{"error":{"code":"UNAUTHORIZED","message":"bad key"}}') === 'HTTP 401: [UNAUTHORIZED] bad key（API Key 无效，Pollinations 须 sk_ 开头 Bearer 密钥）', 'Pollinations 401 归一：密钥语义提示')
+      check(kit.pollinationsMusicError(402, 'not json').includes('Pollen 余额不足，链路已通') === true, 'Pollinations 402 归一：余额不足与链路已通的区分口径')
+
       // —— 注册表派发 ——
-      check(kit.getMusicAdapter('minimax_music').provider === 'minimax' && kit.getMusicAdapter('aliyun_bailian_music').provider === 'aliyun' && kit.getMusicAdapter('volcengine_music').provider === 'volcengine', 'getMusicAdapter 三供应商派发')
+      check(kit.getMusicAdapter('minimax_music').provider === 'minimax' && kit.getMusicAdapter('aliyun_bailian_music').provider === 'aliyun' && kit.getMusicAdapter('volcengine_music').provider === 'volcengine' && kit.getMusicAdapter('pollinations_music').provider === 'pollinations', 'getMusicAdapter 四供应商派发')
       let notReady = ''
       try { kit.getMusicAdapter('silkflow_music') } catch (e) { notReady = (e as Error).message }
       check(notReady.includes('未注册') && notReady.includes('minimax_music'), '未注册 key → MusicProviderNotReadyError（列可选项）')
@@ -181,9 +201,30 @@ await runSections({
         try { await kit.generateVolcMusic(volcEp, { prompt: '短音乐易触发版权校验', timeoutMs: 30_000 }) } catch (e) { volcErr = (e as Error).message }
         check(volcErr.includes('[50000001]') && volcErr.includes('CopyrightCheckFailed'), '火山失败态抛错：FailureReason 码/文案透出（由调用方降级）')
 
+        // —— Pollinations：GET /audio/{text} 同步直返字节（无二次下载） ——
+        const polSeen: Array<{ url: string; auth: string }> = []
+        globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = String(input)
+          if (url.includes('gen.pollinations.ai/audio/')) {
+            polSeen.push({ url, auth: String(((init?.headers ?? {}) as Record<string, string>).Authorization ?? '') })
+            return new Response(mp3Bytes as unknown as BodyInit, { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
+          }
+          throw new Error(`music 桩仅放行白名单端点：${url}`)
+        }) as typeof fetch
+        const polEp = { providerKey: 'pollinations_music', baseUrl: 'https://gen.pollinations.ai/v1', apiKey: 'sk-probe', model: 'elevenlabs/music-v2', extra: { duration_seconds: 30 } }
+        const pol = await kit.generatePollinationsMusic(polEp, { prompt: '轻快钢琴 BGM', instrumental: true })
+        check(pol.audio.length === mp3Bytes.length && pol.durationMs === null && pol.model === 'elevenlabs/music-v2', 'Pollinations 全链路：字节直收 + durationMs=null 交宿主 ffprobe 回读')
+        const polUrl = new URL(polSeen[0]!.url)
+        check(polSeen[0]!.auth === 'Bearer sk-probe' && polUrl.pathname === '/audio/' + encodeURIComponent('轻快钢琴 BGM') && !polUrl.pathname.startsWith('/v1'), 'Pollinations 端点契约：根域 /audio/{text} 路径段 + Bearer')
+        check(polUrl.searchParams.get('model') === 'elevenlabs/music-v2' && polUrl.searchParams.get('duration') === '30' && polUrl.searchParams.get('instrumental') === 'true', 'Pollinations 查询串出线：model/duration/instrumental')
+        globalThis.fetch = (async () => new Response('{"status":402,"success":false,"error":{"code":"PAYMENT_REQUIRED","message":"Insufficient balance"}}', { status: 402 })) as typeof fetch
+        let polErr = ''
+        try { await kit.generatePollinationsMusic(polEp, { prompt: 'x' }) } catch (e) { polErr = (e as Error).message }
+        check(polErr.includes('[PAYMENT_REQUIRED]') && polErr.includes('余额不足'), 'Pollinations 402 透出：Pollen 余额不足（密钥有效）由调用方降级')
+
         // —— 派发一致性：宿主 music-gen 走注册表 ——
         const { getMusicAdapter } = kit
-        check(typeof getMusicAdapter('volcengine_music').generate === 'function', 'music-gen 派发面：generate 函数可达')
+        check(typeof getMusicAdapter('volcengine_music').generate === 'function' && typeof getMusicAdapter('pollinations_music').generate === 'function', 'music-gen 派发面：generate 函数可达')
       } finally {
         globalThis.fetch = fetchBak
       }

@@ -112,8 +112,8 @@ importers:
   apps/server:
     dependencies:
       '@agencys/ai-provider-kit':
-        specifier: https://gitee.com/agencys/ai-provider-kit.git#v0.3.1
-        version: git+https://gitee.com/agencys/ai-provider-kit.git#af1a7cb00fe8a54bb5d549a44028a4daf996cc39
+        specifier: file:../../../ai-provider-kit
+        version: file:../ai-provider-kit
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.7)
@@ -209,9 +209,8 @@ importers:
 
 packages:
 
-  '@agencys/ai-provider-kit@git+https://gitee.com/agencys/ai-provider-kit.git#af1a7cb00fe8a54bb5d549a44028a4daf996cc39':
-    resolution: {commit: af1a7cb00fe8a54bb5d549a44028a4daf996cc39, repo: https://gitee.com/agencys/ai-provider-kit.git, type: git}
-    version: 0.3.1
+  '@agencys/ai-provider-kit@file:../ai-provider-kit':
+    resolution: {directory: ../ai-provider-kit, type: directory}
 
   '@babel/helper-string-parser@7.29.7':
     resolution: {integrity: sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw==}
@@ -2210,7 +2209,7 @@ packages:
 
 snapshots:
 
-  '@agencys/ai-provider-kit@git+https://gitee.com/agencys/ai-provider-kit.git#af1a7cb00fe8a54bb5d549a44028a4daf996cc39': {}
+  '@agencys/ai-provider-kit@file:../ai-provider-kit': {}
 
   '@babel/helper-string-parser@7.29.7': {}
 
