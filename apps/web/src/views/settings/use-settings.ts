@@ -10,7 +10,7 @@ import type {
 } from '../../lib/types'
 
 export function useSettingsPage() {
-  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音（serviceType → tab 映射）+ 品牌（平台品牌资产）/ 音色库（声音克隆）
+  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音 / 音乐（serviceType → tab 映射）+ 品牌（平台品牌资产）/ 音色库（声音克隆）
   const TABS = [
     {
       key: 'text',
@@ -39,6 +39,13 @@ export function useSettingsPage() {
       icon: 'speaker-wave',
       types: ['audio'],
       hint: '配音 / TTS（OpenAI 兼容 /audio/speech）',
+    },
+    {
+      key: 'music',
+      label: '音乐生成',
+      icon: 'music',
+      types: ['music'],
+      hint: 'AI 背景音乐（BGM / 纯音乐，按生成计费；未配置时混剪自动降级库内选曲）',
     },
     {
       key: 'voices',
@@ -319,6 +326,7 @@ export function useSettingsPage() {
     { key: 'image', label: '图片 image', units: ['image'] },
     { key: 'video', label: '视频 video', units: ['second'] },
     { key: 'tts', label: '语音 tts', units: ['char'] },
+    { key: 'music', label: '音乐 music', units: ['second'] },
   ] as const
   const PRICE_UNIT_TEXT: Record<string, string> = {
     tokens_in: 'tokens_in（输入 · 元/百万）',
@@ -417,7 +425,7 @@ export function useSettingsPage() {
     const p = providers.value.find((pp) => pp.key === prov)
     if (p)
       return (
-        { llm: 'llm', image: 'image', video: 'video', audio: 'tts' }[
+        { llm: 'llm', image: 'image', video: 'video', audio: 'tts', music: 'music' }[
           p.serviceType
         ] ?? 'llm'
       )

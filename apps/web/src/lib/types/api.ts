@@ -79,7 +79,7 @@ export interface ModelSuggestResult {
 export interface ApiProvider {
   key: string
   name: string
-  serviceType: 'llm' | 'image' | 'video' | 'audio'
+  serviceType: 'llm' | 'image' | 'video' | 'audio' | 'music'
   vendor: string | null
   description: string
   defaultUrl: string | null
