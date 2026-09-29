@@ -10,7 +10,7 @@ import type {
 } from '../../lib/types'
 
 export function useSettingsPage() {
-  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音 / 音乐（serviceType → tab 映射）+ 品牌（平台品牌资产）/ 音色库（声音克隆）
+  // 配置按能力分类成 tab：文本 / 图片 / 视频 / 语音 / 音乐（serviceType → tab 映射）+ 密钥保管（厂商/网关 Key 统一增删改）/ 音色库（声音克隆）
   const TABS = [
     {
       key: 'text',
@@ -48,6 +48,13 @@ export function useSettingsPage() {
       hint: 'AI 背景音乐（BGM / 纯音乐，按生成计费；未配置时混剪自动降级库内选曲）',
     },
     {
+      key: 'creds',
+      label: '密钥保管',
+      icon: 'key',
+      types: [],
+      hint: '厂商/网关 API Key 统一保管，实例共享；可自由添加、修改或删除',
+    },
+    {
       key: 'voices',
       label: '音色库',
       icon: 'wand',
@@ -69,7 +76,7 @@ export function useSettingsPage() {
     provider: ApiProvider
     config: ProviderConfigLite | null
   } | null>(null)
-  // 供应商凭证编辑弹窗
+  // 密钥保管（厂商/网关）编辑弹窗；editingCred=null 且 showCredForm=true 为新建模式
   const editingCred = ref<VendorCredential | null>(null)
   const showCredForm = ref(false)
   // 测试结果
@@ -86,8 +93,9 @@ export function useSettingsPage() {
     return providers.value.filter((p) => types.includes(p.serviceType))
   })
 
-  // tab 角标：该分类下供应商数
+  // tab 角标：能力页签为该分类下供应商数，密钥保管页签为在用条目数
   function cntOf(key: TabKey): number {
+    if (key === 'creds') return credentials.value.length
     const types = tabOf(key).types as readonly string[]
     return providers.value.filter((p) => types.includes(p.serviceType)).length
   }
@@ -191,6 +199,30 @@ export function useSettingsPage() {
     const p = selectedProvider.value
     if (p) editing.value = { provider: p, config: null }
   }
+
+  /** 新建密钥保管条目（editingCred 置空 = 表单新建模式） */
+  function openNewCred() {
+    editingCred.value = null
+    showCredForm.value = true
+  }
+
+  /** 删除密钥保管条目（内置厂商=软删不复活，自建=物理删；后端拒删有实例引用的条目） */
+  async function removeCred(cr: VendorCredential) {
+    const ok = await confirmDialog({
+      title: '删除密钥条目',
+      message: `删除「${cr.name}」的密钥保管条目？其 API Key 将从本地删除，需重新填写才能再次使用。`,
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await vendorApi.remove(cr.id)
+      await load()
+    } catch (e) {
+      err.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   function openEdit(cfg: ProviderConfigLite) {
     const p = selectedProvider.value
     if (p) editing.value = { provider: p, config: cfg }
@@ -480,6 +512,8 @@ export function useSettingsPage() {
     railStatus,
     load,
     openNew,
+    openNewCred,
+    removeCred,
     openEdit,
     setDefault,
     toggleActive,

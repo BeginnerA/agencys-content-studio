@@ -48,7 +48,9 @@ async function onCredSaved() {
         >
           <Icon :name="t.icon" :size="13" :stroke-width="1.8" />
           {{ t.label }}
-          <span v-if="t.types.length" class="cnt">{{ cntOf(t.key) }}</span>
+          <span v-if="t.types.length || t.key === 'creds'" class="cnt">{{
+            cntOf(t.key)
+          }}</span>
         </button>
       </div>
     </div>
@@ -60,6 +62,9 @@ async function onCredSaved() {
       <!-- 音色库 tab：声音克隆（列表/试听/删除 + 新建复刻） -->
       <VoiceLibrary v-if="activeTab === 'voices'" />
 
+      <!-- 密钥保管 tab：厂商/网关 API Key 统一增删改（从各能力 tab 顶部收敛至此） -->
+      <CredsPanel v-else-if="activeTab === 'creds'" :s="s" />
+
       <template v-else>
         <!-- 就绪摘要（当前能力） -->
         <div class="ready" :class="readiness.tone">
@@ -67,8 +72,6 @@ async function onCredSaved() {
           <span>{{ readiness.text }}</span>
           <span class="r-hint">{{ tabOf(activeTab).hint }}</span>
         </div>
-
-        <CredsPanel :s="s" />
 
         <!-- 主从布局：左供应商列表 / 右供应商详情 -->
         <div :key="activeTab" class="split">
@@ -91,7 +94,7 @@ async function onCredSaved() {
     />
 
     <VendorCredentialForm
-      v-if="showCredForm && editingCred"
+      v-if="showCredForm"
       :credential="editingCred"
       @saved="onCredSaved()"
       @close="showCredForm = false"

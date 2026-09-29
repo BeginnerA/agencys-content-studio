@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Modal from '../common/Modal.vue'
 import type { VendorCredential } from '../../lib/types'
 import { vendorApi } from '../../lib/api'
 
+// credential=null 为新建模式（填厂商标识）；非空为编辑模式（厂商标识不可改）
 const props = defineProps<{
-  credential: VendorCredential
+  credential: VendorCredential | null
 }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
 
+const isCreate = computed(() => props.credential == null)
+const vendor = ref('')
 const name = ref('')
 const apiKey = ref('')
 const baseUrl = ref('')
@@ -18,8 +21,9 @@ const busy = ref(false)
 watch(
   () => props.credential,
   (cr) => {
-    name.value = cr.name ?? ''
-    baseUrl.value = cr.baseUrl ?? ''
+    vendor.value = cr?.vendor ?? ''
+    name.value = cr?.name ?? ''
+    baseUrl.value = cr?.baseUrl ?? ''
     apiKey.value = ''
     err.value = ''
   },
@@ -27,21 +31,30 @@ watch(
 )
 
 async function submit() {
+  if (isCreate.value && !/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(vendor.value.trim())) {
+    err.value = '厂商标识必填：字母/数字/下划线/连字符，1–32 位（如 my-gateway）'
+    return
+  }
   if (!name.value.trim()) {
-    err.value = '请填写供应商名称'
+    err.value = '请填写显示名'
+    return
+  }
+  if (isCreate.value && !apiKey.value.trim()) {
+    err.value = '新建条目必须填写 API Key'
     return
   }
   busy.value = true
   err.value = ''
   try {
     const body: Record<string, unknown> = {
-      vendor: props.credential.vendor,
+      vendor: (props.credential?.vendor ?? vendor.value).trim(),
       name: name.value.trim(),
     }
     if (baseUrl.value.trim()) body.base_url = baseUrl.value.trim()
-    else body.base_url = null
+    else if (!isCreate.value) body.base_url = null
     if (apiKey.value.trim()) body.api_key = apiKey.value.trim()
-    await vendorApi.update(props.credential.id, body)
+    if (isCreate.value) await vendorApi.create(body)
+    else await vendorApi.update(props.credential!.id, body)
     emit('saved')
     emit('close')
   } catch (e) {
@@ -54,10 +67,17 @@ async function submit() {
 
 <template>
   <Modal
-    :title="`供应商凭证：${credential.name}`"
+    :title="credential ? `密钥保管：${credential.name}` : '添加密钥保管条目'"
     :width="480"
     @close="emit('close')"
   >
+    <label v-if="isCreate" class="fld">
+      厂商标识（vendor）
+      <input v-model="vendor" type="text" placeholder="如：my-gateway" />
+      <span class="note"
+        >唯一标识，建后不可改；与内置厂商重名将合并为一条</span
+      >
+    </label>
     <label class="fld">
       显示名
       <input v-model="name" type="text" placeholder="如：阿里百炼" />
@@ -68,7 +88,7 @@ async function submit() {
         v-model="apiKey"
         type="password"
         :placeholder="
-          credential.hasKey
+          !isCreate && credential?.hasKey
             ? '留空保持不变（已配置 ' + credential.apiKeyMasked + '）'
             : '粘贴明文 key（仅存本地 secrets.json）'
         "

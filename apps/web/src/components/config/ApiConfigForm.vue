@@ -18,7 +18,7 @@ const props = defineProps<{
   provider: ApiProvider
   /** 编辑时传现有配置（列表精简态，含 baseUrl / apiKeyMasked / extra / pricing 回显字段）；新建为空 */
   config?: ProviderConfigLite | null
-  /** 供应商凭证列表（用于下拉选择） */
+  /** 密钥保管（厂商/网关）列表（用于下拉选择） */
   credentials?: VendorCredential[]
 }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
@@ -232,7 +232,7 @@ async function fetchModels(silent = false) {
     const body: Record<string, unknown> = { provider_key: props.provider.key }
     if (baseUrl.value.trim()) body['base_url'] = baseUrl.value.trim()
     if (apiKey.value.trim()) body['api_key'] = apiKey.value.trim()
-    // 新建实例尚未落库（无 config_id）时，Key 存于所选供应商凭证 → 需带 credential_id 供服务端解析
+    // 新建实例尚未落库（无 config_id）时，Key 存于所选密钥保管条目 → 需带 credential_id 供服务端解析
     if (credentialId.value != null) body['credential_id'] = credentialId.value
     if (props.config) body['config_id'] = props.config.id
     const res = await configApi.fetchModels(body)
@@ -301,7 +301,7 @@ async function submit() {
     is_active: isActive.value,
   }
   // 凭证关联（优先）或旧式 per-instance key —— 显式发送（含 null），否则把已绑凭证切回
-  // 「—— 选择凭证 ——」时前端不发该字段、后端保持旧值，导致永远解不掉绑定（如火山语音被 ark 凭证静默覆盖）。
+  // 「—— 选择已保管的 Key ——」时前端不发该字段、后端保持旧值，导致永远解不掉绑定（如火山语音被 ark 凭证静默覆盖）。
   body.credential_id = credentialId.value
   if (baseUrl.value.trim()) body.base_url = baseUrl.value.trim()
   if (model.value.trim()) body.model = model.value.trim()
@@ -334,13 +334,13 @@ async function submit() {
     :width="560"
     @close="emit('close')"
   >
-    <!-- 主表单仅需：供应商凭证 / Key + 选择模型；实例名自动生成、定价/端点/能力自动带出（高级可改） -->
+    <!-- 主表单仅需：从密钥保管选厂商/网关 / Key + 选择模型；实例名自动生成、定价/端点/能力自动带出（高级可改） -->
 
-    <!-- 供应商凭证选择（替代原来的 API Key 字段） -->
+    <!-- 密钥保管选择（替代原来的 API Key 字段） -->
     <div class="fld">
-      <span>供应商凭证</span>
+      <span>密钥保管（厂商/网关）</span>
       <select v-model="credentialId" class="cred-sel">
-        <option :value="null">—— 选择凭证（共享 Key）——</option>
+        <option :value="null">—— 选择已保管的 Key ——</option>
         <option
           v-for="opt in credentialOptions"
           :key="opt.value"
@@ -350,7 +350,7 @@ async function submit() {
         </option>
       </select>
       <span class="note"
-        >选择后无需每次填写 API Key，凭证在「供应商凭证」面板统一管理</span
+        >选择后无需每次填写 API Key，Key 在「密钥保管」页签统一管理（可自由添加厂商/网关条目）</span
       >
     </div>
 

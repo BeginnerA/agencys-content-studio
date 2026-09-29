@@ -36,14 +36,24 @@ export const VENDOR_SEEDS: VendorSeed[] = [
   { vendor: 'aliyun', name: '阿里百炼' },
   { vendor: 'deepseek', name: 'DeepSeek' },
   { vendor: 'openai', name: 'OpenAI' },
-  { vendor: 'siliconflow', name: 'SiliconFlow' },
   { vendor: 'google', name: 'Google' },
   { vendor: 'volcengine', name: '火山方舟' },
   { vendor: 'minimax', name: 'MiniMax' },
   { vendor: 'kling', name: '可灵' },
-  { vendor: 'pollinations', name: 'Pollinations' },
   { vendor: 'ollama', name: 'Ollama（本地）' },
 ]
+
+/**
+ * 已移出内置列表的网关厂商（用户决定 2026-09-29：网关不是供应商，不再作为内置凭证预种；
+ * 存量库凭证行保留，UI 展示为「自建」）。仅供旧库迁移的前缀识别（extractVendor），不再参与补种。
+ */
+const LEGACY_VENDOR_KEYS = ['siliconflow', 'pollinations']
+
+/**
+ * 内置厂商标识集（密钥保管条目的 source=seed 判定）：用户在页面删除内置条目 = 软删
+ * （isActive=0，seedVendorCredentials 视其为已存在不再补回）；非此集合的条目为用户自建，可物理删。
+ */
+export const SEED_VENDOR_KEYS = new Set(VENDOR_SEEDS.map((v) => v.vendor))
 
 /**
  * 预置供应商目录（种子）。
@@ -131,6 +141,7 @@ export async function seedProviders(): Promise<void> {
 /**
  * 幂等补种厂商凭证目录（仅插入缺失的 vendor 行，不覆盖用户已填内容）。
  * 用户配置 Key 后，apiKeyRef 从 'local' 变为 'local:vendor:{vendor}'。
+ * 用户在页面删除过的内置条目（软删 isActive=0）仍在表中 → 视为已存在，不会重启复活。
  */
 export async function seedVendorCredentials(): Promise<void> {
   const now = Date.now()
@@ -163,7 +174,8 @@ export async function migrateCredentialsFromConfigs(): Promise<void> {
   if (orphanConfigs.length === 0) return
 
   const credRows = await db.select().from(vendorCredentials)
-  const credByVendor = new Map(credRows.map((r) => [r.vendor, r]))
+  // 已软删（用户在页面删除）的条目不参与归集，避免把孤立实例重新绑到隐藏凭证上
+  const credByVendor = new Map(credRows.filter((r) => r.isActive === 1).map((r) => [r.vendor, r]))
   const now = Date.now()
 
   // 按 vendor 分组
@@ -340,12 +352,14 @@ const RETIRED_PROVIDER_KEYS: string[] = ['openrouter_music']
 /**
  * 幂等清理：删除退役网关的残留厂商凭证与残留目录行（种子只插不删，旧库残留需启动期回收）。
  * 仅当凭证无任何实例引用、目录行无同 key 实例时才删（在用 = 不破坏执行链）；secrets.json 的
- * local:vendor:{vendor} 键同步搬迁删除。
+ * local:vendor:{vendor} 键同步搬迁删除。密钥保管开放用户自增删后，本清理只收「从未配过 Key 的
+ * 空残留行」；用户主动重新添加并配了 Key 的退役厂商行视为用户资产，不再自动删。
  */
 export async function cleanupRetiredVendorCredentials(): Promise<void> {
   const credRows = await db.select().from(vendorCredentials)
   const retired = credRows.filter((r) => RETIRED_VENDORS.includes(r.vendor))
   for (const cred of retired) {
+    if (resolveApiKey(cred.apiKeyRef)) continue
     const refs = await db
       .select({ id: apiConfigs.id })
       .from(apiConfigs)
@@ -363,11 +377,11 @@ export async function cleanupRetiredVendorCredentials(): Promise<void> {
   }
 }
 
-/** 从 providerKey 提取 vendor 前缀（aliyun_bailian_llm → aliyun） */
+/** 从 providerKey 提取 vendor 前缀（aliyun_bailian_llm → aliyun；含已移出内置的网关厂商，保旧库迁移） */
 function extractVendor(providerKey: string): string | null {
-  // 匹配已知 vendor 前缀
-  for (const v of VENDOR_SEEDS) {
-    if (providerKey.startsWith(v.vendor + '_') || providerKey === v.vendor) return v.vendor
+  // 匹配已知 vendor 前缀（内置 + 存量网关）
+  for (const v of [...VENDOR_SEEDS.map((s) => s.vendor), ...LEGACY_VENDOR_KEYS]) {
+    if (providerKey.startsWith(v + '_') || providerKey === v) return v
   }
   // gemini_image 归属 google
   if (providerKey.startsWith('gemini_')) return 'google'

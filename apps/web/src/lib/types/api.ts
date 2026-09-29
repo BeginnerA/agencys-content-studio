@@ -111,7 +111,7 @@ export interface ApiConfig {
   updatedAt: number
 }
 
-/** 供应商凭证（厂商级，API Key 只配一次） */
+/** 密钥保管条目（厂商/网关级，API Key 只配一次） */
 export interface VendorCredential {
   id: number
   vendor: string
@@ -121,6 +121,8 @@ export interface VendorCredential {
   hasKey: boolean
   extra: Record<string, unknown>
   isActive: boolean
+  /** 条目来源：seed=内置厂商（页面删除为软删，不重启复活）；user=用户自建（可物理删） */
+  source: 'seed' | 'user'
   configCount: number
   createdAt: number
   updatedAt: number

@@ -3,14 +3,16 @@ import { asc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { apiConfigs, vendorCredentials } from '../db/schema'
 import { resolveApiKey, writeSecret, deleteSecret } from '../services/secrets'
-import { vendorPriorityRank } from '../db/seed'
+import { vendorPriorityRank, SEED_VENDOR_KEYS } from '../db/seed'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const vendorRoutes = new Hono()
 
-// GET /vendor-credentials —— 列出所有凭证（Key 脱敏）+ 每个凭证下关联实例数；火山方舟/阿里千问优先展示，其余按名称原序
+// GET /vendor-credentials —— 列出在用密钥保管条目（Key 脱敏 + 关联实例数 + source 内置/自建）；
+// 火山方舟/阿里千问优先展示，其余按名称原序；用户在页面删除过的内置条目（软删 isActive=0）不展示
 vendorRoutes.get('/vendor-credentials', h(async (c) => {
-  const credRows = await db.select().from(vendorCredentials).orderBy(asc(vendorCredentials.name))
+  const credRows = (await db.select().from(vendorCredentials).orderBy(asc(vendorCredentials.name)))
+    .filter((r) => r.isActive === 1)
   const rows = credRows.sort((a, b) => vendorPriorityRank(a.vendor) - vendorPriorityRank(b.vendor))
   const configs = await db.select({ id: apiConfigs.id, credentialId: apiConfigs.credentialId }).from(apiConfigs)
   const countByCredential = new Map<number, number>()
@@ -29,6 +31,7 @@ vendorRoutes.get('/vendor-credentials', h(async (c) => {
       hasKey: !!resolveApiKey(r.apiKeyRef),
       extra: safeJson(r.extra, {}),
       isActive: r.isActive === 1,
+      source: SEED_VENDOR_KEYS.has(r.vendor) ? 'seed' : 'user',
       configCount: countByCredential.get(r.id) ?? 0,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
@@ -36,19 +39,22 @@ vendorRoutes.get('/vendor-credentials', h(async (c) => {
   })
 }))
 
-// POST /vendor-credentials —— 新建/更新凭证 {vendor, name?, api_key?, base_url?, extra?}
-// vendor 已存在时视为更新（幂等 upsert 语义）
+// POST /vendor-credentials —— 新建/更新密钥保管条目 {vendor, name?, api_key?, base_url?, extra?}
+// vendor 已存在时视为更新（幂等 upsert 语义；命中软删行则复活）
 vendorRoutes.post('/vendor-credentials', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const vendor = body['vendor']
   if (typeof vendor !== 'string' || !vendor.trim()) throw new HttpError(400, 'bad_vendor', 'vendor 必填')
+  if (!/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(vendor.trim())) {
+    throw new HttpError(400, 'bad_vendor', 'vendor 仅允许字母/数字/下划线/连字符，1–32 位')
+  }
   const name = typeof body['name'] === 'string' && body['name'].trim() ? body['name'].trim() : vendor
 
   // 检查是否已存在
   const existing = await db.select().from(vendorCredentials).where(eq(vendorCredentials.vendor, vendor)).limit(1)
   if (existing[0]) {
-    // 已存在 → 走更新逻辑
-    return await updateCredential(c, existing[0]!.id, body)
+    // 已存在 → 走更新逻辑（若曾被页面删除则复活）
+    return await updateCredential(c, existing[0]!.id, body, true)
   }
 
   // 新建
@@ -82,7 +88,8 @@ vendorRoutes.put('/vendor-credentials/:id', h(async (c) => {
   return await updateCredential(c, id, body)
 }))
 
-// DELETE /vendor-credentials/:id —— 删除（需检查无关联实例）
+// DELETE /vendor-credentials/:id —— 删除（需检查无关联实例）。内置厂商 = 软删（isActive=0，
+// 重启不被 seed 补回，同名重新添加可复活）；用户自建条目 = 物理删。两者均同步删本地密钥。
 vendorRoutes.delete('/vendor-credentials/:id', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, id)).limit(1)
@@ -97,16 +104,23 @@ vendorRoutes.delete('/vendor-credentials/:id', h(async (c) => {
   if (cred.apiKeyRef.startsWith('local:vendor:')) {
     deleteSecret(cred.apiKeyRef)
   }
-  await db.delete(vendorCredentials).where(eq(vendorCredentials.id, id))
+  if (SEED_VENDOR_KEYS.has(cred.vendor)) {
+    await db.update(vendorCredentials)
+      .set({ isActive: 0, apiKeyRef: 'local', updatedAt: Date.now() })
+      .where(eq(vendorCredentials.id, id))
+  } else {
+    await db.delete(vendorCredentials).where(eq(vendorCredentials.id, id))
+  }
   return c.json({ ok: true })
 }))
 
-/** 内部：更新凭证字段 */
-async function updateCredential(c: any, id: number, body: Record<string, unknown>): Promise<Response> {
+/** 内部：更新凭证字段（revive=true 时顺带复活软删行，供 POST upsert 新建同名条目使用） */
+async function updateCredential(c: any, id: number, body: Record<string, unknown>, revive = false): Promise<Response> {
   const rows = await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, id)).limit(1)
   const cred = rows[0]
   if (!cred) return notFound(c, `凭证 ${id}`)
   const patch: Record<string, unknown> = { updatedAt: Date.now() }
+  if (revive && cred.isActive === 0) patch['isActive'] = 1
   if (body['name'] !== undefined) {
     if (typeof body['name'] !== 'string' || !body['name'].trim()) throw new HttpError(400, 'bad_name', 'name 非法')
     patch['name'] = body['name'].trim()
@@ -134,6 +148,7 @@ function formatCredential(r: typeof vendorCredentials.$inferSelect) {
     hasKey: !!resolveApiKey(r.apiKeyRef),
     extra: safeJson(r.extra, {}),
     isActive: r.isActive === 1,
+    source: SEED_VENDOR_KEYS.has(r.vendor) ? 'seed' : 'user',
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }
