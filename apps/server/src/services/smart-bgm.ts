@@ -6,8 +6,9 @@
  *   端点未配置/生成失败/超时 → 返回 null 由调用方降级 auto 库内（绝不断链）。
  * - 绑定语义与工作台 bindBgmFromAsset 同口径：purpose='bgm' + runId，先软删本 run 旧 bgm 行
  *   （至多 1 条有效不变量）→ 后续重合成经 loadBgmAsset 直接复用，不重复选曲/付费。
- * 零 diff 红线：仅 params.bgm_mode ∈ {auto, music_gen} 且用户未手绑时被调用——
+ * 零 diff 红线：仅模板显式映射 params.bgm_mode ∈ {auto, music_gen}、非严格且用户未手绑时被调用——
  *   存量模板不声明 bgm_mode（桥不映射）→ 本模块不执行，BGM 路径逐字节 = 现行为。
+ *   M54-B 起不限混剪态：短剧链（mengbao-episode v13）同样经 bgm_mode 显式 opt-in 接入智能选曲。
  */
 import { existsSync, copyFileSync, statSync } from 'node:fs'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -110,15 +111,15 @@ export async function resolveSmartBgm(ctx: StepContext, mode: 'auto' | 'music_ge
 
 /**
  * 合成期 BGM 总解析（自 ffmpeg-merge/index.ts 拆出：≤800 行红线，行为零变更）：
- * 严格 = 方案批准 role:'bgm' 窄口径 opt-in（默认无 ref → 无 BGM 逐字节不变）；非严格 = run 级直查手绑；
- * 未手绑且 bgm_mode ∈ {auto, music_gen}（混剪态）→ 智能补乐，选中绑定后回落既有 bgmPath 链。
+ * 严格 = 方案批准 role:'bgm' 窄口径 opt-in（默认无 ref → 无 BGM 逐字节不变，智能补乐亦不进严格链）；
+ * 非严格 = run 级直查手绑；未手绑且 bgm_mode ∈ {auto, music_gen}（模板显式映射）→ 智能补乐，
+ * 选中绑定后回落既有 bgmPath 链。混剪（photo-montage v2）与短剧（mengbao-episode v13）同源能力。
  * 存量模板不映射 bgm_mode → 智能块不执行，BGM 路径逐字节 = 现行为。
  */
 export async function resolveMergeBgm(opts: {
   ctx: StepContext
   strict: boolean
   params: Record<string, unknown>
-  montageOn: boolean
   total: number
   strictBgmAssetId: number | null
 }): Promise<{ asset: Asset | null; path: string | null; autoSelected: boolean }> {
@@ -134,10 +135,10 @@ export async function resolveMergeBgm(opts: {
     if (asset.relPath && existsSync(absPathOf(asset.relPath))) path = absPathOf(asset.relPath)
     else ctx.log(`BGM 资产 #${asset.id} 文件缺失，已跳过混音`)
   }
-  // M54 智能 BGM：混剪态且未手绑时按 bgm_mode 自动补乐（auto 库内选曲 / music_gen 先 AI 生成再降级）
+  // M54 智能 BGM：非严格、未手绑且模板显式映射 bgm_mode 时自动补乐（auto 库内选曲 / music_gen 先 AI 生成再降级）
   let autoSelected = false
   const bgmModeRaw = typeof params['bgm_mode'] === 'string' ? String(params['bgm_mode']).trim() : ''
-  if (opts.montageOn && !asset && (bgmModeRaw === 'auto' || bgmModeRaw === 'music_gen')) {
+  if (!opts.strict && !asset && (bgmModeRaw === 'auto' || bgmModeRaw === 'music_gen')) {
     const promptText = typeof params['bgm_prompt'] === 'string' && params['bgm_prompt'].trim() ? params['bgm_prompt'].trim() : '温暖抒情的背景音乐，器乐为主，适合相册视频'
     const smart = await resolveSmartBgm(ctx, bgmModeRaw as 'auto' | 'music_gen', opts.total, promptText)
     if (smart) {

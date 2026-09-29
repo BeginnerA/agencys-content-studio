@@ -358,11 +358,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
   // BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）+ M54 智能补乐：
-  // 均拆至 smart-bgm.resolveMergeBgm（行为零变更；存量模板不映射 bgm_mode → 智能块不执行）
+  // 均拆至 smart-bgm.resolveMergeBgm（存量模板不映射 bgm_mode → 智能块不执行；M54-B 起短剧链同样显式 opt-in）
   const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], dialogue ? 0.1 : 0.25), 0, dialogue ? 0.12 : 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
   const { asset: bgmAsset, path: bgmPath, autoSelected: bgmAutoSelected } = await resolveMergeBgm({
-    ctx, strict, params, montageOn, total,
+    ctx, strict, params, total,
     // 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM
     strictBgmAssetId: recipe?.refs.find((r) => r.role === 'bgm')?.assetId ?? null,
   })

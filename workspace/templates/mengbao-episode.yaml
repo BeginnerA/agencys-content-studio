@@ -1,8 +1,8 @@
 key: mengbao-episode
 builtin: true
-version: 12
+version: 13
 name: 短剧·单集
-description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音）。多集连载在「同一项目」下逐集运行，集间承接：前集 write_script 剧本经多段工作流链段 inputSpec（prev_script 映射 $prev.asset:script）自动流入本集剧本步，或由用户手动选入既往剧本资产。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
+description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音 + 背景音乐智能选曲）。多集连载在「同一项目」下逐集运行，集间承接：前集 write_script 剧本经多段工作流链段 inputSpec（prev_script 映射 $prev.asset:script）自动流入本集剧本步，或由用户手动选入既往剧本资产。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
 scene: produce
 next: [review-restock]
@@ -69,6 +69,16 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: bgm_mode
+    label: 背景音乐模式（none 不配乐 / auto 库内自动选曲 / music_gen AI 生成付费，失败自动降级 auto；手绑 BGM 永远优先；对白存在时音量自动压至 0.1 以下）
+    kind: select
+    required: false
+    options: [none, auto, music_gen]
+    default: auto
+  - key: bgm_prompt
+    label: AI 生乐风格描述（仅 music_gen 生效；留空用默认文案）
+    kind: text
+    required: false
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
@@ -91,6 +101,8 @@ defaults:
   #               with_narrative_doc=true → storyboard_narrative；with_edit_review=true → edit_audit
   # 【配音字幕链】with_voice=false（默认 true）→ 跳过 cast_lines → 连带 voice/subtitle 无输入 → 默片直出；
   #               compose_video.fit_voice 无配音实测时长可依，退回 duration_per_shot 估长
+  # 【BGM（v13）】bgm_mode/bgm_prompt 不触发任何步骤，仅经 inputs 映射进 compose_video params（标量调参桥解析）；
+  #               无手绑时 auto 库内选曲（无候选 → log 后按无 BGM 继续 = 零 diff），music_gen 付费失败降级 auto
   # 【恒执行步（不受上述开关）】ingest_docs / write_script(必审闸；v12 追加 prev_script 输入——上一集剧本资产直注承接，缺省不注、files 不做预填自动回填) /
   #               char_profile / ref_prompts /
   #               sync_characters / set_profile / set_ref_prompts / sync_set / make_storyboard / compose_video
@@ -346,6 +358,9 @@ steps:
       motion_clips: steps.gen_motion.assets
       voices: steps.voice.assets
       subtitle: steps.subtitle.assets
+      # [M54-B] 智能 BGM（与混剪链同源）：手绑永远优先；auto 库内选曲 / music_gen AI 生乐失败降级；严格链不接
+      bgm_mode: input.bgm_mode
+      bgm_prompt: input.bgm_prompt
     params:
       fps: 25
       resolution: "1080x1920"
