@@ -742,6 +742,22 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M54 能力速览（智能混剪增强：AI 协助的缓推/锚点/拼贴/配乐）
+
+> 痛点：M53 混剪是「机械拼接」——缓推方向要人预测横竖、多图只能逐张全屏、配乐要么手绑要么没有。本里程碑在混剪引擎上叠加四块 AI 协助能力（G1 kb:auto 智能定向 / G2 LLM 构图感知锚点 / G3 多图同屏拼贴 / G4 智能 BGM 库内自动+AI 生成），新能力全部显式开启才生效；详规：`docs/montage-ai-spec.md`。**非目标**：智能选曲不接外部音乐推荐服务；生乐首供仅 MiniMax（同厂商 speech/video 适配器参照鉴权模式）；不改 phase-2 一段一 `-i` 不变量（collage 在 phase-1 解决）。
+
+- **M54.1 kb:auto 智能缓推（`montage.ts`）**：`KenBurns` 扩 `'auto'`；`kbDirectionFor(mode,index,hint?)` auto 态按 ffprobe 实测宽高定方向（阈值对称带 1.05：横图/方形缓推、竖图缓拉，探测失败宽容推近）；`probeImageSize` 尺寸事实源；index.ts 经 `resolveHint` 逐段缓存实测，溯源 `kb_applied` 仅 auto 态追加。
+- **M54.2 LLM 构图感知锚点（G2，analyze_composition 门控默认关）**：模板可选 `analyze` 步（image_analyze，`when: input.analyze_composition == true`）；产物 composition/subject 文本经 `classifyAnchor` 中英文三分（left/right/center）+ `voteSubject` 多数决，`kbAnchorFor(dir,subject)` 产出 zoompan x/y 加权锚点（in 推向主体 0.7/1.3、out 反向；center → null 逐字节 = M53 居中公式）；解析失败/缺产物 log 后保持居中不断链。
+- **M54.3 多图同屏拼贴（`segments.ts` `planCollageSegments` 纯函数 + phase-1 xstack）**：`layout` single（默认同引用零 diff）/duo（两联 vstack）/grid（四宫格 xstack 2x2，余数降级）/auto（≥4 图首尾 hero 中间三三拼屏）；分组仅连图片游程，视频段透传当组边界；拼屏段吃同一时长契约（durSec=duration_per_shot）。在 total/xfadePlan 前应用（offsets 按分组后段数），与 alignPlan 互斥；溯源 `layout`/`collage_segments`。
+- **M54.4 智能 BGM（`smart-bgm.ts` + `pickBgm` 纯函数）**：`bgm_mode=auto` 且未手绑时库内自动选曲：候选 = 项目音频资产 ∪ `MONTAGE_BGM_DIR` 曲库（首用复制入项目带 `bgm_library` tag）；规则≥片长优先 → 最小差 → 最近片长 → updated_at desc；0 候选 log 后按无 BGM 继续；绑定走既有 purpose='bgm'+runId 软删旧行口径，溯源 `auto_selected`。
+- **M54.5 AI 生乐（kit v0.3.0 music 协议族 + `music-gen.ts` glue）**：ai-provider-kit 新增 `protocols/music/minimax.ts`（同步长请求 POST /v1/music_generation，hex 回传，buildMiniMaxMusicBody/parseMiniMaxMusicResponse 契约纯函数），serviceType/Pricing 联合扩 `'music'`；宿主 `bgm_mode=music_gen`：resolveEndpoint('music') → 生成落音频资产（时长 extra_info 优先/ffprobe 兜底）+ usage kind='music' second 计量；未配置/失败/超时一律降级 auto 库内绝不断链、失败零计费；⚠️ MiniMax 2026-08-20 起付费音乐接口不再面向新用户，账号不可用时靠降级链兜底。
+- **M54.6 模板 `photo-montage` v2 + 桥扩键**：新输入 layout/bgm_mode（默认 auto）/bgm_prompt/analyze_composition（默认关）；ken_burns 选项 + auto；标量桥 7→11 键；AI 配置页新增「音乐生成」Tab（minimax_music 目录行 seed，仅该供应商可连通性测试）。
+- **红线**：零 diff——未触发新键时 args 逐字节 = M53（single 同引用/居中公式/无 paths）；strict_delivery 恒不进混剪链；photo-montage 默认零 LLM 零付费卖点保持（G2/G4b 显式开启才生效并记用量）；用户手绑 BGM 永远优先；实弹验证顺带揪出并修复 M53 潜伏 bug：定帧段滤镜链含 `fps` 滤镜时 ffmpeg（6.1.1/9.0.1 实测一致）吐 0 帧产出空流 mp4——定帧链去 fps，帧率由 phase-2 tpad+fps 归一。
+
+验证：`probe-m54`（四节全绿：pure auto 三态/锚点链/五组 layout/pickBgm/scanBgmLibrary；args collage vstack/xstack 形状 + 锚点表达式 + 无 paths/无 anchor 逐字节 = M53；template v2 输入面/analyze 门控/桥 11 键；live 实弹——duo+auto 4 图成片 ≈4s/320x240/溯源 kb_applied=2，bgm auto 两曲选 10s 非静音零计费，music_gen fetch 桩契约（Bearer/hex/is_instrumental）+ usage music/second 口径 + status_code≠0 降级库内零计费）。另 `probe-m53` 回归 54 项全绿，双端 typecheck + validate-templates 通过。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
