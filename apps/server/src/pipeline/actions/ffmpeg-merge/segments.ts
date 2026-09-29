@@ -142,6 +142,40 @@ export function planCollageSegments(
   return out
 }
 
+/**
+ * M54 G3 拼贴分组应用（自 index.ts 拆出：≤800 行红线，行为零变更）：混剪态 layout≠single →
+ * 连续图片段就地分组（segments 原地替换），视频段透传充当边界；拼屏段吃 duration_per_shot 时长契约。
+ * 音字对齐时间轴启用时保持单图；layout 默认 single / 非混剪态 → 同引用透传，段列与 M53 逐字节一致。
+ */
+export function applyCollageLayout(opts: {
+  segments: Segment[]
+  montageOn: boolean
+  hasAlignPlan: boolean
+  layoutRaw: string
+  durationPerShot: number
+  log: (msg: string) => void
+}): { collageLayout: 'single' | 'duo' | 'grid' | 'auto'; collageCount: number } {
+  let collageLayout: 'single' | 'duo' | 'grid' | 'auto' = ['duo', 'grid', 'auto'].includes(opts.layoutRaw)
+    ? (opts.layoutRaw as 'duo' | 'grid' | 'auto')
+    : 'single'
+  let collageCount = 0
+  if (opts.montageOn && collageLayout !== 'single') {
+    if (opts.hasAlignPlan) {
+      opts.log(`拼贴版式 ${collageLayout} 未启用（音字对齐时间轴生效中，保持单图）`)
+      collageLayout = 'single'
+    } else {
+      const planned = planCollageSegments(opts.segments, collageLayout, opts.durationPerShot)
+      collageCount = planned.filter((s) => s.paths && s.paths.length > 1).length
+      if (collageCount > 0) {
+        opts.segments.length = 0
+        opts.segments.push(...planned)
+        opts.log(`拼贴段启用（${collageLayout}）：分组后 ${planned.length} 段，其中多图同屏 ${collageCount} 段`)
+      }
+    }
+  }
+  return { collageLayout, collageCount }
+}
+
 /** 图像检测异常警示（params.quality.ok === false；缺失/坏数据 → null） */
 function qualityWarning(a: Asset): string | null {
   if (!a.params) return null

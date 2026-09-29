@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
 import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
-import { loadBgmAsset, loadAssetById, loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
+import { loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
 import { readVersionContent } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
-import { srtToAss } from './subtitle-ass'
+import { buildAssBurnPaths } from './subtitle-ass'
 import { isSameAspect, resolveAspectSize } from './aspect'
 import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset, buildClipDurByShotId } from './segments'
 import { loadShotAlignShots, planBestEffortTimeline } from './align'
@@ -31,7 +31,9 @@ import { hashJson } from '../../../services/creation-chat/contract'
 import { validatedDialogueClip } from '../../../services/creation-chat/dialogue-cache'
 import { dialogueSrt, estimateDialogueClip, estimatedDialogueSrt, estimatedValidationHash, inspectDialogueMedia, type EstimatedDialogueClip } from '../../../services/creation-chat/dialogue-media'
 import { strictVoicePlan, strictSegments, assertStrictSrt, assertStrictOutput } from './strict'
-import { montageEnabled, normalizeSegmentsToClips, type KenBurns } from './montage'
+import { montageEnabled, runMontagePhase1, type KenBurns } from './montage'
+import { applyCollageLayout } from './segments'
+import { resolveMergeBgm } from '../../../services/smart-bgm'
 
 /**
  * ffmpeg_merge：镜头序列 → 成片 + 封面（spec §5.4 三流合成）。
@@ -61,9 +63,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
   const params: Record<string, unknown> = { ...((ctx.def.params ?? {}) as Record<string, unknown>) }
-  // run 输入标量调参桥（M53）：compose 步 inputs 映射了同名模板输入（int/text/bool）时参与解析，
+  // run 输入标量调参桥（M53；M54 扩 layout/bgm_mode/bgm_prompt/analyze_composition 4 键）：
+  // compose 步 inputs 映射了同名模板输入（int/text/bool）时参与解析，
   // 既有 params 同名键优先；资产数组/空值不入桥。存量模板 inputs 无这些键 → params 逐字节不变
-  for (const k of ['fps', 'resolution', 'duration_per_shot', 'transition', 'transition_duration', 'ken_burns', 'keep_clip_audio']) {
+  for (const k of ['fps', 'resolution', 'duration_per_shot', 'transition', 'transition_duration', 'ken_burns', 'keep_clip_audio', 'layout', 'bgm_mode', 'bgm_prompt', 'analyze_composition']) {
     if (params[k] !== undefined) continue
     const v = ctx.input[k]
     if (typeof v === 'number' && Number.isFinite(v)) params[k] = v
@@ -331,6 +334,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     }
   }
 
+  // M54 G3 多图同屏拼贴：混剪态 layout≠single → 连续图片段分组（拆至 segments.applyCollageLayout，行为零变更；
+  // 拼屏段吃 duration_per_shot 时长契约、视频段透传当边界；对齐时间轴启用时保持单图；
+  // layout 默认 single → 同引用透传，段列与 M53 逐字节一致）
+  const layoutRaw = typeof params['layout'] === 'string' && params['layout'].trim() ? params['layout'].trim() : 'single'
+  const { collageLayout, collageCount } = applyCollageLayout({ segments, montageOn, hasAlignPlan: !!alignPlan, layoutRaw, durationPerShot, log: (msg) => ctx.log(msg) })
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
   // 转场计划（静态图 ≥2 镜生效；M53 混剪态图+视归一段亦可 xfade；_compose 覆盖模板 params；禁用时 filter 与既有实现逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
@@ -349,23 +357,15 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       `转场参数 ${transitionReq} 未生效（${!transitionUsable ? (mode === 'images' ? '镜头数不足 2' : 'motion_clips 模式不支持') : '值非法或时长无效'}），按 none 处理`,
     )
   }
-  // BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）
+  // BGM（非严格 run 级直查；_compose 覆盖模板 params；文件缺失跳过 + warn）+ M54 智能补乐：
+  // 均拆至 smart-bgm.resolveMergeBgm（行为零变更；存量模板不映射 bgm_mode → 智能块不执行）
   const bgmVolume = clamp(composeCfg.bgm_volume ?? numParam(params['bgm_volume'], dialogue ? 0.1 : 0.25), 0, dialogue ? 0.12 : 1)
   const bgmFade = clamp(composeCfg.bgm_fade ?? numParam(params['bgm_fade'], 2), 0, Math.min(2, total / 2))
-  // 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM；
-  // 默认（无 bgm ref）仍无 BGM（逐字节不变，不违反「不生成 BGM」——此处为使用用户素材）
-  let bgmAsset: Asset | null
-  if (strict) {
-    const bgmRef = recipe?.refs.find((r) => r.role === 'bgm')
-    bgmAsset = bgmRef ? await loadAssetById(bgmRef.assetId) : null
-  } else {
-    bgmAsset = await loadBgmAsset(ctx.run.id)
-  }
-  let bgmPath: string | null = null
-  if (bgmAsset) {
-    if (bgmAsset.relPath && existsSync(absPathOf(bgmAsset.relPath))) bgmPath = absPathOf(bgmAsset.relPath)
-    else ctx.log(`BGM 资产 #${bgmAsset.id} 文件缺失，已跳过混音`)
-  }
+  const { asset: bgmAsset, path: bgmPath, autoSelected: bgmAutoSelected } = await resolveMergeBgm({
+    ctx, strict, params, montageOn, total,
+    // 严格合成 BGM 窄口径 opt-in：仅方案批准 role:'bgm' 时放行用户上传/已存在 BGM
+    strictBgmAssetId: recipe?.refs.find((r) => r.role === 'bgm')?.assetId ?? null,
+  })
   if (bgmPath) {
     ctx.log(`BGM 就绪：asset#${bgmAsset!.id}（音量 ${bgmVolume}${bgmFade > 0 ? `，淡入淡出 ${bgmFade}s` : ''}）`)
   }
@@ -488,30 +488,11 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   let subtitlePaths: string[] | undefined
   if (srtAbs && srtRelPath) {
     try {
-      const fsFromStyle = (s: string, fb: number): number => {
-        const m = /FontSize=([\d.]+)/.exec(s)
-        return m ? Number(m[1]) : fb
-      }
-      const rawSrt = readFileSync(srtAbs, 'utf8')
-      const mainFontSize = fsFromStyle(style, Math.max(16, Math.round(height * 0.04)))
-      const assDir = dirname(srtAbs)
-      const stamp = Date.now()
-      const writeAss = (w: number, h: number, fontSize: number, tag: string): string => {
-        const ass = srtToAss(rawSrt, { width: w, height: h, fontSize })
-        const p = join(assDir, `.sub-${ctx.run.id}-${stamp}${tag}.ass`)
-        writeFileSync(p, ass, 'utf8')
-        assTempAbs.push(p)
-        return p
-      }
-      const paths = [writeAss(width, height, mainFontSize, '')]
-      for (const t of maTargets) {
-        const { w, h } = resolveAspectSize(width, height, t.aspect)
-        const fs = brand.subtitle
-          ? fsFromStyle(buildSubtitleStyle(h, brand.subtitle), Math.max(16, Math.round(h * (brand.subtitle.size_pct ?? 0.04))))
-          : mainFontSize
-        paths.push(writeAss(w, h, fs, `-${paths.length}`))
-      }
-      subtitlePaths = paths
+      subtitlePaths = buildAssBurnPaths({
+        srtAbs, style, width, height, runId: ctx.run.id, temps: assTempAbs,
+        brandSubtitle: brand.subtitle ?? null,
+        derived: maTargets.map((t) => resolveAspectSize(width, height, t.aspect)),
+      })
       ctx.log(`字幕 SRT→ASS：PlayRes ${width}×${height} 显式声明，左右边距 5%，防中文横向溢出（临时 ASS 合成后清理）`)
     } catch (err) {
       ctx.log(`字幕 ASS 转换失败（回落 SRT 原样烧录）：${(err as Error).message}`)
@@ -519,17 +500,19 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
 
   // 混剪态 phase-1（M53）：全部时长定案后、最终合成前，逐段归一化为定长带音轨临时 mp4（图段 Ken Burns/
-  // 静音轨、视段原声/兜底静音）；段 kind 原始形状留存 segKindOrig 供溯源；未触发 → 零改动 legacy 链
+  // 静音轨、视段原声/兜底静音）；段 kind 原始形状留存 segKindOrig 供溯源；未触发 → 零改动 legacy 链。
+  // 驱动拆至 montage.runMontagePhase1（kb:auto 实测提示缓存 + M54 G2 构图锚点，行为零变更）
   let montageSegments = segments
   let montageTemps: string[] = []
+  let kbResolved: KenBurns = 'none'
+  let kbAppliedCount = 0
   const segKindOrig = segments.map((s) => s.kind)
   if (montageOn) {
-    const kbRaw = typeof params['ken_burns'] === 'string' && params['ken_burns'] ? params['ken_burns'] : 'none'
-    const kb = (['in', 'out', 'alternate'].includes(kbRaw) ? kbRaw : 'none') as KenBurns
-    ctx.log(`混剪态启用：${segments.length} 段归一化（照片 ${segments.filter((s) => s.kind === 'image').length} + 视频 ${segments.filter((s) => s.kind === 'video').length}，Ken Burns ${kb}${params['keep_clip_audio'] === true ? '，原声保留' : ''}）`)
-    const norm = await normalizeSegmentsToClips(ctx, ffmpeg, segments, { width, height, fps, kb, outDir: dirname(outAbs) })
+    const norm = await runMontagePhase1({ ctx, ffmpeg, params, segments, rows, width, height, fps, outDir: dirname(outAbs) })
     montageSegments = norm.segments
     montageTemps = norm.temps
+    kbResolved = norm.kb
+    kbAppliedCount = norm.kbApplied
   }
 
   // 组装 filter_complex 与编码参数（提炼 buildComposeArgs 纯函数；无水印/片头尾→ 与既有实现逐字节一致）
@@ -667,16 +650,20 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         shots_source: shotsIds[0] ?? null,
       },
       skipped_shots: skipped,
-      // 混剪态溯源（M53；未启用 → null 逐字节不变）
+      // 混剪态溯源（M53；未启用 → null 逐字节不变；M54 拼贴/自动缓推仅实际启用时追加键）
       montage: montageOn
-        ? { mixed: mode === 'mixed', keep_clip_audio: params['keep_clip_audio'] === true, ken_burns: String(params['ken_burns'] ?? 'none'), normalized_segments: montageSegments.length }
+        ? {
+            mixed: mode === 'mixed', keep_clip_audio: params['keep_clip_audio'] === true, ken_burns: String(params['ken_burns'] ?? 'none'), normalized_segments: montageSegments.length,
+            ...(collageLayout !== 'single' ? { layout: collageLayout, collage_segments: collageCount } : {}),
+            ...(kbResolved === 'auto' ? { kb_applied: kbAppliedCount } : {}),
+          }
         : null,
       // 三增强溯源（禁用时记录原因，不影响既有语义；partial/warn_lines 标记 best-effort 部分命中）
       align: alignPlan
         ? { aligned: true, reason: null, lines: alignPlan.lines.length, shots: alignPlan.segments.length, total_dur: alignPlan.totalDur, mode: alignPlan.mode ?? null, partial: alignPlan.partial ?? false, warn_lines: alignPlan.warnLines?.length ?? 0 }
         : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null, mode: null, partial: false, warn_lines: 0 },
       transition: { enabled: xfadePlan.enabled, type: xfadePlan.enabled ? xfadePlan.type : null, dur_sec: xfadePlan.enabled ? xfadePlan.durSec : null },
-      bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade } : null,
+      bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade, ...(bgmAutoSelected ? { auto_selected: true } : {}) } : null,
       // 品牌溯源（无配置 → null；duration = 含片头尾总长）
       watermark: watermarkArg
         ? { position: watermarkArg.position, opacity: watermarkArg.opacity, width_pct: watermarkArg.width_pct, source: watermarkArg.source }

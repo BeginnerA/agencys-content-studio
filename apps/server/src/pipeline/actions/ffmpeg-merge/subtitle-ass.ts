@@ -1,4 +1,8 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { wrapSingleLine, estimateMaxCharsPerLine } from './subtitle-wrap'
+import { buildSubtitleStyle } from './subtitle-style'
+import type { SubtitleStyleConfig } from '../../../services/brand-config'
 
 /**
  * SRT → ASS 文档生成（字幕溢出根因修复）。
@@ -108,4 +112,45 @@ export function srtToAss(
     return `Dialogue: 0,${csToAssTime(c.startCs)},${csToAssTime(c.endCs)},Default,,0,0,0,,${wrapped}`
   })
   return `${header.concat(events).join('\n')}\n`
+}
+
+/**
+ * 烧录用 ASS 产物组（自 index.ts 拆出：≤800 行红线，行为零变更）：主路 + 每派生画幅各一份
+ * 显式 PlayRes 的临时 ASS（文件名 .sub-<runId>-<stamp><tag>.ass 落 srt 同目录；新建文件路径逐一
+ * 推入 opts.temps 供合成后清理，写入中途抛错时已落盘文件仍可回收）。派生路字号：品牌结构化
+ * 字幕配置按该路高度重算，否则继承主路字号。调用方 catch 后回落 SRT 原样烧录。
+ */
+export function buildAssBurnPaths(opts: {
+  srtAbs: string
+  style: string
+  width: number
+  height: number
+  runId: number
+  derived: Array<{ w: number; h: number }>
+  brandSubtitle: SubtitleStyleConfig | null
+  temps: string[]
+}): string[] {
+  const fsFromStyle = (s: string, fb: number): number => {
+    const m = /FontSize=([\d.]+)/.exec(s)
+    return m ? Number(m[1]) : fb
+  }
+  const rawSrt = readFileSync(opts.srtAbs, 'utf8')
+  const mainFontSize = fsFromStyle(opts.style, Math.max(16, Math.round(opts.height * 0.04)))
+  const assDir = dirname(opts.srtAbs)
+  const stamp = Date.now()
+  const writeAss = (w: number, h: number, fontSize: number, tag: string): string => {
+    const ass = srtToAss(rawSrt, { width: w, height: h, fontSize })
+    const p = join(assDir, `.sub-${opts.runId}-${stamp}${tag}.ass`)
+    writeFileSync(p, ass, 'utf8')
+    opts.temps.push(p)
+    return p
+  }
+  const paths = [writeAss(opts.width, opts.height, mainFontSize, '')]
+  for (const t of opts.derived) {
+    const fs = opts.brandSubtitle
+      ? fsFromStyle(buildSubtitleStyle(t.h, opts.brandSubtitle), Math.max(16, Math.round(t.h * (opts.brandSubtitle.size_pct ?? 0.04))))
+      : mainFontSize
+    paths.push(writeAss(t.w, t.h, fs, `-${paths.length}`))
+  }
+  return paths
 }

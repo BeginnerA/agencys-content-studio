@@ -19,6 +19,7 @@ import { resolveFfprobe } from '../../../services/ffmpeg'
 import { round3 } from './util'
 import type { Segment } from './segments'
 import type { StepContext } from '../../context'
+import type { Asset } from '../../../db/schema'
 
 export type KenBurns = 'none' | 'in' | 'out' | 'alternate' | 'auto'
 
@@ -128,7 +129,7 @@ export function pickBgm(candidates: BgmCandidate[], totalSec: number): BgmCandid
     const fa = sa !== null && sa >= totalSec ? 0 : 1
     const fb = sb !== null && sb >= totalSec ? 0 : 1
     if (fa !== fb) return fa - fb
-    if (fa === 0) return (sa! - totalSec) - (sb! - totalSec)
+    if (fa === 0) return (sa! - totalSec) - (sb! - totalSec) || b.c.updatedAt - a.c.updatedAt
     const da = sa === null ? Infinity : Math.abs(sa - totalSec)
     const db = sb === null ? Infinity : Math.abs(sb - totalSec)
     if (da !== db) return da - db
@@ -203,7 +204,7 @@ export function buildNormalizeArgs(seg: Segment, opts: {
             + `zoompan=z='${z}':d=${frames}:${xExpr}:${yExpr}:s=${width}x${height},`
             + `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p`
         })()
-      : `${geometry},setsar=1,fps=${fps},format=yuv420p`
+      : `${geometry},setsar=1,format=yuv420p` // 定帧单输出不带 fps 滤镜：单帧输入经 fps 会被吐成 0 帧（实测 ffmpeg 6.1.1/9.0.1 一致），帧率由 phase-2 tpad+fps 归一
     const members = seg.paths && seg.paths.length > 1 ? seg.paths : null
     if (members) {
       // M54 collage 拼贴段：N 路 -i → 各路等分 cell 裁切 → xstack 整屏 → 接既有 zoompan/定帧链
@@ -220,12 +221,12 @@ export function buildNormalizeArgs(seg: Segment, opts: {
           + `;${Array.from({ length: n }, (_, i) => `[c${i}]`).join('')}vstack=inputs=${n}[tile]`
         : Array.from({ length: n }, (_, i) => `[${i}:v]${cellGeo}[c${i}]`).join(';')
           + `;${Array.from({ length: n }, (_, i) => `[c${i}]`).join('')}xstack=inputs=${n}:layout=${layoutStr}[tile]`
-      const fullChain = `[tile]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1${kb ? '' : `,fps=${fps},format=yuv420p`}[pre]`
+      const fullChain = `[tile]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1${kb ? '' : `,format=yuv420p`}` // 同单图定帧分支：无 kb 时不带 fps（fps 吐单帧）
       const kbFromTile = kb
         ? (() => {
             const step = round3(0.25 / frames)
             const z = kb === 'in' ? `min(1+${step}*on,1.25)` : `max(1.25-${step}*on,1)`
-            return `[tile]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},zoompan=z='${z}':d=${frames}:${xExpr}:${yExpr}:s=${width}x${height},crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[pre]`
+            return `[tile]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},zoompan=z='${z}':d=${frames}:${xExpr}:${yExpr}:s=${width}x${height},crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p`
           })()
         : fullChain
       const audioIdx = n
@@ -322,4 +323,63 @@ export async function normalizeSegmentsToClips(
     out.push({ id: seg.id, path: tmp, kind: 'video', durSec: seg.durSec, explicit: seg.explicit })
   }
   return { segments: out, temps, collageSegments, kbApplied }
+}
+
+/**
+ * 混剪态 phase-1 驱动（自 index.ts 拆出：≤800 行红线，行为零变更）：kb 参数解析 +
+ * M54 kb:auto 实测宽高提示缓存（按段 id，锚点推导复用同一探测）+ G2 构图锚点（仅
+ * analyze_composition=true 且 composition 产物存在；关闭/缺产物/解析失败 → anchors 不设，
+ * zoompan x/y 表达式逐字节 = M53 居中公式）+ 逐段归一化执行。调用方仅在 montageOn 时进入。
+ */
+export async function runMontagePhase1(opts: {
+  ctx: StepContext
+  ffmpeg: string
+  params: Record<string, unknown>
+  segments: Segment[]
+  rows: Asset[]
+  width: number
+  height: number
+  fps: number
+  outDir: string
+}): Promise<{ segments: Segment[]; temps: string[]; kb: KenBurns; kbApplied: number }> {
+  const { ctx, params, segments, rows } = opts
+  const kbRaw = typeof params['ken_burns'] === 'string' && params['ken_burns'] ? params['ken_burns'] : 'none'
+  const kb = (['in', 'out', 'alternate', 'auto'].includes(kbRaw) ? kbRaw : 'none') as KenBurns
+  // M54 kb:auto：ffprobe 实测宽高为方向唯一事实源（按段 id 缓存，锚点推导复用同一探测）
+  const hintById = new Map<number, KbHint | null>()
+  const resolveHint = (seg: Segment): KbHint | null => {
+    if (!hintById.has(seg.id)) hintById.set(seg.id, seg.kind === 'image' ? probeImageSize(seg.path) : null)
+    return hintById.get(seg.id) ?? null
+  }
+  let anchors: Array<KbAnchor | null | undefined> | undefined
+  if (params['analyze_composition'] === true && kb !== 'none') {
+    const compIds = ctx.assetIdsOf('composition')
+    if (compIds.length > 0) {
+      try {
+        const parsed = JSON.parse(await ctx.readText(compIds[0]!)) as { images?: Array<{ file?: string; subject?: string; composition?: string }> }
+        const subjectByName = new Map<string, 'left' | 'right' | 'center'>()
+        for (const it of parsed.images ?? []) {
+          if (it.file) subjectByName.set(it.file.toLowerCase(), voteSubject([it.composition, it.subject]))
+        }
+        anchors = segments.map((seg, i) => {
+          if (seg.kind !== 'image') return null
+          const name = rows.find((r) => r.id === seg.id)?.name?.toLowerCase()
+          const subject = name ? subjectByName.get(name) : undefined
+          if (!subject) return null
+          const dir = kbDirectionFor(kb, i, resolveHint(seg) ?? undefined) ?? 'in'
+          return kbAnchorFor(dir, subject)
+        })
+        ctx.log(`构图锚点启用：${anchors.filter((a) => a).length}/${segments.length} 段主体偏置（analyze_composition）`)
+      } catch (err) {
+        ctx.log(`构图锚点解析失败（保持居中，不影响合成）：${(err as Error).message}`)
+      }
+    } else {
+      ctx.log('analyze_composition=true 但 composition 输入无产物（analyze 步未跑或被跳过），保持居中锚点')
+    }
+  }
+  ctx.log(`混剪态启用：${segments.length} 段归一化（照片 ${segments.filter((s) => s.kind === 'image').length} + 视频 ${segments.filter((s) => s.kind === 'video').length}，Ken Burns ${kb}${params['keep_clip_audio'] === true ? '，原声保留' : ''}）`)
+  const norm = await normalizeSegmentsToClips(ctx, opts.ffmpeg, segments, {
+    width: opts.width, height: opts.height, fps: opts.fps, kb, outDir: opts.outDir, resolveHint, anchors,
+  })
+  return { segments: norm.segments, temps: norm.temps, kb, kbApplied: norm.kbApplied }
 }
