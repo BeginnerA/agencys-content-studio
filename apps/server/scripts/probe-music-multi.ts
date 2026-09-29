@@ -1,20 +1,25 @@
 /**
- * 音乐多供应商适配探针（kit music 注册表：MiniMax/百炼 Fun-Music/火山 GenBGM/Pollinations /audio）——手动执行：
+ * 音乐多供应商适配探针（kit music 注册表：MiniMax/百炼 Fun-Music/火山 GenBGM/Pollinations/Mureka/音潮）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-music-multi.ts [--section=pure|live]
  *
  * 隔离策略：isolatedEnv('musicx') 一次性临时目录（独立 studio.db），registry 节断言 seed 目录行；
  * live 节 globalThis.fetch 桩做全链路契约测试（零真实付费）：百炼同步直返 URL+下载、
  * 火山 提交→轮询(1→2)→音频下载 状态机、Pollinations GET /audio/{text} 直返字节+401/402 语义、
+ * Mureka 提交→轮询(running→succeeded)→下载、音潮 提交→轮询(空 choices→done)→下载，
  * 签名头形态、派发与未注册 key 报错口径。
  *
- * 断言面（官方 schema 核实 2026：help.aliyun.com fun-music-api / docs.volcengine.com 音视频理解+签名调用指南 / gen.pollinations.ai openapi getAudioByText）：
+ * 断言面（官方 schema 核实 2026：help.aliyun.com fun-music-api / docs.volcengine.com 音视频理解+签名调用指南 / gen.pollinations.ai openapi getAudioByText /
+ *  platform.mureka.cn instrumental-generate+query / platform.yinchaoyongxian.com song-instrumental+task-query）：
  *  - pure：buildAliyunMusicBody/parseAliyunMusicResponse/aliyunMusicError 契约；
  *    parseVolcCredentials 双形态、volcDates/volcCanonicalQuery 规范化、signVolcRequest 确定性与格式、
  *    buildVolcMusicBody 两族形态、parseVolcSubmit/QueryResponse 状态机（Status 2 才是成功）；
  *    pollinationsMusicFamily/Text/Params/Url 家族参数面与 401/402 错误归一；
+ *    buildMurekaMusicBody/parseMurekaSubmit/QueryResponse/murekaMusicError/murekaRootUrl（succeeded 才成功 + duration ms）；
+ *    buildYinChaoMusicBody/parseYinChaoSubmit/QueryResponse/yinChaoMusicError/yinChaoRootUrl（子曲 done 取 audio_url，无时长字段）；
  *  - live：generateAliyunMusic URL 拼接（/api/v1 去重 + compatible-mode 互斥）+ Bearer + 官方样例响应 + 下载字节；
  *    generateVolcMusic 全链路（Action 式 + Authorization 头 + 轮询节奏 + 失败态抛错）；
- *    generatePollinationsMusic GET /audio 字节直收 + 查询串出线 + 402 透出；getMusicAdapter 派发。
+ *    generatePollinationsMusic GET /audio 字节直收 + 查询串出线 + 402 透出；
+ *    generateMurekaMusic/generateYinChaoMusic 提交→轮询→下载全链路（Bearer + 失败态抛错）；getMusicAdapter 派发。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
@@ -44,10 +49,10 @@ await runSections({
     const { apiProviders } = await import('../src/db/schema')
     const rows = await db.select().from(apiProviders)
     const music = rows.filter((r) => r.serviceType === 'music').map((r) => r.key).sort()
-    // minimax_music 已退役不再预种（MiniMax 付费音乐接口 2026-08-20 起不再面向新用户，新用户无从开通）
+    // minimax_music 已退役不再预种（MiniMax 付费音乐接口 2026-08-20 起不再面向新用户，新用户无从开通）；新增 mureka_music/yinchao_music 目录行
     check(
-      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'volcengine_music']),
-      `两供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
+      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'mureka_music', 'volcengine_music', 'yinchao_music']),
+      `四供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
     )
     // kit 注册表 ⊇ 宿主目录：网关私有协议行（pollinations_music）与退役款（minimax_music）已不再 seed，kit 侧适配器保留供存量实例派发，不影响宿主
     check(kit.listMusicAdapterKeys().every((k) => music.includes(k) || k === 'pollinations_music' || k === 'minimax_music') && music.every((k) => kit.listMusicAdapterKeys().includes(k)), 'kit 音乐注册表覆盖宿主目录行（网关款/退役款仅存 kit 层）')
@@ -126,8 +131,39 @@ await runSections({
       check(kit.pollinationsMusicError(401, '{"error":{"code":"UNAUTHORIZED","message":"bad key"}}') === 'HTTP 401: [UNAUTHORIZED] bad key（API Key 无效，Pollinations 须 sk_ 开头 Bearer 密钥）', 'Pollinations 401 归一：密钥语义提示')
       check(kit.pollinationsMusicError(402, 'not json').includes('Pollen 余额不足，链路已通') === true, 'Pollinations 402 归一：余额不足与链路已通的区分口径')
 
+      // —— Mureka（platform.mureka.cn /v1/instrumental 异步任务） ——
+      check(kit.buildMurekaMusicBody('', { prompt: 'epic orchestral cinematic' }).model === 'auto', 'Mureka 默认体：model 缺省 auto')
+      const mb = kit.buildMurekaMusicBody('mureka-7.6', { prompt: 'tense thriller strings', audioSetting: { n: 2 } })
+      check(mb.model === 'mureka-7.6' && mb.prompt === 'tense thriller strings' && mb.n === 2, 'Mureka 体：model 透传 + prompt + n(1-3)')
+      check(kit.buildMurekaMusicBody('x', { prompt: 'p', audioSetting: { n: 9 } }).n === undefined, 'Mureka 越界 n(>3) 不下发')
+      check(kit.parseMurekaSubmitResponse({ id: '152312779', status: 'preparing', model: 'mureka-9' }).taskId === '152312779', 'Mureka 提交归一：顶层 id→taskId')
+      check(kit.parseMurekaSubmitResponse({ code: 10005, msg: 'invalid key' }).error?.includes('10005') === true, 'Mureka 提交非零 code → 错误带码')
+      const mkDone = kit.parseMurekaQueryResponse({ status: 'succeeded', choices: [{ id: 'c1', url: 'https://cdn.example/a.mp3', duration: 128000 }] })
+      check(mkDone.state === 'done' && mkDone.url === 'https://cdn.example/a.mp3' && mkDone.durationMs === 128000, 'Mureka succeeded=成功：choices[0].url + duration(ms)')
+      check(kit.parseMurekaQueryResponse({ status: 'running' }).state === 'pending' && kit.parseMurekaQueryResponse({ status: 'queued' }).state === 'pending', 'Mureka running/queued → 进行中')
+      check(kit.parseMurekaQueryResponse({ status: 'failed' }).state === 'failed' && kit.parseMurekaQueryResponse({ status: 'timeouted' }).state === 'failed', 'Mureka failed/timeouted → 失败（仅 succeeded 才成功的枚举红线）')
+      check(kit.parseMurekaQueryResponse({ status: 'succeeded', choices: [{ url: '' }] }).state === 'failed', 'Mureka succeeded 但缺 url → 失败')
+      check(kit.murekaMusicError(401, '{"code":10005,"msg":"bad key"}').includes('API Key 无效'), 'Mureka 401/10005 归一：密钥无效语义')
+      check(kit.murekaMusicError(400, '{"code":40001,"msg":"insufficient"}').includes('余额不足'), 'Mureka 40001 归一：余额不足链路已通')
+      check(kit.murekaRootUrl('') === 'https://platform.mureka.cn' && kit.murekaRootUrl('https://mm.example.com/api/v2/open/aigc/mureka/') === 'https://mm.example.com/api/v2/open/aigc/mureka', 'Mureka rootUrl：缺省官方域 + 网关前缀保留仅剥尾斜杠')
+
+      // —— 音潮（open.yinchaoyongxian.com /api/v1/song/instrumental 异步任务） ——
+      check(kit.buildYinChaoMusicBody('', { prompt: '紧张悬疑弦乐' }).model === 'v4.0', '音潮默认体：model 缺省 v4.0')
+      const yb = kit.buildYinChaoMusicBody('v4.0', { prompt: 'warm piano', audioSetting: { n: 2 } })
+      check(yb.model === 'v4.0' && yb.prompt === 'warm piano' && yb.n === 2, '音潮 体：model + prompt + n(≤2)')
+      check(kit.buildYinChaoMusicBody('x', { prompt: 'p', audioSetting: { n: 3 } }).n === undefined, '音潮 越界 n(>2) 不下发')
+      check(kit.parseYinChaoSubmitResponse({ id: 'task-9', task_type: 'instrumental' }).taskId === 'task-9', '音潮 提交归一：顶层 id→taskId')
+      check(kit.parseYinChaoSubmitResponse({ id: '' }).error !== null, '音潮 提交缺 id → 错误')
+      check(kit.parseYinChaoQueryResponse({ choices: [] }).state === 'pending', '音潮 提交后空 choices → 进行中（继续等）')
+      const ykDone = kit.parseYinChaoQueryResponse({ choices: [{ id: 's1', status: 'done', audio_url: 'https://cdn.example/b.mp3' }] })
+      check(ykDone.state === 'done' && ykDone.url === 'https://cdn.example/b.mp3', '音潮 子曲 done：取 audio_url（无时长字段→durationMs 上层回落 null）')
+      check(kit.parseYinChaoQueryResponse({ choices: [{ status: 'running' }] }).state === 'pending', '音潮 子曲 running → 进行中')
+      check(kit.parseYinChaoQueryResponse({ choices: [{ status: 'fail', error: '审核未通过' }] }).state === 'failed', '音潮 全终态含 fail → 失败')
+      check(kit.yinChaoMusicError(401, '{"code":401,"msg":"unauthorized"}').includes('API Key 无效'), '音潮 401 归一：Bearer Key 无效语义')
+      check(kit.yinChaoRootUrl('') === 'https://open.yinchaoyongxian.com' && kit.yinChaoRootUrl('https://gw.example.com/proxy/') === 'https://gw.example.com/proxy', '音潮 rootUrl：缺省官方域 + 尾斜杠剥离')
+
       // —— 注册表派发 ——
-      check(kit.getMusicAdapter('minimax_music').provider === 'minimax' && kit.getMusicAdapter('aliyun_bailian_music').provider === 'aliyun' && kit.getMusicAdapter('volcengine_music').provider === 'volcengine' && kit.getMusicAdapter('pollinations_music').provider === 'pollinations', 'getMusicAdapter 四供应商派发')
+      check(kit.getMusicAdapter('minimax_music').provider === 'minimax' && kit.getMusicAdapter('aliyun_bailian_music').provider === 'aliyun' && kit.getMusicAdapter('volcengine_music').provider === 'volcengine' && kit.getMusicAdapter('pollinations_music').provider === 'pollinations' && kit.getMusicAdapter('mureka_music').provider === 'mureka' && kit.getMusicAdapter('yinchao_music').provider === 'yinchao', 'getMusicAdapter 六供应商派发')
       let notReady = ''
       try { kit.getMusicAdapter('silkflow_music') } catch (e) { notReady = (e as Error).message }
       check(notReady.includes('未注册') && notReady.includes('minimax_music'), '未注册 key → MusicProviderNotReadyError（列可选项）')
@@ -224,9 +260,66 @@ await runSections({
         try { await kit.generatePollinationsMusic(polEp, { prompt: 'x' }) } catch (e) { polErr = (e as Error).message }
         check(polErr.includes('[PAYMENT_REQUIRED]') && polErr.includes('余额不足'), 'Pollinations 402 透出：Pollen 余额不足（密钥有效）由调用方降级')
 
+        // —— Mureka：提交 → 轮询(running→succeeded) → 下载全链路（Bearer 异步任务） ——
+        const mkSeen: Array<{ url: string; auth: string; method: string }> = []
+        let mkRound = 0
+        globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = String(input)
+          const headers = (init?.headers ?? {}) as Record<string, string>
+          if (url.includes('platform.mureka.cn/v1/instrumental/generate')) {
+            mkSeen.push({ url, auth: String(headers.Authorization ?? ''), method: 'POST' })
+            return new Response(JSON.stringify({ id: '152312779', created_at: 1785306793, model: 'mureka-9', status: 'preparing' }), { status: 200 })
+          }
+          if (url.includes('platform.mureka.cn/v1/instrumental/query/')) {
+            mkSeen.push({ url, auth: String(headers.Authorization ?? ''), method: 'GET' })
+            mkRound += 1
+            if (mkRound < 2) return new Response(JSON.stringify({ id: '152312779', status: 'running' }), { status: 200 })
+            return new Response(JSON.stringify({ id: '152312779', status: 'succeeded', choices: [{ id: 'c1', url: 'https://cdn.mureka.example/a.mp3', duration: 128000 }] }), { status: 200 })
+          }
+          if (url.includes('cdn.mureka.example')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          throw new Error(`music 桩仅放行白名单端点：${url}`)
+        }) as typeof fetch
+        const mkEp = { providerKey: 'mureka_music', baseUrl: 'https://platform.mureka.cn', apiKey: 'mk-probe', model: 'mureka-7.6', extra: {} }
+        const mk = await kit.generateMurekaMusic(mkEp, { prompt: 'tense orchestral BGM', timeoutMs: 60_000 })
+        check(mk.audio.length === mp3Bytes.length && mk.durationMs === 128000 && mk.model === 'mureka-7.6', 'Mureka 全链路：提交→轮询→下载字节 + duration(ms) 口径')
+        check(mkSeen[0]?.url === 'https://platform.mureka.cn/v1/instrumental/generate' && mkSeen[0]?.auth === 'Bearer mk-probe' && mkSeen.some((c) => c.method === 'GET' && c.url.includes('/v1/instrumental/query/152312779')), 'Mureka 端点契约：POST generate + GET query/{id} + Bearer')
+        // Mureka 失败态 → 抛错透出（仅 succeeded 才成功）
+        globalThis.fetch = (async (input: string | URL | Request) => {
+          const url = String(input)
+          if (url.includes('/generate')) return new Response(JSON.stringify({ id: 'T-2', status: 'preparing' }), { status: 200 })
+          return new Response(JSON.stringify({ id: 'T-2', status: 'failed', error: { message: 'content policy' } }), { status: 200 })
+        }) as typeof fetch
+        let mkErr = ''
+        try { await kit.generateMurekaMusic(mkEp, { prompt: 'x', timeoutMs: 30_000 }) } catch (e) { mkErr = (e as Error).message }
+        check(mkErr.includes('failed') && mkErr.includes('content policy'), 'Mureka 失败态抛错：status=failed + error.message 透出（由调用方降级）')
+
+        // —— 音潮：提交 → 轮询(空 choices→done) → 下载（Bearer 异步任务，无时长字段） ——
+        const ycSeen: Array<{ url: string; auth: string; method: string }> = []
+        let ycRound = 0
+        globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = String(input)
+          const headers = (init?.headers ?? {}) as Record<string, string>
+          if (url.includes('open.yinchaoyongxian.com/api/v1/song/instrumental')) {
+            ycSeen.push({ url, auth: String(headers.Authorization ?? ''), method: 'POST' })
+            return new Response(JSON.stringify({ id: 'task-555', task_type: 'instrumental', choices: [] }), { status: 200 })
+          }
+          if (url.includes('open.yinchaoyongxian.com/api/v1/task/query')) {
+            ycSeen.push({ url, auth: String(headers.Authorization ?? ''), method: 'GET' })
+            ycRound += 1
+            if (ycRound < 2) return new Response(JSON.stringify({ choices: [{ id: 's1', status: 'running' }] }), { status: 200 })
+            return new Response(JSON.stringify({ choices: [{ id: 's1', status: 'done', audio_url: 'https://cdn.yinchaoyx.example/b.mp3' }] }), { status: 200 })
+          }
+          if (url.includes('cdn.yinchaoyx.example')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          throw new Error(`music 桩仅放行白名单端点：${url}`)
+        }) as typeof fetch
+        const ycEp = { providerKey: 'yinchao_music', baseUrl: 'https://open.yinchaoyongxian.com', apiKey: 'yc-probe', model: '', extra: {} }
+        const yc = await kit.generateYinChaoMusic(ycEp, { prompt: '温暖钢琴 BGM', timeoutMs: 60_000 })
+        check(yc.audio.length === mp3Bytes.length && yc.durationMs === null && yc.model === 'v4.0', '音潮 全链路：提交→轮询→下载字节 + durationMs=null 交宿主 ffprobe + 默认 v4.0')
+        check(ycSeen[0]?.url === 'https://open.yinchaoyongxian.com/api/v1/song/instrumental' && ycSeen[0]?.auth === 'Bearer yc-probe' && ycSeen.some((c) => c.method === 'GET' && c.url.includes('/api/v1/task/query?task_id=task-555')), '音潮 端点契约：POST song/instrumental + GET task/query?task_id= + Bearer')
+
         // —— 派发一致性：宿主 music-gen 走注册表 ——
         const { getMusicAdapter } = kit
-        check(typeof getMusicAdapter('volcengine_music').generate === 'function' && typeof getMusicAdapter('pollinations_music').generate === 'function', 'music-gen 派发面：generate 函数可达')
+        check(typeof getMusicAdapter('volcengine_music').generate === 'function' && typeof getMusicAdapter('pollinations_music').generate === 'function' && typeof getMusicAdapter('mureka_music').generate === 'function' && typeof getMusicAdapter('yinchao_music').generate === 'function', 'music-gen 派发面：generate 函数可达（含 Mureka/音潮）')
       } finally {
         globalThis.fetch = fetchBak
       }

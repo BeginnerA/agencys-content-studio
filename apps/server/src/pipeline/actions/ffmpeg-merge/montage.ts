@@ -117,18 +117,39 @@ export function probeImageSize(file: string): { w: number; h: number } | null {
   }
 }
 
-/** BGM 候选（库内自动选曲输入；durationSec null = 探测失败，排最后） */
-export interface BgmCandidate { id: number; path: string; durationSec: number | null; updatedAt: number }
+/** BGM 候选（库内自动选曲输入；durationSec null = 探测失败，排最后；moodVec = 情绪向量，缺则纯时长候选） */
+export interface BgmCandidate { id: number; path: string; durationSec: number | null; updatedAt: number; moodVec?: number[] | null }
 
-/** 选曲规则（纯函数）：时长 ≥ 片长优先 → 其中与片差最小 → updated_at desc 稳定序；0 候选 → null */
-export function pickBgm(candidates: BgmCandidate[], totalSec: number): BgmCandidate | null {
+/** 余弦（向量已 normalize → 点积）；任一侧缺失 → null（本地实现，避免 montage 依赖重 embedding 模块） */
+function cosSim(a: number[] | null | undefined, b: number[] | null | undefined): number | null {
+  if (!a || !b || a.length === 0 || b.length === 0) return null
+  const n = Math.min(a.length, b.length)
+  let s = 0
+  for (let i = 0; i < n; i++) s += a[i]! * b[i]!
+  return s
+}
+
+/** 情绪排序比较（升序 comparator）：两侧都有分数→高者前（b-a）；一侧 null→有者前；都 null→0（回落原序，零 diff） */
+function moodRankCmp(a: number | null, b: number | null): number {
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  return b - a
+}
+
+/** 选曲规则（纯函数）：时长 ≥ 片长优先分档（硬约束）→ 档内情绪 cosine 降序 → 片长差 → updated_at desc；0 候选 → null。
+ *  零 diff 红线：opts.moodVec 为空 或 全体候选 moodVec=null → 情绪比较恒为 0，排序逐字节 = 旧版（时长+时效）。 */
+export function pickBgm(candidates: BgmCandidate[], totalSec: number, opts?: { moodVec?: number[] | null }): BgmCandidate | null {
   if (candidates.length === 0) return null
-  const scored = candidates.map((c, i) => ({ c, i }))
+  const moodVec = opts?.moodVec ?? null
+  const scored = candidates.map((c, i) => ({ c, i, mood: moodVec ? cosSim(moodVec, c.moodVec) : null }))
   scored.sort((a, b) => {
     const sa = a.c.durationSec; const sb = b.c.durationSec
     const fa = sa !== null && sa >= totalSec ? 0 : 1
     const fb = sb !== null && sb >= totalSec ? 0 : 1
     if (fa !== fb) return fa - fb
+    const cmpMood = moodRankCmp(a.mood, b.mood)
+    if (cmpMood !== 0) return cmpMood
     if (fa === 0) return (sa! - totalSec) - (sb! - totalSec) || b.c.updatedAt - a.c.updatedAt
     const da = sa === null ? Infinity : Math.abs(sa - totalSec)
     const db = sb === null ? Infinity : Math.abs(sb - totalSec)

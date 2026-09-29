@@ -95,6 +95,8 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'google_audio', name: 'Google 语音', serviceType: 'audio', vendor: 'google', description: 'Gemini 原生语音合成（TTS）。音色在实例扩展参数里选择', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview']), overwritePresetModels: true },
   { key: 'aliyun_bailian_music', name: '阿里百炼音乐', serviceType: 'music', vendor: 'aliyun', description: '百炼 Fun-Music 音乐生成（纯音乐/歌曲，48kHz）。⚠️ 邀测模型需先在模型广场申请开通，仅华北2（北京）地域；复用百炼 API Key；未配置时降级库内选曲', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['fun-music-v1', 'fun-music-preview']), overwritePresetModels: true },
   { key: 'volcengine_music', name: '火山方舟音乐', serviceType: 'music', vendor: 'volcengine', description: '火山引擎音视频理解·音乐生成（纯音乐 GenBGM/人声歌曲，v5.0）。⚠️ 密钥填火山账号「AK/SK」拼接串（不是方舟 Key），需先开通该产品；未配置时降级库内选曲', defaultUrl: 'https://open.volcengineapi.com', presetModels: JSON.stringify(['v5.0', 'v4.3', 'v4.0']), overwritePresetModels: true },
+  { key: 'mureka_music', name: 'Mureka 音乐', serviceType: 'music', vendor: 'mureka', description: 'Mureka 纯音乐生成（BGM 首选 instrumental 端点，异步任务轮询，产物含商用授权）。填 platform.mureka.cn 或网关镜像地址；未配置/失败时降级库内选曲', defaultUrl: 'https://platform.mureka.cn', presetModels: JSON.stringify(['auto', 'mureka-7.6', 'mureka-8', 'mureka-9']), overwritePresetModels: true },
+  { key: 'yinchao_music', name: '音潮音乐', serviceType: 'music', vendor: 'yinchao', description: '音潮（涌现）V4.0 纯音乐生成（理解风格/乐器/情绪，异步任务轮询）。需企业资质开通 API；未配置/失败时降级库内选曲', defaultUrl: 'https://open.yinchaoyongxian.com', presetModels: JSON.stringify(['v4.0']), overwritePresetModels: true },
 ]
 
 /**
