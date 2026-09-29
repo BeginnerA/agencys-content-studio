@@ -46,8 +46,11 @@ await runSections({
     const { db } = await import('../src/db')
     const { apiProviders } = await import('../src/db/schema')
     const { eq } = await import('drizzle-orm')
+    // minimax_music 已退役不再预种（MiniMax 付费音乐接口 2026-08-20 起不再面向新用户）；
+    // 手工插行模拟旧库存量行（有实例引用时回收守卫不删），验 kit 适配器执行链不受退役影响
+    await db.insert(apiProviders).values({ key: 'minimax_music', name: 'MiniMax 音乐', serviceType: 'music', vendor: 'minimax', createdAt: Date.now(), updatedAt: Date.now() })
     const rows = await db.select().from(apiProviders).where(eq(apiProviders.key, 'minimax_music'))
-    check(rows.length === 1 && rows[0]!.serviceType === 'music', 'minimax_music 目录行已 seed（service_type=music 自由 text 零迁移）')
+    check(rows.length === 1 && rows[0]!.serviceType === 'music', 'minimax_music 目录行可存在（退役后仅存量态，service_type=music 自由 text 零迁移）')
   },
   runners: {
     // ================= pure：auto 定向 / 锚点 / 拼贴分组 / 选曲（纯函数） =================

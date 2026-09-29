@@ -93,7 +93,6 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'volcengine_audio', name: '火山方舟语音', serviceType: 'audio', vendor: 'volcengine', description: '豆包语音合成。Key 要用豆包「语音控制台」的专用 Key（不是方舟模型 Key）。默认 seed-audio-1.0 填文本即可出音；要精确音色选 seed-tts（需另开通）', defaultUrl: 'https://openspeech.bytedance.com', presetModels: JSON.stringify(['seed-audio-1.0', 'seed-tts']), overwritePresetModels: true },
   { key: 'minimax_audio', name: 'MiniMax 语音', serviceType: 'audio', vendor: 'minimax', description: 'MiniMax 语音合成 T2A。音色在实例扩展参数里选择', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['speech-2.8-hd', 'speech-2.8-turbo']), overwritePresetModels: true },
   { key: 'google_audio', name: 'Google 语音', serviceType: 'audio', vendor: 'google', description: 'Gemini 原生语音合成（TTS）。音色在实例扩展参数里选择', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview']), overwritePresetModels: true },
-  { key: 'minimax_music', name: 'MiniMax 音乐', serviceType: 'music', vendor: 'minimax', description: 'MiniMax 音乐生成（BGM/纯音乐）。⚠️ 2026-08-20 起付费音乐接口不再面向新用户；未配置时混剪模板自动降级库内选曲', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['music-3.0', 'music-2.6']), overwritePresetModels: true },
   { key: 'aliyun_bailian_music', name: '阿里百炼音乐', serviceType: 'music', vendor: 'aliyun', description: '百炼 Fun-Music 音乐生成（纯音乐/歌曲，48kHz）。⚠️ 邀测模型需先在模型广场申请开通，仅华北2（北京）地域；复用百炼 API Key；未配置时降级库内选曲', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['fun-music-v1', 'fun-music-preview']), overwritePresetModels: true },
   { key: 'volcengine_music', name: '火山方舟音乐', serviceType: 'music', vendor: 'volcengine', description: '火山引擎音视频理解·音乐生成（纯音乐 GenBGM/人声歌曲，v5.0）。⚠️ 密钥填火山账号「AK/SK」拼接串（不是方舟 Key），需先开通该产品；未配置时降级库内选曲', defaultUrl: 'https://open.volcengineapi.com', presetModels: JSON.stringify(['v5.0', 'v4.3', 'v4.0']), overwritePresetModels: true },
 ]
@@ -346,8 +345,10 @@ export async function removeGatewayPrivateProtocolRows(): Promise<void> {
 /** 已退役厂商标识（网关收编后不再作为凭证厂商存在；代码侧 VENDOR_SEEDS 已无对应行） */
 const RETIRED_VENDORS: string[] = ['openrouter']
 
-/** 已退役目录行 key（接入后回退的遗留：seedProviders 只插不删，旧库需启动期回收） */
-const RETIRED_PROVIDER_KEYS: string[] = ['openrouter_music']
+/** 已退役目录行 key（接入后回退的遗留：seedProviders 只插不删，旧库需启动期回收）。minimax_music：
+ * MiniMax 付费音乐接口 2026-08-20 起不再面向新用户，新用户无从开通，目录行不再预种（用户决定 2026-09-29）；
+ * kit 侧适配器保留，存量已配 Key 的老账号实例（有引用则回收守卫不删行）执行链不受影响 */
+const RETIRED_PROVIDER_KEYS: string[] = ['openrouter_music', 'minimax_music']
 
 /**
  * 幂等清理：删除退役网关的残留厂商凭证与残留目录行（种子只插不删，旧库残留需启动期回收）。
