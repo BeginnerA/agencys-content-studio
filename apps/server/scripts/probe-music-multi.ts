@@ -120,7 +120,7 @@ await runSections({
       check(kit.pollinationsMusicText('google/lyria-3.5', { prompt: '爵士' }, { duration_seconds: 60.4 }).includes('approximately 60 seconds') === true, 'Pollinations Lyria 约时长写入 prompt（取整）')
       check(kit.pollinationsMusicText('elevenlabs/music-v2', { prompt: 'p', instrumental: false, lyrics: '歌词正文' }) === '歌词正文', 'Pollinations 歌曲形态 lyrics 优先')
       const pu = kit.buildPollinationsMusicUrl('https://gen.pollinations.ai/v1', '钢琴 纯音乐', '', { prompt: '钢琴 纯音乐' })
-      check(pu === 'https://gen.pollinations.ai/audio/%E9%92%A2%E7%90%B3%20%E7%BA%AF%E9%9F%B3%E4%B9%90?instrumental=true&model=elevenlabs%2Fmusic-v2', 'Pollinations URL 契约：/v1 剥根域 + text 路径编码 + 查询串升序')
+      check(pu === 'https://gen.pollinations.ai/audio/%E9%92%A2%E7%90%B4%20%E7%BA%AF%E9%9F%B3%E4%B9%90?model=elevenlabs%2Fmusic-v2&instrumental=true', 'Pollinations URL 契约：/v1 剥根域 + text 路径编码 + model/instrumental 出线')
       check(kit.pollinationsMusicError(401, '{"error":{"code":"UNAUTHORIZED","message":"bad key"}}') === 'HTTP 401: [UNAUTHORIZED] bad key（API Key 无效，Pollinations 须 sk_ 开头 Bearer 密钥）', 'Pollinations 401 归一：密钥语义提示')
       check(kit.pollinationsMusicError(402, 'not json').includes('Pollen 余额不足，链路已通') === true, 'Pollinations 402 归一：余额不足与链路已通的区分口径')
 
