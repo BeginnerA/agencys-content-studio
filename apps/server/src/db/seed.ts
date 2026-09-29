@@ -315,6 +315,30 @@ export async function migrateGatewayRowsToOpenAI(): Promise<void> {
   await db.delete(apiProviders).where(inArray(apiProviders.key, Object.keys(GATEWAY_OPENAI_KEY_MAP)))
 }
 
+/** 已退役厂商标识（网关收编后不再作为凭证厂商存在；代码侧 VENDOR_SEEDS 已无对应行） */
+const RETIRED_VENDORS: string[] = ['openrouter']
+
+/**
+ * 幂等清理：删除退役网关的残留厂商凭证（seedVendorCredentials 只插不删，旧库残留需启动期回收）。
+ * 仅当该凭证无任何实例引用时才删（有引用 = 用户仍在用，不破坏执行链）；secrets.json 的
+ * local:vendor:{vendor} 键同步搬迁删除。
+ */
+export async function cleanupRetiredVendorCredentials(): Promise<void> {
+  const credRows = await db.select().from(vendorCredentials)
+  const retired = credRows.filter((r) => RETIRED_VENDORS.includes(r.vendor))
+  if (retired.length === 0) return
+  for (const cred of retired) {
+    const refs = await db
+      .select({ id: apiConfigs.id })
+      .from(apiConfigs)
+      .where(eq(apiConfigs.credentialId, cred.id))
+      .limit(1)
+    if (refs.length > 0) continue
+    await db.delete(vendorCredentials).where(eq(vendorCredentials.id, cred.id))
+    if (cred.apiKeyRef === `local:vendor:${cred.vendor}`) deleteSecret(cred.apiKeyRef)
+  }
+}
+
 /** 从 providerKey 提取 vendor 前缀（aliyun_bailian_llm → aliyun） */
 function extractVendor(providerKey: string): string | null {
   // 匹配已知 vendor 前缀

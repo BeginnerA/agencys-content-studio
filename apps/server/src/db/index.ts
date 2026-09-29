@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI } from './seed'
+import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI, cleanupRetiredVendorCredentials } from './seed'
 
 const log = createLogger('db')
 
@@ -42,6 +42,8 @@ export async function initDb(): Promise<void> {
   // 网关 OpenAI 兼容行（siliconflow/pollinations 的 LLM·图像·语音）收编进 openai_* 协议行：同样须在 seedProviders 前执行
   await migrateGatewayRowsToOpenAI()
   await seedVendorCredentials()
+  // 退役网关残留凭证回收（如 openrouter：代码已回退但旧库只插不删）：在补种后执行，不会被重新插入
+  await cleanupRetiredVendorCredentials()
   await seedProviders()
   await migrateCredentialsFromConfigs()
   // 内置常用风格预设（幂等补缺，不覆盖用户编辑）：表由 ensureSchemaColumns 建表兜底后写入
