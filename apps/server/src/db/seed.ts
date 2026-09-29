@@ -48,18 +48,19 @@ export const VENDOR_SEEDS: VendorSeed[] = [
 /**
  * 预置供应商目录（种子）。
  * 命名原则（统一）：一行 = 厂商 × 能力；协议实现（OpenAI 兼容 / 私有协议）
- * 只在 description 里说明，不进入行名。同一厂商的每类能力各占一行
- * （如 siliconflow_* / pollinations_* / aliyun_* / volcengine_* 四类）。openai_* 行 = OpenAI 官方，
- * 亦承接任意 OpenAI 兼容的自定义网关；video 各家协议互不相通，天然一家一行。
+ * 只在 description 里说明，不进入行名。openai_* 行 = OpenAI 协议族统一入口，
+ * 官方与任意 OpenAI 兼容网关（SiliconFlow / Pollinations / OpenRouter 等）一律经
+ * openai_* 行接入（网关只是实例 baseUrl 取不同值，不是供应商）；因此网关的
+ * OpenAI 兼容能力不设独立目录行，仅**私有协议能力**保留网关行（siliconflow_video /
+ * pollinations_video / pollinations_music——各家视频/音乐接口互不相通，无法共用适配器）。
+ * video 各家协议互不相通，天然一家一行。
  * 阿里 aliyun_* 行共享阿里百炼平台凭证（DashScope），不再按模型家族（千问/万相）拆行：
  * 一行 = 一类能力，家族差异下沉到模型选择（图像行适配器按 model 前缀派发两族协议）。
  * vendor 字段将多行归组到同一厂商凭证（用户只配一次 Key）。
  */
 export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'deepseek_llm', name: 'DeepSeek（LLM）', serviceType: 'llm', vendor: 'deepseek', description: 'OpenAI 兼容（官方端点内置，模型可在线获取）', defaultUrl: 'https://api.deepseek.com/v1', presetModels: JSON.stringify(['deepseek-flash', 'deepseek-v4-pro']), overwritePresetModels: true },
-  { key: 'openai_llm', name: 'OpenAI（LLM）', serviceType: 'llm', vendor: 'openai', description: 'OpenAI 官方 / 任意 Chat Completions 兼容网关（模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
-  { key: 'siliconflow_llm', name: 'SiliconFlow（LLM）', serviceType: 'llm', vendor: 'siliconflow', description: 'OpenAI Chat Completions 兼容（硅基流动，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['deepseek-ai/DeepSeek-V4-Flash']) },
-  { key: 'pollinations_llm', name: 'Pollinations（LLM）', serviceType: 'llm', vendor: 'pollinations', description: 'gen.pollinations.ai/v1 OpenAI 兼容（模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['openai/gpt-5.4-nano', 'openai/gpt-5.4-mini', 'qwen/qwen3.8-flash']) },
+  { key: 'openai_llm', name: 'OpenAI（LLM）', serviceType: 'llm', vendor: 'openai', description: 'OpenAI 官方 / 任意 Chat Completions 兼容网关（如 SiliconFlow https://api.siliconflow.cn/v1 、Pollinations https://gen.pollinations.ai/v1 、OpenRouter https://openrouter.ai/api/v1；实例填网关地址即可，模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
   { key: 'google_llm', name: 'Google（LLM）', serviceType: 'llm', vendor: 'google', description: 'Gemini 官方 OpenAI 兼容（v1beta/openai，模型可在线获取）', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', presetModels: JSON.stringify(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) },
   { key: 'aliyun_bailian_llm', name: '阿里百炼（LLM）', serviceType: 'llm', vendor: 'aliyun', description: '阿里百炼文本模型（Qwen 等），支持在线拉取模型。公共域 2026-09-30 起不再更新，建议改用业务空间专属域', defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', presetModels: JSON.stringify(['qwen3.8-max', 'qwen3.7-plus', 'qwen3.8-flash']) },
   { key: 'volcengine_llm', name: '火山方舟（LLM）', serviceType: 'llm', vendor: 'volcengine', description: '豆包 Seed 系列文本模型。模型 ID 需带版本号，并先在方舟控制台开通', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seed-2-1-pro-260628', 'doubao-seed-2-1-turbo-260628']), overwritePresetModels: true },
@@ -68,10 +69,8 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'volcengine_image', name: '火山方舟图像', serviceType: 'image', vendor: 'volcengine', description: '豆包 Seedream 系列文生图', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedream-5-0-260128']) },
   { key: 'minimax_image', name: 'MiniMax 图像', serviceType: 'image', vendor: 'minimax', description: 'MiniMax image-01 文生图 / 图生图。参考图需公网可访问 URL；尺寸 512–2048 且为 8 的倍数', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['image-01', 'image-01-live']), overwritePresetModels: true },
     { key: 'kling_image', name: '可灵图像', serviceType: 'image', vendor: 'kling', description: '可灵（快手）文生图 / 图生图。API Key 直接填控制台「新建 API Key」复制的密钥（也兼容旧的 AccessKey:SecretKey）', defaultUrl: 'https://api-beijing.klingai.com', presetModels: JSON.stringify(['kling-v3', 'kling-v2-1']), overwritePresetModels: true },
-  { key: 'openai_image', name: 'OpenAI 图像', serviceType: 'image', vendor: 'openai', description: 'gpt-image-1 文生图 + 图生图/编辑（支持参考图与 mask 局部重绘，不支持扩图）', defaultUrl: 'https://api.openai.com/v1', presetModels: JSON.stringify(['gpt-image-1', 'gpt-image-1-mini']), overwritePresetModels: true },
-  { key: 'siliconflow_image', name: 'SiliconFlow 图像', serviceType: 'image', vendor: 'siliconflow', description: 'OpenAI Images 兼容（模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Tongyi-MAI/Z-Image-Turbo']) },
+  { key: 'openai_image', name: 'OpenAI 图像', serviceType: 'image', vendor: 'openai', description: 'OpenAI 官方 gpt-image-1 文生图 + 图生图/编辑（参考图与 mask 局部重绘，不支持扩图）；亦承接任意 OpenAI Images 兼容网关（如 SiliconFlow / Pollinations，实例地址为准）', defaultUrl: 'https://api.openai.com/v1', presetModels: JSON.stringify(['gpt-image-1', 'gpt-image-1-mini']), overwritePresetModels: true },
   { key: 'gemini_image', name: 'Gemini 图像', serviceType: 'image', vendor: 'google', description: 'Nano Banana（Gemini 图像）文生图 / 改图。base_url 填根域名（或中转站原生镜像地址）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['gemini-3-pro-image-preview', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image']), overwriteDefaultUrl: true },
-  { key: 'pollinations_image', name: 'Pollinations 图像', serviceType: 'image', vendor: 'pollinations', description: 'OpenAI Images 兼容（模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['tongyi-mai/z-image-turbo', 'black-forest-labs/flux.1-schnell', 'google/gemini-3.1-flash-image']) },
   { key: 'aliyun_bailian_image', name: '阿里百炼图像', serviceType: 'image', vendor: 'aliyun', description: '百炼文生图与图像编辑。涂抹重绘 / 扩图需用 wan 系列模型；可灵/Vidu 等第三方托管模型须用业务空间专属域 Base URL', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan2.7-image', 'wan2.7-image-pro', 'wan2.6-t2i', 'wan2.5-t2i-preview', 'wan2.2-t2i-flash', 'wan2.2-t2i-plus', 'qwen-image-3.0-pro', 'qwen-image-3.0', 'qwen-image-2.0-pro', 'qwen-image-max', 'qwen-image-plus']), overwritePresetModels: true },
   { key: 'volcengine_video', name: '火山方舟视频', serviceType: 'video', vendor: 'volcengine', description: '豆包 Seedance 2.x 系列视频生成（模型需在方舟控制台开通）', defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3', presetModels: JSON.stringify(['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128']), overwritePresetModels: true },
   { key: 'minimax_video', name: 'MiniMax 视频', serviceType: 'video', vendor: 'minimax', description: 'MiniMax H3 系列视频生成（H3：768P/2K、4–15s；H3-Max：480P/768P、5–15s）', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['MiniMax-H3', 'MiniMax-H3-Max']), overwritePresetModels: true },
@@ -81,9 +80,7 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'pollinations_video', name: 'Pollinations 视频', serviceType: 'video', vendor: 'pollinations', description: 'veo / seedance / wan 系列视频生成（模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['google/veo-3.1-fast', 'bytedance/seedance-2.0-fast', 'alibaba/wan-2.2-fast']) },
   { key: 'openai_video', name: 'OpenAI 视频', serviceType: 'video', vendor: 'openai', description: '⚠ Sora 视频生成：官方 API 已于 2026-09-24 下线且无替代，此路径会一直失败，建议停用该实例', defaultUrl: 'https://api.openai.com/v1', presetModels: JSON.stringify(['sora-2', 'sora-2-pro']), overwritePresetModels: true },
   { key: 'google_video', name: 'Google 视频', serviceType: 'video', vendor: 'google', description: 'Veo 视频生成（文生视频 / 图生视频）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['veo-3.1-generate-preview', 'veo-3.1-fast-generate-preview', 'veo-3.1-lite-generate-preview']), overwritePresetModels: true },
-  { key: 'openai_audio', name: 'OpenAI 语音', serviceType: 'audio', vendor: 'openai', description: 'OpenAI 官方 / 任意 /audio/speech 兼容网关（模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
-  { key: 'siliconflow_audio', name: 'SiliconFlow 语音', serviceType: 'audio', vendor: 'siliconflow', description: 'OpenAI /audio/speech 兼容 TTS（硅基流动，模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['FunAudioLLM/CosyVoice2-0.5B']) },
-  { key: 'pollinations_audio', name: 'Pollinations 语音', serviceType: 'audio', vendor: 'pollinations', description: 'OpenAI /audio/speech 兼容 TTS（ElevenLabs/Qwen 等，模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['elevenlabs/eleven-flash-v2.5', 'qwen/qwen3-tts-flash', 'hexgrad/kokoro-82m']) },
+  { key: 'openai_audio', name: 'OpenAI 语音', serviceType: 'audio', vendor: 'openai', description: 'OpenAI 官方 / 任意 /audio/speech 兼容网关（如 SiliconFlow https://api.siliconflow.cn/v1 、Pollinations https://gen.pollinations.ai/v1；模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
   { key: 'aliyun_bailian_tts', name: '阿里百炼语音', serviceType: 'audio', vendor: 'aliyun', description: '百炼 qwen-tts 语音合成（DashScope，音色如 Cherry / Serena / Ethan；公共域 2026-09-30 起维护，建议改用业务空间专属域）', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['qwen-tts']) },
   { key: 'volcengine_audio', name: '火山方舟语音', serviceType: 'audio', vendor: 'volcengine', description: '豆包语音合成。Key 要用豆包「语音控制台」的专用 Key（不是方舟模型 Key）。默认 seed-audio-1.0 填文本即可出音；要精确音色选 seed-tts（需另开通）', defaultUrl: 'https://openspeech.bytedance.com', presetModels: JSON.stringify(['seed-audio-1.0', 'seed-tts']), overwritePresetModels: true },
   { key: 'minimax_audio', name: 'MiniMax 语音', serviceType: 'audio', vendor: 'minimax', description: 'MiniMax 语音合成 T2A。音色在实例扩展参数里选择', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['speech-2.8-hd', 'speech-2.8-turbo']), overwritePresetModels: true },
@@ -256,6 +253,66 @@ export async function migrateAliyunBailianRows(): Promise<void> {
     .update(vendorCredentials)
     .set({ name: '阿里百炼', updatedAt: now })
     .where(and(eq(vendorCredentials.vendor, 'aliyun'), eq(vendorCredentials.name, '阿里千问')))
+}
+
+/**
+ * 网关旧目录 key → OpenAI 协议统一 key（网关不是供应商：OpenAI 兼容能力一律经 openai_* 行接入；
+ * 其视频/音乐为私有协议，保留网关行不动）。
+ */
+const GATEWAY_OPENAI_KEY_MAP: Record<string, string> = {
+  siliconflow_llm: 'openai_llm',
+  pollinations_llm: 'openai_llm',
+  siliconflow_image: 'openai_image',
+  pollinations_image: 'openai_image',
+  siliconflow_audio: 'openai_audio',
+  pollinations_audio: 'openai_audio',
+}
+
+/** 旧网关 key 的目录默认地址（迁移时实例 baseUrl 为空必须补上：openai_* 行默认地址是官方端点，不能承接） */
+function gatewayOldDefaultUrl(providerKey: string): string {
+  return providerKey.startsWith('siliconflow') ? 'https://api.siliconflow.cn/v1' : 'https://gen.pollinations.ai/v1'
+}
+
+/**
+ * 幂等迁移：网关 OpenAI 兼容目录行收编进 openai_* 协议行（需在 seedProviders 之前执行）。
+ * 1) api_configs.provider_key 按映射改写；实例级密钥 ref 随改名，secrets.json 键同步搬迁并删旧键；
+ * 2) baseUrl 为空的实例补写网关地址（原目录行 defaultUrl 语义随迁）；
+ * 3) 未接凭证的实例显式挂回原网关厂商凭证（防后续归集误入 openai 官方凭证；
+ *    siliconflow/pollinations 凭证因视频/音乐行仍在目录，继续共享同一把网关 Key 语义正确）；
+ * 4) voice_clones.provider_key 同步改写；旧目录行删除（openai_* 行由种子体系维护）。
+ */
+export async function migrateGatewayRowsToOpenAI(): Promise<void> {
+  const now = Date.now()
+  const configs = await db.select().from(apiConfigs)
+  const credRows = await db.select().from(vendorCredentials)
+  const credByVendor = new Map(credRows.map((r) => [r.vendor, r]))
+  for (const cfg of configs) {
+    const target = GATEWAY_OPENAI_KEY_MAP[cfg.providerKey]
+    if (!target) continue
+    const patch: Record<string, unknown> = { providerKey: target, updatedAt: now }
+    if (!cfg.baseUrl?.trim()) patch['baseUrl'] = gatewayOldDefaultUrl(cfg.providerKey)
+    const oldRef = `local:cfg:${cfg.serviceType}:${cfg.providerKey}`
+    if (cfg.apiKeyRef === oldRef) {
+      const secret = resolveApiKey(oldRef)
+      const newRef = `local:cfg:${cfg.serviceType}:${target}`
+      if (secret) {
+        writeSecret(newRef, secret)
+        deleteSecret(oldRef)
+        patch['apiKeyRef'] = newRef
+      }
+    }
+    if (cfg.credentialId == null) {
+      const gwVendor = extractVendor(cfg.providerKey)
+      const gwCred = gwVendor ? credByVendor.get(gwVendor) : undefined
+      if (gwCred) patch['credentialId'] = gwCred.id
+    }
+    await db.update(apiConfigs).set(patch).where(eq(apiConfigs.id, cfg.id))
+  }
+  await db
+    .update(voiceClones)
+    .set({ providerKey: 'openai_audio', updatedAt: now })
+    .where(inArray(voiceClones.providerKey, ['siliconflow_audio', 'pollinations_audio']))
+  await db.delete(apiProviders).where(inArray(apiProviders.key, Object.keys(GATEWAY_OPENAI_KEY_MAP)))
 }
 
 /** 从 providerKey 提取 vendor 前缀（aliyun_bailian_llm → aliyun） */

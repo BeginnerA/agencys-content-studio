@@ -20,7 +20,8 @@ import { apiConfigs, apiProviders, vendorCredentials } from '../db/schema'
 import { deleteSecret, resolveApiKey, writeSecret } from '../services/secrets'
 
 /**
- * 旧阿里目录 key 兼容映射（千问/万相家族行已收敛为百炼统一行）。
+ * 旧目录 key 兼容映射（千问/万相家族行已收敛为百炼统一行；网关 OpenAI 兼容行已收编进 openai_* 协议行——
+ * 网关不是供应商，其 LLM/图像/语音只是同一 OpenAI 协议的不同 baseUrl；视频/音乐为私有协议保留网关 key 不归入）。
  * 历史模板 / 硬编码 provider 串传入时在端点解析入口归一，避免旧 key 查不到实例。
  */
 export const LEGACY_PROVIDER_KEY_ALIASES: Record<string, string> = {
@@ -29,6 +30,12 @@ export const LEGACY_PROVIDER_KEY_ALIASES: Record<string, string> = {
   aliyun_qwen_image: 'aliyun_bailian_image',
   aliyun_wan_video: 'aliyun_bailian_video',
   aliyun_qwen_tts: 'aliyun_bailian_tts',
+  siliconflow_llm: 'openai_llm',
+  pollinations_llm: 'openai_llm',
+  siliconflow_image: 'openai_image',
+  pollinations_image: 'openai_image',
+  siliconflow_audio: 'openai_audio',
+  pollinations_audio: 'openai_audio',
 }
 
 export function normalizeProviderKey(providerKey: string): string {

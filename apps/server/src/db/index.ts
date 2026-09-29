@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows } from './seed'
+import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI } from './seed'
 
 const log = createLogger('db')
 
@@ -39,6 +39,8 @@ export async function initDb(): Promise<void> {
   await ensureSchemaColumns()
   // 阿里千问/万相行收敛为百炼统一行：须在 seedProviders 前执行（旧行删除 → 新行补种）
   await migrateAliyunBailianRows()
+  // 网关 OpenAI 兼容行（siliconflow/pollinations 的 LLM·图像·语音）收编进 openai_* 协议行：同样须在 seedProviders 前执行
+  await migrateGatewayRowsToOpenAI()
   await seedVendorCredentials()
   await seedProviders()
   await migrateCredentialsFromConfigs()

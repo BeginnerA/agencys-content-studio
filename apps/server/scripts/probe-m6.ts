@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   })
   await db.insert(apiConfigs).values([
     cfg('gemini_image', 'image', 1, 0),
-    cfg('pollinations_image', 'image', 0, 5),
+    cfg('openai_image', 'image', 0, 5),
     cfg('pollinations_video', 'video', 1, 0),
   ])
   const pid = (
@@ -230,9 +230,10 @@ async function main(): Promise<void> {
   const sectionDegrade = async (): Promise<void> => {
     const { buildImageRequest, getImageAdapter } = await import('../src/adapters/provider')
     const { buildVideoRequest } = await import('../src/adapters/video')
-    check((getImageAdapter('pollinations_image').referenceImages ?? 'none') === 'none', 'none 家声明复核（pollinations_image）')
+    check((getImageAdapter('pollinations_image').referenceImages ?? 'none') === 'none', 'none 家声明复核（pollinations_image 旧 key 仍在 kit 注册表，兼容老库直连）')
     const r1 = await buildImageRequest({ prompt: 'p', provider: 'pollinations_image' })
-    check(r1.request.referenceImages === undefined, 'none 家 buildImageRequest 不带 referenceImages（降级请求面）')
+    check(r1.adapter.provider === 'openai_image', `旧网关 key 经别名归一至 OpenAI 协议行解析（实际 ${r1.adapter.provider}）`)
+    check(r1.request.referenceImages === undefined, '未传参考图 → 请求面不带 referenceImages（降级请求面）')
     const r2 = await buildVideoRequest({ prompt: 'p', provider: 'pollinations_video' })
     check(r2.request.firstFrameUrl === undefined && r2.request.lastFrameUrl === undefined, 'none 家 buildVideoRequest 不带首/尾帧（降级请求面）')
   }
