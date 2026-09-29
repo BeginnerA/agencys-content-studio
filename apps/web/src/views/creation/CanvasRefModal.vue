@@ -87,7 +87,8 @@ const cv = props.cv
   display: block;
   width: 100%;
   height: 62px;
-  object-fit: cover;
+  /* [M52] 实体参考图多为横版多视图，contain 免裁 */
+  object-fit: contain;
   border-radius: 5px;
   pointer-events: none;
 }

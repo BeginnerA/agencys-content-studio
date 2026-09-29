@@ -356,7 +356,8 @@ const {
 .thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* [M52] 同素材卡：横版定妆照 contain 免裁 */
+  object-fit: contain;
   display: block;
 }
 
