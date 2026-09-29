@@ -159,7 +159,7 @@ export const apiProviders = sqliteTable('api_providers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   key: text('key').notNull().unique(), // volcengine_image/gemini_image/.../deepseek_llm
   name: text('name').notNull(),
-  serviceType: text('service_type').notNull(), // llm|image|video|audio
+  serviceType: text('service_type').notNull(), // llm|image|video|audio|music
   vendor: text('vendor'), // 厂商分组标识（关联 vendor_credentials.vendor）
   defaultUrl: text('default_url'),
   presetModels: text('preset_models'), // JSON
@@ -174,7 +174,7 @@ export const apiConfigs = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     providerKey: text('provider_key').notNull(),
-    serviceType: text('service_type').notNull(), // llm|image|video|audio
+    serviceType: text('service_type').notNull(), // llm|image|video|audio|music
     credentialId: integer('credential_id'), // FK → vendor_credentials.id（凭证级 Key 共享）
     name: text('name').notNull(),
     baseUrl: text('base_url'), // 覆盖 provider.defaultUrl

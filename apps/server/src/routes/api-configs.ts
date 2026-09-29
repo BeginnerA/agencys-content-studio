@@ -15,7 +15,7 @@ import { HttpError, h, idParam, notFound } from './helpers'
 
 export const apiRoutes = new Hono()
 
-const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
+const SERVICE_TYPES = ['llm', 'image', 'video', 'audio', 'music']
 
 /**
  * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
