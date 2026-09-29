@@ -50,9 +50,9 @@ export const VENDOR_SEEDS: VendorSeed[] = [
  * 命名原则（统一）：一行 = 厂商 × 能力；协议实现（OpenAI 兼容 / 私有协议）
  * 只在 description 里说明，不进入行名。openai_* 行 = OpenAI 协议族统一入口，
  * 官方与任意 OpenAI 兼容网关（SiliconFlow / Pollinations / OpenRouter 等）一律经
- * openai_* 行接入（网关只是实例 baseUrl 取不同值，不是供应商）；因此网关的
- * OpenAI 兼容能力不设独立目录行，仅**私有协议能力**保留网关行（siliconflow_video /
- * pollinations_video / pollinations_music——各家视频/音乐接口互不相通，无法共用适配器）。
+ * openai_* 行接入（网关只是实例 baseUrl 取不同值，不是供应商）；因此网关只保留
+ * OpenAI 兼容能力（LLM/图像/语音经 openai_* 行），其**私有协议能力（视频/音乐）不做单独适配、
+ * 不设目录行**（用户决定 2026-09：非模型供应商的网关遇私有协议直接移除，真厂商视频/音乐一家一行不受影响）。
  * video 各家协议互不相通，天然一家一行。
  * 阿里 aliyun_* 行共享阿里百炼平台凭证（DashScope），不再按模型家族（千问/万相）拆行：
  * 一行 = 一类能力，家族差异下沉到模型选择（图像行适配器按 model 前缀派发两族协议）。
@@ -76,8 +76,6 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'minimax_video', name: 'MiniMax 视频', serviceType: 'video', vendor: 'minimax', description: 'MiniMax H3 系列视频生成（H3：768P/2K、4–15s；H3-Max：480P/768P、5–15s）', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['MiniMax-H3', 'MiniMax-H3-Max']), overwritePresetModels: true },
     { key: 'kling_video', name: '可灵视频', serviceType: 'video', vendor: 'kling', description: '可灵（快手）视频生成。API Key 直接填控制台「新建 API Key」复制的密钥（也兼容旧的 AccessKey:SecretKey）；国际站把 baseUrl 改为 https://api-singapore.klingai.com', defaultUrl: 'https://api-beijing.klingai.com', presetModels: JSON.stringify(['kling-3.0-turbo', 'kling-3.0', 'kling-3.0-omni', 'kling-2.6', 'kling-2.5-turbo', 'kling-o1']), overwritePresetModels: true },
   { key: 'aliyun_bailian_video', name: '阿里百炼视频', serviceType: 'video', vendor: 'aliyun', description: '百炼视频生成（wan / 可灵 / Vidu 等）。第三方托管模型须用业务空间专属域 Base URL', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['wan3.0-video-prime', 'wan3.0-video']) },
-  { key: 'siliconflow_video', name: 'SiliconFlow 视频', serviceType: 'video', vendor: 'siliconflow', description: 'Wan2.2 系列视频生成（模型在实例中配置）', defaultUrl: 'https://api.siliconflow.cn/v1', presetModels: JSON.stringify(['Wan-AI/Wan2.2-T2V-A14B', 'Wan-AI/Wan2.2-I2V-A14B']) },
-  { key: 'pollinations_video', name: 'Pollinations 视频', serviceType: 'video', vendor: 'pollinations', description: 'veo / seedance / wan 系列视频生成（模型在实例中配置）', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['google/veo-3.1-fast', 'bytedance/seedance-2.0-fast', 'alibaba/wan-2.2-fast']) },
   { key: 'openai_video', name: 'OpenAI 视频', serviceType: 'video', vendor: 'openai', description: '⚠ Sora 视频生成：官方 API 已于 2026-09-24 下线且无替代，此路径会一直失败，建议停用该实例', defaultUrl: 'https://api.openai.com/v1', presetModels: JSON.stringify(['sora-2', 'sora-2-pro']), overwritePresetModels: true },
   { key: 'google_video', name: 'Google 视频', serviceType: 'video', vendor: 'google', description: 'Veo 视频生成（文生视频 / 图生视频）', defaultUrl: 'https://generativelanguage.googleapis.com', presetModels: JSON.stringify(['veo-3.1-generate-preview', 'veo-3.1-fast-generate-preview', 'veo-3.1-lite-generate-preview']), overwritePresetModels: true },
   { key: 'openai_audio', name: 'OpenAI 语音', serviceType: 'audio', vendor: 'openai', description: 'OpenAI 官方 / 任意 /audio/speech 兼容网关（如 SiliconFlow https://api.siliconflow.cn/v1 、Pollinations https://gen.pollinations.ai/v1；模型在实例中配置）', defaultUrl: 'https://api.openai.com/v1' },
@@ -88,7 +86,6 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'minimax_music', name: 'MiniMax 音乐', serviceType: 'music', vendor: 'minimax', description: 'MiniMax 音乐生成（BGM/纯音乐）。⚠️ 2026-08-20 起付费音乐接口不再面向新用户；未配置时混剪模板自动降级库内选曲', defaultUrl: 'https://api.minimax.cn', presetModels: JSON.stringify(['music-3.0', 'music-2.6']), overwritePresetModels: true },
   { key: 'aliyun_bailian_music', name: '阿里百炼音乐', serviceType: 'music', vendor: 'aliyun', description: '百炼 Fun-Music 音乐生成（纯音乐/歌曲，48kHz）。⚠️ 邀测模型需先在模型广场申请开通，仅华北2（北京）地域；复用百炼 API Key；未配置时降级库内选曲', defaultUrl: 'https://dashscope.aliyuncs.com/api/v1', presetModels: JSON.stringify(['fun-music-v1', 'fun-music-preview']), overwritePresetModels: true },
   { key: 'volcengine_music', name: '火山音乐', serviceType: 'music', vendor: 'volcengine', description: '火山引擎音视频理解·音乐生成（纯音乐 GenBGM/人声歌曲，v5.0）。⚠️ 密钥填火山账号「AK/SK」拼接串（不是方舟 Key），需先开通该产品；未配置时降级库内选曲', defaultUrl: 'https://open.volcengineapi.com', presetModels: JSON.stringify(['v5.0', 'v4.3', 'v4.0']), overwritePresetModels: true },
-  { key: 'pollinations_music', name: 'Pollinations 音乐', serviceType: 'music', vendor: 'pollinations', description: 'ElevenLabs Music / Lyria / Stable Audio 音乐生成（网关直返 mp3）。⚠️ 全部 Pollen 计费（无免费款）；时长控制：elevenlabs/music-* 支持 3-300 秒，stable-audio 支持 1-380 秒，lyria 时长写进提示词；未配置时降级库内选曲', defaultUrl: 'https://gen.pollinations.ai/v1', presetModels: JSON.stringify(['elevenlabs/music-v2.5', 'elevenlabs/music-v2', 'stability-ai/stable-audio-3-medium', 'stability-ai/stable-audio-3', 'google/lyria-3.5', 'google/lyria-3-clip-preview']), overwritePresetModels: true },
 ]
 
 /**
@@ -257,7 +254,7 @@ export async function migrateAliyunBailianRows(): Promise<void> {
 
 /**
  * 网关旧目录 key → OpenAI 协议统一 key（网关不是供应商：OpenAI 兼容能力一律经 openai_* 行接入；
- * 其视频/音乐为私有协议，保留网关行不动）。
+ * 其视频/音乐私有协议行已整体移除，见 removeGatewayPrivateProtocolRows）。
  */
 const GATEWAY_OPENAI_KEY_MAP: Record<string, string> = {
   siliconflow_llm: 'openai_llm',
@@ -278,7 +275,7 @@ function gatewayOldDefaultUrl(providerKey: string): string {
  * 1) api_configs.provider_key 按映射改写；实例级密钥 ref 随改名，secrets.json 键同步搬迁并删旧键；
  * 2) baseUrl 为空的实例补写网关地址（原目录行 defaultUrl 语义随迁）；
  * 3) 未接凭证的实例显式挂回原网关厂商凭证（防后续归集误入 openai 官方凭证；
- *    siliconflow/pollinations 凭证因视频/音乐行仍在目录，继续共享同一把网关 Key 语义正确）；
+ *    siliconflow/pollinations 凭证仍被收编后实例共享同一把网关 Key，语义正确）；
  * 4) voice_clones.provider_key 同步改写；旧目录行删除（openai_* 行由种子体系维护）。
  */
 export async function migrateGatewayRowsToOpenAI(): Promise<void> {
@@ -315,18 +312,39 @@ export async function migrateGatewayRowsToOpenAI(): Promise<void> {
   await db.delete(apiProviders).where(inArray(apiProviders.key, Object.keys(GATEWAY_OPENAI_KEY_MAP)))
 }
 
+/** 网关私有协议目录 key（不支持 OpenAI 协议，按用户决定不再单独适配，整体移除） */
+const GATEWAY_PRIVATE_PROTOCOL_KEYS = ['siliconflow_video', 'pollinations_video', 'pollinations_music']
+
+/**
+ * 幂等迁移：移除网关私有协议能力（siliconflow_video / pollinations_video / pollinations_music）。
+ * 用户决定 2026-09：非模型供应商的 AI 模型统一网关若不支持 OpenAI 协议则直接移除、不再单独适配。
+ * 删存量实例（含实例级 local:cfg 密钥）与目录行；secrets 仅删实例自有 ref，不动网关凭证 Key
+ * （收编后的 openai_* 实例仍挂同一凭证）。须在 seedProviders 前执行，防目录行被补种回插。
+ */
+export async function removeGatewayPrivateProtocolRows(): Promise<void> {
+  const configs = await db.select().from(apiConfigs)
+  for (const cfg of configs) {
+    if (!GATEWAY_PRIVATE_PROTOCOL_KEYS.includes(cfg.providerKey)) continue
+    if (cfg.apiKeyRef?.startsWith('local:cfg:')) deleteSecret(cfg.apiKeyRef)
+    await db.delete(apiConfigs).where(eq(apiConfigs.id, cfg.id))
+  }
+  await db.delete(apiProviders).where(inArray(apiProviders.key, GATEWAY_PRIVATE_PROTOCOL_KEYS))
+}
+
 /** 已退役厂商标识（网关收编后不再作为凭证厂商存在；代码侧 VENDOR_SEEDS 已无对应行） */
 const RETIRED_VENDORS: string[] = ['openrouter']
 
+/** 已退役目录行 key（接入后回退的遗留：seedProviders 只插不删，旧库需启动期回收） */
+const RETIRED_PROVIDER_KEYS: string[] = ['openrouter_music']
+
 /**
- * 幂等清理：删除退役网关的残留厂商凭证（seedVendorCredentials 只插不删，旧库残留需启动期回收）。
- * 仅当该凭证无任何实例引用时才删（有引用 = 用户仍在用，不破坏执行链）；secrets.json 的
+ * 幂等清理：删除退役网关的残留厂商凭证与残留目录行（种子只插不删，旧库残留需启动期回收）。
+ * 仅当凭证无任何实例引用、目录行无同 key 实例时才删（在用 = 不破坏执行链）；secrets.json 的
  * local:vendor:{vendor} 键同步搬迁删除。
  */
 export async function cleanupRetiredVendorCredentials(): Promise<void> {
   const credRows = await db.select().from(vendorCredentials)
   const retired = credRows.filter((r) => RETIRED_VENDORS.includes(r.vendor))
-  if (retired.length === 0) return
   for (const cred of retired) {
     const refs = await db
       .select({ id: apiConfigs.id })
@@ -336,6 +354,12 @@ export async function cleanupRetiredVendorCredentials(): Promise<void> {
     if (refs.length > 0) continue
     await db.delete(vendorCredentials).where(eq(vendorCredentials.id, cred.id))
     if (cred.apiKeyRef === `local:vendor:${cred.vendor}`) deleteSecret(cred.apiKeyRef)
+  }
+  if (RETIRED_PROVIDER_KEYS.length > 0) {
+    const cfgKeys = await db.select({ k: apiConfigs.providerKey }).from(apiConfigs)
+    const referenced = new Set(cfgKeys.map((r) => r.k))
+    const dead = RETIRED_PROVIDER_KEYS.filter((k) => !referenced.has(k))
+    if (dead.length > 0) await db.delete(apiProviders).where(inArray(apiProviders.key, dead))
   }
 }
 

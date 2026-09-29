@@ -45,10 +45,11 @@ await runSections({
     const rows = await db.select().from(apiProviders)
     const music = rows.filter((r) => r.serviceType === 'music').map((r) => r.key).sort()
     check(
-      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'minimax_music', 'pollinations_music', 'volcengine_music']),
-      `四供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
+      JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'minimax_music', 'volcengine_music']),
+      `三供应商音乐目录行已 seed（实际 ${JSON.stringify(music)}）`,
     )
-    check(JSON.stringify(kit.listMusicAdapterKeys().sort()) === JSON.stringify(music), 'kit 音乐注册表 key 集与 seed 目录行同源对齐')
+    // kit 注册表 ⊇ 宿主目录：网关私有协议行（pollinations_music）已按用户决定移除不再适配，kit 侧适配器保留不影响宿主
+    check(kit.listMusicAdapterKeys().every((k) => music.includes(k) || k === 'pollinations_music') && music.every((k) => kit.listMusicAdapterKeys().includes(k)), 'kit 音乐注册表覆盖宿主目录行（网关款仅存 kit 层）')
   },
   runners: {
     // ================= pure：契约纯函数（零 HTTP） =================

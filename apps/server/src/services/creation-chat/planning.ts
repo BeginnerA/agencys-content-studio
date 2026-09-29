@@ -238,11 +238,11 @@ function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[]
  * 能力约束注入消息（向 LLM 预先告知真源表已核实档位，避免方案越界造成 preflight 422）。
  * - caps 命中 → 列出 durations / aspectRatios / 建议总时长与镜头数
  * - 无 video 实例 → 提示默认使用 slideshow（不假称动态能力）
- * - hasVideo=true 但 caps=null（未登记模型，如 siliconflow_video） → 仅提醒“能力未背书”，不列档位
+ * - hasVideo=true 但 caps=null（未登记模型，如老库直连的旧目录 key 或自定义中转） → 仅提醒“能力未背书”，不列档位
  */
 function buildCapsConstraintMessage(caps: VideoModelCaps | null, hasVideo: boolean): string | null {
   if (!hasVideo) return '【Tier A 能力约束】当前未配置可用的视频生成实例 → 若用户未明确要求动态画面，默认 mode="slideshow"（多图配音），不承诺逐镜头动态化；若用户坚持动态，请依旧给 dynamic 方案；仅旁白模式可能降级并告知，人物对白必须保留 dynamic 并说明阻塞。'
-  if (!caps) return '【Tier A 能力约束】当前视频实例未登记到平台能力真源表（如 siliconflow_video 适配器不下发 duration）。若用户不要求动态，建议优先 mode="slideshow"；若需动态，镜头时长建议 5–10 秒、不主动取极端值，系统预检会在真源层面确认。'
+  if (!caps) return '【Tier A 能力约束】当前视频实例未登记到平台能力真源表（如部分适配器不下发 duration）。若用户不要求动态，建议优先 mode="slideshow"；若需动态，镜头时长建议 5–10 秒、不主动取极端值，系统预检会在真源层面确认。'
   const durList = [...caps.durations].sort((a, b) => a - b).join(' / ')
   const aspectList = caps.aspectRatios.join(' / ')
   const defaultDur = caps.defaultDuration

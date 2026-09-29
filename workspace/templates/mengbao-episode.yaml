@@ -1,6 +1,6 @@
 key: mengbao-episode
 builtin: true
-version: 13
+version: 14
 name: 短剧·单集
 description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音 + 背景音乐智能选曲）。多集连载在「同一项目」下逐集运行，集间承接：前集 write_script 剧本经多段工作流链段 inputSpec（prev_script 映射 $prev.asset:script）自动流入本集剧本步，或由用户手动选入既往剧本资产。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
@@ -82,8 +82,8 @@ inputs:
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
-  # ai_video 兜底参数（provider 可在项目 settings 覆盖；minimax 支持 480p/768p，480p 单价更低）
-  video: { provider: pollinations_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
+  # ai_video 兜底参数（provider 可在项目 settings 覆盖；火山 Seedance 支持 480p，480p 单价更低；v14 起网关视频行已移除）
+  video: { provider: volcengine_video, duration: 5, resolution: "480p", aspect_ratio: "9:16" }
   # tts 兜底参数（provider 可在项目 settings 覆盖；声线六级链见 tts action）
   audio: { provider: pollinations_audio, voice: "Cherry" }
   # ── 开关 × 步骤依赖矩阵（11 输入开关 → 步骤触发；改任一开关前先查此表，避免静默跳步）──

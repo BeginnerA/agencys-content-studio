@@ -24,8 +24,6 @@ const SERVICE_TYPES = ['llm', 'image', 'video', 'audio']
 const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
   'aliyun_bailian_video',
   'volcengine_video',
-  'siliconflow_video',
-  'pollinations_video',
 ])
 
 /** 实例是否支持「测试连接」：llm/image/audio/music 恒可（走真实最小生成/合成 ping，music 覆盖面 = kit 音乐注册表已接入供应商）；video 仅上表探针供应商。 */

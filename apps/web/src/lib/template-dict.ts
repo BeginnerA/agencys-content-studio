@@ -182,7 +182,7 @@ export const HELP_GROUPS: HelpGroup[] = [
       {
         name: 'video',
         desc: '视频生成的默认供应商等',
-        example: 'provider: pollinations_video',
+        example: 'provider: volcengine_video',
       },
     ],
   },

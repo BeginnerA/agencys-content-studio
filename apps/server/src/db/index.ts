@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
-import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI, cleanupRetiredVendorCredentials } from './seed'
+import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI, removeGatewayPrivateProtocolRows, cleanupRetiredVendorCredentials } from './seed'
 
 const log = createLogger('db')
 
@@ -25,8 +25,15 @@ export const db = drizzle(sqlite, { schema })
 
 const MIGRATIONS_DIR = join(ROOT, 'apps', 'server', 'drizzle')
 
-/** 初始化：PRAGMA + 迁移 + 种子（幂等，仅首次启动建库） */
-export async function initDb(): Promise<void> {
+/** 初始化：PRAGMA + 迁移 + 种子（幂等，仅首次启动建库）。进程内单次执行：迁移/清理是启动期一次性动作，
+ * 重复跑会误删探针在 initDb 后插入的夹具行（如网关私有协议 key），故用 promise 防重入。 */
+let initDbOnce: Promise<void> | null = null
+export function initDb(): Promise<void> {
+  initDbOnce ??= doInitDb()
+  return initDbOnce
+}
+
+async function doInitDb(): Promise<void> {
   ensureDirs()
   await sqlite.execute('PRAGMA journal_mode = WAL')
   await sqlite.execute('PRAGMA foreign_keys = ON')
@@ -41,6 +48,8 @@ export async function initDb(): Promise<void> {
   await migrateAliyunBailianRows()
   // 网关 OpenAI 兼容行（siliconflow/pollinations 的 LLM·图像·语音）收编进 openai_* 协议行：同样须在 seedProviders 前执行
   await migrateGatewayRowsToOpenAI()
+  // 网关私有协议能力（视频/音乐）不支持 OpenAI 协议：按用户决定直接移除、不再单独适配
+  await removeGatewayPrivateProtocolRows()
   await seedVendorCredentials()
   // 退役网关残留凭证回收（如 openrouter：代码已回退但旧库只插不删）：在补种后执行，不会被重新插入
   await cleanupRetiredVendorCredentials()
