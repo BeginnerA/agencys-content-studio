@@ -70,10 +70,11 @@ inputs:
     required: false
     default: false
   - key: bgm_mode
-    label: 背景音乐模式（none 不配乐 / auto 库内自动选曲 / music_gen AI 生成付费，失败自动降级 auto；手绑 BGM 永远优先；对白存在时音量自动压至 0.1 以下）
+    label: 背景音乐模式（手绑 BGM 永远优先；对白存在时音量自动压至 0.1 以下）
     kind: select
     required: false
     options: [none, auto, music_gen]
+    option_labels: [不配背景音乐, 库内自动选曲（免费）, AI 生成（付费，失败自动降级库内选曲）]
     default: auto
   - key: bgm_prompt
     label: AI 生乐风格描述（仅 music_gen 生效；留空用默认文案）

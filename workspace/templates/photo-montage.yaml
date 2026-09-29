@@ -29,8 +29,8 @@ inputs:
   - { key: fps, label: 帧率（大屏建议 30）, kind: int, required: false, default: 30 }
   - { key: resolution, label: 分辨率, kind: select, required: false, options: [1920x1080, 1080x1920, 1080x1080, 720x1280], option_labels: ['1920×1080 横屏全高清（大屏首选）', '1080×1920 竖屏全高清（手机全屏）', '1080×1080 方屏（社媒 feed）', '720×1280 竖屏高清（轻渲染快出）'], default: 1920x1080 }
   - { key: ken_burns, label: 照片缓推动效, kind: select, required: false, options: [none, in, out, alternate, auto], option_labels: [无动效（静帧）, 缓推（由远及近）, 缓拉（由近及远）, 逐镜交替推拉（推荐）, 智能：横图缓推竖图缓拉（尺寸自适应）], default: alternate }
-  - { key: layout, label: 拼贴版式（single 单图 / duo 两联横排 / grid 四宫格 / auto 首尾单图中间拼屏）, kind: text, required: false, default: single }
-  - { key: bgm_mode, label: 背景音乐模式（none 不配 / auto 库内自动选曲 / music_gen AI 生成付费，失败自动降级 auto）, kind: text, required: false, default: auto }
+  - { key: layout, label: 拼贴版式, kind: select, required: false, options: [single, duo, grid, auto], option_labels: ['单图（每张独占一屏）', '两联横排（两张同屏）', '四宫格（四张同屏）', '自动（首尾单图中间拼屏）'], default: single }
+  - { key: bgm_mode, label: 背景音乐模式, kind: select, required: false, options: [none, auto, music_gen], option_labels: ['不配背景音乐', '库内自动选曲（免费）', 'AI 生成（付费，失败自动降级库内选曲）'], default: auto }
   - { key: bgm_prompt, label: AI 生乐风格描述（仅 music_gen 生效；留空用默认文案）, kind: text, required: false }
   - { key: analyze_composition, label: LLM 构图感知缓推锚点（选图多时逐图付费，默认关）, kind: bool, required: false, default: false }
   - { key: keep_clip_audio, label: 保留视频片段原声, kind: bool, required: false, default: true }
