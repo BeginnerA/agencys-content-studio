@@ -9,7 +9,7 @@ import { resolveVideoCaps } from '../adapters/video-capabilities'
 import { resolveExtraSchema } from '../adapters/extra-params'
 import { resolveModelPricing, type PricingServiceType } from '../adapters/pricing-capabilities'
 // 连通测试用例 + 模型目录拉取直连 kit（协议实现与用例服务已抽包，adapters/ 下不再有对应实现文件）
-import { fetchModelList, testConnection } from '@agencys/ai-provider-kit'
+import { fetchModelList, listMusicAdapterKeys, testConnection } from '@agencys/ai-provider-kit'
 import { defaultTtsModel, synthSpeech } from '../services/tts'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -28,9 +28,11 @@ const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
   'pollinations_video',
 ])
 
-/** 实例是否支持「测试连接」：llm/image/audio 恒可（走真实最小生成/合成 ping）；video 仅上表探针供应商。 */
+/** 实例是否支持「测试连接」：llm/image/audio/music 恒可（走真实最小生成/合成 ping，music 覆盖面 = kit 音乐注册表已接入供应商）；video 仅上表探针供应商。 */
+const TESTABLE_MUSIC_PROVIDER_KEYS = new Set(listMusicAdapterKeys())
 function isConfigTestable(serviceType: string, providerKey: string): boolean {
   if (serviceType === 'video') return TESTABLE_VIDEO_PROVIDER_KEYS.has(providerKey)
+  if (serviceType === 'music') return TESTABLE_MUSIC_PROVIDER_KEYS.has(providerKey)
   return true
 }
 
@@ -332,11 +334,12 @@ apiRoutes.post('/api-configs/:id/test', h(async (c) => {
     throw new HttpError(501, 'no_test', '该视频供应商暂未提供连通探针（探针需实测验证后启用），请用真实 run 验证')
   }
 
-  // chat / image / video 统一派发至 kit testConnection（宿主 DB service_type 'llm' → kit 'chat' 语义）
-  let serviceType: 'chat' | 'image' | 'video'
+  // chat / image / video / music 统一派发至 kit testConnection（宿主 DB service_type 'llm' → kit 'chat' 语义）
+  let serviceType: 'chat' | 'image' | 'video' | 'music'
   if (cfg.serviceType === 'llm') serviceType = 'chat'
   else if (cfg.serviceType === 'image') serviceType = 'image'
   else if (cfg.serviceType === 'video') serviceType = 'video'
+  else if (cfg.serviceType === 'music') serviceType = 'music'
   else throw new HttpError(501, 'no_test', `${cfg.serviceType} 类型暂不支持连通测试`)
 
   // chat 且实例未填模型 → 传目录预置首项供 kit 兑底（仍无则 kit testConnection 报错）

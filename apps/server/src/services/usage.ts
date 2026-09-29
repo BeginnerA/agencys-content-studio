@@ -14,7 +14,7 @@ import type { UsageUnit } from '@agencys/ai-provider-kit'
 
 const log = createLogger('usage')
 
-export type UsageKind = 'llm' | 'image' | 'video' | 'tts' | 'asr'
+export type UsageKind = 'llm' | 'image' | 'video' | 'tts' | 'asr' | 'music'
 // 计价单位唯一事实源已上收至 kit（pricing-capabilities）；此处透传保持既有引用点零改动
 export type { UsageUnit }
 export type UsageGroupBy = 'kind' | 'provider' | 'model' | 'provider_model' | 'unit' | 'day' | 'project' | 'run'
