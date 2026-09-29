@@ -14,7 +14,7 @@
  *  - template：photo-montage v2 新输入面 / ken_burns auto / analyze 步 when 门控 / 桥 11 键映射；
  *  - live：4 图 duo + kb:auto 实弹成片（段数/时长/尺寸/溯源）；bgm_mode=auto 库内两曲自动选曲
  *    （params.bgm.auto_selected + 非静音 + 零用量）；music_gen fetch 桩成功（资产+usage 口径+请求契约）
- *    与契约失败降级库内（新增 usage 零行）。
+ *    与契约失败降级库内（新增 usage 零行）；run E 非混剪态（短剧 compose 形态）bgm_mode 即开关接入。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
@@ -289,6 +289,33 @@ await runSections({
         const mean = Number(/mean_volume:\s*(-[\d.]+)\s*dB/.exec(String(vd.stderr))?.[1] ?? NaN)
         check(Number.isFinite(mean) && mean > -90, `自动配乐后非数字静音（mean_volume=${mean}dB）`)
         check((await usageOf(runB)).length === 0, '库内选曲零计费（usage_records 0 行）')
+
+        // —— run E（M54-B）：非混剪态智能选曲（短剧 compose_video 形态：纯 images 输入 + bgm_mode 映射，无 montage）——
+        const tplSnap = JSON.parse(JSON.stringify(loadTemplate('photo-montage'))) as { steps: Array<Record<string, any>> }
+        tplSnap.steps = tplSnap.steps.filter((s) => s.key === 'compose')
+        const cstep = tplSnap.steps[0]!
+        delete cstep.gate
+        delete cstep.after
+        cstep.inputs = { images: 'input.photos' }
+        cstep.params = { fps: 12, resolution: '320x240', duration_per_shot: 2, bgm_mode: 'auto' }
+        const relE = relPathOf(pid, 'audio', 'bgm-e.mp3')
+        gen(absPathOf(relE), ['-f', 'lavfi', '-i', 'sine=frequency=659:duration=12', '-c:a', 'libmp3lame', '-b:a', '64k'])
+        const eBgmId = await reg('audio', 'bgm-e.mp3', relE, 12)
+        const nowE = Date.now()
+        const [runE] = await db.insert(pipelineRuns).values({
+          projectId: pid, templateKey: 'photo-montage', templateSnapshot: JSON.stringify(tplSnap),
+          status: 'queued', input: JSON.stringify({ photos: [wideA, wideB] }), createdAt: nowE, updatedAt: nowE,
+        } as never).returning()
+        engine.startRun(runE.id)
+        const rE = await settle(runE!.id)
+        check(rE.status === 'completed', `run E 非混剪链自动选曲 completed（实际 ${rE.status}${rE.error ? ` / ${String(rE.error).slice(0, 160)}` : ''}）`)
+        const fvE = await finalOf(runE!.id)
+        const pe = JSON.parse(fvE.params ?? '{}') as Record<string, any>
+        check(pe.bgm?.auto_selected === true && pe.bgm?.asset_id === eBgmId, `非混剪态 bgm_mode 即开关：命中 12s 新曲（≥ 片长 4s；2s 短曲不足、long 已绑 run B 不抢）（实际 ${JSON.stringify(pe.bgm)}）`)
+        check(pe.montage === null, '非混剪态 montage 溯源为 null（短剧 compose 形态零污染）')
+        const infoE = streamInfo(absPathOf(fvE.relPath!))
+        check(infoE.aStreams === 1, '非混剪成片含 1 条自动 BGM 音轨')
+        check((await usageOf(runE!.id)).length === 0, 'run E 零用量零网络（库内链，禁网桩内完成）')
       } finally {
         globalThis.fetch = fetchBak
       }
