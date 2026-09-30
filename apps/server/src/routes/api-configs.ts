@@ -24,6 +24,9 @@ const SERVICE_TYPES = ['llm', 'image', 'video', 'audio', 'music']
 const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
   'aliyun_bailian_video',
   'volcengine_video',
+  // [M55] 本地轨视频：适配器已实现零成本 probe()（LocalAI GET /v1/models / ComfyUI GET /system_stats）
+  'localai_video',
+  'comfyui_video',
 ])
 
 /** 实例是否支持「测试连接」：llm/image/audio/music 恒可（走真实最小生成/合成 ping，music 覆盖面 = kit 音乐注册表已接入供应商）；video 仅上表探针供应商。 */

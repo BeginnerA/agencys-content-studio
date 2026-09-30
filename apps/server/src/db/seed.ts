@@ -24,7 +24,7 @@ interface VendorSeed {
 }
 
 /** 优先展示厂商（AI 配置页供应商列表 / 厂商凭证靠前显示），按数组顺序排前 */
-export const VENDOR_PRIORITY: string[] = ['volcengine', 'aliyun', 'minimax', 'kling']
+export const VENDOR_PRIORITY: string[] = ['volcengine', 'aliyun', 'minimax', 'kling', 'localai', 'comfyui']
 
 /** 厂商展示优先级：名单内按序取 0/1/…，名单外统一取末尾值（配合稳定排序保持原有相对顺序） */
 export function vendorPriorityRank(vendor: string | null | undefined): number {
@@ -41,6 +41,8 @@ export const VENDOR_SEEDS: VendorSeed[] = [
   { vendor: 'minimax', name: 'MiniMax' },
   { vendor: 'kling', name: '可灵' },
   { vendor: 'ollama', name: 'Ollama（本地）' },
+  { vendor: 'localai', name: 'LocalAI（本地）' },
+  { vendor: 'comfyui', name: 'ComfyUI（本地）' },
 ]
 
 /**
@@ -97,6 +99,13 @@ export const PROVIDER_SEEDS: ProviderSeed[] = [
   { key: 'volcengine_music', name: '火山方舟音乐', serviceType: 'music', vendor: 'volcengine', description: '火山引擎音视频理解·音乐生成（纯音乐 GenBGM/人声歌曲，v5.0）。⚠️ 密钥填火山账号「AK/SK」拼接串（不是方舟 Key），需先开通该产品；未配置时降级库内选曲', defaultUrl: 'https://open.volcengineapi.com', presetModels: JSON.stringify(['v5.0', 'v4.3', 'v4.0']), overwritePresetModels: true },
   { key: 'mureka_music', name: 'Mureka 音乐', serviceType: 'music', vendor: 'mureka', description: 'Mureka 纯音乐生成（BGM 首选 instrumental 端点，异步任务轮询，产物含商用授权）。填 platform.mureka.cn 或网关镜像地址；未配置/失败时降级库内选曲', defaultUrl: 'https://platform.mureka.cn', presetModels: JSON.stringify(['auto', 'mureka-7.6', 'mureka-8', 'mureka-9']), overwritePresetModels: true },
   { key: 'yinchao_music', name: '音潮音乐', serviceType: 'music', vendor: 'yinchao', description: '音潮（涌现）V4.0 纯音乐生成（理解风格/乐器/情绪，异步任务轮询）。需企业资质开通 API；未配置/失败时降级库内选曲', defaultUrl: 'https://open.yinchaoyongxian.com', presetModels: JSON.stringify(['v4.0']), overwritePresetModels: true },
+  // ── [M55] 本地运行时真厂商轨（与 ollama 同源先例，私有协议逐行逐适配器，不受网关私有协议移除红线约束）──
+  //  LLM/TTS/ASR/文生图不新建行：经既有 openai_llm/openai_image/openai_audio 实例承载（baseUrl 指 :8080/v1，Key 留空）。
+  { key: 'localai_image', name: 'LocalAI 图像（本地）', serviceType: 'image', vendor: 'localai', description: '本地 LocalAI 图像：文生图 OpenAI 兼容 + 参考图/图生图 ref_images（专属适配器，非 OpenAI /images/edits multipart）。无需 API Key（留空即可）；模型可在线拉取 /v1/models', defaultUrl: 'http://localhost:8080' },
+  { key: 'localai_video', name: 'LocalAI 视频（本地）', serviceType: 'video', vendor: 'localai', description: '本地 LocalAI 视频：同步 POST /video 直返（专属适配器，非 Sora 任务协议）。支持首帧图生视频；本地模型极重、耗时依硬件。无需 API Key', defaultUrl: 'http://localhost:8080' },
+  { key: 'localai_music', name: 'LocalAI 音乐（本地）', serviceType: 'music', vendor: 'localai', description: '本地 LocalAI 音乐/音效：/v1/sound-generation（ElevenLabs 兼容）二进制直返，同步无轮询。模型如 ace-step-turbo / audioldm2。无需 API Key', defaultUrl: 'http://localhost:8080', presetModels: JSON.stringify(['ace-step-turbo', 'audioldm2']) },
+  { key: 'comfyui_image', name: 'ComfyUI 图像（本地）', serviceType: 'image', vendor: 'comfyui', description: '本地 ComfyUI 节点式工作流出图（POST /prompt + history 轮询，专属适配器）。需在实例扩展参数填 API 格式工作流 workflow_json；模型手填（无 /v1/models）。无需 API Key', defaultUrl: 'http://localhost:8188' },
+  { key: 'comfyui_video', name: 'ComfyUI 视频（本地）', serviceType: 'video', vendor: 'comfyui', description: '本地 ComfyUI 节点式工作流出视频（POST /prompt + history 轮询，专属适配器）。需实例扩展参数填 workflow_json 与 {{frames}}/{{fps}} 占位；模型手填。无需 API Key', defaultUrl: 'http://localhost:8188' },
 ]
 
 /**

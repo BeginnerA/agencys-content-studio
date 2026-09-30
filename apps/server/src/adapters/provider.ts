@@ -113,11 +113,25 @@ const secrets: SecretStore = {
   delete: (ref) => deleteSecret(ref),
 }
 
+/**
+ * [M55] 无鉴权本地轨 providerKey：LocalAI/ComfyUI 自持服务无真实 Key（对齐 ollama 现状）。
+ * 这些行走 kit resolveEndpoint（image/video/music 通道），空 Key 若不旁路会被 noApiKey 拦截。
+ * LLM/TTS/ASR 走 openai_* 行 + 宿主自有 resolveLlmEndpoint/synthSpeech（已容空 Key），不在此列。
+ */
+export const NO_AUTH_PROVIDER_KEYS: ReadonlySet<string> = new Set([
+  'localai_image',
+  'localai_video',
+  'localai_music',
+  'comfyui_image',
+  'comfyui_video',
+])
+
 /** 包级单例：全部导出经由同一实例（与旧模块级 imageAdapters 常量语义一致） */
 const provider = createProvider({
   source,
   secrets,
   legacyAliases: LEGACY_PROVIDER_KEY_ALIASES,
+  noAuthProviders: NO_AUTH_PROVIDER_KEYS,
   // 错误文案保持宿主既有口径（含 Settings 指引）零漂移
   messages: {
     noConfig: (k) => `未配置 ${k ?? ''} 类型 api_configs（Settings → AI 配置）`,
