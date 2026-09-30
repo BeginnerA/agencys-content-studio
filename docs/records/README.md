@@ -9,7 +9,7 @@
 - **探针** 列 = 该期是否在代码里交付并有自动化验证（`probe-mNN`）；
 - 标 ❌ 的行 = **没有独立设计稿**（多为"补录"项或走了并行编号专题），以 [milestones.md](../milestones.md) 能力速览 + 探针为准。
 
-## 覆盖总表（M01–M56）
+## 覆盖总表（M01–M57）
 
 | 里程碑 | 主题 | 设计稿 | 评审 | 探针 | 备注 |
 |---|---|---|---|---|---|
@@ -69,6 +69,7 @@
 | M54 | 智能混剪增强 | [montage-ai-spec.md](montage-ai-spec.md) | — | ✅ m54 | |
 | M55 | 本地全类型模型接入 | [local-model-integration-spec.md](local-model-integration-spec.md) | — | ✅ m55 | 用户向指南 [../local-zero-code-wiring.md](../local-zero-code-wiring.md) |
 | M56 | 轻松创作「毕业通道」（升级专业成片/连载立项） | [M56-轻松创作毕业通道-design.md](M56-轻松创作毕业通道-design.md) | — | ✅ m56 | 立项误编 M48 已修正（与已交付冲突）；另有 M57–M60 立项队列（待评审未实施） |
+| M57 | 轻松创作智能载体路由 | [M57-轻松创作智能载体路由-design.md](M57-轻松创作智能载体路由-design.md) | — | ✅ m57 | 已实施（确定性派生替代原 LLM 注入，见 spec §零）；M58–M60 立项队列待评审未实施 |
 
 > 图例：✅ 有 / ❌ 无独立文档 / 🔶 走并行编号专题（见下）/ — 无此项。探针列 `mNN` 指 `apps/server/scripts/probe-mNN.ts`。
 

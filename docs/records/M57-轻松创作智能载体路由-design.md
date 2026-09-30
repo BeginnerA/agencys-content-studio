@@ -1,8 +1,19 @@
 # M57 L1 Spec — 轻松创作「意图驱动的智能载体路由」
 
-> **状态：待用户评审批准；未获批不改业务代码。** 构建在 M30/M40/M56 之上，不推翻其契约。
+> **状态：已实施并门禁验证（2026-09-30，机制较原 §四修正为确定性派生，见 §零）。** 构建在 M30/M40/M56 之上，不推翻其契约。
 > 前置复核：编号以最新 roadmap 为准（取 M57）。
 > 纪律：**0 新表 0 新列 / 0 新增 action / 0 新增付费面**；路由产出的是**建议 + 预览闸门**（Tier B），绝不自动改出片模板；不破坏 M40"确认什么就做什么"与 `easy-*` 纯执行器本质。
+
+## 零、实施状态与原 spec 修正（诚实留档，2026-09-30）
+
+**已实施**：`services/creation-chat/route-hint.ts`（纯函数）+ `planning.ts` 三处接线 + `probe-m57`（五节 26 断言）+ 前端 `CreationRouteHint.vue` 子组件挂进方案卡。双端 `tsc`/`vue-tsc` exit 0。
+
+与原 spec §四的**机制修正**（写码前读 `contract.ts`/`store.ts` 实证后拍板，比原方案更保守）：
+
+- 原 §四拟把路由准测**注入规划 LLM 提示词**、`planningReplySchema` 加可选 `routeHint`。实施改为：**服务端确定性纯函数 `deriveRouteHint` 在方案产出时派生**，不注入钱路径提示词、不改 `planningReplySchema`、不新增任何付费面——四类信号（连载/质感/反推/超长）是有限枚举关键词表，LLM 参与只会引入不可控 noise 与计费面扩大，纯函数可探针穷举断言。
+- 承载位：routeHint 存入 **assistant 方案消息 payload**（有建议才挂键），经 `store.creationDetail` 的 `messages[].payload` 全量透出既有通道自动可达，**store.ts / 路由层 / API 零改动**。
+- 不进 planHash 的保证升级：`creationPlanSchema` 为 strict，routeHint 结构上**不可能**进 plan → 不可能进 `hashJson({plan,execution})`——探针 drift 节以 `!safeParse({...plan, routeHint}).success` 坐实，改建议永不作废已确认方案。
+- 原 §三「复用 template-recommend 向量匹配产物」未采用：该服务把 `easy-*` 剔除且面向专业端建项目，双向隔离现状不改（§七红线维持）；判定只读当前轮用户文本 + 参考摘要 + vision 能力位。
 
 ## 一、背景（修正一个长期误解，并把它变成正当诉求）
 

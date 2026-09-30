@@ -787,6 +787,18 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M57 能力速览（轻松创作「意图驱动的智能载体路由」：方案产出时给一条非阻断的专业链方向建议）
+
+> 痛点：用户的原始心智是「轻松说一句就该得到最合适的载体」，但 `template-recommend`（专业端语义匹配）与轻松创作（只做 easy-* 二选一）双向隔离，连载/多角色质感/反推/超长单条这些**越出轻内容能力**的意图得不出方向。M57 是**前置路由器**（M56 是后置毕业通道，互补不重叠）：命中信号只产**建议**，绝不自动改执行模板。详规：`docs/records/M57-轻松创作智能载体路由-design.md`。**红线**：0 新表 0 新列 / 0 新增 action / 0 新增付费面；不把 `easy-*` 纳入 top-K 竞价。
+
+- **M57.1 后端纯函数（`services/creation-chat/route-hint.ts`）**：`deriveRouteHint`四类确定性信号（优先级从高到低）：连载措辞（连载/多集/续集/季/第N集）→`series-setup`；多角色短剧质感（对手戏/定妆/形象一致/逐句配音/BGM）→`mengbao-episode`；视频反推（内容参考+vision+反推措辞）→`video-reverse`；超 60s 单条（分钟/秒解析，边界 60s 不误报）→`video-plan`；无信号=null（不猜不打扰）。`sanitizeRouteHint` 白名单收口：target ∈ 专业家族枚举 + `listTemplates()` 真源存在 + 非 `isCreationTemplate` 批准链；label 不采信入参按模板真源回填；reason 非空截断 ≤80 字。
+- **M57.2 接线（`planning.ts`，机制修正见 spec §零）**：不注入 LLM 提示词、不改 `planningReplySchema`——方案产出后由服务端确定性派生，routeHint 存进 assistant 方案消息 payload（有建议才挂键）；经 `store.creationDetail.messages[].payload` 既有通道透出，**store/路由/API 零改动**；`creationPlanSchema` strict 拒 routeHint 键 → 结构上永不进 planHash（改建议不作废已确认方案）。
+- **M57.3 前端**：`CreationRouteHint.vue` 非阻断建议条（方案卡 meta 芯片下方，无建议完全不渲染）：「这更像〈{模板真名}〉」+ 理由 + 展开升级路径（episode/series 目标指 M56 毕业动作，按钮文案与成片页「本集升级为专业成片/立项为连载系列」同源；其余目标指专业端建项目）；`types` 加 `CreationRouteHintView` + payload 可选 `routeHint`。
+
+验证：`probe-m57`（五节 **26 断言全绿**：signals 四类信号各命中 + 30秒/一分钟不误报；gating 无 vision/无内容参考不产反推（M31 不降级）；sanitize 真源回填/easy-* 拒/越界拒/空理由拒/截断 80；priority 连载高于质感；drift 四目标模板在位非批准链 + strict 拒键坐实不进 planHash）。双端 `tsc`/`vue-tsc` exit 0。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/records/纲领-M32-M39平台智能化-charter.md`。
