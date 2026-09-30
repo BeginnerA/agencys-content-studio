@@ -51,6 +51,15 @@ const castPopEl = ref<HTMLDetailsElement | null>(null)
 function exclusivePop(openEl: HTMLDetailsElement | null, closeEl: HTMLDetailsElement | null): void {
   if (openEl?.open && closeEl?.open) closeEl.open = false
 }
+// 点击空白处关闭预设面板（对齐「从素材选取」弹窗的背景关闭体验）：
+// 面板内（含勾选框、summary）点击不关闭，仅点击两者之外才收起。
+function onDocClick(e: MouseEvent): void {
+  const target = e.target as Node | null
+  if (!target) return
+  for (const pop of [stylePopEl.value, castPopEl.value]) {
+    if (pop?.open && !pop.contains(target)) pop.open = false
+  }
+}
 
 let departed = false
 let handoffPath = ''
@@ -58,7 +67,7 @@ onBeforeRouteLeave((to) => {
   departed = true
   if (to.path !== handoffPath) s.leave()
 })
-onBeforeUnmount(() => { if (ideaRecTimer) clearTimeout(ideaRecTimer) })
+onBeforeUnmount(() => { if (ideaRecTimer) clearTimeout(ideaRecTimer); document.removeEventListener('click', onDocClick, true) })
 async function onFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -173,6 +182,7 @@ onMounted(() => {
   void s.loadSessions()
   void loadTopicChips()
   void loadPresets()
+  document.addEventListener('click', onDocClick, true)
 })
 
 async function go(): Promise<void> {
