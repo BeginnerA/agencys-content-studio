@@ -32,7 +32,7 @@ export function projectAbsDir(projectId: number): string {
 }
 
 /** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
-export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'chapter-manifest-json', 'dialogue-transcript-json'] as const
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'monetization-json', 'chapter-manifest-json', 'dialogue-transcript-json'] as const
 
 /** 文本 JSON 格式判定 */
 export function isJsonTextFormat(format?: string): boolean {
@@ -56,6 +56,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'events':
     case 'graph':
     case 'plan':
+    case 'monetization': // M60 系列商业结构设计 json（剧情设计思路产物，归 texts）
     case 'regex':
     case 'video_analysis': // 视频时间轴 json + 人读 md 报告
     case 'image_analysis': // 图片反推 json + 人读 md 报告（image-reverse 链，同源形态）

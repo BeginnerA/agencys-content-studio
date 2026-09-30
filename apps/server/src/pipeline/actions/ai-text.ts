@@ -15,7 +15,7 @@ import { RunCancelledError } from '../types'
 /**
  * ai_text：LLM 文本生成（spec §5.3）。
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
- * output_format=storyboard-json/lines-json/characters-json/set-json/event-json/graph-json/plan-json
+ * output_format=storyboard-json/lines-json/characters-json/set-json/event-json/graph-json/plan-json/monetization-json
  * 时走 validateTextOutput 契约校验；
  * def.batch 存在→ aiTextBatch（按 JSON 列表逐项生成）；params.max_input_chars → 超长注入截断。
  */
@@ -324,6 +324,42 @@ export function validateTextOutput(content: string, format: string): number {
     }
     return obj.episodes.length
   }
+  if (format === 'monetization-json') {
+    // M60 商业结构：逐集悬念标记为剧情设计产物（真实付费与否由发布平台决定，此处不设真实付费门禁参数）
+    const obj = JSON.parse(extractJson(content)) as { episode_count?: unknown; episodes?: unknown }
+    if (!Array.isArray(obj.episodes) || obj.episodes.length === 0) {
+      throw new Error(`商业结构 JSON 不合法（缺 episodes 数组）。返回开头 200 字符：${content.slice(0, 200)}`)
+    }
+    const epsArr = obj.episodes as Array<Record<string, unknown>>
+    if (typeof obj.episode_count === 'number' && obj.episode_count !== obj.episodes.length) {
+      throw new Error(`商业结构 JSON 不合法：episode_count=${String(obj.episode_count)} 与 episodes 数量 ${obj.episodes.length} 不一致`)
+    }
+    const eps = new Set<number>()
+    for (const ep of epsArr) {
+      if (typeof ep['ep'] !== 'number' || !Number.isInteger(ep['ep']) || ep['ep'] < 1) {
+        throw new Error('商业结构 JSON 不合法：episodes 存在非正整数 ep')
+      }
+      if (eps.has(ep['ep'])) throw new Error(`商业结构 JSON 不合法：第 ${ep['ep']} 集重复`) 
+      eps.add(ep['ep'])
+      if (typeof ep['ending_cliffhanger'] !== 'string' || !ep['ending_cliffhanger'].trim()) {
+        throw new Error(`商业结构 JSON 不合法：第 ${String(ep['ep'])} 集缺 ending_cliffhanger（集末悬念是卡点结构的最小承载）`)
+      }
+      for (const key of ['opening_hook', 'paywall_note']) {
+        const v = ep[key]
+        if (v !== undefined && (typeof v !== 'string' || !v.trim())) {
+          throw new Error(`商业结构 JSON 不合法：第 ${String(ep['ep'])} 集的 ${key} 若提供需为非空字符串`)
+        }
+      }
+      if (ep['paywall_candidate'] !== undefined && typeof ep['paywall_candidate'] !== 'boolean') {
+        throw new Error(`商业结构 JSON 不合法：第 ${String(ep['ep'])} 集的 paywall_candidate 需为布尔`) 
+      }
+    }
+    // 连续覆盖 1..N（集号链不断档，下游按 ep 对齐分集地图）
+    if (eps.size !== epsArr.length || [...eps].some((n) => n > epsArr.length)) {
+      throw new Error('商业结构 JSON 不合法：ep 需连续覆盖 1..集数（缺集或越界）')
+    }
+    return epsArr.length
+  }
   return 0
 }
 
@@ -349,6 +385,7 @@ function defaultName(format: string, purpose: string): string {
   if (format === 'event-json') return 'events.json'
   if (format === 'graph-json') return 'event-graph.json'
   if (format === 'plan-json') return 'plan.json'
+  if (format === 'monetization-json') return 'monetization.json'
   return `${purpose}.md`
 }
 
@@ -361,6 +398,7 @@ function tagOfFormat(format: string): string {
   if (format === 'event-json') return 'events'
   if (format === 'graph-json') return 'graph'
   if (format === 'plan-json') return 'plan'
+  if (format === 'monetization-json') return 'monetization'
   return 'script'
 }
 

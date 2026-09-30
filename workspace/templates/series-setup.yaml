@@ -1,8 +1,8 @@
 key: series-setup
 builtin: true
-version: 3
+version: 4
 name: 短剧立项
-description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 角色/场景/道具建档）。流程：创意入库 → 整剧立项（可审阅）→ 定妆照（可选，出图后人工审阅）→ 角色建档 → 场景道具档案与参考图（可选，出图后人工审阅）→ 系列记忆沉淀。
+description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 商业结构 + 角色/场景/道具建档）。流程：创意入库 → 整剧立项（可审阅）→ 商业结构设计（可审阅；卡点为剧情设计思路非真实付费门禁）→ 定妆照（可选，出图后人工审阅）→ 角色建档 → 场景道具档案与参考图（可选，出图后人工审阅）→ 系列记忆沉淀。
 genre: drama_short
 scene: plan
 next: [video-plan, mengbao-episode]
@@ -31,6 +31,11 @@ inputs:
     kind: bool
     required: false
     default: false
+  - key: with_monetization
+    label: 产出商业结构设计（true=逐集钩子/悬念收口/卡点建议；false=仅设定包。卡点为剧情设计思路，真实付费由发布平台决定）
+    kind: bool
+    required: false
+    default: true
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
@@ -65,6 +70,23 @@ steps:
     gate:
       mode: required
       message: 请通读整剧设计书与设定包（{input.episodes} 集分集地图），确认后进入角色建档；圈改可驳回附修改意见重跑
+  - key: monetize
+    action: ai_text
+    title: 商业结构设计（钩子/悬念收口/卡点建议）
+    after: [write_series]
+    when: input.with_monetization == true
+    inputs:
+      series: steps.write_series.asset
+      episodes: input.episodes
+    params:
+      prompt_tpl: monetize-structure.md
+      output_purpose: monetization
+      output_format: monetization-json
+      name_tpl: "商业结构设计.json"
+    gate:
+      mode: required
+      message: 请审阅商业结构设计（逐集开场钩子/集末悬念收口/卡点建议区间）；卡点仅为剧情设计思路，真实付费由发布平台决定。认可后进入建档；驳回可附修改意见重跑
+      skip_label: 认可通过
   - key: char_profile
     action: ai_text
     title: 角色档案

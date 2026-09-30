@@ -12,7 +12,7 @@ import { templateFlags } from './loader'
  * 提示词暂仍以下面的路径集合维护（新增一份出厂提示词时把相对路径同步进来）。
  */
 
-/** 出厂内置提示词相对路径（workspace/prompts/*.md，POSIX 斜杠，共 47 份） */
+/** 出厂内置提示词相对路径（workspace/prompts/*.md，POSIX 斜杠，共 48 份） */
 export const BUILTIN_PROMPT_NAMES: ReadonlySet<string> = new Set<string>([
   'adapt-audit.md',
   'adapt-script.md',
@@ -39,6 +39,7 @@ export const BUILTIN_PROMPT_NAMES: ReadonlySet<string> = new Set<string>([
   'lines-cast.md',
   'lines-timing.md',
   'memory-summary.md',
+  'monetize-structure.md',
   'plan-episodes.md',
   'plan-video.md',
   'publish-note.md',

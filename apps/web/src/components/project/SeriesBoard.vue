@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import Icon from '../common/Icon.vue'
-import { seriesApi } from '../../lib/api'
+import { projectApi, seriesApi } from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
 import { runStatus } from '../../lib/format'
 import type { Episode, RunStatus, SeriesInfo } from '../../lib/types'
@@ -42,10 +42,53 @@ async function load(silent = false) {
   } finally {
     loading.value = false
   }
+  void loadMonetization()
 }
 onMounted(() => void load())
 
 defineExpose({ reload: (silent = true) => load(silent) })
+
+// —— 商业结构（M60）：立项 run 产出的「商业结构设计.json」折叠展示；卡点仅为剧情设计思路，真实付费由发布平台决定 ——
+interface MonetizationEpisode {
+  ep: number
+  opening_hook?: string
+  ending_cliffhanger: string
+  paywall_candidate?: boolean
+  paywall_note?: string
+  rhythm_note?: string
+}
+interface MonetizationDoc {
+  title?: string
+  episode_count?: number
+  free_episode_range?: number[]
+  positioning_rationale?: string
+  episodes: MonetizationEpisode[]
+}
+const mono = ref<MonetizationDoc | null>(null)
+const monoOpen = ref(false)
+const monoAssetId = ref<number | null>(null)
+
+async function loadMonetization() {
+  try {
+    const r = await projectApi.assets(props.projectId, '?kind=text&purpose=monetization&limit=1')
+    const a = r.items[0]
+    if (!a) {
+      mono.value = null
+      monoAssetId.value = null
+      return
+    }
+    monoAssetId.value = a.id
+    const res = await fetch(`/api/v1/assets/${a.id}/file`)
+    if (!res.ok) {
+      mono.value = null
+      return
+    }
+    const doc = (await res.json()) as MonetizationDoc
+    mono.value = Array.isArray(doc.episodes) && doc.episodes.length > 0 ? doc : null
+  } catch {
+    mono.value = null // 展示面非致命：读取/解析失败折叠卡隐藏，不打扰主流程
+  }
+}
 
 /** 写操作统一守卫：busy + 错误回显（服务端 409/400 消息原样透出） */
 async function guard(fn: () => Promise<void>): Promise<void> {
@@ -209,6 +252,31 @@ async function doRemoveEpisode(e: Episode) {
     </div>
 
     <div v-if="err" class="err-text">{{ err }}</div>
+
+    <!-- 商业结构折叠卡（M60）：仅在立项产出过「商业结构设计.json」时出现 -->
+    <div v-if="mono" class="mono-card">
+      <button class="mono-head" :aria-expanded="monoOpen" @click="monoOpen = !monoOpen">
+        <Icon :name="monoOpen ? 'chevron-down' : 'chevron-right'" :size="12" :stroke-width="2.2" />
+        <span class="mono-title">商业结构 · {{ mono.episodes.length }} 集钩子/悬念链</span>
+        <span v-if="mono.free_episode_range && mono.free_episode_range.length >= 2" class="muted mono-free">
+          建议免费：第 {{ mono.free_episode_range[0] }}–{{ mono.free_episode_range[1] }} 集
+        </span>
+        <span class="muted mono-cap">卡点为剧情设计思路，付费由发布平台决定</span>
+      </button>
+      <div v-if="monoOpen" class="mono-body">
+        <p v-if="mono.positioning_rationale" class="mono-why">{{ mono.positioning_rationale }}</p>
+        <div v-for="e in mono.episodes" :key="e.ep" class="mono-row">
+          <span class="mono-ep mono">{{ String(e.ep).padStart(2, '0') }}</span>
+          <span class="mono-hooks">
+            <span v-if="e.opening_hook" class="mono-hook">钩：{{ e.opening_hook }}</span>
+            <span class="mono-cliff">悬念：{{ e.ending_cliffhanger }}</span>
+            <span v-if="e.paywall_note" class="muted">卡点理由：{{ e.paywall_note }}</span>
+          </span>
+          <span v-if="e.paywall_candidate" class="badge running" title="此集结尾适合作为卡点（剧情设计建议）">卡点</span>
+          <RouterLink v-if="monoAssetId" class="muted mono-link" :to="`/projects/${props.projectId}?tab=assets`">资产</RouterLink>
+        </div>
+      </div>
+    </div>
 
     <!-- 建剧表单 -->
     <div v-if="createOpen && !series" class="sb-create">
@@ -403,5 +471,79 @@ async function doRemoveEpisode(e: Episode) {
 
 .sb-hint {
   padding: 6px 0 2px;
+}
+
+.mono-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 10px;
+  overflow: hidden;
+}
+
+.mono-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: left;
+}
+
+.mono-title {
+  font-weight: 600;
+}
+
+.mono-cap {
+  margin-left: auto;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.mono-body {
+  padding: 2px 10px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.mono-why {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.mono-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+}
+
+.mono-ep {
+  color: var(--text-3);
+  width: 26px;
+  flex: none;
+}
+
+.mono-hooks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mono-cliff {
+  color: var(--text-2);
+}
+
+.mono-link {
+  flex: none;
 }
 </style>
