@@ -40,18 +40,26 @@ export const refsAnalysisEntrySchema = z.object({
 }).strict()
 export type RefsAnalysisEntry = z.infer<typeof refsAnalysisEntrySchema>
 
+// M59 上限单一真源（可回退参数：若上线后截断/成本问题显著，把 MAX 下调即全链同步）。
+// 消费点：本文件 schema / clamp.ts 钳制 / planning.ts caps 注入 / route-hint.ts 超上限信号 / dialogue.ts 文案。
+// 单镜 1–15s 不动（受视频模型 caps 档位硬约束，放开无效）；>90s 长内容走 M56 毕业通道，不靠膨胀 easy-*。
+export const PLAN_DURATION_MIN = 30
+export const PLAN_DURATION_MAX = 90
+export const PLAN_SHOTS_MAX = 16
+export const PLAN_LINES_MAX = 48
+
 export const creationPlanSchema = z.object({
   title: text(100),
   summary: text(1200),
   genre: z.enum(['science', 'story', 'product']),
-  duration: z.number().int().min(30).max(60).default(30),
+  duration: z.number().int().min(PLAN_DURATION_MIN).max(PLAN_DURATION_MAX).default(30),
   aspectRatio: z.enum(['9:16', '16:9', '1:1']).default('9:16'),
   language: z.literal('zh-CN').default('zh-CN'),
   mode: z.enum(['dynamic', 'slideshow']).default('dynamic'),
   style: text(300),
   script: text(6000),
   // emotion_hint 可选：`基调词——六维细节`，供 audio 实例声明 emotion_param 时透传（缺省 → 不带情绪，旧方案不受影响）
-  lines: z.array(z.object({ id, text: text(300), emotion_hint: z.string().trim().min(1).max(200).optional(), speaker: id.optional() }).strict()).min(1).max(36),
+  lines: z.array(z.object({ id, text: text(300), emotion_hint: z.string().trim().min(1).max(200).optional(), speaker: id.optional() }).strict()).min(1).max(PLAN_LINES_MAX),
   shots: z.array(z.object({
     id,
     duration: z.number().min(1).max(15),
@@ -61,7 +69,7 @@ export const creationPlanSchema = z.object({
     characters: z.array(id).min(1).max(4).optional(),
     // M58 2a：本镜来自参考视频反推初稿（服务端权威写/清：本轮真用了分镜初稿才标，LLM 同名键不采信）
     source: z.literal('reverse').optional(),
-  }).strict()).min(2).max(12),
+  }).strict()).min(2).max(PLAN_SHOTS_MAX),
   // 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
   refs: z.array(refSchema).max(12).default([]),
   // M58 2b：参考视频解析产物（服务端编译写入；有视频参考才有此键，无则缺省不挂——老方案逐字零漂移）

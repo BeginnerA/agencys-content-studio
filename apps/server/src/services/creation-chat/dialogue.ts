@@ -1,5 +1,5 @@
 import { normalizeDialogueText, resolveNativeDialogueCaps } from '@agencys/ai-provider-kit'
-import { CreationError, hashJson, type CreationPlan } from './contract'
+import { CreationError, hashJson, PLAN_DURATION_MIN, PLAN_DURATION_MAX, type CreationPlan } from './contract'
 
 /** 策划容量预检只排除明显超载；是否真实说完仍由音轨与逐字 ASR 核验。 */
 export function assertDialogueCapacity(plan: CreationPlan): void {
@@ -7,7 +7,7 @@ export function assertDialogueCapacity(plan: CreationPlan): void {
   for (const shot of plan.shots) {
     const text = plan.lines.filter((l) => shot.lines.includes(l.id)).map((l) => l.text).join('')
     if ([...normalizeDialogueText(text)].length > Math.floor((shot.duration - 0.5) * 4)) {
-      throw new CreationError('dialogue_capacity', `镜头 ${shot.id} 台词过长，请减少台词或增加镜长并保持全片 30–60 秒`, 422)
+      throw new CreationError('dialogue_capacity', `镜头 ${shot.id} 台词过长，请减少台词或增加镜长并保持全片 ${PLAN_DURATION_MIN}–${PLAN_DURATION_MAX} 秒`, 422)
     }
   }
 }

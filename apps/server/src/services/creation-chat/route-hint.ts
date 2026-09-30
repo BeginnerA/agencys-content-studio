@@ -3,7 +3,7 @@
  *
  * 本质是一个**确定性纯函数路由器**：不调用任何模型、零计费、绝不改本次出片载体
  * （轻松创作执行模板恒由 execution.ts 的 recipe 决定，见 project-meta.ts 同源注释）。
- * 仅当用户意图明显越出轻内容能力（连载 / 多角色短剧质感 / 视频反推 / 超 60s 单条）时，
+ * 仅当用户意图明显越出轻内容能力（连载 / 多角色短剧质感 / 视频反推 / 超总时长上限单条）时，
  * 产出一条**人话方向建议**（Tier B 非阻断），前端渲染为方案卡上的「更合适的选择」提示条，
  * 一键引导至 M56 毕业通道或专业端建项目。命中不了信号返回 null——不猜、不打扰。
  *
@@ -15,7 +15,7 @@
  */
 import { listTemplates } from '../../pipeline/loader'
 import { isCreationTemplate } from './recipe'
-import type { CreationPlan } from './contract'
+import { PLAN_DURATION_MAX, type CreationPlan } from './contract'
 
 export interface RouteHint {
   /** 建议的专业模板 key（∈ ROUTE_TARGETS，且模板真源存在） */
@@ -51,12 +51,12 @@ export function wantsReverseIntent(text: string): boolean {
   return includes(text, ...REVERSE_INTENT_WORDS)
 }
 
-/** 是否有「明确长于 60s 单条」诉求（轻松成片 duration 上限 60s，见 contract clamp）。 */
+/** 是否有「明确长于轻松成片总时长上限」诉求（上限真源 = contract PLAN_DURATION_MAX，M59 放宽后同步，防误路由 61–90s 请求）。 */
 function wantsLongerThanCap(text: string): boolean {
   let maxSec = 0
   for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*分钟/g)) maxSec = Math.max(maxSec, Number(m[1]) * 60)
   for (const m of text.matchAll(/(\d+)\s*(?:秒|s)/gi)) maxSec = Math.max(maxSec, Number(m[1]))
-  return maxSec > 60
+  return maxSec > PLAN_DURATION_MAX
 }
 
 /**
@@ -77,9 +77,9 @@ function detect(input: RouteSignalInput): { target: string; reason: string } | n
   if (input.hasVideoContentRef && input.hasVision && wantsReverseIntent(t)) {
     return { target: 'video-reverse', reason: '你上传了参考视频并想要同款成片，先反推分镜与脚本再产出，比单条轻成片更贴近原作' }
   }
-  // 4 超 60s 单条：明确要更长成片 → 专业策划链承载（而非 M59 的放宽，见其理由）
+  // 4 超总时长上限单条：明确要更长成片 → 专业策划链承载（阈值随 PLAN_DURATION_MAX 同步，而非为它再放宽）
   if (wantsLongerThanCap(t)) {
-    return { target: 'video-plan', reason: '这条超过轻松成片 60 秒上限，专业策划链能承载更完整的节奏分段与分镜' }
+    return { target: 'video-plan', reason: `这条超过轻松成片 ${PLAN_DURATION_MAX} 秒上限，专业策划链能承载更完整的节奏分段与分镜` }
   }
   return null
 }

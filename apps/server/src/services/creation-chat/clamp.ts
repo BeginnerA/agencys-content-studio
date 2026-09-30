@@ -17,7 +17,7 @@
  * - **clamp 后仍走 preflightPlan**：若还有病态（如 `caps.aspectRatios=[]`），走原 throw 路径。
  */
 import type { VideoModelCaps } from '../../adapters/video-capabilities'
-import { creationPlanSchema, type CreationPlan } from './contract'
+import { creationPlanSchema, PLAN_DURATION_MIN, PLAN_DURATION_MAX, type CreationPlan } from './contract'
 import { assertDialogueCapacity } from './dialogue'
 
 export interface ClampReport {
@@ -112,8 +112,8 @@ export function clampPlanToCaps(
     // 总时长重算（superRefine 要求镜头时长和 = duration）
     const sum = next.shots.reduce((acc, s) => acc + s.duration, 0)
     if (sum !== next.duration) {
-      // 保持整数（clamp 到 30–60 契约范围）；越界不视为错误，交给 preflight/LLM 处理
-      const rounded = Math.max(30, Math.min(60, Math.round(sum)))
+      // 保持整数（钳到契约总时长范围，M59 真源常数同步）；越界不视为错误，交给 preflight/LLM 处理
+      const rounded = Math.max(PLAN_DURATION_MIN, Math.min(PLAN_DURATION_MAX, Math.round(sum)))
       if (rounded !== next.duration) {
         report.notes.push(`成片时长 ${next.duration}→${rounded}s（重算镜头和）`)
         next = { ...next, duration: rounded }
