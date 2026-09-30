@@ -11,8 +11,8 @@
  *   - 直插 active 项目 + started 会话（挂 easy run）+ 批准剧本资产（purpose=script, runId=会话 run），
  *     旁路 LLM 与真实媒体执行。
  *
- * 断言聚焦 M56 契约：批准剧本经既有 setting_docs（单集）/plan_doc（连载）锚定、不改 mengbao-episode v14、
- * 幂等复用未启动专业 run、未确认拒绝、prev_script 不被误用、模板零漂移。
+ * 断言聚焦 M56 契约：批准剧本经既有 setting_docs（单集）/plan_doc（连载）锚定、毕业不新增模板步骤/不改结构（M60 后
+ * 出厂版本为 mengbao-episode v15 / series-setup v4，毕业链仍零改动），幂等复用未启动专业 run、未确认拒绝、prev_script 不被误用。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。
  */
@@ -202,15 +202,15 @@ async function main(): Promise<void> {
       check((await errOf(async () => graduateCreation(9999999, { mode: 'episode' }))) !== null, '不存在的会话编号 → 拒绝（not_found）')
     },
 
-    // ================= drift：模板零漂移（未改 mengbao-episode/series-setup 结构） =================
+    // ================= drift：毕业链结构不变（后续里程碑升版本也不得动毕业锚定面） =================
     drift: async () => {
       const { loadTemplate } = await import('../src/pipeline/loader')
       const ep = loadTemplate('mengbao-episode')
-      check(ep.version === 14, 'mengbao-episode 仍为 v14（毕业不改模板版本，不触碰版本探针 m3/m8/m11）')
+      check(ep.version === 15, 'mengbao-episode 当前 v15（M60 仅放宽 setting_docs 接受 json，毕业锚定面未动）')
       check(JSON.stringify(ep.steps).includes('write_script'), 'write_script 步骤仍在位（毕业不 skip 任何步、不删结构）')
       check(ep.inputs.some((i) => i.key === 'setting_docs' && i.kind === 'files'), 'setting_docs 仍为既有 files 输入（锚定依赖未新增列/键）')
       const se = loadTemplate('series-setup')
-      check(se.version === 3 && se.inputs.some((i) => i.key === 'plan_doc'), 'series-setup 仍为 v3 且 plan_doc 输入在位（连载立项零改动）')
+      check(se.version === 4 && se.inputs.some((i) => i.key === 'plan_doc'), 'series-setup 当前 v4（M60 增商业结构步）且 plan_doc 输入在位（连载锚定输入未动）')
     },
   }
 

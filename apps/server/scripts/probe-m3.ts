@@ -667,14 +667,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode v14：版本 14 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 / v12 集间承接 / v13 智能 BGM / v14 视频兜底改真厂商 ——
+    // —— T3 mengbao-episode v15：版本 15 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 / v12 集间承接 / v13 智能 BGM / v14 视频兜底改真厂商 / v15 商业结构承接（setting_docs 接受 json） ——
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
       if (t3) {
         const keys = t3.steps.map((s) => s.key)
         const stepOf = (k: string) => t3.steps.find((s) => s.key === k)
-        check(t3.version === 14, `mengbao-episode version=14（实际 ${t3.version}）`)
+        check(t3.version === 15, `mengbao-episode version=15（实际 ${t3.version}）`)
         check(t3.steps.length === 21, `mengbao-episode steps=21（实际 ${t3.steps.length}）`)
         // [v12] 集间承接：prev_script 选填文件输入声明 + write_script 接线（多段工作流 $prev.asset:script 灌入点）
         const psDef = t3.inputs.find((i) => i.key === 'prev_script')

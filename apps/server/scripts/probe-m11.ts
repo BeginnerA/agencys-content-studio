@@ -528,8 +528,8 @@ async function main(): Promise<void> {
     cpSync(join(REPO_ROOT, 'workspace', 'templates', 'mengbao-episode.yaml'), join(TEMPLATES_DIR, 'mengbao-episode.yaml'))
 
     const tpl = loadTemplate('mengbao-episode', true)
-    // v14：v13 智能 BGM 基础上视频兜底改真厂商（网关私有协议行移除）；步骤数/其余结构不变
-    check(tpl.version === 14, `version=14（实际 ${tpl.version}）`)
+    // v15：v14 基础上 setting_docs 接受 json（M60 商业结构承接）；步骤数/其余结构不变
+    check(tpl.version === 15, `version=15（实际 ${tpl.version}）`)
     check(tpl.steps.find((s) => s.key === 'write_script')?.inputs['prev_script'] === 'input.prev_script', 'v12 write_script 接 prev_script（上集剧本承接输入）')
     const gm = tpl.steps.find((s) => s.key === 'gen_motion')
     check(!!gm && (gm.after ?? []).includes('voice') && gm.inputs['voices'] === 'steps.voice.assets', 'v10 以音定画：gen_motion 依赖 voice 并注入实测音频')
@@ -567,11 +567,11 @@ async function main(): Promise<void> {
     const lmg = loadedV8.steps.find((s) => s.key === 'compose_video')!
     check(!('transition' in (lmg.params ?? {})), 'v8 快照 compose 参数无 M11 键')
 
-    // ---- 无快照 → 文件 v14；损坏快照 → 回退文件 ----
+    // ---- 无快照 → 文件 v15；损坏快照 → 回退文件 ----
     const noSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: null })
-    check(noSnap.version === 14, '无快照 → v14 文件加载')
+    check(noSnap.version === 15, '无快照 → v15 文件加载')
     const badSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: 'junk' })
-    check(badSnap.version === 14, '损坏快照 → 回退文件加载')
+    check(badSnap.version === 15, '损坏快照 → 回退文件加载')
   }
 
   // ================= 分发 =================
