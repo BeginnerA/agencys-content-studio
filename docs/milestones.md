@@ -817,6 +817,27 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 验证：`probe-m59`（三节 **14 断言全绿**：schema 新边界 90/16/48 合法 + 91/17/49 拒 + 单镜 16s 仍拒 + 旧边界向后兼容；clamp 75s 不回钳 60/90 保留/150 钳 90/20 钳 30；drift 五处写死点同真源 + 65000 显式未放宽 + 旧 plan planHash 零漂移）。回归 `probe-m57`（新加「90秒→null」边界断言防漂移）/`m58`/`m56`/`m31`/`m7`/`m10`/`m30`/`m32`/`m35`/`m41` 全绿。双端 `tsc`/`vue-tsc` exit 0。
 
+## M60 能力速览（短剧商业化结构设计：付费卡点/开场钩子/留人节奏）
+
+> 痛点：全仓能「产出一集/一条」，但无「把多集组织成一部结构上能卡钩子的短剧」的商业结构设计。**定位（用户澄清）**：付费卡点是**剧情设计思路**——设计「哪一集结尾适合做强悬念收口」的结构标记；**是否真正收费、收费位置由发布平台决定**，设计了卡点不等于一定要付费（因此无产品决策前置门，不产出任何平台配置/价格/付费门禁参数）。详规：`docs/records/M60-短剧商业化结构设计-design.md`。**红线**：0 新表 0 新列 / 0 新增 action / 0 新增付费面（纯提示词 + 文本契约 + 规划注入层）。
+
+- **M60.1 新文本契约 `monetization-json`（登记层）**：`storage.ts` `JSON_FORMATS` 登记新格式 + `purposeSubDir` 映 `monetization`→`texts`（0 新目录）；`ai-text.ts` `validateTextOutput` 新分支校验（episodes 非空数组、episode_count 与长度一致、集号正整数不重复连续覆盖 1..N、`ending_cliffhanger` 必填非空、`opening_hook`/`paywall_note` 若提供需非空串、`paywall_candidate` 若提供需布尔）；**无任何付费阈值校验**。`builtin-assets.ts` 新增出厂提示词 `monetize-structure.md`。
+- **M60.2 立项链新增设计步（`series-setup` v3→v4）**：`write_series` 后插入 `monetize`（`ai_text`、`with_monetization` bool 默认开、`output_purpose=monetization`、`output_format=monetization-json`），带可审阅 gate（required + skip_label），gate 文案显式声明卡点仅为剧情设计思路。`monetize-structure.md` 逐集产 `opening_hook`/`ending_cliffhanger`/`paywall_candidate`/`free_episode_range`/`rhythm_note`。
+- **M60.3 单集链注入（`mengbao-episode` v14→v15）**：`setting_docs`（files）accept 加 `.json`，使《商业结构设计.json》可被单集 run 选入，走**既有** `ingest_docs → write_script/make_storyboard` 注入链（0 新接线）；四提示词线（script-ep v6 R19 / storyboard-ep v8 规则12 / creation-plan 开场纪律 / series-setup.md 下游衔接）指导卡点集末镜悬念收口与开场钩子落镜（未提供 json 时不适用=零漂移）。
+- **M60.4 前端（SeriesBoard）**：剧集地图新增「商业结构」折叠卡，`projectApi.assets(?kind=text&purpose=monetization&limit=1)` 取最新→读 `/api/v1/assets/:id/file` 解析展示逐集钩子/悬念/卡点建议；失败静默隐藏（展示非致命）；「查看」链接走既有 `/projects/:id?tab=assets`。
+
+验证：`probe-m60`（四节 **contract/template/inject/drift** 全绿：json 登记与校验正反例、v4/13 步与 v15/21 步契约、六提示词片段关键词与 BUILTIN_PROMPT_NAMES、链序 `steps[3]=monetize/steps[4]=char_profile`、json 走既有注入链 0 新接线）。回归 `probe-m3`/`m8`（新增 M60 monetize 断言）/`m11`/`m56`（版本断言改 v15/v4）/`m57` 全绿。双端 `tsc`/`vue-tsc` exit 0。
+
+## M61 能力速览（混剪开场标题「智能编排 + 标题字卡」三期一体：规则排版零计费 → LLM/AI 付费开关 → 多 Style 分层）
+
+> 痛点：`photo-montage` 开场标题只有单一默认字幕样式（字号/位置/样式恒定），标题与祝福语糊在同一路字幕里，无「大片感」分层，也不能按标题情绪自动设计。M61 按期递进三期全量：期1 规则排版 + 本地字卡（**零计费**）；期2 LLM 智能排版 + AI 背景字卡（**付费开关**，失败降级）；期3 per-line 多 ASS Style 分层排版。详规：`docs/records/M61-混剪标题智能编排-design.md`（已批准 2026-09-30）+ 计划 `docs/records/plans/M61-计划.md`。承接 M53/M54 混剪线不推翻其契约。**红线**：0 新表 0 新列 / 0 新 action / 0 新付费面（期2 复用既有 LLM/图像实例）/ 0 Web 改动；全部新开关默认 `off` = 逐字节零 diff。
+
+- **M61.1 期1 规则排版 + 本地字卡（T1–T4）**：`subtitle.ts` `planTitleStyle` 纯函数产 `style_plan {style, styles, cue_style}`（标题组大字/正文组小字按行数自动分层）；`ffmpeg-merge/index.ts` 样式链 `smart ⊕ brand 字段级合并（手工恒胜）> legacy > default`；新文件 `title-card.ts`（`resolveCjkFont` + `layoutCardLines` + `buildTitleCardArgs` 纯函数 drawtext）+ `title-card-compose.ts`（IO 编排，index.ts 守 ≤800 红线）；`segments.ts` `Segment.card` / `montage.ts` 卡段免 Ken Burns / `subtitle-ass` `cutCues` 字卡窗口内字幕裁剪；`photo-montage.yaml` v3（`style_mode`/`title_card`/`title_card_bg` 入参）。
+- **M61.2 期2 LLM 排版 + AI 背景卡（T5–T6，付费开关）**：`style_mode:'llm'` = `workspace/prompts/title-style.md` + LLM 调用 + `parseStylePlan` 白名单清洗 + 失败降级 rule（计费仍记入）；`title_card:'ai'` = `title-card-bg.md`（无文字铁律）+ 模板 `card_bg` 子链两步（`when ai` + `after=[captions]` 反级联）+ compose 底图分支（缺底图恒降级色底防线，子链失败 run 显式报错可改 local，溯源 `mode=ai|local`）。
+- **M61.3 期3 分层排版（T7）**：`subtitle-style.ts` `assStyleRow`（23 字段具名 Style 行，颜色 BGR 复用 `toAssColor`，alignment 实测标准 numpad：1-3 底/4-6 中/7-9 顶）；`srtToAss` 多 Style + `cueStyle` 按原始 cue 序映射（越界回落 Default，换行预算按各 cue 生效字号）；**实测推翻 spec 假设**——本机 libass `force_style` 逐字段覆盖**所有** Style 行（非仅 Default，会打平具名组毁掉分层），正解 = 分层启用时各路烧录**省略 force_style**（args.ts `assLayered`），Default 行由 `defaultCfg`（合并主样式）经 `assStyleRow` 全量承接（字号仍走基线链）；字卡 drawtext 与 `cue_style` 分组同源（卡与幕一台戏）。
+
+验证：`probe-m61`（六节 pure/ass/template/llm/ai/live **114 断言全绿**；live 实弹：rule+local 零计费成片、run C 分层 Title1 居中墨迹 120 vs 对照底部 227、llm 三 run 计费/降级矩阵、ai 全 mock 三步成功与降级边界）。终门禁 `pnpm probe:ci` 串行 **61 探针 / 5488 断言全绿**；`validate:templates` 19 份 131 步 0 错 0 警；m26 split-audit 红线存量 0（index.ts 798 行）；双端 typecheck 绿。
+
 ---
 
 ## 路线图（M32–M39 · **全部交付 · 收官**）
