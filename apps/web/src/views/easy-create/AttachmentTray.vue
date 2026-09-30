@@ -54,6 +54,8 @@ const shotBindHint = computed(() => {
     <div class="att-h">
       <Icon name="photo" :size="12" /> 参考素材 · 全部就绪后随文字提交规划
     </div>
+    <!-- 素材上限 12 项时整列会撑破输入区：列表区内部滚动，标题行固定（index 首屏与 ConversationPanel 两处复用同源收口） -->
+    <div class="att-list">
     <div
       v-for="a in s.state.attachments"
       :key="a.clientId"
@@ -134,6 +136,7 @@ const shotBindHint = computed(() => {
         <Icon name="x" :size="14" />
       </button>
     </div>
+    </div>
   </div>
 </template>
 
@@ -155,6 +158,17 @@ const shotBindHint = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+/* 内部滚动条：约 5 行高（44px 行 + 7px 间距），超出在列表内滚，不撑开 composer */
+.att-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 258px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px; /* 给滚动条让位，避免压住移除按钮 */
 }
 
 .att-h .ic {

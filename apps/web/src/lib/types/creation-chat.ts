@@ -114,6 +114,22 @@ export interface CreationRefsAnalysisEntry {
   truncated?: { scenes?: boolean; transcript?: boolean }
 }
 
+/** M58 补口：参考图片反推产物单条（与服务端 imageAnalysisEntrySchema 逐字段对齐；服务端多模态反推写入，可检视不可编造） */
+export interface CreationImageAnalysisEntry {
+  assetId: number
+  name: string
+  /** 主体（图中可见，一句话；反推无则无此键） */
+  subject?: string
+  /** 艺术风格/媒介（反推无则无此键） */
+  style?: string
+  /** 可投产正向提示词（产物核心） */
+  imagePrompt: string
+  /** 负向提示词（反推无则无此键） */
+  negativePrompt?: string
+  /** 主色板 hex（≤8，可空） */
+  palette: string[]
+}
+
 /** 已确认的结构化方案（服务端 creationPlanSchema 输出投影） */
 export interface CreationPlan {
   title: string
@@ -135,6 +151,8 @@ export interface CreationPlan {
   cast?: CreationCast[]
   /** 参考视频解析产物（M58 2b：服务端写入才存在；进 planHash——解析变了旧确认作废重确认） */
   refsAnalysis?: CreationRefsAnalysisEntry[]
+  /** 参考图片反推产物（M58 补口：服务端多模态反推写入才存在；进 planHash——反推变了旧确认作废） */
+  imageAnalysis?: CreationImageAnalysisEntry[]
 }
 
 /** 冻结的不含密钥供应商实例快照 */

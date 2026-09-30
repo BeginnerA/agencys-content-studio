@@ -1,6 +1,6 @@
 /**
  * M58 探针（轻松创作「参考反推可检视交付」：2b 解析产物编进方案可检视 + 2a 反推分镜初稿）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m58.ts [--section=schema|normalize|draft|gating|drift]
+ *   cd apps/server && npx tsx scripts/probe-m58.ts [--section=schema|normalize|draft|gating|drift|images]
  *
  * 隔离策略：纯函数 + 契约级（normalizeRefsAnalysis/parseStoryboardDraft/wantsReverseIntent/schema），
  *   isolatedEnv('m58', bridge templates+prompts) 即可，零 DB、零网络、零模型调用
@@ -13,6 +13,9 @@
  *   - gating：反推措辞真源与 M57 同源（同一措辞两边一致触发）；提示词 video-storyboard.md 真源在位；
  *   - drift：undefined 键 JSON 落库自动脱落（无视频参考老路径逐字零漂移）；解析产物进 plan → 进 planHash
  *     （改解析即改 hash → 旧确认作废重确认，与 M31 参考变化同律）；LLM 自报 source 键先剥后权威重写。
+ *   - images（M58 补口·图片反推）：normalizeImageAnalysis 有界截断/可选键省略/palette≤8且单项≤16 字符；
+ *     imageAnalysisEntrySchema strict 拒越界键；plan.imageAnalysis 向后兼容 + 超上限拒绝 + 进 planHash；
+ *     renderImageReverseBrief 只列实际字段；route-hint 图片反推信号（hasImageRef+vision+措辞→image-reverse，无 vision 不产）。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。
  */
@@ -20,7 +23,7 @@ import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib
 
 const { cleanup: envCleanup } = isolatedEnv('m58', { bridge: ['templates', 'prompts'] })
 
-const SECTIONS = ['schema', 'normalize', 'draft', 'gating', 'drift'] as const
+const SECTIONS = ['schema', 'normalize', 'draft', 'gating', 'drift', 'images'] as const
 
 /** 最小合法轻方案基线（无新字段——向后兼容对照） */
 function makePlan() {
@@ -55,13 +58,22 @@ function makeOutcome(sceneCount: number, transcriptChars: number) {
   }
 }
 
+/** 构造 image_analyze 反推出形（仅取 normalizeImageAnalysis 消费的字段） */
+function makeImageItem(over: Partial<{ subject: string; style: string; image_prompt: string; negative_prompt: string; palette: string[] }> = {}) {
+  return {
+    index: 0, file: 'a.jpg', scene: '', composition: '', lighting: '', mood: '', camera: '', text_in_image: '',
+    subject: '少年镖客', style: '水墨古风', image_prompt: 'a young escort in ink-wash style', negative_prompt: 'blurry, lowres',
+    palette: ['#2b2b2b', '#7a8fa6'], ...over,
+  }
+}
+
 async function main(): Promise<void> {
   const { createLogger } = await import('../src/logger')
   const log = createLogger('probe-m58')
   const checker: Checker = makeChecker(log)
   const check = checker.check
 
-  const { normalizeRefsAnalysis, parseStoryboardDraft, renderStoryboardDraft } = await import('../src/services/creation-chat/refs-analysis')
+  const { normalizeRefsAnalysis, parseStoryboardDraft, renderStoryboardDraft, normalizeImageAnalysis, renderImageReverseBrief } = await import('../src/services/creation-chat/refs-analysis')
   const { wantsReverseIntent, REVERSE_INTENT_WORDS, deriveRouteHint } = await import('../src/services/creation-chat/route-hint')
 
   const runners: Record<string, () => Promise<void>> = {
@@ -131,6 +143,46 @@ async function main(): Promise<void> {
       const llmPlan = { ...makePlan(), shots: makePlan().shots.map((s) => ({ ...s, source: 'reverse' })) }
       const strip = (shots: { source?: string }[]) => shots.map(({ source: _s, ...rest }) => rest)
       check(strip(llmPlan.shots).every((s) => !('source' in s)), 'LLM 自报 source 键可被剥净（服务端权威清/写，不采信模型自称反推）')
+    },
+
+    // ================= images：M58 补口·图片反推（normalize 有界 + schema 收口 + 进 planHash + 路由信号） =================
+    images: async () => {
+      const { creationPlanSchema, imageAnalysisEntrySchema, MAX_IMAGE_ANALYSIS, hashJson } = await import('../src/services/creation-chat/contract')
+      // normalize：有界截断 + 可选键省略 + palette 收口
+      const full = normalizeImageAnalysis({ assetId: 11, name: '参考图.jpg', item: makeImageItem({
+        subject: '主'.repeat(500), style: '风'.repeat(500), image_prompt: 'p'.repeat(3000), negative_prompt: 'n'.repeat(3000),
+        palette: Array.from({ length: 12 }, (_, i) => `#${i}verylongcolorvalue${i}`),
+      }) as never })
+      check(full.subject === '主'.repeat(400) && full.style === '风'.repeat(400), 'subject/style 超长 → 截断至 400（有界不静默丢源）')
+      check(full.imagePrompt.length === 1600 && full.negativePrompt!.length === 1200, 'imagePrompt/negativePrompt 超长 → 截断至契约上限 1600/1200')
+      check(full.palette.length === 8 && full.palette.every((c) => c.length <= 16), 'palette 超限 → ≤8 条且单项≤16 字符（超长色值截断，防 schema parse 抛错）')
+      const bare = normalizeImageAnalysis({ assetId: 12, name: 'x'.repeat(300), item: makeImageItem({ subject: '', style: '', negative_prompt: '', palette: ['  ', 'ok'] }) as never })
+      check(!('subject' in bare) && !('style' in bare) && !('negativePrompt' in bare), '反推无 subject/style/negative → 不挂键（缺失不编造）')
+      check(bare.palette.length === 1 && bare.palette[0] === 'ok', 'palette 空白项滤除，只留实际反推所得')
+      check(bare.name === 'x'.repeat(200), 'name 超长截断至 200')
+      // schema：strict 收口 + 必核心字段 + 上限
+      check(!imageAnalysisEntrySchema.safeParse({ assetId: 1, name: 'a', imagePrompt: 'p', palette: [], bogus: 1 }).success, '条目 strict：越界键拒收（LLM/外部不可扩形）')
+      check(!imageAnalysisEntrySchema.safeParse({ assetId: 1, name: 'a', palette: [] }).success, '缺 imagePrompt（产物核心）→ 拒绝（不许空壳条目）')
+      check(creationPlanSchema.safeParse({ ...makePlan(), imageAnalysis: [full] }).success, '带图片反推产物的新方案通过校验（加法兼容）')
+      const many = Array.from({ length: MAX_IMAGE_ANALYSIS + 1 }, () => full)
+      check(!creationPlanSchema.safeParse({ ...makePlan(), imageAnalysis: many }).success, `imageAnalysis 超上限（>${MAX_IMAGE_ANALYSIS}）→ 方案校验拒绝（多模态成本有界）`)
+      // drift：脱落零漂移 + 进 planHash（与 refsAnalysis 同律）
+      check(JSON.stringify({ ...makePlan(), imageAnalysis: undefined }) === JSON.stringify(makePlan()), '无图片反推 → imageAnalysis=undefined 落库键自动脱落（老方案逐字零漂移）')
+      const h0 = hashJson({ plan: makePlan(), execution: null })
+      const h1 = hashJson({ plan: { ...makePlan(), imageAnalysis: [full] }, execution: null })
+      const h2 = hashJson({ plan: { ...makePlan(), imageAnalysis: [{ ...full, imagePrompt: full.imagePrompt + 'x' }] }, execution: null })
+      check(h0 !== h1 && h1 !== h2, '图片反推产物进 plan → 进 planHash：写入或反推内容变化都改 hash（旧确认作废重确认，M31 同律）')
+      // 简报渲染：只列实际存在字段
+      const brief = renderImageReverseBrief([full, bare])
+      check(brief.includes('参考图.jpg') && brief.includes('正向提示词：') && brief.includes('负向提示词：'), '简报逐图列出正向/负向提示词（有则列）')
+      check(!brief.includes('undefined') && !brief.includes('（）'), '简报只列实际存在者——缺失字段不留空壳占位（不编造）')
+      // route-hint 图片反推信号（须同步 M57 同源约束：措辞真源一致）
+      const imgHint = deriveRouteHint({ userText: '帮我反推这张图的提示词', plan: null, hasVideoContentRef: false, hasImageRef: true, hasVision: true })
+      check(imgHint?.target === 'image-reverse' && imgHint.label.length > 0, '图片参考+vision+反推措辞 → 路由建议 image-reverse（模板真源回填 label）')
+      const noVision = deriveRouteHint({ userText: '帮我反推这张图的提示词', plan: null, hasVideoContentRef: false, hasImageRef: true, hasVision: false })
+      check(noVision === null, '无 vision → 图片反推建议不产出（沿用 M31 不降级，不打扰）')
+      const noImg = deriveRouteHint({ userText: '帮我反推这张图的提示词', plan: null, hasVideoContentRef: false, hasVision: true })
+      check(noImg === null, '无图片参考（hasImageRef 缺省当 false）→ 不产图片反推建议；既有调用零改动兼容')
     },
   }
 

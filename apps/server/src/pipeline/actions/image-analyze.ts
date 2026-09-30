@@ -145,19 +145,20 @@ function toScaledJpegDataUri(ffmpeg: string, srcAbs: string, outPath: string): s
   }
 }
 
-export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
-  const params = (ctx.def.params ?? {}) as Record<string, unknown>
-  const maxImages = clampImageCount(params['max_images'])
-  // —— 1. 图片源资产（kind=image 且本地文件存在，按上传顺序；与 video_analyze 输入契约同构） ——
-  const imageIds = ctx.assetIdsOf('images')
-  if (imageIds.length === 0) throw new StepError('image_analyze：inputs.images 无图片资产')
-  const rows = await ctx.assetsOf(imageIds)
-  const all = rows.filter((a) => a.kind === 'image' && a.relPath && existsSync(absPathOf(a.relPath)))
-  if (all.length === 0) throw new StepError('image_analyze：inputs.images 无可用图片资产（非图片 / 文件缺失）')
-  const selected = all.slice(0, maxImages)
-  if (all.length > selected.length) ctx.log(`图片 ${all.length} 张超上限 ${maxImages}，仅解析前 ${maxImages} 张（其余跳过）`)
-
-  // —— 2. 逐图编码（缩放 jpeg 优先，失败回退原图内联；单图失败跳过不拖垮整体） ——
+/**
+ * 可复用图片反推核心（逐图缩放编码 + 多模态反推 + 契约解析）：image_analyze 步骤与轻松创作对话规划前
+ * 图片反推（planning.ts compileReferenceContext）共用，不另建引擎（对齐 analyzeVideoSource 先例）。
+ * 纯反推不写资产；资产落库由调用方（步骤 action）负责。端点解析与用量记录口径同 video_analyze
+ * （内部 resolveLlmEndpoint，与对话规划 requiredEndpoint('llm') 取同一活跃 llm 行，vision 门与调用模型同源）。
+ */
+export async function analyzeImageSources(args: {
+  assets: Asset[]
+  projectId: number
+  log: (msg: string) => void
+  onUsage: (r: { provider: string; model: string; usage: LlmUsage | null }) => Promise<void>
+}): Promise<{ items: ImageReverseItem[]; included: Asset[] }> {
+  const { assets: selected } = args
+  // —— 逐图编码（缩放 jpeg 优先，失败回退原图内联；单图失败跳过不拖垮整体） ——
   const tmp = mkdtempSync(join(tmpdir(), 'acs-img-'))
   const parts: ChatContentPart[] = [
     {
@@ -173,11 +174,11 @@ export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
       try {
         if (ffmpeg) uri = toScaledJpegDataUri(ffmpeg, absPathOf(a.relPath!), join(tmp, `analyze-${a.id}.jpg`))
         if (!uri) {
-          if (ffmpeg && includedAssets.length === 0) ctx.log('图片缩放编码失败 → 回退原图内联（≤8MB，超限跳图）')
-          uri = await assetToDataUri(a.id, ctx.run.projectId)
+          if (ffmpeg && includedAssets.length === 0) args.log('图片缩放编码失败 → 回退原图内联（≤8MB，超限跳图）')
+          uri = await assetToDataUri(a.id, args.projectId)
         }
       } catch (err) {
-        ctx.log(`图「${a.name}」编码失败跳过：${(err as Error).message}`)
+        args.log(`图「${a.name}」编码失败跳过：${(err as Error).message}`)
         continue
       }
       parts.push({ type: 'text', text: `图 ${includedAssets.length + 1}/${selected.length}：${a.name}` })
@@ -187,9 +188,9 @@ export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
     if (includedAssets.length === 0) throw new StepError('image_analyze：全部图片编码/读取失败（无可用图）')
     parts.push({ type: 'text', text: '请按提示词契约输出反推 JSON（images 数组，每张一项，含 image_prompt / negative_prompt），只依据图中真实可见内容。' })
 
-    // —— 3. 多模态 LLM（端点解析与用量记录口径同 video_analyze） ——
+    // —— 多模态 LLM（端点解析与用量记录口径同 video_analyze） ——
     const ep = await resolveLlmEndpoint()
-    ctx.log(`调用多模态 LLM：${ep.model}（${includedAssets.length} 图）…`)
+    args.log(`调用多模态 LLM：${ep.model}（${includedAssets.length} 图）…`)
     const res = await chatCompleteDetailed(
       [
         { role: 'system', content: loadPromptTemplate('image-analyze.md') },
@@ -198,37 +199,59 @@ export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
       ep,
       { temperature: 0.2, maxTokens: 16000, timeoutMs: 600_000 },
     )
-    await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
+    await args.onUsage({ provider: res.provider, model: res.model, usage: res.usage })
 
-    // —— 4. 契约解析 + 文件名按序回填（模型不改写原名，缺失兜底） ——
+    // —— 契约解析 + 文件名按序回填（模型不改写原名，缺失兜底） ——
     const items = parseImageReverseJson(res.content)
     if (!items) throw new StepError(`image_analyze：反推输出不合契约。开头 200 字符：${res.content.slice(0, 200)}`)
     items.forEach((it, i) => {
       if (!it.file) it.file = includedAssets[Math.min(i, includedAssets.length - 1)]?.name ?? ''
     })
-
-    // —— 5. 落库：json 在前（反推步骤 .asset 引用锚）+ md 人读报告 ——
-    const jsonAsset = await writeTextAsset(ctx.run.projectId, {
-      name: '图片反推.json',
-      content: JSON.stringify({ images: items }, null, 2),
-      purpose: 'image_analysis',
-      stepId: ctx.step.id,
-      runId: ctx.run.id,
-      params: { images_included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH, report: false },
-      tags: ['image_analysis'],
-    })
-    const mdAsset = await writeTextAsset(ctx.run.projectId, {
-      name: '图片反推报告.md',
-      content: renderImageReverseReportMd(items, { included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH }),
-      purpose: 'image_analysis',
-      stepId: ctx.step.id,
-      runId: ctx.run.id,
-      params: { images_included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH, report: true },
-      tags: ['image_analysis'],
-    })
-    ctx.log(`反推完成：${includedAssets.length} 图 → ${items.length} 条提示词（json asset#${jsonAsset.id} + md #${mdAsset.id}）`)
-    return { assetIds: [jsonAsset.id, mdAsset.id] }
+    return { items, included: includedAssets }
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
+}
+
+export async function imageAnalyze(ctx: StepContext): Promise<StepResult> {
+  const params = (ctx.def.params ?? {}) as Record<string, unknown>
+  const maxImages = clampImageCount(params['max_images'])
+  // —— 1. 图片源资产（kind=image 且本地文件存在，按上传顺序；与 video_analyze 输入契约同构） ——
+  const imageIds = ctx.assetIdsOf('images')
+  if (imageIds.length === 0) throw new StepError('image_analyze：inputs.images 无图片资产')
+  const rows = await ctx.assetsOf(imageIds)
+  const all = rows.filter((a) => a.kind === 'image' && a.relPath && existsSync(absPathOf(a.relPath)))
+  if (all.length === 0) throw new StepError('image_analyze：inputs.images 无可用图片资产（非图片 / 文件缺失）')
+  const selected = all.slice(0, maxImages)
+  if (all.length > selected.length) ctx.log(`图片 ${all.length} 张超上限 ${maxImages}，仅解析前 ${maxImages} 张（其余跳过）`)
+
+  // —— 2–4. 可复用反推核心（编码 + 多模态 + 契约解析；与对话规划同源） ——
+  const { items, included: includedAssets } = await analyzeImageSources({
+    assets: selected,
+    projectId: ctx.run.projectId,
+    log: ctx.log,
+    onUsage: async (u) => { await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: u.provider, model: u.model, usage: u.usage }) },
+  })
+
+  // —— 5. 落库：json 在前（反推步骤 .asset 引用锚）+ md 人读报告 ——
+  const jsonAsset = await writeTextAsset(ctx.run.projectId, {
+    name: '图片反推.json',
+    content: JSON.stringify({ images: items }, null, 2),
+    purpose: 'image_analysis',
+    stepId: ctx.step.id,
+    runId: ctx.run.id,
+    params: { images_included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH, report: false },
+    tags: ['image_analysis'],
+  })
+  const mdAsset = await writeTextAsset(ctx.run.projectId, {
+    name: '图片反推报告.md',
+    content: renderImageReverseReportMd(items, { included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH }),
+    purpose: 'image_analysis',
+    stepId: ctx.step.id,
+    runId: ctx.run.id,
+    params: { images_included: includedAssets.length, width: ANALYSIS_IMAGE_WIDTH, report: true },
+    tags: ['image_analysis'],
+  })
+  ctx.log(`反推完成：${includedAssets.length} 图 → ${items.length} 条提示词（json asset#${jsonAsset.id} + md #${mdAsset.id}）`)
+  return { assetIds: [jsonAsset.id, mdAsset.id] }
 }

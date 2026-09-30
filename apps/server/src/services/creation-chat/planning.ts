@@ -5,6 +5,7 @@ import { chatCompleteDetailed, loadPromptTemplate, type ChatContentPart, type Ch
 import { assetToDataUri } from '../asset-ref'
 import { absPathOf } from '../storage'
 import { analyzeVideoSource, renderVideoReferenceSummary } from '../../pipeline/actions/video-analyze'
+import { analyzeImageSources } from '../../pipeline/actions/image-analyze'
 import { resolveVideoCaps, type VideoModelCaps } from '../../adapters/video-capabilities'
 import { clampPlanToCaps } from './clamp'
 import { resolveNativeDialogueCaps } from '@agencys/ai-provider-kit'
@@ -12,12 +13,12 @@ import { resolveStrictAsrEndpoint } from '../strict-asr'
 import { resolveDialogueAsrPolicy } from '../dialogue-asr-policy'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
-import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, MAX_REFS_ANALYSIS, PLAN_DURATION_MIN, PLAN_DURATION_MAX, type CreationPlan, type CreationRef, type RefsAnalysisEntry } from './contract'
+import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, MAX_REFS_ANALYSIS, MAX_IMAGE_ANALYSIS, PLAN_DURATION_MIN, PLAN_DURATION_MAX, type CreationPlan, type CreationRef, type RefsAnalysisEntry, type ImageAnalysisEntry } from './contract'
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
 import { deriveRouteHint, wantsReverseIntent } from './route-hint'
-import { normalizeRefsAnalysis, parseStoryboardDraft, renderStoryboardDraft } from './refs-analysis'
+import { normalizeRefsAnalysis, normalizeImageAnalysis, parseStoryboardDraft, renderStoryboardDraft, renderImageReverseBrief } from './refs-analysis'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 import { beginPlanningProgress, endPlanningProgress, setPlanningPhase } from './planning-progress'
@@ -53,16 +54,49 @@ export async function createSession(raw: unknown) {
 }
 
 /** 规划前参考素材注入（有界、可核实、不编造）：
- *  - 风格/主体/首帧图片：仅 vision 实例以 image_url 分片注入；否则明告「未纳入理解，仅作生成参考」，不假称看到。
+ *  - 风格/主体/首帧图片：命中反推意图 + vision → 多模态逐图反推产可投产 image_prompt（复用 image_analyze 核心，
+ *    M58 补口）注入反推文本简报；否则仅 vision 实例以 image_url 分片注入供约束画面；无 vision 明告「未纳入理解，仅作生成参考」，不假称看到。
  *  - 参考视频：执行 video_analyze 产出可见/可听摘要注入；需 vision+可用实例，缺失/失败即 blocker（不静默跳过、不编造）。
  *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。
- * M58 2b：视频参考的结构化解析产物不再即弃——随 messages 一并返回（analyses），由调用方编进 plan.refsAnalysis。 */
-export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean): Promise<{ messages: ChatMessage[]; analyses: RefsAnalysisEntry[] }> {
+ * M58 2b：视频参考的结构化解析产物不再即弃——随 messages 一并返回（analyses），由调用方编进 plan.refsAnalysis。
+ * M58 补口：图片反推产物同理随 imageAnalyses 返回，由调用方编进 plan.imageAnalysis（与 refsAnalysis 平行进 planHash）。 */
+export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean, reverseIntent: boolean): Promise<{ messages: ChatMessage[]; analyses: RefsAnalysisEntry[]; imageAnalyses: ImageAnalysisEntry[] }> {
   const out: ChatMessage[] = []
   const analyses: RefsAnalysisEntry[] = []
+  const imageAnalyses: ImageAnalysisEntry[] = []
   const imageRefs = refs.filter((r) => r.kind === 'image' && r.role !== 'content')
   if (imageRefs.length > 0) {
-    if (vision) {
+    if (vision && reverseIntent) {
+      // M58 补口：命中反推措辞 + vision → 逐图多模态反推产 image_prompt（与专业 image-reverse 同源核心），
+      // 反推文本简报喂规划作 shots 画面/风格基准；不再重复注入原图 image_url（省一次多模态往返）。
+      // 失败/无可用图/非契约输出 → blocker 不静默、不编造（与视频反推同律）。
+      const rows = await db.select().from(assets).where(inArray(assets.id, imageRefs.map((r) => r.assetId)))
+      const byId = new Map(rows.map((a) => [a.id, a]))
+      const selected = imageRefs
+        .map((r) => byId.get(r.assetId))
+        .filter((a): a is NonNullable<typeof a> => !!a && a.kind === 'image' && !!a.relPath)
+        .slice(0, MAX_IMAGE_ANALYSIS)
+      if (selected.length === 0) throw new CreationError('image_reverse_failed', '参考图片文件缺失或不可读，无法反推提示词；未跳过、未编造图片内容', 422)
+      try {
+        const { items, included } = await analyzeImageSources({
+          assets: selected, projectId, log: () => {},
+          onUsage: async (u) => { await recordLlmUsage({ projectId, provider: u.provider, model: u.model, usage: u.usage }) },
+        })
+        // 逐图按序归一（与 image_analyze 位置回填同语义：included 即实际送多模态的图，items 与之位置对应）
+        items.forEach((it, i) => {
+          const a = included[Math.min(i, included.length - 1)]!
+          imageAnalyses.push(normalizeImageAnalysis({ assetId: a.id, name: a.name, item: it }))
+        })
+        if (imageAnalyses.length) {
+          out.push({ role: 'system', content: `【参考图反推提示词（多模态反推，可检视）】以下提示词由参考图实际可见内容反推得出，请以其为 shots 画面提示词与风格基准（贴近原作画面），并按本方案契约调整镜头数与总时长；图中没有的信息不得臆造：\n${renderImageReverseBrief(imageAnalyses)}` })
+        } else {
+          out.push({ role: 'user', content: '用户上传了参考图并要求反推，但本轮多模态未返回可投产 image_prompt（未编造图片内容）；如需完整反推文案包请走专业端 image-reverse 模板。' })
+        }
+      } catch (err) {
+        if (err instanceof CreationError) throw err
+        throw new CreationError('image_reverse_failed', `参考图片反推未完成（${err instanceof Error ? err.message : String(err)}）；未跳过、未编造图片内容，请检查视觉模型实例后重试`, 422)
+      }
+    } else if (vision) {
       const parts: ChatContentPart[] = [{ type: 'text', text: '以下是用户上传的参考图（用于约束风格/主体；请仅依据其中真实可见的内容，不得编造图中没有的信息）：' }]
       const cache = new Map<number, string>()
       for (const r of imageRefs) {
@@ -95,7 +129,7 @@ export async function compileReferenceContext(projectId: number, refs: CreationR
       }
     }
   }
-  return { messages: out, analyses: analyses.slice(0, MAX_REFS_ANALYSIS) }
+  return { messages: out, analyses: analyses.slice(0, MAX_REFS_ANALYSIS), imageAnalyses: imageAnalyses.slice(0, MAX_IMAGE_ANALYSIS) }
 }
 
 export async function sendCreationMessage(id: number, raw: unknown) {
@@ -142,7 +176,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
-    const refComp = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : { messages: [] as ChatMessage[], analyses: [] as RefsAnalysisEntry[] }
+    const reverseIntent = wantsReverseIntent(input.content)
+    const refComp = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision, reverseIntent) : { messages: [] as ChatMessage[], analyses: [] as RefsAnalysisEntry[], imageAnalyses: [] as ImageAnalysisEntry[] }
     // M58 2a 反推分镜初稿：命中反推措辞（真源与 M57 同源）且本轮已有解析产物时，用现成 video-storyboard.md
     // 把时间轴转成 shots 蓝本喂进规划上下文（复用同一 llm 端点、tokens 计价同口径入账，不新增付费面）。
     // 失败/非契约输出：可见说明不静默，方案仍基于时间轴摘要规划；真产出初稿才给 shots 权威标 source:'reverse'。
@@ -238,6 +273,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       reply.plan.refs = effectiveRefs
       // M58 2b：解析产物随方案持久化（服务端权威写/清：无视频参考则 undefined → JSON 落库时键自动脱落，老路径零漂移）
       reply.plan.refsAnalysis = refComp.analyses.length ? refComp.analyses : undefined
+      // M58 补口：图片反推产物同理服务端权威写/清（无图片反推 → undefined 落库时键自动脱落，老路径零漂移）
+      reply.plan.imageAnalysis = refComp.imageAnalyses.length ? refComp.imageAnalyses : undefined
       // M58 2a：初稿来源权威标记——先剥 LLM 自报的同名键再按本轮是否真用初稿统一写/清（整条成片基于反推蓝本，不逐镜猜）
       reply.plan.shots = reply.plan.shots.map((s) => {
         const { source: _llmSource, ...rest } = s
@@ -251,7 +288,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // M57 载体路由：方案产出时由服务端**确定性派生**一条专业链方向建议（零计费、不调模型、绝不改本次执行载体）。
     // 存进方案消息 payload → 天然不进 planHash=hashJson({plan,execution})（改建议不作废已确认方案）；前端在方案卡渲染非阻断提示条。
     const routeHint = reply.kind === 'plan'
-      ? deriveRouteHint({ userText: input.content, plan: reply.plan, hasVideoContentRef: effectiveRefs.some((r) => r.role === 'content' && r.kind === 'video'), hasVision: vision })
+      ? deriveRouteHint({ userText: input.content, plan: reply.plan, hasVideoContentRef: effectiveRefs.some((r) => r.role === 'content' && r.kind === 'video'), hasImageRef: effectiveRefs.some((r) => r.kind === 'image' && r.role !== 'content'), hasVision: vision })
       : null
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))

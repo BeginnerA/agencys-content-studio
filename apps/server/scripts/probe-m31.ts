@@ -298,11 +298,11 @@ async function main(): Promise<void> {
       const imgRef = refSchema.parse({ assetId: 901, kind: 'image', role: 'subject', hash: 'a'.repeat(64) })
       const vidRef = refSchema.parse({ assetId: 902, kind: 'video', role: 'content', hash: 'b'.repeat(64) })
 
-      const { messages: msgs } = await compileReferenceContext(pid, [imgRef], false)
+      const { messages: msgs } = await compileReferenceContext(pid, [imgRef], false, false)
       const text = msgs.map((m) => (typeof m.content === 'string' ? m.content : '')).join('')
       check(msgs.length === 1 && typeof msgs[0]!.content === 'string' && /不会描述|未声明视觉/.test(text), '无视觉实例：图片参考明告「不描述内容、仅作生成参考」（不假称理解）')
 
-      check(await codeOf(() => compileReferenceContext(pid, [vidRef], false)) === 'video_analysis_unavailable', '无视觉实例的参考视频 → video_analysis_unavailable（不跳过不编造）')
+      check(await codeOf(() => compileReferenceContext(pid, [vidRef], false, false)) === 'video_analysis_unavailable', '无视觉实例的参考视频 → video_analysis_unavailable（不跳过不编造）')
 
       const t2vCaps = { model: 'Wan2.2-T2V-A14B', verified: true, modes: ['t2v'], durations: [10], aspectRatios: ['9:16'], resolution: '720p' }
       await seedEndpoints({ videoCaps: t2vCaps, videoModel: 'Wan2.2-T2V-A14B' })

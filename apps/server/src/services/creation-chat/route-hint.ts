@@ -33,12 +33,14 @@ export interface RouteSignalInput {
   plan: CreationPlan | null
   /** 本轮已采纳「视频内容解析」参考（role=content 且 kind=video） */
   hasVideoContentRef: boolean
+  /** 本轮已采纳图片参考（kind=image 且非 content）；M58 补口：图片反推路由信号前置（undefined 当 false，既有调用零改动） */
+  hasImageRef?: boolean
   /** 规划模型声明视觉理解（extra.vision）；无则反推类建议不产出（沿用 M31 不降级） */
   hasVision: boolean
 }
 
 /** 可路由的专业家族目标：新增目标须在此登记且保证模板真源在位（越界/删档一律 sanitize 丢弃）。 */
-const ROUTE_TARGETS = ['series-setup', 'mengbao-episode', 'video-reverse', 'video-plan'] as const
+const ROUTE_TARGETS = ['series-setup', 'mengbao-episode', 'video-reverse', 'image-reverse', 'video-plan'] as const
 const REASON_MAX = 80
 
 const includes = (text: string, ...words: string[]): boolean => words.some((w) => text.includes(w))
@@ -76,6 +78,10 @@ function detect(input: RouteSignalInput): { target: string; reason: string } | n
   // 3 视频反推：已采纳内容解析参考 + vision 可用 + 想要同款 → 反推分镜（→ M58）
   if (input.hasVideoContentRef && input.hasVision && wantsReverseIntent(t)) {
     return { target: 'video-reverse', reason: '你上传了参考视频并想要同款成片，先反推分镜与脚本再产出，比单条轻成片更贴近原作' }
+  }
+  // 3b 图片反推：已采纳图片参考 + vision 可用 + 反推措辞 → 专业图片反推链（含文案包；对话内已可反推提示词，此处为完整包路线建议）
+  if (input.hasImageRef && input.hasVision && wantsReverseIntent(t)) {
+    return { target: 'image-reverse', reason: '你上传了参考图并想反推，专业图片反推链可逐图产出可投产提示词与发布文案包，比对话内反推更完整' }
   }
   // 4 超总时长上限单条：明确要更长成片 → 专业策划链承载（阈值随 PLAN_DURATION_MAX 同步，而非为它再放宽）
   if (wantsLongerThanCap(t)) {

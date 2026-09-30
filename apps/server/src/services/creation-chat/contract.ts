@@ -40,6 +40,27 @@ export const refsAnalysisEntrySchema = z.object({
 }).strict()
 export type RefsAnalysisEntry = z.infer<typeof refsAnalysisEntrySchema>
 
+/** M58 补口：图片反推产物条目上限（对话内每次至多反推 8 图，控多模态成本；与 image_analyze 默认同量级） */
+export const MAX_IMAGE_ANALYSIS = 8
+// 图片反推产物（服务端规划期经多模态 image_analyze 核心反推写入，LLM 不产出也不采信其同名键）。
+// 与 refsAnalysis（视频形态）平行：进 plan → 进 planHash（参考图/反推变化 → 旧确认作废，M31 同律）；
+// 无图片反推时缺省不挂键 → 老方案 JSON 逐字零漂移。字段仅取图中真实反推所得，缺失不编造。
+export const imageAnalysisEntrySchema = z.object({
+  assetId: z.number().int().positive(),
+  name: text(200),
+  /** 主体（图中可见，一句话；反推无则不挂键） */
+  subject: z.string().max(400).optional(),
+  /** 艺术风格/媒介（反推无则不挂键） */
+  style: z.string().max(400).optional(),
+  /** 可投产正向提示词（产物核心，必非空） */
+  imagePrompt: text(1600),
+  /** 负向提示词（反推无则不挂键） */
+  negativePrompt: z.string().max(1200).optional(),
+  /** 主色板 hex（≤8，反推无则空数组） */
+  palette: z.array(z.string().max(16)).max(8).default([]),
+}).strict()
+export type ImageAnalysisEntry = z.infer<typeof imageAnalysisEntrySchema>
+
 // M59 上限单一真源（可回退参数：若上线后截断/成本问题显著，把 MAX 下调即全链同步）。
 // 消费点：本文件 schema / clamp.ts 钳制 / planning.ts caps 注入 / route-hint.ts 超上限信号 / dialogue.ts 文案。
 // 单镜 1–15s 不动（受视频模型 caps 档位硬约束，放开无效）；>90s 长内容走 M56 毕业通道，不靠膨胀 easy-*。
@@ -74,6 +95,8 @@ export const creationPlanSchema = z.object({
   refs: z.array(refSchema).max(12).default([]),
   // M58 2b：参考视频解析产物（服务端编译写入；有视频参考才有此键，无则缺省不挂——老方案逐字零漂移）
   refsAnalysis: z.array(refsAnalysisEntrySchema).max(MAX_REFS_ANALYSIS).optional(),
+  // M58 补口：参考图片反推产物（服务端规划期多模态反推写入；有图片反推才有此键，无则缺省不挂——零漂移）
+    imageAnalysis: z.array(imageAnalysisEntrySchema).max(MAX_IMAGE_ANALYSIS).optional(),
   // 缺省字段不补值：历史批准 JSON 与哈希保持逐字一致。
   performance: z.enum(['narration', 'dialogue']).optional(),
   cast: z.array(z.object({ id, name: text(40), appearance: text(400), voice: text(200) }).strict()).min(2).max(4).optional(),

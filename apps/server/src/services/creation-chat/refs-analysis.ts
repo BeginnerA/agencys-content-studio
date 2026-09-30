@@ -10,7 +10,8 @@
  * 本模块零网络零计费（模型调用与记账在 planning.ts 接线处）；新信号/新界须同步 probe-m58 断言。
  */
 import type { VideoAnalysisOutcome } from '../../pipeline/actions/video-analyze'
-import { refsAnalysisEntrySchema, type RefsAnalysisEntry } from './contract'
+import type { ImageReverseItem } from '../../pipeline/actions/image-analyze'
+import { imageAnalysisEntrySchema, refsAnalysisEntrySchema, type ImageAnalysisEntry, type RefsAnalysisEntry } from './contract'
 
 const SCENES_MAX = 24
 const TRANSCRIPT_MAX = 2000
@@ -106,6 +107,38 @@ export function renderStoryboardDraft(shots: StoryboardDraftShot[]): string {
     const parts = [`- ${i + 1}. [${d.t0.toFixed(1)}–${d.t1.toFixed(1)}s] ${d.visual}${meta ? `（${meta}）` : ''}`]
     if (d.dialogue) parts.push(`台词：「${d.dialogue}」`)
     if (d.imagePrompt) parts.push(`画面提示词：${d.imagePrompt}`)
+    return parts.join(' ｜ ')
+  })
+  return lines.join('\n')
+}
+
+/**
+ * M58 补口：图片反推产物归一（纯函数，探针直测）：ImageReverseItem → plan.imageAnalysis 单条目。
+ * 仅取反推实际所得（subject/style/negative 空则不挂键），imagePrompt 为产物核心必非空；
+ * 各字段保守截断（subject/style 400、imagePrompt 1600、negative 1200、palette≤8），超限截断不编造。
+ * 产物必过 imageAnalysisEntrySchema（schema 是契约真源，normalize 在其内做保守投影）。
+ */
+export function normalizeImageAnalysis(args: { assetId: number; name: string; item: ImageReverseItem }): ImageAnalysisEntry {
+  const it = args.item
+  const entry: ImageAnalysisEntry = {
+    assetId: args.assetId,
+    name: clip(args.name, 200) || `#${args.assetId}`,
+    ...(clip(it.subject, 400) ? { subject: clip(it.subject, 400) } : {}),
+    ...(clip(it.style, 400) ? { style: clip(it.style, 400) } : {}),
+    imagePrompt: clip(it.image_prompt, 1600),
+    ...(clip(it.negative_prompt, 1200) ? { negativePrompt: clip(it.negative_prompt, 1200) } : {}),
+    palette: it.palette.filter((c) => typeof c === 'string' && c.trim()).map((c) => c.trim().slice(0, 16)).slice(0, 8),
+  }
+  return imageAnalysisEntrySchema.parse(entry)
+}
+
+/** 图片反推简报渲染为规划上下文（逐图一行：可投产 image_prompt + 风格/负向注记；供 LLM 以反推词为 shots 风格/提示词基准） */
+export function renderImageReverseBrief(entries: ImageAnalysisEntry[]): string {
+  const lines = entries.map((e, i) => {
+    const meta = [e.style, e.subject].filter(Boolean).join(' / ')
+    const parts = [`- ${i + 1}. ${e.name}${meta ? `（${meta}）` : ''}`]
+    parts.push(`正向提示词：${e.imagePrompt}`)
+    if (e.negativePrompt) parts.push(`负向提示词：${e.negativePrompt}`)
     return parts.join(' ｜ ')
   })
   return lines.join('\n')
