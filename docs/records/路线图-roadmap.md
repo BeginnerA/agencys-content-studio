@@ -331,6 +331,19 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 - 明确排除（见 spec §9）：自动生成/返修/重渲染、撤销外部费用、运行时可编程供应商脚本、短剧专属模型/表、并行调度引擎、把「开始开发」当付费实弹授权；R01、R03–R09 保留去向不预写 L1
 - 当前状态（2026-09-18）：**已收官**——P0–P4 全绿：三表 + 不可变文件 + 文本/实体版本捕获还原 + 五类执行快照 + 影响分析 + 锁版三操作分离 + 前端面板/控件接线 + GC/purge/缓存收线。门禁全绿：`pnpm -r typecheck` / `vue-tsc` / `vite build` exit 0；`validate:templates` 14 模板 / 101 步 / 0 错 0 警；`probe:ci` **25 探针 / 2965 断言全绿**（含 probe-m29 **46 断言八节**：schema/capture/restore/concurrency/input-snapshot/impact/lock/gc-purge）；M25「同 relPath 覆写」断言未回归（工作副本语义不变）。review 落盘 `2026-09-18-agencys-content-studio-m29-review.md`；backlog R02 就此销账（已立项为 M29 并交付），R01、R03–R09 保留待后续按「启动门槛」复核再立项
 
+## 轻松创作优化立项队列（2026-09-30 立项；M56 已实施，其余待评审）
+
+> 来源：用户反馈「轻松创作太不智能、使用过于局限，连载短剧撞天花板无出路」。经源码全量复核（M45/M46 已把品牌贯通、字幕开关、角色/风格预设入口、BGM 端到端做进轻松创作；`prev_script` 跨集承接已在专业链），下列为**真实剩余缺口**。
+> **编号修正**：本批立项时曾误编 `M48..M52`，与**已交付里程碑**（M48 统一取消/续跑/预算、M50 剪辑工程交换包、M52 全局素材池……直至 M55）冲突；开工前按最新 roadmap 复核（现有探针最高 `probe-m55`），整体改用 **`M56..M60`**（`docs/records/M56..M60-*.md`）。
+> 用户授权「全部立项 + 要 AI 自我分析方向对不对/有无更好的/专业度还缺什么」，故本批不仅照搬用户四方向，含 AI 复盘重构与新增专业缺口（见各 spec 背景节）。
+
+- **M56 轻松创作「毕业通道」**（吸收用户方向①桥接+④连载）：`P0`。**已实施并门禁全绿（2026-09-30）**。现状根因=轻松创作与专业链两座孤岛无桥；story 项目 templateKey 已派生 `mengbao-episode` 但执行永远只跑 `easy-dialogue`。**实施机制（原 spec「skip write_script + approved_script + v12→v13」经实证不成立，已废弃）**=结果卡独立 opt-in「本集升级为专业成片」（1a：`POST /creation-sessions/:id/graduate {mode:episode}` 建 `mengbao-episode` **queued** run、批准剧本经既有 `setting_docs` 强锚定）/「立项为连载系列」（1b：`{mode:series}` 建 `series-setup` queued run、经既有 `plan_doc` 喂入）；**不自动 start、零计费、`mengbao-episode` v14 / `series-setup` v3 一字未改**。红线：不在 confirm 自动切模板、0 新表 0 新列 0 新 action 0 新付费面 0 模板改造。门禁：`tsc`/`vue-tsc` exit 0；`probe-m56` 33 断言五节全绿；全量 `probe:ci` 无回归。
+- **M57 意图驱动智能载体路由**（AI 复盘新增，呼应用户最初「应智能选模板」心智）：`P1`。现状=`template-recommend` 语义匹配与轻松创作双向隔离。方案=意图分类→**建议**载体（越界才荐专业链/M56），Tier B 建议+预览，默认仍落 easy-*，绝不自动改模板；0 新表 0 新 action。**待评审、未实施**。
+- **M58 参考反推可检视交付**（用户方向②）：`P1`。现状=视频参考已消费（video_analyze）但只进上下文不可见、不产出可编辑分镜。方案=2b 透出「参考解析」产物（近零逻辑）+ 2a 反推 storyboard 作 shots 初稿；0 新表 0 新 action；不臆造参考里没有的信息。**待评审、未实施**。
+- **M59 单条时长/镜头上限有节制放宽**（用户方向③）：`P2`（收益有限、有截断/收口风险）。方案=60→90s、12→16 镜、lines 36→48，单镜 caps 上限不动；**必须一次收口 contract/clamp/buildCapsConstraintMessage/creation-plan.md 四处**（已核到行），plan 截断上限连带评估。真正长内容归 M56。**待评审、未实施**。
+- **M60 短剧商业化结构设计**（AI 复盘新增——专业级短剧与「能出片」的分水岭，全仓零命中）：`P1`。缺口=无付费卡点/前3秒钩子/留人节奏/黄金N集结构。方案=series-setup 分集地图上新增 `monetization-json` 设计步 + 注入 script-ep/storyboard-ep 与 creation-plan.md；0 新表 0 新 action 0 新付费面；**需产品先定口径**（阈值可配置不写死）。**待评审、未实施**。
+- 未立项保留（Ask-first）：**口型同步 lip-sync**——需专门付费模型面，M31 已列为永久排除，保持 Ask 不自动纳入；**多集批量排期编排**——接 M27 orchestrator，非新增能力。
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）

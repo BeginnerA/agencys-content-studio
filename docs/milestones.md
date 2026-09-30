@@ -774,6 +774,19 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M56 能力速览（轻松创作「毕业通道」：批准方案一键升级专业成片 + 连载立项）
+
+> 痛点：在轻松创作里聊出的是**连载短剧**意图，但执行链永远只跑 `easy-dialogue`（单条 ≤60s、无角色锚定/逐句配音/BGM 全套），撞天花板后**无出路**——轻松创作与专业链是两座孤岛。本里程碑给一条从批准物**显式 opt-in 毕业到专业成片**的通道（1a 单集升级 / 1b 连载立项），复用现成专业机器。详规：`docs/records/M56-轻松创作毕业通道-design.md`。**编号说明**：立项时曾误编 M48，与已交付里程碑冲突，按 roadmap 复核改用 M56。**非目标**：不在 `confirm` 自动改跑出片模板、不在轻松创作会话内编排多集（接 M27 orchestrator）、不做 lip-sync（M31 永久排除）。**红线**：0 新表 0 新列 / 0 数据迁移 / 0 新增 action / 0 新增付费面 / 0 模板步骤改造。
+
+- **M56.1 后端 service（`services/creation-chat/graduate.ts`）**：`graduateSchema`（`{mode:enum[episode,series], episodeNumber:int[1,9999]?}` strict）；`graduateCreation(id,raw)` 只建 **queued** 专业 run（走 `createRunRow`，**不自动 start、零计费**），批准剧本（confirm 落库的 `purpose='script'` 且 `runId=session.runId` 资产）经**既有** `setting_docs`（单集）/`plan_doc`（连载）files 输入作强锚定；`brief`/`genre` 取项目真源、dynamic 方案透传 `motion:true`；同项目同模板下命中「以本批准剧本为锚定且仍 queued」的 run → **幂等复用**（`reused:true`）；未确认会话→`not_confirmed 409`。专业模板不受 `isCreationTemplate` 门禁。
+- **M56.2 路由（`routes/creation-chat.ts`）**：`POST /creation-sessions/:id/graduate`（202 返回 `{runId, templateKey, reused}`）；毕业留痕随 `creationMessages` 落库（`payload.kind=graduate`）。
+- **M56.3 关键机制修正（诚实留档）**：原 spec「skip `write_script` + `approved_script` 注入 + `mengbao-episode` v12→v13」经读 `refs.ts`/`engine.ts` 实证**不成立**（skip 步产物 `asset_ids=[]` 下游拿不到、全 skip 级联跳下游崩、`prev_script` 语义为「上一集承接」会误写成第 2 集），改为 **queued run + `setting_docs`/`plan_doc` 锚定 + 专业链自带 `write_script` 必审闸**；**`mengbao-episode` v14 / `series-setup` v3 一字未改**。
+- **M56.4 前端**：`types`/`api` 加 `graduate(id,body)`；`CreationResult.vue` 成片下方「毕业通道」面板（仅剧情/对白且已启动制作可见，「本集升级为专业成片」/「立项为连载系列」）；`use-creation-chat.ts` `graduate(mode)` 成功后 `router.push('/runs/{runId}')` 跳专业工作台。
+
+验证：`probe-m56`（五节 **33 断言全绿**：schema 枚举/strict/集号边界；episode 建 mengbao-episode queued、setting_docs 含批准剧本、dynamic→motion、**prev_script 缺席**、startRun/fetch 全程 0 调用零计费、毕业留痕、幂等；series 建 series-setup queued、plan_doc 锚定、genre 真源、不误带单集键、幂等；guards not_confirmed 409/无剧本不硬造/不存在拒绝；drift mengbao-episode 仍 v14 + write_script 在位 + series-setup 仍 v3）。双端 `tsc`/`vue-tsc` exit 0；全量 `probe:ci` **57 探针 / 5292 断言全绿无回归**（已还原本轮误写覆盖的 `probe-m48`）。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/records/纲领-M32-M39平台智能化-charter.md`。

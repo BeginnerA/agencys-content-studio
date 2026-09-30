@@ -10,6 +10,7 @@ import type {
   CreationDeleteResult,
   CreationDetail,
   CreationGateDecision,
+  CreationGraduateResult,
   CreationProjectMeta,
   CreationSessionListItem,
   CreationMode,
@@ -557,6 +558,28 @@ async function recompose(subtitleBurn?: boolean): Promise<boolean> {
   }
 }
 
+/**
+ * 毕业通道（M56）：把已确认并已开始制作的方案升级到专业链（同项目）。
+ * episode=专业单集成片（mengbao-episode）；series=连载立项（series-setup）。
+ * 服务端仅建 queued run、零计费不自动 start；成功后刷新会话（展示毕业消息）并回传 runId 供页面跳转专业工作台。
+ */
+async function graduate(mode: 'episode' | 'series'): Promise<CreationGraduateResult | null> {
+  const id = state.currentId
+  if (!id || state.busyAction) return null
+  state.busyAction = true
+  state.error = ''
+  try {
+    const res = await creationChatApi.graduate(id, { mode })
+    await fetchDetail(id)
+    return res
+  } catch (e) {
+    if (id === state.currentId) state.error = errText(e)
+    return null
+  } finally {
+    state.busyAction = false
+  }
+}
+
 async function refreshStatus(): Promise<void> {
   const id = state.currentId
   if (!id || state.loadingDetail) return
@@ -646,6 +669,7 @@ export function useEasyCreate() {
     confirm,
     cancel,
     retry,
+    graduate,
     decideGate,
     applySelection,
     recompose,

@@ -5,6 +5,7 @@ import { createSession, refreshPreflight, sendCreationMessage } from '../service
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { bindCreationRef } from '../services/creation-chat/ref-bind'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
+import { graduateCreation } from '../services/creation-chat/graduate'
 import { decideCreationGate } from '../services/creation-chat/gate'
 import { creationShotBoard, recomposeCreation, selectCreationShots } from '../services/creation-chat/candidates'
 import { applyRework, planRework } from '../services/creation-chat/rework'
@@ -65,6 +66,8 @@ creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await
 creationChatRoutes.post(`${path}/:id/confirm`, route(async (c) => c.json(await confirmCreation(id(c), await body(c)), 202)))
 creationChatRoutes.post(`${path}/:id/cancel`, route(async (c) => { await cancelCreation(id(c)); return c.json(await creationDetail(id(c))) }))
 creationChatRoutes.post(`${path}/:id/retry`, route(async (c) => c.json(await retryCreation(id(c), await body(c)), 202)))
+// 毕业通道（M56）：把已确认方案升级到专业链——建 queued 专业 run（不自动 start、零计费），批准剧本经 setting_docs/plan_doc 锚定。
+creationChatRoutes.post(`${path}/:id/graduate`, route(async (c) => c.json(await graduateCreation(id(c), await body(c)), 202)))
 // 中途审阅：approve 继续制作 / reject 整阶段重做（会再次计费，前端已二次确认）。幂等由 idempotencyKey 保证。
 creationChatRoutes.post(`${path}/:id/gate`, route(async (c) => { await decideCreationGate(id(c), await body(c)); return c.json(await creationDetail(id(c))) }))
 // 候选版本：看板只读聚合 / 选定在用版本（零计费）/ 本地重新合成（不调用付费模型，但会重跑合成）。

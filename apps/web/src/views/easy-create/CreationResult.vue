@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import {
   createEditExchangeDownload,
@@ -13,8 +14,33 @@ import type { EditExchangeFormat, EditExchangeFormatsResult } from '../../lib/ap
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
+const router = useRouter()
 
 const result = computed(() => props.s.state.detail?.result ?? null)
+const plan = computed(() => props.s.state.detail?.session.plan ?? null)
+const runStarted = computed(() => !!props.s.state.detail?.session.runId)
+// 毕业通道：仅对剧情/对白（短剧）方案开放——旁白口播不属于“升级短剧”诉求
+const canGraduate = computed(
+  () =>
+    !!plan.value &&
+    runStarted.value &&
+    (plan.value.genre === 'story' || plan.value.performance === 'dialogue'),
+)
+const gradPanel = ref(false)
+const gradBusy = ref(false)
+async function graduate(mode: 'episode' | 'series') {
+  if (gradBusy.value) return
+  gradBusy.value = true
+  try {
+    const res = await props.s.graduate(mode)
+    if (res) {
+      gradPanel.value = false
+      await router.push(`/runs/${res.runId}`)
+    }
+  } finally {
+    gradBusy.value = false
+  }
+}
 const runId = computed(() => props.s.state.detail?.session.runId ?? null)
 const projectId = computed(
   () => props.s.state.detail?.session.projectId ?? null,
@@ -95,6 +121,31 @@ async function exportEditEx(format: EditExchangeFormat) {
         >查看项目</RouterLink
       >
     </footer>
+
+    <!-- 毕业通道（M56）：把已确认方案升级到专业链（同项目建未启动任务，核对预算后再制作） -->
+    <div v-if="canGraduate" class="graduate">
+      <button
+        class="btn sm grad-toggle"
+        :disabled="gradBusy || props.s.state.busyAction"
+        @click="gradPanel = !gradPanel"
+      >
+        <Icon name="sparkles" :size="13" /> 升级专业成片
+      </button>
+      <div v-if="gradPanel" class="grad-panel">
+        <p class="note">
+          会在同一项目《{{ plan?.title }}》创建一个<strong>尚未开始</strong>的专业链任务（零计费）。
+          专业流程会重新生成剧本并在剧本闸口请你复核，随后点亮角色定妆照、逐句配音、背景音乐与品牌等能力；到任务详情核对预算后再启动。
+        </p>
+        <div class="grad-btns">
+          <button class="btn ok" :disabled="gradBusy || props.s.state.busyAction" @click="graduate('episode')">
+            <Icon name="film" :size="13" /> 本集升级为专业成片
+          </button>
+          <button class="btn" :disabled="gradBusy || props.s.state.busyAction" @click="graduate('series')">
+            <Icon name="layers" :size="13" /> 立项为连载系列
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 导出剪辑工程：成片→多轨工程（FCPXML/EDL/OTIO），到剪辑软件继续精剪 -->
     <div v-if="editExFormats?.final_video" class="editex">
@@ -196,5 +247,30 @@ async function exportEditEx(format: EditExchangeFormat) {
 
 .editex .err {
   color: var(--danger, #dc2626);
+}
+
+/* 毕业通道 */
+.graduate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.grad-toggle {
+  align-self: flex-start;
+}
+
+.grad-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grad-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

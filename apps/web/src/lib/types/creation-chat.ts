@@ -175,6 +175,18 @@ export interface CreationPreflight {
   dialogueMode: 'strict' | 'estimated' | null
 }
 
+/** 毕业通道（M56）：把已确认方案升级到专业链。episode=专业单集成片；series=连载立项（系列设定包） */
+export interface CreationGraduateBody {
+  mode: 'episode' | 'series'
+  episodeNumber?: number
+}
+/** 毕业结果：runId=新建/复用的 queued 专业 run；reused=true 表示命中既有未启动 run 未重复建 */
+export interface CreationGraduateResult {
+  runId: number
+  templateKey: string
+  reused: boolean
+}
+
 export type CreationSessionStatus =
   'draft' | 'planning' | 'ready' | 'starting' | 'started'
 
