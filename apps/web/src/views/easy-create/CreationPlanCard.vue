@@ -5,6 +5,7 @@ import { PROJECT_GENRES } from '../../lib/scene'
 import { fmtCost } from '../../lib/format'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
+import PlanRefsAnalysis from './PlanRefsAnalysis.vue'
 import CreationStartupOptions from './CreationStartupOptions.vue'
 import CreationDialogueCast from './CreationDialogueCast.vue'
 import CreationRouteHint from './CreationRouteHint.vue'
@@ -262,6 +263,9 @@ async function onConfirm(): Promise<void> {
       :video-analysis-count="est?.videoAnalysisCount ?? 0"
     />
 
+    <!-- M58 2b：参考视频解析产物可检视（服务端写入才有此键；无参考/无解析完全不渲染） -->
+    <PlanRefsAnalysis v-if="plan.refsAnalysis?.length" :entries="plan.refsAnalysis" />
+
     <div class="fold">
       <button
         class="lnk"
@@ -289,7 +293,7 @@ async function onConfirm(): Promise<void> {
         <li v-for="sh in plan.shots" :key="sh.id">
           <span class="sidx mono">{{ sh.duration }}s</span>
           <div>
-            <div class="sp">画面：{{ sh.image_prompt }}</div>
+            <div class="sp">画面：{{ sh.image_prompt }}<span v-if="sh.source === 'reverse'" class="badge pending srev">来自参考视频 · 可编辑</span></div>
             <div v-if="plan.mode === 'dynamic'" class="sm">
               运动：{{ sh.motion_prompt }}
             </div>
@@ -609,6 +613,11 @@ async function onConfirm(): Promise<void> {
 .sp {
   color: var(--text);
   line-height: 1.6;
+}
+
+/* M58 2a：反推初稿镜徽标（复用全局 .badge 语义色，仅控制间距） */
+.srev {
+  margin-left: 7px;
 }
 
 .sm {

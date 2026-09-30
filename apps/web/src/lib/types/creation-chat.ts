@@ -19,6 +19,8 @@ export interface CreationShot {
   lines: string[]
   /** 本镜出场角色 id（仅人物对白，一镜一发言者；旁白缺省） */
   characters?: string[]
+  /** M58 2a：本镜基于参考视频反推分镜初稿（服务端权威标记；无键=普通规划镜） */
+  source?: 'reverse'
 }
 
 /** 人物对白角色表项（与对白契约 cast 逐字段对齐） */
@@ -99,6 +101,19 @@ export function refKindByExt(name: string): CreationRefKind | null {
   return null
 }
 
+/** M58 2b：参考视频解析产物单条（与服务端 refsAnalysisEntrySchema 逐字段对齐；服务端编译写入，可检视不可编造） */
+export interface CreationRefsAnalysisEntry {
+  assetId: number
+  name: string
+  duration: number
+  /** 时间轴场景摘要（≤24 段，超限截断并置 truncated.scenes） */
+  scenes: Array<{ t: number; desc: string }>
+  /** 可听内容转写（≤2000 字，超限置 truncated.transcript；无人声无此键） */
+  transcript?: string
+  transcribed: boolean
+  truncated?: { scenes?: boolean; transcript?: boolean }
+}
+
 /** 已确认的结构化方案（服务端 creationPlanSchema 输出投影） */
 export interface CreationPlan {
   title: string
@@ -118,6 +133,8 @@ export interface CreationPlan {
   performance?: 'narration' | 'dialogue'
   /** 人物对白角色表（仅对白；2-4 名） */
   cast?: CreationCast[]
+  /** 参考视频解析产物（M58 2b：服务端写入才存在；进 planHash——解析变了旧确认作废重确认） */
+  refsAnalysis?: CreationRefsAnalysisEntry[]
 }
 
 /** 冻结的不含密钥供应商实例快照 */

@@ -3,6 +3,8 @@ import { z } from 'zod'
 
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/)
 const text = (max: number) => z.string().trim().min(1).max(max)
+/** M58 2b：解析产物条目上限（每个已采纳视频内容参考至多一条，与 refs 总上限同量级，服务端 slice 收口后进 schema） */
+export const MAX_REFS_ANALYSIS = 12
 
 // 视频分辨率档位（与 @agencys/ai-provider-kit CapsResolution 六档同源，预检 videoCapabilitiesSchema 同引用）。
 // 确认级可选但不入 planHash 的成立前提：价格注册表无 resolution 维度（视频按秒单价，档位不改变预估）；
@@ -23,6 +25,21 @@ export const refSchema = z.object({
 }).strict()
 export type CreationRef = z.infer<typeof refSchema>
 
+// M58 2b：参考视频解析产物（服务端规划期编译写入，LLM 不产出也不采信其同名键）。
+// 进 plan → 进 planHash：参考变化或反推摘要变化 → 旧确认作废重确认（延续 M31「不臆造可核实」:用户能检视系统从参考里读到了什么）。
+export const refsAnalysisEntrySchema = z.object({
+  assetId: z.number().int().positive(),
+  name: text(200),
+  duration: z.number().min(0).max(36000),
+  /** 时间轴场景摘要（≤24 段，超限截断并置 truncated.scenes；desc 取解析原文视觉描述+景别注记，无描述给占位不编造） */
+  scenes: z.array(z.object({ t: z.number().min(0), desc: text(400) }).strict()).max(24),
+  /** 可听内容转写（≤2000 字，超限截断并置 truncated.transcript；无人声缺省不挂键） */
+  transcript: z.string().max(2100).optional(),
+  transcribed: z.boolean(),
+  truncated: z.object({ scenes: z.boolean().optional(), transcript: z.boolean().optional() }).strict().optional(),
+}).strict()
+export type RefsAnalysisEntry = z.infer<typeof refsAnalysisEntrySchema>
+
 export const creationPlanSchema = z.object({
   title: text(100),
   summary: text(1200),
@@ -42,9 +59,13 @@ export const creationPlanSchema = z.object({
     motion_prompt: text(1200),
     lines: z.array(id).max(12),
     characters: z.array(id).min(1).max(4).optional(),
+    // M58 2a：本镜来自参考视频反推初稿（服务端权威写/清：本轮真用了分镜初稿才标，LLM 同名键不采信）
+    source: z.literal('reverse').optional(),
   }).strict()).min(2).max(12),
   // 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
   refs: z.array(refSchema).max(12).default([]),
+  // M58 2b：参考视频解析产物（服务端编译写入；有视频参考才有此键，无则缺省不挂——老方案逐字零漂移）
+  refsAnalysis: z.array(refsAnalysisEntrySchema).max(MAX_REFS_ANALYSIS).optional(),
   // 缺省字段不补值：历史批准 JSON 与哈希保持逐字一致。
   performance: z.enum(['narration', 'dialogue']).optional(),
   cast: z.array(z.object({ id, name: text(40), appearance: text(400), voice: text(200) }).strict()).min(2).max(4).optional(),

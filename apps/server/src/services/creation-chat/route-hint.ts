@@ -43,6 +43,14 @@ const REASON_MAX = 80
 
 const includes = (text: string, ...words: string[]): boolean => words.some((w) => text.includes(w))
 
+/** 「视频反推」意图措辞单一真源：M57 路由信号③与 M58 2a 分镜初稿触发共用，防两处漂移。 */
+export const REVERSE_INTENT_WORDS = ['反推', '类似这个视频', '像这个视频', '照这个视频', '同款视频', '这个视频的风格'] as const
+
+/** 文本是否含反推意图措辞（仅措辞判定；能力/参考前置由调用方把关：M57 看 vision+内容参考，M58 看解析产物存在）。 */
+export function wantsReverseIntent(text: string): boolean {
+  return includes(text, ...REVERSE_INTENT_WORDS)
+}
+
 /** 是否有「明确长于 60s 单条」诉求（轻松成片 duration 上限 60s，见 contract clamp）。 */
 function wantsLongerThanCap(text: string): boolean {
   let maxSec = 0
@@ -66,7 +74,7 @@ function detect(input: RouteSignalInput): { target: string; reason: string } | n
     return { target: 'mengbao-episode', reason: '多角色短剧质感（定妆照、逐句配音、背景音乐）是专业链能力，升级专业单集成片即可点亮' }
   }
   // 3 视频反推：已采纳内容解析参考 + vision 可用 + 想要同款 → 反推分镜（→ M58）
-  if (input.hasVideoContentRef && input.hasVision && includes(t, '反推', '类似这个视频', '像这个视频', '照这个视频', '同款视频', '这个视频的风格')) {
+  if (input.hasVideoContentRef && input.hasVision && wantsReverseIntent(t)) {
     return { target: 'video-reverse', reason: '你上传了参考视频并想要同款成片，先反推分镜与脚本再产出，比单条轻成片更贴近原作' }
   }
   // 4 超 60s 单条：明确要更长成片 → 专业策划链承载（而非 M59 的放宽，见其理由）

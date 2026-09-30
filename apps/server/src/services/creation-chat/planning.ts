@@ -12,11 +12,12 @@ import { resolveStrictAsrEndpoint } from '../strict-asr'
 import { resolveDialogueAsrPolicy } from '../dialogue-asr-policy'
 import { recordUsage, resolveUnitPrice, recordLlmUsage } from '../usage'
 import { checkBudget } from '../budget'
-import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, type CreationPlan, type CreationRef } from './contract'
+import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, createSessionSchema, initialDraftSchema, messageSchema, messageFingerprint, MAX_REFS_ANALYSIS, type CreationPlan, type CreationRef, type RefsAnalysisEntry } from './contract'
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
-import { deriveRouteHint } from './route-hint'
+import { deriveRouteHint, wantsReverseIntent } from './route-hint'
+import { normalizeRefsAnalysis, parseStoryboardDraft, renderStoryboardDraft } from './refs-analysis'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 import { beginPlanningProgress, endPlanningProgress, setPlanningPhase } from './planning-progress'
@@ -54,9 +55,11 @@ export async function createSession(raw: unknown) {
 /** 规划前参考素材注入（有界、可核实、不编造）：
  *  - 风格/主体/首帧图片：仅 vision 实例以 image_url 分片注入；否则明告「未纳入理解，仅作生成参考」，不假称看到。
  *  - 参考视频：执行 video_analyze 产出可见/可听摘要注入；需 vision+可用实例，缺失/失败即 blocker（不静默跳过、不编造）。
- *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。 */
-export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean): Promise<ChatMessage[]> {
+ *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。
+ * M58 2b：视频参考的结构化解析产物不再即弃——随 messages 一并返回（analyses），由调用方编进 plan.refsAnalysis。 */
+export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean): Promise<{ messages: ChatMessage[]; analyses: RefsAnalysisEntry[] }> {
   const out: ChatMessage[] = []
+  const analyses: RefsAnalysisEntry[] = []
   const imageRefs = refs.filter((r) => r.kind === 'image' && r.role !== 'content')
   if (imageRefs.length > 0) {
     if (vision) {
@@ -85,13 +88,14 @@ export async function compileReferenceContext(projectId: number, refs: CreationR
           log: () => {}, onUsage: async (u) => { await recordLlmUsage({ projectId, provider: u.provider, model: u.model, usage: u.usage }) },
         })
         out.push({ role: 'user', content: `${renderVideoReferenceSummary(outcome, a.name)}\n（以上为参考视频实际可见/可听内容；请仅据此约束方案，视频里没有的信息不得臆造。）` })
+        analyses.push(normalizeRefsAnalysis({ assetId: a.id, name: a.name, outcome }))
       } catch (err) {
         if (err instanceof CreationError) throw err
         throw new CreationError('video_analysis_failed', `参考视频解析未完成（${err instanceof Error ? err.message : String(err)}）；未跳过、未编造视频内容，请检查视频/多模态实例后重试`, 422)
       }
     }
   }
-  return out
+  return { messages: out, analyses: analyses.slice(0, MAX_REFS_ANALYSIS) }
 }
 
 export async function sendCreationMessage(id: number, raw: unknown) {
@@ -130,6 +134,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const presetHint = await resolveCreationPresetHint(claimed.projectId)
     const ep = await requiredEndpoint('llm')
     const vision = ep.extra.vision === true
+    const prices = await Promise.all(['tokens_in', 'tokens_out'].map((unit) => resolveUnitPrice({ configId: ep.configId, provider: ep.providerKey, model: ep.model, kind: 'llm', unit: unit as 'tokens_in' | 'tokens_out' })))
     setPlanningPhase(id, 'refs')
     // 参考素材：本条消息附件→核验编译； 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
     // 替换致旧参考静默丢失属缺陷）：同资产本轮覆盖（保位；role/hash 取新，编译链保留已绑 shotId），
@@ -137,7 +142,36 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
-    const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
+    const refComp = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : { messages: [] as ChatMessage[], analyses: [] as RefsAnalysisEntry[] }
+    // M58 2a 反推分镜初稿：命中反推措辞（真源与 M57 同源）且本轮已有解析产物时，用现成 video-storyboard.md
+    // 把时间轴转成 shots 蓝本喂进规划上下文（复用同一 llm 端点、tokens 计价同口径入账，不新增付费面）。
+    // 失败/非契约输出：可见说明不静默，方案仍基于时间轴摘要规划；真产出初稿才给 shots 权威标 source:'reverse'。
+    // 计费口径沿用 M31 分析期事实（解析/初稿先入账后进预算闸）：creationDetail.planningUsage 自动含本笔。
+    let draftNote: ChatMessage | null = null
+    let draftUsed = false
+    if (refComp.analyses.length > 0 && wantsReverseIntent(input.content)) {
+      try {
+        const draftMessages: ChatMessage[] = [
+          { role: 'system', content: loadPromptTemplate('video-storyboard.md') },
+          { role: 'user', content: `以下是用户采纳的参考视频实际解析出的时间轴（scenes=可见画面，speech=可听内容）。请按契约反推为可复拍的分镜；只依据时间轴里真实存在的内容，缺失的留空不编造：\n${refComp.analyses.map((an) => JSON.stringify({ name: an.name, duration: an.duration, scenes: an.scenes, speech: an.transcript ?? '' })).join('\n')}` },
+        ]
+        const draftResult = await chatCompleteDetailed(draftMessages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 16000, temperature: 0.3, allowEmptyContent: true, timeoutMs: 300_000 })
+        for (const [index, unit] of (['tokens_in', 'tokens_out'] as const).entries()) await recordUsage({
+          projectId: claimed.projectId, kind: 'llm', provider: ep.providerKey, model: ep.model,
+          quantity: draftResult.usage ? (index === 0 ? draftResult.usage.promptTokens : draftResult.usage.completionTokens) : 0,
+          unit, unitPrice: draftResult.usage ? prices[index] : null, meta: { sessionId: id, requestKey: input.requestKey, purpose: 'storyboard_draft' },
+        })
+        const draft = parseStoryboardDraft(draftResult.content)
+        if (draft) {
+          draftUsed = true
+          draftNote = { role: 'system', content: `【反推分镜初稿（来自参考视频解析）】以下初稿由参考视频时间轴反推得出，请以其为 shots 蓝本（画面/景别/运镜/切镜节奏贴近原作），并按本方案契约调整镜头数与总时长、补齐台词与镜头映射；不得加入参考里没有的剧情元素：\n${renderStoryboardDraft(draft)}` }
+        } else {
+          draftNote = { role: 'system', content: '【反推分镜初稿】本轮未产出（模型输出不符合 storyboard-json 契约）：方案直接基于参考视频时间轴摘要规划，shots 不标反推来源。' }
+        }
+      } catch (err) {
+        draftNote = { role: 'system', content: `【反推分镜初稿】生成失败（${err instanceof Error ? err.message : String(err)}）：方案直接基于参考视频时间轴摘要规划，shots 不标反推来源；参考解析摘要仍可用。` }
+      }
+    }
     setPlanningPhase(id, 'caps')
     const recent = await db.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), ne(creationMessages.role, 'system'))).orderBy(desc(creationMessages.id)).limit(12)
     // Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
@@ -173,10 +207,10 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       // 立项信息真源注入（载体字典 + 模板候选），使 project 建议可直接入库而不靠猜
       { role: 'system', content: projectMetaPrompt() },
       ...(presetHint ? [{ role: 'system' as const, content: presetHint }] : []),
-      ...refContext,
+      ...refComp.messages,
+      ...(draftNote ? [draftNote] : []),
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
-    const prices = await Promise.all(['tokens_in', 'tokens_out'].map((unit) => resolveUnitPrice({ configId: ep.configId, provider: ep.providerKey, model: ep.model, kind: 'llm', unit: unit as 'tokens_in' | 'tokens_out' })))
     // 预算估算取 reasoning+正文 的典型用量（24000）而非上限——上限只用于防 provider 拒单，不该把预算内规划硬挡
     const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 24000 * (prices[1] ?? 0) })
     if (budget) throw new CreationError(budget.code, budget.message, 409)
@@ -200,7 +234,16 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       if (report.notes.length) reply.message = `${reply.message}\n\n（视频能力检查：${report.notes.join('；')}）`
     }
     // 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
-    if (reply.kind === 'plan') reply.plan.refs = effectiveRefs
+    if (reply.kind === 'plan') {
+      reply.plan.refs = effectiveRefs
+      // M58 2b：解析产物随方案持久化（服务端权威写/清：无视频参考则 undefined → JSON 落库时键自动脱落，老路径零漂移）
+      reply.plan.refsAnalysis = refComp.analyses.length ? refComp.analyses : undefined
+      // M58 2a：初稿来源权威标记——先剥 LLM 自报的同名键再按本轮是否真用初稿统一写/清（整条成片基于反推蓝本，不逐镜猜）
+      reply.plan.shots = reply.plan.shots.map((s) => {
+        const { source: _llmSource, ...rest } = s
+        return draftUsed ? { ...rest, source: 'reverse' as const } : rest
+      })
+    }
     // 立项信息归一：不入库 plan（不入 planHash），只写 draft 项目行；回落必可见
     const projectMeta = reply.kind === 'plan' ? sanitizeProjectMeta(reply.project, reply.plan) : null
     if (reply.kind === 'plan' && projectMeta) reply.message = `${reply.message}${renderMetaNotes(projectMeta.notes)}`
