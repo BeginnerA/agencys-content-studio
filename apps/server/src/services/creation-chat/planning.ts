@@ -16,6 +16,7 @@ import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, create
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
+import { deriveRouteHint } from './route-hint'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 import { beginPlanningProgress, endPlanningProgress, setPlanningPhase } from './planning-progress'
@@ -204,6 +205,11 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const projectMeta = reply.kind === 'plan' ? sanitizeProjectMeta(reply.project, reply.plan) : null
     if (reply.kind === 'plan' && projectMeta) reply.message = `${reply.message}${renderMetaNotes(projectMeta.notes)}`
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
+    // M57 载体路由：方案产出时由服务端**确定性派生**一条专业链方向建议（零计费、不调模型、绝不改本次执行载体）。
+    // 存进方案消息 payload → 天然不进 planHash=hashJson({plan,execution})（改建议不作废已确认方案）；前端在方案卡渲染非阻断提示条。
+    const routeHint = reply.kind === 'plan'
+      ? deriveRouteHint({ userText: input.content, plan: reply.plan, hasVideoContentRef: effectiveRefs.some((r) => r.role === 'content' && r.kind === 'video'), hasVision: vision })
+      : null
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，规划结果未采纳', 409)
@@ -213,7 +219,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
         preflight: pf ? JSON.stringify(pf) : null, updatedAt: Date.now(), error: null,
       }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
       if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
-      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions } : { kind: reply.kind, revision: claimed.planRevision + 1 }), createdAt: Date.now() })
+      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions } : { kind: reply.kind, revision: claimed.planRevision + 1, ...(routeHint ? { routeHint } : {}) }), createdAt: Date.now() })
       // 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
       if (plan && projectMeta && project.status === 'draft') {
         const m = projectMeta.meta

@@ -7,6 +7,7 @@ import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
 import CreationStartupOptions from './CreationStartupOptions.vue'
 import CreationDialogueCast from './CreationDialogueCast.vue'
+import CreationRouteHint from './CreationRouteHint.vue'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
@@ -18,6 +19,16 @@ const est = computed(() => pf.value?.estimate ?? null)
 
 // 已采纳参考素材（来自服务端编译的 plan.refs）
 const refs = computed(() => plan.value?.refs ?? [])
+
+// M57 载体路由建议：取最新一条 plan 消息 payload 的 routeHint（服务端确定性派生，无建议=无此键）
+const routeHint = computed(() => {
+  const msgs = detail.value?.messages ?? []
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const p = msgs[i]?.payload
+    if (p?.kind === 'plan') return p.routeHint ?? null
+  }
+  return null
+})
 
 const modeText = computed(() =>
   plan.value?.performance === 'dialogue'
@@ -145,6 +156,8 @@ async function onConfirm(): Promise<void> {
         <Icon name="photo" :size="12" /> {{ refs.length }} 项参考
       </span>
     </div>
+
+    <CreationRouteHint v-if="routeHint" :hint="routeHint" />
 
     <CreationDialogueCast v-if="plan.performance === 'dialogue' && plan" :plan="plan" />
 

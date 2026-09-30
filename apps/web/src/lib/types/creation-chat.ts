@@ -252,10 +252,19 @@ export function creationStatusTone(
       : 'cancelled'
 }
 
+/** 载体路由建议（M57）：服务端在方案产出时确定性派生，随 plan 消息 payload 透出；无建议 = 无此键（完全不渲染） */
+export interface CreationRouteHintView {
+  target: string
+  label: string
+  reason: string
+}
+
 export interface CreationChatMessagePayload {
   kind: string
   questions?: string[]
   revision?: number
+  /** 载体路由建议（M57，仅 kind='plan' 且命中越界信号时存在）；不进方案/不影响确认 */
+  routeHint?: CreationRouteHintView | null
   runId?: number
   verifiedFailedTaskIds?: number[]
   fingerprint?: string
