@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { confirmDialog } from '../../lib/confirm'
 import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
@@ -54,6 +54,7 @@ watch(
   () => [
     renderedMessages.value.length,
     props.s.state.detail?.session.status,
+    props.s.state.detail?.session.planning?.phase,
   ],
   () =>
     void nextTick(() => {
@@ -129,6 +130,37 @@ function useQuestion(q: string): void {
 
 const planning = () =>
   props.s.state.detail?.session.status === 'planning' || props.s.state.busySend || props.s.first.state.phase === 'sending'
+
+// ===== 规划阶段式进度（行业 AI 对话标准：长等待要让用户看到“到哪一步了”）=====
+// 服务端规划是同步一次性模型调用（推理模型整段思考期无可见输出，token 级流式对结构化 JSON 方案无意义），
+// 故经 session.planning 透出阶段 + 秒数；POST 返回前的窗口服务端尚未登记，本地秒表补位，气泡从第 0 秒起连续计时。
+const PHASE_LABELS: Record<'analyzing' | 'refs' | 'caps' | 'model' | 'validating', string> = {
+  analyzing: '理解需求中',
+  refs: '核验并理解参考素材中（多模态解析，可能较慢）',
+  caps: '探测模型能力与预检条件中',
+  model: '调用模型生成方案中（推理模型整段思考后才返回，请耐心等待）',
+  validating: '方案校验与制作预检中',
+}
+const localPlanSec = ref(0)
+let planTimer: ReturnType<typeof setInterval> | null = null
+watch(planning, (active) => {
+  if (active && !planTimer) {
+    localPlanSec.value = 0
+    planTimer = setInterval(() => { localPlanSec.value++ }, 1000)
+  } else if (!active && planTimer) {
+    clearInterval(planTimer)
+    planTimer = null
+  }
+})
+onScopeDispose(() => { if (planTimer) clearInterval(planTimer) })
+const planningPhaseLabel = computed(() => {
+  const p = props.s.state.detail?.session.planning
+  return p ? PHASE_LABELS[p.phase] : '接收请求中'
+})
+const planningElapsed = computed(() => {
+  const p = props.s.state.detail?.session.planning
+  return Math.max(p?.elapsedSec ?? 0, localPlanSec.value)
+})
 
 // 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
 function pickFiles(): void {
@@ -209,6 +241,7 @@ async function onFiles(e: Event): Promise<void> {
           <div class="bubble wait">
             <span class="dot" /><span class="dot" /><span class="dot" />
             正在理解需求并生成方案…（本步骤会调用模型，可能产生费用）
+            <div class="plan-progress">{{ planningPhaseLabel }} · 已进行 {{ planningElapsed }}s</div>
           </div>
         </div>
       </div>
@@ -464,6 +497,15 @@ async function onFiles(e: Event): Promise<void> {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap; /* 阶段进度行独占一行，不挤在转圈文本尾部 */
+}
+
+/* 规划阶段式进度：比主句弱一档，不抢读 */
+.bubble.wait .plan-progress {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .dot {

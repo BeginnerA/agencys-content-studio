@@ -18,6 +18,7 @@ import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
+import { beginPlanningProgress, endPlanningProgress, setPlanningPhase } from './planning-progress'
 
 import { jsonRecord } from './projection'
 export { messageSchema, createSessionSchema } from './contract'
@@ -118,6 +119,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
   })
   if (!claimed) return creationDetail(id)
+  // 阶段进度登记（内存旁信道）：等待期 detail.session.planning 实时透出「阶段 + 已进行秒数」，
+  // 把「只有转圈」升级为阶段式反馈；未claimed（重复/建议路径）不经过此处，无泄漏。
+  beginPlanningProgress(id)
   try {
     // [batch5] 预设软提示：把本次输入携带的风格/角色预选 id 落项目 settings（旁信道，不进幂等指纹），
     // 再据项目绑定构建基线软提示喂给规划模型。未携带且未绑定 → 零变更（applyCreationPresets 空转、hint 为 null）。
@@ -125,6 +129,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const presetHint = await resolveCreationPresetHint(claimed.projectId)
     const ep = await requiredEndpoint('llm')
     const vision = ep.extra.vision === true
+    setPlanningPhase(id, 'refs')
     // 参考素材：本条消息附件→核验编译； 跨轮合并取代旧「整体替换」（服务端无删除参考入口，
     // 替换致旧参考静默丢失属缺陷）：同资产本轮覆盖（保位；role/hash 取新，编译链保留已绑 shotId），
     // prior 其余保序保留，新资产追加；合并超上限服务端权威拒绝，不静默截断。
@@ -132,6 +137,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
     const refContext = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision) : []
+    setPlanningPhase(id, 'caps')
     const recent = await db.select().from(creationMessages).where(and(eq(creationMessages.sessionId, id), ne(creationMessages.role, 'system'))).orderBy(desc(creationMessages.id)).limit(12)
     // Tier A 能力约束注入：探测当前 video 实例，命中真源表则向 LLM 预先告知合法镜头时长/画幅档位；
     // 无 video 实例 → 提示使用 slideshow（不假称动态能力）。失败不阻断主流程，仅缺约束上下文。
@@ -173,6 +179,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // 预算估算取 reasoning+正文 的典型用量（24000）而非上限——上限只用于防 provider 拒单，不该把预算内规划硬挡
     const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 24000 * (prices[1] ?? 0) })
     if (budget) throw new CreationError(budget.code, budget.message, 409)
+    setPlanningPhase(id, 'model')
     // [截断修复] 与 ai-text 同源实测：deepseek-flash 等推理模型先产 reasoning_content 挤占输出预算，
     // 10000 上限在方案正文写出前即 finish_reason=length（表层报「方案输出被截断」，缩短要求也无法规避）；
     // 放宽到 64000（deepseek 可用上限），并把超时从默认 120s 放宽到 10 分钟（长思维链下 2 分钟会被 abort）
@@ -183,6 +190,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       unit, unitPrice: result.usage ? prices[index] : null, meta: { sessionId: id, requestKey: input.requestKey, usageMissing: !result.usage },
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
+    setPlanningPhase(id, 'validating')
     const reply = parsePlanningReply(result.content, result.finishReason)
     // 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
     if (reply.kind === 'plan') {
@@ -212,7 +220,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
         await tx.update(projects).set({ name: m.name, genre: m.genre, templateKey: m.templateKey, tags: JSON.stringify(m.tags), brief: m.brief, updatedAt: Date.now() }).where(eq(projects.id, claimed.projectId))
       }
     }))
+    endPlanningProgress(id)
   } catch (error) {
+    endPlanningProgress(id)
     const message = error instanceof CreationError ? error.message : '规划未完成，请检查 AI 配置后发送新消息重试；本次请求可能已计费'
     await creationWrite(async () => {
       await db.update(creationSessions).set({ status: 'draft', error: message, preflight: null, updatedAt: Date.now() })

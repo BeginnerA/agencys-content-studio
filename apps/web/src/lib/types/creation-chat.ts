@@ -305,6 +305,8 @@ export interface CreationSessionView {
   runId: number | null
   runHistory: unknown[]
   error: string | null
+  /** 规划在途进度（仅 status=planning 且服务端已受理时有值）：阶段 + 已进行秒数 */
+  planning?: { phase: 'analyzing' | 'refs' | 'caps' | 'model' | 'validating'; elapsedSec: number } | null
   createdAt: number
   updatedAt: number
   projectDeleted: boolean

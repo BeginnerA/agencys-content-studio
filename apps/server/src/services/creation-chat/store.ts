@@ -3,6 +3,7 @@ import { db } from '../../db'
 import { creationMessages, creationSessions, genTasks, pipelineRuns, pipelineSteps, projects, usageRecords, type CreationSession, type PipelineRun } from '../../db/schema'
 import { CreationError, initialDraftSchema } from './contract'
 import { jsonRecord, loadCreationProjection } from './projection'
+import { planningProgress } from './planning-progress'
 
 /** 只串行化短数据库操作；模型/媒体调用不占锁。数据库条件更新仍是最终仲裁。 */
 let tail: Promise<unknown> = Promise.resolve()
@@ -44,6 +45,8 @@ export async function creationDetail(id: number) {
       id, projectId: session.projectId, status: session.status, plan: parseJson(session.plan, null),
       planRevision: session.planRevision, planHash: session.planHash, preflight: parseJson(session.preflight, null),
       runId: session.runId, runHistory: parseJson(session.runHistory, []), error: session.error,
+      // 规划在途进度（内存旁信道）：阶段 + 已进行秒数；非 planning 态恒为 null，不残留旧进度
+      planning: session.status === 'planning' ? planningProgress(id) : null,
       initialDraft: initial?.success && initial.data.deferPlanning ? { content: initial.data.content, requestKey: initial.data.requestKey } : null,
       createdAt: session.createdAt, updatedAt: session.updatedAt, projectDeleted: !project || project.deletedAt !== null,
       // 立项预览：未转正项目以 draft 影子态存在（不进项目列表），确认时才写入完整信息并转正
