@@ -298,7 +298,7 @@ async function main(): Promise<void> {
       const imgRef = refSchema.parse({ assetId: 901, kind: 'image', role: 'subject', hash: 'a'.repeat(64) })
       const vidRef = refSchema.parse({ assetId: 902, kind: 'video', role: 'content', hash: 'b'.repeat(64) })
 
-      const msgs = await compileReferenceContext(pid, [imgRef], false)
+      const { messages: msgs } = await compileReferenceContext(pid, [imgRef], false)
       const text = msgs.map((m) => (typeof m.content === 'string' ? m.content : '')).join('')
       check(msgs.length === 1 && typeof msgs[0]!.content === 'string' && /不会描述|未声明视觉/.test(text), '无视觉实例：图片参考明告「不描述内容、仅作生成参考」（不假称理解）')
 
