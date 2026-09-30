@@ -1,8 +1,17 @@
 # M58 L1 Spec — 轻松创作「参考反推可检视交付」
 
-> **状态：待用户评审批准；未获批不改业务代码。** 构建在 M31/M25 之上，不推翻其契约。
+> **状态：已实施（2026-09-30，probe-m58 五节全绿；机制修正见 §零）。** 构建在 M31/M25 之上，不推翻其契约。
 > 前置复核：编号以最新 roadmap 为准（取 M58）。
-> 纪律：**0 新表 0 新列 / 0 新增 action**（复用 `video_analyze` + `ai_text` + `storyboard-json` 既有件）；不静默降级、参考里没有的信息不得臆造（延续 M31）；解析费用已计入口径不变。
+> 纪律：**0 新表 0 新列 0 新增 action**（复用 `video_analyze` + `ai_text` + `storyboard-json` 既有件）；不静默降级、参考里没有的信息不得臆造（延续 M31）；解析费用已计入口径不变。
+
+## 零、实施态机制修正（对下文 §三/§四/§六 的原意偏差点，以实测契约为准）
+
+1. **2a 不直接回填 `plan.shots`（修正 §3.2）**：初稿不逐镜替换 LLM 方案，而是服务端 `parseStoryboardDraft` 宽松收口后经 `renderStoryboardDraft` 渲染为蓝本，注入规划 system 消息（draftNote）——规划 LLM 以蓝本为据适配轻松创作契约产出完整方案。反推初稿 → 方案是**参考性转化**而非机械搬运，保住叙事完整与契约合法。完成后服务端**先剥 LLM 自报 `source` 键、再按事实统一写/清** `shot.source:'reverse'`（draftUsed 则整片标反推；逐镜归属不可靠故不逐镜猜）。非契约输出/异常 → 可见 system 说明不静默，方案照产但不标 reverse。
+2. **字段形收敛（修正 §3.1）**：条目实名 `assetId`（非 sourceAssetId），由 `refsAnalysisEntrySchema` strict 收口（越界键拒收），并增 `name/transcribed/truncated` 可检视字段；条目上限 `MAX_REFS_ANALYSIS=12`。无参考时 `refsAnalysis=undefined`，`hashJson` 落库时键自动脱落 → 老路径 JSON 逐字零漂移（机制保证而非约定）。
+3. **计费口径（修正 §四）**：2a 初稿调用复用规划同 llm 端点（`chatCompleteDetailed`），`recordUsage(purpose:'storyboard_draft')` **先入账后进预算闸**（沿用 M31 分析期事实计费口径）；不进 estimate 新付费面。措辞真源 `REVERSE_INTENT_WORDS`/`wantsReverseIntent` 导出自 M57 route-hint 同源（探针直验两处同措辞一致命中，防漂移）。
+4. **探针边界（修正 §六）**：probe-m58 为纯函数+契约级五节（schema/normalize/draft/gating/drift），零网络零 stubFetch（2a 接线部分验其纯函数前置与契约承载，不真调模型）；M31 回归凭 probe-m31 全绿（含 compileReferenceContext 新返回形 `{messages,analyses}` 调用形同步）。
+
+以下原设计正文保留供对照。
 
 ## 一、背景与目标
 

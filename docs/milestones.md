@@ -797,6 +797,16 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 验证：`probe-m57`（五节 **26 断言全绿**：signals 四类信号各命中 + 30秒/一分钟不误报；gating 无 vision/无内容参考不产反推（M31 不降级）；sanitize 真源回填/easy-* 拒/越界拒/空理由拒/截断 80；priority 连载高于质感；drift 四目标模板在位非批准链 + strict 拒键坐实不进 planHash）。双端 `tsc`/`vue-tsc` exit 0。
 
+## M58 能力速览（轻松创作「参考反推可检视交付」：解析产物进方案可检视 + 反推分镜初稿喂进规划）
+
+> 痛点：轻松创作**能消费**视频参考（`video_analyze` 时间轴摘要注入规划上下文），但用户看不见「系统到底从我的参考视频读到了什么」，反推依据全程黑箱。M58 两档交付：2b 把解析产物透出进方案（可检视、进 planHash）；2a 反推分镜初稿作为规划蓝本。详规：`docs/records/M58-轻松创作参考反推交付-design.md`（机制修正见其 §零）。**红线**：0 新表 0 新列 / 0 新增 action（复用 `video_analyze` + `storyboard-json` 提示词资产）；不静默降级、参考里没有的信息不得臆造（延续 M31）。
+
+- **M58.1 2b 透出（`refs-analysis.ts` + `contract.ts`）**：`normalizeRefsAnalysis` 把 `VideoAnalysisOutcome` 归一为 `plan.refsAnalysis` 条目（scenes≤24 / transcript≤2000，超限截断置可见 `truncated` 标记；visual/speech 双缺给「（无描述）」占位不编造；景别作注记）。`refsAnalysisEntrySchema` strict 收口 + `MAX_REFS_ANALYSIS=12` 总量上限；**与 M57 routeHint 相反，进 planHash**（spec 原意：解析变了旧确认作废——与 M31 参考变化同律）。无参考时 `refsAnalysis=undefined` 落库键自动脱落 → 老路径逐字零漂移（机制保证）。
+- **M58.2 2a 反推初稿（`planning.ts` 接线）**：`wantsReverseIntent`（措辞真源导出自 M57 route-hint 同源，探针直验两处同措辞一致命中）+ 有解析产物 → 复用同 llm 端点调 `video-storyboard.md` 产分镜初稿，`parseStoryboardDraft` 宽松收口（≤12 镜、无画面镜丢弃、非契约→null 给可见说明不静默）→ `renderStoryboardDraft` 渲染蓝本注入规划 system 消息，规划 LLM 以蓝本为据适配契约出完整方案；完成后服务端**先剥 LLM 自报 `source` 键、再按事实统一写/清** `shot.source:'reverse'`（整片口径，逐镜归属不可靠不逐镜猜）。`recordUsage(purpose:'storyboard_draft')` 先入账后进预算闸（沿用 M31 分析期事实计费口径）。
+- **M58.3 前端**：`PlanRefsAnalysis.vue` 解析产物可检视折叠区（逐条 name·时长·场景数·人声标记，体=scenes 列表 + transcript；无参考/无解析完全不渲染）；方案卡反推镜带「来自参考视频 · 可编辑」徽标；`types` 加 `CreationRefsAnalysisEntry` + `CreationShot.source?`。
+
+验证：`probe-m58`（五节 **27 断言全绿**：schema 向后兼容/strict/上限；normalize 截断标记/回落/不编造；draft 宽松解析/渲染只列实存；gating 与 M57 措辞同源 + 提示词真源在位；drift 脱落零漂移/进 planHash/剥净自报 source）。`probe-m31` 回归全绿（含 `compileReferenceContext` 新返回形 `{messages,analyses}` 调用形同步）；`probe-m56`/`probe-m57` 回归绿。双端 `tsc`/`vue-tsc` exit 0；`CreationPlanCard.vue` 783 行守 ≤800。
+
 ---
 
 ## 路线图（M32–M39 · **全部交付 · 收官**）
