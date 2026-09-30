@@ -59,6 +59,15 @@ const { layout, worldW, worldH, nodeStyle, edgePaths } = useCanvasLayout(props)
 const viewport = ref<HTMLElement | null>(null)
 const pan = ref({ x: 40, y: 40 })
 const zoom = ref(1)
+
+/** 背景点阵网格：铺满整个视口并随 pan/zoom 同步（世界层尺寸仅包围盒，网格挂世界上会留白） */
+const gridStyle = computed(() => ({
+  backgroundImage: `radial-gradient(circle, rgb(148 163 184 / 15%) ${
+    1 * zoom.value
+  }px, transparent ${1.3 * zoom.value}px)`,
+  backgroundSize: `${26 * zoom.value}px ${26 * zoom.value}px`,
+  backgroundPosition: `${pan.value.x}px ${pan.value.y}px`,
+}))
 let dragging = false
 let dragMoved = false
 let lastX = 0
@@ -251,6 +260,7 @@ watch(
   <div
     ref="viewport"
     class="cv-viewport"
+    :style="gridStyle"
     tabindex="0"
     aria-label="流水线画布（拖动平移 / 滚轮缩放 / 方向键外快捷键 +/-/0）"
     @pointerdown="onPointerDown"
@@ -457,12 +467,6 @@ watch(
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  background-image: radial-gradient(
-    circle,
-    rgb(148 163 184 / 15%) 1px,
-    transparent 1.3px
-  );
-  background-size: 26px 26px;
   will-change: transform;
 }
 

@@ -31,6 +31,15 @@ const vp = useBoardViewport({
 })
 const { viewportEl, pan, zoom, onWheel, viewW, viewH } = vp
 
+/** 背景点阵网格：铺满整个视口并随 pan/zoom 同步（世界层 width/height=0，网格挂世界上不可见） */
+const gridStyle = computed(() => ({
+  backgroundImage: `radial-gradient(circle, rgb(148 163 184 / 15%) ${
+    1 * zoom.value
+  }px, transparent ${1.3 * zoom.value}px)`,
+  backgroundSize: `${26 * zoom.value}px ${26 * zoom.value}px`,
+  backgroundPosition: `${pan.value.x}px ${pan.value.y}px`,
+}))
+
 // ---- 数据索引与位置 ----
 const nodeById = computed(() => new Map(props.nodes.map((n) => [n.id, n])))
 
@@ -356,6 +365,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   <div
     ref="viewportEl"
     class="cb-viewport"
+    :style="gridStyle"
     :class="{
       linking: linkFrom != null,
       grabbing: spaceDown || mode === 'pan',
@@ -525,12 +535,6 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   width: 0;
   height: 0;
   transform-origin: 0 0;
-  background-image: radial-gradient(
-    circle,
-    rgb(148 163 184 / 15%) 1px,
-    transparent 1.3px
-  );
-  background-size: 26px 26px;
   will-change: transform;
 }
 
