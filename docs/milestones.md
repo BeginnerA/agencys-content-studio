@@ -807,6 +807,16 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 验证：`probe-m58`（五节 **27 断言全绿**：schema 向后兼容/strict/上限；normalize 截断标记/回落/不编造；draft 宽松解析/渲染只列实存；gating 与 M57 措辞同源 + 提示词真源在位；drift 脱落零漂移/进 planHash/剥净自报 source）。`probe-m31` 回归全绿（含 `compileReferenceContext` 新返回形 `{messages,analyses}` 调用形同步）；`probe-m56`/`probe-m57` 回归绿。双端 `tsc`/`vue-tsc` exit 0；`CreationPlanCard.vue` 783 行守 ≤800。
 
+## M59 能力速览（轻松创作单条时长/镜头上限「有节制放宽」：60→90s、12→16 镜、36→48 句）
+
+> 痛点：用户偶尔想要「比 60s 稍长一点的单条」，但 60s/12 镜上限在多处写死。M59 只做**有节制**放宽（幅度保守、可回退），**定位仍是轻内容**——>90s / 长内容/连载归 M56 毕业通道，不靠膨胀 easy-*。详规：`docs/records/M59-轻松创作时长上限放宽-design.md`（机制修正见其 §零）。**红线**：0 新表 0 新列 / 单镜 1–15s 不动（受视频模型 caps 档位硬约束，放开无效）。
+
+- **M59.1 上限收敛单一真源（`contract.ts`）**：新增导出 `PLAN_DURATION_MIN=30 / PLAN_DURATION_MAX=90 / PLAN_SHOTS_MAX=16 / PLAN_LINES_MAX=48`，`creationPlanSchema` 的 duration/shots/lines 边界改消费真源常数（不再是魔法数）；superRefine「镜头时长和=duration」不变式随新范围仍成立（逻辑不改，仅确认边界用例）。回退只需下调这四个值。
+- **M59.2 五处写死点一次收口**：`clamp.ts` 总时长重算钳（`Math.min(60)`→`PLAN_DURATION_MAX`，**最大风险点**：不同步会「schema 放行 90 却被钳回 60」自相矛盾）；`planning.ts` `buildCapsConstraintMessage` 注入 LLM 区间改真源插值（不谎报能力，与 caps 档位取交集）；`dialogue.ts` 容量报错文案区间同步；`route-hint.ts` `wantsLongerThanCap`（实施时发现的**第 5 写死点**：硬编 `>60` 会把放宽后 61–90s 合法诉求误路由去专业链）改消费 `PLAN_DURATION_MAX`。`creation-plan.md` 提示词真源四写死点同步 30–90/最多 16/1–48（单镜 1–15s 不动）。
+- **M59.3 截断闸与前端**：`parsePlanningReply` 65000 字符闸**显式不放宽**（典型 90s/16 镜 plan ≈ 2–6k 字符远离此值，真正预算闸是 `maxTokens=64000`）；前端零改动（时长/镜头数为动态渲染，无写死 60/12 上限控件）。
+
+验证：`probe-m59`（三节 **14 断言全绿**：schema 新边界 90/16/48 合法 + 91/17/49 拒 + 单镜 16s 仍拒 + 旧边界向后兼容；clamp 75s 不回钳 60/90 保留/150 钳 90/20 钳 30；drift 五处写死点同真源 + 65000 显式未放宽 + 旧 plan planHash 零漂移）。回归 `probe-m57`（新加「90秒→null」边界断言防漂移）/`m58`/`m56`/`m31`/`m7`/`m10`/`m30`/`m32`/`m35`/`m41` 全绿。双端 `tsc`/`vue-tsc` exit 0。
+
 ---
 
 ## 路线图（M32–M39 · **全部交付 · 收官**）
