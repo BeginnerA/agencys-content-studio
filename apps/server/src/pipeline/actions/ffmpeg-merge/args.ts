@@ -43,6 +43,9 @@ export interface ComposeArgsInput {
   /** 每路字幕文件（[0]=主，[k+1]=派生路 k）；缺省/越界 → 回落 srtAbs。多画幅各路 PlayRes 不同，需各自 ASS。 */
   subtitlePaths?: string[]
   style: string
+  /** M61 T7 分层排版：烧录 ASS 的 Default 行已全量承接合并主样式且含具名 Style 行 → 各路省略 force_style
+   *（本机 libass 实测其逐字段覆盖**所有** Style 行，会把具名组字号/落位打平回主样式，毁掉分层）；缺省 false → args 逐字节不变 */
+  assLayered?: boolean
   bgmPath: string | null
   bgmVolume: number
   bgmFade: number
@@ -313,7 +316,9 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const subOut: string | null = srtAbs ? (watermark ? 'subv' : 'outv') : null
   if (srtAbs) {
     fcParts.push(
-      `[${mainBase}]subtitles='${basename(subPathFor(0))}':force_style='${style}'[${subOut}]`,
+      input.assLayered
+        ? `[${mainBase}]subtitles='${basename(subPathFor(0))}'[${subOut}]`
+        : `[${mainBase}]subtitles='${basename(subPathFor(0))}':force_style='${style}'[${subOut}]`,
     )
   }
   // 水印 overlay（最顶层；字幕烧录之后）；多路时取分流的唯一标签 wm0
@@ -333,7 +338,11 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     prev = `dv${k}`
     if (srtAbs) {
       const st = maSubCfg ? buildSubtitleStyle(h, maSubCfg).replace(/['"]/g, '') : style
-      fcParts.push(`[${prev}]subtitles='${basename(subPathFor(k + 1))}':force_style='${st}'[dsub${k}]`)
+      fcParts.push(
+        input.assLayered
+          ? `[${prev}]subtitles='${basename(subPathFor(k + 1))}'[dsub${k}]`
+          : `[${prev}]subtitles='${basename(subPathFor(k + 1))}':force_style='${st}'[dsub${k}]`,
+      )
       prev = `dsub${k}`
     }
     if (watermark) {

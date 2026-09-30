@@ -344,6 +344,12 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 - **M60 短剧商业化结构设计**（AI 复盘新增——专业级短剧与「能出片」的分水岭，全仓零命中）：`P1`。**已实施并门禁验证（2026-09-30）**。缺口=无付费卡点/前3秒钩子/留人节奏/黄金N集结构。**定位澄清（用户给定，取代原「需产品先定口径」前置门）**：付费卡点=剧情设计思路（设计哪一集结尾适合强悬念收口），**是否真正收费由发布平台决定**，因此无产品决策门槛。实施=series-setup v3→v4 在 `write_series` 后新增 `monetize` 步（prompt `monetize-structure.md`，`with_monetization` 默认开）产 `monetization-json`；mengbao-episode v14→v15 `setting_docs` accept 加 `.json` 走既有 `ingest_docs→write_script/make_storyboard` 注入链（0 新接线）；四提示词注入（script-ep R19 / storyboard-ep 规则12 / creation-plan 开场纪律 / series-setup.md 下游衔接）；前端 SeriesBoard 商业结构折叠卡。0 新表 0 新 action 0 新付费面（卡点字段全为建议标记，不产出平台配置/价格/付费门禁参数）。门禁：`tsc`/`vue-tsc` exit 0；`probe-m60` 四节全绿 + `probe-m3/m8/m11/m56/m57` 回归绿。
 - 未立项保留（Ask-first）：**口型同步 lip-sync**——需专门付费模型面，M31 已列为永久排除，保持 Ask 不自动纳入；**多集批量排期编排**——接 M27 orchestrator，非新增能力。
 
+## 混剪线立项队列（2026-09-30 立项；待评审）
+
+> 来源：用户反馈「素材混剪模板开场标题能否智能编排——智能规划字体大小/样式/位置，或根据标题智能生成一张图插入」。经源码复核：`SubtitleStyleConfig` 九字段与 `buildSubtitleStyle` 消费链已齐（缺的是自动决策者）；文生图直接画汉字乱码为公认失效面，字卡须本地渲染文字。
+
+- **M61 混剪开场标题智能编排与标题字卡（三期一体）**（用户诉求全量承接）：`P1`。期1=规则智能排版 `style_mode:rule` + 本地 drawtext 标题字卡 `title_card:local`（零计费）；期2=LLM 智能排版 `style_mode:llm` + AI 背景字卡 `title_card:ai`（付费失败降级 local，沿用 M54 `music_gen` 降级先例）；期3=per-line 多 ASS Style 分层排版（标题大字居中/祝福语底部小字）。设计见 `docs/records/M61-混剪标题智能编排-design.md`；0 新表 0 新列 0 新 action 0 新付费面 0 Web 改动；全开关默认 off=零 diff。**已实施（2026-09-30，三期门禁全绿：probe-m61 六节 114 断言 + probe:ci 串行 5488 断言）**。
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）

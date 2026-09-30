@@ -1,12 +1,15 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import { probeMediaDuration, resolveFfmpeg } from '../../../services/ffmpeg'
-import { absPathOf, registerAsset, relPathOf } from '../../../services/storage'
+import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../../services/storage'
 import { loadSfxAssets, readComposeConfig, readMultiAspect } from '../../../services/compose-config'
 import { readVersionContent } from '../../../services/provenance'
 import { resolveBrandConfig } from '../../../services/brand-config'
+import type { SubtitleStyleConfig } from '../../../services/brand-config'
 import { defaultSubtitleStyle, buildSubtitleStyle } from './subtitle-style'
-import { buildAssBurnPaths } from './subtitle-ass'
+import { buildAssBurnPaths, parseSrtCues } from './subtitle-ass'
+import { parseM61SubtitleParams } from './title-card'
+import { maybeInsertTitleCard } from './title-card-compose'
 import { isSameAspect, resolveAspectSize } from './aspect'
 import { computeShotSegments, loadPerShotDurations, shotIdOfAsset, lineIdOfVoiceAsset, buildClipDurByShotId } from './segments'
 import { loadShotAlignShots, planBestEffortTimeline } from './align'
@@ -63,10 +66,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
   const params: Record<string, unknown> = { ...((ctx.def.params ?? {}) as Record<string, unknown>) }
-  // run 输入标量调参桥（M53；M54 扩 layout/bgm_mode/bgm_prompt/analyze_composition 4 键）：
-  // compose 步 inputs 映射了同名模板输入（int/text/bool）时参与解析，
+  // run 输入标量调参桥（M53；M54 扩 layout/bgm_mode/bgm_prompt/analyze_composition 4 键；M61 扩 style_mode/title_card/title_card_bg 3 键）：
+  // compose 步 inputs 映射了同名模板输入（int/text/bool/select 直通串）时参与解析，
   // 既有 params 同名键优先；资产数组/空值不入桥。存量模板 inputs 无这些键 → params 逐字节不变
-  for (const k of ['fps', 'resolution', 'duration_per_shot', 'transition', 'transition_duration', 'ken_burns', 'keep_clip_audio', 'layout', 'bgm_mode', 'bgm_prompt', 'analyze_composition']) {
+  for (const k of ['fps', 'resolution', 'duration_per_shot', 'transition', 'transition_duration', 'ken_burns', 'keep_clip_audio', 'layout', 'bgm_mode', 'bgm_prompt', 'analyze_composition', 'style_mode', 'title_card', 'title_card_bg']) {
     if (params[k] !== undefined) continue
     const v = ctx.input[k]
     if (typeof v === 'number' && Number.isFinite(v)) params[k] = v
@@ -174,18 +177,23 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const subtitleIds = ctx.assetIdsOf('subtitle')
   let srtRelPath: string | null = null
   let srtEndMs = 0
+  // M61 启用态键（仅 subtitle fixed 分支启用时产出；存量资产无这些键 → 0/null = 样式链与烧录链零改动）
+  let m61TitleLines = 0
+  let m61MsPerLine = 0
+  let m61LeadInMs = 0
+  let m61StylePlan: { style?: SubtitleStyleConfig; styles?: SubtitleStyleConfig[]; cue_style?: number[] } | null = null
   if (subtitleIds.length > 0) {
     const sRows = await ctx.assetsOf(subtitleIds.slice(0, 1))
     const s = sRows[0]
     if (!s?.relPath) throw new Error(`subtitle 资产 #${subtitleIds[0]} 无本地文件`)
     srtRelPath = s.relPath
-    try {
-      const p = JSON.parse(s.params ?? '{}') as { durationMs?: number }
-      srtEndMs = typeof p['durationMs'] === 'number' ? p['durationMs'] : 0
-    } catch {
-      // params 损坏不影响烧录
-    }
-    ctx.log(`字幕就绪 ${basename(srtRelPath)}（SRT 时间轴${srtEndMs ? `，末条结束 ${Math.round(srtEndMs / 1000)}s` : ''}）`)
+    const m61p = parseM61SubtitleParams(s.params)
+    srtEndMs = m61p.endMs
+    m61TitleLines = m61p.titleLines
+    m61MsPerLine = m61p.msPerLine
+    m61LeadInMs = m61p.leadInMs
+    m61StylePlan = m61p.stylePlan
+    ctx.log(`字幕就绪 ${basename(srtRelPath)}（SRT 时间轴${srtEndMs ? `，末条结束 ${Math.round(srtEndMs / 1000)}s` : ''}${m61TitleLines ? `，M61 标题 ${m61TitleLines} 行${m61StylePlan ? ' + 智能排版方案' : ''}` : ''}）`)
   } else if (params['subtitle'] === true) {
     ctx.log('subtitle=true 但 inputs.subtitle 无 SRT 资产，已跳过烧录')
   }
@@ -339,6 +347,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // layout 默认 single → 同引用透传，段列与 M53 逐字节一致）
   const layoutRaw = typeof params['layout'] === 'string' && params['layout'].trim() ? params['layout'].trim() : 'single'
   const { collageLayout, collageCount } = applyCollageLayout({ segments, montageOn, hasAlignPlan: !!alignPlan, layoutRaw, durationPerShot, log: (msg) => ctx.log(msg) })
+  // M61 T3 片首标题字卡（[M61-split] 拆至 title-card-compose；off/缺省/字体缺失/失败 → 段列逐字节不变且不裁 cue）
+  const { cardOk: m61CardOk, cardDurSec: m61CardDurSec, cardMode: m61CardMode, tempAbs: cardTempAbs } = await maybeInsertTitleCard({ ctx, ffmpeg, params, strict, subtitleId: subtitleIds[0] ?? null, titleLines: m61TitleLines, msPerLine: m61MsPerLine, leadInMs: m61LeadInMs, stylePlan: m61StylePlan, width, height, fps, segments })
   const total = segments.reduce((s, seg) => s + seg.durSec, 0)
   // 转场计划（静态图 ≥2 镜生效；M53 混剪态图+视归一段亦可 xfade；_compose 覆盖模板 params；禁用时 filter 与既有实现逐字节一致）
   const composeCfg = readComposeConfig(ctx.run.input)
@@ -382,14 +392,19 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   const brand = (!strict || (isCreationTemplate(ctx.run.templateKey) && composeCfg.brandApply !== false))
     ? await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
     : {}
-  // 字幕样式采用链：结构化优先（brand.subtitle 非空 → 接管）；否则旧链逐字节不变
+  // 字幕样式采用链（M61 扩展）：style_plan.style ⊕ brand.subtitle 字段级浅合并（手工恒胜）非空 → 接管；
+  // 无 style_plan（存量）→ 链逐字节不变：brand.subtitle 接管 > legacy 旧串 > 默认公式
   const legacyStyle = (typeof params['subtitle_style'] === 'string' && params['subtitle_style'])
     || (typeof vidCfg['subtitle_style'] === 'string' && vidCfg['subtitle_style'])
-  const style = brand.subtitle
-    ? buildSubtitleStyle(height, brand.subtitle).replace(/['"]/g, '')
+  const smartCfg = m61StylePlan?.style && typeof m61StylePlan.style === 'object' ? m61StylePlan.style : null
+  const styleCfg = smartCfg ? { ...smartCfg, ...(brand.subtitle ?? {}) } : (brand.subtitle ?? null)
+  const style = styleCfg
+    ? buildSubtitleStyle(height, styleCfg).replace(/['"]/g, '')
     : ((legacyStyle || defaultSubtitleStyle(height)) as string).replace(/['"]/g, '')
-  if (brand.subtitle && legacyStyle) {
-    ctx.log('结构化字幕配置已接管，subtitle_style 旧串被忽略')
+  if (styleCfg && legacyStyle) {
+    ctx.log(smartCfg ? '智能排版/结构化字幕配置已接管，subtitle_style 旧串被忽略' : '结构化字幕配置已接管，subtitle_style 旧串被忽略')
+  } else if (smartCfg) {
+    ctx.log(`M61 智能排版样式生效：${Object.keys(smartCfg).join('/')}`)
   }
 
   // 品牌素材槽解析（水印/片头/片尾；时长探测失败 → 宽容跳过该槽，全链保持现行为）
@@ -454,8 +469,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
           outAbs: absPathOf(relPathOf(ctx.run.projectId, 'final_video_derived', `ep${ep}-final-${a.replace(':', 'x')}-${Date.now()}.mp4`)),
         }))
     : []
-  // 封面抽取点：有片头 → 片头时长 + 0.2s；否则 0.2s（现行为）
-  const coverAt = introArg ? round3(introArg.durSec + 0.2) : 0.2
+  // 封面抽取点：有片头/字卡 → 跳过片头与卡帧取正片首帧；否则 0.2s（现行为）
+  const coverAt = round3((introArg ? introArg.durSec : 0) + (m61CardOk ? m61CardDurSec : 0) + 0.2)
 
   // 显示字幕规划（§6.2 接管至 manual-display：人工修订前置分支 + 原逐句/片头平移逻辑逐字节保持；
   // 烧录开关 _compose.subtitleBurn=false → 不喂字幕滤镜，srtRelPath 仍供对白/严格校验与快照使用）
@@ -490,7 +505,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     try {
       subtitlePaths = buildAssBurnPaths({
         srtAbs, style, width, height, runId: ctx.run.id, temps: assTempAbs,
-        brandSubtitle: brand.subtitle ?? null,
+        brandSubtitle: styleCfg,
+        cutCues: m61CardOk ? m61TitleLines : 0,
+        styles: m61StylePlan?.styles?.length ? m61StylePlan.styles.map((cfg, i) => ({ name: `Title${i + 1}`, cfg: { ...brand.subtitle ?? {}, ...cfg } })) : undefined,
+        cueStyle: m61StylePlan?.cue_style,
         derived: maTargets.map((t) => resolveAspectSize(width, height, t.aspect)),
       })
       ctx.log(`字幕 SRT→ASS：PlayRes ${width}×${height} 显式声明，左右边距 5%，防中文横向溢出（临时 ASS 合成后清理）`)
@@ -530,7 +548,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     alignPlan,
     total,
     srtAbs,
-    subtitlePaths,
+    subtitlePaths, assLayered: !!m61StylePlan?.styles?.length,
     style,
     bgmPath,
     bgmVolume,
@@ -544,7 +562,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     clipAudio: montageOn && params['keep_clip_audio'] === true,
     multiAspect:
       multiAspect && maTargets.length > 0
-        ? { strategy: multiAspect.strategy, targets: maTargets, subtitleCfg: brand.subtitle ?? null }
+        ? { strategy: multiAspect.strategy, targets: maTargets, subtitleCfg: styleCfg }
         : undefined,
     outAbs,
   })
@@ -571,7 +589,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   try {
     await runFfmpeg(ctx, ffmpeg, args, cwd)
   } finally {
-    for (const tmp of [tempSrtAbs, ...assTempAbs, ...montageTemps]) {
+    for (const tmp of [tempSrtAbs, ...assTempAbs, ...montageTemps, ...cardTempAbs]) {
       if (!tmp) continue
       try {
         unlinkSync(tmp)
@@ -637,7 +655,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       ...(dialogueClips ? { performance: 'dialogue', dialogue_review_required: true, ...(recipe?.estimatedDialogue ? { dialogue_subtitles_estimated: true } : {}), dialogue_clips: dialogueClips } : {}),
       fps,
       resolution,
-      images: segments.filter((s, i) => (montageOn ? segKindOrig[i] : s.kind) === 'image').length,
+      images: segments.filter((s, i) => !s.card && (montageOn ? segKindOrig[i] : s.kind) === 'image').length,
       motion_clips: segments.filter((s, i) => (montageOn ? segKindOrig[i] : s.kind) === 'video').length,
       voices: voicePaths.length,
       subtitle: srtRelPath ? 1 : 0,
@@ -671,6 +689,9 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null,
       outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null,
       sfx: sfxList.length > 0 ? { count: sfxList.length, volume: sfxVolume } : null,
+      // M61 标题智能编排溯源（仅实际启用追加键；off → 零增键逐字节不变）
+      ...(smartCfg ? { title_style: { groups: (m61StylePlan?.styles ?? [smartCfg]).length, cue_mapped: m61StylePlan?.cue_style?.length ?? 0 } } : {}),
+      ...(m61CardOk ? { title_card: { mode: m61CardMode, dur_sec: round3(m61CardDurSec), title_lines: m61TitleLines } } : {}),
       // Canonical 同源时间轴快照（剪辑工程交换导出唯一真源；纯增量溯源，不改任何 ffmpeg 参数与音频结果）
       timeline: buildEditTimeline({
         fps, width, height, totalSec: totalAll, introSec: introShift, outroSec: outroArg ? round3(outroArg.durSec) : 0,

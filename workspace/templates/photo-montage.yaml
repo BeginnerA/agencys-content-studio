@@ -1,8 +1,8 @@
 key: photo-montage
 builtin: true
-version: 2
+version: 3
 name: 素材混剪成片
-description: 现成照片/视频片段一键拼成完整成片——照片 Ken Burns 缓推慢移（可选智能方向自动判断横竖图）、多图同屏拼贴版式、背景音乐库内自动选曲或 AI 生成（付费可选）、标题/祝福语字幕烧录、xfade 转场；默认零 LLM 零付费，适合婚宴大屏、年会回顾、纪念相册片。
+description: 现成照片/视频片段一键拼成完整成片——照片 Ken Burns 缓推慢移（可选智能方向自动判断横竖图）、多图同屏拼贴版式、背景音乐库内自动选曲或 AI 生成（付费可选）、标题/祝福语字幕烧录、xfade 转场；M61 开场标题智能编排（规则/LLM 自适应字号位置）与片首标题字卡（本地渲染或 AI 背景，付费可选；无底图产物自动回落本地色底）；默认零 LLM 零付费，适合婚宴大屏、年会回顾、纪念相册片。
 genre: other
 scene: produce
 inputs:
@@ -34,6 +34,9 @@ inputs:
   - { key: bgm_prompt, label: AI 生乐风格描述（仅 music_gen 生效；留空用默认文案）, kind: text, required: false }
   - { key: analyze_composition, label: LLM 构图感知缓推锚点（选图多时逐图付费，默认关）, kind: bool, required: false, default: false }
   - { key: keep_clip_audio, label: 保留视频片段原声, kind: bool, required: false, default: true }
+  - { key: style_mode, label: 开场标题智能排版（M61；off=现状逐字节不变）, kind: select, required: false, options: [off, rule, llm], option_labels: ['关闭（固定样式烧录）', '规则智能排版（字号/位置自适应，免费）', 'LLM 智能排版（付费，失败自动降级规则）'], default: off }
+  - { key: title_card, label: 片首标题字卡（M61；启用后标题从字幕裁掉改由卡呈现）, kind: select, required: false, options: [off, local, ai], option_labels: ['不生成字卡', '本地渲染字卡（色底+文字，免费）', 'AI 背景字卡（付费，AI 只出无文字底图；无底图产物自动回落本地色底）'], default: off }
+  - { key: title_card_bg, label: '字卡底色（#RRGGBB，仅字卡启用且无 AI 背景时生效；留空默认 #101826）', kind: text, required: false }
   - { key: confirm, label: 成片人工审阅闸（取消勾选 = 免审直出）, kind: bool, required: false, default: true }
 steps:
   - key: captions
@@ -43,6 +46,9 @@ steps:
     inputs:
       text: input.title
       script: input.lines_text
+      style_mode: input.style_mode
+      title_card: input.title_card
+      resolution: input.resolution
     params: { mode: fixed, ms_per_line: 4000, lead_in_ms: 500 }
   - key: analyze
     action: image_analyze
@@ -50,16 +56,39 @@ steps:
     when: input.analyze_composition == true
     inputs:
       images: input.photos
+  - key: card_bg
+    action: ai_text
+    title: 字卡 AI 背景提示词（无文字纯氛围底图；仅 title_card=ai 生效）
+    when: input.title_card == ai
+    after: [captions]
+    inputs:
+      title: input.title
+    params:
+      prompt_tpl: title-card-bg.md
+      output_purpose: storyboard
+      output_format: storyboard-json
+      name_tpl: "card-bg.json"
+  - key: card_bg_img
+    action: ai_image
+    title: 字卡 AI 背景图生成（付费；生图失败 run 报错，可改 local 重跑）
+    when: input.title_card == ai
+    after: [card_bg]
+    inputs:
+      shots: steps.card_bg.asset
+    params:
+      output_purpose: title_card_bg
+    batch: { field: shots, max_concurrent: 1, retry: 1 }
   - key: compose
     action: ffmpeg_merge
     title: 素材混剪合成成片
-    after: [captions, analyze]
+    after: [captions, analyze, card_bg_img]
     after_skipped: continue
     inputs:
       images: input.photos
       motion_clips: input.clips
       subtitle: steps.captions.assets
       composition: steps.analyze.assets
+      card_bg_image: steps.card_bg_img.assets
       duration_per_shot: input.duration_per_shot
       fps: input.fps
       resolution: input.resolution
@@ -69,5 +98,8 @@ steps:
       bgm_mode: input.bgm_mode
       bgm_prompt: input.bgm_prompt
       analyze_composition: input.analyze_composition
+      style_mode: input.style_mode
+      title_card: input.title_card
+      title_card_bg: input.title_card_bg
     params: { montage: true, cover: true, transition: fade, transition_duration: 0.7 }
     gate: { mode: required, message: '请审阅成片（混排顺序/时长/原声与 BGM 混音/字幕烧录）：批准即交付，驳回可附意见重新合成', when: input.confirm == true, reject: stop }

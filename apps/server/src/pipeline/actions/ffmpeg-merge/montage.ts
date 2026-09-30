@@ -323,13 +323,14 @@ export async function normalizeSegmentsToClips(
     const tmp = join(opts.outDir, `.mseg-${ctx.run.id}-${ctx.step.id}-${i}-${stamp}.mp4`)
     // M54 auto：逐段按实测宽高定方向（resolveHint 缺失/探测失败 → null 宽容推近）
     const hint = seg.kind === 'image' && opts.kb === 'auto' ? opts.resolveHint?.(seg) ?? null : null
-    const kb = seg.kind === 'image' ? kbDirectionFor(opts.kb, i, hint ?? undefined) : null
+    // M61：字卡段免 Ken Burns（静态卡面 zoompan 会把标题文字裁出框）
+    const kb = seg.kind === 'image' && !seg.card ? kbDirectionFor(opts.kb, i, hint ?? undefined) : null
     const anchor = kb ? opts.anchors?.[i] ?? null : null
     const clipHasAudio = seg.kind === 'video' ? probeHasAudioStream(seg.path) : null
     if (kb) kbApplied++
     if (seg.paths && seg.paths.length > 1) collageSegments++
     const args = buildNormalizeArgs(seg, { width: opts.width, height: opts.height, fps: opts.fps, kb, anchor, clipHasAudio, outAbs: tmp })
-    ctx.log(`混剪归一化 ${i + 1}/${segments.length}（${seg.kind === 'image' ? `${seg.paths && seg.paths.length > 1 ? `拼贴段 x${seg.paths.length}` : '图片段'}${kb ? ` + Ken Burns ${opts.kb === 'auto' ? `auto→${kb}` : kb}` : ''}` : `视频段${clipHasAudio === false ? '（无原声，补静音）' : ''}`}）：${seg.durSec}s`)
+    ctx.log(`混剪归一化 ${i + 1}/${segments.length}（${seg.kind === 'image' ? `${seg.card ? '标题字卡段' : seg.paths && seg.paths.length > 1 ? `拼贴段 x${seg.paths.length}` : '图片段'}${kb ? ` + Ken Burns ${opts.kb === 'auto' ? `auto→${kb}` : kb}` : ''}` : `视频段${clipHasAudio === false ? '（无原声，补静音）' : ''}`}）：${seg.durSec}s`)
     try {
       const r = spawnSync(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'], timeout: 600_000, windowsHide: true })
       if (r.status !== 0) {

@@ -170,7 +170,7 @@ await runSections({
       const { loadTemplate, templateFlags, KNOWN_ACTIONS } = await import('../src/pipeline/loader')
       const t = loadTemplate('photo-montage')
       check(templateFlags('photo-montage').builtin === true, 'photo-montage 仍标记 builtin=true')
-      check(t.version === 2, `模板版本升至 2（实际 ${t.version}）`)
+      check(t.version >= 2, `模板版本 ≥2（M54 升 2；M61 已升 3，版本节由 probe-m61 锁定；实际 ${t.version}）`)
       const inputsByKey = new Map((t.inputs ?? []).map((i) => [i.key, i]))
       check(['layout', 'bgm_mode', 'bgm_prompt', 'analyze_composition'].every((k) => inputsByKey.has(k)), 'M54 新输入四键齐全')
       check(inputsByKey.get('bgm_mode')?.default === 'auto' && inputsByKey.get('layout')?.default === 'single' && inputsByKey.get('analyze_composition')?.default === false, '默认值：bgm auto / layout single / 构图感知关（零 LLM 卖点保持）')

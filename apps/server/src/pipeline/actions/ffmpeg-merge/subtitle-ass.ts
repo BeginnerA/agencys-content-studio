@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { wrapSingleLine, estimateMaxCharsPerLine } from './subtitle-wrap'
-import { buildSubtitleStyle } from './subtitle-style'
+import { buildSubtitleStyle, assStyleRow, assStyleFontSize } from './subtitle-style'
 import type { SubtitleStyleConfig } from '../../../services/brand-config'
 
 /**
@@ -77,16 +77,35 @@ export function parseSrtCues(srt: string): AssCue[] {
  * fontSize / marginV 与 subtitle-style 基线公式同源（height×0.04 / height×0.02），
  * 但此处为真实像素（PlayResY=height，不再被二次放大）。marginL=marginR=width×0.05。
  * opts.fontSize 可传入 force_style 实际生效字号（自定义品牌放大时据此预算换行，防大字号仍溢出）。
+ * opts.cutCues（M61 字卡启用时）：裁前 N 个 cue（标题已由字卡呈现，防双呈现；仅影响烧录 ASS，
+ * 不改 SRT 资产——M29 不可变契约；缺省/0 → 事件序列逐字节不变）。
+ * opts.styles / opts.cueStyle（M61 T7 分层排版）：Default 之外追加具名 Style 行（字号/边距按本路
+ * 尺寸重算），cue→样式组下标（源=资产 params.style_plan.cue_style，索引为**原始 cue 序**含已裁段）；
+ * 映射缺失/越界 → 该 cue 回落 Default；换行预算按各 cue 生效样式字号。缺省两参 → 逐字节零 diff。
+ * opts.defaultCfg（T7 分层配套）：非空时 Default 行改由 assStyleRow 按合并主样式全量生成
+ *（颜色/描边/落位等，与省略 force_style 的烧录链配套；字号仍按 opts.fontSize 基线链公式由调用方传入）。
  */
 export function srtToAss(
   srt: string,
-  opts: { width: number; height: number; fontSize?: number },
+  opts: {
+    width: number
+    height: number
+    fontSize?: number
+    cutCues?: number
+    styles?: Array<{ name: string; cfg: SubtitleStyleConfig }>
+    cueStyle?: number[]
+    defaultCfg?: SubtitleStyleConfig
+  },
 ): string {
   const { width, height } = opts
   const fontSize = Math.max(16, Math.round(opts.fontSize ?? height * 0.04))
   const marginL = Math.round(width * 0.05)
   const marginV = Math.round(height * 0.02)
   const maxChars = estimateMaxCharsPerLine(width, fontSize)
+  // T7：defaultCfg 非空 → Default 行全量承接合并主样式（配合烧录链省略 force_style）；字号仍用 opts.fontSize 基线链
+  const defaultRow = opts.defaultCfg
+    ? assStyleRow('Default', { ...opts.defaultCfg, size_pct: undefined, font: undefined }, width, height, fontSize)
+    : `Style: Default,Noto Sans CJK SC,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,${marginL},${marginL},${marginV},1`
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -97,20 +116,27 @@ export function srtToAss(
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,Noto Sans CJK SC,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,${marginL},${marginL},${marginV},1`,
+    defaultRow,
+    ...(opts.styles ?? []).map((s) => assStyleRow(s.name, s.cfg, width, height)),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ]
-  const events = parseSrtCues(srt).map((c) => {
-    const wrapped = c.text
-      .split('\n')
-      .flatMap((l) => wrapSingleLine(l, maxChars))
-      .map(escapeAssText)
-      .filter((l) => l.length > 0)
-      .join('\\N')
-    return `Dialogue: 0,${csToAssTime(c.startCs)},${csToAssTime(c.endCs)},Default,,0,0,0,,${wrapped}`
-  })
+  const cut = typeof opts.cutCues === 'number' && Number.isFinite(opts.cutCues) ? Math.max(0, Math.floor(opts.cutCues)) : 0
+  const events = parseSrtCues(srt)
+    .slice(cut)
+    .map((c, i) => {
+      const named = opts.cueStyle ? opts.styles?.[opts.cueStyle[cut + i] ?? -1] : undefined
+      const styleName = named?.name ?? 'Default'
+      const budget = named ? estimateMaxCharsPerLine(width, assStyleFontSize(named.cfg, height)) : maxChars
+      const wrapped = c.text
+        .split('\n')
+        .flatMap((l) => wrapSingleLine(l, budget))
+        .map(escapeAssText)
+        .filter((l) => l.length > 0)
+        .join('\\N')
+      return `Dialogue: 0,${csToAssTime(c.startCs)},${csToAssTime(c.endCs)},${styleName},,0,0,0,,${wrapped}`
+    })
   return `${header.concat(events).join('\n')}\n`
 }
 
@@ -129,6 +155,11 @@ export function buildAssBurnPaths(opts: {
   derived: Array<{ w: number; h: number }>
   brandSubtitle: SubtitleStyleConfig | null
   temps: string[]
+  /** M61 字卡已生成时裁前 N 个标题 cue（主/派生各路同裁；缺省/0 逐字节不变） */
+  cutCues?: number
+  /** M61 T7 分层排版：具名样式组 + cue→组下标（各组字号按各路高度重算，同一引用透传；缺省零 diff） */
+  styles?: Array<{ name: string; cfg: SubtitleStyleConfig }>
+  cueStyle?: number[]
 }): string[] {
   const fsFromStyle = (s: string, fb: number): number => {
     const m = /FontSize=([\d.]+)/.exec(s)
@@ -138,8 +169,10 @@ export function buildAssBurnPaths(opts: {
   const mainFontSize = fsFromStyle(opts.style, Math.max(16, Math.round(opts.height * 0.04)))
   const assDir = dirname(opts.srtAbs)
   const stamp = Date.now()
+  // T7：多 Style 启用且主样式 cfg 在位 → Default 行按 cfg 全量生成（烧录链同步省略 force_style，由 index 传 assLayered）
+  const defaultCfg = opts.styles?.length ? opts.brandSubtitle ?? undefined : undefined
   const writeAss = (w: number, h: number, fontSize: number, tag: string): string => {
-    const ass = srtToAss(rawSrt, { width: w, height: h, fontSize })
+    const ass = srtToAss(rawSrt, { width: w, height: h, fontSize, cutCues: opts.cutCues, styles: opts.styles, cueStyle: opts.cueStyle, defaultCfg })
     const p = join(assDir, `.sub-${opts.runId}-${stamp}${tag}.ass`)
     writeFileSync(p, ass, 'utf8')
     opts.temps.push(p)

@@ -17,6 +17,8 @@ export interface Segment {
   estimated?: boolean
   /** M54 collage 拼贴段成员本地路径（path 恒 = paths[0]；仅 phase-1 消费，缺省 = 单图段） */
   paths?: string[]
+  /** M61 标题字卡段（片首本地渲染 PNG）：phase-1 免 Ken Burns（防文字 zoompan 裁切出框），溯源 images 计数排除 */
+  card?: boolean
 }
 
 /**

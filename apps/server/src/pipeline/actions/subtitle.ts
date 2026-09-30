@@ -4,7 +4,10 @@ import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '..
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
 import { recordLlmUsage } from '../../services/usage'
 import { buildBilingualSrt } from '../../services/creation/gen/subtitle'
+import { estimateMaxCharsPerLine } from './ffmpeg-merge/subtitle-wrap'
 import { numParam, clamp } from './ffmpeg-merge/util'
+import { sanitizeSubtitleStyle } from '../../services/brand-config'
+import type { SubtitleStyleConfig } from '../../services/brand-config'
 import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 import { recipeOf } from '../../services/creation-chat/recipe'
@@ -25,6 +28,10 @@ export interface TimingLine {
  *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时；
  *  - fixed（M53 G4）：params.mode=fixed → 零 LLM，输入台词逐行定长计时（planFixedSrt，
  *    ms_per_line 每行时长 / lead_in_ms 起始延时 / total_ms 可选末行收敛），供标题/祝福语烧录。
+ * M61 标题智能编排（仅 fixed 分支）：inputs 桥 style_mode/title_card/resolution（select/text 直通串）；
+ *  style_mode=rule|llm → 资产 params 增 style_plan（planTitleStyle 规则层；llm 见期2）与 title_lines；
+ *  仅 title_card=local|ai（style off）→ 只记 title_lines（字卡取行/裁 cue 依据）；
+ *  两开关 off/缺省（存量模板无这些 inputs 键）→ 资产 params 零增键、行为逐字节不变。
  * 双语扩展：params.target_lang（ISO 639-1，非空启用）定时完成后台词逐句翻译（translate-lines.md），
  *  params.bilingual='both'（缺省：双语 + 纯目标语两条）| 'merged'（仅双语）；缺失句回退原文 + log；
  *  产物命名 subtitle.zh-{lang}.srt / subtitle.{lang}.srt，params.lang 标注；不传 target_lang 现行为逐字不变。
@@ -69,6 +76,35 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
     const lastEnd = timed[timed.length - 1]!.end_ms
     assetParams = { mode, lines: timed.length, durationMs: lastEnd, ms_per_line: msPerLine, lead_in_ms: leadInMs, ...(totalMs ? { total_ms: totalMs } : {}) }
     promptSnapshot = `fixed 定长计时：lines=${source.lines.length} ms_per_line=${msPerLine} lead_in_ms=${leadInMs}${totalMs ? ` total_ms=${totalMs}` : ''}`
+    // M61 标题智能编排启用态（select 值经 resolveInputs 字符串直通；off/缺省 → 零增键逐字节不变）
+    const designMode = typeof ctx.input['style_mode'] === 'string' ? ctx.input['style_mode'].trim() : ''
+    const cardRaw = typeof ctx.input['title_card'] === 'string' ? ctx.input['title_card'].trim() : ''
+    const cardOn = cardRaw === 'local' || cardRaw === 'ai'
+    const smartOn = designMode === 'rule' || designMode === 'llm'
+    if ((smartOn || cardOn) && source.titleLines > 0) {
+      assetParams.title_lines = source.titleLines
+      if (smartOn) {
+        const rm = /^(\d+)x(\d+)$/.exec(typeof ctx.input['resolution'] === 'string' ? ctx.input['resolution'] : '')
+        const cw = rm ? Number(rm[1]) : 1920
+        const chh = rm ? Number(rm[2]) : 1080
+        const roles = timed.map((t, i) => ({ text: t.text, role: (i < source.titleLines ? 'title' : 'body') as 'title' | 'body' }))
+        let rulePlan = planTitleStyle(roles, { width: cw, height: chh })
+        let styleSource: 'rule' | 'llm' = 'rule'
+        if (designMode === 'llm') {
+          // 期2 T5：LLM 智能排版（失败降级规则层）；计费单次调用与 estimated 分支同法 recordLlmUsage
+          const llmPlan = await designStyleWithLlm(ctx, roles, { width: cw, height: chh }, promptSnapshot)
+          if (llmPlan) {
+            rulePlan = llmPlan
+            styleSource = 'llm'
+          } else {
+            ctx.log('LLM 智能排版未产出有效方案（无实例/解析失败/字段全非法），已降级规则排版')
+          }
+        }
+        assetParams.style_plan = { style: rulePlan.style, styles: rulePlan.styles, cue_style: rulePlan.cue_style }
+        assetParams.style_source = styleSource
+        ctx.log(`标题智能排版（${styleSource}）：${rulePlan.styles.length} 组样式 / ${timed.length} 行映射（标题 ${source.titleLines} 行）`)
+      }
+    }
   } else if (mode === 'measured') {
     if (voiceIds.length !== source.lines.length) {
       throw new Error(`measured 字幕：voices 数量(${voiceIds.length}) 与台词句数(${source.lines.length}) 不一致（防错位）`)
@@ -283,10 +319,12 @@ export function parseLineTranslations(raw: string): Map<string, string> {
   return out
 }
 
-/** 汇集台词来源：text 纯文本（M53 标题类输入，非资产）与 script 全文合并优先；否则 lines JSON（est_ms 注入提示词作参考） */
-async function collectSource(ctx: StepContext): Promise<{ text: string; lines: Array<{ id: string; text: string; estMs?: number }> }> {
+/** 汇集台词来源：text 纯文本（M53 标题类输入，非资产）与 script 全文合并优先；否则 lines JSON（est_ms 注入提示词作参考）。
+ * M61 titleLines（标题行数，仅 fixed 分支消费）：literal 单独路径 = 全部行；script+literal 合并路径 = literal 非空行数（标题在前）；lines JSON 路径 = 0 */
+async function collectSource(ctx: StepContext): Promise<{ text: string; lines: Array<{ id: string; text: string; estMs?: number }>; titleLines: number }> {
   // text 输入为解析后原样透传的字符串（input.x 引用 kind:text 输入）；存量模板无此键 → '' = 行为不变
   const literal = typeof ctx.input['text'] === 'string' && ctx.input['text'].trim() ? ctx.input['text'].trim() : ''
+  const literalTitleLines = literal ? literal.split(/\r?\n/).map((t) => t.trim()).filter(Boolean).length : 0
   const scriptIds = ctx.assetIdsOf('script')
   if (scriptIds.length > 0) {
     const text = await ctx.readText(scriptIds[0]!).catch(() => '')
@@ -299,6 +337,7 @@ async function collectSource(ctx: StepContext): Promise<{ text: string; lines: A
           .map((t) => t.trim())
           .filter(Boolean)
           .map((t, i) => ({ id: String(i + 1), text: t })),
+        titleLines: literalTitleLines,
       }
     }
   }
@@ -308,7 +347,7 @@ async function collectSource(ctx: StepContext): Promise<{ text: string; lines: A
       .map((t) => t.trim())
       .filter(Boolean)
       .map((t, i) => ({ id: String(i + 1), text: t }))
-    return { text: literal, lines }
+    return { text: literal, lines, titleLines: lines.length }
   }
   const lineIds = ctx.assetIdsOf('lines')
   if (lineIds.length === 0) throw new Error('subtitle 需要 inputs.script（对白全文）或 inputs.lines（台词 JSON）或 text（纯文本行）')
@@ -327,7 +366,7 @@ async function collectSource(ctx: StepContext): Promise<{ text: string; lines: A
   const text = items
     .map((it) => `${it.id}${typeof it.estMs === 'number' ? `（参考 ${it.estMs}ms）` : ''}: ${it.text}`)
     .join('\n')
-  return { text, lines: items }
+  return { text, lines: items, titleLines: 0 }
 }
 
 /** 解析 LLM 产物：剥 markdown 围栏 → JSON lines → 字段校验（id/text/start_ms/end_ms） */
@@ -458,6 +497,117 @@ export function planFixedSrt(
     }
   }
   return out
+}
+
+/**
+ * M61 标题智能排版方案（subtitle 资产 params.style_plan 结构；期1 消费 style，期3 T7 消费 styles/cue_style）：
+ *  - style：全局主样式（单 ASS Style 消费口径；混合取正文组，纯标题取标题组——正文位移防护）
+ *  - styles：分组样式（styles[0] 恒为标题组；混合时 styles[1] 为正文组）
+ *  - cue_style：逐 cue 下标 → styles 下标映射（长度 = 行数）
+ */
+export interface TitleStylePlan {
+  style: SubtitleStyleConfig
+  styles: SubtitleStyleConfig[]
+  cue_style: number[]
+}
+
+/**
+ * 规则排版（M61 T1，纯函数；探针直测）：标题组字号按「最长标题行单行可容纳」从
+ * [0.06, 0.055, 0.05, 0.045, 0.04] 降序阶梯选取（宽度预算 = estimateMaxCharsPerLine，全部不适则取最小档）；
+ * bold=true；有正文行时标题置顶（alignment 8）否则居中（5）；竖屏（高>宽）加粗描边 outline_pct 0.0018 抗亮底。
+ * 正文组保持基线观感（0.04/底部/常规）——智能决策只作用于标题，正文零惊扰。
+ */
+export function planTitleStyle(
+  lines: Array<{ text: string; role: 'title' | 'body' }>,
+  o: { width: number; height: number },
+): TitleStylePlan {
+  const width = Math.max(1, Math.round(o.width))
+  const height = Math.max(1, Math.round(o.height))
+  const titleTexts = lines.filter((l) => l.role === 'title').map((l) => l.text.trim()).filter(Boolean)
+  const hasBody = lines.some((l) => l.role === 'body' && l.text.trim())
+  const longest = titleTexts.reduce((m, t) => Math.max(m, Array.from(t).length), 1)
+  let sizePct = 0.04
+  for (const pct of [0.06, 0.055, 0.05, 0.045, 0.04]) {
+    if (estimateMaxCharsPerLine(width, Math.max(1, Math.round(height * pct))) >= longest) { sizePct = pct; break }
+  }
+  const titleStyle: SubtitleStyleConfig = {
+    size_pct: sizePct,
+    bold: true,
+    alignment: hasBody ? 8 : 5,
+    ...(height > width ? { outline_pct: 0.0018 } : {}),
+  }
+  const bodyStyle: SubtitleStyleConfig = { size_pct: 0.04, alignment: 2, bold: false }
+  const styles = hasBody ? [titleStyle, bodyStyle] : [titleStyle]
+  const cue_style = lines.map((l) => (l.role === 'title' ? 0 : 1))
+  const style = { ...(hasBody ? bodyStyle : titleStyle) }
+  return { style, styles, cue_style }
+}
+
+/**
+ * LLM 排版产物解析（M61 T5，纯函数；探针直测）：契约 `{"styles":[SubtitleStyleConfig…],"assign":[cue→style 下标…]}`。
+ * 逐组 sanitizeSubtitleStyle 清洗（非法组 → 空对象回退基线公式）；assign 缺失/长度不符 → 按 role 推导默认映射；
+ * 越界下标逐行校正。无 JSON/根非对象/styles 空 → null（调用方降级规则层）。全局主样式与规则层同语义（混合取正文组）。
+ */
+export function parseStylePlan(
+  raw: string,
+  roles: Array<{ text: string; role: 'title' | 'body' }>,
+  _o: { width: number; height: number },
+): TitleStylePlan | null {
+  const noFence = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+  const start = noFence.indexOf('{')
+  if (start < 0) return null
+  let obj: unknown
+  try {
+    obj = JSON.parse(noFence.slice(start))
+  } catch {
+    return null
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null
+  const rec = obj as Record<string, unknown>
+  if (!Array.isArray(rec['styles']) || rec['styles'].length === 0) return null
+  const styles: SubtitleStyleConfig[] = (rec['styles'] as unknown[]).slice(0, 8).map((g) => sanitizeSubtitleStyle(g as SubtitleStyleConfig) ?? {})
+  const fallbackIdx = (i: number) => (roles[i]!.role === 'title' ? 0 : Math.min(1, styles.length - 1))
+  const assignRaw = Array.isArray(rec['assign']) ? (rec['assign'] as unknown[]) : null
+  const cue_style = roles.map((_, i) => {
+    const x = assignRaw && i < assignRaw.length ? assignRaw[i] : undefined
+    return typeof x === 'number' && Number.isInteger(x) && x >= 0 && x < styles.length ? x : fallbackIdx(i)
+  })
+  const bodyIdx = roles.findIndex((r) => r.role === 'body')
+  const primaryIdx = bodyIdx >= 0 ? cue_style[bodyIdx]! : cue_style[0]!
+  return { style: { ...styles[primaryIdx]! }, styles, cue_style }
+}
+
+/**
+ * LLM 智能排版（M61 T5，style_mode=llm）：title-style.md 契约单次调用（与 estimated 分支同法 recordLlmUsage 计费）；
+ * 无实例/请求异常/产物无效 → null（调用方降级规则层并 log），绝不让排版设计失败阻断字幕产出。
+ */
+async function designStyleWithLlm(
+  ctx: StepContext,
+  roles: Array<{ text: string; role: 'title' | 'body' }>,
+  o: { width: number; height: number },
+  timingSnapshot: string,
+): Promise<TitleStylePlan | null> {
+  try {
+    const templateText = loadPromptTemplate('title-style.md')
+    const linesPayload = roles.map((r, i) => ({ index: i, role: r.role, text: r.text }))
+    const userPrompt = `${templateText}\n\n===== 字幕行（role: title=标题行 / body=正文行） =====\n${JSON.stringify(linesPayload, null, 2)}\n\n输出画布：${o.width}×${o.height}\n计时参考：${timingSnapshot}`
+    const ep = await resolveLlmEndpoint()
+    ctx.log(`标题智能排版：调用 ${ep.model}（LLM 设计，${roles.length} 行）`)
+    const llmCfg = (ctx.settings.llm ?? {}) as Record<string, unknown>
+    const res = await chatCompleteDetailed(
+      [
+        { role: 'system', content: '你是字幕排版设计引擎，只输出任务要求的最小 JSON 本体，不输出任何解释性文字或 markdown 围栏。' },
+        { role: 'user', content: userPrompt },
+      ],
+      ep,
+      { temperature: 0.4, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 8000 },
+    )
+    await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
+    return parseStylePlan(res.content, roles, o)
+  } catch (err) {
+    ctx.log(`LLM 智能排版调用异常（提示词缺失/请求失败）：${(err as Error).message}`)
+    return null
+  }
 }
 
 /** measured 时间轴（spec §7.1-4/5）：行时长按 code point 比例分配句时长（末行=余量）、句内短行合并、句间首尾相接 */
