@@ -209,7 +209,7 @@ async function onFiles(e: Event): Promise<void> {
             @open="openRefPreview(m)"
           />
           <div v-else class="bubble">{{ m.content }}</div>
-          <div v-if="typeof m.id === 'string'" class="pending-hint">发送中…</div>
+          <div v-if="typeof m.id === 'string'" class="pending-hint">{{ planning() ? '已发送 · 等待回复…' : '发送中…' }}</div>
           <div
             v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
             class="qs"

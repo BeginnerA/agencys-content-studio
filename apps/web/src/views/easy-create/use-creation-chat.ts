@@ -315,6 +315,10 @@ async function send(content: string, replan = false): Promise<boolean> {
   if (signature !== sendTicket.signature) sendTicket = { signature, key: newRequestKey('msg') }
   // 发送即上屏；规划在途（错误提示「请更新状态」）时保留气泡——消息确已被服务端接收，轮询确认后自然摘除
   addPending(sendTicket.key, content.trim())
+  // 规划在途回读轮询：同步 send 动辄数十秒，期间定期 fetchDetail → ①阶段进度实时推进（不再卡「接收请求中」）；
+  // ②服务端首事务落库用户消息后由轮询确认（同 requestKey 真消息进列表 → 占位气泡自然摘除，不再误显「发送中」）。
+  // fetchDetail 的 commit 有 token/prior/first.busy 三重守卫，POST 返回的终态 detail 不会被在途旧值覆盖。
+  const inflight = setInterval(() => { void fetchDetail(id) }, 3000)
   try {
     const detail = await creationChatApi.send(
       id,
@@ -339,6 +343,7 @@ async function send(content: string, replan = false): Promise<boolean> {
     if (id === state.currentId) state.error = errText(e)
     return false
   } finally {
+    clearInterval(inflight)
     if (token === viewEpoch) state.busySend = false
   }
 }
