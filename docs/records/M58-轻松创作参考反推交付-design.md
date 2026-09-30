@@ -10,7 +10,8 @@
 2. **字段形收敛（修正 §3.1）**：条目实名 `assetId`（非 sourceAssetId），由 `refsAnalysisEntrySchema` strict 收口（越界键拒收），并增 `name/transcribed/truncated` 可检视字段；条目上限 `MAX_REFS_ANALYSIS=12`。无参考时 `refsAnalysis=undefined`，`hashJson` 落库时键自动脱落 → 老路径 JSON 逐字零漂移（机制保证而非约定）。
 3. **计费口径（修正 §四）**：2a 初稿调用复用规划同 llm 端点（`chatCompleteDetailed`），`recordUsage(purpose:'storyboard_draft')` **先入账后进预算闸**（沿用 M31 分析期事实计费口径）；不进 estimate 新付费面。措辞真源 `REVERSE_INTENT_WORDS`/`wantsReverseIntent` 导出自 M57 route-hint 同源（探针直验两处同措辞一致命中，防漂移）。
 4. **探针边界（修正 §六）**：probe-m58 为纯函数+契约级（schema/normalize/draft/gating/drift/images），零网络零 stubFetch（2a 接线部分验其纯函数前置与契约承载，不真调模型）；M31 回归凭 probe-m31 全绿（含 compileReferenceContext 新返回形 `{messages,analyses,imageAnalyses}` 调用形同步）。
-5. **图片反推补口（后补，用户指出原指令为「图片视频反推都要做」）**：原 §七把图片风格反推留 backlog 是实施时的窄化，已补真功能——对话内上传参考图 + 反推措辞 + vision 实例 → 复用 `image_analyze` 多模态核心（抽出可复用函数 `analyzeImageSources`，与 `analyzeVideoSource` 同构）逐图反推可投产 `image_prompt`，产物编进 `plan.imageAnalysis`（strict 收口、≤8 图、字段有界截断，进 planHash 与 refsAnalysis 同律）；反推文本简报注入规划上下文作 shots 画面/风格基准（不再重复注入原图 image_url，省一次多模态往返）；失败/无可用图 → blocker 不静默不编造；前端 `PlanImageAnalysis.vue` 可检视可复制；route-hint 新增信号 3b（hasImageRef+vision+措辞→`image-reverse` 完整文案包路线建议）；0 新表 0 新 action 0 新付费面（计价口径同 image_analyze）。
+5. **图片反推补口（后补，用户指出原指令为「图片视频反推都要做」）**：原 §七把图片风格反推留 backlog 是实施时的窄化，已补真功能——对话内上传参考图 + 反推措辞 + vision 实例 → 复用 `image_analyze` 多模态核心（抽出可复用函数 `analyzeImageSources`，与 `analyzeVideoSource` 同构）逐图反推可投产 `image_prompt`，产物编进 `plan.imageAnalysis`（strict 收口、≤8 图、字段有界截断，进 planHash 与 refsAnalysis 同律）；反推文本简报注入规划上下文作 shots 画面/风格基准（不再重复注入原图 image_url，省一次多模态往返）；失败/无可用图 → blocker 不静默不编造；route-hint 新增信号 3b（hasImageRef+vision+措辞→`image-reverse` 完整文案包路线建议）；0 新表 0 新 action 0 新付费面（计价口径同 image_analyze）。
+6. **产物落点二次修正（用户实测反馈「反推不对」）**：初版仅在 `reply.kind==='plan'` 时把产物写进方案卡，而反推实际在规划模型调用前（`compileReferenceContext`）就已算出——当规划模型本轮返回 `clarify`（追问）而非 `plan` 时，产物被算出却无处展示，用户看不到「反推图片提示词」的直接交付物。修正为：产物随 assistant 消息 `payload.imageAnalysis` 透出（**plan/clarify 皆带**），由 `ConversationPanel.vue` 在对话流内直接渲染 `PlanImageAnalysis.vue`（贴近用户提问处，可复制正/负向提示词 + 主色板）；方案卡不再重复渲染该区块（`plan.imageAnalysis` 仍保留以维持 planHash 作废语义）。纯函数契约（normalize/schema/hash）不变，probe-m58 images 节继续覆盖。
 
 以下原设计正文保留供对照。
 
@@ -63,4 +64,4 @@
 ## 七、边界与遗留
 
 - 不做逐镜反推大编辑器（归专业镜头工作台）；不做音频克隆（延续 clone 拒绝）。
-- 图片参考的风格反推：**已补口实施（见 §零.5）**——对话内多模态反推产可投产 image_prompt 进 plan.imageAnalysis 可检视；逐图完整文案包（发布文案/系列策划）仍归专业端 `image-reverse` 模板（route-hint 3b 信号给路线建议）。
+- 图片参考的风格反推：**已补口实施（见 §零.5–零.6）**——对话内多模态反推产可投产 image_prompt，随消息 payload 在对话流直接渲染可检视（plan/clarify 皆可见）；逐图完整文案包（发布文案/系列策划）仍归专业端 `image-reverse` 模板（route-hint 3b 信号给路线建议）。

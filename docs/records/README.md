@@ -70,7 +70,7 @@
 | M55 | 本地全类型模型接入 | [local-model-integration-spec.md](local-model-integration-spec.md) | — | ✅ m55 | 用户向指南 [../local-zero-code-wiring.md](../local-zero-code-wiring.md) |
 | M56 | 轻松创作「毕业通道」（升级专业成片/连载立项） | [M56-轻松创作毕业通道-design.md](M56-轻松创作毕业通道-design.md) | — | ✅ m56 | 立项误编 M48 已修正（与已交付冲突）；另有 M59/M60 立项队列（M59/M60 均已实施） |
 | M57 | 轻松创作智能载体路由 | [M57-轻松创作智能载体路由-design.md](M57-轻松创作智能载体路由-design.md) | — | ✅ m57 | 已实施（确定性派生替代原 LLM 注入，见 spec §零） |
-| M58 | 轻松创作参考反推交付 | [M58-轻松创作参考反推交付-design.md](M58-轻松创作参考反推交付-design.md) | — | ✅ m58 | 已实施（2b 解析产物进 plan+planHash 可检视；2a 反推分镜初稿作规划蓝本，机制修正见 spec §零）；图片反推补口已实施（对话内参考图多模态反推进 plan.imageAnalysis，见 §零.5） |
+| M58 | 轻松创作参考反推交付 | [M58-轻松创作参考反推交付-design.md](M58-轻松创作参考反推交付-design.md) | — | ✅ m58 | 已实施（2b 解析产物进 plan+planHash 可检视；2a 反推分镜初稿作规划蓝本，机制修正见 spec §零）；图片反推补口已实施（对话内参考图多模态反推；产物随消息 payload 在对话流直接渲染，plan/clarify 皆可见，见 §零.5–零.6） |
 | M59 | 轻松创作时长上限放宽 | [M59-轻松创作时长上限放宽-design.md](M59-轻松创作时长上限放宽-design.md) | — | ✅ m59 | 已实施（有节制放宽 60→90s/12→16 镜/36→48 句，五处写死点收敛真源常数，单镜 1–15s 不动，机制修正见 spec §零） |
 | M60 | 短剧商业化结构设计 | [M60-短剧商业化结构设计-design.md](M60-短剧商业化结构设计-design.md) | — | ✅ m60 | 已实施（series-setup v4 新增 monetize 步产 monetization-json + 四提示词注入；卡点=剧情设计思路，真实付费由发布平台决定，见 spec 定位澄清） |
 | M61 | 混剪开场标题智能编排与标题字卡（三期一体） | [M61-混剪标题智能编排-design.md](M61-混剪标题智能编排-design.md) | [M61-计划](plans/M61-计划.md) | ✅ m61 | 已实施（三期全量 2026-09-30：期1 规则排版+本地字卡零计费 / 期2 LLM 排版+AI 背景卡付费开关 / 期3 多 ASS Style 分层；probe-m61 六节 114 断言 + probe:ci 5488 断言全绿；实测推翻 force_style 仅作用 Default 假设；承接 M53/M54 混剪线） |

@@ -300,6 +300,8 @@ export interface CreationChatMessagePayload {
   revision?: number
   /** 载体路由建议（M57，仅 kind='plan' 且命中越界信号时存在）；不进方案/不影响确认 */
   routeHint?: CreationRouteHintView | null
+  /** M58 补口：图片反推产物（服务端多模态反推写入，plan/clarify 皆随消息透出；对话流可复制交付物） */
+  imageAnalysis?: CreationImageAnalysisEntry[]
   runId?: number
   verifiedFailedTaskIds?: number[]
   fingerprint?: string

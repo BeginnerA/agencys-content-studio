@@ -6,7 +6,6 @@ import { fmtCost } from '../../lib/format'
 import type { useEasyCreate } from './use-creation-chat'
 import PlanRefs from './PlanRefs.vue'
 import PlanRefsAnalysis from './PlanRefsAnalysis.vue'
-import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import CreationStartupOptions from './CreationStartupOptions.vue'
 import CreationDialogueCast from './CreationDialogueCast.vue'
 import CreationRouteHint from './CreationRouteHint.vue'
@@ -267,8 +266,7 @@ async function onConfirm(): Promise<void> {
     <!-- M58 2b：参考视频解析产物可检视（服务端写入才有此键；无参考/无解析完全不渲染） -->
     <PlanRefsAnalysis v-if="plan.refsAnalysis?.length" :entries="plan.refsAnalysis" />
 
-    <!-- M58 补口：参考图片反推产物可检视（服务端多模态反推写入才有此键；无图片反推完全不渲染） -->
-    <PlanImageAnalysis v-if="plan.imageAnalysis?.length" :entries="plan.imageAnalysis" />
+    <!-- M58 补口：图片反推产物已改到对话流随消息直接渲染（见 ConversationPanel），方案卡不再重复展示 -->
 
     <div class="fold">
       <button

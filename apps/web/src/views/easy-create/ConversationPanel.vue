@@ -6,6 +6,7 @@ import AssetPreviewer from '../../components/asset/previewer/index.vue'
 import AssetPickerModal from './AssetPickerModal.vue'
 import MessageRefBubble from './MessageRefBubble.vue'
 import AttachmentTray from './AttachmentTray.vue'
+import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import { assetApi } from '../../lib/api'
 import { CREATION_ROLE_LABELS, creationSystemLabel } from '../../lib/types'
 import { isAttachment, refAssetId } from './ref-utils'
@@ -230,6 +231,12 @@ async function onFiles(e: Event): Promise<void> {
               <span class="qs-tx">{{ q }}</span>
             </button>
           </div>
+          <!-- M58 补口：图片反推产物随消息透出，在对话流直接渲染（plan/clarify 皆有，用户「反推图片提示词」的交付物） -->
+          <PlanImageAnalysis
+            v-if="m.payload?.imageAnalysis?.length"
+            class="msg-img-analysis"
+            :entries="m.payload.imageAnalysis"
+          />
         </div>
       </div>
       <div v-if="planning()" class="msg assistant">
@@ -613,6 +620,12 @@ async function onFiles(e: Event): Promise<void> {
 .qs-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* 图片反推产物内联区：与上方气泡/追问拉开间距，占满消息列宽便于展示长提示词 */
+.msg-img-analysis {
+  margin-top: 10px;
+  width: 100%;
 }
 
 .pad {

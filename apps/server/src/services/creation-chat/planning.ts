@@ -290,6 +290,10 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const routeHint = reply.kind === 'plan'
       ? deriveRouteHint({ userText: input.content, plan: reply.plan, hasVideoContentRef: effectiveRefs.some((r) => r.role === 'content' && r.kind === 'video'), hasImageRef: effectiveRefs.some((r) => r.kind === 'image' && r.role !== 'content'), hasVision: vision })
       : null
+    // M58 补口修正：图片反推产物随 assistant 消息 payload 透出（plan/clarify 皆带）——用户「反推图片提示词」的
+    // 直接交付物应在对话流可见，不受「本轮规划模型返回 clarify 而非 plan」影响（旧逻辑仅 plan 才写方案卡，
+    // clarify 轮反推虽已在 L180 算出却不可见，即用户所报「反推不对」根因）。无图片反推 → 无此键（老路径零漂移）。
+    const imgAnalysisPayload = refComp.imageAnalyses.length ? { imageAnalysis: refComp.imageAnalyses } : {}
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，规划结果未采纳', 409)
@@ -299,7 +303,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
         preflight: pf ? JSON.stringify(pf) : null, updatedAt: Date.now(), error: null,
       }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
       if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
-      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions } : { kind: reply.kind, revision: claimed.planRevision + 1, ...(routeHint ? { routeHint } : {}) }), createdAt: Date.now() })
+      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions, ...imgAnalysisPayload } : { kind: reply.kind, revision: claimed.planRevision + 1, ...(routeHint ? { routeHint } : {}), ...imgAnalysisPayload }), createdAt: Date.now() })
       // 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
       if (plan && projectMeta && project.status === 'draft') {
         const m = projectMeta.meta
