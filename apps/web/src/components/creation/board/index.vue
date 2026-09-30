@@ -11,7 +11,7 @@
  *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真，spec §2.2）
  * - 缩放栏 / 操作指南悬浮件拆至 BoardHud.vue（行为零变更）
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useBoardViewport } from '../../../lib/board-viewport'
 import type { CanvasDocNode, CanvasGroup } from '../../../lib/types'
 import { DEFAULT_H, NODE_W, PAD, bezier } from './internals'
@@ -359,6 +359,35 @@ const {
 })
 
 defineExpose({ fit: fitView, centerWorld, centerOn })
+
+// ---- 焦点环输入模态追踪 ----
+// 视口 tabindex=0 + :focus-visible 会在「点击节点后按 Delete」时被浏览器点亮
+// （点击令视口获焦但不显环，随后的键盘操作切换到键盘模态 → 整块画布突然描蓝环且滞留）。
+// 改为仅在真正用 Tab 键移入画布时显示焦点环：指针操作清零键盘模态，focus 时按模态决定是否描环。
+const showFocusRing = ref(false)
+let navWithKeyboard = false
+function markKeyboardNav(ev: KeyboardEvent): void {
+  if (ev.key === 'Tab') navWithKeyboard = true
+}
+function markPointerNav(): void {
+  navWithKeyboard = false
+  showFocusRing.value = false
+}
+function onViewportFocus(): void {
+  showFocusRing.value = navWithKeyboard
+}
+function onViewportBlur(): void {
+  showFocusRing.value = false
+  navWithKeyboard = false
+}
+onMounted(() => {
+  window.addEventListener('keydown', markKeyboardNav, true)
+  window.addEventListener('pointerdown', markPointerNav, true)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', markKeyboardNav, true)
+  window.removeEventListener('pointerdown', markPointerNav, true)
+})
 </script>
 
 <template>
@@ -369,9 +398,12 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
     :class="{
       linking: linkFrom != null,
       grabbing: spaceDown || mode === 'pan',
+      'kb-focus': showFocusRing,
     }"
     tabindex="0"
     aria-label="创作画布（左拖框选 / 空格或中键拖动平移 / 滚轮缩放 / 双击空白建节点 / 拖入素材）"
+    @focus="onViewportFocus"
+    @blur="onViewportBlur"
     @pointerdown="onViewportPointerDown"
     @pointermove="onViewportPointerMove"
     @pointerup="onViewportPointerUp"
@@ -753,7 +785,7 @@ defineExpose({ fit: fitView, centerWorld, centerOn })
   --cg: 107 114 128;
 }
 
-.cb-viewport:focus-visible {
+.cb-viewport.kb-focus {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

@@ -39,6 +39,13 @@ const shotOptions = computed(() => {
 function onShotChange(clientId: string, shotId: string): void {
   void props.s.setAttachmentShot(clientId, shotId)
 }
+
+// 逐镜绑定可用性提示：方案未生成时只有「整片」一项，给出说明避免用户误以为下拉框失灵
+const shotBindHint = computed(() => {
+  if (!props.s.state.detail?.session.plan) return '逐镜绑定需等方案生成后可选，当前仅能「用于整片」'
+  if (shotOptions.value.length === 0) return '当前方案没有可绑定的镜头'
+  return '选择这张参考图用于整片还是某个镜头'
+})
 </script>
 
 <template>
@@ -92,13 +99,17 @@ function onShotChange(clientId: string, shotId: string): void {
         :value="a.shotId ?? ''"
         :disabled="s.attachmentsLocked.value || !a.assetId"
         :aria-label="'用于哪一镜：' + a.name"
-        title="选择这张参考图用于整片还是某个镜头"
+        :title="shotBindHint"
         @change="
           onShotChange(a.clientId, ($event.target as HTMLSelectElement).value)
         "
       >
         <option value="">用于整片</option>
         <option v-for="sh in shotOptions" :key="sh.id" :value="sh.id">{{ sh.label }}</option>
+        <!-- 方案未生成 / 无镜头候选：占位说明项，禁用不可选，仅解释为何只有「用于整片」 -->
+        <option v-if="shotOptions.length === 0" value="__hint__" disabled>
+          {{ shotBindHint }}
+        </option>
       </select>
       <button
         v-if="a.error && !a.uploading && (a.file || a.sourceAssetId) && s.state.currentId"
@@ -189,9 +200,11 @@ function onShotChange(clientId: string, shotId: string): void {
 .att-name {
   font-size: 12.5px;
   color: var(--text);
+  /* 单行省略：缺 nowrap 时 text-overflow 从不生效，长文件名会折行撑破行高；全名由 :title 悬停展示 */
+  min-width: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  overflow-wrap: anywhere;
 }
 
 .att-sub {

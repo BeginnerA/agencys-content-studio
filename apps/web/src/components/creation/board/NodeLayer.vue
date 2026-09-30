@@ -233,6 +233,13 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
   touch-action: none;
 }
 
+/* gen 节点输入端口固定排在 top:46+i*22（最多 4 个 → 底部 ~123px）；
+   待生成/失败态无缩略图时卡片会塌到内容高度导致端口溢出卡外，
+   故常备与 DEFAULT_H 同值的预留高度，保证端口始终落在卡内（边锚点取卡垂直中心，不受此影响） */
+.cnode.gen {
+  min-height: 140px;
+}
+
 .cnode:hover {
   border-color: rgb(148 163 184 / 55%);
   box-shadow: 0 6px 16px rgb(0 0 0 / 22%);
