@@ -6,7 +6,7 @@
  * 必须先于任何 src 动态 import。live 节素材本地 ffmpeg 生成（color/sine）；music_gen 走
  * globalThis.fetch 桩契约测试（零真实付费），并断言失败降级库内 auto 与 usage kind='music' 口径。
  *
- * 断言面（docs/montage-ai-spec.md §7）：
+ * 断言面（docs/records/montage-ai-spec.md §7）：
  *  - pure：kbDirectionFor auto 三态 + 既有模式零 diff / classifyAnchor / kbAnchorFor / voteSubject /
  *    montageEnabled 对 auto 触发 / planCollageSegments 四种 layout / pickBgm 规则 / scanBgmLibrary；
  *  - args：buildNormalizeArgs collage 分支（duo vstack、grid xstack、tile 后 zoompan/定帧）、

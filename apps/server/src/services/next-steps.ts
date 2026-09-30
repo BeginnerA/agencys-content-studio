@@ -1,9 +1,9 @@
 /**
  * 规则引擎「下一步建议」（零 LLM、零计费）。
  *
- * 背景：[`canvasAdvice`](file:///d:/work/AI/Agent/agencys-content-studio/apps/server/src/services/creation/advice.ts)
+ * 背景：[`canvasAdvice`](../services/creation/advice.ts)
  * 只在画布页由用户手动点按钮触发（每次 LLM 计费）。项目主页 / run 完成后 / 模板链上游完成时，
- * 用户看不到「下一步该做什么」。但 [`Template.next?: string[]`](file:///d:/work/AI/Agent/agencys-content-studio/apps/server/src/pipeline/types.ts)
+ * 用户看不到「下一步该做什么」。但 [`Template.next?: string[]`](../pipeline/types.ts)
  * 元数据早已存在（推荐下游模板），从未消费。
  *
  * 方案：按项目当前状态（runs / publications / 模板 next 字段）产 ≤3 条纯提示 chip；

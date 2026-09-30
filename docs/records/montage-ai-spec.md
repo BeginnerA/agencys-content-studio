@@ -1,6 +1,8 @@
 # M54 智能混剪增强 Spec（photo-montage 二期：智能缓推 / 拼贴版式 / 智能 BGM）
 
-> 承接 M53（docs/photo-montage-spec.md）。用户选定四块全做：kb:auto 智能缓推、LLM 构图感知（可选开关）、多图同屏拼贴、智能 BGM（库内自动 + AI 生成分档）。
+> **归档戳（2026-09-30）**：本稿被代码探针或验收文档引用为「实现真源存档」，请原地保留、勿删勿移。正文为落笔即冻结的历史快照，交付状态见 [索引](README.md)。
+
+> 承接 M53（docs/records/photo-montage-spec.md）。用户选定四块全做：kb:auto 智能缓推、LLM 构图感知（可选开关）、多图同屏拼贴、智能 BGM（库内自动 + AI 生成分档）。
 > 红线沿用 M53：未触发新键时 legacy args 逐字节不变；strict_delivery 恒不进混剪链；photo-montage 默认零 LLM 零付费（G2/G4b 显式开启才生效并记用量）。
 
 ## 1. 能力与目标

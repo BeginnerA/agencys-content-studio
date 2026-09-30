@@ -570,7 +570,7 @@ M38 的 voice/size 注册表粒度是 **provider 级**，但「哪些音色可�
 - **G16.4 Web 预览可覆盖**：方案卡新增「将创建的项目」区块（名称/载体下拉/标签/简介，默认即智能填写值）；不提供「默认模板」设置项（出片模板由 recipe 固定、项目默认模板服务端按载体自动派生，需调整去项目编辑页）；`projectDraft` dirty 护栏防服务端回读冲掉正在输入；确认只提交改过的字段；草稿期隐藏顶栏「项目」入口；首页/空态文案改为「确认前不立项，点开始制作才创建项目」。
 - **G16.5 删除会话闭环 `DELETE /creation-sessions/:id`**（新建 `creation-chat/session-delete.ts`）：影子项目唯一副作用（聊一半放弃 → 库里永久留不可见的 draft 行）就此回收。删除范围按是否立项分两种且不静默多删——未立项（项目仍 draft 且名下无 run）事务内级联清掉消息/会话/参考素材/规划记账/项目行，提交后回收磁盘目录；已立项只删对话记录，项目与产物原样保留并回传 `reason` 明告（要删项目请去项目页）。在途保护：planning/starting → 409 `session_busy`，关联 run 仍 queued/running/waiting_input → 409 `run_active`。列表卡片右上角删除按钮按「是否已立项」分措辞二次确认，结果与失败原因就地显示。
 
-验证：`probe-m40`（**6 节 80 断言全绿**，零网络零计费：stubFetch 回放规划 + stub startRun + app.request 内存 HTTP 删会话）；**M30 / M31 / M32 / M35 / M38 / M39 回归全绿**（合计 313 断言）；server `tsc`、`vue-tsc --noEmit`、`vite build` 全绿。详规：`docs/superpowers/specs/2026-09-20-agencys-content-studio-m40-design.md`。遗留：无（草稿行累积已由 G16.5 闭环）。
+验证：`probe-m40`（**6 节 80 断言全绿**，零网络零计费：stubFetch 回放规划 + stub startRun + app.request 内存 HTTP 删会话）；**M30 / M31 / M32 / M35 / M38 / M39 回归全绿**（合计 313 断言）；server `tsc`、`vue-tsc --noEmit`、`vite build` 全绿。详规：`docs/records/M40-轻松创作确认才立项-design.md`。遗留：无（草稿行累积已由 G16.5 闭环）。
 
 ---
 
@@ -728,7 +728,7 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ## M53 能力速览（素材混剪成片：照片+视频任意组合零 LLM 出片）
 
-> 痛点：用户持有一批现成照片 / 短视频（婚宴大屏、纪念册、快闪成片类场景），想直接拼成一支完整成片——既有 `ffmpeg_merge` 对「照片+视频混排」会崩（图片 `-loop 1` 无时长上界与视频段时长不同基，unlimited 图片流污染 concat），且视频段原声在既有单段链中必丢、纯照片幻灯片无缓推动效、定长标题字幕无零 LLM 计时模式。本里程碑引入**两段式混剪引擎**（phase-1 逐段归一化 → phase-2 轻量拼接）+ 内置模板 `photo-montage`（零 LLM 零付费全链）；详规：`docs/photo-montage-spec.md`。**非目标**：逐镜精细排期（混合时间轴编辑器）、多画幅输出同片、转场全库开放（混剪态仅无重叠 concat 与 fade 系 xfade 可用，余者自动降级直拼）。
+> 痛点：用户持有一批现成照片 / 短视频（婚宴大屏、纪念册、快闪成片类场景），想直接拼成一支完整成片——既有 `ffmpeg_merge` 对「照片+视频混排」会崩（图片 `-loop 1` 无时长上界与视频段时长不同基，unlimited 图片流污染 concat），且视频段原声在既有单段链中必丢、纯照片幻灯片无缓推动效、定长标题字幕无零 LLM 计时模式。本里程碑引入**两段式混剪引擎**（phase-1 逐段归一化 → phase-2 轻量拼接）+ 内置模板 `photo-montage`（零 LLM 零付费全链）；详规：`docs/records/photo-montage-spec.md`。**非目标**：逐镜精细排期（混合时间轴编辑器）、多画幅输出同片、转场全库开放（混剪态仅无重叠 concat 与 fade 系 xfade 可用，余者自动降级直拼）。
 
 - **M53.1 mixed 段序列（`segments.ts`）**：`computeShotSegments` 新增 `'mixed'` mode——images + motion_clips 双输入按行 kind 分流为统一段序列（图段定长 = per-shot 覆盖 > duration_per_shot；视频段按资产 duration 实测），音频行 / 缺文件 skip+warn；照片在前、视频在后 = 时间轴顺序契约。
 - **M53.2 两段式归一化（`montage.ts` 新文件）**：phase-1 `normalizeSegmentsToClips` 逐段产出定长带音轨临时 mp4（图段：kb 时 zoompan（底图 ×2 超采样、step=0.25/帧数）或定帧 + anullsrc；视段：tpad/trim 定长 + 原声 apad/atrim，探测无声则 anullsrc 兑底；`probeHasAudioStream` ffprobe 三态 true/false/null 宽容）；phase-2 `buildComposeArgs({montage:true})` 归一段 `-i` 直读 + 轻量 tpad/trim/fps/settb 链（无 `-loop`）。
@@ -744,7 +744,7 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ## M54 能力速览（智能混剪增强：AI 协助的缓推/锚点/拼贴/配乐）
 
-> 痛点：M53 混剪是「机械拼接」——缓推方向要人预测横竖、多图只能逐张全屏、配乐要么手绑要么没有。本里程碑在混剪引擎上叠加四块 AI 协助能力（G1 kb:auto 智能定向 / G2 LLM 构图感知锚点 / G3 多图同屏拼贴 / G4 智能 BGM 库内自动+AI 生成），新能力全部显式开启才生效；详规：`docs/montage-ai-spec.md`。**非目标**：智能选曲不接外部音乐推荐服务；生乐首供仅 MiniMax（同厂商 speech/video 适配器参照鉴权模式）；不改 phase-2 一段一 `-i` 不变量（collage 在 phase-1 解决）。
+> 痛点：M53 混剪是「机械拼接」——缓推方向要人预测横竖、多图只能逐张全屏、配乐要么手绑要么没有。本里程碑在混剪引擎上叠加四块 AI 协助能力（G1 kb:auto 智能定向 / G2 LLM 构图感知锚点 / G3 多图同屏拼贴 / G4 智能 BGM 库内自动+AI 生成），新能力全部显式开启才生效；详规：`docs/records/montage-ai-spec.md`。**非目标**：智能选曲不接外部音乐推荐服务；生乐首供仅 MiniMax（同厂商 speech/video 适配器参照鉴权模式）；不改 phase-2 一段一 `-i` 不变量（collage 在 phase-1 解决）。
 
 - **M54.1 kb:auto 智能缓推（`montage.ts`）**：`KenBurns` 扩 `'auto'`；`kbDirectionFor(mode,index,hint?)` auto 态按 ffprobe 实测宽高定方向（阈值对称带 1.05：横图/方形缓推、竖图缓拉，探测失败宽容推近）；`probeImageSize` 尺寸事实源；index.ts 经 `resolveHint` 逐段缓存实测，溯源 `kb_applied` 仅 auto 态追加。
 - **M54.2 LLM 构图感知锚点（G2，analyze_composition 门控默认关）**：模板可选 `analyze` 步（image_analyze，`when: input.analyze_composition == true`）；产物 composition/subject 文本经 `classifyAnchor` 中英文三分（left/right/center）+ `voteSubject` 多数决，`kbAnchorFor(dir,subject)` 产出 zoompan x/y 加权锚点（in 推向主体 0.7/1.3、out 反向；center → null 逐字节 = M53 居中公式）；解析失败/缺产物 log 后保持居中不断链。
@@ -758,9 +758,25 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M55 能力速览（本地全类型模型接入：LocalAI + ComfyUI 双轨）
+
+> 痛点：本地自部署运行时（LocalAI 单二进制覆盖 LLM/图/视频/TTS/ASR/音乐；ComfyUI 节点式图/视频）此前只能走 `ollama` 一条本地 LLM 轨。本里程碑按 doctrine「**接入看协议、不看位置**」把两轨全面接入：说 OpenAI 方言的通道零代码挂既有 `openai_*` 实例行，私有协议通道在 kit 写适配器 + 宿主立目录行。分类裁定：LocalAI/ComfyUI 属「本地运行时真厂商」（与 `ollama` 同源先例），**允许私有协议视频/音乐逐行逐适配器**，不受「网关私有协议整体移除」红线约束；详规：`docs/records/local-model-integration-spec.md`，零代码接线：`docs/local-zero-code-wiring.md`。**解冻 kit**：ai-provider-kit 0.3.0 → 0.4.0（新协议适配器）。**非目标**：LocalAI 图片放大端点、ComfyUI 音乐轨（无成熟工作流）。
+
+- **M55.1 零代码通道（Phase 1，改配置不改代码）**：LocalAI LLM/TTS/ASR/文生图经既有 `openai_llm`/`openai_audio`（/可选 `openai_image`）实例承载（baseUrl 指 `http://localhost:8080/v1`，Key 填占位串）。ASR 严格对白沿用 `strict-asr.ts` 门槛 `asr_model==='whisper-1' && asr_protocol==='openai_verbose_json'`——`verbose_json`+segments 逐时保真度**未经实机坐实前默认仅配音**，不静默入对白链。
+- **M55.2 LocalAI 图 + 视频适配器（Phase 2，kit）**：`protocols/image/localai-image.ts`（`provider=localai_image`，`referenceImages='base64'`：txt2img `/v1/images/generations` 强制 `response_format=b64_json` 规避相对 url；参考图走 JSON `ref_images` 非 OpenAI multipart `/images/edits`）、`protocols/video/localai-video.ts`（`firstFrame='base64'`：同步 `POST {root}/video`（根路径非 `/v1`）解析 `data[0].b64_json|url`，`query()` 抛「不支持二次查询」，`probe()` 走 `GET /v1/models`）。
+- **M55.3 ComfyUI 图 + 视频适配器（Phase 3，kit）**：`protocols/comfyui/{shared.ts,image,video}`——`POST /prompt`（`{prompt:graph}`）→ `GET /history/{id}` 轮询 → `GET /view` 收字节转 base64；输入图先 `POST /upload/image` 换服务端文件名再注入节点；`probe()` 走 `GET /system_stats`。工作流 `extra.workflow_json` 为唯一事实源，占位符 `{{prompt}}/{{negative}}/{{seed}}/{{width}}/{{height}}/{{frames}}/{{fps}}` 注入；节点缺失/空 workflow fail-closed 抛错，不猜工作流内部结构。
+- **M55.4 LocalAI 音乐适配器（Phase 4，kit）**：`protocols/music/localai-music.ts`（`POST {base}/v1/sound-generation` ElevenLabs 兼容，体 `{model_id,text,instrumental,duration_seconds,...}` → 二进制直收，同步无轮询）。
+- **M55.5 kit 目录真源**：`registry.ts` 注册 `localai_image/comfyui_image`（image）、`localai_video/comfyui_video`（video）、`localai_music`（music）；`video-caps.ts` 为 `localai_video` 增保守背书档（i2v/t2v、2–8s、480p），`comfyui_video` 返 null（工作流自定义 fail-closed）；`extra-params.ts` 增本地轨 size/num_frames/fps/step/cfg/seed + ComfyUI workflow_json/输入节点 schema；`endpoints/provider.ts` 加可注入 `noAuthProviders`（空 Key 旁路，宿主驱动）。
+- **M55.6 宿主接线**：`db/seed.ts` `VENDOR_SEEDS`/`PROVIDER_SEEDS`/`VENDOR_PRIORITY` += `localai`（image/video/music，defaultUrl `:8080`）与 `comfyui`（image/video，`:8188`），LLM/TTS/ASR 不新建行；`adapters/provider.ts` `NO_AUTH_PROVIDER_KEYS` 传 `noAuthProviders`（本地轨留空 Key 即过守卫，对齐 ollama）；`routes/api-configs.ts` `TESTABLE_VIDEO_PROVIDER_KEYS` += `localai_video/comfyui_video`；音乐经既有通用 `getMusicAdapter` 派发零改动覆盖；无新增 Web Tab，新厂商行落既有能力页签由 `resolveExtraSchema` 自动渲染表单。
+- **红线**：本地轨 pricing 记 0；凭证沿用 ollama 式留空/占位；ComfyUI 音乐轨不做；kit 解冻仅新增适配器不动存量协议；宿主对 kit 的依赖本轮切本地 `link:` 源码直连仅供联调（**不得提交**，发布回到 git-tag 模型）。
+
+验证：`probe-m55`（三节全绿：registry 5 目录行 seed + kit 注册表 ⊇ 本地轨 + provider 串 + `VideoProviderNotReadyError` + `resolveVideoCaps` 背书；pure `buildLocalAIImageBody`/`parseLocalAIImageResponse`/`localAIVideoRootUrl`/`buildLocalAIVideoBody`/`parseLocalAIVideoResponse`/`buildComfyUIWorkflow`/`extractComfyUIOutputFiles`/`injectComfyUIInputNode`/`localAIMusicUrl`/`buildLocalAIMusicBody` 契约；live `globalThis.fetch` 桩全链路——LocalAI 图/视频出线（端点路径 + b64 解析 + 空 Key 无鉴权头）+ probe `/v1/models`、ComfyUI `/prompt`→`/history`→`/view` 三段 + probe `/system_stats`、音乐二进制直收，零真实 HTTP）。实机最小生成（拉起本地服务真跑）须由部署方执行。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
-> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/superpowers/specs/2026-09-19-agencys-content-studio-platform-intelligence-charter.md`（仓库内相对路径）。
+> 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/records/纲领-M32-M39平台智能化-charter.md`。
 
 **主题**：平台智能化改造（决策权移交）——把「啥都让用户选、啥都让用户配」收敛为「**默认自动推导 + 用户可覆盖 + 执行前预览**」三层决策模型（Tier A 自动 / Tier B 建议 / Tier C 必须人工）。根因：平台把「决策」与「核实」混在一起全推给用户；大量本属 Tier A（系统真源已知）的项被错放进「用户手填」。关键约束：Tier A 不取消校验，而是把「核实」主体从用户转移到**系统真源表 + 预览闸门**，「不猜测 / 不静默降级 / 成本可见」安全线不降。
 

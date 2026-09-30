@@ -59,6 +59,7 @@ pnpm dev    # 并行起双端：
 | `apps/server/src/` | Hono API + Pipeline 引擎（DAG 调度 / 模板快照 / 崩溃恢复）+ Action Registry + 供应商适配层 |
 | `apps/web/src/` | Vue3 工作台（项目 / 运行 / 资产 / 任务 / gate 审阅 / 模板 / AI 配置 / 记忆 / 角色 / 统计 / 批次） |
 | `docs/` | 项目文档（上手指南 / 模板详表 / AI 配置 / 回归路径 / 验收快照 / 里程碑速览） |
+| `docs/records/` | 里程碑设计留档（只读快照：各里程碑 spec / 审计取证 / 立项裁定，索引见 [docs/records/README.md](docs/records/README.md)） |
 | `workspace/templates/*.yaml` | 流水线模板（新增体裁 = 新增模板；模板页在线编辑，保存即生效） |
 | `workspace/prompts/*.md` | LLM 提示词模板（外置可编辑；模板页同区管理） |
 | `workspace/projects/{id}/` | 项目资产 + exports/ 发布包（运行时生成，API 经 /api/v1/assets/{id}/file 访问） |
@@ -76,6 +77,7 @@ pnpm dev    # 并行起双端：
 | [docs/testing.md](docs/testing.md) | 全链路回归路径（UI 手工路径 / API 快捷冒烟 / data/ 重置） |
 | [docs/acceptance.md](docs/acceptance.md) | M1–M17 验收快照（静态 + 探针 + 实弹，历史纪录） |
 | [docs/milestones.md](docs/milestones.md) | M2–M28 各里程碑能力速览（设计原则 / 变更明细 / 验证命令） |
+| [docs/records/README.md](docs/records/README.md) | 里程碑设计留档索引（M53/M54/M55 详规、DB re-baseline 取证等，落笔即冻结） |
 
 ## License
 
