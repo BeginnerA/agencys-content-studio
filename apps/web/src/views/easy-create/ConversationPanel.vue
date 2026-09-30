@@ -19,10 +19,40 @@ const fileInput = ref<HTMLInputElement | null>(null)
 // 从素材选取弹窗
 const showPicker = ref(false)
 
+// ===== 乐观上屏（行业 AI 对话标准：发送即显示自己的消息，不等模型回复）=====
+// pendingMessages 由状态机在提交瞬间写入（id = 幂等键 = 服务端 requestKey）；
+// 服务端列表里出现同 requestKey 消息即确认落库 → 撤回本地占位气泡，换成真消息
+const pendingVisible = computed(() => {
+  const acked = new Set(
+    (props.s.state.detail?.messages ?? []).map((m) => m.requestKey).filter((k): k is string => !!k),
+  )
+  return props.s.state.pendingMessages.filter((p) => !acked.has(p.id))
+})
+// 确认后清理已落库的占位项，防队列膨胀与切会话残留
+watch(pendingVisible, (visible) => {
+  for (const p of props.s.state.pendingMessages) {
+    if (!visible.includes(p)) props.s.dropPending(p.id)
+  }
+})
+const renderedMessages = computed<CreationChatMessage[]>(() => {
+  const server = props.s.state.detail?.messages ?? []
+  return [
+    ...server,
+    ...pendingVisible.value.map((p) => ({
+      id: `pending-${p.id}` as unknown as number,
+      role: 'user' as const,
+      content: p.content,
+      payload: null,
+      requestKey: p.id,
+      createdAt: 0,
+    })),
+  ]
+})
+
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
 watch(
   () => [
-    props.s.state.detail?.messages.length ?? 0,
+    renderedMessages.value.length,
     props.s.state.detail?.session.status,
   ],
   () =>
@@ -116,7 +146,7 @@ async function onFiles(e: Event): Promise<void> {
 <template>
   <section class="conv panel" aria-label="创作对话">
     <div ref="scroller" class="msgs" role="log" aria-live="polite">
-      <div v-if="!s.state.detail?.messages.length" class="hello">
+      <div v-if="!renderedMessages.length" class="hello">
         <span class="hello-ic">
           <Icon name="sparkles" :size="20" />
         </span>
@@ -128,10 +158,10 @@ async function onFiles(e: Event): Promise<void> {
         </p>
       </div>
       <div
-        v-for="m in s.state.detail?.messages ?? []"
+        v-for="m in renderedMessages"
         :key="m.id"
         class="msg"
-        :class="m.role"
+        :class="[m.role, { pending: typeof m.id === 'string' }]"
       >
         <span class="avatar" :class="m.role" aria-hidden="true">
           <Icon :name="avatarIcon(m)" :size="15" />
@@ -146,6 +176,7 @@ async function onFiles(e: Event): Promise<void> {
             @open="openRefPreview(m)"
           />
           <div v-else class="bubble">{{ m.content }}</div>
+          <div v-if="typeof m.id === 'string'" class="pending-hint">发送中…</div>
           <div
             v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
             class="qs"
@@ -414,6 +445,18 @@ async function onFiles(e: Event): Promise<void> {
   border-top-left-radius: 13px;
   border-top-right-radius: 5px;
   box-shadow: 0 6px 18px -12px rgb(79 70 229 / 70%);
+}
+
+/* 乐观上屏占位气泡：半透 + 「发送中」弱提示，服务端确认后无感换为真消息 */
+.msg.pending {
+  opacity: 0.72;
+}
+
+.pending-hint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 0 2px;
 }
 
 .msg.assistant .bubble.wait {

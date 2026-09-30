@@ -53,10 +53,25 @@ const state = reactive({
   // [batch5] 首轮预设选择（风格 ≤6 / 角色 ≤4）：项目级软提示旁信道，切会话 / 回首页即清
   stylePresetIds: [] as number[],
   characterPresetIds: [] as number[],
+  // 乐观上屏队列：发送即显示用户气泡，服务端确认（同 requestKey 消息落列表）后消失；失败即撤回
+  pendingMessages: [] as { id: string; content: string }[],
 })
 
+// ===== 乐观上屏（行业 AI 对话标准：发送即上屏，不等模型回复）=====
+// 幂等键即唯一 id：同一次提交（含重试复用同键）只占一个气泡；服务端确认后经 dropPending 摘除
+function addPending(id: string, content: string): void {
+  if (!state.pendingMessages.some((p) => p.id === id))
+    state.pendingMessages.push({ id, content })
+}
+function dropPending(id: string): void {
+  state.pendingMessages = state.pendingMessages.filter((p) => p.id !== id)
+}
+function clearPending(): void {
+  state.pendingMessages = []
+}
+
 // 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
-const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling })
+const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling, optimistic: { add: addPending, drop: dropPending } })
 // 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
 const attachments = createAttachments(state, { viewEpoch: () => viewEpoch, commit, first, errText })
@@ -238,6 +253,7 @@ async function open(id: number): Promise<void> {
     state.busySend = false
     state.busyAction = false
     state.error = ''; state.notice = ''
+    clearPending()
     confirmKey.hash = ''
     retryTicket = { signature: '', key: '' }
     sendTicket = { signature: '', key: '' }
@@ -296,6 +312,8 @@ async function send(content: string, replan = false): Promise<boolean> {
     .map((a) => a.assetId!))]
   const signature = JSON.stringify([id, content.trim(), sentAssetIds])
   if (signature !== sendTicket.signature) sendTicket = { signature, key: newRequestKey('msg') }
+  // 发送即上屏；规划在途（错误提示「请更新状态」）时保留气泡——消息确已被服务端接收，轮询确认后自然摘除
+  addPending(sendTicket.key, content.trim())
   try {
     const detail = await creationChatApi.send(
       id,
@@ -308,6 +326,7 @@ async function send(content: string, replan = false): Promise<boolean> {
     commit(id, detail)
     ensurePolling()
     if (detail.session.error || detail.session.status === 'planning') {
+      if (detail.session.error && id === state.currentId) dropPending(sendTicket.key)
       if (id === state.currentId) state.error = detail.session.error || '请求已接收，正在规划；请更新状态，不要重复发送。'
       return false
     }
@@ -315,6 +334,7 @@ async function send(content: string, replan = false): Promise<boolean> {
     sendTicket = { signature: '', key: '' }
     return true
   } catch (e) {
+    dropPending(sendTicket.key)
     if (id === state.currentId) state.error = errText(e)
     return false
   } finally {
@@ -560,6 +580,7 @@ function leave(): void {
   state.selectionDirty = false
   stopPolling()
   state.currentId = 0
+  clearPending()
   state.attachments = []
   state.stylePresetIds = []
   state.characterPresetIds = []
@@ -580,6 +601,7 @@ async function removeSession(id: number): Promise<CreationDeleteResult | null> {
       stopPolling()
       state.currentId = 0
       state.detail = null
+      clearPending()
     }
     return res
   } catch (e) {
@@ -637,6 +659,9 @@ export function useEasyCreate() {
     retryAttachment: attachments.retryAttachment,
     uploadingAttachments: attachments.uploadingAttachments,
     readyAttachmentCount: attachments.readyAttachmentCount,
+    addPending,
+    dropPending,
+    clearPending,
     ensurePolling,
     stopPolling,
     errText,

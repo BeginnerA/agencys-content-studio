@@ -23,6 +23,11 @@ interface Host {
 }
 type Phase = 'idle' | 'creating' | 'uploading' | 'sending' | 'paused' | 'uncertain' | 'failed' | 'clarify'
 type StoragePort = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+// 乐观上屏钩子：首轮提交同样要「发送即上屏」（与后续轮 send 同一体验）；id 用 messageKey，服务端确认后由视图层自然摘除
+interface OptimisticPort {
+  add: (id: string, content: string) => void
+  drop: (id: string) => void
+}
 const storageKey = (id: number) => `ec-first-input:${id || 'new'}`
 const keyValid = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]{8,120}$/.test(value)
 const positive = (value: unknown): value is number => Number.isInteger(value) && Number(value) > 0
@@ -32,6 +37,7 @@ export function createFirstInput(host: Host, hooks: {
   commit: (id: number, detail: CreationDetail) => void
   upload: (item: AttachmentItem) => Promise<void>
   polling: () => void
+  optimistic?: OptimisticPort
 }, api: Pick<typeof creationChatApi, 'create' | 'detail' | 'send'> = creationChatApi, storage: () => StoragePort = () => sessionStorage) {
   const state = reactive({ ticket: null as Ticket | null, phase: 'idle' as Phase, warning: '' })
   const busy = computed(() => ['creating', 'uploading', 'sending'].includes(state.phase))
@@ -141,7 +147,7 @@ export function createFirstInput(host: Host, hooks: {
     const t = state.ticket
     if (!t) return !!detail.session.plan
     if (detail.session.status === 'planning') { state.phase = 'uncertain'; host.notice = '请求已接收，正在规划。请更新状态。'; return false }
-    if (detail.session.error) { state.phase = 'failed'; host.error = detail.session.error; return false }
+    if (detail.session.error) { state.phase = 'failed'; host.error = detail.session.error; hooks.optimistic?.drop(t.messageKey); return false }
     if (detail.session.plan || detail.session.runId) {
       clear(t.sessionId)
       host.attachments = []
@@ -188,6 +194,8 @@ export function createFirstInput(host: Host, hooks: {
     if (!t || !t.sessionId || busy.value || host.currentId !== t.sessionId) return false
     const token = epoch
     state.phase = 'uploading'; host.error = ''; host.notice = ''
+    // 发送即上屏：进入提交流程即以 messageKey 占位；后续重试复用同键不重复插入，失败路径撤回
+    hooks.optimistic?.add(t.messageKey, (t.content || content).trim())
     try {
       // 任何重试先回读；读取失败即停止，不盲目创建新收费请求。
       const before = await api.detail(t.sessionId)
@@ -197,13 +205,16 @@ export function createFirstInput(host: Host, hooks: {
       const accepted = before.messages.some((m) => m.requestKey === t.messageKey)
       if (accepted) {
         if (!replan || !before.session.error || before.session.status === 'planning') return settle(before)
+        hooks.optimistic?.drop(t.messageKey)
         t.sent = null
         t.messageKey = newRequestKey('first')
+        hooks.optimistic?.add(t.messageKey, t.content)
       } else if (before.session.status === 'planning') {
+        hooks.optimistic?.drop(t.messageKey)
         state.phase = 'uncertain'; host.error = '该会话已有规划在途，请稍后更新状态。'; return false
       }
       if (!t.sent) t.content = content.trim()
-      if (!t.content) { state.phase = 'paused'; return false }
+      if (!t.content) { hooks.optimistic?.drop(t.messageKey); state.phase = 'paused'; return false }
       reconcileAttachments(before)
       for (const item of host.attachments) {
         if (!live(token, t)) return false
@@ -211,6 +222,7 @@ export function createFirstInput(host: Host, hooks: {
         if (!live(token, t)) return false
         save()
         if (!item.assetId || item.error) {
+          hooks.optimistic?.drop(t.messageKey)
           state.phase = 'paused'; host.error = '参考上传已暂停；请重试失败项，或明确移除后继续。'; return false
         }
       }
@@ -225,7 +237,10 @@ export function createFirstInput(host: Host, hooks: {
       hooks.commit(t.sessionId, detail)
       return settle(detail)
     } catch (e) {
-      if (live(token, t)) { state.phase = t.sent ? 'uncertain' : 'paused'; host.error = `${message(e)}。草稿已保留，请先更新状态或手动继续。` }
+      if (live(token, t)) {
+        if (!t.sent) hooks.optimistic?.drop(t.messageKey)
+        state.phase = t.sent ? 'uncertain' : 'paused'; host.error = `${message(e)}。草稿已保留，请先更新状态或手动继续。`
+      }
       return false
     } finally { if (token === epoch) { save(); hooks.polling() } }
   }
