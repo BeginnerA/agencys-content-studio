@@ -360,13 +360,19 @@ export async function runStaleSection(check: CheckFn): Promise<void> {
   fs.writeFileSync(absPathOf('94/image/ghost.png'), 'GHOST')
   const ghost = (await db.insert(assets).values({ projectId: 94, kind: 'image', purpose: 'shot', name: 'ghost.png', relPath: '94/image/ghost.png', mime: 'image/png', ext: 'png', sha256: 'g', fileSize: 5, params: '{}', tags: '[]', runId, deletedAt: now, createdAt: now, updatedAt: now }).returning())[0]!
   await db.update(assets).set({ deletedAt: now }).where(eq(assets.id, fix.srcId)) // 源字幕被「删除」进回收站
-  await vc.gcProject(94)
-  check(fs.existsSync(absPathOf('94/texts/src.srt')) && !fs.existsSync(absPathOf('94/image/ghost.png')), '回收空间：被引用字幕文件保留，无引用回收站文件删除')
+  await vc.emptyTrash(94)
+  check(fs.existsSync(absPathOf('94/texts/src.srt')) && !fs.existsSync(absPathOf('94/image/ghost.png')), '清空回收站：被引用字幕文件保留，无引用文件删除')
+  check(
+    (await db.select().from(assets).where(eq(assets.id, fix.srcId)).limit(1)).length === 1 &&
+      (await db.select().from(assets).where(eq(assets.id, ghost.id)).limit(1)).length === 0,
+    '清空回收站：被引用条目记录保留（可还原），无引用条目连记录一并移除',
+  )
   let purgeErr = ''
   try { await vc.purgeAsset(fix.srcId) } catch (e) { purgeErr = (e as Error).message }
   check(purgeErr.includes('拒绝彻底删除'), '历史成片/指针仍引用的字幕：彻底删除拒绝')
-  await vc.purgeAsset(ghost.id)
-  check((await db.select().from(assets).where(eq(assets.id, ghost.id)).limit(1)).length === 0, '无引用资产彻底删除放行（保护仅针对字幕引用链，不过度拦截）')
+  const extra = (await db.insert(assets).values({ projectId: 94, kind: 'image', purpose: 'shot', name: 'extra.png', relPath: null, mime: 'image/png', ext: 'png', sha256: 'e', fileSize: 0, params: '{}', tags: '[]', runId, deletedAt: now, createdAt: now, updatedAt: now }).returning())[0]!
+  await vc.purgeAsset(extra.id)
+  check((await db.select().from(assets).where(eq(assets.id, extra.id)).limit(1)).length === 0, '无引用资产彻底删除放行（保护仅针对字幕引用链，不过度拦截）')
 }
 
 /** P8 成果版本投影：运行级 API（§7）+ 读模型四态 + 下载固定不可变版本（验收：旧 gate 不认可新字幕；无新产物不把旧片伪装已更新） */

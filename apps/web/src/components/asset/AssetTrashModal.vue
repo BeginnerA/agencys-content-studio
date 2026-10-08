@@ -9,14 +9,14 @@ defineProps<{
   items: Asset[]
   /** 正在操作的条目 id（还原/彻底删除期间禁用全部条目按钮） */
   acting: number | null
-  /** 清空回收站文件进行中 */
-  gcBusy: boolean
+  /** 清空回收站进行中 */
+  emptyBusy: boolean
 }>()
 const emit = defineEmits<{
   close: []
   restore: [a: Asset]
   purge: [a: Asset]
-  gc: []
+  empty: []
 }>()
 </script>
 
@@ -24,7 +24,7 @@ const emit = defineEmits<{
   <!-- 资产回收站（软删资产：还原 / 彻底删除） -->
   <Modal title="回收站" :width="640" @close="emit('close')">
     <div class="muted mini">
-      已删除的资产（文件尚在原位时可直接还原；「清空回收站文件」后无法还原）。彻底删除会移除文件与记录，不可撤销。
+      已删除的资产（文件尚在原位时可直接还原）。「清空回收站」会移除全部条目与文件（被字幕修订引用的条目跳过保留）；逐条彻底删除仅处理单条，均不可撤销。
     </div>
     <div v-if="loading" class="muted">加载中…</div>
     <div v-else-if="!items.length" class="muted">回收站是空的。</div>
@@ -63,11 +63,11 @@ const emit = defineEmits<{
         <button
           type="button"
           class="btn sm danger"
-          :disabled="gcBusy || loading || !items.length"
-          title="物理删除回收站内所有资产的磁盘文件（不可逆；记录保留，可逐条彻底删除记录）"
-          @click="emit('gc')"
+          :disabled="emptyBusy || loading || !items.length"
+          title="彻底删除回收站内所有资产：物理删除文件并移除记录（不可逆；被字幕修订/历史成片引用的条目跳过保留）"
+          @click="emit('empty')"
         >
-          清空回收站文件
+          清空回收站
         </button>
         <span class="sp" />
         <button type="button" class="btn" @click="emit('close')">关闭</button>

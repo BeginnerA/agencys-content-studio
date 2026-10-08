@@ -320,7 +320,7 @@ async function main(): Promise<void> {
       const { writeTextAsset, absPathOf } = await import('../src/services/storage')
       const { updateAssetContent } = await import('../src/services/asset-content')
       const pv = await import('../src/services/provenance')
-      const { cleanupVersions, gcProject } = await import('../src/services/version-cleanup')
+      const { cleanupVersions, emptyTrash } = await import('../src/services/version-cleanup')
       const { db } = await import('../src/db')
       const { assets, execInputs, execSnapshots, contentVersions } = await import('../src/db/schema')
       const { and, eq } = await import('drizzle-orm')
@@ -332,10 +332,11 @@ async function main(): Promise<void> {
       const v1 = (await pv.listVersions('asset', txt.id)).find((r) => r.revision === 1)!
       const versionAbs = absPathOf(v1.relPath!)
       check(existsSync(versionAbs), '不可变版本文件已落 versions/ 目录')
-      // 软删资产 + 物理回收：工作副本被清，版本文件保留
+      // 软删资产 + 清空回收站：工作副本与记录被清，版本文件保留
       await db.update(assets).set({ deletedAt: Date.now() }).where(eq(assets.id, txt.id))
-      await gcProject(pid)
-      check(existsSync(versionAbs), '物理 GC 后 versions/ 历史文件仍存活（不随工作副本删除）')
+      await emptyTrash(pid)
+      check(existsSync(versionAbs), '清空回收站后 versions/ 历史文件仍存活（不随工作副本删除）')
+      check((await db.select().from(assets).where(eq(assets.id, txt.id))).length === 0, '清空回收站后资产记录一并移除（versions/ 历史不受影响）')
 
       // ② exec_inputs 引用的媒体资产豁免版本清理（防在用/历史依赖被软删致追溯悬空）
       const imgOld = (

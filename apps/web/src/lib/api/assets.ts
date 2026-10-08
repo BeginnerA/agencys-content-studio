@@ -8,7 +8,7 @@ import type {
   EntityPolishResult,
   EntityRefGenIssueResult,
   EntityRefGenTask,
-  GcResult,
+  EmptyTrashResult,
   MemoryItem,
   MemoryStatus,
   SearchResult,
@@ -53,9 +53,9 @@ export const assetApi = {
     api.post<CleanupResult>(
       `/api/v1/projects/${projectId}/assets/cleanup-versions`,
     ),
-  /** 清空回收站文件（物理删除回收站内资产文件；不可逆；记录保留可逐条彻底删除） */
-  gc: (projectId: number) =>
-    api.post<GcResult>(`/api/v1/projects/${projectId}/assets/gc`),
+  /** 清空回收站（批量彻底删除：物理删文件 + 硬删记录，不可逆；被字幕引用的条目跳过保留） */
+  emptyTrash: (projectId: number) =>
+    api.post<EmptyTrashResult>(`/api/v1/projects/${projectId}/assets/trash/empty`),
 }
 
 /** 全局搜索（关键词九域 + 语义文本域；模型不可用自动降级不抛错） */

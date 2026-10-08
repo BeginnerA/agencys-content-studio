@@ -112,10 +112,12 @@ export interface CleanupResult {
   note: string
 }
 
-/** 清空回收站文件结果（物理删除回收站内资产文件；files=回收文件数；记录保留） */
-export interface GcResult {
+/** 清空回收站结果（批量彻底删除：purged=移除条目数；skipped=被字幕引用跳过保留数） */
+export interface EmptyTrashResult {
   ok: boolean
+  purged: number
   files: number
   freed_bytes: number
+  skipped: number
   note: string
 }

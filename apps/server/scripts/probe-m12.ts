@@ -11,7 +11,7 @@
  *              u:runId:stepId:shotId + 无组跳过 + 非图视过滤 + 已软删跳过 + 范围过滤（runId/stepId）+ 幂等
  *   imagecheck ffmpeg lavfi 样本（黑 / 灰 / 正常 / 截断 / 缺失）→ 判定矩阵 + parseStats 容错 +
  *              checkAndRecordAsset 集成（params 他键保留）+ recordQuality 容错（null / 坏 JSON / 数组）
- *   gc         gcProject：原文件 + thumb 回收 / freedBytes 精确 / 行保留审计 / 活跃不碰 / 幂等
+ *   gc         emptyTrash：批量彻底删除（文件 + 行硬删）/ freedBytes 精确 / 字幕引用跳过保留 / 活跃不碰 / 幂等
  *   trash      回收站服务层：restoreAsset（软删→还原 / bad_state / file_purged / not_found）+
  *              purgeAsset（物理删文件 + 硬删行 / freedBytes / not_found）
  *   board      toVersionView：source / isFavorite / quality 摘要（stats/checkedAt 不下发）+ 参数容错
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const { db, initDb, sqlite } = await import('../src/db')
   const { createLogger } = await import('../src/logger')
   const { assets, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
-  const { eq } = await import('drizzle-orm')
+  const { eq, inArray } = await import('drizzle-orm')
   const { absPathOf, ensureProjectDirs, registerAsset, relPathOf } = await import('../src/services/storage')
   const { thumbAbsPath } = await import('../src/services/thumb')
 
@@ -362,13 +362,18 @@ async function main(): Promise<void> {
   }
 
   const sectionGc = async (): Promise<void> => {
-    const { gcProject } = await import('../src/services/version-cleanup')
+    const { emptyTrash } = await import('../src/services/version-cleanup')
     const pid = await mkProject('M12 探针项目（回收）')
-    const mkRow = async (relPath: string | null, deleted: boolean, name: string): Promise<number> =>
+    const mkRow = async (
+      relPath: string | null,
+      deleted: boolean,
+      name: string,
+      extra: Partial<typeof assets.$inferInsert> = {},
+    ): Promise<number> =>
       (
         await db
           .insert(assets)
-          .values({ projectId: pid, kind: 'image', name, relPath, tags: '[]', createdAt: T0, updatedAt: T0, deletedAt: deleted ? T0 + 1 : null })
+          .values({ projectId: pid, kind: 'image', name, relPath, tags: '[]', createdAt: T0, updatedAt: T0, deletedAt: deleted ? T0 + 1 : null, ...extra })
           .returning()
       )[0]!.id
 
@@ -380,22 +385,43 @@ async function main(): Promise<void> {
     // d2：已软删 + 原文件（120B，无 thumb）
     const r2 = relPathOf(pid, 'shot_image', 'gc-d2.png')
     writeFileSync(absPathOf(r2), Buffer.alloc(120, 3))
-    await mkRow(r2, true, 'gc-d2.png')
-    // d4：已软删 + 文件缺失（removeFile 跳过）
-    await mkRow(relPathOf(pid, 'shot_image', 'gc-d4-missing.png'), true, 'gc-d4.png')
+    const d2 = await mkRow(r2, true, 'gc-d2.png')
+    // d4：已软删 + 文件缺失（removeFile 跳过，记录仍移除）
+    const d4 = await mkRow(relPathOf(pid, 'shot_image', 'gc-d4-missing.png'), true, 'gc-d4.png')
     // d3：活跃 + 原文件（80B，不碰）
     const r3 = relPathOf(pid, 'shot_image', 'gc-d3.png')
     writeFileSync(absPathOf(r3), Buffer.alloc(80, 4))
     const d3 = await mkRow(r3, false, 'gc-d3.png')
+    // d5：已软删 + 被历史成片字幕快照引用（保护：文件与记录保留，仍可还原）
+    const r5 = relPathOf(pid, 'shot_image', 'gc-d5.png')
+    writeFileSync(absPathOf(r5), Buffer.alloc(60, 5))
+    const d5 = await mkRow(r5, true, 'gc-d5.png')
+    await mkRow(relPathOf(pid, 'final_video', 'gc-final.mp4'), false, 'gc-final.mp4', {
+      kind: 'video',
+      purpose: 'final_video',
+      params: JSON.stringify({ timeline: { subtitle: { assetId: d5 } } }),
+    })
 
-    const g1 = await gcProject(pid)
-    check(g1.files === 3 && g1.freedBytes === 270, `回收：files=3 / freed=270B（实际 ${g1.files} / ${g1.freedBytes}）`)
-    check(!existsSync(absPathOf(r1)) && !existsSync(thumbAbsPath(pid, d1)), '回收：d1 原文件 + thumb 均删除')
-    check(!existsSync(absPathOf(r2)), '回收：d2 原文件删除')
-    check(existsSync(absPathOf(r3)), '回收：活跃资产文件不碰')
-    check((await getAsset(d1)).deletedAt !== null && (await getAsset(d3)).deletedAt === null, '回收：行保留（审计——deletedAt 语义不变）')
-    const g2 = await gcProject(pid)
-    check(g2.files === 0 && g2.freedBytes === 0, `回收幂等（files=${g2.files} freed=${g2.freedBytes}）`)
+    const g1 = await emptyTrash(pid)
+    check(
+      g1.purged === 3 && g1.files === 3 && g1.freedBytes === 270 && g1.skipped === 1,
+      `清空：purged=3 / files=3 / freed=270B / skipped=1（实际 ${g1.purged} / ${g1.files} / ${g1.freedBytes} / ${g1.skipped}）`,
+    )
+    check(!existsSync(absPathOf(r1)) && !existsSync(thumbAbsPath(pid, d1)), '清空：d1 原文件 + thumb 均删除')
+    check(!existsSync(absPathOf(r2)), '清空：d2 原文件删除')
+    check(existsSync(absPathOf(r3)), '清空：活跃资产文件不碰')
+    check(existsSync(absPathOf(r5)), '清空：字幕引用保护条目文件保留')
+    check(
+      (await db.select().from(assets).where(inArray(assets.id, [d1, d2, d4]))).length === 0,
+      '清空：d1/d2/d4 记录一并移除（条目从回收站消失）',
+    )
+    check(
+      (await db.select().from(assets).where(eq(assets.id, d3))).length === 1 &&
+        (await db.select().from(assets).where(eq(assets.id, d5))).length === 1,
+      '清空：活跃行 + 字幕引用保护行记录保留（保护条目仍可还原）',
+    )
+    const g2 = await emptyTrash(pid)
+    check(g2.purged === 0 && g2.files === 0 && g2.freedBytes === 0, `清空幂等（purged=${g2.purged} files=${g2.files} freed=${g2.freedBytes}）`)
   }
 
   const sectionTrash = async (): Promise<void> => {

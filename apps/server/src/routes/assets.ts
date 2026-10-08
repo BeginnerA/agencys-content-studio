@@ -11,7 +11,7 @@ import { ContentEditError, updateAssetContent, EDITABLE_PURPOSES } from '../serv
 import { currentRevision } from '../services/provenance'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
-import { cleanupVersions, gcProject, restoreAsset, purgeAsset, CleanupError } from '../services/version-cleanup'
+import { cleanupVersions, emptyTrash, restoreAsset, purgeAsset, CleanupError } from '../services/version-cleanup'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -277,15 +277,20 @@ assetsRoutes.post('/projects/:id/assets/cleanup-versions', h(async (c) => {
   })
 }))
 
-// POST /projects/:id/assets/gc —— 清空回收站文件（删除回收站内资产的物理文件；不可逆；行保留可逐条 purge）
-assetsRoutes.post('/projects/:id/assets/gc', h(async (c) => {
+// POST /projects/:id/assets/trash/empty —— 清空回收站（批量彻底删除：删文件 + 硬删行，不可逆；
+// 被字幕修订/历史成片引用的条目跳过保留，仍可还原）
+assetsRoutes.post('/projects/:id/assets/trash/empty', h(async (c) => {
   const projectId = idParam(c)
-  const result = await gcProject(projectId)
+  const result = await emptyTrash(projectId)
   return c.json({
     ok: true,
+    purged: result.purged,
     files: result.files,
     freed_bytes: result.freedBytes,
-    note: `已回收 ${result.files} 个文件，释放 ${result.freedBytes} 字节`,
+    skipped: result.skipped,
+    note:
+      `已清空回收站：移除 ${result.purged} 条，释放 ${result.freedBytes} 字节` +
+      (result.skipped > 0 ? `；${result.skipped} 条被字幕修订引用，已跳过保留` : ''),
   })
 }))
 

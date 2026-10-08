@@ -30,7 +30,7 @@ const {
   onAssetChanged,
   onAssetRemoved,
   doCleanupVersions,
-  doGc,
+  doEmptyTrash,
   showTrash,
   trashLoading,
   trashItems,
@@ -105,7 +105,7 @@ const {
           </button>
           <button
             class="btn sm"
-            title="浏览已删除资产：逐条还原或彻底删除（清空回收站文件入口在弹窗内）"
+            title="浏览已删除资产：逐条还原或彻底删除（清空回收站入口在弹窗内）"
             @click="openTrash"
           >
             回收站
@@ -158,11 +158,11 @@ const {
       :loading="trashLoading"
       :items="trashItems"
       :acting="trashActing"
-      :gc-busy="assetBusy"
+      :empty-busy="assetBusy"
       @close="showTrash = false"
       @restore="restoreTrashed"
       @purge="purgeTrashed"
-      @gc="doGc"
+      @empty="doEmptyTrash"
     />
   </section>
 </template>

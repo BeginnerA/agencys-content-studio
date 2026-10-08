@@ -78,12 +78,12 @@ export function useProjectAssetOps(ctx: {
     }
   }
 
-  /** 清空回收站文件（入口在回收站弹窗内；物理删除回收站内资产的磁盘文件；不可恢复；记录保留在回收站可继续彻底删除） */
-  async function doGc() {
+  /** 清空回收站（入口在回收站弹窗内；批量彻底删除：物理删文件 + 移除记录，条目从回收站消失；字幕引用条目跳过保留） */
+  async function doEmptyTrash() {
     const ok = await confirmDialog({
-      title: '清空回收站文件',
+      title: '清空回收站',
       message:
-        '将物理删除回收站内所有资产的磁盘文件（不可恢复；无法再还原）。数据库记录保留，可在本弹窗逐条彻底删除记录。',
+        '将彻底删除回收站内所有资产：物理删除磁盘文件并移除记录，不可恢复、无法再还原。被字幕修订/历史成片引用的条目会跳过保留。',
       confirmText: '确认清空',
       danger: true,
     })
@@ -92,10 +92,12 @@ export function useProjectAssetOps(ctx: {
     assetErr.value = ''
     assetNotice.value = ''
     try {
-      const r = await assetApi.gc(projectId)
-      assetNotice.value = `已清空回收站文件：${r.files} 个，释放 ${fmtSize(r.freed_bytes)}`
+      const r = await assetApi.emptyTrash(projectId)
+      assetNotice.value =
+        `已清空回收站：移除 ${r.purged} 条，释放 ${fmtSize(r.freed_bytes)}` +
+        (r.skipped > 0 ? `；${r.skipped} 条被字幕修订引用，已跳过保留` : '')
       await loadAssets({ silent: true })
-      // 弹窗内操作：文件清空后同步刷新回收站列表（记录保留、还原将不可用）
+      // 弹窗内操作：同步刷新回收站列表（已移除条目消失；被跳过的保护条目保留）
       if (showTrash.value) await loadTrash()
     } catch (e) {
       assetErr.value = e instanceof Error ? e.message : String(e)
@@ -294,7 +296,7 @@ export function useProjectAssetOps(ctx: {
     onAssetChanged,
     onAssetRemoved,
     doCleanupVersions,
-    doGc,
+    doEmptyTrash,
     showTrash,
     trashLoading,
     trashItems,

@@ -23,11 +23,15 @@ export interface CleanupResult {
   cleanedIds: number[]
 }
 
-export interface GcResult {
+export interface EmptyTrashResult {
+  /** 彻底删除的回收站条目数（物理删文件 + 硬删行） */
+  purged: number
   /** 实际删除的文件数（原文件 + 缩略图缓存） */
   files: number
   /** 释放字节数 */
   freedBytes: number
+  /** 被字幕引用保护而跳过的条目数（文件与记录保留，仍可还原） */
+  skipped: number
 }
 
 /**
@@ -114,18 +118,27 @@ export async function subtitleReferenceIds(projectId: number): Promise<Set<numbe
   return set
 }
 
-/** 回收空间：删除项目内已软删资产的原文件 + 缩略图缓存；行保留（审计）；失败跳过、幂等 */
-export async function gcProject(projectId: number): Promise<GcResult> {
+/**
+ * 清空回收站（项目级，不可逆）：对回收站内未被字幕引用保护的条目执行批量「彻底删除」——
+ * 物理删原文件 + 缩略图缓存并硬删数据行（与逐条 purgeAsset 同语义，条目从回收站消失）。
+ * 仍被修订指针/历史成片字幕快照引用（含当前指针，规格 §5.2-104）的条目跳过：文件与记录保留，仍可还原。
+ * 文件缺失/占用不阻塞其余条目；空回收站幂等（purged=0）。
+ */
+export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
   const protectedIds = await subtitleReferenceIds(projectId)
   const rows = await db
     .select()
     .from(assets)
     .where(and(eq(assets.projectId, projectId), isNotNull(assets.deletedAt)))
+  let purged = 0
   let files = 0
   let freedBytes = 0
+  let skipped = 0
   for (const a of rows) {
-    // 仍被修订指针/历史成片字幕快照引用（含当前指针）：不物理删文件（规格 §5.2-104）
-    if (protectedIds.has(a.id)) continue
+    if (protectedIds.has(a.id)) {
+      skipped += 1
+      continue
+    }
     if (a.relPath) {
       const size = removeFile(absPathOf(a.relPath))
       if (size >= 0) {
@@ -138,9 +151,11 @@ export async function gcProject(projectId: number): Promise<GcResult> {
       files += 1
       freedBytes += thumbSize
     }
+    await db.delete(assets).where(eq(assets.id, a.id))
+    purged += 1
   }
-  log.info(`项目 #${projectId} 回收空间：${files} 个文件 / ${freedBytes} 字节`)
-  return { files, freedBytes }
+  log.info(`项目 #${projectId} 清空回收站：彻底删除 ${purged} 条 / ${files} 个文件 / ${freedBytes} 字节；跳过（字幕引用）${skipped} 条`)
+  return { purged, files, freedBytes, skipped }
 }
 
 /** 组键：任务组 t:<taskId>；上传组 u:<runId>:<stepId>:<shotId>；无组概念 → null（跳过） */
@@ -218,7 +233,7 @@ export class CleanupError extends Error {
 
 /**
  * 回收站还原：清除软删标记（deletedAt→null）使资产重回列表。
- * 拒绝：未删除（幂等提示）；物理文件已被「回收空间/清空回收站」删除 → 无法还原（否则会得到坏资产）。
+ * 拒绝：未删除（幂等提示）；不存在（not_found）；磁盘文件已不存在 → 无法还原（否则会得到坏资产）。
  */
 export async function restoreAsset(assetId: number): Promise<Asset> {
   const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
@@ -238,7 +253,7 @@ export async function restoreAsset(assetId: number): Promise<Asset> {
 
 /**
  * 回收站彻底删除（单条，不可逆）：物理删原文件 + 缩略图缓存，并硬删数据行。
- * 说明：区别于项目级 gcProject（仅删文件、保留审计行）——本操作连记录一并移除，条目从回收站消失。
+ * 说明：项目级 emptyTrash 是本操作的批量版（同语义：删文件 + 硬删行；字幕引用保护条目跳过）。
  * 历史运行 / 画布对该 assetId 的软引用将变悬空（消费侧已按「已删除/不可用」容错）。
  */
 export async function purgeAsset(assetId: number): Promise<{ files: number; freedBytes: number }> {
