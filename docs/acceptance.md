@@ -465,3 +465,15 @@ M61「素材混剪模板开场标题智能编排（字号/样式/位置）+ 按�
 自动门禁（本机实测，全绿）：`pnpm -r typecheck`（server tsc + web vue-tsc）绿；`probe-m61` 六节 pure/ass/template/llm/ai/live **114 断言全绿**（live run C 分层实弹：Title1 居中墨迹行中心 120 vs off 对照 Default 底部 227，零付费可辨）；`probe-m26 split-audit` 红线存量 0（index.ts 798 行）；`validate:templates` 19 份 131 步 0 错 0 警（photo-montage 5 步）；终门禁 `pnpm probe:ci`（run-probes 串行 --fail-fast）**61 探针 / 5488 断言全绿**（299.4s，exit 0；字幕溢出主探针 m19 408 断言零回归）。首跑 m3 瞬红灯经 git 现场核实为并发会话跑批中途同步 version 断言的竞态，重跑即绿，非本任务回归。零新增依赖、未自动提交、加法优先。
 
 待人工门（未声称）：① 浏览器端跑 `photo-montage` 真实项目开 `style_mode/title_card` 开关后的成片观感（字体兜底链路在用户真实字体环境下的效果、AI 底图与标题叠字的可读性）需人工看片；② llm/ai 两付费开关在真实实例上的计费面只在探针中以桩验证，真实 provider 计费未实测；③ 探针 live 节为合成假素材 + 本地 ffmpeg 实弹，不等同于产品内真实素材库成片的可视验收。
+
+## M62 验收快照：轻松创作路由信号扩展（小说改编 / 素材拼片出口）（2026-10-08，探针门禁）
+
+M62「把『混剪/拼照片/纪念相册』和『小说/改编』纳入 route-hint 信号表并指向对应模板」交付（用户「开始立项」→「开始执行」指令）。唯一实现真源存档：规格 `docs/records/M62-轻松创作路由信号扩展-design.md`（已批准 2026-10-08）+ 计划 `docs/records/plans/M62-计划.md`。服务端唯一改动点 `route-hint.ts`：`ROUTE_TARGETS` +2（`novel-adapt`/`photo-montage`）+ `detect` +2 信号（小说改编置顶于连载；混剪置于 image-reverse 之后、超时长之前），弱词双前置防误报；前端本项机制面 0 改动（建议条通用分支天然覆盖）；**红线**：0 新表 0 新列 / 0 新增 action / 0 新付费面 / 0 模板改动；routeHint 不进 planHash 不变式原样保持；建议仍非阻断（Tier B），不自动建专业项目/起 run。
+
+- T1 实现：`wantsNovelAdapt`（小说/原著/网文 × 改编动作，片段/梗概/选段/简介排除）；`MONTAGE_INTENT_WORDS` 强词表（无须前置）+ `MONTAGE_WEAK_RE` 弱词句式 + `wantsPhotoMontage(text, hasImageRef)` 双前置（图片参考 × 图/照片/素材）；detect 注释编号顺延 1–7；文件头注释同步「新增信号必须同步 probe-m57/probe-m62 断言」。新建 `probe-m62.ts`（五节 33 断言）；`run-probes.ts` readdirSync 自动发现零接线。
+- 实施补注（计划外 1 项，已获用户授权）：[M62-split] 既存红线恢复——全量门禁首轮到 m26 红（CanvasBoard.vue 802 行 >800 常红约束），经 git 现场核实非本项引入（`03f64de` 2026-09-30 16:48 由 730 行推入），拆出纯静态图例为 `CanvasLegend.vue`（净 −38 行 → 764 行，行为逐像素零变更），m26 复跑全绿。
+- 无其他机制偏离（design spec §二–§六 全量落地，probe-m62 一次全绿）。
+
+自动门禁（本机实测，全绿）：`pnpm -r typecheck`（server tsc + web vue-tsc）exit 0；`probe-m62` **33 断言五节全绿**；回归 `probe-m57` 26 / `m58` 44 / `m59` 24 / `m56` 33 断言全绿；`probe-m26 split-audit` 红线存量 0；终门禁 `pnpm probe:ci`（run-probes 串行 --fail-fast）**63 探针 / 5569 断言全绿**（287.9s，exit 0；m19 408 断言零回归）。首跑 m15 子进程 `probe:m2a` 退出码 3221225477（Windows 进程退出清理偶发假失败，其断言全部通过）复跑即绿，非本任务回归。零新增依赖、未自动提交、加法优先。
+
+待人工门（未声称）：① 对话内真实会话触发两新信号的端到端观感（建议条文案与「展开指专业端」交互）未做浏览器实弹；② `photo-montage`/`novel-adapt` 专业链自身的成片/改编效果不在本项验收面（本项只交付方向建议，执行载体不变）；③ 弱词双前置防线对真实用户措辞分布的误报率未做线上统计（误报收口预案见 spec §六：收窄词表，不引入模型判定）。

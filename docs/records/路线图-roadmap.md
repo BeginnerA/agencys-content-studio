@@ -350,6 +350,12 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 
 - **M61 混剪开场标题智能编排与标题字卡（三期一体）**（用户诉求全量承接）：`P1`。期1=规则智能排版 `style_mode:rule` + 本地 drawtext 标题字卡 `title_card:local`（零计费）；期2=LLM 智能排版 `style_mode:llm` + AI 背景字卡 `title_card:ai`（付费失败降级 local，沿用 M54 `music_gen` 降级先例）；期3=per-line 多 ASS Style 分层排版（标题大字居中/祝福语底部小字）。设计见 `docs/records/M61-混剪标题智能编排-design.md`；0 新表 0 新列 0 新 action 0 新付费面 0 Web 改动；全开关默认 off=零 diff。**已实施（2026-09-30，三期门禁全绿：probe-m61 六节 114 断言 + probe:ci 串行 5488 断言）**。
 
+## 轻松创作路由信号扩展立项（2026-10-08 立项；已实施）
+
+> 来源：用户实测两条对话场景——「选择 N 张参考图后说将这些图片合成一个视频」「将《X》小说改编成短剧」——均无确定性路由出口。经全量复核（route-hint 全文 / 前端渲染分支 / probe-m57 反例逐条 / template-recommend 与各软推荐通道）：能力在（两模板真源在位），对话内无桥，故本项只补**信号**（方向建议），不搬能力。
+
+- **M62 轻松创作路由信号扩展**（「小说改编」→ `novel-adapt`；混剪「素材拼片/相册」→ `photo-montage`）：`P1`。**已实施（2026-10-08，用户「开始执行」当日交付）**。实施=route-hint `ROUTE_TARGETS` +2 目标、`detect` +2 信号（novel-adapt 置顶于连载——整本改编正确入口，其 `next:[series-setup]` 天然接力；混剪置于 image-reverse 之后——反推优先、置于超时长之前——「3 分钟相册」不得误路由 video-plan）、弱词双前置防误报（`hasImageRef` + 图类词，防「把这段文案做成视频」误报）、文件头注释同步为「新增信号必须同步 probe-m57/m62 断言」；前端机制面 0 改动（`CreationRouteHint.vue` 通用分支已覆盖非毕业目标）；红线 0 新表 0 新列 0 新增 action 0 新付费面 0 模板改动（机制面 0 Web 改动；另有 [M62-split] 授权红线恢复拆分，见门禁段）；建议仍非阻断，不自动建专业项目/起 run。门禁（实测全绿）：`probe-m62` 五节 33 断言 + `probe-m57/m58/m59/m56` 回归 + 双端 `tsc`/`vue-tsc` exit 0 + `pnpm probe:ci` 串行 **63 探针 5569 断言全绿**（含 [M62-split] 授权拆分 CanvasBoard.vue→764 行恢复 m26 红线，行为零变更）。设计见 `docs/records/M62-轻松创作路由信号扩展-design.md`。
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）

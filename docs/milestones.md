@@ -839,6 +839,16 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 验证：`probe-m61`（六节 pure/ass/template/llm/ai/live **114 断言全绿**；live 实弹：rule+local 零计费成片、run C 分层 Title1 居中墨迹 120 vs 对照底部 227、llm 三 run 计费/降级矩阵、ai 全 mock 三步成功与降级边界）。终门禁 `pnpm probe:ci` 串行 **61 探针 / 5488 断言全绿**；`validate:templates` 19 份 131 步 0 错 0 警；m26 split-audit 红线存量 0（index.ts 798 行）；双端 typecheck 绿。
 
+## M62 能力速览（轻松创作路由信号扩展：整本小说改编 → `novel-adapt`；现成素材拼片/相册 → `photo-montage`）
+
+> 痛点：M57 建立 routeHint 确定性路由器后白名单仅五目标——对话里「将《X》小说改编成短剧」若不含「连载/多集/第N集」字样无任何方向建议（即使含「连载」，整本改编的正确入口也是先走 `novel-adapt` 切章→事件图谱→分集规划→逐集剧本，其 `next:[series-setup]` 天然接力）；「选 N 张参考图 + 把这些图片合成一个视频」因反推措辞真源不含「合成/拼成」而无建议（对话内参考图只作生成约束/首帧，真正以图拼片是 `photo-montage`）。能力在（两模板真源在位），对话内无桥——本项只补**信号**（方向建议），不搬能力。详规：`docs/records/M62-轻松创作路由信号扩展-design.md`（已批准 2026-10-08）+ 计划 `docs/records/plans/M62-计划.md`。**红线**：0 新表 0 新列 / 0 新增 action / 0 新付费面 / 0 模板改动；本项机制面 0 Web 改动（两新目标天然落入建议条通用分支；另有授权红线恢复拆分 [M62-split]，见附条）；建议仍非阻断（Tier B），不自动建专业项目/起 run。
+
+- **M62.1 信号扩展（`route-hint.ts` 服务端唯一改动点，零新依赖）**：`ROUTE_TARGETS` +2（`novel-adapt` / `photo-montage`）；`detect` +2 信号——① 整本小说改编**置顶于连载**：`wantsNovelAdapt` 复合判定（小说/原著/网文 + 改编动作；片段/梗概/选段/简介排除词守卫，有节选走轻成片即可）；⑥ 现成素材拼片**置于 image-reverse 之后、超时长之前**：`wantsPhotoMontage` 强词表（混剪/电子相册/纪念相册/音乐相册/相册视频/相册短片/照片拼/拼照片/照片配乐/照片配音乐）无须前置 + 弱词句式（`(合成|拼成|做成|变成|合到|拼到).{0,4}(视频|短片|成片)`）双前置（`hasImageRef` × 图/照片/素材，防「把这段文案做成视频」误报）；「3 分钟相册」先于超时长命中不误路由 `video-plan`。原 4 信号位置与文案不动；sanitize 白名单/label 真源回填/≤80 截断/routeHint 不进 planHash 机制原样保持。
+- **M62.2 前端零改动**：`CreationRouteHint.vue` 既有通用分支（非毕业目标 → 引导至专业端建项目）天然覆盖两新目标；`CreationRouteHintView.target: string` 无枚举型；label 由 sanitize 按模板真源回填（`小说改编·切分→图谱→剧本` / `素材混剪成片`）。
+- **附 [M62-split] 既存红线恢复（授权拆分，非本项机制引入）**：CanvasBoard.vue 802 行越 m26 「scripts+server/src+web/src 全部 ≤800」常红约束（由 `03f64de` 2026-09-30「背景点阵网格」从 730 行推入，先于本项且非本项引入），按既有拆分先例抽出纯静态图例为 `CanvasLegend.vue`（净 −38 行 → 764 行；DOM 结构与 scoped 样式原样迁移，行为逐像素零变更）。
+
+验证：`probe-m62`（五节 signals/priority/gating/sanitize/drift **33 断言全绿**：小说改编三措辞（含《万千戏台做你的光》实录场景）、强/弱词与双前置防线、三处定序反例（小说+连载→novel-adapt / 反推+拼片→image-reverse / 3 分钟相册→photo-montage 且 3 分钟故事片→video-plan 零回归）、「片段/梗概」排除、两新目标 label 真源回填、drift 起全量 7 目标在位 + strict 拒 routeHint 键不变式）。回归 `probe-m57`（26 断言零回归）/`m58`（44）/`m59`（24）/`m56`（33）全绿；双端 `tsc`/`vue-tsc` exit 0；终门禁 `pnpm probe:ci` 串行 **63 探针 / 5569 断言全绿**（287.9s，含 m26 红线归零 34 断言）。首跑 m15 子进程 `probe:m2a` 退出码 3221225477（Windows 进程退出清理偶发假失败，其断言全部通过）复跑即绿，非本任务回归。
+
 ---
 
 ## 路线图（M32–M39 · **全部交付 · 收官**）
