@@ -69,6 +69,8 @@ export interface EdgePath {
   d: string
   port: string
   sel: boolean
+  /** 选中联动：out = 选中节点的出边（下游·流动）；in = 入边（上游·静态淡紫）；null = 无关 */
+  rel: 'out' | 'in' | null
 }
 export function bezier(x1: number, y1: number, x2: number, y2: number): string {
   const dx = Math.max(48, Math.abs(x2 - x1) / 2)

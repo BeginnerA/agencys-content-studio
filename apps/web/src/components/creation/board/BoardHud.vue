@@ -105,6 +105,10 @@ defineProps<{
           <dt>删除 / 取消选择</dt>
           <dd>Del / Esc</dd>
         </div>
+        <div>
+          <dt>选中联动</dt>
+          <dd>流动紫虚线 = 下一步 · 淡紫 = 上一步</dd>
+        </div>
       </dl>
     </div>
   </details>

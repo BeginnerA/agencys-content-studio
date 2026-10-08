@@ -29,6 +29,8 @@ import {
 const props = defineProps<{
   renderNodes: CanvasDocNode[]
   selectedIds: number[]
+  /** 选中联动：out/inn = 选中节点的下游/上游节点集；rel = 选中边的两端节点集 */
+  links: { out: Set<number>; inn: Set<number>; rel: Set<number> }
   hotPort: string | null
   nodeStyle: (n: CanvasDocNode) => Record<string, string>
   setNodeEl: (id: number, el: unknown) => void
@@ -45,6 +47,9 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
     asset: n.kind === 'asset',
     gen: n.kind === 'gen',
     sel: props.selectedIds.includes(n.id),
+    'rel-out': props.links.out.has(n.id),
+    'rel-in': props.links.inn.has(n.id),
+    rel: props.links.rel.has(n.id),
     busy:
       n.status === 'processing' ||
       n.status === 'pending' ||
@@ -243,6 +248,22 @@ function cardCls(n: CanvasDocNode): Record<string, boolean> {
 .cnode:hover {
   border-color: rgb(148 163 184 / 55%);
   box-shadow: 0 6px 16px rgb(0 0 0 / 22%);
+}
+
+/* 选中联动（层级：sel > rel-out > rel > rel-in > hover；hover 不覆盖关联环） */
+.cnode.rel-in {
+  border-color: rgb(139 92 246 / 60%);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 15%);
+}
+
+.cnode.rel {
+  border-color: var(--accent-h);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 28%);
+}
+
+.cnode.rel-out {
+  border-color: var(--accent-h);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 38%);
 }
 
 .cnode.sel {

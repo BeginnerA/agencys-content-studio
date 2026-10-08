@@ -7,6 +7,7 @@
  * - 落点：空白双击建生成节点；drop 文件由父级上传后建素材节点（本组件只报世界坐标与文件）
  * - 视口：useBoardViewport（初始 = 画布持久化；settled 后 emit，父级防抖 PATCH）
  * - 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（spec §2.4，README 明示）
+ * - 选中联动：节点选中 → 出边流动紫（下游）/入边静态淡紫（上游）+ 上下游节点紫环；边选中 → 两端节点紫环
  * - 渲染虚拟化：renderNodes / edgePaths 按可见世界矩形裁剪（半屏外扩；尺寸未实测 → 全量兜底）；
  *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真，spec §2.2）
  * - 缩放栏 / 操作指南悬浮件拆至 BoardHud.vue（行为零变更）
@@ -279,6 +280,37 @@ function moveToTopLevel(g: CanvasGroup): void {
   openGroupMenu.value = null
 }
 
+// ---- 选中联动（节点选中 → 关联边 + 上下游节点集；边选中 → 两端节点集）----
+const selLinks = computed(() => {
+  const sel = new Set(props.selectedIds)
+  const outEdges = new Set<number>()
+  const inEdges = new Set<number>()
+  const out = new Set<number>()
+  const inn = new Set<number>()
+  const rel = new Set<number>()
+  if (sel.size) {
+    for (const e of props.edges) {
+      const fromSel = sel.has(e.from)
+      const toSel = sel.has(e.to)
+      if (fromSel) {
+        outEdges.add(e.id)
+        if (!toSel) out.add(e.to)
+      }
+      if (toSel) {
+        inEdges.add(e.id)
+        if (!fromSel) inn.add(e.from)
+      }
+    }
+  } else if (props.selectedEdgeId != null) {
+    const e = props.edges.find((x) => x.id === props.selectedEdgeId)
+    if (e) {
+      rel.add(e.from)
+      rel.add(e.to)
+    }
+  }
+  return { out, inn, rel, outEdges, inEdges }
+})
+
 // ---- 边路径（锚点：源右中 → 目标左中）----
 const edgePaths = computed<EdgePath[]>(() => {
   const out: EdgePath[] = []
@@ -298,6 +330,11 @@ const edgePaths = computed<EdgePath[]>(() => {
       d: bezier(pa.x + NODE_W, pa.y + nodeH(a) / 2, pb.x, pb.y + nodeH(b) / 2),
       port: e.port,
       sel: e.id === props.selectedEdgeId,
+      rel: selLinks.value.outEdges.has(e.id)
+        ? 'out'
+        : selLinks.value.inEdges.has(e.id)
+          ? 'in'
+          : null,
     })
   }
   return out
@@ -517,6 +554,7 @@ onBeforeUnmount(() => {
       <NodeLayer
         :render-nodes="renderNodes"
         :selected-ids="props.selectedIds"
+        :links="selLinks"
         :hot-port="hotPort"
         :node-style="nodeStyle"
         :set-node-el="setNodeEl"

@@ -219,6 +219,29 @@ function isEdgeSel(e: EdgePath): boolean {
   return !!s && e.type === 'sched' && s.from === e.from && s.to === e.to
 }
 
+// ---- 选中联动（节点选中 → 下游/上游 key 集；边选中 → 两端 key 集）----
+const relOut = computed(() => {
+  const s = new Set<string>()
+  const k = props.selectedKey
+  if (k) for (const e of props.edges) if (e.from === k) s.add(e.to)
+  return s
+})
+const relInn = computed(() => {
+  const s = new Set<string>()
+  const k = props.selectedKey
+  if (k) for (const e of props.edges) if (e.to === k) s.add(e.from)
+  return s
+})
+const relPair = computed(() => {
+  const s = new Set<string>()
+  const p = selEdge.value
+  if (p) {
+    s.add(p.from)
+    s.add(p.to)
+  }
+  return s
+})
+
 /** 拖拽临时线（输出口锚点 → 指针世界坐标；锚点 = 卡右中） */
 const tempPath = computed(() => {
   const from = connectFrom.value
@@ -315,7 +338,15 @@ watch(
           :key="e.k"
           :d="e.d"
           class="cv-edge"
-          :class="[e.type, { flowing: e.flowing, sel: isEdgeSel(e) }]"
+          :class="[
+            e.type,
+            {
+              flowing: e.flowing,
+              sel: isEdgeSel(e),
+              'rel-out': !!selectedKey && e.from === selectedKey,
+              'rel-in': !!selectedKey && e.to === selectedKey,
+            },
+          ]"
           :marker-end="
             e.type === 'sched' ? 'url(#cv-arrow-sched)' : 'url(#cv-arrow-data)'
           "
@@ -333,7 +364,13 @@ watch(
         class="cnode"
         :class="[
           cardClass(n),
-          { sel: n.key === selectedKey, drop: n.key === dropKey },
+          {
+            sel: n.key === selectedKey,
+            drop: n.key === dropKey,
+            'rel-out': relOut.has(n.key),
+            'rel-in': relInn.has(n.key),
+            rel: relPair.has(n.key),
+          },
         ]"
         :style="nodeStyle(n.key)"
         :title="n.title"
@@ -489,6 +526,35 @@ watch(
   }
 }
 
+/* 选中联动：出边（下游）流动紫 · 入边（上游）静态淡紫（与创作画布同语义） */
+.cv-edge.rel-out {
+  stroke: var(--accent-h);
+  stroke-width: 2.4;
+  stroke-dasharray: 4 5;
+  opacity: 1;
+  animation: cv-rel-flow 0.9s linear infinite;
+}
+
+.cv-edge.rel-in {
+  stroke: var(--accent-h);
+  stroke-opacity: 0.55;
+  stroke-width: 2.2;
+  stroke-dasharray: 6 5;
+  opacity: 1;
+}
+
+@keyframes cv-rel-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-edge.rel-out {
+    animation: none;
+  }
+}
+
 /* ---- 编辑模式：sched 边点选 / 临时线 ---- */
 .cv-edges.editable .cv-edge.sched {
   pointer-events: stroke;
@@ -538,6 +604,22 @@ watch(
 .cnode:hover {
   border-color: rgb(148 163 184 / 55%);
   box-shadow: 0 6px 16px rgb(0 0 0 / 22%);
+}
+
+/* 选中联动（层级：sel > rel-out > rel > rel-in > hover） */
+.cnode.rel-in {
+  border-color: rgb(139 92 246 / 60%);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 15%);
+}
+
+.cnode.rel {
+  border-color: var(--accent-h);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 28%);
+}
+
+.cnode.rel-out {
+  border-color: var(--accent-h);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 38%);
 }
 
 .cnode.sel {

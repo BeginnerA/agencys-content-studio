@@ -114,11 +114,17 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     }
   }
 
-  // 资产：素材节点 assetId + 全部任务 resultAssetId（含历史）+ 实体首张参考图
+  // 资产：素材节点 assetId + 全部任务 resultAssetId（含历史）+ 实体首张参考图 + 锁版 pin 指向资产
   const assetIdSet = new Set<number>()
   for (const n of nodeRows) if (n.assetId != null) assetIdSet.add(n.assetId)
   for (const t of taskRows) if (t.resultAssetId != null) assetIdSet.add(t.resultAssetId)
   for (const [, refIds] of entityRefsByNodeId) if (refIds[0] != null) assetIdSet.add(refIds[0])
+  // 锁版 pin 指向的资产可能既非画布素材也非任务产物，需一并预载（与执行路径 loadInputPlan 对齐）
+  for (const n of nodeRows) {
+    if (n.kind !== 'gen') continue
+    const ps = safeParseSpec(n.spec).spec
+    if (ps?.pin) for (const v of Object.values(ps.pin)) assetIdSet.add(v)
+  }
   const assetRows = assetIdSet.size
     ? await db.select().from(assets).where(inArray(assets.id, [...assetIdSet]))
     : []
@@ -149,6 +155,8 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
       upstream.set(n.id, { assetId: null, mediaKind: null })
     }
   }
+  /** 节点 id → kind（锁版 pin 覆盖时校验来源节点类型：仅 asset/gen 上游可被锁） */
+  const nodeKindById = new Map(nodeRows.map((r) => [r.id, r.kind as string]))
 
   const capCache = new Map<string, Promise<EditCapability>>()
   const capOf = (provider?: string): Promise<EditCapability> => {
@@ -302,7 +310,24 @@ export async function buildCanvasDoc(canvasId: number): Promise<CanvasDoc | null
     let notes: string[] = []
     if (parsed.error) problems.push(parsed.error)
     if (parsed.spec) {
-      const plan = planNodeInputs(parsed.spec, n.id, edgeRows, upstream)
+      // 锁版 pin（spec.pin：上游节点 id → 锁定资产 id）：读模型与执行路径 loadInputPlan 对齐——
+      // 仅覆盖 asset/gen 上游的产物解析（资产存在且未删时生效）；无 pin 时复用共享 upstream（零行为变化）
+      let planUpstream = upstream
+      const pinKeys = parsed.spec.pin ? Object.keys(parsed.spec.pin) : []
+      if (pinKeys.length > 0) {
+        planUpstream = new Map(upstream)
+        for (const k of pinKeys) {
+          const fromId = Number(k)
+          const srcKind = nodeKindById.get(fromId)
+          if (!Number.isInteger(fromId) || fromId <= 0 || (srcKind !== 'asset' && srcKind !== 'gen')) continue
+          const a = assetById.get(parsed.spec.pin![k]!)
+          if (!a || a.deletedAt != null) continue
+          const cur = planUpstream.get(fromId)
+          if (!cur) continue
+          planUpstream.set(fromId, { ...cur, assetId: a.id, mediaKind: a.kind })
+        }
+      }
+      const plan = planNodeInputs(parsed.spec, n.id, edgeRows, planUpstream)
       problems.push(...specProblems(parsed.spec, plan.promptText != null), ...plan.problems)
       notes = plan.notes
     }

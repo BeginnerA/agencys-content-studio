@@ -45,6 +45,17 @@ const emit = defineEmits<{
       >
         <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-h)" />
       </marker>
+      <marker
+        id="cb-arrow-rel"
+        viewBox="0 0 10 10"
+        refX="8.5"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(139 92 246 / 60%)" />
+      </marker>
     </defs>
     <g v-for="e in edgePaths" :key="e.id">
       <path
@@ -55,9 +66,15 @@ const emit = defineEmits<{
       <path
         :d="e.d"
         class="cb-edge"
-        :class="{ sel: e.sel }"
+        :class="{ sel: e.sel, 'rel-out': e.rel === 'out', 'rel-in': e.rel === 'in' }"
         :port="e.port"
-        :marker-end="e.sel ? 'url(#cb-arrow-sel)' : 'url(#cb-arrow)'"
+        :marker-end="
+          e.sel || e.rel === 'out'
+            ? 'url(#cb-arrow-sel)'
+            : e.rel === 'in'
+              ? 'url(#cb-arrow-rel)'
+              : 'url(#cb-arrow)'
+        "
       />
     </g>
     <path v-if="linkPath" :d="linkPath" class="cb-edge tmp" />
@@ -80,6 +97,33 @@ const emit = defineEmits<{
 .cb-edge.sel {
   stroke: var(--accent-h);
   stroke-width: 2.4;
+}
+
+/* 选中节点关联边：出边（下游）流动紫（方向动画）· 入边（上游）静态淡紫；与选中边实线区分 */
+.cb-edge.rel-out {
+  stroke: var(--accent-h);
+  stroke-width: 2.2;
+  stroke-dasharray: 4 5;
+  animation: cb-edge-flow 0.9s linear infinite;
+}
+
+.cb-edge.rel-in {
+  stroke: var(--accent-h);
+  stroke-opacity: 0.6;
+  stroke-width: 2;
+  stroke-dasharray: 4 5;
+}
+
+@keyframes cb-edge-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-edge.rel-out {
+    animation: none;
+  }
 }
 
 .cb-edge.tmp {
