@@ -47,7 +47,7 @@ export async function run(ctx: M17Ctx): Promise<void> {
       chatCap.req?.body?.messages?.[1]?.content === '原提示词：\n窗边的猫' && !String(chatCap.req?.body?.messages?.[1]?.content).includes('补充要求'),
       'prompt-expand：user 消息 = 原提示词（无 instruction）',
     )
-    check(chatCap.req?.body?.max_tokens === 2000 && chatCap.req?.body?.stream === false, 'prompt-expand：max_tokens 2000 / stream false')
+    check(chatCap.req?.body?.max_tokens === 24000 && chatCap.req?.body?.stream === false, 'prompt-expand：max_tokens 24000 / stream false')
 
     // instruction 透传 + gen 源
     const ok2 = await jreq('POST', `/api/v1/nodes/${TL}/prompt-expand`, { instruction: ' 更诗意 ' })

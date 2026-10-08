@@ -630,7 +630,8 @@ export async function promptExpandNode(
       { role: 'user', content: `原提示词：\n${source}${extra}` },
     ],
     undefined,
-    { maxTokens: 2000 },
+    // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，2000 会在正文产出前耗尽 → 对齐轻量档 24000
+    { maxTokens: 24_000 },
   )
   const prompt = res.content.trim()
   if (!prompt) throw new Error('LLM 返回为空')

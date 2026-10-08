@@ -189,7 +189,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
           { role: 'system', content: loadPromptTemplate('video-storyboard.md') },
           { role: 'user', content: `以下是用户采纳的参考视频实际解析出的时间轴（scenes=可见画面，speech=可听内容）。请按契约反推为可复拍的分镜；只依据时间轴里真实存在的内容，缺失的留空不编造：\n${refComp.analyses.map((an) => JSON.stringify({ name: an.name, duration: an.duration, scenes: an.scenes, speech: an.transcript ?? '' })).join('\n')}` },
         ]
-        const draftResult = await chatCompleteDetailed(draftMessages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 16000, temperature: 0.3, allowEmptyContent: true, timeoutMs: 300_000 })
+        // [推理预算修复] 反推初稿是分镜类输出（同 ai-text 口径）：reasoning 18-19K + 正文 5-6K，24000 会在 JSON 中途截断 → 64000 + 10 分钟
+        const draftResult = await chatCompleteDetailed(draftMessages, { ...ep, baseUrl: ep.baseUrl.replace(/\/+$/, ''), model: ep.model! }, { maxTokens: 64000, temperature: 0.3, allowEmptyContent: true, timeoutMs: 600_000 })
         for (const [index, unit] of (['tokens_in', 'tokens_out'] as const).entries()) await recordUsage({
           projectId: claimed.projectId, kind: 'llm', provider: ep.providerKey, model: ep.model,
           quantity: draftResult.usage ? (index === 0 ? draftResult.usage.promptTokens : draftResult.usage.completionTokens) : 0,

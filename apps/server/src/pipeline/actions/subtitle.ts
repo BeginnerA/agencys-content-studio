@@ -158,7 +158,8 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
       ep,
       {
         temperature: 0.2,
-        maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000,
+        // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，默认 12000 会在正文产出前耗尽 → 24000
+        maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 24_000,
       },
     )
     // 用量记录（estimated 分支单次 LLM 调用；measured 分支零调用不记录）
@@ -275,7 +276,8 @@ async function translateTimedLines(ctx: StepContext, timed: TimingLine[], target
       { role: 'user', content: userPrompt },
     ],
     ep,
-    { temperature: 0.3, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 12000 },
+    // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，默认 12000 会在正文产出前耗尽 → 24000
+    { temperature: 0.3, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 24_000 },
   )
   await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
   const parsed = parseLineTranslations(res.content)
@@ -600,7 +602,8 @@ async function designStyleWithLlm(
         { role: 'user', content: userPrompt },
       ],
       ep,
-      { temperature: 0.4, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 8000 },
+      // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，默认 8000 会在正文产出前耗尽 → 24000
+      { temperature: 0.4, maxTokens: typeof llmCfg['max_tokens'] === 'number' ? llmCfg['max_tokens'] : 24_000 },
     )
     await recordLlmUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, provider: res.provider, model: res.model, usage: res.usage })
     return parseStylePlan(res.content, roles, o)

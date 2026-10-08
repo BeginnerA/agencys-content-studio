@@ -472,7 +472,8 @@ async function executeLlmOnce(taskId: number, canvas: Canvas, node: CanvasNode, 
       { role: 'user', content: imageParts.length > 0 ? [{ type: 'text', text: body }, ...imageParts] : body },
     ],
     endpoint,
-    { temperature: spec.temperature ?? 0.8, maxTokens: spec.maxTokens ?? 12000, timeoutMs: 600_000 },
+    // [推理预算修复] 节点未配 maxTokens 时的兜底：推理模型 reasoning_content 独占 18-19K token（原 12000 会正文为空）→ 24000
+    { temperature: spec.temperature ?? 0.8, maxTokens: spec.maxTokens ?? 24_000, timeoutMs: 600_000 },
   )
   if (await taskCancelled(taskId)) return // 生成不可中断——完成后若已取消 → 弃存
   const text = res.content.trim()

@@ -115,10 +115,12 @@ export async function chatCompleteDetailed(
     throw new LlmNotConfiguredError('端点缺失：实例未填 base_url 且供应商目录无默认端点（或 .env 未设置 AGENT_LLM_BASE_URL）')
   if (!ep.apiKey) throw new LlmNotConfiguredError('API Key 缺失：请在 Settings → AI 配置检查实例密钥，或 .env 设置 AGENT_LLM_API_KEY')
 
+  // 推理模型安全兜底：deepseek 系 reasoning_content 实测独占 18-19K token（kit 默认 12000 会在正文产出前耗尽，
+  // 报「模型仅输出推理未产出正文」）；未显式传参的入口统一 24000 + 10 分钟超时，显式传参优先（分镜/方案的 64000 档不受影响）
   const r = await kitChatCompleteDetailed(
     messages,
     { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.model },
-    opts,
+    { maxTokens: 24_000, timeoutMs: 600_000, ...opts },
   )
   return { content: r.content, usage: r.usage, provider: ep.providerKey, model: ep.model, finishReason: r.finishReason }
 }

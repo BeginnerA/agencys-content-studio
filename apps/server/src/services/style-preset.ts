@@ -141,7 +141,8 @@ export async function extractStyleSnippetFromAssets(
       { role: 'user', content: [{ type: 'text', text: `请提取以下 ${images.length} 张图片的共同画风提示词` }, ...images] },
     ],
     undefined,
-    { temperature: 0.3, maxTokens: 400 },
+    // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，400 会在正文产出前耗尽 → 对齐轻量档 24000
+    { temperature: 0.3, maxTokens: 24_000 },
   )
   await recordLlmUsage({ projectId, runId: null, provider: result.provider, model: result.model, usage: result.usage })
   return { snippet: extractSnippetFromText(result.content), provider: result.provider, model: result.model }

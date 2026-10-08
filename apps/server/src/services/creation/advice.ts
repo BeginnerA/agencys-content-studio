@@ -183,13 +183,15 @@ export async function canvasAdvice(canvasId: number): Promise<CanvasAdviceResult
   const doc = await buildCanvasDoc(canvasId)
   if (!doc) return null
   const summary = buildCanvasSummary(doc)
+  // [推理预算修复] 原 3000 在 deepseek 系推理模型下被 reasoning_content 独占（实测 18-19K token）→ 正文为空，
+  // 表层报「LLM 响应为空：模型仅输出推理未产出正文」；对齐 rework 轻量档 24000，长思维链超时放宽到 10 分钟
   const res = await chatCompleteDetailed(
     [
       { role: 'system', content: loadPromptTemplate('canvas-advice.md') },
       { role: 'user', content: `画布摘要 JSON：\n${JSON.stringify(summary, null, 2)}` },
     ],
     undefined,
-    { maxTokens: 3000 },
+    { maxTokens: 24_000, timeoutMs: 600_000 },
   )
   const parsed = parseAdviceOutput(res.content, new Set(doc.nodes.map((n) => n.id)))
   await recordLlmUsage({ projectId: doc.canvas.projectId, runId: null, provider: res.provider, model: res.model, usage: res.usage })

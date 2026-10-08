@@ -1,11 +1,11 @@
 /**
- * 画布学习实例 seed —— 创建演示项目「画布学习实例」及 8 个复杂画布（含短剧实战与三级合成链）。
+ * 画布学习实例 seed —— 创建演示项目「画布学习实例」及 9 个复杂画布（含短剧实战、三级合成与季级四级合成）。
  *
  * 目的：给用户一套可直接在 UI 中打开、把玩、运行的画布教学实例，
  * 覆盖全部节点类型（asset/gen/text/entity/run 中除 run 外全部）、
  * 全部端口（reference/first_frame/last_frame/source/prompt/text/video/audio）、
  * gen 子类型（image/video/audio/compose/llm）、edit（inpaint/outpaint）、
- * 多级合成（compose → compose 链，08 画布到三级）、分组（含嵌套）、seq 故事板序号、快照、视口。
+ * 多级合成（compose → compose 链，08 到三级、09 到季级四级）、分组（含嵌套三层）、seq 故事板序号、快照、视口。
  *
  * 方式：纯 HTTP API 驱动（服务需已启动，默认 http://127.0.0.1:3001），
  * 占位素材（5 图 + 静音 WAV + 示例 SRT，含全新蒙版图）由脚本内置生成（零依赖），上传进项目资产库。
@@ -233,7 +233,7 @@ async function ensureProject(): Promise<number> {
     name: PROJECT_NAME,
     genre: 'other',
     template_key: 'mengbao-episode',
-    brief: '内置 8 个复杂画布示例（含短剧实战与三级合成链），用于学习创作画布的全部核心能力：节点类型 / 端口连线 / 编辑 / 多级合成 / 锁版 / 分组嵌套 / 快照。可直接把玩、运行与改造。',
+    brief: '内置 9 个复杂画布示例（含短剧实战、三级与季级四级合成链），用于学习创作画布的全部核心能力：节点类型 / 端口连线 / 编辑 / 多级合成 / 锁版 / 分组嵌套 / 快照。可直接把玩、运行与改造。',
     tags: ['学习', '画布示例'],
   })
   log(`已创建项目 #${r.project.id}（${PROJECT_NAME}）`)
@@ -305,7 +305,7 @@ async function snapshot(cid: number, label: string): Promise<void> {
   await api('POST', `/canvases/${cid}/snapshots`, { label })
 }
 
-// ---------- 八个教学画布（01-06 基础串联 + 07 两级短剧 + 08 三级全集） ----------
+// ---------- 九个教学画布（01-06 基础串联 + 07 两级短剧 + 08 三级全集 + 09 季级四级） ----------
 
 interface Assets {
   cafeImg: number
@@ -322,6 +322,8 @@ interface Entities {
   cafeScene: number
   ale: number
   duskStreet: number
+  /** 09 季级实战新增：学徒小宇 */
+  xiaoyu: number
 }
 
 /** 01 · 入门：文本 → 图片生成 */
@@ -817,6 +819,219 @@ async function buildCanvas8(cid: number, assets: Assets, entities: Entities): Pr
   await setViewport(cid, 0.25)
 }
 
+/** 09 场次构建器（单镜头迷你场次）：文案→配音 / 分镜→镜头 / 镜头+配音 → 场次合成 */
+interface MiniScene {
+  t: number
+  img: number
+  au: number
+  v: number
+  c: number
+}
+
+async function addMiniScene(
+  cid: number,
+  x: number,
+  y: number,
+  text: { title: string; body: string },
+  img: { title: string; prompt: string },
+  au: { title: string; speed?: number; emotion?: string },
+  v: { title: string; prompt: string },
+  compTitle: string,
+  refs: number[],
+): Promise<MiniScene> {
+  const t = await addText(cid, x, y, text.title, text.body)
+  const imgN = await addGen(cid, x + 400, y, img.title, { genKind: 'image', prompt: img.prompt, size: '1024x1536' })
+  const auN = await addGen(cid, x + 800, y, au.title, {
+    genKind: 'audio',
+    prompt: '',
+    speed: au.speed ?? 1,
+    ...(au.emotion ? { emotion: au.emotion } : {}),
+  })
+  const vN = await addGen(cid, x + 1200, y, v.title, { genKind: 'video', prompt: v.prompt, duration: 3, resolution: '720p', aspectRatio: '9:16' })
+  const cN = await addGen(cid, x + 1600, y, compTitle, { genKind: 'compose', prompt: '', align: true, subtitle: 'auto', burnSubtitles: true, transition: 'dissolve', transitionDuration: 0.3, fit: 'pad', fps: 30 })
+  for (const r of refs) await link(cid, r, imgN, 'reference')
+  await link(cid, t, auN, 'prompt')
+  await link(cid, imgN, vN, 'first_frame')
+  await link(cid, vN, cN, 'video')
+  await link(cid, auN, cN, 'audio')
+  return { t, img: imgN, au: auN, v: vN, c: cN }
+}
+
+/** 09 · 季级实战：2 集 → 10 场次 → 四级合成（场次 → 幕 → 集 → 季） */
+async function buildCanvas9(cid: number, assets: Assets, entities: Entities): Promise<void> {
+  const n: NodeIds = {}
+  n.s = await addText(cid, -1200, 40, '📖 使用说明', [
+    '学习目标：从「一集」升级到「一季」——多集结构、更深合成层级与更大场次规模。',
+    '',
+    '① 三档规模升级（对照 08 画布）：场次 10 > 4、幕 5 > 2、集 2 > 1、合成链 4 级 > 3 级；',
+    '② 多集系列：第1集（6 场次 3 幕）与第2集（4 场次 2 幕）各自独立成链，最终在季总片汇合；',
+    '③ 四级合成：场次合成 ×10 → 幕片 ×5 → 集片 ×2 → 季总片（compose 逐级链，每级各有转场策略）；',
+    '④ 季级统一层：BGM 与字幕仅在季总片注入一次（避免逐集重复混音），配季封面 / 下季预告 / 季宣发文案；',
+    '⑤ 嵌套加深：场次组 ⊂ 幕组 ⊂ 集组（三层嵌套；08 为两层），组内折叠后结构一目了然；',
+    '⑥ 运行节奏：分镜/配音 → 镜头视频 → 场次片 → 幕片 → 集片 → 季总片；未跑上游时下游显示「暂无成功产物」属正常。',
+  ].join('\n'))
+  // —— 素材与实体（跨集一致性）——
+  n.entX = await addEntityNode(cid, -1200, 520, '角色 · 小杨', entities.xiaoyang)
+  n.entA = await addEntityNode(cid, -1200, 840, '角色 · 阿乐', entities.ale)
+  n.entY = await addEntityNode(cid, -1200, 1160, '角色 · 小宇（本季新角色）', entities.xiaoyu)
+  n.entC = await addEntityNode(cid, -1200, 1480, '场景 · 咖啡馆', entities.cafeScene)
+  n.entD = await addEntityNode(cid, -1200, 1800, '场景 · 黄昏街道', entities.duskStreet)
+  n.bgm = await addAssetNode(cid, -1200, 2180, 'BGM · 占位音频（季级注入）', assets.bgmWav)
+  n.aSrt = await addAssetNode(cid, -1200, 2480, '字幕 · 示例 SRT（季级重钉）', assets.srt)
+  // —— 第1集《特殊的学徒》：6 场次 → 3 幕 ——
+  // 第一幕 · 请求（场次1-2）
+  const s11 = await addMiniScene(cid, 80, 400,
+    { title: '台词 · 小宇（请求）', body: '小杨姐……我想学做蛋糕。下周是妈妈的生日，我想亲手做一个给她。' },
+    { title: '分镜1 · 街角请求', prompt: '竖屏分镜：黄昏街角，小宇背着画板鼓起勇气拦住刚打烊的小杨，紧张又期待，暮色暖橙' },
+    { title: '配音 · 小宇（请求）', speed: 1.0, emotion: '紧张——语速略快，气声明显' },
+    { title: '镜头1 · 街角对话', prompt: '跟拍小宇文涩开口，暮色光斑流动，镜头轻推近' },
+    '场次合成1 · 请求片（auto 字幕+烧录）',
+    [n.entX, n.entY, n.entD])
+  const s12 = await addMiniScene(cid, 2080, 400,
+    { title: '台词 · 小杨（应允）', body: '好啊——不过做蛋糕没那么简单。明天打烊后，来店里。' },
+    { title: '分镜2 · 吧台应允', prompt: '竖屏中景：咖啡馆吧台前，小杨笑着点头应允，阿乐在一旁鼓掌，暖灯氛围' },
+    { title: '配音 · 小杨（温和）', speed: 0.95 },
+    { title: '镜头2 · 店内交谈', prompt: '吧台对话中景，暖光摇曳，镜头轻摇' },
+    '场次合成2 · 应允片（auto 字幕+烧录）',
+    [n.entX, n.entC])
+  // 第二幕 · 磨练（场次3-4）
+  const s13 = await addMiniScene(cid, 80, 1000,
+    { title: '台词 · 阿乐（打趣）', body: '手腕要稳，别甩出去——哈哈，奶油都上墙了！' },
+    { title: '分镜3 · 奶油乱飞', prompt: '竖屏特写：厨房里小宇手忙脚乱打发奶油，奶油飞溅到围裙，阿乐大笑' },
+    { title: '配音 · 阿乐（打趣）', speed: 1.05, emotion: '打趣——语调上扬，带笑' },
+    { title: '镜头3 · 厨房手忙脚乱', prompt: '厨房轻喜剧节奏，镜头随奶油飞溅轻甩' },
+    '场次合成3 · 磨练片（auto 字幕+烧录）',
+    [n.entY, n.entC])
+  const s14 = await addMiniScene(cid, 2080, 1000,
+    { title: '台词 · 小宇（沮丧）', body: '又糊了……我是不是特别笨？' },
+    { title: '分镜4 · 烤糊的蛋糕', prompt: '竖屏近景：烤盘上焦黑的蛋糕胚冒着焦烟，小宇低头垂肩，灯光转冷' },
+    { title: '配音 · 小宇（沮丧）', speed: 0.9, emotion: '沮丧——语速慢，气息低' },
+    { title: '镜头4 · 烤箱前的沉默', prompt: '固定机位，焦烟缓缓升起，人物沉默' },
+    '场次合成4 · 失败片（auto 字幕+烧录）',
+    [n.entY, n.entC])
+  // 第三幕 · 渐成（场次5-6）
+  const s15 = await addMiniScene(cid, 80, 1600,
+    { title: '旁白 · 深夜', body: '深夜的咖啡馆还亮着灯——失败率的尽头，是越来越稳的手腕。' },
+    { title: '分镜5 · 深夜练习', prompt: '竖屏分镜：深夜咖啡馆后厨暖灯下，小宇独自反复练习打发，小杨在门口默默注视' },
+    { title: '配音 · 深夜旁白', speed: 0.95 },
+    { title: '镜头5 · 深夜灯光', prompt: '从窗外夜街推近到灯火通明的咖啡馆窗户，缓慢推进' },
+    '场次合成5 · 深夜片（auto 字幕+烧录）',
+    [n.entY, n.entC])
+  const s16 = await addMiniScene(cid, 2080, 1600,
+    { title: '台词 · 小杨（鼓励）', body: '看，这次发得刚刚好——明天，就是正式的了。' },
+    { title: '分镜6 · 成功的蛋糕胚', prompt: '竖屏特写：金黄的蛋糕胚出炉，小宇与小杨相视而笑，晨光透窗' },
+    { title: '配音 · 小杨（鼓励）', speed: 1.0 },
+    { title: '镜头6 · 出炉瞬间', prompt: '出炉瞬间轻推，热气升腾，晨光渐亮' },
+    '场次合成6 · 渐成片（auto 字幕+烧录）',
+    [n.entX, n.entY, n.entC])
+  // —— 第2集《生日快乐》：4 场次 → 2 幕 ——
+  const s21 = await addMiniScene(cid, 80, 2200,
+    { title: '旁白 · 前夜', body: '生日前一晚，三个人把咖啡馆布置成了小小的生日现场。' },
+    { title: '分镜7 · 布置现场', prompt: '竖屏分镜：夜晚咖啡馆挂起暖白小灯与手写横幅，三人踩着凳子在布置' },
+    { title: '配音 · 前夜旁白', speed: 0.95 },
+    { title: '镜头7 · 挂起小灯', prompt: '仰拍视角：暖灯串渐次点亮，镜头缓摇' },
+    '场次合成7 · 前夜片（auto 字幕+烧录）',
+    [n.entC, n.entY])
+  const s22 = await addMiniScene(cid, 2080, 2200,
+    { title: '台词 · 小宇（专注）', body: '妈妈喜欢草莓……中间这朵奶油花，是我画过的第一张画。' },
+    { title: '分镜8 · 装饰蛋糕', prompt: '竖屏特写：小宇手挤奶油花，蛋糕上摆满草莓，专注的侧脸被暖灯勾勒' },
+    { title: '配音 · 小宇（专注）', speed: 0.95 },
+    { title: '镜头8 · 裱花特写', prompt: '微距拍裱花过程，奶油花逐渐成形' },
+    '场次合成8 · 装饰片（auto 字幕+烧录）',
+    [n.entY, n.entC])
+  const s23 = await addMiniScene(cid, 80, 2800,
+    { title: '台词 · 小杨（神秘）', body: '阿姨，这边请——有个人，等您很久了。' },
+    { title: '分镜9 · 妈妈进门', prompt: '竖屏分镜：咖啡馆门口，小杨引着一位女士进门，小宇在烛光后紧张站立' },
+    { title: '配音 · 小杨（神秘）', speed: 1.0 },
+    { title: '镜头9 · 推门瞬间', prompt: '门铃响起，镜头从烛光蛋糕摇向门口，轻微晃动' },
+    '场次合成9 · 惊喜片（auto 字幕+烧录）',
+    [n.entX, n.entC])
+  const s24 = await addMiniScene(cid, 2080, 2800,
+    { title: '台词 · 妈妈（哽咽）', body: '傻孩子……这是妈妈这些年，收到过最好的生日蛋糕。' },
+    { title: '分镜10 · 拥抱定格', prompt: '竖屏中景：烛光中妈妈红着眼眶抱住小宇，小杨与阿乐在旁微笑，暖光收尾' },
+    { title: '配音 · 妈妈（哽咽）', speed: 0.9, emotion: '哽咽——气息断续，尾音发颤' },
+    { title: '镜头10 · 拥抱定格', prompt: '环绕半圈后定格合成合影，灯光渐暖' },
+    '场次合成10 · 结局片（auto 字幕+烧录）',
+    [n.entY, n.entC])
+  // —— 四级链中后段：幕片 ×5 → 集片 ×2 → 季总片 ——
+  const m11 = await addGen(cid, 4080, 400, '幕片1-1 · 第1集第一幕（场次1-2）', { genKind: 'compose', prompt: '', transition: 'fadeblack', transitionDuration: 0.6, fit: 'crop', fps: 30 })
+  const m12 = await addGen(cid, 4080, 1000, '幕片1-2 · 第1集第二幕（场次3-4）', { genKind: 'compose', prompt: '', transition: 'fadeblack', transitionDuration: 0.6, fit: 'crop', fps: 30 })
+  const m13 = await addGen(cid, 4080, 1600, '幕片1-3 · 第1集第三幕（场次5-6）', { genKind: 'compose', prompt: '', transition: 'fadeblack', transitionDuration: 0.6, fit: 'crop', fps: 30 })
+  const m21 = await addGen(cid, 4080, 2200, '幕片2-1 · 第2集第一幕（场次1-2）', { genKind: 'compose', prompt: '', transition: 'fadeblack', transitionDuration: 0.6, fit: 'crop', fps: 30 })
+  const m22 = await addGen(cid, 4080, 2800, '幕片2-2 · 第2集第二幕（场次3-4）', { genKind: 'compose', prompt: '', transition: 'fadeblack', transitionDuration: 0.6, fit: 'crop', fps: 30 })
+  const ep1 = await addGen(cid, 4480, 1000, '集片 · 第1集成片（三幕联排）', { genKind: 'compose', prompt: '', transition: 'fade', transitionDuration: 0.5, fit: 'crop', fps: 30 })
+  const ep2 = await addGen(cid, 4480, 2500, '集片 · 第2集成片（两幕联排）', { genKind: 'compose', prompt: '', transition: 'fade', transitionDuration: 0.5, fit: 'crop', fps: 30 })
+  n.season = await addGen(cid, 4880, 1750, '季总片 · 四级链终点（两集联播+季 BGM/字幕）', { genKind: 'compose', prompt: '', transition: 'fade', transitionDuration: 1, bgmAssetId: assets.bgmWav, bgmVolume: 0.35, bgmFade: true, subtitle: 'asset', subtitleAssetId: assets.srt, fit: 'crop', fps: 30 })
+  n.cover = await addGen(cid, 4880, 400, '季封面 · 竖版', { genKind: 'image', prompt: '竖版季封面：《元气小杨的一天》第1季——咖啡馆暖灯下三人合影，蛋糕与烛光，上方留白标题区，治愈质感', size: '1024x1536' })
+  n.trailer = await addGen(cid, 4880, 760, '下季预告 · 钩子', { genKind: 'video', prompt: '竖版预告：镜头掠过墙上的三人合影，缓缓定格在一把空椅子上，灯光渐暗', duration: 4, resolution: '720p', aspectRatio: '9:16' })
+  n.tm = await addText(cid, 4880, 2300, '材料 · 全季卖点与受众', '短剧《元气小杨的一天》第1季（第1-2集）：两集连播，治愈系成长故事；卖点：师徒线 + 生日惊喜反转；受众 18-30 城市青年；平台：短视频。')
+  n.tp = await addText(cid, 4880, 2620, '指令 · 季宣发文案', '为本季写宣发文案：不超过 100 字，含季标题、2-3 个话题标签与追更引导。')
+  n.l1 = await addGen(cid, 4880, 2940, 'LLM · 季宣发文案生成', { genKind: 'llm', prompt: '', temperature: 0.9, maxTokens: 2000 })
+  // —— 连线（四级合成链：场次 → 幕 → 集 → 季）——
+  await link(cid, s11.c, m11, 'video')
+  await link(cid, s12.c, m11, 'video')
+  await link(cid, s13.c, m12, 'video')
+  await link(cid, s14.c, m12, 'video')
+  await link(cid, s15.c, m13, 'video')
+  await link(cid, s16.c, m13, 'video')
+  await link(cid, s21.c, m21, 'video')
+  await link(cid, s22.c, m21, 'video')
+  await link(cid, s23.c, m22, 'video')
+  await link(cid, s24.c, m22, 'video')
+  await link(cid, m11, ep1, 'video')
+  await link(cid, m12, ep1, 'video')
+  await link(cid, m13, ep1, 'video')
+  await link(cid, m21, ep2, 'video')
+  await link(cid, m22, ep2, 'video')
+  await link(cid, ep1, n.season, 'video')
+  await link(cid, ep2, n.season, 'video')
+  // —— 连线（季级交付：封面 / 预告 / 宣发文案）——
+  await link(cid, n.entX, n.cover, 'reference')
+  await link(cid, n.entY, n.cover, 'reference')
+  await link(cid, n.entC, n.cover, 'reference')
+  await link(cid, n.entC, n.trailer, 'reference')
+  await link(cid, n.tm, n.l1, 'text')
+  await link(cid, n.tp, n.l1, 'prompt')
+  // —— 序号（全季生产顺序 1-38）——
+  const seqPlan: Array<[number, number]> = [
+    [s11.img, 1], [s12.img, 2], [s13.img, 3], [s14.img, 4], [s15.img, 5], [s16.img, 6],
+    [s21.img, 7], [s22.img, 8], [s23.img, 9], [s24.img, 10],
+    [s11.v, 11], [s12.v, 12], [s13.v, 13], [s14.v, 14], [s15.v, 15], [s16.v, 16],
+    [s21.v, 17], [s22.v, 18], [s23.v, 19], [s24.v, 20],
+    [s11.c, 21], [s12.c, 22], [s13.c, 23], [s14.c, 24], [s15.c, 25], [s16.c, 26],
+    [s21.c, 27], [s22.c, 28], [s23.c, 29], [s24.c, 30],
+    [m11, 31], [m12, 32], [m13, 33], [m21, 34], [m22, 35],
+    [ep1, 36], [ep2, 37], [n.season, 38],
+  ]
+  for (const [id, s] of seqPlan) await setSeq(id, s)
+  // —— 分组（三层嵌套：场次 ⊂ 幕 ⊂ 集；季级交付独立成组）——
+  const gS11 = await group(cid, '第1集 · 场次1 · 街角请求', 'blue', [s11.t, s11.img, s11.au, s11.v, s11.c])
+  const gS12 = await group(cid, '第1集 · 场次2 · 店内应允', 'blue', [s12.t, s12.img, s12.au, s12.v, s12.c])
+  const gS13 = await group(cid, '第1集 · 场次3 · 第一次打发', 'blue', [s13.t, s13.img, s13.au, s13.v, s13.c])
+  const gS14 = await group(cid, '第1集 · 场次4 · 第一炉失败', 'blue', [s14.t, s14.img, s14.au, s14.v, s14.c])
+  const gS15 = await group(cid, '第1集 · 场次5 · 深夜练习', 'blue', [s15.t, s15.img, s15.au, s15.v, s15.c])
+  const gS16 = await group(cid, '第1集 · 场次6 · 渐入佳境', 'blue', [s16.t, s16.img, s16.au, s16.v, s16.c])
+  const gS21 = await group(cid, '第2集 · 场次1 · 生日前夜', 'blue', [s21.t, s21.img, s21.au, s21.v, s21.c])
+  const gS22 = await group(cid, '第2集 · 场次2 · 精心装饰', 'blue', [s22.t, s22.img, s22.au, s22.v, s22.c])
+  const gS23 = await group(cid, '第2集 · 场次3 · 生日惊喜', 'blue', [s23.t, s23.img, s23.au, s23.v, s23.c])
+  const gS24 = await group(cid, '第2集 · 场次4 · 拥抱与约定', 'blue', [s24.t, s24.img, s24.au, s24.v, s24.c])
+  const gM11 = await group(cid, '第1集 · 第一幕 · 请求（场次1-2）', 'amber', undefined, [gS11, gS12])
+  const gM12 = await group(cid, '第1集 · 第二幕 · 磨练（场次3-4）', 'amber', undefined, [gS13, gS14])
+  const gM13 = await group(cid, '第1集 · 第三幕 · 渐成（场次5-6）', 'amber', undefined, [gS15, gS16])
+  const gM21 = await group(cid, '第2集 · 第一幕 · 准备（场次1-2）', 'amber', undefined, [gS21, gS22])
+  const gM22 = await group(cid, '第2集 · 第二幕 · 惊喜（场次3-4）', 'amber', undefined, [gS23, gS24])
+  await group(cid, '第1集《特殊的学徒》（嵌套：集 ⊃ 幕 ⊃ 场次）', 'teal', undefined, [gM11, gM12, gM13])
+  await group(cid, '第2集《生日快乐》（嵌套：集 ⊃ 幕 ⊃ 场次）', 'teal', undefined, [gM21, gM22])
+  await group(cid, '幕片合成（四级链 · 第2级）', 'red', [m11, m12, m13, m21, m22])
+  await group(cid, '集片 · 季总装（四级链 · 第3-4级）', 'purple', [ep1, ep2, n.season, n.cover, n.trailer, n.tm, n.tp, n.l1])
+  await group(cid, '素材与实体（跨集一致性）', 'gray', [n.s, n.entX, n.entA, n.entY, n.entC, n.entD, n.bgm, n.aSrt])
+  // —— 双快照：v1 季结构就绪 → 调声（s16 配音）→ v2（供对比/恢复教学）——
+  await snapshot(cid, '教学快照 · v1 季结构就绪')
+  await api('PATCH', `/nodes/${s16.au}`, { spec: { genKind: 'audio', prompt: '', speed: 1.08, emotion: '欣慰——语速缓和，尾音带笑意' } })
+  await snapshot(cid, '教学快照 · v2 调声后（对比 v1）')
+  await setViewport(cid, 0.22)
+}
+
 // ---------- 主流程 ----------
 
 async function main(): Promise<void> {
@@ -832,7 +1047,7 @@ async function main(): Promise<void> {
   const pid = await ensureProject()
   // 项目简介对齐最新画布数量（幂等：每次写同值）
   await api('PATCH', `/projects/${pid}`, {
-    brief: '内置 8 个复杂画布示例（含短剧实战与三级合成链），用于学习创作画布的全部核心能力：节点类型 / 端口连线 / 编辑 / 多级合成 / 锁版 / 分组嵌套 / 快照。可直接把玩、运行与改造。',
+    brief: '内置 9 个复杂画布示例（含短剧实战、三级与季级四级合成链），用于学习创作画布的全部核心能力：节点类型 / 端口连线 / 编辑 / 多级合成 / 锁版 / 分组嵌套 / 快照。可直接把玩、运行与改造。',
   })
 
   log('准备实体（角色 / 场景）…')
@@ -853,6 +1068,10 @@ async function main(): Promise<void> {
       summary: '咖啡馆门外的街道，傍晚暖橙天色，街灯初亮',
       appearance: '暮色街道，暖橙天空，玻璃橱窗反光，氛围安静',
     }),
+    xiaoyu: await ensureEntity(pid, 'character', '小宇', {
+      summary: '第1季新角色：想为妈妈亲手做生日蛋糕的年轻人，拜小杨为师',
+      appearance: '清瘦少年，深蓝连帽衫，背着旧画板，眼神倔强又温柔',
+    }),
   }
 
   log('上传占位素材（5 图 + 静音 WAV + 示例 SRT）…')
@@ -861,6 +1080,7 @@ async function main(): Promise<void> {
   const pngCamera = makeScenePng({ w: 768, h: 768, top: [232, 246, 239], bottom: [125, 206, 160], light: [255, 255, 255] })
   const pngXiaoyang = makeScenePng({ w: 768, h: 1024, top: [214, 234, 248], bottom: [127, 179, 213], light: [255, 255, 255] })
   const pngAle = makeScenePng({ w: 768, h: 1024, top: [255, 240, 220], bottom: [198, 138, 92], light: [255, 255, 255] })
+  const pngXiaoyu = makeScenePng({ w: 768, h: 1024, top: [225, 236, 255], bottom: [146, 146, 202], light: [255, 255, 255] })
   const pngMask = makeMaskPng(1024, 1024)
   const assets: Assets = {
     cafeImg: await uploadMedia(pid, '学习素材-清晨咖啡馆.png', pngCafe, 'image/png', 'source'),
@@ -878,6 +1098,7 @@ async function main(): Promise<void> {
   await uploadEntityRef(entities.cafeScene, '学习素材-清晨咖啡馆.png', pngCafe, 'image/png')
   await uploadEntityRef(entities.ale, '学习素材-角色阿乐立绘.png', pngAle, 'image/png')
   await uploadEntityRef(entities.duskStreet, '学习素材-黄昏街景.png', pngDusk, 'image/png')
+  await uploadEntityRef(entities.xiaoyu, '学习素材-角色小宇立绘.png', pngXiaoyu, 'image/png')
 
   const builders: Array<{ name: string; build: (cid: number) => Promise<void> }> = [
     { name: '01 · 入门：文本 → 图片生成', build: (cid) => buildCanvas1(cid) },
@@ -888,6 +1109,7 @@ async function main(): Promise<void> {
     { name: '06 · 综合实战：嵌套分组与全要素', build: (cid) => buildCanvas6(cid, assets, entities) },
     { name: '07 · 短剧实战：《元气小杨的一天》第1集', build: (cid) => buildCanvas7(cid, assets, entities) },
     { name: '08 · 短剧实战·全集：4 场次 → 2 幕 → 三级合成', build: (cid) => buildCanvas8(cid, assets, entities) },
+    { name: '09 · 季级实战：2 集 → 10 场次 → 四级合成', build: (cid) => buildCanvas9(cid, assets, entities) },
   ]
 
   const results: Array<{ name: string; id: number }> = []

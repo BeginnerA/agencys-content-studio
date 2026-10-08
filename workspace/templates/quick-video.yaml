@@ -33,7 +33,7 @@ inputs:
     required: false
     default: true
 defaults:
-  llm: { temperature: 0.7, max_tokens: 12000 }
+  llm: { temperature: 0.7, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "1536x1024" }
   audio: { provider: pollinations_audio, voice: "Cherry" }
 steps:

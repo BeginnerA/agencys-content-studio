@@ -268,7 +268,8 @@ export async function analyzeVideoSource(args: {
         { role: 'user', content: parts },
       ],
       ep,
-      { temperature: 0.2, maxTokens: 16000, timeoutMs: 600_000 },
+      // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token，16000 会在正文产出前耗尽 → 24000
+      { temperature: 0.2, maxTokens: 24_000, timeoutMs: 600_000 },
     )
     await args.onUsage?.({ provider: res.provider, model: res.model, usage: res.usage })
 

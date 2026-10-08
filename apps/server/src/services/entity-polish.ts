@@ -41,7 +41,8 @@ export async function polishAppearance(
       { role: 'user', content: user },
     ],
     undefined,
-    { temperature: 0.5, maxTokens: 800, timeoutMs: 60_000 },
+    // [推理预算修复] 推理模型 reasoning_content 独占 18-19K token（原 800/60s 会正文为空或被超时中断）→ 24000 + 10 分钟
+    { temperature: 0.5, maxTokens: 24_000, timeoutMs: 600_000 },
   )
   return { appearance: parsePolishOutput(result.content), provider: result.provider, model: result.model, usage: result.usage }
 }

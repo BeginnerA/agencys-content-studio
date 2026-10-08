@@ -134,7 +134,8 @@ export async function summarizeToMemory(p: SummarizeParams): Promise<SummarizeRe
       },
     ],
     undefined,
-    { maxTokens: Math.max(1024, maxChars * 4) },
+    // [推理预算修复] 预算 = 正文（maxChars×4，中文含富余）+ 推理余量 20K（reasoning 实测 18-19K），下限 24000
+    { maxTokens: Math.max(24_000, maxChars * 4 + 20_000) },
   )
   const summary = guardSummaryLen(res.content, maxChars)
   const { id, created } = await upsertMemory({
