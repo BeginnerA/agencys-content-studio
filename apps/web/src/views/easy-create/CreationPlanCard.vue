@@ -21,7 +21,7 @@ const est = computed(() => pf.value?.estimate ?? null)
 // 已采纳参考素材（来自服务端编译的 plan.refs）
 const refs = computed(() => plan.value?.refs ?? [])
 
-// M57 载体路由建议：取最新一条 plan 消息 payload 的 routeHint（服务端确定性派生，无建议=无此键）
+// 载体路由建议：取最新一条 plan 消息 payload 的 routeHint（服务端确定性派生，无建议=无此键）
 const routeHint = computed(() => {
   const msgs = detail.value?.messages ?? []
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
@@ -263,10 +263,10 @@ async function onConfirm(): Promise<void> {
       :video-analysis-count="est?.videoAnalysisCount ?? 0"
     />
 
-    <!-- M58 2b：参考视频解析产物可检视（服务端写入才有此键；无参考/无解析完全不渲染） -->
+    <!-- 参考视频解析产物可检视（服务端写入才有此键；无参考/无解析完全不渲染） -->
     <PlanRefsAnalysis v-if="plan.refsAnalysis?.length" :entries="plan.refsAnalysis" />
 
-    <!-- M58 补口：图片反推产物已改到对话流随消息直接渲染（见 ConversationPanel），方案卡不再重复展示 -->
+    <!-- 图片反推产物已改到对话流随消息直接渲染（见 ConversationPanel），方案卡不再重复展示 -->
 
     <div class="fold">
       <button
@@ -617,7 +617,7 @@ async function onConfirm(): Promise<void> {
   line-height: 1.6;
 }
 
-/* M58 2a：反推初稿镜徽标（复用全局 .badge 语义色，仅控制间距） */
+/* 反推初稿镜徽标（复用全局 .badge 语义色，仅控制间距） */
 .srev {
   margin-left: 7px;
 }

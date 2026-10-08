@@ -169,7 +169,7 @@ const {
           <Icon name="plus" :size="12" />
           {{ uploading ? '上传中…' : form.projectId ? '上传新图' : '上传入池并挂接' }}
         </button>
-        <!-- [M52] 新建全局态：无实体可挂，文件直传全局素材池，入池后在下方缩略图勾选 -->
+        <!-- 新建全局态：无实体可挂，文件直传全局素材池，入池后在下方缩略图勾选 -->
         <button
           v-else-if="!form.projectId"
           class="btn tiny"
@@ -356,7 +356,7 @@ const {
 .thumb img {
   width: 100%;
   height: 100%;
-  /* [M52] 同素材卡：横版定妆照 contain 免裁 */
+  /* 同素材卡：横版定妆照 contain 免裁 */
   object-fit: contain;
   display: block;
 }

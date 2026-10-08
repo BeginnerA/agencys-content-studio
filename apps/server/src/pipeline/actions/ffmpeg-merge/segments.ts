@@ -15,9 +15,9 @@ export interface Segment {
   explicit?: boolean
   /** 动效片：时长未知按 duration_per_shot 估算（日志溯源） */
   estimated?: boolean
-  /** M54 collage 拼贴段成员本地路径（path 恒 = paths[0]；仅 phase-1 消费，缺省 = 单图段） */
+  /** collage 拼贴段成员本地路径（path 恒 = paths[0]；仅 phase-1 消费，缺省 = 单图段） */
   paths?: string[]
-  /** M61 标题字卡段（片首本地渲染 PNG）：phase-1 免 Ken Burns（防文字 zoompan 裁切出框），溯源 images 计数排除 */
+  /** 标题字卡段（片首本地渲染 PNG）：phase-1 免 Ken Burns（防文字 zoompan 裁切出框），溯源 images 计数排除 */
   card?: boolean
 }
 
@@ -26,7 +26,7 @@ export interface Segment {
  * - 缺本地文件 / 文件缺失 / kind 不符 → skipped（不再整体失败；全 skip 由调用方拦抛）；
  * - 静态图：分镜 per-shot 覆盖优先（explicit 标记）→ duration_per_shot；
  * - 动效片：asset.duration → ffprobe → duration_per_shot 估算（estimated 标记）；
- * - mixed（M53 混剪）：按行 kind 分流——image 行走图片语义、video 行走视频语义、其余 skip。
+ * - mixed（混剪）：按行 kind 分流——image 行走图片语义、video 行走视频语义、其余 skip。
  */
 export function computeShotSegments(
   rows: Asset[],
@@ -83,7 +83,7 @@ export function computeShotSegments(
 }
 
 /**
- * M54 多图同屏拼贴分组（纯函数；探针直测）：single → 原样同引用（零 diff）；
+ * 多图同屏拼贴分组（纯函数；探针直测）：single → 原样同引用（零 diff）；
  * 仅连续图片段成组，视频段原样透传且充当组边界；拼屏段 durSec = durationPerShot、explicit=false。
  *  - duo：相邻两图并排（奇数末段保持单图）；grid：四四合并（余 1 单、余 2/3 降级 duo/三拼）；
  *  - auto：图片总数 <4 全单图；≥4 首尾单图 hero，中间每 3 张一组（不足 3 降级）。
@@ -145,9 +145,9 @@ export function planCollageSegments(
 }
 
 /**
- * M54 G3 拼贴分组应用（自 index.ts 拆出：≤800 行红线，行为零变更）：混剪态 layout≠single →
+ * 拼贴分组应用（自 index.ts 拆出：≤800 行红线，行为零变更）：混剪态 layout≠single →
  * 连续图片段就地分组（segments 原地替换），视频段透传充当边界；拼屏段吃 duration_per_shot 时长契约。
- * 音字对齐时间轴启用时保持单图；layout 默认 single / 非混剪态 → 同引用透传，段列与 M53 逐字节一致。
+ * 音字对齐时间轴启用时保持单图；layout 默认 single / 非混剪态 → 同引用透传，段列与混剪基线逐字节一致。
  */
 export function applyCollageLayout(opts: {
   segments: Segment[]

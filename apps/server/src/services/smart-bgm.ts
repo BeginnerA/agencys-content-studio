@@ -1,5 +1,5 @@
 /**
- * 智能 BGM（M54 G4a/G4b）：混剪合成期「未手绑 BGM」时的自动补乐。
+ * 智能 BGM：混剪合成期「未手绑 BGM」时的自动补乐。
  * - auto：候选 = 项目内未删音频资产（含库复制行）∪ MONTAGE_BGM_DIR 曲库目录（首用复制入项目）；
  *   选曲规则收敛在 montage.pickBgm 纯函数（时长 ≥ 片长优先分档 → 档内情绪 cosine 降序 → 最近片长 → updated_at desc）；
  *   情绪来自 bgm-mood.aggregateRunMood（台词 emotionHint 聚合 + bge-small-zh 向量），无情绪/无模型 → 退化纯时长（零 diff）。
@@ -9,7 +9,7 @@
  *   （至多 1 条有效不变量）→ 后续重合成经 loadBgmAsset 直接复用，不重复选曲/付费。
  * 零 diff 红线：仅模板显式映射 params.bgm_mode ∈ {auto, music_gen}、非严格且用户未手绑时被调用——
  *   存量模板不声明 bgm_mode（桥不映射）→ 本模块不执行，BGM 路径逐字节 = 现行为。
- *   M54-B 起不限混剪态：短剧链（mengbao-episode v13）同样经 bgm_mode 显式 opt-in 接入智能选曲。
+ *   不限混剪态：短剧链（mengbao-episode v13）同样经 bgm_mode 显式 opt-in 接入智能选曲。
  */
 import { existsSync, copyFileSync, statSync } from 'node:fs'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -206,7 +206,7 @@ export async function resolveMergeBgm(opts: {
     if (asset.relPath && existsSync(absPathOf(asset.relPath))) path = absPathOf(asset.relPath)
     else ctx.log(`BGM 资产 #${asset.id} 文件缺失，已跳过混音`)
   }
-  // M54 智能 BGM：非严格、未手绑且模板显式映射 bgm_mode 时自动补乐（auto 库内选曲 / music_gen 先 AI 生成再降级）
+  // 智能 BGM：非严格、未手绑且模板显式映射 bgm_mode 时自动补乐（auto 库内选曲 / music_gen 先 AI 生成再降级）
   let autoSelected = false
   const bgmModeRaw = typeof params['bgm_mode'] === 'string' ? String(params['bgm_mode']).trim() : ''
   if (!opts.strict && !asset && (bgmModeRaw === 'auto' || bgmModeRaw === 'music_gen')) {

@@ -107,7 +107,7 @@ async function resolveSpecs(ctx: StepContext): Promise<{ specs: CharacterSpec[];
 }
 
 /** 定妆照归属：asset.params.shotId（角色名/别名）优先，未命中按资产名含角色名兜底 → attachRefAssets 并集入档。
- * [M52] projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
+ * projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
 async function attachRefImages(ctx: StepContext, projectId: number | null, specs: CharacterSpec[]): Promise<number> {
   const ids = ctx.assetIdsOf('ref_images')
   if (ids.length === 0) return 0

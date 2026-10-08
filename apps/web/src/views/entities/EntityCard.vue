@@ -138,7 +138,7 @@ const {
 .photo img {
   width: 100%;
   height: 100%;
-  /* [M52] 定妆照多为横版多视图，contain 完整展示免被竖框 cover 裁切（容器有底色） */
+  /* 定妆照多为横版多视图，contain 完整展示免被竖框 cover 裁切（容器有底色） */
   object-fit: contain;
   display: block;
 }

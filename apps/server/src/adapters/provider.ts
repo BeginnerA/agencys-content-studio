@@ -114,7 +114,7 @@ const secrets: SecretStore = {
 }
 
 /**
- * [M55] 无鉴权本地轨 providerKey：LocalAI/ComfyUI 自持服务无真实 Key（对齐 ollama 现状）。
+ * 无鉴权本地轨 providerKey：LocalAI/ComfyUI 自持服务无真实 Key（对齐 ollama 现状）。
  * 这些行走 kit resolveEndpoint（image/video/music 通道），空 Key 若不旁路会被 noApiKey 拦截。
  * LLM/TTS/ASR 走 openai_* 行 + 宿主自有 resolveLlmEndpoint/synthSpeech（已容空 Key），不在此列。
  */

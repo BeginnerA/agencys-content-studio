@@ -254,7 +254,7 @@ export async function buildEditExchange(p: { runId: number; format: unknown; inc
 
 function buildReadme(format: EditExchangeFormat, source: string, tl: EditTimeline, notes: string[]): string {
   const lines = [
-    `剪辑工程交换包（M50）`,
+    `剪辑工程交换包`,
     `格式: ${format}   时间轴来源: ${source}`,
     `画幅: ${tl.width}x${tl.height} @ ${tl.fps}fps   总时长: ${tl.totalSec}s（片头 ${tl.introSec}s / 片尾 ${tl.outroSec}s）`,
     `轨道: V1 镜头 ${tl.segments.length} 段 / 配音 ${tl.lines.filter((l) => l.relPath).length} 句 / SFX ${tl.sfx.length} 条 / BGM ${tl.bgm ? 1 : 0}`,

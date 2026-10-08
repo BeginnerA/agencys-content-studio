@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 画布图例（左下角；不拦截拖拽）
- * 自 CanvasBoard.vue 拆出（[M62-split]：m26 split-audit 红线恢复，纯静态块原样迁移，行为零变更）。
+ * 自 CanvasBoard.vue 拆出（m26 split-audit 红线恢复，纯静态块原样迁移，行为零变更）。
  */
 </script>
 

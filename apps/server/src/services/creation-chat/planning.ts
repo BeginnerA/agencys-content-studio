@@ -54,12 +54,11 @@ export async function createSession(raw: unknown) {
 }
 
 /** 规划前参考素材注入（有界、可核实、不编造）：
- *  - 风格/主体/首帧图片：命中反推意图 + vision → 多模态逐图反推产可投产 image_prompt（复用 image_analyze 核心，
- *    M58 补口）注入反推文本简报；否则仅 vision 实例以 image_url 分片注入供约束画面；无 vision 明告「未纳入理解，仅作生成参考」，不假称看到。
+ *  - 风格/主体/首帧图片：命中反推意图 + vision → 多模态逐图反推产可投产 image_prompt（复用 image_analyze 核心）注入反推文本简报；否则仅 vision 实例以 image_url 分片注入供约束画面；无 vision 明告「未纳入理解，仅作生成参考」，不假称看到。
  *  - 参考视频：执行 video_analyze 产出可见/可听摘要注入；需 vision+可用实例，缺失/失败即 blocker（不静默跳过、不编造）。
  *  - BGM：不进 LLM 上下文（仅在 refs 里登记，执行期消费）。
- * M58 2b：视频参考的结构化解析产物不再即弃——随 messages 一并返回（analyses），由调用方编进 plan.refsAnalysis。
- * M58 补口：图片反推产物同理随 imageAnalyses 返回，由调用方编进 plan.imageAnalysis（与 refsAnalysis 平行进 planHash）。 */
+ * 参考解析：视频参考的结构化解析产物不再即弃——随 messages 一并返回（analyses），由调用方编进 plan.refsAnalysis。
+ * 图片反推：产物同理随 imageAnalyses 返回，由调用方编进 plan.imageAnalysis（与 refsAnalysis 平行进 planHash）。 */
 export async function compileReferenceContext(projectId: number, refs: CreationRef[], vision: boolean, reverseIntent: boolean): Promise<{ messages: ChatMessage[]; analyses: RefsAnalysisEntry[]; imageAnalyses: ImageAnalysisEntry[] }> {
   const out: ChatMessage[] = []
   const analyses: RefsAnalysisEntry[] = []
@@ -67,7 +66,7 @@ export async function compileReferenceContext(projectId: number, refs: CreationR
   const imageRefs = refs.filter((r) => r.kind === 'image' && r.role !== 'content')
   if (imageRefs.length > 0) {
     if (vision && reverseIntent) {
-      // M58 补口：命中反推措辞 + vision → 逐图多模态反推产 image_prompt（与专业 image-reverse 同源核心），
+      // 图片反推：命中反推措辞 + vision → 逐图多模态反推产 image_prompt（与专业 image-reverse 同源核心），
       // 反推文本简报喂规划作 shots 画面/风格基准；不再重复注入原图 image_url（省一次多模态往返）。
       // 失败/无可用图/非契约输出 → blocker 不静默、不编造（与视频反推同律）。
       const rows = await db.select().from(assets).where(inArray(assets.id, imageRefs.map((r) => r.assetId)))
@@ -178,10 +177,10 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
     const reverseIntent = wantsReverseIntent(input.content)
     const refComp = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision, reverseIntent) : { messages: [] as ChatMessage[], analyses: [] as RefsAnalysisEntry[], imageAnalyses: [] as ImageAnalysisEntry[] }
-    // M58 2a 反推分镜初稿：命中反推措辞（真源与 M57 同源）且本轮已有解析产物时，用现成 video-storyboard.md
+    // 反推分镜初稿：命中反推措辞（措辞真源与 route-hint 同源）且本轮已有解析产物时，用现成 video-storyboard.md
     // 把时间轴转成 shots 蓝本喂进规划上下文（复用同一 llm 端点、tokens 计价同口径入账，不新增付费面）。
     // 失败/非契约输出：可见说明不静默，方案仍基于时间轴摘要规划；真产出初稿才给 shots 权威标 source:'reverse'。
-    // 计费口径沿用 M31 分析期事实（解析/初稿先入账后进预算闸）：creationDetail.planningUsage 自动含本笔。
+    // 计费口径沿用参考解析分析期事实（解析/初稿先入账后进预算闸）：creationDetail.planningUsage 自动含本笔。
     let draftNote: ChatMessage | null = null
     let draftUsed = false
     if (refComp.analyses.length > 0 && wantsReverseIntent(input.content)) {
@@ -271,11 +270,11 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // 已采纳参考编译进方案（服务端写入，LLM 不产出 refs）→ 进 planHash，确认即执行
     if (reply.kind === 'plan') {
       reply.plan.refs = effectiveRefs
-      // M58 2b：解析产物随方案持久化（服务端权威写/清：无视频参考则 undefined → JSON 落库时键自动脱落，老路径零漂移）
+      // 参考解析：产物随方案持久化（服务端权威写/清：无视频参考则 undefined → JSON 落库时键自动脱落，老路径零漂移）
       reply.plan.refsAnalysis = refComp.analyses.length ? refComp.analyses : undefined
-      // M58 补口：图片反推产物同理服务端权威写/清（无图片反推 → undefined 落库时键自动脱落，老路径零漂移）
+      // 图片反推产物同理服务端权威写/清（无图片反推 → undefined 落库时键自动脱落，老路径零漂移）
       reply.plan.imageAnalysis = refComp.imageAnalyses.length ? refComp.imageAnalyses : undefined
-      // M58 2a：初稿来源权威标记——先剥 LLM 自报的同名键再按本轮是否真用初稿统一写/清（整条成片基于反推蓝本，不逐镜猜）
+      // 反推初稿来源权威标记——先剥 LLM 自报的同名键再按本轮是否真用初稿统一写/清（整条成片基于反推蓝本，不逐镜猜）
       reply.plan.shots = reply.plan.shots.map((s) => {
         const { source: _llmSource, ...rest } = s
         return draftUsed ? { ...rest, source: 'reverse' as const } : rest
@@ -285,12 +284,12 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const projectMeta = reply.kind === 'plan' ? sanitizeProjectMeta(reply.project, reply.plan) : null
     if (reply.kind === 'plan' && projectMeta) reply.message = `${reply.message}${renderMetaNotes(projectMeta.notes)}`
     const pf = reply.kind === 'plan' ? await preflightPlan(claimed.projectId, reply.plan) : null
-    // M57 载体路由：方案产出时由服务端**确定性派生**一条专业链方向建议（零计费、不调模型、绝不改本次执行载体）。
+    // 载体路由：方案产出时由服务端**确定性派生**一条专业链方向建议（零计费、不调模型、绝不改本次执行载体）。
     // 存进方案消息 payload → 天然不进 planHash=hashJson({plan,execution})（改建议不作废已确认方案）；前端在方案卡渲染非阻断提示条。
     const routeHint = reply.kind === 'plan'
       ? deriveRouteHint({ userText: input.content, plan: reply.plan, hasVideoContentRef: effectiveRefs.some((r) => r.role === 'content' && r.kind === 'video'), hasImageRef: effectiveRefs.some((r) => r.kind === 'image' && r.role !== 'content'), hasVision: vision })
       : null
-    // M58 补口修正：图片反推产物随 assistant 消息 payload 透出（plan/clarify 皆带）——用户「反推图片提示词」的
+    // 图片反推产物随 assistant 消息 payload 透出（plan/clarify 皆带）——用户「反推图片提示词」的
     // 直接交付物应在对话流可见，不受「本轮规划模型返回 clarify 而非 plan」影响（旧逻辑仅 plan 才写方案卡，
     // clarify 轮反推虽已在 L180 算出却不可见，即用户所报「反推不对」根因）。无图片反推 → 无此键（老路径零漂移）。
     const imgAnalysisPayload = refComp.imageAnalyses.length ? { imageAnalysis: refComp.imageAnalyses } : {}
@@ -336,7 +335,7 @@ function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[]
 
 /**
  * 能力约束注入消息（向 LLM 预先告知真源表已核实档位，避免方案越界造成 preflight 422）。
- * - caps 命中 → 列出 durations / aspectRatios / 建议总时长与镜头数（总时长区间取契约真源常数，M59 防漂移）
+ * - caps 命中 → 列出 durations / aspectRatios / 建议总时长与镜头数（总时长区间取契约真源常数，防漂移）
  * - 无 video 实例 → 提示默认使用 slideshow（不假称动态能力）
  * - hasVideo=true 但 caps=null（未登记模型，如老库直连的旧目录 key 或自定义中转） → 仅提醒“能力未背书”，不列档位
  */

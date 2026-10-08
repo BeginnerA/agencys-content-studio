@@ -1,16 +1,16 @@
 /**
- * 混剪态（M53 photo-montage + M54 智能增强）：两段式合成的 phase-1 与触发判定。
+ * 混剪态（photo-montage + 智能增强）：两段式合成的 phase-1 与触发判定。
  * - 触发（montageEnabled 纯函数）：params.montage=true / 镜头序列混排（图+视并存）/
- *   keep_clip_audio=true / ken_burns≠none（M54 含 auto）；strict_delivery 下恒 false（批准链逐字节红线）。
+ *   keep_clip_audio=true / ken_burns≠none（含 auto 档）；strict_delivery 下恒 false（批准链逐字节红线）。
  * - phase-1（normalizeSegmentsToClips）：逐段归一化为「定长 + 同尺寸/fps + 必带音轨」的临时 mp4——
  *   图片段 zoompan（Ken Burns，单帧产出 d=fps×dur）或定长静帧 + anullsrc 静音轨；
  *   视频段 trim/tpad 精确截长 + 原声（缺 a 流探测后 anullsrc 兜底）。
- * - M54：kb:auto 按照片横竖比定缓推/缓拉方向；构图锚点（LLM composition 分类）偏置 zoompan x/y；
+ * - 智能增强：kb:auto 按照片横竖比定缓推/缓拉方向；构图锚点（LLM composition 分类）偏置 zoompan x/y；
  *   collage 拼贴段（seg.paths 多成员）先 xstack 成整屏再走同一归一链；BGM 库内选曲 pickBgm 纯函数。
  * - phase-2 由 buildComposeArgs({ montage: true }) 消费：段全部按 -i 直读 + 轻滤镜，
  *   per-seg [i:a] 拼为连续现场轨参与既有 BGM/SFX 混音收口。
  * 零 diff 红线：未触发混剪 → index 不进本模块，legacy 单段链逐字节不变；
- *   M54 新键缺省（kb 非 auto / 无 paths / 无 anchor）→ 表达式与 args 逐字节 = M53。
+ *   智能增强新键缺省（kb 非 auto / 无 paths / 无 anchor）→ 表达式与 args 逐字节 = 混剪基线。
  */
 import { spawnSync } from 'node:child_process'
 import { readdirSync, statSync, unlinkSync } from 'node:fs'
@@ -188,7 +188,7 @@ export function normalizeSizes(width: number, height: number): { ssW: number; ss
 }
 
 /** phase-1 单段归一 args（纯函数；探针直测 filter 形状）：产物定长 dur + 同尺寸/fps + 必带音轨；
- *  seg.paths 多成员（M54 collage）→ 先各路等分裁切 xstack 成整屏再走同一归一链；
+ *  seg.paths 多成员（collage 拼贴）→ 先各路等分裁切 xstack 成整屏再走同一归一链；
  *  anchor 缺省/null → zoompan x/y 现行居中公式逐字节 */
 export function buildNormalizeArgs(seg: Segment, opts: {
   width: number
@@ -209,7 +209,7 @@ export function buildNormalizeArgs(seg: Segment, opts: {
     '-t', String(dur), '-movflags', '+faststart', opts.outAbs]
 
   if (seg.kind === 'image') {
-    // zoompan 锚点：权重 1 时表达式逐字节 = M53 现行居中形态；非 1 插乘数（0.7 偏左/1.3 偏右）
+    // zoompan 锚点：权重 1 时表达式逐字节 = 现行居中形态；非 1 插乘数（0.7 偏左/1.3 偏右）
     const xw = opts.anchor?.xw ?? 1
     const yw = opts.anchor?.yw ?? 1
     const xExpr = xw === 1 ? `x='iw-iw/zoom'` : `x='(iw-iw/zoom)*${round3(xw)}'`
@@ -228,7 +228,7 @@ export function buildNormalizeArgs(seg: Segment, opts: {
       : `${geometry},setsar=1,format=yuv420p` // 定帧单输出不带 fps 滤镜：单帧输入经 fps 会被吐成 0 帧（实测 ffmpeg 6.1.1/9.0.1 一致），帧率由 phase-2 tpad+fps 归一
     const members = seg.paths && seg.paths.length > 1 ? seg.paths : null
     if (members) {
-      // M54 collage 拼贴段：N 路 -i → 各路等分 cell 裁切 → xstack 整屏 → 接既有 zoompan/定帧链
+      // collage 拼贴段：N 路 -i → 各路等分 cell 裁切 → xstack 整屏 → 接既有 zoompan/定帧链
       const n = members.length
       const cols = n >= 4 ? 2 : 1
       const rowsN = Math.ceil(n / cols)
@@ -321,9 +321,9 @@ export async function normalizeSegmentsToClips(
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
     const tmp = join(opts.outDir, `.mseg-${ctx.run.id}-${ctx.step.id}-${i}-${stamp}.mp4`)
-    // M54 auto：逐段按实测宽高定方向（resolveHint 缺失/探测失败 → null 宽容推近）
+    // kb:auto 档：逐段按实测宽高定方向（resolveHint 缺失/探测失败 → null 宽容推近）
     const hint = seg.kind === 'image' && opts.kb === 'auto' ? opts.resolveHint?.(seg) ?? null : null
-    // M61：字卡段免 Ken Burns（静态卡面 zoompan 会把标题文字裁出框）
+    // 字卡段免 Ken Burns（静态卡面 zoompan 会把标题文字裁出框）
     const kb = seg.kind === 'image' && !seg.card ? kbDirectionFor(opts.kb, i, hint ?? undefined) : null
     const anchor = kb ? opts.anchors?.[i] ?? null : null
     const clipHasAudio = seg.kind === 'video' ? probeHasAudioStream(seg.path) : null
@@ -349,9 +349,9 @@ export async function normalizeSegmentsToClips(
 
 /**
  * 混剪态 phase-1 驱动（自 index.ts 拆出：≤800 行红线，行为零变更）：kb 参数解析 +
- * M54 kb:auto 实测宽高提示缓存（按段 id，锚点推导复用同一探测）+ G2 构图锚点（仅
+ * kb:auto 实测宽高提示缓存（按段 id，锚点推导复用同一探测）+ 构图锚点（仅
  * analyze_composition=true 且 composition 产物存在；关闭/缺产物/解析失败 → anchors 不设，
- * zoompan x/y 表达式逐字节 = M53 居中公式）+ 逐段归一化执行。调用方仅在 montageOn 时进入。
+ * zoompan x/y 表达式逐字节 = 居中公式）+ 逐段归一化执行。调用方仅在 montageOn 时进入。
  */
 export async function runMontagePhase1(opts: {
   ctx: StepContext
@@ -367,7 +367,7 @@ export async function runMontagePhase1(opts: {
   const { ctx, params, segments, rows } = opts
   const kbRaw = typeof params['ken_burns'] === 'string' && params['ken_burns'] ? params['ken_burns'] : 'none'
   const kb = (['in', 'out', 'alternate', 'auto'].includes(kbRaw) ? kbRaw : 'none') as KenBurns
-  // M54 kb:auto：ffprobe 实测宽高为方向唯一事实源（按段 id 缓存，锚点推导复用同一探测）
+  // kb:auto：ffprobe 实测宽高为方向唯一事实源（按段 id 缓存，锚点推导复用同一探测）
   const hintById = new Map<number, KbHint | null>()
   const resolveHint = (seg: Segment): KbHint | null => {
     if (!hintById.has(seg.id)) hintById.set(seg.id, seg.kind === 'image' ? probeImageSize(seg.path) : null)

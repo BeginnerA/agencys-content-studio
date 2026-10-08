@@ -4,7 +4,7 @@ import Icon from '../../components/common/Icon.vue'
 import type { CreationImageAnalysisEntry } from '../../lib/types'
 
 /**
- * M58 补口「图片反推」产物区：把服务端规划期从参考图实际反推出的可投产提示词
+ * 「图片反推」产物区：把服务端规划期从参考图实际反推出的可投产提示词
  * （正向 image_prompt / 负向 / 风格 / 主体 / 主色板）显式渲染供用户检视复制——
  * 系统从图里读到了什么、方案据此约束，全部可见可核对。
  * 只展示真源字段（缺失不编造）；无反推产物时父级完全不渲染。

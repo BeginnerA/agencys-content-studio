@@ -3,10 +3,10 @@ import { wrapSingleLine, estimateMaxCharsPerLine } from './subtitle-wrap'
 import type { SubtitleStyleConfig } from '../../../services/brand-config'
 
 /**
- * 本地标题字卡（M61 T3）：lavfi 纯色底图 + drawtext 逐行 → 单帧 PNG，作为片首归一化段入混剪链。
+ * 本地标题字卡：lavfi 纯色底图 + drawtext 逐行 → 单帧 PNG，作为片首归一化段入混剪链。
  *
  * 设计红线：
- *  - 字卡文字必须本地 drawtext 渲染（AI 生成图像内嵌汉字会乱码——失效面规避，AI 仅提供无文字底图，见 T6）；
+ *  - 字卡文字必须本地 drawtext 渲染（AI 生成图像内嵌汉字会乱码——失效面规避，AI 仅提供无文字底图，见 bgImageAbs 分支）；
  *  - 字体解析宽容：解析不到 CJK 字体 → null，调用方整体跳过字卡（标题回退字幕烧录，绝不产出乱码卡）；
  *  - 纯函数 + 同步 fs 存在性检查，探针可直测；ffmpeg 执行由调用方（index.ts）完成。
  */
@@ -38,7 +38,7 @@ export function escapeFilterPath(p: string): string {
 }
 
 /**
- * 字幕资产 params JSON → M61 启用键（[M61-split] 自 index.ts 解析块拆出，语义逐字保持）：
+ * 字幕资产 params JSON → 标题编排启用键（自 index.ts 解析块拆出，语义逐字保持）：
  * 损坏 JSON/缺键 → 全零值 + stylePlan null（= 现状样式链与烧录链零改动）；不抛错。
  */
 export function parseM61SubtitleParams(raw: string | null | undefined): {
@@ -96,7 +96,7 @@ export function layoutCardLines(lines: string[], width: number, fontSize: number
  * 单帧 PNG 生成参数（纯函数，探针可直测）：color 底 + 逐物理行一条 drawtext（水平居中，
  * 垂直按 alignment 块布局：5 居中 / 8 顶部（上边距 8%H）/ 2 底部（下边距 12%H），行距 1.3×字号）。
  * bg 缺省深蓝黑 #101826（spec 定案，影厅质感）；描边宽 = H × outline_pct（缺省 0.0018，粗描抗亮底图）。
- * bgImageAbs（M61 T6）：AI 无文字底图绝对路径 → 改用图片输入分支：scale/crop 满幅 + drawbox 半透明压暗
+ * bgImageAbs：AI 无文字底图绝对路径 → 改用图片输入分支：scale/crop 满幅 + drawbox 半透明压暗
  * （black@0.45 全幅，保标题可读）+ 同一条 drawtext 链；缺省/空串 → 色底分支逐字节不变（降级 local）。
  */
 export function buildTitleCardArgs(p: {

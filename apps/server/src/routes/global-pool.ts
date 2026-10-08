@@ -10,7 +10,7 @@ import { toAssetView } from './assets'
 import { HttpError, h } from './helpers'
 
 /**
- * [M52] 全局素材池端点：/global/assets。
+ * 全局素材池端点：/global/assets。
  * 池 = 虚拟项目 #0（GLOBAL_POOL_ID），承载全局实体（projectId=null）的参考图；
  * 列表/上传均强制 project_id=0，不接受任意归属参数。文件流/缩略复用 /assets/:id/*（按 relPath 服务）。
  */

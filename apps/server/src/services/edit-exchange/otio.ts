@@ -119,7 +119,7 @@ export function toOtio(tl: EditTimeline, ctx: FormatCtx): Record<string, unknown
     name: ctx.title,
     source_range: timeRange(0, tl.totalSec, fps),
     metadata: {
-      generated_by: 'agencys-content-studio/M50',
+      generated_by: 'agencys-content-studio/edit-exchange',
       fps: tl.fps,
       width: tl.width,
       height: tl.height,

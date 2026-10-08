@@ -122,7 +122,7 @@ async function exportEditEx(format: EditExchangeFormat) {
       >
     </footer>
 
-    <!-- 毕业通道（M56）：把已确认方案升级到专业链（同项目建未启动任务，核对预算后再制作） -->
+    <!-- 毕业通道：把已确认方案升级到专业链（同项目建未启动任务，核对预算后再制作） -->
     <div v-if="canGraduate" class="graduate">
       <button
         class="btn sm grad-toggle"

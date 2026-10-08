@@ -13,7 +13,7 @@ import { useCreationArtifacts } from './use-creation-artifacts'
  * 候选块只在「run 已收敛」且「该镜该模态有 >1 个可用候选」时出现：制作中不展示，避免对着半成品选版本。
  * 选片零计费、不改成片（只写在用指针），因此必须再走一次本地重新合成才落到成片 —— 由 selectionDirty 驱动提示。
  * 返修入口同样只给已收敛的 run（解析要先花一次文本模型费用，制作中不给出计费出口）。
- * 脚本逻辑另拆 use-creation-artifacts.ts（[M26-split]，行为零变更）。
+ * 脚本逻辑另拆 use-creation-artifacts.ts（行为零变更）。
  */
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 

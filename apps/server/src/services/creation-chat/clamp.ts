@@ -112,7 +112,7 @@ export function clampPlanToCaps(
     // 总时长重算（superRefine 要求镜头时长和 = duration）
     const sum = next.shots.reduce((acc, s) => acc + s.duration, 0)
     if (sum !== next.duration) {
-      // 保持整数（钳到契约总时长范围，M59 真源常数同步）；越界不视为错误，交给 preflight/LLM 处理
+      // 保持整数（钳到契约总时长范围，与契约真源常数同步）；越界不视为错误，交给 preflight/LLM 处理
       const rounded = Math.max(PLAN_DURATION_MIN, Math.min(PLAN_DURATION_MAX, Math.round(sum)))
       if (rounded !== next.duration) {
         report.notes.push(`成片时长 ${next.duration}→${rounded}s（重算镜头和）`)

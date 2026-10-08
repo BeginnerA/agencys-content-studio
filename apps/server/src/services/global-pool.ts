@@ -4,7 +4,7 @@ import { assets } from '../db/schema'
 import { HttpError } from '../routes/helpers'
 
 /**
- * [M52] 全局素材池（M52 spec §M52.1）：
+ * 全局素材池域：
  * 虚拟项目 #0 作为全局实体（characters.projectId=null）的参考图文件域——assets.project_id
  * NOT NULL 且 SQLite 改列需重建表，故用保留 id 0 做纯约定（零 DDL）。
  * 池资产 = 有意跨项目共享的参考图；文件落 PROJECTS_DIR/0/<subDir>/，缩略/文件流端点按 relPath 服务零改动可用。
@@ -18,7 +18,7 @@ export const GLOBAL_POOL_PURPOSES = ['reference_character', 'reference_scene', '
 /**
  * 参考图挂接归属守卫（五通道单一真源：POST/PUT entities、ref-images 上传、ref-assets 联动）：
  * 项目域 → 资产须全部属该项目（与 assertProjectAssets 同口径）；
- * 全局域（projectId=null）→ 资产须全部属全局素材池（M52 放开：此前一律 400 拒绝）。
+ * 全局域（projectId=null）→ 资产须全部属全局素材池（放开前一律 400 拒绝）。
  * 非法/越权 → HttpError 400 bad_ref_assets。
  */
 export async function assertRefAssetsForScope(

@@ -6,7 +6,7 @@ import type { Run } from '../../lib/types'
  * 被取代的历史 run 收进 head 可展开查看。
  *
  * 纯计算 + 展开态，依赖注入独立运行列表；从 use-project-detail.ts 拆出
- * （[M26-split]，行为零变更，导出同名解构保持装配面不变）。
+ * （行为零变更，导出同名解构保持装配面不变）。
  */
 export function useResumeChains(standaloneRuns: ComputedRef<Run[]>) {
   /** head=未被任何独立运行引用为续跑来源；history=沿 resumedFromRunId 向旧回溯（不含 head 自身） */

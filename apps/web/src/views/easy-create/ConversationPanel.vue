@@ -231,7 +231,7 @@ async function onFiles(e: Event): Promise<void> {
               <span class="qs-tx">{{ q }}</span>
             </button>
           </div>
-          <!-- M58 补口：图片反推产物随消息透出，在对话流直接渲染（plan/clarify 皆有，用户「反推图片提示词」的交付物） -->
+          <!-- 图片反推产物随消息透出，在对话流直接渲染（plan/clarify 皆有，用户「反推图片提示词」的交付物） -->
           <PlanImageAnalysis
             v-if="m.payload?.imageAnalysis?.length"
             class="msg-img-analysis"

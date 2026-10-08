@@ -43,7 +43,7 @@ export interface ComposeArgsInput {
   /** 每路字幕文件（[0]=主，[k+1]=派生路 k）；缺省/越界 → 回落 srtAbs。多画幅各路 PlayRes 不同，需各自 ASS。 */
   subtitlePaths?: string[]
   style: string
-  /** M61 T7 分层排版：烧录 ASS 的 Default 行已全量承接合并主样式且含具名 Style 行 → 各路省略 force_style
+  /** 分层排版（assLayered）：烧录 ASS 的 Default 行已全量承接合并主样式且含具名 Style 行 → 各路省略 force_style
    *（本机 libass 实测其逐字段覆盖**所有** Style 行，会把具名组字号/落位打平回主样式，毁掉分层）；缺省 false → args 逐字节不变 */
   assLayered?: boolean
   bgmPath: string | null
@@ -63,7 +63,7 @@ export interface ComposeArgsInput {
     /** 结构化字幕配置（非空时派生路按该路高度重算字号；null = 整串模式复用主串） */
     subtitleCfg?: SubtitleStyleConfig | null
   }
-  /** 混剪态 phase-2（M53）：segments 均为两段式归一化后的定长带音轨视频段——
+  /** 混剪态 phase-2：segments 均为两段式归一化后的定长带音轨视频段——
    *  per-seg 输入不再 -loop/-t，链仅 trim/setpts/兜底 tpad+fps/settb（尺寸sar已归一）；
    *  缺省 false → args 与既有实现逐字节一致。 */
   montage?: boolean
@@ -196,7 +196,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       fcParts.push(`${aIn}concat=n=${voicePaths.length}:v=0:a=1${introDelay},apad=whole_dur=${totalAllStr}[outa]`)
     }
   }
-  // 混剪现场轨（M53 keep_clip_audio）：per-seg [i:a] 按镜序 concat 为连续轨占 [outa] 槽；
+  // 混剪现场轨（keep_clip_audio）：per-seg [i:a] 按镜序 concat 为连续轨占 [outa] 槽；
   // 与配音并存 → amix(normalize=0) 叠加（xfade 重叠 T 由末尾 atrim 收敛）
   if (clipAudio) {
     const caIn = segments.map((_, i) => `[${i}:a]`).join('')

@@ -301,7 +301,7 @@ export function useProjectDetailPage() {
 
   // ===== 续跑链折叠：同一创作的断点续跑派生 run（resumedFromRunId 串链）折叠为最新一条，可展开看历史 =====
   // 仅在「全部」视图折叠；带状态筛选时保持平铺（否则过滤命不中 head 会连带藏起其失败的历史 run）。
-  // [M26-split] 折叠计算另拆 use-resume-chains.ts，同名解构保持装配面不变。
+  // 折叠计算另拆 use-resume-chains.ts，同名解构保持装配面不变。
   const { resumeChains, expandedChains, isChainHead, chainHistory, toggleChain } =
     useResumeChains(standaloneRuns)
 

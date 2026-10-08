@@ -19,7 +19,7 @@ export interface CreationShot {
   lines: string[]
   /** 本镜出场角色 id（仅人物对白，一镜一发言者；旁白缺省） */
   characters?: string[]
-  /** M58 2a：本镜基于参考视频反推分镜初稿（服务端权威标记；无键=普通规划镜） */
+  /** 本镜基于参考视频反推分镜初稿（服务端权威标记；无键=普通规划镜） */
   source?: 'reverse'
 }
 
@@ -101,7 +101,7 @@ export function refKindByExt(name: string): CreationRefKind | null {
   return null
 }
 
-/** M58 2b：参考视频解析产物单条（与服务端 refsAnalysisEntrySchema 逐字段对齐；服务端编译写入，可检视不可编造） */
+/** 参考视频解析产物单条（与服务端 refsAnalysisEntrySchema 逐字段对齐；服务端编译写入，可检视不可编造） */
 export interface CreationRefsAnalysisEntry {
   assetId: number
   name: string
@@ -114,7 +114,7 @@ export interface CreationRefsAnalysisEntry {
   truncated?: { scenes?: boolean; transcript?: boolean }
 }
 
-/** M58 补口：参考图片反推产物单条（与服务端 imageAnalysisEntrySchema 逐字段对齐；服务端多模态反推写入，可检视不可编造） */
+/** 参考图片反推产物单条（与服务端 imageAnalysisEntrySchema 逐字段对齐；服务端多模态反推写入，可检视不可编造） */
 export interface CreationImageAnalysisEntry {
   assetId: number
   name: string
@@ -149,9 +149,9 @@ export interface CreationPlan {
   performance?: 'narration' | 'dialogue'
   /** 人物对白角色表（仅对白；2-4 名） */
   cast?: CreationCast[]
-  /** 参考视频解析产物（M58 2b：服务端写入才存在；进 planHash——解析变了旧确认作废重确认） */
+  /** 参考视频解析产物（服务端写入才存在；进 planHash——解析变了旧确认作废重确认） */
   refsAnalysis?: CreationRefsAnalysisEntry[]
-  /** 参考图片反推产物（M58 补口：服务端多模态反推写入才存在；进 planHash——反推变了旧确认作废） */
+  /** 参考图片反推产物（服务端多模态反推写入才存在；进 planHash——反推变了旧确认作废） */
   imageAnalysis?: CreationImageAnalysisEntry[]
 }
 
@@ -210,7 +210,7 @@ export interface CreationPreflight {
   dialogueMode: 'strict' | 'estimated' | null
 }
 
-/** 毕业通道（M56）：把已确认方案升级到专业链。episode=专业单集成片；series=连载立项（系列设定包） */
+/** 毕业通道：把已确认方案升级到专业链。episode=专业单集成片；series=连载立项（系列设定包） */
 export interface CreationGraduateBody {
   mode: 'episode' | 'series'
   episodeNumber?: number
@@ -287,7 +287,7 @@ export function creationStatusTone(
       : 'cancelled'
 }
 
-/** 载体路由建议（M57）：服务端在方案产出时确定性派生，随 plan 消息 payload 透出；无建议 = 无此键（完全不渲染） */
+/** 载体路由建议：服务端在方案产出时确定性派生，随 plan 消息 payload 透出；无建议 = 无此键（完全不渲染） */
 export interface CreationRouteHintView {
   target: string
   label: string
@@ -298,9 +298,9 @@ export interface CreationChatMessagePayload {
   kind: string
   questions?: string[]
   revision?: number
-  /** 载体路由建议（M57，仅 kind='plan' 且命中越界信号时存在）；不进方案/不影响确认 */
+  /** 载体路由建议（仅 kind='plan' 且命中越界信号时存在）；不进方案/不影响确认 */
   routeHint?: CreationRouteHintView | null
-  /** M58 补口：图片反推产物（服务端多模态反推写入，plan/clarify 皆随消息透出；对话流可复制交付物） */
+  /** 图片反推产物（服务端多模态反推写入，plan/clarify 皆随消息透出；对话流可复制交付物） */
   imageAnalysis?: CreationImageAnalysisEntry[]
   runId?: number
   verifiedFailedTaskIds?: number[]

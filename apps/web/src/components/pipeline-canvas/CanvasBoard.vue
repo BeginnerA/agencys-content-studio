@@ -392,7 +392,7 @@ watch(
       </button>
     </div>
 
-    <!-- 图例（左下角；不拦截拖拽）——[M62-split] 拆至 CanvasLegend（红线恢复，行为零变更） -->
+    <!-- 图例（左下角；不拦截拖拽）——拆至 CanvasLegend（红线恢复，行为零变更） -->
     <CanvasLegend />
 
     <!-- 编辑模式提示（底部居中；指针穿透） -->

@@ -56,7 +56,7 @@ export function purposeSubDir(purpose?: string | null): string {
     case 'events':
     case 'graph':
     case 'plan':
-    case 'monetization': // M60 系列商业结构设计 json（剧情设计思路产物，归 texts）
+    case 'monetization': // 系列商业结构设计 json（剧情设计思路产物，归 texts）
     case 'regex':
     case 'video_analysis': // 视频时间轴 json + 人读 md 报告
     case 'image_analysis': // 图片反推 json + 人读 md 报告（image-reverse 链，同源形态）

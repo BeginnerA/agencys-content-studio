@@ -61,7 +61,7 @@ async function doInitDb(): Promise<void> {
 }
 
 /**
- * [M1 re-baseline] schema 权威真源 = `db/schema.ts` + `drizzle/0000_*` 全量基线（`db:generate` 生成、
+ * schema 权威真源 = `db/schema.ts` + `drizzle/0000_*` 全量基线（`db:generate` 生成、
  * 幂等 `IF NOT EXISTS`、含全部 32 表 + 原漂移列/索引）。存量库重启时 migrate 以 no-op 应用并记账，
  * 新库则基线一次建全——二者均无需本函数再补任何列/表。
  *

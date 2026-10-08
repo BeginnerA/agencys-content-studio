@@ -14,7 +14,7 @@ type Shot = ArtifactsData['shots'][number]
 
 /**
  * 成果墙逻辑：候选版本 board 缓存与展开态 / 本地重新合成入口（字幕开关） / 统计与筛选 /
- * 预览拉取与坏图记录。从 CreationArtifacts.vue 拆出（[M26-split]，行为零变更），
+ * 预览拉取与坏图记录。从 CreationArtifacts.vue 拆出（行为零变更），
  * 组件仅保留 <template> 展示与 <style scoped>，脚本装配面经解构保持不变。
  */
 export function useCreationArtifacts(s: ReturnType<typeof useEasyCreate>) {

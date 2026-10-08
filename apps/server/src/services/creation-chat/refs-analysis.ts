@@ -1,10 +1,10 @@
 /**
- * M58 参考反推可检视交付（轻松创作「参考解析产物 + 反推分镜初稿」）——确定性纯函数集。
+ * 参考反推可检视交付（轻松创作「参考解析产物 + 反推分镜初稿」）——确定性纯函数集。
  *
- * 2b：video_analyze 摘要此前只进 LLM 上下文即弃；本模块把它**编进 plan.refsAnalysis**（服务端写入，
+ * 参考解析：video_analyze 摘要此前只进 LLM 上下文即弃；本模块把它**编进 plan.refsAnalysis**（服务端写入，
  *   有界可核实：scenes≤24、transcript≤2000，超限截断并给可见标记，缺失字段留占位不编造）→ 进 planHash
- *   （参考/解析变了旧确认作废，与 M31「参考变化→冲突」同律）。
- * 2a：反推意图（措辞真源与 M57 route-hint 同源）+ 已有解析产物时，用现成 `video-storyboard.md` 提示词
+ *   （参考/解析变了旧确认作废，与「参考变化→冲突」既定同律）。
+ * 反推初稿：反推意图（措辞真源与 route-hint 同源）+ 已有解析产物时，用现成 `video-storyboard.md` 提示词
  *   把时间轴转成分镜初稿喂进规划上下文；规划产出后服务端给全部 shots 权威标 `source:'reverse'`
  *   （整条成片基于反推初稿，逐镜归属不可靠故不逐镜猜）。
  * 本模块零网络零计费（模型调用与记账在 planning.ts 接线处）；新信号/新界须同步 probe-m58 断言。
@@ -113,7 +113,7 @@ export function renderStoryboardDraft(shots: StoryboardDraftShot[]): string {
 }
 
 /**
- * M58 补口：图片反推产物归一（纯函数，探针直测）：ImageReverseItem → plan.imageAnalysis 单条目。
+ * 图片反推产物归一（纯函数，探针直测）：ImageReverseItem → plan.imageAnalysis 单条目。
  * 仅取反推实际所得（subject/style/negative 空则不挂键），imagePrompt 为产物核心必非空；
  * 各字段保守截断（subject/style 400、imagePrompt 1600、negative 1200、palette≤8），超限截断不编造。
  * 产物必过 imageAnalysisEntrySchema（schema 是契约真源，normalize 在其内做保守投影）。

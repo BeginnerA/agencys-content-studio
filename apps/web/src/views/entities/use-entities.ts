@@ -1,7 +1,7 @@
 /**
  * 素材库（实体素材页）：角色 / 场景 / 道具三 Tab。
  * 单表多态（kind）——切换 Tab 重拉 /entities?kind=；appearance 标签与空态文案按 kind 适配；
- * 声线仅角色 Tab；挑图选择器：项目域拉项目图片资产，全局域拉全局素材池（/global/assets，[M52]）。
+ * 声线仅角色 Tab；挑图选择器：项目域拉项目图片资产，全局域拉全局素材池（/global/assets）。
  * 卡片多选批量润色（appearance，≤10 项/次）+ 参考图上传通道 + 状态变体 states（仅角色）。
  * 多选批量生成参考图：弹窗选变体（≤10 素材 × 1-4）→ 无 run 异步队列 → 页内进度（socket 驱动 + 轮询兜底）
  *   → 服务端自动挂接 ref_asset_ids；行内可取消 / 失败重试（重新发起）。
@@ -66,11 +66,11 @@ export function useEntitiesPage() {
   const formErr = ref('')
   const assetOptions = ref<Asset[]>([])
   const assetsLoading = ref(false)
-  // 参考图上传：编辑态任一归属可用（全局实体 → 服务端自动入全局池并挂接，[M52]）
+  // 参考图上传：编辑态任一归属可用（全局实体 → 服务端自动入全局池并挂接）
   const uploadEl = ref<HTMLInputElement | null>(null)
   const uploading = ref(false)
   const upNote = ref('')
-  // [M52] 新建全局态：直传全局素材池（入池后可在挑图区勾选）
+  // 新建全局态：直传全局素材池（入池后可在挑图区勾选）
   const poolUploadEl = ref<HTMLInputElement | null>(null)
   const poolUploading = ref(false)
 
@@ -166,7 +166,7 @@ export function useEntitiesPage() {
     if (joinedRefPid) getSocket().emit('leave', `project:${joinedRefPid}`)
   })
 
-  /** 参考图候选 [M52]：项目域 = 该项目图片资产；全局域（pid=0）= 全局素材池图片 */
+  /** 参考图候选：项目域 = 该项目图片资产；全局域（pid=0）= 全局素材池图片 */
   async function loadAssets(pid: number) {
     assetsLoading.value = true
     try {
@@ -265,7 +265,7 @@ export function useEntitiesPage() {
           .filter(Boolean)
       }
       if (form.id) {
-        // [M52] 全局实体亦可挂图（服务端校验须属全局池）；两域统一送 ref_asset_ids
+        // 全局实体亦可挂图（服务端校验须属全局池）；两域统一送 ref_asset_ids
         body.ref_asset_ids = form.refIds
         await entityApi.update(form.id, body)
       } else {
@@ -362,7 +362,7 @@ export function useEntitiesPage() {
   const refSubmitting = ref(false)
   const refBusyTask = ref(0)
   const refErr = ref('')
-  /** 本批次出图宿主项目 id（发起时由所选素材推导；[M52] 全全局批次宿主 = 当前项目筛选） */
+  /** 本批次出图宿主项目 id（发起时由所选素材推导；全全局批次宿主 = 当前项目筛选） */
   const refPid = ref(0)
   /** 已认领任务 id（发起结果 + 服务端在途任务）：事件与轮询只更新这批 */
   const refBatch = ref(new Set<number>())
@@ -381,7 +381,7 @@ export function useEntitiesPage() {
     const pids = [...new Set(selItems.value.map((c) => c.projectId ?? 0))]
     return pids.length === 1 ? pids[0]! : 0
   })
-  /** [M52] 批量出图宿主：同项目批次 = 该项目；全全局批次 = 当前项目筛选（具体项目，提供出图配置）；其余 0 不可发起 */
+  /** 批量出图宿主：同项目批次 = 该项目；全全局批次 = 当前项目筛选（具体项目，提供出图配置）；其余 0 不可发起 */
   const refHostPid = computed(() => {
     const list = selItems.value
     if (!list.length) return 0
@@ -610,7 +610,7 @@ export function useEntitiesPage() {
     uploadEl.value?.click()
   }
 
-  /** 上传参考图 → 入库 + 挂接（全局实体入池挂接，[M52]；form.refIds 同步最新；失败不关闭弹窗） */
+  /** 上传参考图 → 入库 + 挂接（全局实体入池挂接；form.refIds 同步最新；失败不关闭弹窗） */
   async function onUploadPick(ev: Event) {
     const input = ev.target as HTMLInputElement
     const file = input.files?.[0]
@@ -632,7 +632,7 @@ export function useEntitiesPage() {
     }
   }
 
-  /** [M52] 新建全局态：文件直传全局素材池（可多选），入池后自动勾选进 refIds */
+  /** 新建全局态：文件直传全局素材池（可多选），入池后自动勾选进 refIds */
   function pickPoolUpload() {
     poolUploadEl.value?.click()
   }

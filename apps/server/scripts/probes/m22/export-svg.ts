@@ -70,7 +70,7 @@ export async function run(ctx: M22Ctx): Promise<void> {
   check(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"') && svg.endsWith('</svg>'), 'SVG 根元素开闭')
   check((svg.match(/rx="8"/g) ?? []).length === 3, '节点卡 rect 数 = 节点数（rx=8 唯一标识）')
   check((svg.match(/rx="12"/g) ?? []).length === 4, '组框 rect 数 = 组数（rx=12）')
-  check((svg.match(/marker-end="url\(#m22-arrow\)"/g) ?? []).length === 1, '边 path 数 = 端点齐全边数（悬空边跳过）')
+  check((svg.match(/marker-end="url\(#edge-arrow\)"/g) ?? []).length === 1, '边 path 数 = 端点齐全边数（悬空边跳过）')
   check(svg.includes('&lt;A&amp;B &quot;q&quot;&gt;') && !svg.includes('<A&B'), '节点标题 XML 转义')
   check(svg.includes(`${'x'.repeat(16)}…`), '长标题截断入图')
   check(svg.includes('M 320 270 C 368 270, 352 270, 400 270'), '边几何：源右中 → 目标左中（dx=48 下限）')

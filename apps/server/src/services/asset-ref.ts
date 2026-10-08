@@ -18,7 +18,7 @@ export const MAX_REF_IMAGE_BYTES = 8 * 1024 * 1024
  * [审计·跨项目隔离 chokepoint] projectId 必传：本函数是唯一把任意 assetId 转成可注入图的收口点，
  * 在此强校验资产归属，防止参考图 / 首帧 / 尾帧 / 蒙版等按 id 注入拉取到其它项目的图片（数据越界）。
  * 不匹配 → 抛错（沿用调用方跳图契约）；无需额外查询，已按 id 载入行。
- * [M52 唯一例外] 全局素材池资产（projectId=GLOBAL_POOL_ID）对任意项目放行——池内均为有意跨项目
+ * 唯一例外：全局素材池资产（projectId=GLOBAL_POOL_ID）对任意项目放行——池 内均为有意跨项目
  * 共享的参考图（全局实体挂图）；项目私有资产（projectId>0 且≠当前项目）依旧拒绝，隔离不放宽。
  */
 export async function assetToDataUri(assetId: number, projectId: number, cache?: Map<number, string>): Promise<string> {

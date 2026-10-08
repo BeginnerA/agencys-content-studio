@@ -24,7 +24,7 @@ const SERVICE_TYPES = ['llm', 'image', 'video', 'audio', 'music']
 const TESTABLE_VIDEO_PROVIDER_KEYS = new Set([
   'aliyun_bailian_video',
   'volcengine_video',
-  // [M55] 本地轨视频：适配器已实现零成本 probe()（LocalAI GET /v1/models / ComfyUI GET /system_stats）
+  // 本地轨视频：适配器已实现零成本 probe()（LocalAI GET /v1/models / ComfyUI GET /system_stats）
   'localai_video',
   'comfyui_video',
 ])

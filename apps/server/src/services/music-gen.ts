@@ -1,5 +1,5 @@
 /**
- * AI 生成 BGM（M54 G4b）：kit music 协议族（百炼 Fun-Music/火山 GenBGM/MiniMax）的宿主 glue。
+ * AI 生成 BGM：kit music 协议族（百炼 Fun-Music/火山 GenBGM/MiniMax）的宿主 glue。
  * 端点：api_configs service_type='music'（目录行 aliyun_bailian_music/volcengine_music；minimax_music
  * 已退役不再预种——接口不再面向新用户，仅存量实例仍经 kit 适配器派发，
  * service_type 自由 text 零迁移）；供应商派发走 kit getMusicAdapter 注册表（能力真源在 kit）。

@@ -210,7 +210,7 @@ export async function analyzeVideoSource(args: {
   const duration = (typeof args.durationHint === 'number' && args.durationHint > 0 ? args.durationHint : null) ?? probeMediaDuration(args.srcAbs)
   if (!duration || !(duration > 0)) throw new Error(`无法取得视频时长（${args.name}）`)
   args.log(`视频源「${args.name}」时长 ${duration.toFixed(1)}s → 抽帧 ${frames}（宽 ≤${ANALYSIS_FRAME_WIDTH}，临时目录不落库）`)
-  const tmp = mkdtempSync(join(tmpdir(), 'acs-m25-'))
+  const tmp = mkdtempSync(join(tmpdir(), 'acs-video-analyze-'))
   try {
     const times = uniformVideoTimes(frames, duration)
     const frameFiles: Array<{ t: number; path: string }> = []

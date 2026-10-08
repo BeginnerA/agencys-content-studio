@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/)
 const text = (max: number) => z.string().trim().min(1).max(max)
-/** M58 2b：解析产物条目上限（每个已采纳视频内容参考至多一条，与 refs 总上限同量级，服务端 slice 收口后进 schema） */
+/** 参考解析产物条目上限（每个已采纳视频内容参考至多一条，与 refs 总上限同量级，服务端 slice 收口后进 schema） */
 export const MAX_REFS_ANALYSIS = 12
 
 // 视频分辨率档位（与 @agencys/ai-provider-kit CapsResolution 六档同源，预检 videoCapabilitiesSchema 同引用）。
@@ -25,8 +25,8 @@ export const refSchema = z.object({
 }).strict()
 export type CreationRef = z.infer<typeof refSchema>
 
-// M58 2b：参考视频解析产物（服务端规划期编译写入，LLM 不产出也不采信其同名键）。
-// 进 plan → 进 planHash：参考变化或反推摘要变化 → 旧确认作废重确认（延续 M31「不臆造可核实」:用户能检视系统从参考里读到了什么）。
+// 参考视频解析产物（服务端规划期编译写入，LLM 不产出也不采信其同名键）。
+// 进 plan → 进 planHash：参考变化或反推摘要变化 → 旧确认作废重确认（延续参考输入「不臆造可核实」先例:用户能检视系统从参考里读到了什么）。
 export const refsAnalysisEntrySchema = z.object({
   assetId: z.number().int().positive(),
   name: text(200),
@@ -40,10 +40,10 @@ export const refsAnalysisEntrySchema = z.object({
 }).strict()
 export type RefsAnalysisEntry = z.infer<typeof refsAnalysisEntrySchema>
 
-/** M58 补口：图片反推产物条目上限（对话内每次至多反推 8 图，控多模态成本；与 image_analyze 默认同量级） */
+/** 图片反推产物条目上限（对话内每次至多反推 8 图，控多模态成本；与 image_analyze 默认同量级） */
 export const MAX_IMAGE_ANALYSIS = 8
 // 图片反推产物（服务端规划期经多模态 image_analyze 核心反推写入，LLM 不产出也不采信其同名键）。
-// 与 refsAnalysis（视频形态）平行：进 plan → 进 planHash（参考图/反推变化 → 旧确认作废，M31 同律）；
+// 与 refsAnalysis（视频形态）平行：进 plan → 进 planHash（参考图/反推变化 → 旧确认作废，同「参考变化→冲突」律）；
 // 无图片反推时缺省不挂键 → 老方案 JSON 逐字零漂移。字段仅取图中真实反推所得，缺失不编造。
 export const imageAnalysisEntrySchema = z.object({
   assetId: z.number().int().positive(),
@@ -61,9 +61,9 @@ export const imageAnalysisEntrySchema = z.object({
 }).strict()
 export type ImageAnalysisEntry = z.infer<typeof imageAnalysisEntrySchema>
 
-// M59 上限单一真源（可回退参数：若上线后截断/成本问题显著，把 MAX 下调即全链同步）。
+// 总时长上限单一真源（可回退参数：若上线后截断/成本问题显著，把 MAX 下调即全链同步）。
 // 消费点：本文件 schema / clamp.ts 钳制 / planning.ts caps 注入 / route-hint.ts 超上限信号 / dialogue.ts 文案。
-// 单镜 1–15s 不动（受视频模型 caps 档位硬约束，放开无效）；>90s 长内容走 M56 毕业通道，不靠膨胀 easy-*。
+// 单镜 1–15s 不动（受视频模型 caps 档位硬约束，放开无效）；>90s 长内容走毕业通道，不靠膨胀 easy-*。
 export const PLAN_DURATION_MIN = 30
 export const PLAN_DURATION_MAX = 90
 export const PLAN_SHOTS_MAX = 16
@@ -88,14 +88,14 @@ export const creationPlanSchema = z.object({
     motion_prompt: text(1200),
     lines: z.array(id).max(12),
     characters: z.array(id).min(1).max(4).optional(),
-    // M58 2a：本镜来自参考视频反推初稿（服务端权威写/清：本轮真用了分镜初稿才标，LLM 同名键不采信）
+    // 反推初稿权威标记：本镜来自参考视频反推初稿（服务端权威写/清：本轮真用了分镜初稿才标，LLM 同名键不采信）
     source: z.literal('reverse').optional(),
   }).strict()).min(2).max(PLAN_SHOTS_MAX),
   // 已采纳参考素材（服务端在规划时编译写入；LLM 不产出，缺省空数组向后兼容）
   refs: z.array(refSchema).max(12).default([]),
-  // M58 2b：参考视频解析产物（服务端编译写入；有视频参考才有此键，无则缺省不挂——老方案逐字零漂移）
+  // 参考视频解析产物（服务端编译写入；有视频参考才有此键，无则缺省不挂——老方案逐字零漂移）
   refsAnalysis: z.array(refsAnalysisEntrySchema).max(MAX_REFS_ANALYSIS).optional(),
-  // M58 补口：参考图片反推产物（服务端规划期多模态反推写入；有图片反推才有此键，无则缺省不挂——零漂移）
+  // 参考图片反推产物（服务端规划期多模态反推写入；有图片反推才有此键，无则缺省不挂——零漂移）
     imageAnalysis: z.array(imageAnalysisEntrySchema).max(MAX_IMAGE_ANALYSIS).optional(),
   // 缺省字段不补值：历史批准 JSON 与哈希保持逐字一致。
   performance: z.enum(['narration', 'dialogue']).optional(),

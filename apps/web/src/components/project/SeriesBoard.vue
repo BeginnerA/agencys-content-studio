@@ -48,7 +48,7 @@ onMounted(() => void load())
 
 defineExpose({ reload: (silent = true) => load(silent) })
 
-// —— 商业结构（M60）：立项 run 产出的「商业结构设计.json」折叠展示；卡点仅为剧情设计思路，真实付费由发布平台决定 ——
+// —— 商业结构：立项 run 产出的「商业结构设计.json」折叠展示；卡点仅为剧情设计思路，真实付费由发布平台决定 ——
 interface MonetizationEpisode {
   ep: number
   opening_hook?: string
@@ -253,7 +253,7 @@ async function doRemoveEpisode(e: Episode) {
 
     <div v-if="err" class="err-text">{{ err }}</div>
 
-    <!-- 商业结构折叠卡（M60）：仅在立项产出过「商业结构设计.json」时出现 -->
+    <!-- 商业结构折叠卡：仅在立项产出过「商业结构设计.json」时出现 -->
     <div v-if="mono" class="mono-card">
       <button class="mono-head" :aria-expanded="monoOpen" @click="monoOpen = !monoOpen">
         <Icon :name="monoOpen ? 'chevron-down' : 'chevron-right'" :size="12" :stroke-width="2.2" />

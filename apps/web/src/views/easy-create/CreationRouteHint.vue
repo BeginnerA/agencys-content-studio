@@ -4,16 +4,16 @@ import Icon from '../../components/common/Icon.vue'
 import type { CreationRouteHintView } from '../../lib/types'
 
 /**
- * M57 载体路由建议条：方案命中「轻内容能力之外」的意图信号（连载/多角色质感/反推/超长单条）时，
+ * 载体路由建议条：方案命中「轻内容能力之外」的意图信号（连载/多角色质感/反推/超长单条）时，
  * 由服务端确定性派生随 plan 消息 payload 透出，本组件只做非阻断展示与升级路径说明。
- * 红线：绝不自动切换执行模板（确认即执行不变量归 M40）；无建议时父级不渲染本组件。
- * 「看看怎么升级」按目标分流：episode/series 毕业通道归 M56（成片后一键），其余指到专业端模板建项目。
+ * 红线：绝不自动切换执行模板（确认即执行不变量）；无建议时父级不渲染本组件。
+ * 「看看怎么升级」按目标分流：episode/series 走毕业通道（成片后一键），其余指到专业端模板建项目。
  */
 const props = defineProps<{ hint: CreationRouteHintView }>()
 
 const expanded = ref(false)
 
-// M56 毕业通道覆盖的两个目标（成片后一键升级专业链）
+// 毕业通道覆盖的两个目标（成片后一键升级专业链）
 const graduable = computed(
   () => props.hint.target === 'series-setup' || props.hint.target === 'mengbao-episode',
 )

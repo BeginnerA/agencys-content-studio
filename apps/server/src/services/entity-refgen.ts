@@ -135,7 +135,7 @@ export interface RefGenIssueResult {
 /**
  * 批量发起（校验全在前，任何一项不合法整单拒绝——前端据此提示）：
  * project 存在 / entityIds 1..10 / appearance 必填（缺 → 列出名称）/ variants 1..4。
- * [M52] 归属口径：项目行须全属该项目（现状不变）；全局行放开——以请求 projectId 为出图配置宿主
+ * 归属口径：项目行须全属该项目（现状不变）；全局行放开——以请求 projectId 为出图配置宿主
  * （settings/风格词/用量记账），产物落全局素材池并挂回全局行；全局与项目不得混选。
  */
 export async function startEntityRefGen(
@@ -164,7 +164,7 @@ export async function startEntityRefGen(
   const byId = new Map(rows.map((r) => [r.id, r]))
   const missing = ids.filter((id) => !byId.has(id))
   if (missing.length > 0) throw new WorkbenchError('bad_entity_ids', `素材不存在：${missing.map((m) => `#${m}`).join('、')}`)
-  // [M52] 全局行以本项目为宿主；但不得与项目行混选（产物归属歧义）；非本项目项目行依旧拒
+  // 全局行以本项目为宿主；但不得与项目行混选（产物归属歧义）；非本项目项目行依旧拒
   const globals = rows.filter((r) => r.projectId === null)
   const foreign = rows.filter((r) => r.projectId !== null && r.projectId !== projectId)
   if (globals.length > 0 && (foreign.length > 0 || globals.length < rows.length)) {
@@ -372,7 +372,7 @@ async function executeOnce(
   const img = await used.generate(request)
   if (await taskCancelled(taskId)) throw new RefGenCancelled()
   const source = img.kind === 'url' ? { kind: 'url' as const, url: img.url } : { kind: 'base64' as const, data: img.data, mime: img.mime }
-  // [M52] 全局实体产物落全局素材池（而非宿主项目）；项目实体照旧落本项目
+  // 全局实体产物落全局素材池（而非宿主项目）；项目实体照旧落本项目
   const ownerProjectId = entity.projectId ?? GLOBAL_POOL_ID
   const asset = await saveGeneratedMedia({
     projectId: ownerProjectId,
@@ -399,7 +399,7 @@ async function executeOnce(
     .update(genTasks)
     .set({ status: 'succeeded', resultAssetId: asset.id, prompt, completedAt: nowMs(), updatedAt: nowMs() })
     .where(eq(genTasks.id, taskId))
-  // 自动挂接：并集去重追加至实体 ref_asset_ids（[M52] 按行 id 挂接，免同名项目行遮蔽；产物归属随实体域）
+  // 自动挂接：并集去重追加至实体 ref_asset_ids（按行 id 挂接，免同名项目行遮蔽；产物归属随实体域）
   const added = await attachRefAssetsById(entity.id, [asset.id], 'ref-gen', entity.projectId)
   await recordUsage({
     projectId: task.projectId,

@@ -325,7 +325,7 @@ export function validateTextOutput(content: string, format: string): number {
     return obj.episodes.length
   }
   if (format === 'monetization-json') {
-    // M60 商业结构：逐集悬念标记为剧情设计产物（真实付费与否由发布平台决定，此处不设真实付费门禁参数）
+    // 商业结构：逐集悬念标记为剧情设计产物（真实付费与否由发布平台决定，此处不设真实付费门禁参数）
     const obj = JSON.parse(extractJson(content)) as { episode_count?: unknown; episodes?: unknown }
     if (!Array.isArray(obj.episodes) || obj.episodes.length === 0) {
       throw new Error(`商业结构 JSON 不合法（缺 episodes 数组）。返回开头 200 字符：${content.slice(0, 200)}`)

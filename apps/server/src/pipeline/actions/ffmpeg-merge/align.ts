@@ -64,7 +64,7 @@ export async function loadShotAlignShots(
   try {
     return parseShotLines(await ctx.readText(shotsIds[0]!))
   } catch (err) {
-    ctx.log(`分镜对齐解析失败（回退 M7 语义）：${(err as Error).message}`)
+    ctx.log(`分镜对齐解析失败（回退均分/显式时长语义）：${(err as Error).message}`)
     return { shots: [], hasLinesField: false }
   }
 }

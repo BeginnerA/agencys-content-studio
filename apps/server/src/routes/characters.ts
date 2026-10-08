@@ -76,7 +76,7 @@ const createEntity = h(async (c) => {
   let refAssetIds: number[] | undefined
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
-    // [M52] 全局域放开：仅接受全局素材池资产（项目资产依旧拒）
+    // 全局素材池域放开：仅接受全局素材池资产（项目资产依旧拒）
     refAssetIds = await assertRefAssetsForScope(projectId, body['ref_asset_ids'], 'ref_asset_ids')
   }
   const summary = strField(body, 'summary')
@@ -205,7 +205,7 @@ const updateEntity = h(async (c) => {
   }
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
-    // [M52] 替换语义不变；全局域仅接受池资产
+    // 替换语义不变；全局素材池域仅接受池资产
     patch['refAssetIds'] = JSON.stringify(await assertRefAssetsForScope(cur.projectId, body['ref_asset_ids'], 'ref_asset_ids'))
   }
   const rows = await db.update(characters).set(patch).where(eq(characters.id, id)).returning()
@@ -229,7 +229,7 @@ charactersRoutes.delete('/entities/:id', removeEntity)
 charactersRoutes.delete('/characters/:id', removeEntity)
 
 // POST /entities/:id/ref-images —— 上传参考图（multipart: file；sha256 去重入库 + 挂接并集；
-// [M52] 全局实体放开：文件入全局素材池（虚拟项目 #0）并按行 id 挂接，避免同名项目行遮蔽）
+// 全局实体放开：文件入全局素材池（虚拟项目 #0）并按行 id 挂接，避免同名项目行遮蔽）
 const uploadEntityRefImage = h(async (c) => {
   const id = idParam(c)
   const cur = await findEntityRow(id)

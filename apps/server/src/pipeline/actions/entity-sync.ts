@@ -136,7 +136,7 @@ function normalizeSpec(v: unknown): EntitySpec | null {
 }
 
 /** 参考图归属：asset.params.shotId（场景/道具名/别名）优先，未命中按资产名包含兜底 → attachRefAssets 并集入档。
- * [M52] projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
+ * projectId=null（全局）→ 仅消费全局池资产（非池项目资产跳过），挂到全局域行。 */
 async function attachRefImages(ctx: StepContext, projectId: number | null, scenes: EntitySpec[], props: EntitySpec[]): Promise<number> {
   const ids = ctx.assetIdsOf('ref_images')
   if (ids.length === 0) return 0

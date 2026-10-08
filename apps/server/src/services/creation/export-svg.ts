@@ -217,7 +217,7 @@ export function buildCanvasSvg(doc: CanvasDoc): string {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">`,
   )
   parts.push(
-    `<defs><marker id="m22-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${SVG_EDGE_COLOR}"/></marker></defs>`,
+    `<defs><marker id="edge-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${SVG_EDGE_COLOR}"/></marker></defs>`,
   )
   parts.push(`<rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="${SVG_BG}"/>`)
 
@@ -238,7 +238,7 @@ export function buildCanvasSvg(doc: CanvasDoc): string {
     if (!a || !b) continue
     const d = svgBezier(a.x + SVG_NODE_W, a.y + a.h / 2, b.x, b.y + b.h / 2)
     parts.push(
-      `<path d="${d}" fill="none" stroke="${SVG_EDGE_COLOR}" stroke-opacity="0.58" stroke-width="1.7" marker-end="url(#m22-arrow)"/>`,
+      `<path d="${d}" fill="none" stroke="${SVG_EDGE_COLOR}" stroke-opacity="0.58" stroke-width="1.7" marker-end="url(#edge-arrow)"/>`,
     )
   }
 

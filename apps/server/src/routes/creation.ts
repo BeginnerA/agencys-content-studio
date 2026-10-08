@@ -550,7 +550,7 @@ creationRoutes.delete('/canvases/:id/groups/:gid', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /entities/:id/ref-assets —— 联动：资产并集挂接实体 { asset_ids }（[M52] 项目域校验本项目、全局域仅接受全局素材池资产）
+// POST /entities/:id/ref-assets —— 联动：资产并集挂接实体 { asset_ids }（项目域校验本项目、全局域仅接受全局素材池资产）
 creationRoutes.post('/entities/:id/ref-assets', h(async (c) => {
   const id = idParam(c)
   const rows = await db.select().from(characters).where(eq(characters.id, id)).limit(1)

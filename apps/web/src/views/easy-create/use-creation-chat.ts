@@ -564,7 +564,7 @@ async function recompose(subtitleBurn?: boolean): Promise<boolean> {
 }
 
 /**
- * 毕业通道（M56）：把已确认并已开始制作的方案升级到专业链（同项目）。
+ * 毕业通道：把已确认并已开始制作的方案升级到专业链（同项目）。
  * episode=专业单集成片（mengbao-episode）；series=连载立项（series-setup）。
  * 服务端仅建 queued run、零计费不自动 start；成功后刷新会话（展示毕业消息）并回传 runId 供页面跳转专业工作台。
  */

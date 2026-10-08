@@ -94,7 +94,7 @@ export const creationChatApi = {
   /** 返修第二步 · 确认执行：重置目标镜并续跑（会重新生成、可能计费），回 202 + 快照 */
   reworkApply: (id: number, body: CreationReworkApplyBody) =>
     api.post<CreationDetail>(`${BASE}/${id}/rework`, body),
-  /** 毕业通道（M56）：把已确认方案升级到专业链——建 queued 专业 run（不自动 start、零计费），回 202 + runId */
+  /** 毕业通道：把已确认方案升级到专业链——建 queued 专业 run（不自动 start、零计费），回 202 + runId */
   graduate: (id: number, body: CreationGraduateBody) =>
     api.post<CreationGraduateResult>(`${BASE}/${id}/graduate`, body),
   /** 上传参考素材（multipart file+role）：落会话项目、不计费、不触发规划 */

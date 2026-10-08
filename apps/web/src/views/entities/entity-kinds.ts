@@ -1,5 +1,5 @@
 /**
- * [M26-split] 素材页三 Tab 配置表（自 use-entities.ts 原样抽出，行为零变更）：
+ * 素材页三 Tab 配置表（自 use-entities.ts 原样抽出，行为零变更）：
  * 角色/场景/道具的标签、占位与空态文案按 kind 适配，单表多态（kind）驱动的展示层真源。
  */
 import type { EntityKind } from '../../lib/types'

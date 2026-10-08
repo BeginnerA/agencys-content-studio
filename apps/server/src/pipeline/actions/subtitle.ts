@@ -26,9 +26,9 @@ export interface TimingLine {
  *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
  *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
  *  - estimated：无 voices（或 params.mode=estimated）→ LLM 按 params.prompt_tpl 切句估时；
- *  - fixed（M53 G4）：params.mode=fixed → 零 LLM，输入台词逐行定长计时（planFixedSrt，
+ *  - fixed：params.mode=fixed → 零 LLM，输入台词逐行定长计时（planFixedSrt，
  *    ms_per_line 每行时长 / lead_in_ms 起始延时 / total_ms 可选末行收敛），供标题/祝福语烧录。
- * M61 标题智能编排（仅 fixed 分支）：inputs 桥 style_mode/title_card/resolution（select/text 直通串）；
+ * 标题智能编排（仅 fixed 分支）：inputs 桥 style_mode/title_card/resolution（select/text 直通串）；
  *  style_mode=rule|llm → 资产 params 增 style_plan（planTitleStyle 规则层；llm 见期2）与 title_lines；
  *  仅 title_card=local|ai（style off）→ 只记 title_lines（字卡取行/裁 cue 依据）；
  *  两开关 off/缺省（存量模板无这些 inputs 键）→ 资产 params 零增键、行为逐字节不变。
@@ -76,7 +76,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
     const lastEnd = timed[timed.length - 1]!.end_ms
     assetParams = { mode, lines: timed.length, durationMs: lastEnd, ms_per_line: msPerLine, lead_in_ms: leadInMs, ...(totalMs ? { total_ms: totalMs } : {}) }
     promptSnapshot = `fixed 定长计时：lines=${source.lines.length} ms_per_line=${msPerLine} lead_in_ms=${leadInMs}${totalMs ? ` total_ms=${totalMs}` : ''}`
-    // M61 标题智能编排启用态（select 值经 resolveInputs 字符串直通；off/缺省 → 零增键逐字节不变）
+    // 标题智能编排启用态（select 值经 resolveInputs 字符串直通；off/缺省 → 零增键逐字节不变）
     const designMode = typeof ctx.input['style_mode'] === 'string' ? ctx.input['style_mode'].trim() : ''
     const cardRaw = typeof ctx.input['title_card'] === 'string' ? ctx.input['title_card'].trim() : ''
     const cardOn = cardRaw === 'local' || cardRaw === 'ai'
@@ -319,8 +319,8 @@ export function parseLineTranslations(raw: string): Map<string, string> {
   return out
 }
 
-/** 汇集台词来源：text 纯文本（M53 标题类输入，非资产）与 script 全文合并优先；否则 lines JSON（est_ms 注入提示词作参考）。
- * M61 titleLines（标题行数，仅 fixed 分支消费）：literal 单独路径 = 全部行；script+literal 合并路径 = literal 非空行数（标题在前）；lines JSON 路径 = 0 */
+/** 汇集台词来源：text 纯文本（标题类输入，非资产）与 script 全文合并优先；否则 lines JSON（est_ms 注入提示词作参考）。
+ * titleLines（标题行数，仅 fixed 分支消费）：literal 单独路径 = 全部行；script+literal 合并路径 = literal 非空行数（标题在前）；lines JSON 路径 = 0 */
 async function collectSource(ctx: StepContext): Promise<{ text: string; lines: Array<{ id: string; text: string; estMs?: number }>; titleLines: number }> {
   // text 输入为解析后原样透传的字符串（input.x 引用 kind:text 输入）；存量模板无此键 → '' = 行为不变
   const literal = typeof ctx.input['text'] === 'string' && ctx.input['text'].trim() ? ctx.input['text'].trim() : ''
@@ -470,7 +470,7 @@ export function splitDisplayLines(text: string, maxChars: number): string[] {
 }
 
 /**
- * fixed 定长计时（M53 G4，纯函数；探针直测）：逐行 [cursor, cursor+d)，lead_in 先行；
+ * fixed 定长计时（纯函数；探针直测）：逐行 [cursor, cursor+d)，lead_in 先行；
  * total_ms 提供时末行向总长收敛（放不下则弃行，防 SRT 非单调）。空行/纯空白行跳过。
  */
 export function planFixedSrt(
@@ -500,7 +500,7 @@ export function planFixedSrt(
 }
 
 /**
- * M61 标题智能排版方案（subtitle 资产 params.style_plan 结构；期1 消费 style，期3 T7 消费 styles/cue_style）：
+ * 标题智能排版方案（subtitle 资产 params.style_plan 结构；期1 消费 style，分层排版消费 styles/cue_style）：
  *  - style：全局主样式（单 ASS Style 消费口径；混合取正文组，纯标题取标题组——正文位移防护）
  *  - styles：分组样式（styles[0] 恒为标题组；混合时 styles[1] 为正文组）
  *  - cue_style：逐 cue 下标 → styles 下标映射（长度 = 行数）
@@ -512,7 +512,7 @@ export interface TitleStylePlan {
 }
 
 /**
- * 规则排版（M61 T1，纯函数；探针直测）：标题组字号按「最长标题行单行可容纳」从
+ * 规则排版（纯函数；探针直测）：标题组字号按「最长标题行单行可容纳」从
  * [0.06, 0.055, 0.05, 0.045, 0.04] 降序阶梯选取（宽度预算 = estimateMaxCharsPerLine，全部不适则取最小档）；
  * bold=true；有正文行时标题置顶（alignment 8）否则居中（5）；竖屏（高>宽）加粗描边 outline_pct 0.0018 抗亮底。
  * 正文组保持基线观感（0.04/底部/常规）——智能决策只作用于标题，正文零惊扰。
@@ -544,7 +544,7 @@ export function planTitleStyle(
 }
 
 /**
- * LLM 排版产物解析（M61 T5，纯函数；探针直测）：契约 `{"styles":[SubtitleStyleConfig…],"assign":[cue→style 下标…]}`。
+ * LLM 排版产物解析（纯函数；探针直测）：契约 `{"styles":[SubtitleStyleConfig…],"assign":[cue→style 下标…]}`。
  * 逐组 sanitizeSubtitleStyle 清洗（非法组 → 空对象回退基线公式）；assign 缺失/长度不符 → 按 role 推导默认映射；
  * 越界下标逐行校正。无 JSON/根非对象/styles 空 → null（调用方降级规则层）。全局主样式与规则层同语义（混合取正文组）。
  */
@@ -578,7 +578,7 @@ export function parseStylePlan(
 }
 
 /**
- * LLM 智能排版（M61 T5，style_mode=llm）：title-style.md 契约单次调用（与 estimated 分支同法 recordLlmUsage 计费）；
+ * LLM 智能排版（style_mode=llm）：title-style.md 契约单次调用（与 estimated 分支同法 recordLlmUsage 计费）；
  * 无实例/请求异常/产物无效 → null（调用方降级规则层并 log），绝不让排版设计失败阻断字幕产出。
  */
 async function designStyleWithLlm(

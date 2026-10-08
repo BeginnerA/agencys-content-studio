@@ -115,7 +115,7 @@ const emit = defineEmits<{
   </Modal>
 
   <!-- 轻提示（连线拒绝 / 落盘结果） -->
-  <div v-if="toastMsg" class="toast-m23" role="status">{{ toastMsg }}</div>
+  <div v-if="toastMsg" class="design-toast" role="status">{{ toastMsg }}</div>
 </template>
 
 <style scoped>
@@ -167,7 +167,7 @@ const emit = defineEmits<{
   word-break: break-all;
 }
 
-.toast-m23 {
+.design-toast {
   position: fixed;
   left: 50%;
   bottom: 26px;

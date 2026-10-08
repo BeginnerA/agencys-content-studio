@@ -77,12 +77,12 @@ export function parseSrtCues(srt: string): AssCue[] {
  * fontSize / marginV 与 subtitle-style 基线公式同源（height×0.04 / height×0.02），
  * 但此处为真实像素（PlayResY=height，不再被二次放大）。marginL=marginR=width×0.05。
  * opts.fontSize 可传入 force_style 实际生效字号（自定义品牌放大时据此预算换行，防大字号仍溢出）。
- * opts.cutCues（M61 字卡启用时）：裁前 N 个 cue（标题已由字卡呈现，防双呈现；仅影响烧录 ASS，
- * 不改 SRT 资产——M29 不可变契约；缺省/0 → 事件序列逐字节不变）。
- * opts.styles / opts.cueStyle（M61 T7 分层排版）：Default 之外追加具名 Style 行（字号/边距按本路
+ * opts.cutCues（字卡启用时）：裁前 N 个 cue（标题已由字卡呈现，防双呈现；仅影响烧录 ASS，
+ * 不改 SRT 资产——SRT 资产不可变契约；缺省/0 → 事件序列逐字节不变）。
+ * opts.styles / opts.cueStyle（分层排版）：Default 之外追加具名 Style 行（字号/边距按本路
  * 尺寸重算），cue→样式组下标（源=资产 params.style_plan.cue_style，索引为**原始 cue 序**含已裁段）；
  * 映射缺失/越界 → 该 cue 回落 Default；换行预算按各 cue 生效样式字号。缺省两参 → 逐字节零 diff。
- * opts.defaultCfg（T7 分层配套）：非空时 Default 行改由 assStyleRow 按合并主样式全量生成
+ * opts.defaultCfg（分层排版配套）：非空时 Default 行改由 assStyleRow 按合并主样式全量生成
  *（颜色/描边/落位等，与省略 force_style 的烧录链配套；字号仍按 opts.fontSize 基线链公式由调用方传入）。
  */
 export function srtToAss(
@@ -155,9 +155,9 @@ export function buildAssBurnPaths(opts: {
   derived: Array<{ w: number; h: number }>
   brandSubtitle: SubtitleStyleConfig | null
   temps: string[]
-  /** M61 字卡已生成时裁前 N 个标题 cue（主/派生各路同裁；缺省/0 逐字节不变） */
+  /** 字卡已生成时裁前 N 个标题 cue（主/派生各路同裁；缺省/0 逐字节不变） */
   cutCues?: number
-  /** M61 T7 分层排版：具名样式组 + cue→组下标（各组字号按各路高度重算，同一引用透传；缺省零 diff） */
+  /** 分层排版：具名样式组 + cue→组下标（各组字号按各路高度重算，同一引用透传；缺省零 diff） */
   styles?: Array<{ name: string; cfg: SubtitleStyleConfig }>
   cueStyle?: number[]
 }): string[] {
