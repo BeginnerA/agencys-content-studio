@@ -74,14 +74,14 @@ zip 约 180MB，**不要 commit 进仓库**——Gitee/GitHub 的 push 单文件
 ### 推荐路径：GitHub 镜像 + Release
 
 1. GitHub 建公开镜像仓库（本项目 Apache-2.0 开源，公开代码无新增许可义务）
-2. 推送：`git remote add github https://github.com/<user>/<repo>.git`，然后 `git push github master --tags`
-3. GitHub 仓库页 → Releases → Draft a new release：选 tag `v0.1.0`、标题 `百工工作室 便携版 v0.1.0`，上传 `dist-portable/百工工作室-便携版-v0.1.0.zip`，正文粘贴下方「对外发布文案」的 GitHub Release 版
+2. 推送：`git remote add github https://github.com/BeginnerA/agencys-content-studio.git`，然后 `git push github master --tags`；镜像默认分支若为建仓自动生成的 `main`，需切成 `master`（`gh api repos/BeginnerA/agencys-content-studio -X PATCH -f default_branch=master`）
+3. 建 Release：`gh release create v0.1.0 <zip路径> --title "百工工作室 便携版 v0.1.0" --notes-file <说明文件>`。⚠️ **asset 文件名必须 ASCII**——GitHub 会把中文文件名吞成 `-.-v0.1.0.zip`（实测），上传前先复制一份英文名：`Baigong-Studio-portable-v{版本}-win-x64.zip`（zip 内部目录仍为中文，解压后体验不变）。正文粘贴下方「对外发布文案」的 GitHub Release 版
 4. Gitee 仓库的 Release 页粘贴「Gitee Release 引流说明」文案（内含指向 GitHub 的下载链接；附件传不下大包，说明页只做引流）
 5. 以后每次发版：改 `package.json` version → 重跑 `pnpm package:portable` → 打新 tag、传新 asset
 
 ### 对外发布文案（复制即用）
 
-以下三份文案直接复制粘贴，`<...>` 占位符替换为实际链接。当前 v0.1.0 zip 校验值：`SHA256 0AB7921EEC184BF9012AD4D95BB81803F411E8288428866D8B5B3DDECFCAAA07`（`百工工作室-便携版-v0.1.0.zip`，177.6MB），建议贴在下载页供校验。
+以下三份文案直接复制粘贴，发新版时替换版本号与链接。当前 v0.1.0 zip 校验值：`SHA256 0AB7921EEC184BF9012AD4D95BB81803F411E8288428866D8B5B3DDECFCAAA07`（asset 名 `Baigong-Studio-portable-v0.1.0-win-x64.zip`，186201317 字节）。v0.1.0 已发布：<https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.1.0>。
 
 **① GitHub Release 说明**（贴到 Release 正文）
 
@@ -122,7 +122,7 @@ Apache-2.0 开源；第三方组件许可声明见包内 NOTICE。
 本人开源项目「百工工作室」的「解压即用」便携包——无需安装任何开发环境，下载解压双击即用。
 
 ⚠️ 包大小约 178MB，超出 Gitee 发行版附件 100MB 上限，请前往 GitHub 下载：
-👉 <GitHub Release 链接>
+👉 https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.1.0
 
 三步上手：解压 → 双击「启动.bat」→ 网页「AI 配置」填自己的 API Key。系统要求与常见问题见下载页说明。
 ```

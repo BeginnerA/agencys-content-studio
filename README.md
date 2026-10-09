@@ -30,7 +30,7 @@
 环境要求：**Node 20+**、**pnpm**。
 
 ```bash
-git clone https://gitee.com/agencys/agencys-content-studio.git
+git clone https://gitee.com/agencys/agencys-content-studio.git   # GitHub 镜像：https://github.com/BeginnerA/agencys-content-studio.git
 cd agencys-content-studio
 pnpm install            # 自动下载内置 ffmpeg / ffprobe（约 150MB）
 cp .env.example .env    # 填入 AGENT_LLM_API_KEY
@@ -67,7 +67,7 @@ pnpm ci:check           # 一键门禁：typecheck + 模板校验 + 全量探针
 pnpm validate:templates # 模板校验
 ```
 
-- **便携包**：`pnpm package:portable` 产出 `dist-portable/百工工作室-便携版/`（自带 Node 运行时与全部依赖），对方解压双击「启动.bat」即用；内置密钥 / 数据库防泄漏与冒烟自检
+- **便携包**：`pnpm package:portable` 产出 `dist-portable/百工工作室-便携版/`（自带 Node 运行时与全部依赖），对方解压双击「启动.bat」即用；内置密钥 / 数据库防泄漏与冒烟自检。现成下载 → [GitHub Release v0.1.0](https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.1.0)
 - **协议适配层**：`@agencys/ai-provider-kit` 以 Git 标签依赖（当前 `#v0.4.0`）由 `pnpm install` 自动从 Gitee 拉取；升级 = 在 kit 仓库打新标签后改标签号重装，本地联调可临时改 `file:` 引用（勿提交本地路径）
 
 ## 目录结构
