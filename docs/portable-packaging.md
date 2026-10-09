@@ -73,19 +73,72 @@ zip 约 180MB，**不要 commit 进仓库**——Gitee/GitHub 的 push 单文件
 
 ### 推荐路径：GitHub 镜像 + Release
 
-1. GitHub 建公开镜像仓库（本项目 MIT 开源，公开代码无新增许可义务）
+1. GitHub 建公开镜像仓库（本项目 Apache-2.0 开源，公开代码无新增许可义务）
 2. 推送：`git remote add github https://github.com/<user>/<repo>.git`，然后 `git push github master --tags`
-3. GitHub 仓库页 → Releases → Draft a new release：tag 取 `package.json` 的 version（如 `v0.1.0`），上传 `dist-portable/百工工作室-便携版-v0.1.0.zip`（可再附 SHA256），粘贴发布说明模板：
-
-   ```text
-   百工工作室 便携版 vX.Y.Z
-   - 下载下方 zip → 解压到任意目录 → 双击「启动.bat」→ 自动打开浏览器
-   - 首次使用在网页「AI 配置」填自己的 API Key（三步引导见包内 使用说明.txt）
-   - 仅 Windows 10/11 x64；zip 约 180MB，解压后约 450MB
-   ```
-
-4. Gitee 仓库的 Release 页放同一段说明文字 + 指向 GitHub Release 的下载链接（附件传不下大包，说明页只做引流）
+3. GitHub 仓库页 → Releases → Draft a new release：选 tag `v0.1.0`、标题 `百工工作室 便携版 v0.1.0`，上传 `dist-portable/百工工作室-便携版-v0.1.0.zip`，正文粘贴下方「对外发布文案」的 GitHub Release 版
+4. Gitee 仓库的 Release 页粘贴「Gitee Release 引流说明」文案（内含指向 GitHub 的下载链接；附件传不下大包，说明页只做引流）
 5. 以后每次发版：改 `package.json` version → 重跑 `pnpm package:portable` → 打新 tag、传新 asset
+
+### 对外发布文案（复制即用）
+
+以下三份文案直接复制粘贴，`<...>` 占位符替换为实际链接。当前 v0.1.0 zip 校验值：`SHA256 0AB7921EEC184BF9012AD4D95BB81803F411E8288428866D8B5B3DDECFCAAA07`（`百工工作室-便携版-v0.1.0.zip`，177.6MB），建议贴在下载页供校验。
+
+**① GitHub Release 说明**（贴到 Release 正文）
+
+```text
+百工工作室 便携版 v0.1.0（Windows）
+
+「解压即用」的 AI 内容创作工作室：模板化流水线 + 统一资产库 + 多家 AI 供应商适配，全程本地运行，无需安装 Node、pnpm 或任何开发环境。
+
+【三步上手】
+1. 下载下方 zip（约 178MB），解压到任意目录
+2. 双击「启动.bat」，等待浏览器自动打开（首次启动自动建库，约十几秒）
+3. 在网页左侧「AI 配置」填入你自己的 API Key，即可开始创作
+
+【包含能力】
+- 内置 19 个创作模板：选题 → 生产 → 平台适配 → 发布登记 → 复盘回灌全闭环
+- 角色 / 场景 / 道具资产库 + 分镜编辑器 + 自由创作画布
+- 本地向量记忆（ONNX 模型已打包，零联网）
+- 自带 ffmpeg：视频合成 / 抽帧开箱即用
+
+【系统要求】
+- Windows 10 / 11 x64（暂不支持 mac / Linux）
+- 解压后约 430MB 磁盘空间
+- 自备 AI 供应商 API Key（DeepSeek / 火山 / OpenAI 兼容端点均可）；也可接本地 Ollama 完全离线运行
+- 纯本地运行：项目数据与密钥仅存本机（包内 data/ 目录），不上传任何服务器
+
+【常见问题】
+- 浏览器没有自动打开：看命令行窗口提示的地址，手动访问即可
+- 详细引导见包内「使用说明.txt」
+
+Apache-2.0 开源；第三方组件许可声明见包内 NOTICE。
+```
+
+**② Gitee Release 引流说明**（贴到 Gitee 发行版正文）
+
+```text
+百工工作室 便携版 v0.1.0（Windows x64）
+
+本人开源项目「百工工作室」的「解压即用」便携包——无需安装任何开发环境，下载解压双击即用。
+
+⚠️ 包大小约 178MB，超出 Gitee 发行版附件 100MB 上限，请前往 GitHub 下载：
+👉 <GitHub Release 链接>
+
+三步上手：解压 → 双击「启动.bat」→ 网页「AI 配置」填自己的 API Key。系统要求与常见问题见下载页说明。
+```
+
+**③ 转发给朋友的聊天消息**（微信 / QQ 直接发）
+
+```text
+给你发个我做的小工具「百工工作室」——AI 内容创作工作室，写文案、生图生视频、剪成片一条龙。
+
+下载：<下载页链接>
+（Windows 电脑；下载后解压到任意文件夹，双击里面的「启动.bat」，浏览器会自动打开）
+
+提醒两件事：
+1. 它是纯本地运行的，数据都在你自己电脑上
+2. 我没放 AI 接口的钥匙进去，你需要自己去 DeepSeek 官网注册个账号、充点钱，把 Key 填到网页里才能生成内容——操作很简单，包里的《使用说明.txt》里有一步步引导
+```
 
 ### Gitee-only 兜底：网盘直链
 
