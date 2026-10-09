@@ -18,6 +18,7 @@
     "probe:ci": "pnpm --filter @acs/server probe:ci",
     "validate:templates": "pnpm --filter @acs/server validate:templates",
     "db:generate": "pnpm --filter @acs/server db:generate",
-    "db:push": "pnpm --filter @acs/server db:push"
+    "db:push": "pnpm --filter @acs/server db:push",
+    "package:portable": "pnpm --filter @acs/server package:portable"
   }
 }

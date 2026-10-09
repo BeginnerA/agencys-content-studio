@@ -150,6 +150,9 @@ importers:
       socket.io:
         specifier: ^4.8.3
         version: 4.8.3
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -166,9 +169,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

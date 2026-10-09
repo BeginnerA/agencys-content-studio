@@ -37,6 +37,14 @@ pnpm dev    # 并行起双端：
 
 **质量门禁**：`pnpm ci:check` 一键跑双端 typecheck + 模板校验 + 全量探针（fail-fast）；`pnpm probe:all` 并行全量探针 / `pnpm probe:ci` 串行快失败 / `pnpm validate:templates` 模板校验；`pnpm --filter @acs/server bench` 规模化压测基准（非阻断）。可选启用推送前钩子：`git config core.hooksPath .githooks`。
 
+## 分发给他人（便携包）
+
+给不会装 Node/pnpm 的人用：`pnpm package:portable` 一键产出 `dist-portable/百工工作室-便携版/`（含自带 Node 运行时、全部依赖、出厂模板与本地模型）+ 同名 zip。对方解压后双击「启动.bat」即用，首次启动自动建库，API Key 在网页「AI 配置」页自行填入。
+
+脚本内置三重防泄漏（密钥/数据库/个人项目绝不入包）与真实拉起式冒烟自检（建库 / ffmpeg / 模板清单 / embedding 实跑），任一断言失败则包不可分发。细节与安全红线 → [docs/portable-packaging.md](docs/portable-packaging.md)。
+
+线上分发渠道：zip 约 180MB 超 Gitee 附件 100MB 上限，推荐 GitHub Release（单文件 2GB）或网盘直链，平台限制与操作步骤 → [docs/portable-packaging.md](docs/portable-packaging.md)「发布到 Git 托管平台」。
+
 ## 四步上手
 
 > **更轻松的路径**：侧栏首位「轻松创作」（`/create`）——一句话描述想法 → 看方案卡 → 确认一次 → 自动产出 30–60 秒多镜头成片（动态/图文明确标注）。无需先建项目、选模板或操作闸门；精修仍可一键进入下方专业工作台。对话规划会产生 LLM 费用，确认方案前不生成任何媒体。**支持上传参考素材**（M31）：对话里上传参考图（风格 / 首帧 / 主体一致性）、参考视频（内容解析）或 BGM（背景乐），方案与成片受其约束——参考进 planHash（确认即执行）、能力不支持不静默降级、参考里没有的信息不编造。
@@ -75,6 +83,7 @@ pnpm dev    # 并行起双端：
 | [docs/templates.md](docs/templates.md) | 内置模板详表（14 模板 × 场景 × 要点 × 方法论来源）与典型工作流链 |
 | [docs/ai-config.md](docs/ai-config.md) | AI 四通道配置指引 + 记忆与本地模型 |
 | [docs/testing.md](docs/testing.md) | 全链路回归路径（UI 手工路径 / API 快捷冒烟 / data/ 重置） |
+| [docs/portable-packaging.md](docs/portable-packaging.md) | 便携包构建与分发指南（布局 / 安全红线 / 自检断言 / 常见问题） |
 | [docs/acceptance.md](docs/acceptance.md) | M1–M17 验收快照（静态 + 探针 + 实弹，历史纪录） |
 | [docs/milestones.md](docs/milestones.md) | M2–M28 各里程碑能力速览（设计原则 / 变更明细 / 验证命令） |
 | [docs/records/README.md](docs/records/README.md) | 里程碑设计留档索引（M53/M54/M55 详规、DB re-baseline 取证等，落笔即冻结） |

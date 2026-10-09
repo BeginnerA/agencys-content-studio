@@ -12,7 +12,8 @@
     "probe:ci": "tsx scripts/run-probes.ts --fail-fast",
     "validate:templates": "tsx scripts/validate-templates.ts",
     "bench": "tsx scripts/bench-stress.ts",
-    "model:prepare": "tsx scripts/prepare-embedding-model.ts"
+    "model:prepare": "tsx scripts/prepare-embedding-model.ts",
+    "package:portable": "tsx scripts/package-portable.ts"
   },
   "dependencies": {
     "@agencys/ai-provider-kit": "https://gitee.com/agencys/ai-provider-kit.git#v0.4.0",
@@ -28,6 +29,7 @@
     "hono": "^4.13.7",
     "mammoth": "^1.12.3",
     "socket.io": "^4.8.3",
+    "tsx": "^4.23.13",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
@@ -35,7 +37,6 @@
     "@types/d3-force": "^3.0.10",
     "@types/node": "^26.5.0",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
 }

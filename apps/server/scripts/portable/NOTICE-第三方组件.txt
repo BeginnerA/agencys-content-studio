@@ -1,0 +1,30 @@
+第三方组件声明（便携版随包分发）
+
+本便携包除本项目代码外，还捆绑分发以下第三方组件（均在 node_modules\
+与 runtime\ 目录内）：
+
+1. Node.js 运行时（runtime\node.exe）
+   许可证：MIT（OpenJS Foundation）。https://nodejs.org
+
+2. ffmpeg / ffprobe（node_modules\ffmpeg-static、node_modules\ffprobe-static）
+   许可证：GPL 系（ffmpeg 官方构建）。https://ffmpeg.org
+   本包仅作独立进程调用（未链接进程序）。
+
+3. onnxruntime（node_modules\onnxruntime-node）
+   许可证：MIT。https://github.com/microsoft/onnxruntime
+
+4. transformers.js（node_modules\@huggingface\transformers）
+   许可证：Apache-2.0。https://github.com/huggingface/transformers.js
+
+5. libsql / SQLite（node_modules\@libsql、node_modules\libsql）
+   许可证：MIT（SQLite 公有领域）。
+
+6. sharp（node_modules\sharp）
+   许可证：Apache-2.0。https://github.com/lovell/sharp
+
+7. 其余 Node 依赖的完整清单与许可说明
+   见随包文件 NOTICES.txt。
+
+8. 本地嵌入模型（data\models\bge-small-zh-v1.5）
+   来源：https://huggingface.co/Xenova/bge-small-zh-v1.5
+   许可证：MIT。仅保留了 Windows x64 所需的推理文件。
