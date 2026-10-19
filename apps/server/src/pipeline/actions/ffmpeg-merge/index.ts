@@ -29,7 +29,7 @@ import type { AlignPlan } from './align'
 import type { StepContext } from '../../context'
 import type { StepResult } from '../../types'
 import type { Asset } from '../../../db/schema'
-import { recipeOf, isCreationTemplate } from '../../../services/creation-chat/recipe'
+import { recipeOf, isEasyChainRun } from '../../../services/creation-chat/recipe'
 import { hashJson } from '../../../services/creation-chat/contract'
 import { validatedDialogueClip } from '../../../services/creation-chat/dialogue-cache'
 import { dialogueSrt, estimateDialogueClip, estimatedDialogueSrt, estimatedValidationHash, inspectDialogueMedia, type EstimatedDialogueClip } from '../../../services/creation-chat/dialogue-media'
@@ -389,7 +389,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 品牌三层解析（平台/项目/run；无任何配置 → {}，全链保持现行为）
   // 严格合成本向不叠加品牌（brand={}）；现仅对轻松创作模板放开“默认继承”，
   // 且确认卡可逐次关（_compose.brandApply=false）；非创建类严格 run 维持 brand={} 不变；未配品牌→{} 逐字节不变。
-  const brand = (!strict || (isCreationTemplate(ctx.run.templateKey) && composeCfg.brandApply !== false))
+  const brand = (!strict || (isEasyChainRun(ctx.run) && composeCfg.brandApply !== false))
     ? await resolveBrandConfig(ctx.run.projectId, ctx.run.input)
     : {}
   // 字幕样式采用链（标题编排扩展）：style_plan.style ⊕ brand.subtitle 字段级浅合并（手工恒胜）非空 → 接管；

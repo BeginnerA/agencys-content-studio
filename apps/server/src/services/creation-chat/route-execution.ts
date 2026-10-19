@@ -112,7 +112,7 @@ async function startTemplate(id: number, s: CreationSession, decision: AgentDeci
     const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
       .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
     if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
-    const run = await createRunRow({ projectId: s.projectId, templateKey: tplKey, input, creationSessionId: id }, tx)
+    const run = await createRunRow({ projectId: s.projectId, templateKey: tplKey, input, creationSessionId: id, chainKind: 'route' }, tx)
     await tx.update(creationSessions).set({ status: 'started', runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
     await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已按调度计划启动制作（模板「${tplKey}」）。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'run', runId: run.id, mode: 'template', templateKey: tplKey }), createdAt: Date.now() })
     return { runId: run.id, start: true }
@@ -136,7 +136,7 @@ async function startSynth(id: number, s: CreationSession, decision: AgentDecisio
       const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
         .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
       if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
-      const run = await createRunRow({ projectId: s.projectId, templateKey: synth.templateKey, input, creationSessionId: id }, tx)
+      const run = await createRunRow({ projectId: s.projectId, templateKey: synth.templateKey, input, creationSessionId: id, chainKind: 'route' }, tx)
       await tx.update(creationSessions).set({ status: 'started', runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已按临时编排计划启动制作（${synth.stepCount} 步）。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'run', runId: run.id, mode: 'synth', templateKey: synth.templateKey }), createdAt: Date.now() })
       return { runId: run.id, start: true }

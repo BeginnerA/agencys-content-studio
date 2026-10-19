@@ -64,6 +64,8 @@ export async function createRunRow(p: {
   resumedFromRunId?: number | null
   /** 仅会话确认服务传入；普通 run/batch/workflow 不得启动批准模板。 */
   creationSessionId?: number
+  /** 运行链种类显式标记：'easy'=轻松创作批准链，'route'=对话调度执行；缺省 NULL（非对话来源，执行层回退旧的可见性判定）。 */
+  chainKind?: 'easy' | 'route' | null
 }, executor: Pick<typeof db, 'insert'> = db): Promise<PipelineRun> {
   if (isCreationTemplate(p.templateKey) && !p.creationSessionId) throw new InvalidRunInputError('bad_input', '请从轻松创作确认方案后启动制作')
   const template = loadTemplateOrThrow(p.templateKey)
@@ -85,6 +87,8 @@ export async function createRunRow(p: {
       workflowSeq: p.workflowSeq ?? null,
       // 续跑来源（NULL = 非续跑派生）：与 /runs/:id/resume 路由同口径，供运行列表折叠续跑链
       resumedFromRunId: p.resumedFromRunId ?? null,
+      // 运行链种类显式标记（执行/投影层据此判模式，不靠模板名反推）
+      chainKind: p.chainKind ?? null,
       createdAt: t,
       updatedAt: t,
     })

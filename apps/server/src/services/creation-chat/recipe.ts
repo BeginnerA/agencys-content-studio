@@ -53,8 +53,14 @@ export type CreationRecipe = z.infer<typeof recipeSchema>
 export type { CreationRef }
 
 /** 轻松创作批准链内部模板判定（单一真源 = 各 easy-* YAML 顶层 `visibility: conversation` 标记，经 loader.templateFlags 派生）：
- *  执行期守卫、恢复校验与专业端阻断一律按此判定，不维护中心键集；新增/下架内部模板只需改该模板自身 YAML。 */
+ *  治理可见性阻断（专业选择器/默认模板/路由白名单/启动守卫）一律按此判定，不维护中心键集；新增/下架内部模板只需改该模板自身 YAML。 */
 export const isCreationTemplate = (key: string): boolean => templateFlags(key).conversationOnly
+
+/** 本 run 是否走轻松创作批准链（六段精细投影 / recipe 端点冻结 / 逐镜续跑）。
+ *  优先读 run 上的显式种类标记 chainKind（新建 run 由确认/续跑入口落库）；
+ *  无标记（本列上线前的存量 run）时回退按模板可见性判定，保证既有 run 行为逐字不变。 */
+export const isEasyChainRun = (run: Pick<PipelineRun, 'templateKey' | 'chainKind'>): boolean =>
+  run.chainKind != null ? run.chainKind === 'easy' : isCreationTemplate(run.templateKey)
 
 /**
  * 「受理状态不明」任务判定（单一真源）：已提交过（attempts>0）但既无第三方任务号（taskId）
@@ -65,8 +71,8 @@ export const isAmbiguousSubmitted = (
   t: { status: string; attempts: number; taskId?: string | null; resultAssetId?: number | null },
 ): boolean => t.status !== 'succeeded' && t.attempts > 0 && !t.taskId && !t.resultAssetId
 
-export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): CreationRecipe | null {
-  if (!isCreationTemplate(run.templateKey)) return null
+export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input' | 'chainKind'>): CreationRecipe | null {
+  if (!isEasyChainRun(run)) return null
   const input = JSON.parse(run.input)
   return recipeSchema.parse(JSON.parse(input.recipe))
 }
@@ -74,8 +80,8 @@ export function recipeOf(run: Pick<PipelineRun, 'templateKey' | 'input'>): Creat
 export interface ResumeConfigDrift { service: string; from: string; to: string | null }
 
 /** 恢复前只读配置检查，供运行详情和会话详情共用；不重钉快照、不触发供应商请求。 */
-export async function describeRunConfigDrift(run: Pick<PipelineRun, 'templateKey' | 'input' | 'status'>): Promise<ResumeConfigDrift[]> {
-  if (!isCreationTemplate(run.templateKey) || !['failed', 'cancelled'].includes(run.status)) return []
+export async function describeRunConfigDrift(run: Pick<PipelineRun, 'templateKey' | 'input' | 'status' | 'chainKind'>): Promise<ResumeConfigDrift[]> {
+  if (!isEasyChainRun(run) || !['failed', 'cancelled'].includes(run.status)) return []
   let recipe: CreationRecipe | null
   try { recipe = recipeOf(run) } catch { return [] }
   if (!recipe) return []

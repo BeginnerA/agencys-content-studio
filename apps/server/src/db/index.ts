@@ -491,6 +491,16 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // pipeline_runs +1 可空列（chain_kind：运行链种类显式标记；存量行 NULL = 回退旧的可见性判定）
+  if (!has.has('chain_kind')) {
+    try {
+      await sqlite.execute('ALTER TABLE pipeline_runs ADD COLUMN chain_kind text')
+      log.info('ensureColumn: pipeline_runs.chain_kind 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
   // 通用追溯层三表建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(

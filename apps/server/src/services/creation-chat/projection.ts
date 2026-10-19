@@ -5,7 +5,7 @@ import { assets, type CreationSession, type PipelineRun, type pipelineSteps, typ
 import { absPathOf } from '../storage'
 import { readComposeConfig } from '../compose-config'
 import { creationPlanSchema } from './contract'
-import { describeRunConfigDrift, isCreationTemplate, type ResumeConfigDrift } from './recipe'
+import { describeRunConfigDrift, isEasyChainRun, type ResumeConfigDrift } from './recipe'
 
 type Asset = typeof assets.$inferSelect
 type Step = typeof pipelineSteps.$inferSelect
@@ -51,7 +51,7 @@ function readable(a: Asset): boolean {
 export async function loadCreationProjection(session: CreationSession, run: PipelineRun, steps: Step[], tasks: Task[]) {
   // route 执行（template/synth/chain 命中专业模板）非批准链 → 走通用降级投影（逐 step 状态 + 文本/成片产物），
   // 不套 easy 六段语义（recipe/plan 不存在时旧投影会退化误报）；easy 批准链逐字走原精细投影（零回归）。
-  if (!isCreationTemplate(run.templateKey)) return projectGenericRun(session, run, steps, tasks)
+  if (!isEasyChainRun(run)) return projectGenericRun(session, run, steps, tasks)
   const recipe = jsonRecord(String(jsonRecord(run.input).recipe ?? ''))
   const sourceIds = Array.isArray(recipe.sources)
     ? recipe.sources.flatMap((s) => s && typeof s === 'object' && positiveId((s as { id?: unknown }).id) ? [(s as { id: number }).id] : []) : []

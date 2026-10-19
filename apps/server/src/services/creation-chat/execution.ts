@@ -84,7 +84,7 @@ async function confirmEasy(id: number, raw: unknown): Promise<{ runId: number }>
       const reviewVariant = request.reviewGate ? templateFlags(baseTemplate).reviewVariant : undefined
       const templateKey = reviewVariant ?? baseTemplate
       const recipe = recipeSchema.parse({ ...pf.execution, sessionId: id, sources, templateHash: hashJson(loadTemplate(templateKey)) })
-      const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, input: {
+      const run = await createRunRow({ projectId: s.projectId, templateKey, creationSessionId: id, chainKind: 'easy', input: {
         script: [sources[0]!.id], lines: [sources[1]!.id], shots: [sources[2]!.id], recipe: JSON.stringify(recipe), motion: plan.mode === 'dynamic', i2v: recipe.videoMode === 'i2v',
       } }, tx)
       // 启动方式开关落 _compose（brandApply / subtitleBurn）：仅逐次关闭时落对应 false 键（默认不写键 → run.input 与旧版逐字一致）；不入 recipe/planHash。
@@ -201,7 +201,7 @@ export async function retryCreation(id: number, raw: unknown): Promise<{ runId: 
       if (!claim.length) throw new CreationError('conflict', '会话已被恢复，请刷新', 409)
       const newInput = JSON.parse(src.input) as Record<string, unknown>
       if (recipeRewritten) newInput.recipe = JSON.stringify(recipe)
-      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id, resumedFromRunId: src.id }, tx)
+      const newRun = await createRunRow({ projectId: src.projectId, templateKey: src.templateKey, input: newInput, creationSessionId: id, resumedFromRunId: src.id, chainKind: (src.chainKind as 'easy' | 'route' | null) ?? 'easy' }, tx)
       // 开关随续跑保留：src.input 的 _compose（轻松创作仅含 brandApply/subtitleBurn）经 createRunRow 的 normalizeInput 会被丢弃，故在此显式克隆回新 run（与 confirm 同法直接落库）。
       const srcCompose = (JSON.parse(src.input) as Record<string, unknown>)['_compose']
       if (srcCompose && typeof srcCompose === 'object' && !Array.isArray(srcCompose)) {

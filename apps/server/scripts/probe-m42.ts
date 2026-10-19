@@ -139,7 +139,7 @@ async function main(): Promise<void> {
       const { eq } = await import('drizzle-orm')
       const { loadTemplate, listTemplates } = await import('../src/pipeline/loader')
       const { hashJson } = await import('../src/services/creation-chat/contract')
-      const { isCreationTemplate, recipeOf, assertRecipeSources } = await import('../src/services/creation-chat/recipe')
+      const { isCreationTemplate, isEasyChainRun, recipeOf, assertRecipeSources } = await import('../src/services/creation-chat/recipe')
       const { confirmCreation, retryCreation } = await import('../src/services/creation-chat/execution')
       const engine = await import('../src/pipeline/engine')
       const origStart = engine.engine.startRun.bind(engine.engine)
@@ -178,7 +178,13 @@ async function main(): Promise<void> {
         const sB = (await db.select().from(creationSessions).where(eq(creationSessions.id, b.sessionId)))[0]!
         const runB = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, (await confirmCreation(b.sessionId, { planRevision: sB.planRevision, planHash: sB.planHash, idempotencyKey: 'm42revB0001', acceptUnpriced: false })).runId)))[0]!
         check(runB.templateKey === 'easy-video' && recipeOf(runB)!.templateHash === hashJson(loadTemplate('easy-video')), '未勾选审阅 → 仍用原模板与原哈希（默认行为零回归）')
-        check(recipeOf({ ...runB, templateKey: 'ghost' }) === null && recipeOf({ ...runA, templateKey: 'quick-video' }) === null, '非创作模板不解析 recipe（不越界接管专业 run）')
+        // 运行链模式判别已改为读 run 显式标记 chainKind（不再靠模板名反推）：标记优先，无标记（存量 run）才回退可见性判定
+        check(isEasyChainRun({ templateKey: 'easy-video', chainKind: 'easy' }) === true, 'chainKind=easy → 判为批准链（标记优先）')
+        check(isEasyChainRun({ templateKey: 'easy-video', chainKind: 'route' }) === false, 'chainKind=route → 即使模板名是 easy-* 也判为非批准链（标记压过模板名）')
+        check(isEasyChainRun({ templateKey: 'easy-video', chainKind: null }) === true, 'chainKind=NULL（存量 run）→ 回退可见性判定为批准链（零回归）')
+        check(isEasyChainRun({ templateKey: 'quick-video', chainKind: null }) === false, 'chainKind=NULL + 专业模板 → 回退判定为非批准链')
+        check(recipeOf({ ...runB, chainKind: 'route' }) === null && recipeOf({ ...runB, chainKind: null, templateKey: 'quick-video' }) === null, '非批准链 run（route 标记 / 无标记且专业模板）不解析 recipe（不越界接管专业 run）')
+        check(recipeOf({ ...runB, chainKind: 'easy', templateKey: 'ghost' }) !== null, '批准链标记优先：chainKind=easy 即解析 recipe、即便模板名被改成非 easy-*（证明运行模式不再依赖模板名）')
 
         // —— 恢复路径：变体按自身键通过；哈希与原模板互换必须被拦 ——
         await db.update(pipelineRuns).set({ status: 'failed' }).where(eq(pipelineRuns.id, runA.id))

@@ -46,6 +46,10 @@ export const pipelineRuns = sqliteTable(
     workflowId: integer('workflow_id'), // 归属编排链（NULL = 非编排 run）
     workflowSeq: integer('workflow_seq'), // 链内段序（从 0 起）
     resumedFromRunId: integer('resumed_from_run_id'), // [审计G2] 断点续跑派生自哪个源 run（NULL = 非续跑派生；防双击 resume 并行双扣费）
+    // 运行链种类显式标记：'easy' = 轻松创作批准链（六段精细投影 / recipe 端点冻结 / 逐镜续跑），
+    // 'route' = 对话调度执行（template/synth/chain 命中专业模板），NULL = 非对话来源或本标记上线前的存量 run。
+    // 执行/投影层据此判定运行模式，不再靠模板名反推；NULL 时读取方回退旧的可见性判定以兼容存量 run。
+    chainKind: text('chain_kind'),
   },
   (t) => [
     index('idx_runs_project').on(t.projectId),
