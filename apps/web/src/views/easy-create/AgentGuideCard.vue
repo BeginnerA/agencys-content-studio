@@ -28,7 +28,7 @@ const elapsed = computed(() => session.value?.planning?.elapsedSec ?? 0)
 </script>
 
 <template>
-  <div class="card panel" :class="{ guide: !planning }" aria-label="智能创作">
+  <div class="card panel" :class="{ guide: !planning }" aria-label="轻松创作">
     <template v-if="planning">
       <header class="ph">
         <h2><Icon name="sparkles" :size="16" /> 智能规划中</h2>
@@ -41,7 +41,7 @@ const elapsed = computed(() => session.value?.planning?.elapsedSec ?? 0)
     </template>
     <template v-else>
       <span class="idle-ic"><Icon name="wand" :size="22" /></span>
-      <p class="idle-t">智能创作助手正在听你描述</p>
+      <p class="idle-t">轻松创作助手正在听你描述</p>
       <p class="muted">
         左侧描述需求，助手会智能判断该怎么执行并在此生成执行计划。确认执行计划前不立项、不产生任何媒体制作费用。
       </p>

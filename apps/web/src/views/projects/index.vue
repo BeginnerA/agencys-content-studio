@@ -121,10 +121,10 @@ function cardTo(p: Project) {
 
 <template>
   <div>
-    <RouterLink class="ec-cta" to="/create" aria-label="进入智能创作">
+    <RouterLink class="ec-cta" to="/create" aria-label="进入轻松创作">
       <span class="ec-cta-ic"><Icon name="chat" :size="20" /></span>
       <span class="ec-cta-tx">
-        <b>智能创作 · 一句话成片</b>
+        <b>轻松创作 · 一句话成片</b>
         <small>描述一个想法 → 看方案 → 确认一次 → 自动出片</small>
       </span>
       <span class="ec-cta-go"

@@ -57,11 +57,11 @@ function materialize(spec: Record<string, InputSpecItem>): Record<string, unknow
 function routeBaseMeta(project: { name: string; genre: string; templateKey: string; brief: string | null; tags: string }, execKey: string | null, rationale: string): ProjectMeta {
   const tags = parseJson<string[]>(project.tags, []).filter((t) => typeof t === 'string' && t.trim())
   return {
-    name: (project.name || '智能创作项目').trim().slice(0, 60) || '智能创作项目',
+    name: (project.name || '轻松创作项目').trim().slice(0, 60) || '轻松创作项目',
     genre: (PROJECT_GENRE_VALUES.includes(project.genre as ProjectGenre) ? project.genre : 'other') as ProjectGenre,
     templateKey: execKey || project.templateKey || 'other',
-    tags: tags.length ? tags.slice(0, 6) : ['智能创作'],
-    brief: (project.brief || '').trim().slice(0, 500) || rationale.trim().slice(0, 500) || '智能创作会话',
+    tags: tags.length ? tags.slice(0, 6) : ['轻松创作'],
+    brief: (project.brief || '').trim().slice(0, 500) || rationale.trim().slice(0, 500) || '轻松创作会话',
   }
 }
 
