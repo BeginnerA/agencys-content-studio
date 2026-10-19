@@ -118,8 +118,11 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const imgCfg = (ctx.settings.image ?? {}) as Record<string, unknown>
   const provider = typeof imgCfg['provider'] === 'string' ? imgCfg['provider'] : undefined
   const model = typeof imgCfg['model'] === 'string' ? imgCfg['model'] : undefined
-  const size = typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248'
   const stepParams = (ctx.def.params ?? {}) as Record<string, unknown>
+  // 步级画幅覆盖（定妆照等多视角设定图需横画幅，独立于项目竖幅默认）：无 params.image_size 时与旧行为逐字等价
+  const size = typeof stepParams['image_size'] === 'string' && stepParams['image_size']
+    ? stepParams['image_size']
+    : (typeof imgCfg['size'] === 'string' ? imgCfg['size'] : '832x1248')
   const useRefs = dialogue || stepParams['use_character_refs'] !== false // 语义：参考图注入总开关（角色 + 场景/道具；参数名保持兼容）
   const outputPurpose =
     typeof stepParams['output_purpose'] === 'string' && stepParams['output_purpose'] ? stepParams['output_purpose'] : 'shot_image'

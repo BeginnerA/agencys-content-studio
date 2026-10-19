@@ -8,8 +8,8 @@
  * 断言聚焦 M60 收口契约：
  *   - contract：monetization-json 登记进 JSON_FORMATS（mime/ext 归 json）；validateTextOutput 合法/越界
  *     （缺 ending_cliffhanger、ep 断链、episode_count 不符、paywall_candidate 非布尔）拒绝；
- *   - template：series-setup v4/13 步 + monetize 步接线 + with_monetization 默认开；
- *     mengbao-episode v15 setting_docs accept 含 .json（商业结构可被单集 run 选入承接链）；
+ *   - template：series-setup v5/13 步（v4 为 M60 商业结构步，v5 仅 gen_refs 加定妆照横画幅参数）+ monetize 步接线 + with_monetization 默认开；
+ *     mengbao-episode v16 setting_docs accept 含 .json（商业结构可被单集 run 选入承接链）；
  *   - inject：monetize-structure.md 契约段齐全且显式「付费由发布平台决定」措辞；script-ep R19 /
  *     storyboard-ep 规则12 / creation-plan 开场纪律 / series-setup.md 下游衔接四条注入线在位；
  *   - drift：purpose=monetization 归档 texts（0 新表 0 新目录）；with_monetization=false 时
@@ -81,21 +81,21 @@ async function main(): Promise<void> {
       check(purposeSubDir('monetization') === 'texts', 'purpose=monetization 归档 texts（0 新表 0 新目录）')
     },
 
-    // ================= template：series-setup v4 + mengbao-episode v15 承接面 =================
+    // ================= template：series-setup v5 + mengbao-episode v16 承接面（v5/v16 仅 gen_refs 加定妆照横画幅参数，M60 商业结构承接面不变） =================
     template: async () => {
       const { loadTemplate } = await import('../src/pipeline/loader')
       const se = loadTemplate('series-setup')
-      check(se.version === 4 && se.steps.length === 13, `series-setup v4/13 步（实际 ${se.version}/${se.steps.length}）`)
+      check(se.version === 5 && se.steps.length === 13, `series-setup v5/13 步（实际 ${se.version}/${se.steps.length}）`)
       const mz = se.steps.find((s) => s.key === 'monetize')
       check(!!mz && mz.action === 'ai_text' && mz.params?.['output_format'] === 'monetization-json', 'monetize 步存在且挂 monetization-json 契约')
       check(!!mz && (mz.after ?? []).includes('write_series') && mz.inputs?.['series'] === 'steps.write_series.asset', 'monetize 吃 write_series 设定包（唯一上游）')
       const wm = se.inputs.find((i) => i.key === 'with_monetization')
       check(!!wm && wm.default === true, 'with_monetization 默认开（立项默认产商业结构）')
       const ep = loadTemplate('mengbao-episode')
-      check(ep.version === 15, `mengbao-episode v15（实际 ${ep.version}）`)
+      check(ep.version === 16, `mengbao-episode v16（实际 ${ep.version}）`)
       const sd = ep.inputs.find((i) => i.key === 'setting_docs')
       check(!!sd && (sd.accept ?? []).includes('.json'), 'setting_docs accept 含 .json（商业结构 json 可被单集 run 选入注入链）')
-      check(ep.steps.length === 21, `mengbao-episode 仍 21 步（实际 ${ep.steps.length}，v15 只放宽 accept 不动结构）`)
+      check(ep.steps.length === 21, `mengbao-episode 仍 21 步（实际 ${ep.steps.length}，v15 只放宽 accept 不动结构、v16 仅 gen_refs 加横画幅参数）`)
     },
 
     // ================= inject：四条提示词注入线在位 =================

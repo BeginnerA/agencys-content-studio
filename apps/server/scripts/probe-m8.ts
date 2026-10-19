@@ -461,14 +461,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v15：版本 15 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构） ——
+    // —— T1 mengbao-episode v16：版本 16 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构；v16 定妆照 16:9 多视角设定图） ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 15, `version=15（实际 ${t.version}）`)
+        check(t.version === 16, `version=16（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
         check(
           ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
@@ -513,14 +513,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2 series-setup v4：版本 4 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ M60 商业结构设计步 ——
+    // —— T2 series-setup v5：版本 5 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ M60 商业结构设计步 + v5 定妆照 16:9 多视角设定图 ——
     if (copyTpl('series-setup')) {
       const t = tryLoad('series-setup')
       check(t !== null, 'series-setup 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 4, `series-setup version=4（实际 ${t.version}）`)
+        check(t.version === 5, `series-setup version=5（实际 ${t.version}）`)
         check(t.steps.length === 13, `series-setup steps=13（实际 ${t.steps.length}）`)
         // [M60] 商业结构设计：开关输入 + monetize 步接线 + 必审可跳闸
         const wm = t.inputs.find((i) => i.key === 'with_monetization')
