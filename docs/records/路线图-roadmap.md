@@ -356,6 +356,13 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 
 - **M62 轻松创作路由信号扩展**（「小说改编」→ `novel-adapt`；混剪「素材拼片/相册」→ `photo-montage`）：`P1`。**已实施（2026-10-08，用户「开始执行」当日交付）**。实施=route-hint `ROUTE_TARGETS` +2 目标、`detect` +2 信号（novel-adapt 置顶于连载——整本改编正确入口，其 `next:[series-setup]` 天然接力；混剪置于 image-reverse 之后——反推优先、置于超时长之前——「3 分钟相册」不得误路由 video-plan）、弱词双前置防误报（`hasImageRef` + 图类词，防「把这段文案做成视频」误报）、文件头注释同步为「新增信号必须同步 probe-m57/m62 断言」；前端机制面 0 改动（`CreationRouteHint.vue` 通用分支已覆盖非毕业目标）；红线 0 新表 0 新列 0 新增 action 0 新付费面 0 模板改动（机制面 0 Web 改动；另有 [M62-split] 授权红线恢复拆分，见门禁段）；建议仍非阻断，不自动建专业项目/起 run。门禁（实测全绿）：`probe-m62` 五节 33 断言 + `probe-m57/m58/m59/m56` 回归 + 双端 `tsc`/`vue-tsc` exit 0 + `pnpm probe:ci` 串行 **63 探针 5569 断言全绿**（含 [M62-split] 授权拆分 CanvasBoard.vue→764 行恢复 m26 红线，行为零变更）。设计见 `docs/records/M62-轻松创作路由信号扩展-design.md`。
 
+## 智能创作 Agent 化立项队列（2026-10-19 立项；M63 已实施、M64 待实施）
+
+> 来源：用户「把轻松创作重构为项目内独立智能 Agent」四点诉求（摆脱固定执行模板 / 智能调度全部专业模板 / 未命中模板临时合成执行 / 右侧面板上下文动态显示）+ 多角色「注册制 + 智能编队」混合模型。
+
+- **M63 轻松创作 Agent 化（智能调度 + 多角色编队 + 动态面板）**：`P1`。**已实施（提交 `de3e718`，改名「智能创作」）**。四模式决策契约 `agentDecisionSchema`（easy 逐字零回归 + template 直调 / chain 编排 M27 / synth 临时模板）+ `agent/` 子模块（roles 注册表 4 角 / reply-schema 三形判别联合打断 ESM 循环依赖 / template-catalog 注入排除 easy-* / normalize 服务端权威归一可见不静默）+ `route-execution.ts` 确认分派 + `side-cards.ts` 服务端动态卡片流 + 前端注册表渲染与新组件（AgentGuideCard/AgentDecisionCard/ChainProgressCard）+ DB 纯加法（`ensureColumn` 零迁移）。门禁：`probe-m63` 五节 52 断言全绿（首跑捕获并修复 normalize 归一留痕被早判丢弃真实缺陷）+ 双端 `tsc`/`vue-tsc` exit 0 + creation-chat 全谱探针零回归。设计见 `docs/records/M63-轻松创作Agent化-design.md`。
+- **M64 智能创作 Agent 收口遗留专项**：`P1`。**立项待实施（2026-10-19）**。M63 交付后代码实态审计发现四类「起了头但闭环/验证缺失」遗留：G1 chain 段间「对话内批准续跑」闭环缺失（编排器不回写创作会话、前端无批准入口，只能跳通用 `/workflows/:id` resume——能力在、接线缺）；G2 `confirmRoute` 三形态真实执行链（template/synth/chain）零运行探针（probe-m63 仅纯函数）；G3 synth 临时模板会话删除 GC 零运行探针；G4 三个先于 M63 的既存 >800 文件（seed-learning-canvases.ts/CanvasBoard.vue/board/index.vue）撑红 m26 常红门禁、卡住全仓 `pnpm ci:check` 端到端全绿（M63 交付时经用户确认另立专项，本项承接）。红线：不触碰 easy 批准链、复用 M27 编排器不重写、纯加法、0 新付费面。设计见 `docs/records/M64-智能创作Agent收口遗留-design.md`。
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）

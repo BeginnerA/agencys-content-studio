@@ -9,7 +9,7 @@
 - **探针** 列 = 该期是否在代码里交付并有自动化验证（`probe-mNN`）；
 - 标 ❌ 的行 = **没有独立设计稿**（多为"补录"项或走了并行编号专题），以 [milestones.md](../milestones.md) 能力速览 + 探针为准。
 
-## 覆盖总表（M01–M63）
+## 覆盖总表（M01–M64）
 
 | 里程碑 | 主题 | 设计稿 | 评审 | 探针 | 备注 |
 |---|---|---|---|---|---|
@@ -76,6 +76,7 @@
 | M61 | 混剪开场标题智能编排与标题字卡（三期一体） | [M61-混剪标题智能编排-design.md](M61-混剪标题智能编排-design.md) | [M61-计划](plans/M61-计划.md) | ✅ m61 | 已实施（三期全量 2026-09-30：期1 规则排版+本地字卡零计费 / 期2 LLM 排版+AI 背景卡付费开关 / 期3 多 ASS Style 分层；probe-m61 六节 114 断言 + probe:ci 5488 断言全绿；实测推翻 force_style 仅作用 Default 假设；承接 M53/M54 混剪线） |
 | M62 | 轻松创作路由信号扩展（小说改编→novel-adapt / 素材拼片→photo-montage） | [M62-轻松创作路由信号扩展-design.md](M62-轻松创作路由信号扩展-design.md) | [M62-计划](plans/M62-计划.md) | ✅ m62 | 已实施（2026-10-08）：route-hint 白名单 +2 / detect +2 信号（小说改编置顶于连载、混剪先于超时长、弱词双前置防误报）；本项机制面 0 Web 改动；probe-m62 33 断言 + probe:ci 63 探针 5569 断言全绿（含 [M62-split] 恢复 m26 红线 CanvasBoard.vue→764 行） |
 | M63 | 轻松创作 Agent 化（智能调度 + 多角色编队 + 动态面板） | [M63-轻松创作Agent化-design.md](M63-轻松创作Agent化-design.md) | — | ✅ m63 | 已实施（采纳「注册制角色 + 智能编队」混合模型）：四模式决策契约（easy 逐字零回归 + template/chain/synth 新执行形态）/ 3 形回复联合（reply-schema 打断 ESM TDZ）/ 4 角色注册表 + 归一可见不静默 / 服务端权威模板目录 + 漂移作废 / synth 临时模板全量过校验器（仿制 key·conversation·随会话回收）/ sideCards 服务端决策驱动动态卡片 + 前端注册表渲染 / 文案改名智能创作。creation_sessions +4 列·creation_messages +agentRole（ensureColumn 0 迁移）；probe-m63 五节 52 断言全绿（首跑捕获并修复归一后置留痕丢痕缺陷）|
+| M64 | 智能创作 Agent 收口遗留专项（M63 交付后代码实态审计） | [M64-智能创作Agent收口遗留-design.md](M64-智能创作Agent收口遗留-design.md) | — | 🚧 立项待实施 | G1 chain 段间「对话内批准续跑」闭环缺失（编排器不回写创作会话/前端无批准入口，只能跳通用 /workflows/:id resume——能力在接线缺）/ G2 confirmRoute 三形态真实执行链零运行探针 / G3 synth 临时模板会话删除 GC 零运行探针 / G4 三个先于 M63 的既存 >800 文件撑红 m26 常红门禁卡住全仓 ci:check。红线：不触碰 easy 批准链、复用 M27 编排器不重写、纯加法、0 新付费面 |
 
 > 图例：✅ 有 / ❌ 无独立文档 / 🔶 走并行编号专题（见下）/ — 无此项。探针列 `mNN` 指 `apps/server/scripts/probe-mNN.ts`。
 
