@@ -1,6 +1,6 @@
 /**
  * M64 探针（智能创作 Agent 收口遗留：G2 confirmRoute 三形态运行链 + G3 synth 生命周期与 GC）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m64.ts [--section=confirm-template|confirm-synth|confirm-chain|chain-await|guards|synth-gc]
+ *   cd apps/server && npx tsx scripts/probe-m64.ts [--section=confirm-template|confirm-synth|confirm-chain|chain-await|guards|synth-gc|reverse-fallback]
  *
  * 与 probe-m63（纯函数契约）互补：本探针用 isolatedEnv('m64') 起真库（独立 studio.db），
  * 直插 project + ready 态 agent 会话（decision=normalizeAgentReply 权威归一产物），
@@ -21,7 +21,7 @@ const { cleanup: envCleanup } = isolatedEnv('m64', { bridge: ['prompts'] })
 const WS_TPL = join(process.env.CSTUDIO_WORKSPACE as string, 'templates')
 cpSync(join(REPO_ROOT, 'workspace', 'templates'), WS_TPL, { recursive: true })
 
-const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc'] as const
+const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback'] as const
 
 /** synth 正例 YAML：单 literal 步、模板级无 inputs（空输入即过 createRunRow）。key 归一为 agent-s{sid}-flow */
 const SYNTH_OK_YAML = 'name: 智能临时流程\nsteps:\n  - key: say\n    action: literal\n    inputs:\n      text: hello\n'
@@ -229,6 +229,42 @@ async function main(): Promise<void> {
       check(existsSync(synthFileOf('agent-s-manual-probe')), '手工落仿制件在位（隔离目录写判据可靠）')
       rmSync(synthFileOf('agent-s-manual-probe'), { force: true })
       check(!existsSync(synthFileOf('agent-s-manual-probe')), '手工仿制件可被删除（清理机制可用）')
+    },
+
+    // ================= reverse-fallback：纯图片反推意图遇决策解析失败不判死（M63 契约缺口收口） =================
+    'reverse-fallback': async () => {
+      const { shouldDeliverReverseFallback, persistReverseFallback } = await import('../src/services/creation-chat/planning')
+      const { parseAgentReply } = await import('../src/services/creation-chat/agent/reply-schema')
+      const { CreationError } = await import('../src/services/creation-chat/contract')
+      // 1) 判定真值表（零副作用纯函数）
+      const ipErr = new CreationError('invalid_plan', 'x', 422)
+      check(shouldDeliverReverseFallback({ reverseIntent: true, imageAnalysisCount: 1, error: ipErr }) === true, 'fallback 判定：反推+有产物+invalid_plan → 接管')
+      check(shouldDeliverReverseFallback({ reverseIntent: false, imageAnalysisCount: 1, error: ipErr }) === false, 'fallback 判定：非反推意图 → 不接管（普通成片维持可见拒绝）')
+      check(shouldDeliverReverseFallback({ reverseIntent: true, imageAnalysisCount: 0, error: ipErr }) === false, 'fallback 判定：无反推产物 → 不接管')
+      check(shouldDeliverReverseFallback({ reverseIntent: true, imageAnalysisCount: 1, error: new CreationError('conflict', 'x', 409) }) === false, 'fallback 判定：非 invalid_plan 错误 → 不接管')
+      check(shouldDeliverReverseFallback({ reverseIntent: true, imageAnalysisCount: 1, error: new Error('boom') }) === false, 'fallback 判定：非 CreationError → 不接管')
+      // 2) 触发条件真实来源：三形皆不合的模型输出确会抛 invalid_plan（即喂入判定的 error）
+      const parseCode = (c: string): string => { try { parseAgentReply(c); return 'none' } catch (e) { return e && typeof (e as { code?: unknown }).code === 'string' ? (e as { code: string }).code : 'other' } }
+      check(parseCode('这张图的提示词大概是：一个女孩在雨中') === 'invalid_plan', '散文非 JSON → invalid_plan（反推诉求模型直答文本的典型失败形）')
+      check(parseCode(JSON.stringify({ kind: 'clarify', message: '这属于图片反推，我可以帮你…' })) === 'invalid_plan', 'clarify 缺 questions → invalid_plan（边界说明形撞 min(1)）')
+      check(parseCode(JSON.stringify({ kind: 'route', mode: 'synth', message: '临时' })) === 'invalid_plan', 'route 缺 rationale → invalid_plan')
+      // 3) 真实落库：seed planning 态会话 → persistReverseFallback → draft + revision+1 + 带 imageAnalysis 的 clarify 消息
+      const proj = await seedProject('反推图片提示词收口')
+      const t = Date.now()
+      const rkey = `m64rf${t}${Math.random().toString(36).slice(2, 7)}`
+      await db.insert(creationSessions).values({ projectId: proj, requestKey: rkey, status: 'planning', agentMode: 1, planRevision: 3, runHistory: '[]', createdAt: t, updatedAt: t })
+      const [claimed] = await db.select().from(creationSessions).where(eq(creationSessions.requestKey, rkey))
+      const imgEntries = [{ assetId: 123, name: '微信图片_风格参考', subject: '雨中的女孩', style: '吉卜力风', imagePrompt: 'a girl in the rain, ghibli style, cinematic lighting', negativePrompt: 'low quality', palette: ['#1a2b3c'] }]
+      await persistReverseFallback(claimed!.id, claimed!, imgEntries)
+      const [after] = await db.select().from(creationSessions).where(eq(creationSessions.id, claimed!.id))
+      check(after!.status === 'draft' && after!.planRevision === 4 && after!.plan === null && after!.error === null, 'persistReverseFallback → 会话回 draft + planRevision+1 + 清 plan/error（非判死）')
+      const msgs = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, claimed!.id))
+      const fb = msgs.find((m) => m.role === 'assistant')
+      const payload = fb?.payload ? JSON.parse(fb.payload) as Record<string, unknown> : {}
+      check(!!fb && payload.kind === 'clarify' && Array.isArray(payload.questions) && (payload.questions as unknown[]).length === 2, 'fallback 写 clarify 助手消息 + 两条追问（前端渲染 chips）')
+      check(Array.isArray(payload.imageAnalysis) && (payload.imageAnalysis as { imagePrompt: string }[])[0]!.imagePrompt.includes('ghibli'), 'fallback 消息 payload 携带反推交付物（前端 payload.imageAnalysis 渲染反推卡）')
+      // 乐观锁：会话已回 draft 再落 → conflict（幂等防重复写）
+      check(await codeOf(() => persistReverseFallback(claimed!.id, claimed!, imgEntries)) === 'conflict', 'fallback 乐观锁：会话已回 draft 再落 → conflict')
     },
   }
 

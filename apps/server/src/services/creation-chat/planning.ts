@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '../../db'
-import { assets, creationMessages, creationSessions, projects } from '../../db/schema'
+import { assets, creationMessages, creationSessions, projects, type CreationSession } from '../../db/schema'
 import { chatCompleteDetailed, loadPromptTemplate, type ChatContentPart, type ChatMessage } from '../llm'
 import { assetToDataUri } from '../asset-ref'
 import { absPathOf } from '../storage'
@@ -273,7 +273,20 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
     setPlanningPhase(id, 'validating')
-    const parsed = isAgent ? parseAgentReply(result.content, result.finishReason) : parsePlanningReply(result.content, result.finishReason)
+    let parsed: AgentReply | PlanningReply
+    try {
+      parsed = isAgent ? parseAgentReply(result.content, result.finishReason) : parsePlanningReply(result.content, result.finishReason)
+    } catch (err) {
+      // 纯图片反推意图 + 本轮已反推出交付物：决策模型未产出合法视频方案（clarify/plan/route 三形皆不合）时不判死，
+      // 把已从参考图反推出的可投产提示词作为交付物透出（前端随 payload.imageAnalysis 渲染），并追问下一步。
+      // 判定与落库各抽为可探针直测的导出单元（行为等价重构）；普通成片诉求解析失败仍按 invalid_plan 可见拒绝。
+      if (shouldDeliverReverseFallback({ reverseIntent, imageAnalysisCount: refComp.imageAnalyses.length, error: err })) {
+        await persistReverseFallback(id, claimed, refComp.imageAnalyses)
+        endPlanningProgress(id)
+        return creationDetail(id)
+      }
+      throw err
+    }
     // route 形（template/chain/synth）：归一 + 结构校验 + 决策落库后直接返回，不进入 easy 方案下游（easy 零回归）。
     if (isAgent && parsed.kind === 'route') {
       await persistRouteDecision(id, claimed, parsed, catalog, { sessionId: id, allowedAssetIds })
@@ -356,6 +369,36 @@ function mergeRefs(prior: CreationRef[], thisTurn: CreationRef[]): CreationRef[]
   const all = [...merged, ...added]
   if (all.length > MAX_REFS) throw new CreationError('too_many_refs', `参考素材最多 ${MAX_REFS} 个（含历轮已采纳的），请先减少后重试`, 422)
   return all
+}
+
+/**
+ * 纯图片反推 fallback 判定（导出供探针直测，零副作用）：仅当「反推措辞 + 本轮已产出反推交付物 + 决策解析抛 invalid_plan」
+ * 三者同时成立才接管透出反推结果。imageAnalyses 本就只在 vision && reverseIntent 下产出，reverseIntent 判断为显式防御。
+ */
+export function shouldDeliverReverseFallback(opts: { reverseIntent: boolean; imageAnalysisCount: number; error: unknown }): boolean {
+  return opts.reverseIntent && opts.imageAnalysisCount > 0 && opts.error instanceof CreationError && opts.error.code === 'invalid_plan'
+}
+
+/**
+ * 纯图片反推 fallback 落库（导出供探针直测）：乐观锁将 planning 态会话回 draft（清空 plan/decision/preflight/error），
+ * 插一条带 payload.imageAnalysis 的 clarify 助手消息（前端据此渲染反推交付物 + 追问下一步）。与主路径同事务范式。
+ */
+export async function persistReverseFallback(id: number, claimed: CreationSession, imageAnalyses: ImageAnalysisEntry[]): Promise<void> {
+  await creationWrite(() => db.transaction(async (tx) => {
+    const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
+    if (!project) throw new CreationError('project_deleted', '项目已删除，规划结果未采纳', 409)
+    const updated = await tx.update(creationSessions).set({
+      status: 'draft', plan: null, planHash: null, preflight: null, decision: null, decisionHash: null, error: null,
+      planRevision: claimed.planRevision + 1, updatedAt: Date.now(),
+    }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
+    if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
+    await tx.insert(creationMessages).values({
+      sessionId: id, role: 'assistant',
+      content: '已从你上传的参考图反推出可投产提示词（见下方，可直接复制使用）。这属于图片反推能力，本轮未生成视频方案。要我据此再规划一条成片，还是调整风格/主体后重新反推？',
+      payload: JSON.stringify({ kind: 'clarify', questions: ['据此反推提示词规划一条成片', '调整风格/主体后重新反推'], imageAnalysis: imageAnalyses }),
+      createdAt: Date.now(),
+    })
+  }))
 }
 
 /**

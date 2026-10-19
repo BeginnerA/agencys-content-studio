@@ -876,6 +876,17 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 
 ---
 
+## M65 能力速览（智能创作图片反推决策契约收口：用户实弹目检暴露的 M63 缺口）
+
+> 背景：M63/M64 探针全绿，但验证止于「打桩 `startRun` 的状态机断言 + 手工构造 JSON」，未驱动真实 LLM 对真实输入的产出。用户实弹以「风格参考图 + 反推图片提示词」触发，返回「规划结果不符合结构契约」红字——击穿「验证到探针层、未做实弹目检」边界。详规：`docs/records/M65-智能创作图片反推决策契约收口-design.md`。
+
+- **M65.1 根因（代码级坐实）**：智能创作 Agent 强制模型一次产出 clarify/plan/route 三形之一（`agent/reply-schema.ts::parseAgentReply`）。纯「反推图片提示词」是图片多模态反推诉求（非「做一条短视频」），模型直答反推词**散文**（非 JSON）→ `JSON.parse` 抛错 → `catch {}` 吞因判死 `invalid_plan`；而真交付物（`compileReferenceContext` 已产 `imageAnalyses`）在解析下游，一抛即被连带丢弃。
+- **M65.2 可诊断性收口**：`parseAgentReply` 的 `catch{}` 改捕获——真实原因（ZodError 展平前 8 条 / JSON 语法错 + 有界 400 字输出前缀）经 `createLogger('creation-agent').warn` 落**服务端日志**，用户侧仍只见通用文案（「可见不静默」= 对开发者可见）。探针首跑即捕获本次真因：`JSON 解析失败…输出可能非纯 JSON`。
+- **M65.3 纯图片反推 fallback（行为等价重构 + 窄接管）**：决策解析失败时，若「反推措辞 + 本轮已产出 imageAnalyses + invalid_plan」三条件同时成立，不判死，改透出已反推交付物（写一条带 `payload.imageAnalysis` 的 clarify 助手消息 + 两条追问），前端 `ConversationPanel` 既有 `payload.imageAnalysis` 渲染路径直接显示反推卡——**零前端改动**。判定/落库各抽为导出可测单元 `shouldDeliverReverseFallback` / `persistReverseFallback`（乐观锁回 draft+revision+1）。普通成片诉求解析失败仍按 invalid_plan 可见拒绝（easy 零回归）。
+- **M65.4 验证**：`probe-m64` 新增 `reverse-fallback` 节 **12 断言**（判定真值表 5 + 三形皆不合触发 3 + 真库落库/乐观锁 4）。全仓 `pnpm ci:check` 端到端全绿 **65 探针 5668 断言**（较 M64 收口 5656 增 12）。红线守住：不触碰 easy 批准链、纯加法、0 新付费面。未改 `clarify.questions.min(1)` 老约束（M63 前即存·非本次回归）。
+
+---
+
 ## 路线图（M32–M39 · **全部交付 · 收官**）
 
 > 平台智能化改造（决策权移交）路线图已收官：M32（能力/默认单一真源表 + Tier A 智能默认引擎）、M33（AI 配置智能化）、M34（模板与运行入参自动化）、M35（创作流程自动化）、M36（运营配置自动化）、M37（自动值来源统一可追溯 + 探针全覆盖）、M38（扩展参数结构化与默认自动化，补齐收官后残留的裸 JSON 债）、M39（扩展参数逐模型能力下沉，voice/size 由 provider 级进化为模型级）**全部交付**，见上方各「能力速览」。详规（L0.5 立项纲领）：`docs/records/纲领-M32-M39平台智能化-charter.md`。
