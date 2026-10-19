@@ -114,7 +114,8 @@ export function createFirstInput(host: Host, hooks: {
     epoch++
     state.ticket = null
     state.phase = 'idle'
-    if (detail.session.plan || detail.session.runId) { removeRecord(id); return }
+    // agent route 决策落 session.decision（plan 为 null）：已产出待确认决策即视为首轮完成，不再恢复票据（否则会把已就绪的决策会话误当作待续填草稿）。
+    if (detail.session.plan || detail.session.runId || detail.session.decision) { removeRecord(id); return }
     if (restore(id)) return
     const initial = detail.session.initialDraft
     if (!initial) return
@@ -146,10 +147,12 @@ export function createFirstInput(host: Host, hooks: {
   }
   function settle(detail: CreationDetail): boolean {
     const t = state.ticket
-    if (!t) return !!detail.session.plan
+    if (!t) return !!detail.session.plan || !!detail.session.decision
     if (detail.session.status === 'planning') { state.phase = 'uncertain'; host.notice = '请求已接收，正在规划。请更新状态。'; return false }
     if (detail.session.error) { state.phase = 'failed'; host.error = detail.session.error; hooks.optimistic?.drop(t.messageKey); return false }
-    if (detail.session.plan || detail.session.runId) {
+    // 成功收口须同时认 agent route 决策（session.decision）：route 形不写 plan/runId，只写 decision，
+    // 漏判会把一次正确的路由误报为「完成状态不明确」死告警（票据也不清除）。easy 形本就带 plan，命中此支行为不变。
+    if (detail.session.plan || detail.session.runId || detail.session.decision) {
       clear(t.sessionId)
       host.attachments = []
       return true
@@ -202,7 +205,7 @@ export function createFirstInput(host: Host, hooks: {
       const before = await api.detail(t.sessionId)
       if (!live(token, t)) return false
       hooks.commit(t.sessionId, before)
-      if (before.session.plan || before.session.runId) return settle(before)
+      if (before.session.plan || before.session.runId || before.session.decision) return settle(before)
       const accepted = before.messages.some((m) => m.requestKey === t.messageKey)
       if (accepted) {
         if (!replan || !before.session.error || before.session.status === 'planning') return settle(before)

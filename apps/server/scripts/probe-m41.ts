@@ -168,7 +168,7 @@ async function main() {
       const host = { currentId: 0, attachments: [] as Item[], error: '', notice: '' }
       let detail = { session: { id: 1, status: 'draft', plan: null, runId: null, error: null, initialDraft: { content: '初始文字', requestKey: 'client-create-key' } }, messages: [], artifacts: { shots: [], documents: [] }, progress: null, result: null } as unknown as Detail
       let creates = 0, sends = 0, uploads = 0, reads = 0
-      let failUpload = '', loseCreate = false, loseSend = false, clarify = false, failPlan = false, failRead = false
+      let failUpload = '', loseCreate = false, loseSend = false, clarify = false, failPlan = false, failRead = false, routeDecision = false
       let waitRead: Promise<Detail> | null = null
       let createKey = '', sendKey = ''
       const copy = () => structuredClone(detail)
@@ -186,6 +186,7 @@ async function main() {
           detail.messages.push({ id: sends + 100, role: 'user', content, requestKey: key, createdAt: 0, payload: { kind: 'input', attachments: [...(attachments ?? [])] } })
           if (failPlan) detail.session.error = '模型失败'
           else if (clarify) detail.messages.push({ id: sends + 200, role: 'assistant', content: '请补充', requestKey: null, createdAt: 0, payload: { kind: 'clarify', questions: ['多长？'] } })
+          else if (routeDecision) { detail.session.decision = { kind: 'route', mode: 'template', templateKey: 'photo-montage' } as unknown as Detail['session']['decision']; detail.session.status = 'ready' }
           else detail.session.plan = { title: '离线方案' } as Detail['session']['plan']
           if (loseSend) throw new Error('发送响应丢失')
           return copy()
@@ -242,6 +243,23 @@ async function main() {
       resolveRead(copy()); await pending; waitRead = null
       check(sends === 3 && host.currentId === 3 && host.attachments.length === 0, '切会话后晚到回读不上传、不规划、不污染新会话')
       check(reads >= 7, '所有客户端重试先核对会话')
+      // === agent route 决策收口回归（用户实弹「把这些图片做成一个视频」命中 photo-montage 暴露的误报）===
+      // route 形只写 session.decision（plan/runId 皆空）：activate 不恢复票据、submit→settle 识别为完成并清票据，绝不进「完成状态不明确」死告警。
+      // A：重进一个已产出 route 决策的会话 → activate 视同首轮完成，不恢复票据、不报错。
+      detail = { session: { id: 9, status: 'ready', plan: null, runId: null, error: null, decision: { kind: 'route', mode: 'template', templateKey: 'photo-montage' } as unknown as Detail['session']['decision'], initialDraft: null }, messages: [], artifacts: { shots: [], documents: [] }, progress: null, result: null } as unknown as Detail
+      host.currentId = 0; host.attachments = []; host.error = ''; host.notice = ''
+      first = make()
+      first.activate(copy())
+      check(!first.state.ticket && host.error === '', 'route 决策会话 activate 不恢复票据、不报「完成状态不明确」（决策即首轮完成）')
+      // B：首轮提交→ send 产出 route 决策（plan/runId 皆空）→ settle 识别为完成、清票据、无死告警、不重复规划。
+      routeDecision = true
+      detail = { session: { id: 10, status: 'draft', plan: null, runId: null, error: null, initialDraft: { content: '把这些图片做成一个视频', requestKey: 'client-route-create' } }, messages: [], artifacts: { shots: [], documents: [] }, progress: null, result: null } as unknown as Detail
+      host.currentId = 0; host.attachments = []; host.error = ''; host.notice = ''
+      createKey = ''
+      first = make()
+      const rid = await first.start('把这些图片做成一个视频')
+      const okRoute = await first.submit('把这些图片做成一个视频')
+      check(rid === 10 && okRoute === true && !first.state.ticket && host.error === '' && !data.has('ec-first-input:10'), 'route 决策（plan/runId 皆空）被 settle 识别为完成：清票据、无「完成状态不明确」误报、不重复规划')
     },
   } })
 }
