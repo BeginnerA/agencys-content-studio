@@ -110,6 +110,7 @@ const PATHS: Record<string, string> = {
     '<circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />',
   info:
     '<circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />',
+  help: '<circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" />',
 }
 
 withDefaults(

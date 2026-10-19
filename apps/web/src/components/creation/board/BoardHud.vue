@@ -69,50 +69,75 @@ defineProps<{
       ($event.currentTarget as HTMLDetailsElement).open = false
     "
   >
-    <summary>操作指南</summary>
-    <div class="help-card panel">
-      <strong>画布操作</strong>
-      <dl>
-        <div>
-          <dt>框选节点</dt>
-          <dd>空白处左键拖动</dd>
-        </div>
-        <div>
-          <dt>平移画布</dt>
-          <dd>空格 + 拖动 / 中键</dd>
-        </div>
-        <div>
-          <dt>缩放 / 适应</dt>
-          <dd>滚轮 / F</dd>
-        </div>
-        <div>
-          <dt>新建节点</dt>
-          <dd>
-            工具栏「添加节点」选类型（文本 / 图片 / 视频 / 音频 / LLM /
-            合成）；双击空白 = 快速建图片节点
-          </dd>
-        </div>
-        <div>
-          <dt>多选 / 全选</dt>
-          <dd>Shift + 单击 / Ctrl+A</dd>
-        </div>
-        <div>
-          <dt>复制 / 成组</dt>
-          <dd>Ctrl+D / Ctrl+G</dd>
-        </div>
-        <div>
-          <dt>撤销 / 重做</dt>
-          <dd>Ctrl+Z / Ctrl+Shift+Z</dd>
-        </div>
-        <div>
-          <dt>删除 / 取消选择</dt>
-          <dd>Del / Esc</dd>
-        </div>
-        <div>
-          <dt>选中联动</dt>
-          <dd>流动紫虚线 = 下一步 · 淡紫 = 上一步</dd>
-        </div>
-      </dl>
+    <summary>
+      <Icon name="help" :size="13" />
+      <span>操作指南</span>
+    </summary>
+    <div class="help-card">
+      <div class="help-head">
+        <strong>画布操作</strong>
+        <span>鼠标 + 快捷键速查</span>
+      </div>
+
+      <section class="help-group">
+        <h4>视图</h4>
+        <dl>
+          <div class="help-row">
+            <dt>框选节点</dt>
+            <dd><kbd>空白处</kbd><span>左键拖动</span></dd>
+          </div>
+          <div class="help-row">
+            <dt>平移画布</dt>
+            <dd><kbd>空格</kbd><span>+</span><kbd>拖动</kbd><span>/ 中键</span></dd>
+          </div>
+          <div class="help-row">
+            <dt>缩放 / 适应</dt>
+            <dd><span>滚轮 /</span><kbd>F</kbd></dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="help-group">
+        <h4>节点</h4>
+        <dl>
+          <div class="help-row help-row-wide">
+            <dt>新建节点</dt>
+            <dd>
+              工具栏「添加节点」选类型（文本 / 图片 / 视频 / 音频 / LLM /
+              合成）；<kbd>双击空白</kbd>= 快速建图片节点
+            </dd>
+          </div>
+          <div class="help-row">
+            <dt>复制 / 成组</dt>
+            <dd><kbd>Ctrl+D</kbd><span>/</span><kbd>Ctrl+G</kbd></dd>
+          </div>
+          <div class="help-row">
+            <dt>撤销 / 重做</dt>
+            <dd><kbd>Ctrl+Z</kbd><span>/</span><kbd>Ctrl+Shift+Z</kbd></dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="help-group">
+        <h4>选择与联动</h4>
+        <dl>
+          <div class="help-row">
+            <dt>多选 / 全选</dt>
+            <dd><kbd>Shift+单击</kbd><span>/</span><kbd>Ctrl+A</kbd></dd>
+          </div>
+          <div class="help-row">
+            <dt>删除 / 取消</dt>
+            <dd><kbd>Del</kbd><span>/</span><kbd>Esc</kbd></dd>
+          </div>
+          <div class="help-row help-row-wide">
+            <dt>选中联动</dt>
+            <dd>
+              <span class="link-dot link-next"></span>流动紫虚线 = 下一步
+              <span class="link-dot link-prev"></span>淡紫 = 上一步
+            </dd>
+          </div>
+        </dl>
+      </section>
     </div>
   </details>
 </template>
@@ -187,6 +212,7 @@ defineProps<{
 .cb-help summary {
   display: flex;
   align-items: center;
+  gap: 6px;
   min-height: 40px;
   padding: 6px 12px;
   list-style: none;
@@ -194,6 +220,13 @@ defineProps<{
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 9px;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.cb-help summary .ic {
+  color: var(--accent-h);
+  opacity: 0.85;
 }
 .cb-help summary::-webkit-details-marker {
   display: none;
@@ -203,30 +236,107 @@ defineProps<{
   color: var(--text);
   border-color: var(--border-strong);
 }
+.cb-help[open] summary .ic {
+  opacity: 1;
+}
 .help-card {
   position: absolute;
   left: 0;
   bottom: calc(100% + 8px);
-  width: 300px;
+  width: 340px;
   max-width: calc(100cqw - 28px);
-  padding: 14px;
+  max-height: calc(100cqh - 64px);
+  padding: 0;
+  overflow-y: auto;
   color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
 }
-.help-card dl {
-  display: grid;
-  gap: 10px;
-  margin: 12px 0 0;
-}
-.help-card dl > div {
+.help-head {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--grad-brand);
+}
+.help-head strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.help-head span {
+  font-size: 11px;
+  color: rgb(255 255 255 / 78%);
+}
+.help-group {
+  padding: 10px 14px;
+}
+.help-group + .help-group {
+  border-top: 1px solid var(--border);
+}
+.help-group h4 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.help-group dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.help-row {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
-.help-card dd {
+.help-row dt {
+  flex-shrink: 0;
+  color: var(--text);
+}
+.help-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
   margin: 0;
   color: var(--text-2);
   text-align: right;
+}
+.help-row-wide {
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+.help-row-wide dd {
+  gap: 4px;
+  text-align: left;
+}
+.help-row kbd {
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--code-bg);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
+.link-dot {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin: 0 2px;
+  vertical-align: middle;
+  border-top: 2px dashed var(--accent-h);
+}
+.link-prev {
+  border-top-color: rgb(139 92 246 / 45%);
 }
 /* 容器查询依赖父级 .cb-viewport 的 container 声明（DOM 上下文，跨组件生效） */
 @container canvas-viewport (max-width: 340px) {
