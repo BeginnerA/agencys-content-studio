@@ -47,6 +47,19 @@ function readable(a: Asset): boolean {
   try { return !!a.relPath && statSync(absPathOf(a.relPath)).isFile() } catch { return false }
 }
 
+/** 中途审阅闸投影（easy 精细投影与通用降级投影共用同一形态，保证消费端 .videoId 等可选字段在联合类型上可访问）。
+ *  通用 route/专业模板 run 只填 stepKey/title/message（+ 模板 reject:stop 时的 rejectStops），对白专属字段自然缺省。 */
+export interface CreationGateReview {
+  stepKey: string
+  title: string
+  message: string
+  kind?: 'dialogue'
+  videoId?: number | null
+  subtitleId?: number | null
+  rejectStops?: boolean
+  subtitlesEstimated?: boolean
+}
+
 /** 只加载当前运行及其显式引用的素材，恢复时无需改写旧素材所属 run。 */
 export async function loadCreationProjection(session: CreationSession, run: PipelineRun, steps: Step[], tasks: Task[]) {
   // route 执行（template/synth/chain 命中专业模板）非批准链 → 走通用降级投影（逐 step 状态 + 文本/成片产物），
@@ -186,7 +199,7 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
     const text = typeof def?.gate?.message === 'string' ? def.gate.message.trim() : ''
     return text || null
   })()
-  const review = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。',
+  const review: CreationGateReview | null = waitingStep ? { stepKey: waitingStep.stepKey, title: waitingStep.title ?? waitingStep.stepKey, message: gateMessage ?? '本阶段产物已生成，请审阅后继续。',
     ...(dialogue && waitingStep.stepKey === 'compose' ? { kind: 'dialogue' as const, videoId: final?.id ?? null, subtitleId: subtitle ?? null, rejectStops: true, ...(estimatedDialogue ? { subtitlesEstimated: true } : {}) } : {}),
   } : null
   return {
@@ -232,9 +245,25 @@ async function projectGenericRun(session: CreationSession, run: PipelineRun, ste
     }
   }
   const finalVideo = steps.flatMap((s) => outputAssetIds(s.output)).map((id) => avail(id, 'video')).filter((a): a is CreationArtifact => !!a && a.available).at(-1) ?? null
+  // 中途审阅闸：通用投影同样透出 review（route/命中专业模板的 run 挂在模板自带 gate 上时，
+  // 对话页据此渲染审阅面板内联批准/驳回，消除 easy 与 route 的入口不对称）。只给 stepKey/标题/模板 gate 文案，
+  // 不套对白六段语义；模板 gate 声明 reject:stop（如 photo-montage 合成成片闸）时标注 rejectStops，
+  // 供前端把「驳回」如实呈现为「暂停交付·成果保留·不自动重做」，不误承诺整阶段重做计费。
+  const snapshot = jsonRecord(run.templateSnapshot)
+  const waitingStep = run.status === 'waiting_input' ? steps.find((s) => s.status === 'waiting_input') : undefined
+  const gateDef = waitingStep && Array.isArray(snapshot.steps)
+    ? snapshot.steps.find((s) => s && typeof s === 'object' && (s as { key?: unknown }).key === waitingStep.stepKey) as { gate?: { message?: unknown; reject?: unknown } } | undefined
+    : undefined
+  const gateText = typeof gateDef?.gate?.message === 'string' ? gateDef.gate.message.trim() : ''
+  const review: CreationGateReview | null = waitingStep ? {
+    stepKey: waitingStep.stepKey,
+    title: waitingStep.title ?? waitingStep.stepKey,
+    message: gateText || '本阶段产物已生成，请审阅后继续。',
+    ...(gateDef?.gate?.reject === 'stop' ? { rejectStops: true } : {}),
+  } : null
   return {
     progress: {
-      runId: run.id, status: run.status, currentStep: run.currentStepKey, error: run.error, review: null, subtitleBurn: true,
+      runId: run.id, status: run.status, currentStep: run.currentStepKey, error: run.error, review, subtitleBurn: true,
       needsVerification: false, uncertainTasks: [] as unknown[],
       completedShots: stepsDone, steps: steps.map((s) => ({ key: s.stepKey, title: s.title ?? s.stepKey, status: s.status, error: s.error })), stages,
       recovery: { resumable: settledBad, requiredTaskIds: [] as number[], queryTaskCount: doneTasks, unpriced: [] as string[], configDrift: [] as ResumeConfigDrift[] },

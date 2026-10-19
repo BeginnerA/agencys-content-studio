@@ -21,7 +21,7 @@ const { cleanup: envCleanup } = isolatedEnv('m64', { bridge: ['prompts'] })
 const WS_TPL = join(process.env.CSTUDIO_WORKSPACE as string, 'templates')
 cpSync(join(REPO_ROOT, 'workspace', 'templates'), WS_TPL, { recursive: true })
 
-const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback', 'parse-fallback'] as const
+const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback', 'parse-fallback', 'generic-gate'] as const
 
 /** synth 正例 YAML：单 literal 步、模板级无 inputs（空输入即过 createRunRow）。key 归一为 agent-s{sid}-flow */
 const SYNTH_OK_YAML = 'name: 智能临时流程\nsteps:\n  - key: say\n    action: literal\n    inputs:\n      text: hello\n'
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   const check = checker.check
 
   const { db, initDb } = await import('../src/db')
-  const { creationMessages, creationSessions, pipelineRuns, projects, workflows } = await import('../src/db/schema')
+  const { creationMessages, creationSessions, pipelineRuns, pipelineSteps, projects, workflows } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { TEMPLATES_DIR } = await import('../src/env')
   const { app } = await import('../src/app')
@@ -44,7 +44,9 @@ async function main(): Promise<void> {
   const { confirmRoute } = await import('../src/services/creation-chat/route-execution')
   const { notifyCreationSettled, creationDetail } = await import('../src/services/creation-chat/store')
   const { advanceChainSegment } = await import('../src/services/creation-chat/chain-advance')
-  const { saveTemplate } = await import('../src/pipeline/loader')
+  const { saveTemplate, loadTemplate } = await import('../src/pipeline/loader')
+  const { loadCreationProjection } = await import('../src/services/creation-chat/projection')
+  const { decideCreationGate } = await import('../src/services/creation-chat/gate')
 
   await initDb()
   const catalog = buildTemplateCatalog()
@@ -317,6 +319,37 @@ async function main(): Promise<void> {
       check((computeSideCards({ ...base, awaitingClarify: true }) as { key: string }[]).some((c) => c.key === 'clarify'), 'clarify 待补充态 → 右侧出 clarify 下一步卡（体现对话上下文，非固定 guide）')
       check((computeSideCards(base) as { key: string }[]).every((c) => c.key === 'guide'), 'draft 无 clarify/无反推 → 回落 guide（零回归）')
       check((computeSideCards({ ...base, awaitingClarify: true, hasReverseDeliverable: true }) as { key: string }[]).some((c) => c.key === 'reverseAnalysis') === true && (computeSideCards({ ...base, awaitingClarify: true, hasReverseDeliverable: true }) as { key: string }[]).length === 1, '反推产物优先于 clarify（同处 draft 只出反推成果卡）')
+    },
+
+    // ================= generic-gate：route/专业模板 run 的中途审阅收口（对话页可内联批准） =================
+    // 用户实弹「把这些图片做成一个视频」命中 photo-montage，run 挂在模板自带 gate（reject:stop）上，
+    // 但通用投影曾把 review 写死 null → 对话页无审阅面板、无法审批。此段锁死新契约：通用投影透出 review + 卡进 sideCards + 端点可批准。
+    'generic-gate': async () => {
+      const proj = await seedProject('素材混剪待审阅')
+      const t = Date.now()
+      const key = `m64g${t}${Math.random().toString(36).slice(2, 7)}`
+      await db.insert(creationSessions).values({ projectId: proj, requestKey: key, status: 'started', planRevision: 0, runHistory: '[]', agentMode: 1, createdAt: t, updatedAt: t })
+      const [sess] = await db.select().from(creationSessions).where(eq(creationSessions.requestKey, key))
+      const snapshot = loadTemplate('photo-montage')
+      const [run] = await db.insert(pipelineRuns).values({ projectId: proj, templateKey: 'photo-montage', templateSnapshot: JSON.stringify(snapshot), status: 'waiting_input', currentStepKey: 'compose', input: '{}', createdAt: t, updatedAt: t }).returning()
+      await db.insert(pipelineSteps).values({ runId: run!.id, seq: 0, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: '素材混剪合成成片', status: 'waiting_input', createdAt: t, updatedAt: t })
+      await db.update(creationSessions).set({ runId: run!.id }).where(eq(creationSessions.id, sess!.id))
+      const [runRow] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, run!.id))
+      const stepRows = await db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, run!.id))
+      const projected = await loadCreationProjection(sess!, runRow!, stepRows, [])
+      const rv = projected.progress.review as { stepKey?: string; message?: string; rejectStops?: boolean } | null
+      check(!!rv && rv.stepKey === 'compose' && (rv.message || '').includes('审阅成片') && rv.rejectStops === true, '通用投影在 waiting_input 透出 review（compose 闸·模板 gate 文案·reject:stop 标注）')
+      // 端到端：creationDetail sideCards 出现 review 卡（对话页据此渲染审阅面板，消除 route 无法审批）
+      const detail = await creationDetail(sess!.id)
+      check((detail.sideCards as { key: string }[]).some((c) => c.key === 'review'), 'route run 审阅卡进 sideCards（对话页权威区可批）')
+      // 端点通用安全：approve 委派 engine.approveGate（recipe 为 null 跳过对白交付校验），不抛 not_waiting
+      const origApprove = engine.engine.approveGate.bind(engine.engine)
+      const approved: Array<[number, string]> = []
+      engine.engine.approveGate = (async (runId: number, stepKey: string): Promise<void> => { approved.push([runId, stepKey]) }) as typeof engine.engine.approveGate
+      try {
+        await decideCreationGate(sess!.id, { stepKey: 'compose', decision: 'approve', idempotencyKey: 'm64generic-gate-approve-1' })
+        check(approved.length === 1 && approved[0]![0] === run!.id && approved[0]![1] === 'compose', '通用 run 闸门 approve 委派 engine.approveGate（端点本就按 stepKey 通用处理）')
+      } finally { engine.engine.approveGate = origApprove }
     },
   }
 

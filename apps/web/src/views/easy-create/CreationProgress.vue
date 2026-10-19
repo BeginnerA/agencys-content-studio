@@ -66,7 +66,7 @@ async function onRetry(): Promise<void> {
     </header>
 
     <p class="ec-progress-summary" aria-live="polite">已完成 {{ done }}/{{ total }} 个适用阶段</p>
-    <p v-if="waiting" class="ec-progress-summary">已按你勾选的审阅在画面生成后暂停，请在上方审阅面板确认是否继续。</p>
+    <p v-if="waiting" class="ec-progress-summary">制作已在审阅闸暂停，请在上方审阅面板确认是否继续。</p>
 
     <ol class="steps">
       <li v-for="st in stages" :key="st.key">

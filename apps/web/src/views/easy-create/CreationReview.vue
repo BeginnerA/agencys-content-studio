@@ -22,6 +22,9 @@ const MAX_NOTE = 500
 
 // 对白最终审阅：待审对象是带原声的成片视频与字幕，而非逐镜首帧；驳回为停机不自动重做
 const dialogue = computed(() => review.value?.kind === 'dialogue')
+// 驳回即暂停（成果保留、不自动重做）：对白最终审阅，或模板 gate 声明 reject:stop（如 photo-montage 合成成片闸）。
+// route/专业模板的 stop 闸门不能沿用“驳回=整阶段重做计费”的旁白文案，否则误导用户以为会重复扣费。
+const stopsOnReject = computed(() => dialogue.value || review.value?.rejectStops === true)
 // 免核验路线：字幕按批准台词估算（非实测），发声只能靠人工收听比对，文案必须如实区分
 const subtitlesEstimated = computed(() => review.value?.subtitlesEstimated === true)
 const dialogueVideoUrl = computed(() =>
@@ -80,16 +83,18 @@ async function onApprove(): Promise<void> {
   await props.s.decideGate(review.value.stepKey, 'approve', note.value)
 }
 
-/** 驳回后果按闸门语义如实说明：旁白阶段闸 = 整阶段重做（可能再次计费）；对白最终审阅 = 停机不自动重做 */
+/** 驳回后果按闸门语义如实说明：stop 型闸（对白最终审阅 / 模板 reject:stop）= 保留成果暂停交付不重做；旁白阶段重做闸 = 整阶段重做（可能再次计费） */
 async function onReject(): Promise<void> {
   const r = review.value
   if (!r) return
   const ok = await confirmDialog({
-    title: dialogue.value ? '驳回人物对白成片' : '驳回并重做该阶段',
+    title: dialogue.value ? '驳回人物对白成片' : stopsOnReject.value ? '驳回并暂停交付' : '驳回并重做该阶段',
     message: dialogue.value
       ? '驳回后成片将保持待修状态并停止交付，不会自动重新生成。请用「局部返修」逐镜修正问题镜头、重新合成后再来审阅。'
-      : `「${r.title}」的全部产物都会重新生成，会再次调用图片生成，可能产生费用。重做完成后制作会自动继续，不会再暂停等你确认。确认驳回？`,
-    confirmText: dialogue.value ? '确认驳回（停机待修）' : '确认驳回并重做',
+      : stopsOnReject.value
+        ? `「${r.title}」的当前产物会保留、交付暂停，不会自动重新生成或计费。可调整输入后重新制作，或用「局部返修 / 本地重合成」修正后再来审阅。`
+        : `「${r.title}」的全部产物都会重新生成，会再次调用图片生成，可能产生费用。重做完成后制作会自动继续，不会再暂停等你确认。确认驳回？`,
+    confirmText: dialogue.value ? '确认驳回（停机待修）' : stopsOnReject.value ? '确认驳回（暂停交付）' : '确认驳回并重做',
   })
   if (!ok) return
   await props.s.decideGate(r.stepKey, 'reject', note.value)
@@ -159,7 +164,7 @@ async function onReject(): Promise<void> {
     </ul>
 
     <div class="ec-review-note">
-      <label class="nl" for="ec-review-note-input">审阅意见（可选，驳回时会带入该阶段重做）</label>
+      <label class="nl" for="ec-review-note-input">审阅意见（可选，随驳回一并提交）</label>
       <textarea
         id="ec-review-note-input"
         v-model="note"
@@ -182,16 +187,16 @@ async function onReject(): Promise<void> {
         :disabled="busy"
         @click="rejecting = true"
       >
-        <Icon name="refresh" :size="13" /> {{ dialogue ? '驳回（停机待修）' : '驳回重做该阶段' }}
+        <Icon name="refresh" :size="13" /> {{ dialogue ? '驳回（停机待修）' : stopsOnReject ? '驳回（暂停交付）' : '驳回重做该阶段' }}
       </button>
       <template v-else>
         <span class="warnline">
           <Icon name="alert" :size="13" />
-          {{ dialogue ? '驳回将停止交付并保持成片待修，不会自动重做；请逐镜返修后重新合成。' : '将重新生成该阶段全部画面并自动继续制作，可能再次计费。' }}
+          {{ dialogue ? '驳回将停止交付并保持成片待修，不会自动重做；请逐镜返修后重新合成。' : stopsOnReject ? '驳回将暂停交付并保留当前成果，不会自动重新生成或计费；调整后可重新制作或局部返修。' : '将重新生成该阶段全部画面并自动继续制作，可能再次计费。' }}
         </span>
         <div class="rrow">
           <button class="btn danger sm" type="button" :disabled="busy" @click="onReject">
-            {{ dialogue ? '确认驳回（停机待修）' : '确认驳回并重做' }}
+            {{ dialogue ? '确认驳回（停机待修）' : stopsOnReject ? '确认驳回（暂停交付）' : '确认驳回并重做' }}
           </button>
           <button class="btn sm" type="button" :disabled="busy" @click="rejecting = false">
             取消
