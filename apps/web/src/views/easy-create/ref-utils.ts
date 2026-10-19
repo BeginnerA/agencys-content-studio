@@ -38,8 +38,13 @@ export const refShotLabel = (
 export const refName = (m: CreationChatMessage): string =>
   m.content.replace(/^已上传参考素材：/, '').trim() || m.content
 
-// 图片/视频走后端缩略图端点（与方案卡同源 ?v=2 破缓存）；音频无缩略图 → 图标
-export const refThumb = (m: CreationChatMessage): string | null =>
-  refKind(m) === 'image' || refKind(m) === 'video'
-    ? `/api/v1/assets/${refAssetId(m)}/thumb?v=2`
+// 图片/视频缩略图端点（与方案卡同源 ?v=2 破缓存）；音频或无 assetId → null（无缩略图走图标）。
+// 单一真源：上传回填 / 会话恢复 / 消息气泡三处共用，避免各构造点漏设 thumbUrl 导致缩略图丢失。
+export const refThumbUrl = (kind: CreationRefKind, assetId?: number | null): string | null =>
+  (kind === 'image' || kind === 'video') && assetId
+    ? `/api/v1/assets/${assetId}/thumb?v=2`
     : null
+
+// 消息 → 缩略图端点：图片/视频走后端 thumb（?v=2 破缓存）；音频无缩略图 → null → 图标
+export const refThumb = (m: CreationChatMessage): string | null =>
+  refThumbUrl(refKind(m), refAssetId(m))

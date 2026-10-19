@@ -3,6 +3,7 @@ import { creationChatApi, newRequestKey } from '../../lib/api/creation-chat'
 import { REF_VALID_ROLES } from '../../lib/types/creation-chat'
 import type { CreationDetail } from '../../lib/types/creation-chat'
 import type { AttachmentItem } from './use-creation-chat'
+import { refThumbUrl } from './ref-utils'
 
 interface Ticket {
   sessionId: number
@@ -67,7 +68,7 @@ export function createFirstInput(host: Host, hooks: {
       const items: AttachmentItem[] = []
       for (const item of value.items) {
         if (!item || typeof item.clientId !== 'string' || typeof item.name !== 'string' || !Object.hasOwn(REF_VALID_ROLES, item.kind) || !REF_VALID_ROLES[item.kind as keyof typeof REF_VALID_ROLES].includes(item.role)) return false
-        items.push({ clientId: item.clientId, name: item.name, kind: item.kind, role: item.role, assetId: positive(item.assetId) ? item.assetId : undefined, hash: typeof item.hash === 'string' ? item.hash : undefined, sourceAssetId: positive(item.sourceAssetId) ? item.sourceAssetId : undefined, uploading: false, error: !positive(item.assetId) && !positive(item.sourceAssetId) ? '本地文件未保存，请重新选择此文件或移除' : undefined })
+        items.push({ clientId: item.clientId, name: item.name, kind: item.kind, role: item.role, assetId: positive(item.assetId) ? item.assetId : undefined, hash: typeof item.hash === 'string' ? item.hash : undefined, sourceAssetId: positive(item.sourceAssetId) ? item.sourceAssetId : undefined, thumbUrl: refThumbUrl(item.kind, positive(item.assetId) ? item.assetId : undefined), uploading: false, error: !positive(item.assetId) && !positive(item.sourceAssetId) ? '本地文件未保存，请重新选择此文件或移除' : undefined })
       }
       restoring = true
       state.ticket = { sessionId: id, createKey: t.createKey, messageKey: t.messageKey, content: t.content, sent: t.sent ? { content: t.sent.content, attachments: t.sent.attachments } : null }
@@ -127,7 +128,7 @@ export function createFirstInput(host: Host, hooks: {
       const r = m.payload?.kind === 'attachment' ? m.payload.ref : null
       if (r && (!selected || selected.includes(r.assetId))) refs.set(r.assetId, r)
     }
-    host.attachments = [...refs.values()].flatMap((r) => r ? [{ clientId: `restored-${r.assetId}`, name: `参考 #${r.assetId}`, kind: r.kind, role: r.role, assetId: r.assetId, hash: r.hash, sourceAssetId: r.assetId, uploading: false }] : [])
+    host.attachments = [...refs.values()].flatMap((r) => r ? [{ clientId: `restored-${r.assetId}`, name: `参考 #${r.assetId}`, kind: r.kind, role: r.role, assetId: r.assetId, hash: r.hash, sourceAssetId: r.assetId, thumbUrl: refThumbUrl(r.kind, r.assetId), uploading: false }] : [])
     restoring = false
     state.phase = lastInput ? 'uncertain' : 'paused'
     observe(detail)

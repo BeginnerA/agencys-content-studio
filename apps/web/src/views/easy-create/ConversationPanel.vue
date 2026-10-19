@@ -137,8 +137,14 @@ async function submit(): Promise<void> {
   } finally {
     submitting.value = false
   }
-  if (!ok && id === props.s.state.currentId && !draft.value.trim())
-    draft.value = text
+  if (!ok && id === props.s.state.currentId && !draft.value.trim()) {
+    // 仅当消息确实没落到服务端（网络/传输失败）才回填避免丢字；已被接收（规划在途）或已被业务拒绝
+    // （用户消息已入库、错误已在对话流呈现）时保持输入框清空，避免「发送后内容没清除」的错觉与重复提交困惑。
+    const received = (props.s.state.detail?.messages ?? []).some(
+      (m) => m.role === 'user' && m.content.trim() === text,
+    )
+    if (!received) draft.value = text
+  }
 }
 
 // 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
