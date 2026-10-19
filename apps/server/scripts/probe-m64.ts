@@ -21,7 +21,7 @@ const { cleanup: envCleanup } = isolatedEnv('m64', { bridge: ['prompts'] })
 const WS_TPL = join(process.env.CSTUDIO_WORKSPACE as string, 'templates')
 cpSync(join(REPO_ROOT, 'workspace', 'templates'), WS_TPL, { recursive: true })
 
-const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback', 'parse-fallback', 'generic-gate'] as const
+const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback', 'parse-fallback', 'generic-gate', 'clarify-chips'] as const
 
 /** synth 正例 YAML：单 literal 步、模板级无 inputs（空输入即过 createRunRow）。key 归一为 agent-s{sid}-flow */
 const SYNTH_OK_YAML = 'name: 智能临时流程\nsteps:\n  - key: say\n    action: literal\n    inputs:\n      text: hello\n'
@@ -350,6 +350,28 @@ async function main(): Promise<void> {
         await decideCreationGate(sess!.id, { stepKey: 'compose', decision: 'approve', idempotencyKey: 'm64generic-gate-approve-1' })
         check(approved.length === 1 && approved[0]![0] === run!.id && approved[0]![1] === 'compose', '通用 run 闸门 approve 委派 engine.approveGate（端点本就按 stepKey 通用处理）')
       } finally { engine.engine.approveGate = origApprove }
+    },
+
+    // ================= clarify-chips：追问 chip 标题按内容分流（开放追问不谎称「可直接作答」） =================
+    // 用户实弹「将小说改编成短剧」时模型把「请上传原文…或说明范围」「改编目标…以及是否…」塞进 questions，
+    // 而界面统一挂「点击下方问题可直接作答」且点击=把问题拄进输入框——对开放追问是误导。前端抽出纯函数判定，此处锁死契约。
+    'clarify-chips': async () => {
+      const { clarifyHeader, clarifyNeedsElaborate, isElaborateQuestion, CLARIFY_HEADER_DIRECT, CLARIFY_HEADER_ELABORATE } = await import('../../web/src/views/easy-create/clarify-questions')
+      // 内置「建议回复型」短句（persistParseFallback / 反推兜底）→ 仍承诺可点即答，零回归
+      const direct = ['用这些图片做素材混剪成片', '改成生成带新画面的短视频', '我换个说法重新描述', '据此反推提示词规划一条成片']
+      check(!clarifyNeedsElaborate(direct) && clarifyHeader(direct) === CLARIFY_HEADER_DIRECT, '建议回复型短句 → 标题保持「可直接作答」（零回归）')
+      // 用户实弹暴露的「开放追问型」长问 → 标题降级，不再谎称可点即答
+      const elaborate = [
+        '请上传《公子请留步》的小说原文（txt/md/docx/epub，可多份），或说明可提供的正文范围（如仅前若干章）；若暂时只有书名与简介，也请一并给出。',
+        '改编目标是什么：投放平台、预计集数、每集时长（如抖音竖屏 12 集 × 60 秒），以及是否要求忠实原著主线与结局、是否需要保留人物对白？',
+      ]
+      check(elaborate.every(isElaborateQuestion) && clarifyHeader(elaborate) === CLARIFY_HEADER_ELABORATE, '开放追问型长问 → 标题降级为「带入输入框·补充后发送」')
+      // 混合：一条短回复 + 一条开放追问 → 整组降级（保守，宁可少承诺）
+      check(clarifyHeader(['先按常见设置帮我出一条', '请补充目标时长与画面风格']) === CLARIFY_HEADER_ELABORATE, '混合组含开放追问 → 整组降级')
+      // 短但含请求词（上传）也判开放：长度不是唯一信号
+      check(isElaborateQuestion('你要上传哪个文件？') === true, '短句含「上传」请求词 → 仍判开放追问（不只看长度）')
+      // 阈值边界：≤ 30 字且无请求词的陈述句判为可点即答
+      check(isElaborateQuestion('把主角改成一只猫') === false, '≤ 30 字无请求词短句 → 判为可点即答')
     },
   }
 

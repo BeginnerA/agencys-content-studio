@@ -9,6 +9,7 @@ import AttachmentTray from './AttachmentTray.vue'
 import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import { assetApi } from '../../lib/api'
 import { whoLabel, avatarIcon, pickReverseSourceId } from './conversation-utils'
+import { clarifyHeader } from './clarify-questions'
 import { usePlanningPhase } from './use-planning-phase'
 import { useDraftTicketSync } from './use-draft-ticket-sync'
 import { isAttachment, refAssetId } from './ref-utils'
@@ -240,7 +241,7 @@ async function onFiles(e: Event): Promise<void> {
             class="qs"
           >
             <div class="qs-h">
-              <Icon name="chat" :size="12" /> 点击下方问题可直接作答
+              <Icon name="chat" :size="12" /> {{ clarifyHeader(m.payload.questions ?? []) }}
             </div>
             <button
               v-for="(q, i) in m.payload.questions"
@@ -612,7 +613,7 @@ async function onFiles(e: Event): Promise<void> {
   min-width: 0;
 }
 
-/* 追问区标题：点明“可点击直接作答”的交互预期 */
+/* 追问区标题：文案随 clarifyHeader 分流（短回复=可点即答；含开放追问=带入输入框补充后发送），见 clarify-questions.ts */
 .qs-h {
   display: inline-flex;
   align-items: center;
