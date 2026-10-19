@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   const check = checker.check
 
   const { db, initDb } = await import('../src/db')
-  const { creationMessages, creationSessions, pipelineRuns, pipelineSteps, projects, workflows } = await import('../src/db/schema')
+  const { assets, creationMessages, creationSessions, pipelineRuns, pipelineSteps, projects, workflows } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { TEMPLATES_DIR } = await import('../src/env')
   const { app } = await import('../src/app')
@@ -332,13 +332,17 @@ async function main(): Promise<void> {
       const [sess] = await db.select().from(creationSessions).where(eq(creationSessions.requestKey, key))
       const snapshot = loadTemplate('photo-montage')
       const [run] = await db.insert(pipelineRuns).values({ projectId: proj, templateKey: 'photo-montage', templateSnapshot: JSON.stringify(snapshot), status: 'waiting_input', currentStepKey: 'compose', input: '{}', createdAt: t, updatedAt: t }).returning()
-      await db.insert(pipelineSteps).values({ runId: run!.id, seq: 0, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: '素材混剪合成成片', status: 'waiting_input', createdAt: t, updatedAt: t })
+      // 种一张本步骤产出图（假 relPath，readable=false 仅影响 available 标记，不影响资产解析）：验证 review.artifacts 就地透出挂起步的输出资产
+      const [gateAsset] = await db.insert(assets).values({ projectId: proj, runId: run!.id, kind: 'image', purpose: 'shot_image', name: '定妆照·小小杨', relPath: `probe/m64-gate-${t}.png`, createdAt: t, updatedAt: t }).returning()
+      await db.insert(pipelineSteps).values({ runId: run!.id, seq: 0, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: '素材混剪合成成片', status: 'waiting_input', output: JSON.stringify({ asset_ids: [gateAsset!.id] }), createdAt: t, updatedAt: t })
       await db.update(creationSessions).set({ runId: run!.id }).where(eq(creationSessions.id, sess!.id))
       const [runRow] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, run!.id))
       const stepRows = await db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, run!.id))
       const projected = await loadCreationProjection(sess!, runRow!, stepRows, [])
-      const rv = projected.progress.review as { stepKey?: string; message?: string; rejectStops?: boolean } | null
+      const rv = projected.progress.review as { stepKey?: string; message?: string; rejectStops?: boolean; artifacts?: Array<{ assetId: number; kind: string }> } | null
       check(!!rv && rv.stepKey === 'compose' && (rv.message || '').includes('审阅成片') && rv.rejectStops === true, '通用投影在 waiting_input 透出 review（compose 闸·模板 gate 文案·reject:stop 标注）')
+      // 新契约：通用投影把挂起步骤的输出资产就地透出到 review.artifacts（对话页审阅面板据此渲染缩略图，用户看着结果直接审批，免往返运行详情）
+      check(!!rv && Array.isArray(rv.artifacts) && rv.artifacts.some((a) => a.assetId === gateAsset!.id && a.kind === 'image'), '通用投影 review.artifacts 就地透出本步骤产出资产（审阅面板内联展示）')
       // 端到端：creationDetail sideCards 出现 review 卡（对话页据此渲染审阅面板，消除 route 无法审批）
       const detail = await creationDetail(sess!.id)
       check((detail.sideCards as { key: string }[]).some((c) => c.key === 'review'), 'route run 审阅卡进 sideCards（对话页权威区可批）')

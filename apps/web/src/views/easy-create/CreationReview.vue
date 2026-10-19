@@ -61,6 +61,12 @@ const frames = computed<Array<{ index: number; artifact: CreationArtifact }>>(()
 )
 const usableCount = computed(() => frames.value.filter((f) => f.artifact.available).length)
 
+// 通用（route/专业模板）闸门：本步骤产出就地盘点——图片/视频出缩略图，文本/音频出预览按钮，审完即批免往返运行详情
+const gateArts = computed(() => review.value?.artifacts ?? [])
+const gateMedia = computed(() => gateArts.value.filter((a) => a.kind === 'image' || a.kind === 'video'))
+const gateDocs = computed(() => gateArts.value.filter((a) => a.kind !== 'image' && a.kind !== 'video'))
+const gateAvailableCount = computed(() => gateArts.value.filter((a) => a.available).length)
+
 const preview = ref<Asset | null>(null)
 const loading = ref<number | null>(null)
 let request = 0
@@ -162,6 +168,29 @@ async function onReject(): Promise<void> {
         </button>
       </li>
     </ul>
+
+    <!-- 通用（route/专业模板）闸门：就地展示本步骤产出，看着结果直接决定，免去往返运行详情 -->
+    <div v-if="!dialogue && !frames.length && gateArts.length" class="ec-gate-arts">
+      <p class="muted">本步骤「{{ review.title }}」已产出 {{ gateAvailableCount }}/{{ gateArts.length }} 项，点开可放大查看，确认后再决定继续或驳回。</p>
+      <ul v-if="gateMedia.length" class="thumbs">
+        <li v-for="a in gateMedia" :key="a.assetId">
+          <button class="thumb" type="button" :disabled="!a.available || loading !== null" :aria-label="`放大查看 ${a.name}`" @click="open(a)">
+            <img v-if="a.available && a.kind === 'image'" :src="`/api/v1/assets/${a.assetId}/thumb?v=2`" :alt="a.name" loading="lazy" />
+            <video v-else-if="a.available && a.kind === 'video'" class="ec-gate-video" :src="`/api/v1/assets/${a.assetId}/file`" muted preload="metadata" playsinline />
+            <span v-else class="off">素材不可用</span>
+            <span class="idx">{{ a.name }}</span>
+          </button>
+        </li>
+      </ul>
+      <div v-if="gateDocs.length" class="ec-gate-docs">
+        <button v-for="a in gateDocs" :key="a.assetId" class="ec-gate-doc" type="button" :disabled="!a.available || loading !== null" @click="open(a)">
+          <Icon name="doc" :size="14" />
+          <span>{{ a.name }}</span>
+          <span v-if="a.reused" class="ec-gate-reuse">复用</span>
+          <span v-if="!a.available" class="off">不可用</span>
+        </button>
+      </div>
+    </div>
 
     <div class="ec-review-note">
       <label class="nl" for="ec-review-note-input">审阅意见（可选，随驳回一并提交）</label>
@@ -311,6 +340,48 @@ async function onReject(): Promise<void> {
 
 .thumb .off {
   font-size: 12px;
+}
+
+/* 通用闸门本步产出就地展示：复用上方 .thumbs/.thumb 缩略图样式，文本/音频走 .ec-gate-doc 预览按钮 */
+.ec-gate-arts {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.ec-gate-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.ec-gate-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ec-gate-doc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.ec-gate-doc:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.ec-gate-doc .off {
+  color: var(--bad);
+}
+.ec-gate-reuse {
+  font-size: 11px;
+  color: var(--text-2);
 }
 
 .ec-review-note {

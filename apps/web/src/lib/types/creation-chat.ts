@@ -407,6 +407,8 @@ export interface CreationReview {
   rejectStops?: boolean
   /** 免核验路线：待审字幕为按批准台词估算（非实测），审阅时必须收听原声比对发声 */
   subtitlesEstimated?: boolean
+  /** 通用（route/专业模板）闸门就地展示的本步骤产出资产（图/视频/文本/音频）：审阅面板据此渲染缩略图，easy 对白闸走 shots/videoId 不填 */
+  artifacts?: CreationArtifact[]
 }
 
 export interface CreationProgressStep {

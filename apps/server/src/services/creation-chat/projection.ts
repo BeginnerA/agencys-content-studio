@@ -58,6 +58,8 @@ export interface CreationGateReview {
   subtitleId?: number | null
   rejectStops?: boolean
   subtitlesEstimated?: boolean
+  /** 通用（route/专业模板）闸门就地展示的本步骤产出资产：对话页审阅面板据此渲染缩略图/预览，审完即批免往返运行详情；easy 精细投影走 shots/videoId，不填此字段 */
+  artifacts?: CreationArtifact[]
 }
 
 /** 只加载当前运行及其显式引用的素材，恢复时无需改写旧素材所属 run。 */
@@ -255,11 +257,15 @@ async function projectGenericRun(session: CreationSession, run: PipelineRun, ste
     ? snapshot.steps.find((s) => s && typeof s === 'object' && (s as { key?: unknown }).key === waitingStep.stepKey) as { gate?: { message?: unknown; reject?: unknown } } | undefined
     : undefined
   const gateText = typeof gateDef?.gate?.message === 'string' ? gateDef.gate.message.trim() : ''
+  // 就地透出本步骤产出资产：对话页审阅面板据此渲染缩略图/预览，用户看着结果直接决定继续/驳回，不必再跑去运行详情查看后回来审批（消除往返）。
+  const anyAvail = (id: number): CreationArtifact | null => avail(id, 'image') ?? avail(id, 'video') ?? avail(id, 'text') ?? avail(id, 'audio')
+  const gateArtifacts = waitingStep ? outputAssetIds(waitingStep.output).map(anyAvail).filter((a): a is CreationArtifact => !!a) : []
   const review: CreationGateReview | null = waitingStep ? {
     stepKey: waitingStep.stepKey,
     title: waitingStep.title ?? waitingStep.stepKey,
     message: gateText || '本阶段产物已生成，请审阅后继续。',
     ...(gateDef?.gate?.reject === 'stop' ? { rejectStops: true } : {}),
+    ...(gateArtifacts.length ? { artifacts: gateArtifacts } : {}),
   } : null
   return {
     progress: {
