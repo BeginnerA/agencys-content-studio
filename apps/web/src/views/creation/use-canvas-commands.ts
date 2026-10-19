@@ -10,6 +10,7 @@ import type {
   CanvasViewport,
   CreationNodeSpec,
   EntityNodeSpec,
+  GenKind,
   RunNodeSpec,
   TextNodeSpec,
 } from '../../lib/types'
@@ -31,6 +32,17 @@ type Dependencies = Pick<
 > &
   Pick<CanvasDocument, 'loadDoc'> &
   Pick<CanvasTarget, 'loadPalette'>
+
+/** 「添加节点」菜单可创建的预设：text 独立节点 + gen 的 5 种生成类型（缺省 image 兼容画布双击） */
+export type NodePreset = 'text' | GenKind
+const NODE_PRESET_LABEL: Record<NodePreset, string> = {
+  text: '文本节点',
+  image: '图片生成节点',
+  video: '视频生成节点',
+  audio: '音频生成节点',
+  llm: 'LLM 文本节点',
+  compose: '音视频合成节点',
+}
 
 export function useCanvasCommands(deps: Dependencies) {
   const {
@@ -200,21 +212,32 @@ export function useCanvasCommands(deps: Dependencies) {
     }
   }
 
-  async function onCreateNode(p: { x: number; y: number }): Promise<void> {
+  async function onCreateNode(
+    p: { x: number; y: number },
+    preset: NodePreset = 'image',
+  ): Promise<void> {
     const cid = canvasId.value
     if (cid == null) return
+    const label = NODE_PRESET_LABEL[preset]
     try {
-      const body: AddNodeBody = {
-        kind: 'gen',
-        spec: { genKind: 'image', prompt: '' },
-        x: p.x,
-        y: p.y,
-      }
-      const ids = await addNodesCommand(cid, [body], '新建节点')
+      const body: AddNodeBody =
+        preset === 'text'
+          ? { kind: 'text', spec: { text: '' }, x: p.x, y: p.y }
+          : {
+              kind: 'gen',
+              spec: { genKind: preset, prompt: '' },
+              x: p.x,
+              y: p.y,
+            }
+      const ids = await addNodesCommand(cid, [body], `新建${label}`)
       await loadDoc(true)
       selectedIds.value = ids
       selectedEdgeId.value = null
-      toast('已新建生成节点，请在右侧编辑参数')
+      toast(
+        preset === 'text'
+          ? '已新建文本节点，请在右侧输入内容'
+          : `已新建${label}，请在右侧编辑参数`,
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e))
     }

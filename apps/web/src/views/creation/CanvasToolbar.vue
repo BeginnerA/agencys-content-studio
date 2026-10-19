@@ -5,6 +5,7 @@ import ActionMenu, {
   type ActionMenuItem,
 } from '../../components/common/ActionMenu.vue'
 import type { CanvasViewState } from './use-canvas-view'
+import type { NodePreset } from './use-canvas-commands'
 
 const props = defineProps<{
   cv: Pick<
@@ -167,15 +168,57 @@ const exportItems = computed<ActionMenuItem[]>(() => [
     action: cv.openDraft,
   },
 ])
-async function addNode(): Promise<void> {
+async function addNodeOf(preset: NodePreset): Promise<void> {
   if (!cv.boardRef || adding.value || !cv.doc) return
   adding.value = true
   try {
-    await cv.onCreateNode(cv.boardRef.centerWorld())
+    await cv.onCreateNode(cv.boardRef.centerWorld(), preset)
   } finally {
     adding.value = false
   }
 }
+// 「添加节点」菜单：一次覆盖文本 + 5 种生成类型（素材/实体/运行节点走各自专属入口）
+const nodeItems = computed<ActionMenuItem[]>(() => [
+  {
+    id: 'text',
+    label: '文本节点',
+    icon: 'doc',
+    detail: '提示词 / 旁白 / LLM 指令来源',
+    action: () => addNodeOf('text'),
+  },
+  {
+    id: 'image',
+    label: '图片生成',
+    icon: 'photo',
+    separator: true,
+    action: () => addNodeOf('image'),
+  },
+  {
+    id: 'video',
+    label: '视频生成',
+    icon: 'video',
+    action: () => addNodeOf('video'),
+  },
+  {
+    id: 'audio',
+    label: '音频配音（TTS）',
+    icon: 'speaker-wave',
+    action: () => addNodeOf('audio'),
+  },
+  {
+    id: 'llm',
+    label: 'LLM 文本处理',
+    icon: 'sparkles',
+    action: () => addNodeOf('llm'),
+  },
+  {
+    id: 'compose',
+    label: '音视频合成',
+    icon: 'film',
+    separator: true,
+    action: () => addNodeOf('compose'),
+  },
+])
 </script>
 
 <template>
@@ -249,14 +292,13 @@ async function addNode(): Promise<void> {
     </div>
     <div class="editing-bar" aria-label="画布编辑工具">
       <div class="editing-tools">
-        <button
-          type="button"
-          class="btn primary"
+        <ActionMenu
+          :key="`addnode-${cv.canvasId}`"
+          :label="adding ? '添加中…' : '添加节点'"
+          icon="plus"
+          :items="nodeItems"
           :disabled="!cv.doc || cv.loading || adding"
-          @click="addNode"
-        >
-          <Icon name="plus" :size="16" /> {{ adding ? '添加中…' : '添加节点' }}
-        </button>
+        />
         <div class="history-tools" role="group" aria-label="编辑历史">
           <button
             type="button"
