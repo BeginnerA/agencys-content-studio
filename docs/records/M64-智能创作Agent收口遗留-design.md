@@ -43,7 +43,7 @@ M63 交付质量门禁本身全绿，但对照其 L1 Spec 的承诺逐条核代�
 
 ## 四、实施切片（单次交付内可编译提交）
 
-1. G2 + G3 运行探针先行（`probe-m64.ts`：confirm 真库三形态 + synth GC）——先暴露 M63 执行链真实缺陷（若有则修复），零功能改动。
+1. ✅ G2 + G3 运行探针先行（`probe-m64.ts` 五节 **24 断言全绿**、首跑即过——**证实 `confirmRoute` 三形态真实执行链端到端可用、无缺陷需修**，并坐实 synth 失败路径无孤儿件 + GC 回收有效：isolatedEnv('m64') 起真库、直插 ready 态 agent 会话、打桩 `engine.startRun` 零计费，断言 template 直调起 run+项目转正+幂等 / synth saveTemplate 落盘+visibility:conversation 不进专业目录 / chain createWorkflow(autoAdvance=0)+首段 run+workflowId 回写未级联 / guards not_ready·stale_plan·template_drift·synth 失败无残留 / synth-gc 会话删除回收仿制件。关键：模板目录用**拷贝**非 junction（避免 synth 写污染真仓）。零 src 改动）
 2. G1 chain 对话内批准闭环：编排器回写待续跑留痕 + `side-cards` `chainAwaiting` 卡 + 前端批准接线（调 `/workflows/:id/resume` 或薄封装）+ 探针。
 3. G4 三个 >800 文件行为零变更拆分（风险最高，独立切片，可并行评审）。
 4. 文档同步（milestones M64 / records 索引 / roadmap 收口）+ 全仓 `pnpm ci:check` 端到端收口。
