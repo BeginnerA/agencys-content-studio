@@ -73,6 +73,9 @@ export const creationChatApi = {
   confirm: (id: number, body: CreationConfirmBody | CreationRouteConfirmBody) =>
     api.post<{ runId: number; workflowId?: number }>(`${BASE}/${id}/confirm`, body),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
+  /** chain 段间批准续跑（M64 G1）：启动下一段（预算/输入/幂等与自动级联同源），回 202 + 最新快照 */
+  advanceChain: (id: number, body: { idempotencyKey: string }) =>
+    api.post<CreationDetail>(`${BASE}/${id}/advance-chain`, body),
   /** 删除会话：未立项时一并回收影子项目；已立项只删记录（项目原样保留） */
   remove: (id: number) => api.del<CreationDeleteResult>(`${BASE}/${id}`),
   retry: (id: number, body: CreationRetryBody) =>

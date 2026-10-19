@@ -16,6 +16,8 @@ M63 交付质量门禁本身全绿，但对照其 L1 Spec 的承诺逐条核代�
 - **范围**：落实对话内闭环——① 段落定（`autoAdvance=0` → workflow `paused`）时，向关联 creation session 追加一条「待续跑批准」留痕（system 或 assistant 署名，带 workflowId + 段序）；② `computeSideCards` 新增 `chainAwaiting` 卡（当 run 落定且 workflow=paused 且仍有后续段）；③ 前端一键「继续下一段」调用既有 `POST /workflows/:id/resume`（或新增薄封装 `POST /creation-chat/:id/advance-chain` 转发），**同样过确认闸/预算闸/幂等**，不新造编排逻辑。
 - **验收**：probe 断言「首段落定→workflow=paused→会话出现待续跑留痕 + awaitCard 投影」；批准动作触发后起下一段（复用运行探针 e2e）。
 
+> **实施修正（切片 2·代码实态抽验）**：原 G1 拟案基于「`autoAdvance=0` 段落定 → workflow 转 `paused` → 复用 `/workflows/:id/resume`」，但抽验 `services/workflow.ts::advanceWorkflowCore` 第⑤步实证：`autoAdvance=0` 段落定仅发 `workflow.segment_done` 事件、**保持 `active`（不回写 paused）**，且 `resumeWorkflow` 要求 `paused` 且其 `advanceWorkflow` 在 `autoAdvance=0` 下不会级联——即 `/resume` 根本无法驱动对话链前进。据实重定低侵入方案（见下）并相应修正验收：断言改为「首段落定(`completed`)→workflow 仍 `active`→`chainAwaiting` 卡投影出现 + 会话待续跑留痕→批准起下一段（seq1）+ `inflight` 幂等」。
+
 ### G2 · `confirmRoute` 三形态执行链零运行探针（`P1`，测试）
 
 - **实态证据**：`probe-m63.ts` confirm 节仅覆盖**纯函数**（`routeDecisionOf` 分派 / `preflightDecision` 结构闸 / `materializeInputSpec`）。而 M63 核心价值——`confirmRoute` 的三种真实执行分派——**零运行时验证**：`startTemplate`（`createRunRow` + `engine.startRun`）、`startSynth`（`saveTemplate` 落盘 + 事务失败 `deleteTemplate` 回滚）、`startChain`（`createWorkflow` + `startWorkflow` 首段 + 失败 `setWorkflowStatus(cancelled)` + 回 `ready`）。
@@ -44,7 +46,7 @@ M63 交付质量门禁本身全绿，但对照其 L1 Spec 的承诺逐条核代�
 ## 四、实施切片（单次交付内可编译提交）
 
 1. ✅ G2 + G3 运行探针先行（`probe-m64.ts` 五节 **24 断言全绿**、首跑即过——**证实 `confirmRoute` 三形态真实执行链端到端可用、无缺陷需修**，并坐实 synth 失败路径无孤儿件 + GC 回收有效：isolatedEnv('m64') 起真库、直插 ready 态 agent 会话、打桩 `engine.startRun` 零计费，断言 template 直调起 run+项目转正+幂等 / synth saveTemplate 落盘+visibility:conversation 不进专业目录 / chain createWorkflow(autoAdvance=0)+首段 run+workflowId 回写未级联 / guards not_ready·stale_plan·template_drift·synth 失败无残留 / synth-gc 会话删除回收仿制件。关键：模板目录用**拷贝**非 junction（避免 synth 写污染真仓）。零 src 改动）
-2. G1 chain 对话内批准闭环：编排器回写待续跑留痕 + `side-cards` `chainAwaiting` 卡 + 前端批准接线（调 `/workflows/:id/resume` 或薄封装）+ 探针。
+2. ✅ G1 chain 对话内批准闭环（切片 2 交付）：低侵入、复用不重写——① `workflow.ts` 将 `advanceWorkflowCore` ⑥-⑨ 段推进尾逻辑**行为逐字迁出**为 `advanceToNextSegment`（autoAdvance 级联与对话批准同源复用，`m27` 46 断言零回归），新增导出 `requestNextSegment(workflowId)`：绕过 autoAdvance 闸门、取链内最大 seq 已落定 run、复用同套预算/输入/状态复核/下游存在性幂等守卫单段推进（不新增编排算法）。② 待续跑留痕经**已注册的 creation-chat 层 settle 钩子** `notifyCreationSettled`→`notifyChainSegmentAwaiting` 回写（run completed + 属 autoAdvance=0 对话链 + 仍有后续段 → 幂等落一条 `chain-await` 消息），**零改 M27 编排器核心**。③ `computeSideCards` 新增 `chainAwaiting` 卡：`creationDetail` 纯读派生（链 active + 有已落定段 + 下一段未起），不回写会话态。④ 新增薄封装 `POST /creation-sessions/:id/advance-chain`→`chain-advance.ts::advanceChainSegment`（校验 chain+workflowId+started 态→调 `requestNextSegment`→按 advanced/done/blocked/inflight 回写留痕），会话 `runId` 追随当前段。⑤ 前端 `ChainAwaitingCard.vue`（服务端卡片流注册）+ 独立 composable `use-creation-chain.ts`（守住 `use-creation-chat.ts` 近 800 行工程红线）+ `api.advanceChain`。**probe-m64 `chain-await` 节 7 断言全绿**（首跑即过）：留痕回写/卡投影出现且链诚实保持 active/not_chain 守卫/批准起 seq1+runId 追随+留痕/卡在途回落/inflight 幂等。双端 `tsc`/`vue-tsc` exit 0；`m27`/`m40`/`m63`/`m64` 串行回归 210 断言零回归。
 3. G4 三个 >800 文件行为零变更拆分（风险最高，独立切片，可并行评审）。
 4. 文档同步（milestones M64 / records 索引 / roadmap 收口）+ 全仓 `pnpm ci:check` 端到端收口。
 

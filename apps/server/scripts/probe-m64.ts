@@ -1,6 +1,6 @@
 /**
  * M64 探针（智能创作 Agent 收口遗留：G2 confirmRoute 三形态运行链 + G3 synth 生命周期与 GC）——手动执行：
- *   cd apps/server && npx tsx scripts/probe-m64.ts [--section=confirm-template|confirm-synth|confirm-chain|guards|synth-gc]
+ *   cd apps/server && npx tsx scripts/probe-m64.ts [--section=confirm-template|confirm-synth|confirm-chain|chain-await|guards|synth-gc]
  *
  * 与 probe-m63（纯函数契约）互补：本探针用 isolatedEnv('m64') 起真库（独立 studio.db），
  * 直插 project + ready 态 agent 会话（decision=normalizeAgentReply 权威归一产物），
@@ -21,7 +21,7 @@ const { cleanup: envCleanup } = isolatedEnv('m64', { bridge: ['prompts'] })
 const WS_TPL = join(process.env.CSTUDIO_WORKSPACE as string, 'templates')
 cpSync(join(REPO_ROOT, 'workspace', 'templates'), WS_TPL, { recursive: true })
 
-const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'guards', 'synth-gc'] as const
+const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc'] as const
 
 /** synth 正例 YAML：单 literal 步、模板级无 inputs（空输入即过 createRunRow）。key 归一为 agent-s{sid}-flow */
 const SYNTH_OK_YAML = 'name: 智能临时流程\nsteps:\n  - key: say\n    action: literal\n    inputs:\n      text: hello\n'
@@ -42,6 +42,8 @@ async function main(): Promise<void> {
   const { buildTemplateCatalog } = await import('../src/services/creation-chat/agent/template-catalog')
   const { normalizeAgentReply, decisionHashOf } = await import('../src/services/creation-chat/agent/normalize')
   const { confirmRoute } = await import('../src/services/creation-chat/route-execution')
+  const { notifyCreationSettled, creationDetail } = await import('../src/services/creation-chat/store')
+  const { advanceChainSegment } = await import('../src/services/creation-chat/chain-advance')
   const { saveTemplate } = await import('../src/pipeline/loader')
 
   await initDb()
@@ -133,6 +135,48 @@ async function main(): Promise<void> {
       check(!!wf && wf.autoAdvance === 0, 'chain 编排链 autoAdvance=0（段间暂停安全默认）')
       check(s!.workflowId === res.workflowId && s!.status === 'started', 'chain → 会话 workflowId 回写 + started')
       check(segRuns.length === 1 && segRuns[0]!.seq === 0 && segRuns[0]!.key === QUICK && started === before + 1, 'chain 仅起首段（seq0·quick-video），未级联后续段')
+    },
+
+    // ================= chain-await：段间「对话内批准续跑」闭环（M64 G1） =================
+    'chain-await': async () => {
+      // 建链起首段（同 confirm-chain）
+      const proj = await seedProject('对话内批准续跑链')
+      const { sessionId, decisionHash } = await seedRouteSession(proj, {
+        kind: 'route', mode: 'chain', message: '先选题后成稿', rationale: '多步任务', roleKey: 'planner',
+        chain: [{ templateKey: QUICK, inputSpec: { idea: { kind: 'text', value: '链首段创意' } } }, { templateKey: NOTE, inputSpec: { topic: { kind: 'text', value: '链次段图文' } } }],
+      })
+      const first = await confirmRoute(sessionId, confirmReq(sessionId, decisionHash, 'm64await0000001'))
+      const [wf0] = await db.select().from(workflows).where(eq(workflows.id, first.workflowId!))
+      // 模拟首段落定：run completed → 走真实 settle 钩子 notifyCreationSettled（index.ts 注册同源函数）
+      await db.update(pipelineRuns).set({ status: 'completed' }).where(eq(pipelineRuns.id, first.runId))
+      await notifyCreationSettled(first.runId)
+      const msgs1 = await db.select({ payload: creationMessages.payload }).from(creationMessages).where(eq(creationMessages.sessionId, sessionId))
+      const awaitMsg = msgs1.some((m) => { const p = m.payload ? JSON.parse(m.payload) as Record<string, unknown> : {}; return p['kind'] === 'chain-await' && p['workflowId'] === wf0!.id && p['seq'] === 0 })
+      check(!!wf0 && wf0.autoAdvance === 0 && awaitMsg, 'chain 首段落定(settled 钩子) → 会话回写「第1段已完成待批准」留痕')
+      // 投影：creationDetail sideCards 出现 chainAwaiting 卡（纯读派生，链仍 active 未 paused）
+      const d1 = await creationDetail(sessionId)
+      const [wfAfter] = await db.select().from(workflows).where(eq(workflows.id, first.workflowId!))
+      check((d1.sideCards as { key: string }[]).some((c) => c.key === 'chainAwaiting') && wfAfter!.status === 'active', 'chainAwaiting 批准卡投影出现（链保持 active·非 paused：修正设计稿 paused 假设）')
+      // 非链会话批准 → not_chain（守卫先行）
+      const pTpl = await seedProject('单模板会话')
+      const tpl = await seedRouteSession(pTpl, { kind: 'route', mode: 'template', message: 'm', rationale: 'r', roleKey: 'planner', templateRun: { templateKey: QUICK, inputSpec: { idea: { kind: 'text', value: 'x' } } } })
+      check(await codeOf(() => advanceChainSegment(tpl.sessionId, { idempotencyKey: 'm64awaitnotchain' })) === 'not_chain', '非链会话调 advance-chain → not_chain（守卫拒绝）')
+      // 批准续跑：起第 2 段 run + session.runId 追随 + chain-advance 留痕 + chainAwaiting 卡回落
+      const before2 = started
+      const adv = await advanceChainSegment(sessionId, { idempotencyKey: 'm64awaitadvance01' })
+      const segRuns2 = await db.select({ id: pipelineRuns.id, seq: pipelineRuns.workflowSeq, key: pipelineRuns.templateKey }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, first.workflowId!))
+      const [s2] = await db.select().from(creationSessions).where(eq(creationSessions.id, sessionId))
+      const msgs2 = await db.select({ payload: creationMessages.payload }).from(creationMessages).where(eq(creationMessages.sessionId, sessionId))
+      const advMsg = msgs2.some((m) => { const p = m.payload ? JSON.parse(m.payload) as Record<string, unknown> : {}; return p['kind'] === 'chain-advance' && p['runId'] === adv.runId })
+      const d2 = await creationDetail(sessionId)
+      check(adv.outcome === 'advanced' && !!adv.runId && segRuns2.length === 2 && segRuns2.some((r) => r.seq === 1 && r.key === NOTE) && started === before2 + 1, '批准续跑 → requestNextSegment 起第2段 run（note-clip·seq1）+ 仅启动一次')
+      check(s2!.runId === adv.runId && advMsg, '批准续跑 → 会话 runId 追随当前段 + chain-advance 留痕')
+      check(!(d2.sideCards as { key: string }[]).some((c) => c.key === 'chainAwaiting'), '第2段在途后 chainAwaiting 卡回落（下一段未起判据失效）')
+      // 幂等：再次批准（第2段仍 queued 未落定）→ inflight，不重复建段/计费
+      const before3 = started
+      const adv2 = await advanceChainSegment(sessionId, { idempotencyKey: 'm64awaitadvance02' })
+      const segRuns3 = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, first.workflowId!))
+      check(adv2.outcome === 'inflight' && segRuns3.length === 2 && started === before3, '连点批准（下一段在途）→ inflight 幂等命中，不重复建段/计费')
     },
 
     // ================= guards：结构闸 + 确认闸拒绝路径（可见不静默） =================

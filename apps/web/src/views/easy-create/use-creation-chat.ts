@@ -1,6 +1,7 @@
 import { computed, reactive } from 'vue'
 import { createFirstInput } from './use-first-input'
 import { createRework } from './use-rework'
+import { createChainAdvance } from './use-creation-chain'
 import { createAttachments, type AttachmentItem } from './use-creation-attachments'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
@@ -75,6 +76,8 @@ function clearPending(): void {
 const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling, optimistic: { add: addPending, drop: dropPending } })
 // 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
+// chain 段间批准续跑独立成 composable（M64 G1，同样为守住本文件工程红线而外抽）
+const chain = createChainAdvance(state, { commit, polling: ensurePolling })
 const attachments = createAttachments(state, { viewEpoch: () => viewEpoch, commit, first, errText })
 let viewEpoch = 0
 let autoFirstId = 0
@@ -710,6 +713,8 @@ export function useEasyCreate() {
     state,
     first,
     rework,
+    advanceChain: chain.advanceChain,
+    advanceBusy: chain.advanceBusy,
     attachmentsLocked: attachments.attachmentsLocked,
     enterHome,
     replaceAttachmentFile: attachments.replaceAttachmentFile,

@@ -5,6 +5,7 @@ import { createSession, refreshPreflight, sendCreationMessage } from '../service
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { bindCreationRef } from '../services/creation-chat/ref-bind'
 import { cancelCreation, confirmCreation, retryCreation } from '../services/creation-chat/execution'
+import { advanceChainSegment } from '../services/creation-chat/chain-advance'
 import { graduateCreation } from '../services/creation-chat/graduate'
 import { decideCreationGate } from '../services/creation-chat/gate'
 import { creationShotBoard, recomposeCreation, selectCreationShots } from '../services/creation-chat/candidates'
@@ -64,6 +65,8 @@ creationChatRoutes.patch(`${path}/:id/attachments/:assetId/ref`, route(async (c)
 creationChatRoutes.post(`${path}/:id/messages`, route(async (c) => c.json(await sendCreationMessage(id(c), await body(c)))))
 creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await refreshPreflight(id(c)))))
 creationChatRoutes.post(`${path}/:id/confirm`, route(async (c) => c.json(await confirmCreation(id(c), await body(c)), 202)))
+// chain 段间批准续跑（M64 G1）：对话内「继续下一段」→ 编排器单段推进（预算/输入/幂等同源）→ 回读最新快照（chainAwaiting 自然回落）。
+creationChatRoutes.post(`${path}/:id/advance-chain`, route(async (c) => { const r = await advanceChainSegment(id(c), await body(c)); return c.json({ ...(await creationDetail(id(c))), advance: r }, 202) }))
 creationChatRoutes.post(`${path}/:id/cancel`, route(async (c) => { await cancelCreation(id(c)); return c.json(await creationDetail(id(c))) }))
 creationChatRoutes.post(`${path}/:id/retry`, route(async (c) => c.json(await retryCreation(id(c), await body(c)), 202)))
 // 毕业通道：把已确认方案升级到专业链——建 queued 专业 run（不自动 start、零计费），批准剧本经 setting_docs/plan_doc 锚定。

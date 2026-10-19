@@ -27,6 +27,8 @@ export interface SideCardsInput {
   confirmable: boolean
   /** chain 工作流 id（有则制作中出 chainProgress） */
   workflowId: number | null
+  /** chain 段间待续跑批准（有已落定段 + 仍有后续段未起 + 链 active）：出 chainAwaiting 批准卡（M64 G1） */
+  chainAwaiting: boolean
   /** run 是否已存在（session.runId 非空） */
   hasRun: boolean
   /** run 真实状态（投影 progress.status：queued/running/paused/waiting_input/completed/failed/cancelled）；无 run 为 null */
@@ -63,6 +65,8 @@ export function computeSideCards(i: SideCardsInput): SideCard[] {
   const cards: SideCard[] = []
   if (i.hasReview) cards.push({ key: 'review', props: {} })
   if (i.workflowId) cards.push({ key: 'chainProgress', props: { workflowId: i.workflowId } })
+  // 段间批准卡：落在 chainProgress 之后，明示「本段已完成·待你批准继续下一段」（M64 G1 对话内闭环）
+  if (i.chainAwaiting) cards.push({ key: 'chainAwaiting', props: { workflowId: i.workflowId } })
   if (i.hasResult) cards.push({ key: 'result', props: {} })
   cards.push({ key: 'progress', props: { status: i.runStatus } })
   if (i.hasArtifacts) cards.push({ key: 'artifacts', props: {} })

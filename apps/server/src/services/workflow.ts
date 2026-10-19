@@ -7,7 +7,7 @@
  */
 import { and, asc, desc, eq, inArray, isNull, sum } from 'drizzle-orm'
 import { db } from '../db'
-import { assets, pipelineRuns, pipelineSteps, usageRecords, workflows, type Asset, type Workflow } from '../db/schema'
+import { assets, pipelineRuns, pipelineSteps, usageRecords, workflows, type Asset, type PipelineRun, type Workflow } from '../db/schema'
 import { createLogger } from '../logger'
 import { engine } from '../pipeline/engine'
 import { loadTemplate } from '../pipeline/loader'
@@ -399,18 +399,36 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
   if (run.status !== 'completed') return
 
   const seq = run.workflowSeq ?? 0
-  // ⑤ autoAdvance 关 → 仅提示段完成，不自动触发
+  // ⑤ autoAdvance 关 → 段间暂停：仅提示段完成 + 保持 active（不回写 paused），由对话/链详情侧显式批准续跑（requestNextSegment）
   if (wf.autoAdvance !== 1) {
     emitStudioEvent({ type: 'workflow.segment_done', workflowId, projectId: wf.projectId, runId, seq })
     return
   }
-  const segments = parseSegments(wf.segments)
+  // ⑥-⑨ 段推进尾逻辑（与对话批准续跑同源复用；行为逐字不变）
+  await advanceToNextSegment(run, wf, workflowId, parseSegments(wf.segments))
+}
+
+/** 单段推进结果（对话批准续跑据此回写留痕；autoAdvance 级联路径忽略返回值） */
+export type AdvanceOutcome =
+  | { kind: 'advanced'; runId: number }
+  | { kind: 'done' }
+  | { kind: 'blocked'; reason: 'budget' | 'input' | 'state' }
+  | { kind: 'inflight' }
+
+/**
+ * 段推进尾逻辑（原 advanceWorkflowCore ⑥-⑨ 逐字迁出）：无下一段→done；预算/输入闸门；
+ * 状态复核（防 pause TOCTOU）+ 下游存在性幂等守卫（防并发双建同 seq）；建 run 起 run + 跨段溯源。
+ * 供 autoAdvance 自动级联与对话「批准续跑」同源复用——不新增编排算法，计费安全同源。
+ */
+async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: number, segments: WorkflowSegment[]): Promise<AdvanceOutcome> {
+  const runId = run.id
+  const seq = run.workflowSeq ?? 0
   const next = segments[seq + 1]
   // ⑥ 无下一段 → 链完成
   if (!next) {
     await setWorkflowStatus(workflowId, 'done')
     emitStudioEvent({ type: 'workflow.completed', workflowId, projectId: wf.projectId })
-    return
+    return { kind: 'done' }
   }
 
   // ⑦ 预算闸门：project 预算 + 链级 budgetCap
@@ -419,7 +437,7 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
     await setWorkflowStatus(workflowId, 'paused')
     emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'budget' })
     log.warn(`workflow ${workflowId} 预算拦截（project）：${budgetHit.message}`)
-    return
+    return { kind: 'blocked', reason: 'budget' }
   }
   if (wf.budgetCap != null) {
     const chainCost = await chainAccumulatedCost(workflowId)
@@ -427,7 +445,7 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
       await setWorkflowStatus(workflowId, 'paused')
       emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'budget' })
       log.warn(`workflow ${workflowId} 链级预算上限命中（${chainCost} >= ${wf.budgetCap}）`)
-      return
+      return { kind: 'blocked', reason: 'budget' }
     }
   }
 
@@ -438,27 +456,27 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
   } catch {
     await setWorkflowStatus(workflowId, 'paused')
     emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
-    return
+    return { kind: 'blocked', reason: 'input' }
   }
   const { inputs, missingRequired, prevSources } = await resolveSegmentInput({ template, prevRunId: runId, inputSpec: next.inputSpec })
   if (missingRequired.length) {
     await setWorkflowStatus(workflowId, 'paused')
     emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
     log.warn(`workflow ${workflowId} 输入阻塞：${missingRequired.join(', ')}`)
-    return
+    return { kind: 'blocked', reason: 'input' }
   }
 
   // ⑨ 创建并启动下一段 run
   // 9a 状态复核（防 pause TOCTOU）：预算/输入解析为异步，期间用户可能已暂停 → 重读确认仍 active 才落库
   const freshWf = await getWorkflow(workflowId)
-  if (!freshWf || freshWf.status !== 'active') return
+  if (!freshWf || freshWf.status !== 'active') return { kind: 'blocked', reason: 'state' }
   // 9b 下游存在性幂等守卫（防 settle 重放/并发双建同 seq 下游 run → 重复计费）
   const dup = await db
     .select({ id: pipelineRuns.id })
     .from(pipelineRuns)
     .where(and(eq(pipelineRuns.workflowId, workflowId), eq(pipelineRuns.workflowSeq, seq + 1)))
     .limit(1)
-  if (dup.length) return
+  if (dup.length) return { kind: 'inflight' }
   const newRun = await createRunRow({
     projectId: freshWf.projectId,
     templateKey: next.templateKey,
@@ -480,6 +498,37 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
       templateKey: next.templateKey,
       inputs,
     })
+  }
+  return { kind: 'advanced', runId: newRun.id }
+}
+
+/**
+ * 对话内「批准续跑」显式单段推进（M64 G1）：供创作会话在段间暂停（autoAdvance=0）时按用户批准启动下一段。
+ * 复用 advanceToNextSegment（预算/输入/幂等/状态复核与自动级联同源），只是绕过 autoAdvance 闸门、每次仅进一步。
+ * 同链互斥复用 advancing 集合（与 advanceWorkflow/startWorkflow 共享）；失败/取消段落不批准续跑（依不自动重试语义）。
+ */
+export async function requestNextSegment(workflowId: number): Promise<AdvanceOutcome> {
+  if (advancing.has(workflowId)) throw new WorkflowError('busy', `编排链 ${workflowId} 正在推进中，请稍后再试`)
+  advancing.add(workflowId)
+  try {
+    const wf = await getWorkflow(workflowId)
+    if (!wf) throw new WorkflowError('not_found', `编排链 ${workflowId} 不存在`)
+    if (wf.status === 'done' || wf.status === 'cancelled') throw new WorkflowError('bad_state', `status=${wf.status} 的链不可续跑`)
+    // 取链内最大 seq 的已落定 run（须 completed 才批准续跑；failed/cancelled 依不自动重试语义拒绝）
+    const lastSettled = await db
+      .select()
+      .from(pipelineRuns)
+      .where(and(eq(pipelineRuns.workflowId, workflowId), inArray(pipelineRuns.status, ['completed', 'failed', 'cancelled'])))
+      .orderBy(desc(pipelineRuns.workflowSeq), desc(pipelineRuns.id))
+      .limit(1)
+    const last = lastSettled[0]
+    if (!last) throw new WorkflowError('nothing_to_advance', '链上尚无已落定段落，无法续跑')
+    if (last.status !== 'completed') return { kind: 'blocked', reason: 'state' }
+    // 段落被预算/输入阻塞过 → paused：用户批准视作显式继续，归一 active 后过尾逻辑 9a 复核
+    if (wf.status === 'paused') await setWorkflowStatus(workflowId, 'active')
+    return await advanceToNextSegment(last, wf, workflowId, parseSegments(wf.segments))
+  } finally {
+    advancing.delete(workflowId)
   }
 }
 

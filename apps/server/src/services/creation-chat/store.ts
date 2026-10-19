@@ -7,6 +7,7 @@ import { planningProgress } from './planning-progress'
 import { agentDecisionSchema } from './agent/decision-schema'
 import { getRole } from './agent/roles'
 import { computeSideCards } from './side-cards'
+import { getWorkflow, parseSegments } from '../workflow'
 
 /** 只串行化短数据库操作；模型/媒体调用不占锁。数据库条件更新仍是最终仲裁。 */
 let tail: Promise<unknown> = Promise.resolve()
@@ -50,6 +51,19 @@ export async function creationDetail(id: number) {
   const preflightReady = parseJson<{ ready?: boolean } | null>(session.preflight, null)?.ready === true
   const confirmable = session.status === 'ready' && preflightReady
   const runStatus = projection?.progress?.status ?? null
+  // chain 段间待续跑投影（M64 G1）：纯读派生——链 active + 有已落定段 + 下一段未起 → 出批准卡（不回写会话态）
+  let chainAwaiting = false
+  if (session.workflowId && decisionMode === 'chain' && session.status === 'started') {
+    const wf = await getWorkflow(session.workflowId)
+    if (wf && wf.status === 'active') {
+      const total = parseSegments(wf.segments).length
+      const wfRuns = await db.select({ seq: pipelineRuns.workflowSeq, status: pipelineRuns.status }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, session.workflowId))
+      const startedSeqs = new Set(wfRuns.map((r) => r.seq ?? 0))
+      const doneSeqs = wfRuns.filter((r) => r.status === 'completed').map((r) => r.seq ?? 0)
+      const maxDone = doneSeqs.length ? Math.max(...doneSeqs) : -1
+      chainAwaiting = maxDone >= 0 && maxDone + 1 < total && !startedSeqs.has(maxDone + 1)
+    }
+  }
   const sideCards = computeSideCards({
     status: session.status,
     agentMode: session.agentMode === 1,
@@ -57,6 +71,7 @@ export async function creationDetail(id: number) {
     hasPlan: !!session.plan,
     confirmable,
     workflowId: session.workflowId ?? null,
+    chainAwaiting,
     hasRun: !!run,
     runStatus,
     hasReview: !!projection?.progress?.review,
@@ -113,6 +128,30 @@ export async function listCreationSessions() {
 
 export async function notifyCreationSettled(runId: number): Promise<void> {
   await db.update(creationSessions).set({ updatedAt: Date.now() }).where(eq(creationSessions.runId, runId))
+  await notifyChainSegmentAwaiting(runId)
+}
+
+/**
+ * chain 段间「待续跑批准」留痕（M64 G1）：编排 run 落定（completed）且属 autoAdvance=0 对话链、仍有后续段时，
+ * 向所属创作会话追加一条「第 n 段已完成·待批准」助手消息（幂等：同 workflow+seq 只落一条）。
+ * 纯 creation-chat 层旁路，不改 M27 编排器核心（advanceWorkflow 对 autoAdvance=0 仅发段完成事件、保持 active）。
+ */
+async function notifyChainSegmentAwaiting(runId: number): Promise<void> {
+  const [run] = await db.select({ workflowId: pipelineRuns.workflowId, status: pipelineRuns.status, seq: pipelineRuns.workflowSeq }).from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1)
+  if (!run || run.workflowId == null || run.status !== 'completed') return
+  const [session] = await db.select().from(creationSessions).where(eq(creationSessions.workflowId, run.workflowId)).limit(1)
+  if (!session || session.status !== 'started') return
+  const wf = await getWorkflow(run.workflowId)
+  if (!wf || wf.autoAdvance === 1) return // 自动级联链段间不停等批准
+  const total = parseSegments(wf.segments).length
+  const seq = run.seq ?? 0
+  if (seq + 1 >= total) return // 末段落定：无后续段可批准
+  const dup = (await db.select({ payload: creationMessages.payload }).from(creationMessages).where(eq(creationMessages.sessionId, session.id)))
+    .some((m) => { const p = parseJson<Record<string, unknown>>(m.payload, {}); return p['kind'] === 'chain-await' && p['workflowId'] === run.workflowId && p['seq'] === seq })
+  if (dup) return
+  const decision = agentDecisionSchema.safeParse(parseJson<unknown>(session.decision, null))
+  const agentRole = decision.success && decision.data.mode === 'chain' ? decision.data.roleKey : null
+  await db.insert(creationMessages).values({ sessionId: session.id, role: 'assistant', agentRole, content: `第 ${seq + 1} 段已完成（共 ${total} 段）。请在右侧核对成果后批准继续下一段（段间不自动级联计费）。`, payload: JSON.stringify({ kind: 'chain-await', workflowId: run.workflowId, seq, nextSeq: seq + 1, totalSegments: total }), createdAt: Date.now() })
 }
 
 /** 启动时只对账控制态；从不重新发起规划或媒体请求。 */

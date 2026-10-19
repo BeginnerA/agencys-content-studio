@@ -13,6 +13,7 @@ import CreationArtifacts from './CreationArtifacts.vue'
 import AgentGuideCard from './AgentGuideCard.vue'
 import AgentDecisionCard from './AgentDecisionCard.vue'
 import ChainProgressCard from './ChainProgressCard.vue'
+import ChainAwaitingCard from './ChainAwaitingCard.vue'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -26,6 +27,7 @@ const registry: Record<string, Component> = {
   decisionCard: AgentDecisionCard,
   review: CreationReview,
   chainProgress: ChainProgressCard,
+  chainAwaiting: ChainAwaitingCard,
   result: CreationResult,
   progress: CreationProgress,
   artifacts: CreationArtifacts,
