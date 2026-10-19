@@ -8,7 +8,7 @@ import MessageRefBubble from './MessageRefBubble.vue'
 import AttachmentTray from './AttachmentTray.vue'
 import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import { assetApi } from '../../lib/api'
-import { whoLabel, avatarIcon } from './conversation-utils'
+import { whoLabel, avatarIcon, pickReverseSourceId } from './conversation-utils'
 import { usePlanningPhase } from './use-planning-phase'
 import { isAttachment, refAssetId } from './ref-utils'
 import type { Asset, CreationChatMessage } from '../../lib/types'
@@ -55,6 +55,8 @@ const renderedMessages = computed<CreationChatMessage[]>(() => {
   ]
 })
 
+// 反推交付左右收敛（见 pickReverseSourceId）：右侧已抬 reverseAnalysis 卡时隐藏左侧对应气泡内联渲染
+const reverseSourceId = computed(() => pickReverseSourceId(props.s.state.detail?.messages ?? [], props.s.state.detail?.sideCards))
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
 watch(
   () => [
@@ -101,7 +103,7 @@ watch(
   },
 )
 
-// system 留痕按类型给来源标签与图标 / 助手发言多角色署名（M63）→ 纯函数抽至 conversation-utils.ts（行为零变更）
+// system 留痕按类型给来源标签与图标 / 助手发言多角色署名 → 纯函数抽至 conversation-utils.ts（行为零变更）
 
 async function submit(): Promise<void> {
   const text = draft.value.trim()
@@ -268,9 +270,9 @@ async function onFiles(e: Event): Promise<void> {
               <span class="qs-tx">{{ q }}</span>
             </button>
           </div>
-          <!-- 图片反推产物随消息透出，在对话流直接渲染（plan/clarify 皆有，用户「反推图片提示词」的交付物） -->
+          <!-- 图片反推产物随消息透出；右侧已抬 reverseAnalysis 成果卡时本条内联渲染收敛（m.id === reverseSourceId） -->
           <PlanImageAnalysis
-            v-if="m.payload?.imageAnalysis?.length"
+            v-if="m.payload?.imageAnalysis?.length && m.id !== reverseSourceId"
             class="msg-img-analysis"
             :entries="m.payload.imageAnalysis"
           />

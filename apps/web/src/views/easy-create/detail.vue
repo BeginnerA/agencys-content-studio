@@ -12,6 +12,7 @@ import CreationResult from './CreationResult.vue'
 import CreationArtifacts from './CreationArtifacts.vue'
 import AgentGuideCard from './AgentGuideCard.vue'
 import AgentDecisionCard from './AgentDecisionCard.vue'
+import ReverseAnalysisCard from './ReverseAnalysisCard.vue'
 import ChainProgressCard from './ChainProgressCard.vue'
 import ChainAwaitingCard from './ChainAwaitingCard.vue'
 import { useEasyCreate } from './use-creation-chat'
@@ -19,10 +20,11 @@ import { useEasyCreate } from './use-creation-chat'
 const s = useEasyCreate()
 const route = useRoute()
 
-// 卡片注册表：服务端 sideCards[].key → 组件。显隐与顺序完全由后端裁决，前端只登记可渲染单元（M63）。
+// 卡片注册表：服务端 sideCards[].key → 组件。显隐与顺序完全由后端裁决，前端只登记可渲染单元。
 const registry: Record<string, Component> = {
   guide: AgentGuideCard,
   planning: AgentGuideCard,
+  reverseAnalysis: ReverseAnalysisCard,
   planCard: CreationPlanCard,
   decisionCard: AgentDecisionCard,
   review: CreationReview,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import type { CreationImageAnalysisEntry } from '../../lib/types'
 
@@ -9,9 +9,15 @@ import type { CreationImageAnalysisEntry } from '../../lib/types'
  * 系统从图里读到了什么、方案据此约束，全部可见可核对。
  * 只展示真源字段（缺失不编造）；无反推产物时父级完全不渲染。
  */
-defineProps<{ entries: CreationImageAnalysisEntry[] }>()
+const props = defineProps<{ entries: CreationImageAnalysisEntry[] }>()
 
+// 默认全部展开：反推结果即交付物，无需逐条点开；entries 变化时重置为全开
 const open = ref<number[]>([])
+watch(
+  () => props.entries,
+  (list) => { open.value = list.map((_, i) => i) },
+  { immediate: true },
+)
 const toggle = (i: number): void => {
   open.value = open.value.includes(i) ? open.value.filter((x) => x !== i) : [...open.value, i]
 }
@@ -39,9 +45,16 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
       <button class="ia-head" type="button" :aria-expanded="open.includes(i)" @click="toggle(i)">
         <Icon :name="open.includes(i) ? 'chevron-down' : 'chevron-right'" :size="13" />
         <span class="ia-name">{{ e.name }}</span>
-        <span v-if="e.style || e.subject" class="ia-meta muted">{{ [e.style, e.subject].filter(Boolean).join(' · ') }}</span>
       </button>
       <div v-if="open.includes(i)" class="ia-body">
+        <div v-if="e.subject" class="ia-field">
+          <div class="ia-label">画面主体</div>
+          <p class="ia-text">{{ e.subject }}</p>
+        </div>
+        <div v-if="e.style" class="ia-field">
+          <div class="ia-label">视觉风格</div>
+          <p class="ia-text">{{ e.style }}</p>
+        </div>
         <div class="ia-field">
           <div class="ia-label">
             正向提示词
@@ -125,17 +138,18 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
 .ia-name {
   font-weight: 700;
   color: var(--text);
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ia-meta {
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.ia-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  word-break: break-word;
 }
 
 .ia-body {

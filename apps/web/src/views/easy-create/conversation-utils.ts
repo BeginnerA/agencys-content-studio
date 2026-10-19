@@ -1,10 +1,10 @@
 /**
  * 轻松创作（智能创作）对话面板「消息署名」纯函数（自 ConversationPanel.vue 原样搬出，行为零变更）：
- * 按消息 role / payload.kind / roleName 判定气泡显示名与头像图标。M63 Agent 多角色署名：助手发言
+ * 按消息 role / payload.kind / roleName 判定气泡显示名与头像图标。多角色署名：助手发言
  * 优先用服务端下发的 roleName，无角色历史消息回落「策划助手」；system 留痕按类型给来源标签（审阅/返修/合成/换角）。
  */
 import { CREATION_ROLE_LABELS, creationSystemLabel } from '../../lib/types'
-import type { CreationChatMessage } from '../../lib/types'
+import type { CreationChatMessage, SideCardView } from '../../lib/types'
 
 export function whoLabel(m: CreationChatMessage): string {
   if (m.role === 'system') {
@@ -22,4 +22,21 @@ export function avatarIcon(m: CreationChatMessage): string {
   return kind === 'rework' || kind === 'rework_plan' || kind === 'recompose'
     ? 'pencil'
     : 'eye'
+}
+
+/**
+ * 反推交付左右收敛：当右侧已下发 reverseAnalysis 成果卡时，返回其呈现的那条最新 assistant
+ * 消息 id（左侧对应气泡的内联反推渲染据此隐藏，避免左右重复）；无该卡时返回 null
+ * （成片流的侧分析仍随方案在对话流呈现）。
+ */
+export function pickReverseSourceId(
+  messages: CreationChatMessage[],
+  sideCards: SideCardView[] | undefined,
+): number | null {
+  if (!sideCards?.some((c) => c.key === 'reverseAnalysis')) return null
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === 'assistant' && m.payload?.imageAnalysis?.length) return m.id
+  }
+  return null
 }

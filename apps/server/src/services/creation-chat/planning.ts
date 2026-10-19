@@ -162,7 +162,7 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
   })
   if (!claimed) return creationDetail(id)
-  // agent 模式（M63 切片 2）：新会话默认进入，legacy 会话（agentMode 非 1）逐字走旧路径零回归。
+  // agent 模式：新会话默认进入，legacy 会话（agentMode 非 1）逐字走旧路径零回归。
   const isAgent = claimed.agentMode === 1
   const catalog: CatalogEntry[] = isAgent ? buildTemplateCatalog() : []
   // 阶段进度登记（内存旁信道）：等待期 detail.session.planning 实时透出「阶段 + 已进行秒数」，
@@ -394,7 +394,7 @@ export async function persistReverseFallback(id: number, claimed: CreationSessio
     if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
     await tx.insert(creationMessages).values({
       sessionId: id, role: 'assistant',
-      content: '已从你上传的参考图反推出可投产提示词（见下方，可直接复制使用）。这属于图片反推能力，本轮未生成视频方案。要我据此再规划一条成片，还是调整风格/主体后重新反推？',
+      content: '已从你上传的参考图反推出可投产提示词（见反推结果卡，可直接复制使用）。这属于图片反推能力，本轮未生成视频方案。要我据此再规划一条成片，还是调整风格/主体后重新反推？',
       payload: JSON.stringify({ kind: 'clarify', questions: ['据此反推提示词规划一条成片', '调整风格/主体后重新反推'], imageAnalysis: imageAnalyses }),
       createdAt: Date.now(),
     })

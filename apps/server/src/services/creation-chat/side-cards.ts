@@ -1,10 +1,11 @@
 /**
- * sideCards 服务端权威计算（M63 切片 4）：把「上下文智能显示」的裁决权收归后端，可探针断言。
- * 前端只做组件注册表渲染（切片 5），不再靠一堆 v-if 拼显隐。
+ * sideCards 服务端权威计算：把「上下文智能显示」的裁决权收归后端，可探针断言。
+ * 前端只做组件注册表渲染，不再靠一堆 v-if 拼显隐。
  * 卡片清单与顺序由「会话控制态 + 是否 route 决策 + run 真实状态」派生：
  *   规划中 → planning；待确认 → route 走 decisionCard / easy 走 planCard（预检未过 confirmable=false）；
  *   制作中 → (chain 有 workflow → chainProgress) + (审阅闸 → review) + progress + (有成果 → artifacts)；
  *   完成 → result + artifacts；失败/取消 → recovery + progress + artifacts；空闲/需求含糊 → guide。
+ *   纯图片反推交付（draft·无方案·无 run·最新一轮含反推产物）→ reverseAnalysis 成果卡（取代 guide，把交付物抬到右侧权威区）。
  * props 只带渲染分支所需的最小标记，完整数据（plan/decision/progress/artifacts/result）仍在 detail 顶层，不重复下发。
  */
 import type { AgentMode } from './agent/decision-schema'
@@ -27,7 +28,7 @@ export interface SideCardsInput {
   confirmable: boolean
   /** chain 工作流 id（有则制作中出 chainProgress） */
   workflowId: number | null
-  /** chain 段间待续跑批准（有已落定段 + 仍有后续段未起 + 链 active）：出 chainAwaiting 批准卡（M64 G1） */
+  /** chain 段间待续跑批准（有已落定段 + 仍有后续段未起 + 链 active）：出 chainAwaiting 批准卡 */
   chainAwaiting: boolean
   /** run 是否已存在（session.runId 非空） */
   hasRun: boolean
@@ -39,6 +40,8 @@ export interface SideCardsInput {
   hasResult: boolean
   /** 是否有可查看产物（documents/shots 非空） */
   hasArtifacts: boolean
+  /** 最新一轮 assistant 消息是否携图片反推产物（纯反推交付；仅在 draft·无方案·无 run 时抬为右侧成果卡） */
+  hasReverseDeliverable: boolean
 }
 
 /**
@@ -56,7 +59,9 @@ export function computeSideCards(i: SideCardsInput): SideCard[] {
       if (i.hasPlan) return [{ key: 'planCard', props: { confirmable: i.confirmable } }]
       return [{ key: 'guide', props: {} }]
     }
-    // draft / starting 前瞬态 / 需求含糊（clarify 后回到 draft）：引导卡
+    // draft / starting 前瞬态 / 需求含糊（clarify 后回到 draft）：
+    // 若本轮是纯图片反推交付（无方案无 run但携反推产物）→ 右侧出成果卡；否则引导卡。
+    if (i.hasReverseDeliverable) return [{ key: 'reverseAnalysis', props: {} }]
     return [{ key: 'guide', props: {} }]
   }
 
@@ -65,7 +70,7 @@ export function computeSideCards(i: SideCardsInput): SideCard[] {
   const cards: SideCard[] = []
   if (i.hasReview) cards.push({ key: 'review', props: {} })
   if (i.workflowId) cards.push({ key: 'chainProgress', props: { workflowId: i.workflowId } })
-  // 段间批准卡：落在 chainProgress 之后，明示「本段已完成·待你批准继续下一段」（M64 G1 对话内闭环）
+  // 段间批准卡：落在 chainProgress 之后，明示「本段已完成·待你批准继续下一段」（对话内批准闭环）
   if (i.chainAwaiting) cards.push({ key: 'chainAwaiting', props: { workflowId: i.workflowId } })
   if (i.hasResult) cards.push({ key: 'result', props: {} })
   cards.push({ key: 'progress', props: { status: i.runStatus } })

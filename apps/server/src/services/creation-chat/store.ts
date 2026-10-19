@@ -44,14 +44,18 @@ export async function creationDetail(id: number) {
   const usages = await db.select().from(usageRecords).where(eq(usageRecords.projectId, session.projectId))
   const planning = usages.filter((u) => u.kind === 'llm' && parseJson<Record<string, unknown>>(u.meta, {}).sessionId === id)
   const initial = messages.map((m) => initialDraftSchema.safeParse(jsonRecord(m.payload))).find((p) => p.success)
-  // Agent 决策旁注（切片 4）：解析 decision 列；仅 route 形态（mode≠easy）暴露调度语义供 decisionCard 渲染
+  // Agent 决策旁注：解析 decision 列；仅 route 形态（mode≠easy）暴露调度语义供 decisionCard 渲染
   const decisionParsed = agentDecisionSchema.safeParse(parseJson<unknown>(session.decision, null))
   const decision = decisionParsed.success ? decisionParsed.data : null
   const decisionMode = decision && decision.mode !== 'easy' ? decision.mode : null
   const preflightReady = parseJson<{ ready?: boolean } | null>(session.preflight, null)?.ready === true
   const confirmable = session.status === 'ready' && preflightReady
   const runStatus = projection?.progress?.status ?? null
-  // chain 段间待续跑投影（M64 G1）：纯读派生——链 active + 有已落定段 + 下一段未起 → 出批准卡（不回写会话态）
+  // 纯图片反推交付判定：最新一条 assistant 消息携非空 imageAnalysis（是否抬为右侧成果卡由 computeSideCards 统一按状态门控）
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+  const lastAssistantPayload = parseJson<{ imageAnalysis?: unknown } | null>(lastAssistant?.payload ?? null, null)
+  const hasReverseDeliverable = Array.isArray(lastAssistantPayload?.imageAnalysis) && (lastAssistantPayload!.imageAnalysis as unknown[]).length > 0
+  // chain 段间待续跑投影：纯读派生——链 active + 有已落定段 + 下一段未起 → 出批准卡（不回写会话态）
   let chainAwaiting = false
   if (session.workflowId && decisionMode === 'chain' && session.status === 'started') {
     const wf = await getWorkflow(session.workflowId)
@@ -77,13 +81,14 @@ export async function creationDetail(id: number) {
     hasReview: !!projection?.progress?.review,
     hasResult: !!projection?.result,
     hasArtifacts: !!projection && (projection.artifacts.documents.length > 0 || projection.artifacts.shots.length > 0),
+    hasReverseDeliverable,
   })
   return {
     session: {
       id, projectId: session.projectId, status: session.status, plan: parseJson(session.plan, null),
       planRevision: session.planRevision, planHash: session.planHash, preflight: parseJson(session.preflight, null),
       runId: session.runId, runHistory: parseJson(session.runHistory, []), error: session.error,
-      // Agent 化旁注（切片 4）：agentMode 标记新会话；decision 为归一后权威决策（含 roleKey/team/rationale/各模式执行体），legacy 无 decision 时为 null
+      // Agent 化旁注：agentMode 标记新会话；decision 为归一后权威决策（含 roleKey/team/rationale/各模式执行体），legacy 无 decision 时为 null
       agentMode: session.agentMode === 1, decision,
       // route 确认闸真源：decisionHash 参与确认（语义同 planHash，改动即作废旧确认）；easy/legacy 为 null
       decisionHash: session.decisionHash ?? null,
@@ -101,13 +106,13 @@ export async function creationDetail(id: number) {
           }
         : null,
     },
-    // 角色署名（切片 4）：助手消息带 agentRole（注册表 key）+ roleName（中文名）；无角色的历史消息两者皆 null，前端回落「策划助手」
+    // 角色署名：助手消息带 agentRole（注册表 key）+ roleName（中文名）；无角色的历史消息两者皆 null，前端回落「策划助手」
     messages: messages.filter((m) => jsonRecord(m.payload).kind !== 'initial_draft').map((m) => ({ id: m.id, role: m.role, content: m.content, payload: parseJson(m.payload, null), requestKey: m.requestKey, agentRole: m.agentRole ?? null, roleName: m.agentRole ? getRole(m.agentRole)?.name ?? null : null, createdAt: m.createdAt })),
     planningUsage: { cost: planning.reduce((n, u) => n + (u.cost ?? 0), 0), unpriced: planning.filter((u) => u.cost === null).length },
     progress: projection?.progress ?? null,
     artifacts: projection?.artifacts ?? { shots: [], documents: [] },
     result: projection?.result ?? null,
-    // 服务端权威卡片流（切片 4）：前端组件注册表按序渲染，显隐裁决权在后端
+    // 服务端权威卡片流：前端组件注册表按序渲染，显隐裁决权在后端
     sideCards,
   }
 }
@@ -132,9 +137,9 @@ export async function notifyCreationSettled(runId: number): Promise<void> {
 }
 
 /**
- * chain 段间「待续跑批准」留痕（M64 G1）：编排 run 落定（completed）且属 autoAdvance=0 对话链、仍有后续段时，
+ * chain 段间「待续跑批准」留痕：编排 run 落定（completed）且属 autoAdvance=0 对话链、仍有后续段时，
  * 向所属创作会话追加一条「第 n 段已完成·待批准」助手消息（幂等：同 workflow+seq 只落一条）。
- * 纯 creation-chat 层旁路，不改 M27 编排器核心（advanceWorkflow 对 autoAdvance=0 仅发段完成事件、保持 active）。
+ * 纯 creation-chat 层旁路，不改编排器核心（advanceWorkflow 对 autoAdvance=0 仅发段完成事件、保持 active）。
  */
 async function notifyChainSegmentAwaiting(runId: number): Promise<void> {
   const [run] = await db.select({ workflowId: pipelineRuns.workflowId, status: pipelineRuns.status, seq: pipelineRuns.workflowSeq }).from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1)

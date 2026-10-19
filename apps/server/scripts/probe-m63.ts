@@ -161,9 +161,13 @@ async function main(): Promise<void> {
 
     // ================= side-cards：各会话态 → 卡片流投影（顺序敏感） =================
     'side-cards': async () => {
-      const base = { agentMode: true, decisionMode: null, hasPlan: false, confirmable: false, workflowId: null, hasRun: false, runStatus: null, hasReview: false, hasResult: false, hasArtifacts: false } as const
+      const base = { agentMode: true, decisionMode: null, hasPlan: false, confirmable: false, workflowId: null, chainAwaiting: false, hasRun: false, runStatus: null, hasReview: false, hasResult: false, hasArtifacts: false, hasReverseDeliverable: false } as const
       check(keysOf(computeSideCards({ ...base, status: 'planning' })) === 'planning', 'planning 态 → 仅 planning 卡')
-      check(keysOf(computeSideCards({ ...base, status: 'draft' })) === 'guide', 'draft 无 run → guide 引导卡')
+      check(keysOf(computeSideCards({ ...base, status: 'draft' })) === 'guide', 'draft 无 run 无反推产物 → guide 引导卡')
+      // 纯图片反推交付：draft·无方案·无 run 但携反推产物 → 右侧抬 reverseAnalysis 成果卡（取代 guide）
+      check(keysOf(computeSideCards({ ...base, status: 'draft', hasReverseDeliverable: true })) === 'reverseAnalysis', 'draft + 反推产物 → reverseAnalysis 成果卡')
+      // 反推产物不得劫持成片流：ready+plan 仍走 planCard（成片侧分析仍随方案留在对话流）
+      check(keysOf(computeSideCards({ ...base, status: 'ready', hasPlan: true, hasReverseDeliverable: true })) === 'planCard', 'ready+plan 携反推产物 → 仍 planCard（反推不劫持成片）')
       check(keysOf(computeSideCards({ ...base, status: 'ready', decisionMode: 'template' })) === 'decisionCard', 'ready + route 决策 → decisionCard')
       check(keysOf(computeSideCards({ ...base, status: 'ready', hasPlan: true })) === 'planCard', 'ready + easy 方案 → planCard')
       check(keysOf(computeSideCards({ ...base, status: 'ready' })) === 'guide', 'ready 但无方案/决策 → guide（兜底）')
@@ -183,7 +187,7 @@ async function main(): Promise<void> {
       const d = normalizeAgentReply({ kind: 'plan', message: '好', plan: makePlan() } as never, catalog, ctx)
       check(d?.mode === 'easy' && d?.roleKey === 'planner' && (d?.team.length ?? -1) === 0, '旧 plan 形（无角色字段）归一 → easy·planner·空编队（零回归）')
       // agentMode=false 会话侧卡 → planCard（easy/legacy 面板），非 decisionCard
-      check(keysOf(computeSideCards({ status: 'ready', agentMode: false, decisionMode: null, hasPlan: true, confirmable: true, workflowId: null, hasRun: false, runStatus: null, hasReview: false, hasResult: false, hasArtifacts: false })) === 'planCard', 'legacy/easy 会话 ready → planCard（沿用旧批准面板）')
+      check(keysOf(computeSideCards({ status: 'ready', agentMode: false, decisionMode: null, hasPlan: true, confirmable: true, workflowId: null, chainAwaiting: false, hasRun: false, runStatus: null, hasReview: false, hasResult: false, hasArtifacts: false, hasReverseDeliverable: false })) === 'planCard', 'legacy/easy 会话 ready → planCard（沿用旧批准面板）')
       // 老三形联合可解析老 clarify / 老 plan（新字段可选，向后兼容）
       check(agentReplySchema.safeParse({ kind: 'clarify', message: '问', questions: ['问题'] }).success, '老 clarify 回复仍解析（联合向后兼容）')
       check(agentReplySchema.safeParse({ kind: 'plan', message: '方案', plan: makePlan() }).success, '老 plan 回复仍解析（roleKey/team 可选）')
