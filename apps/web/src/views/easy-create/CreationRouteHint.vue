@@ -34,7 +34,7 @@ const graduateAction = computed(() =>
     </div>
     <div v-if="expanded" class="rh-body">
       <p>
-        当前方案仍会按轻松创作正常制作，本建议不改变任何执行内容。想要
+        当前方案仍会按智能创作正常制作，本建议不改变任何执行内容。想要
         〈{{ hint.label }}〉 的完整能力，可以：
       </p>
       <ol>
@@ -43,7 +43,7 @@ const graduateAction = computed(() =>
           <li>或到专业端用〈{{ hint.label }}〉模板直接建项目，走完整专业流程。</li>
         </template>
         <template v-else>
-          <li>到专业端用〈{{ hint.label }}〉模板建项目，走完整专业流程（本目标的专属链路，轻松创作不做替代）。</li>
+          <li>到专业端用〈{{ hint.label }}〉模板建项目，走完整专业流程（本目标的专属链路，智能创作不做替代）。</li>
         </template>
       </ol>
     </div>

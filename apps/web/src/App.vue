@@ -22,7 +22,7 @@ function isEasyRoute(path: string): boolean {
 // 初始：落在 /create 或 /system 用精简导航，其余专业路由用完整导航
 const proMode = ref(!isEasyRoute(route.path) && route.path !== '/system')
 const EASY_CREATE_NAVS: NavItem[] = [
-  { to: '/create', icon: 'chat', label: '轻松创作' },
+  { to: '/create', icon: 'chat', label: '智能创作' },
   { to: '/', icon: 'folder', label: '专业工作台' },
   { to: '/system', icon: 'cog', label: '设置' },
 ]

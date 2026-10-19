@@ -5,7 +5,7 @@ import { assets, type CreationSession, type PipelineRun, type pipelineSteps, typ
 import { absPathOf } from '../storage'
 import { readComposeConfig } from '../compose-config'
 import { creationPlanSchema } from './contract'
-import { describeRunConfigDrift, type ResumeConfigDrift } from './recipe'
+import { describeRunConfigDrift, isCreationTemplate, type ResumeConfigDrift } from './recipe'
 
 type Asset = typeof assets.$inferSelect
 type Step = typeof pipelineSteps.$inferSelect
@@ -49,6 +49,9 @@ function readable(a: Asset): boolean {
 
 /** 只加载当前运行及其显式引用的素材，恢复时无需改写旧素材所属 run。 */
 export async function loadCreationProjection(session: CreationSession, run: PipelineRun, steps: Step[], tasks: Task[]) {
+  // route 执行（template/synth/chain 命中专业模板）非批准链 → 走通用降级投影（逐 step 状态 + 文本/成片产物），
+  // 不套 easy 六段语义（recipe/plan 不存在时旧投影会退化误报）；easy 批准链逐字走原精细投影（零回归）。
+  if (!isCreationTemplate(run.templateKey)) return projectGenericRun(session, run, steps, tasks)
   const recipe = jsonRecord(String(jsonRecord(run.input).recipe ?? ''))
   const sourceIds = Array.isArray(recipe.sources)
     ? recipe.sources.flatMap((s) => s && typeof s === 'object' && positiveId((s as { id?: unknown }).id) ? [(s as { id: number }).id] : []) : []
@@ -197,5 +200,47 @@ export function projectCreation(session: CreationSession, run: PipelineRun, step
       issue: settledBad ? { summary: `${failedStage ? `${failedStage.title}未完成` : status === 'cancelled' ? '制作已取消' : '制作未完成'}；已有 ${savedCount} 项成果可查看。${uncertainTasks.length ? `有 ${uncertainTasks.length} 个请求的受理或完成状态需核实，是否已计费尚不确定。` : '请查看阶段状态后决定是否恢复。'}`, details: [...technical].map(([message, scopes]) => ({ message, scopes })) } : null,
     }, artifacts,
     result: run.status === 'completed' && delivered && final ? { videoId: final.id, coverId: cover?.id ?? null, duration: final.duration } : null,
+  }
+}
+
+/**
+ * 通用降级投影（任意专业模板 run：route 命中的 template/synth/chain 段）。
+ * 不依赖 easy recipe/plan：逐 pipelineStep 出阶段状态 + genTasks 计数 + 文本/成片产物资产。
+ * 形态与 easy 投影兼容（progress/artifacts/result 同键），供前端卡片流按 mode 分渲染；不做六段精细语义。
+ */
+async function projectGenericRun(session: CreationSession, run: PipelineRun, steps: Step[], tasks: Task[]) {
+  steps = steps.filter((s) => s.runId === run.id)
+  tasks = tasks.filter((t) => t.projectId === session.projectId && t.runId === run.id)
+  const ids = [...new Set([...steps.flatMap((s) => outputAssetIds(s.output)), ...tasks.map((t) => t.resultAssetId).filter(positiveId)])]
+  const media = await db.select().from(assets).where(and(eq(assets.projectId, session.projectId), ids.length ? inArray(assets.id, ids) : eq(assets.runId, run.id)))
+  const byId = new Map(media.filter((a) => a.projectId === session.projectId).map((a) => [a.id, a]))
+  const avail = (id: number, kind: string): CreationArtifact | null => {
+    const a = byId.get(id)
+    if (!a || a.deletedAt !== null || a.kind !== kind) return null
+    return { assetId: a.id, kind, name: a.name, available: readable(a), sourceRunId: a.runId, reused: a.runId !== null && a.runId !== run.id }
+  }
+  const settledBad = ['failed', 'cancelled'].includes(run.status)
+  const doneTasks = tasks.filter((t) => t.status === 'succeeded').length
+  const stepsDone = steps.filter((s) => s.status === 'succeeded' || s.status === 'skipped').length
+  const stages = steps.map((s) => ({ key: s.stepKey, title: s.title ?? s.stepKey, applicable: true as const, status: s.status, completed: null, total: null }))
+  // 产物：文类步骤输出 → documents；video 类 final → result
+  const documents: Array<CreationArtifact & { label: string }> = []
+  for (const s of steps) {
+    for (const id of outputAssetIds(s.output)) {
+      const art = avail(id, 'text') ?? avail(id, 'image') ?? avail(id, 'audio') ?? avail(id, 'video')
+      if (art) documents.push({ ...art, label: s.title ?? s.stepKey })
+    }
+  }
+  const finalVideo = steps.flatMap((s) => outputAssetIds(s.output)).map((id) => avail(id, 'video')).filter((a): a is CreationArtifact => !!a && a.available).at(-1) ?? null
+  return {
+    progress: {
+      runId: run.id, status: run.status, currentStep: run.currentStepKey, error: run.error, review: null, subtitleBurn: true,
+      needsVerification: false, uncertainTasks: [] as unknown[],
+      completedShots: stepsDone, steps: steps.map((s) => ({ key: s.stepKey, title: s.title ?? s.stepKey, status: s.status, error: s.error })), stages,
+      recovery: { resumable: settledBad, requiredTaskIds: [] as number[], queryTaskCount: doneTasks, unpriced: [] as string[], configDrift: [] as ResumeConfigDrift[] },
+      issue: settledBad ? { summary: `任务未完成；已完成 ${stepsDone}/${steps.length} 步。`, details: [...new Set(steps.map((s) => s.error).filter((e): e is string => !!e?.trim()))].map((message) => ({ message, scopes: ['制作'] })) } : null,
+    },
+    artifacts: { shots: [] as unknown[], documents },
+    result: run.status === 'completed' && finalVideo ? { videoId: finalVideo.assetId, coverId: null, duration: byId.get(finalVideo.assetId)?.duration ?? null } : null,
   }
 }

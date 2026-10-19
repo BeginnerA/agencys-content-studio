@@ -1,4 +1,4 @@
-# 里程碑能力速览（M2–M62）
+# 里程碑能力速览（M2–M63）
 
 按里程碑（升序）记录各版本的设计原则、action / 端点面变更、模板与提示词升级与验证命令。本文档自包含；M2–M19 速览中的文件名为当时历史记述，现行目录结构以 M28 节为准。
 
@@ -848,6 +848,20 @@ M44 严格对白执行链落地后一直冻结在「未接真实 whisper-1 即 `
 - **附 [M62-split] 既存红线恢复（授权拆分，非本项机制引入）**：CanvasBoard.vue 802 行越 m26 「scripts+server/src+web/src 全部 ≤800」常红约束（由 `03f64de` 2026-09-30「背景点阵网格」从 730 行推入，先于本项且非本项引入），按既有拆分先例抽出纯静态图例为 `CanvasLegend.vue`（净 −38 行 → 764 行；DOM 结构与 scoped 样式原样迁移，行为逐像素零变更）。
 
 验证：`probe-m62`（五节 signals/priority/gating/sanitize/drift **33 断言全绿**：小说改编三措辞（含《万千戏台做你的光》实录场景）、强/弱词与双前置防线、三处定序反例（小说+连载→novel-adapt / 反推+拼片→image-reverse / 3 分钟相册→photo-montage 且 3 分钟故事片→video-plan 零回归）、「片段/梗概」排除、两新目标 label 真源回填、drift 起全量 7 目标在位 + strict 拒 routeHint 键不变式）。回归 `probe-m57`（26 断言零回归）/`m58`（44）/`m59`（24）/`m56`（33）全绿；双端 `tsc`/`vue-tsc` exit 0；终门禁 `pnpm probe:ci` 串行 **63 探针 / 5569 断言全绿**（287.9s，含 m26 红线归零 34 断言）。首跑 m15 子进程 `probe:m2a` 退出码 3221225477（Windows 进程退出清理偶发假失败，其断言全部通过）复跑即绿，非本任务回归。
+
+---
+
+## M63 能力速览（轻松创作 Agent 化：智能调度全部专业模板 + 注册制角色编队 + 服务端决策驱动动态面板）
+
+> 痛点：`creation-chat` 执行模板硬编码二选一（`easy-video`/`easy-dialogue`），方案契约 `creationPlanSchema` 仅覆盖「单条 30–90s 视频」，右侧面板为 5 个固定组件静态堆叠，助手人设只有一个「策划助手」——无法按对话上下文智能调度全目录专业模板、未命中模板无从执行、面板显隐靠前端一堆 `v-if` 拼凑。目标：把轻松创作重构为项目内**独立智能 Agent**（LLM 意图路由自动调度全目录 + 命中即编排/直调 + 未命中合成临时模板执行 + 多角色编队 + 服务端决策驱动的动态卡片流）。详规：`docs/records/M63-轻松创作Agent化-design.md`（已批准，采纳「注册制角色 + 智能编队」混合模型）。
+
+- **M63.1 契约与数据（纯加法，0 迁移）**：`agent/decision-schema.ts` `agentDecisionSchema`（strict zod，四模式 `easy|template|chain|synth`）+ route 原始回复 schema；`agent/reply-schema.ts` 三形判别联合 `clarify|plan|route`（**单独成文件打断 contract↔decision-schema ESM 循环依赖 TDZ**；老 `planningReplySchema` 逐字不动）。DB：`creation_sessions` 加 `agentMode/decision/decisionHash/workflowId`、`creation_messages` 加 `agentRole`（NULL=历史消息显「策划助手」，`ensureColumn` 幂等兜底）。
+- **M63.2 四模式执行器**：`template` 命中单专业模板 → 既有 `createRunRow` 直调；`chain` 多步任务 → 复用 M27 workflows orchestrator（`autoAdvance=0` 段间暂停回对话流请求批准）；`synth` 未命中 → LLM 合成临时 YAML → `validateTemplateText` 全量校验（KNOWN_ACTIONS 白名单硬闸 + 高危 action 黑名单 + 步数 ≤12）→ `saveTemplate`（仿制 key `agent-s{sid}-*`、`visibility:conversation` 不进专业选择器、随会话删除回收）→ 起 run；`easy` 批准链 + recipe 冻结快照 **逐字保留现状**（preflight/planHash/预算/幂等），decision 仅展示旁注。确认闸从「确认方案」泛化为「确认执行计划」：`decisionHash=hashJson(decision)` 参与，M40「确认才立项」不变量不动。
+- **M63.3 注册制角色 + 智能编队（本轮核心拍板，否决纯 LLM 临场造角色）**：`agent/roles.ts` + `workspace/prompts/roles/*.md`（提示词文件即角色、零代码扩展）——角色 = 人设片段 + 代码侧能力声明（`modes` + 可调度 `templateKeys` 子集）。首批 4 角：`planner`（策划，全能兜底，唯一可 synth）、`screenwriter`（编剧）、`storyboard`（分镜师）、`operator`（运营）。智能在「点将」：`decision.roleKey` + `decision.team` 编队；说话者恒在注册表内——未注册 roleKey / 能力越界归一回落 planner（`capabilityNotes` 可见留痕，绝不静默）。
+- **M63.4 归一 + 服务端权威目录（可见不静默）**：`agent/normalize.ts` LLM 输出=建议值 → 服务端权威归一（能力拉回、幽灵 asset id 剔除、synth 危险拦截 + YAML 重写）。`agent/template-catalog.ts` `listTemplates()` 摘要（含 inputs 声明面）注入决策 LLM，`easy-*`（conversationOnly）不进目录；确认前重验「目录命中 + 版本一致」，漂移作废旧确认（同 planHash 作废律）。
+- **M63.5 动态面板（服务端决策驱动）**：`side-cards.ts` 纯函数按「会话控制态 + 是否 route 决策 + run 真实状态」派生卡片流（planning/decisionCard/planCard/guide/review/chainProgress/result/progress/artifacts），可探针断言；`creationDetail` 下发 `sideCards/decision/decisionHash/agentMode/workflowId`；前端 `detail.vue` 右侧改为 `<component :is>` 注册表渲染（不再一堆 `v-if`），新组件 `AgentGuideCard`/`AgentDecisionCard`/`ChainProgressCard`；角色署名 `whoLabel` 用 `roleName` + handoff 标签；文案改名「轻松创作 → 智能创作」（导航/主标/入口，路由路径与组件目录名保留）。
+
+验证：`probe-m63`（五节 route/confirm/side-cards/legacy/roles **52 断言全绿**：四模式 schema strict / 目录非空排除 easy-* / 归一四形（clarify→null·plan→easy 旁注·template 注入 snapshot·chain 两段·synth 重写）/ route 承载 easy 拒绝 / 未注册 roleKey 与幽灵 asset 回落留痕 / synth 高危与步数闸 / decisionHash 确定性 / routeDecisionOf 分派（agentMode≠1 或 easy 决策→null）/ preflightDecision 目录漂移与 synth 正过闸 / computeSideCards 逐态定序 / legacy 零回归 / roles 4 角·回落·能力边界·人设加载）。首跑即捕获并修复归一层「sanitizeInputSpec 后置留痕被 base 早判丢弃」真实缺陷（改持 live notes 引用，落实「可见不静默」）。双端 `tsc`/`vue-tsc` exit 0；creation-chat 全谱探针零回归（m40 81/m41 57/m42 137/m43 52/m44 283/m45 45/m46 23/m56 33/m57 26/m58 44/m59 24/m62 33/m63 52 全绿）；修复本项自引入的 ConversationPanel.vue m26 红线回归（whoLabel/avatarIcon 抽 conversation-utils.ts、规划计时抽 use-planning-phase.ts，713→839→790）。注：全仓 `pnpm ci:check` 因 3 个先于 M63、与本项无关的既存 >800 文件（seed-learning-canvases.ts/CanvasBoard.vue/board/index.vue，m26 常红门禁，HEAD 已红）仍不会全绿，经用户确认另立专项、不在本项混入无关重构。
 
 ---
 

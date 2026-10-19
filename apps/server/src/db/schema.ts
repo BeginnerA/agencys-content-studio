@@ -639,7 +639,10 @@ export const reworkRequests = sqliteTable(
 
 export type ReworkRequest = typeof reworkRequests.$inferSelect
 
-/** 创作控制态；生产状态始终由关联 run 投影。 */
+/** 创作控制态；生产状态始终由关联 run 投影。
+ *  Agent 化（M63）纯加法列：agentMode NULL=legacy 会话（冻结 planHash 逐字走旧路径）；
+ *  decision/decisionHash 仅 template/chain/synth 新执行形态参与确认闸（easy 形态 decision 列只是展示旁注，确认链仍读 plan/planHash）；
+ *  workflowId 为 chain 模式建立的 M27 编排链引用。 */
 export const creationSessions = sqliteTable('creation_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),
@@ -654,6 +657,10 @@ export const creationSessions = sqliteTable('creation_sessions', {
   runId: integer('run_id'),
   runHistory: text('run_history').notNull().default('[]'),
   error: text('error'),
+  agentMode: integer('agent_mode'),
+  decision: text('decision'),
+  decisionHash: text('decision_hash'),
+  workflowId: integer('workflow_id'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [
@@ -662,10 +669,12 @@ export const creationSessions = sqliteTable('creation_sessions', {
   index('idx_creation_run').on(t.runId),
 ])
 
+/** 对话消息；agentRole 为助手发言的注册角色署名（NULL=历史消息/未点将，前端按现映射显「策划助手」） */
 export const creationMessages = sqliteTable('creation_messages', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sessionId: integer('session_id').notNull(),
   role: text('role').notNull(),
+  agentRole: text('agent_role'),
   content: text('content').notNull(),
   payload: text('payload'),
   requestKey: text('request_key'),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { confirmDialog } from '../../lib/confirm'
 import Icon from '../../components/common/Icon.vue'
 import AssetPreviewer from '../../components/asset/previewer/index.vue'
@@ -8,13 +8,16 @@ import MessageRefBubble from './MessageRefBubble.vue'
 import AttachmentTray from './AttachmentTray.vue'
 import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import { assetApi } from '../../lib/api'
-import { CREATION_ROLE_LABELS, creationSystemLabel } from '../../lib/types'
+import { whoLabel, avatarIcon } from './conversation-utils'
+import { usePlanningPhase } from './use-planning-phase'
 import { isAttachment, refAssetId } from './ref-utils'
 import type { Asset, CreationChatMessage } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 const draft = ref('')
+// 提交在途标志：发送即清空输入框期间冻结 draft↔ticket 双向同步，防止 ticket.content 回填 draft（ticket.content 仍保留原值供崩溃恢复与幂等比对）
+const submitting = ref(false)
 const scroller = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 // 从素材选取弹窗
@@ -25,7 +28,9 @@ const showPicker = ref(false)
 // 服务端列表里出现同 requestKey 消息即确认落库 → 撤回本地占位气泡，换成真消息
 const pendingVisible = computed(() => {
   const acked = new Set(
-    (props.s.state.detail?.messages ?? []).map((m) => m.requestKey).filter((k): k is string => !!k),
+    (props.s.state.detail?.messages ?? [])
+      .map((m) => m.requestKey)
+      .filter((k): k is string => !!k),
   )
   return props.s.state.pendingMessages.filter((p) => !acked.has(p.id))
 })
@@ -66,41 +71,84 @@ watch(
 const uploading = () => props.s.uploadingAttachments.value
 
 const started = computed(() => !!props.s.state.detail?.session.runId)
-const inputLocked = computed(() => props.s.first.locked.value || planning() || props.s.state.loadingDetail)
-watch(() => props.s.first.state.ticket?.content, (content, previous) => {
-  if (props.s.first.active.value && content !== undefined) draft.value = content
-  else if (previous !== undefined) draft.value = ''
-}, { immediate: true })
-watch(draft, (value) => props.s.first.setContent(value), { flush: 'sync' })
-watch(() => props.s.state.currentId, () => { draft.value = ''; previewAsset.value = null; showPicker.value = false; previewSeq++ })
+const inputLocked = computed(
+  () => props.s.first.locked.value || planning() || props.s.state.loadingDetail,
+)
+watch(
+  () => props.s.first.state.ticket?.content,
+  (content, previous) => {
+    if (submitting.value) return
+    if (props.s.first.active.value && content !== undefined)
+      draft.value = content
+    else if (previous !== undefined) draft.value = ''
+  },
+  { immediate: true },
+)
+watch(
+  draft,
+  (value) => {
+    if (!submitting.value) props.s.first.setContent(value)
+  },
+  { flush: 'sync' },
+)
+watch(
+  () => props.s.state.currentId,
+  () => {
+    draft.value = ''
+    previewAsset.value = null
+    showPicker.value = false
+    previewSeq++
+  },
+)
 
-// system 留痕按类型给来源标签与图标（审阅 / 返修 / 合成）：机器记录不伪装成策划助手的话
-function whoLabel(m: CreationChatMessage): string {
-  return m.role === 'system' ? creationSystemLabel(m.payload?.kind) : CREATION_ROLE_LABELS[m.role]
-}
-function avatarIcon(m: CreationChatMessage): string {
-  if (m.role === 'user') return 'users'
-  if (m.role !== 'system') return 'wand'
-  const kind = m.payload?.kind
-  return kind === 'rework' || kind === 'rework_plan' || kind === 'recompose' ? 'pencil' : 'eye'
-}
+// system 留痕按类型给来源标签与图标 / 助手发言多角色署名（M63）→ 纯函数抽至 conversation-utils.ts（行为零变更）
 
 async function submit(): Promise<void> {
   const text = draft.value.trim()
   const id = props.s.state.currentId
-  if (!text || planning() || props.s.first.busy.value || uploading() || props.s.state.loadingDetail) return
-  const replan = props.s.first.active.value && props.s.first.state.phase === 'failed'
-  if (replan && !await confirmDialog({ title: '重新规划', message: '上次规划失败。重新规划将再次调用模型，可能再次产生规划及参考解析费用。是否继续？', confirmText: '确认重新规划' })) return
+  if (
+    !text ||
+    planning() ||
+    props.s.first.busy.value ||
+    uploading() ||
+    props.s.state.loadingDetail
+  )
+    return
+  const replan =
+    props.s.first.active.value && props.s.first.state.phase === 'failed'
+  if (
+    replan &&
+    !(await confirmDialog({
+      title: '重新规划',
+      message:
+        '上次规划失败。重新规划将再次调用模型，可能再次产生规划及参考解析费用。是否继续？',
+      confirmText: '确认重新规划',
+    }))
+  )
+    return
   if (id !== props.s.state.currentId) return
-  const ok = await props.s.send(text, replan)
-  if (ok && id === props.s.state.currentId && draft.value.trim() === text) draft.value = ''
+  // 发送即清空：规划/生成可能耗时数十秒，输入框立即腾空让用户准备下一条；提交期间 submitting
+  // 冻结双向同步（ticket.content 仍保留原值供崩溃恢复与幂等比对），失败且用户未改动输入时回填原文避免丢字。
+  submitting.value = true
+  draft.value = ''
+  let ok = false
+  try {
+    ok = await props.s.send(text, replan)
+  } finally {
+    submitting.value = false
+  }
+  if (!ok && id === props.s.state.currentId && !draft.value.trim())
+    draft.value = text
 }
 
 // 素材弹窗确认：逐个登记为参考（服务端校验/复制；托盘内去重与上限由状态机把守；串行保证托盘顺序）
 async function onPickAssets(picked: Asset[]): Promise<void> {
   showPicker.value = false
   const id = props.s.state.currentId
-  for (const a of picked) { if (id !== props.s.state.currentId) break; await props.s.addAssetReference(a) }
+  for (const a of picked) {
+    if (id !== props.s.state.currentId) break
+    await props.s.addAssetReference(a)
+  }
 }
 
 // 对话内参考素材：缩略图展示 + 点击查看（复用统一 AssetPreviewer，零新预览实现；
@@ -117,7 +165,8 @@ async function openRefPreview(m: CreationChatMessage): Promise<void> {
     const { asset } = await assetApi.detail(id)
     if (token === previewSeq) previewAsset.value = asset
   } catch (e) {
-    if (token === previewSeq) props.s.state.error = `无法打开参考素材：${(e as Error).message}`
+    if (token === previewSeq)
+      props.s.state.error = `无法打开参考素材：${(e as Error).message}`
   } finally {
     if (token === previewSeq) refLoading.value = null
   }
@@ -130,38 +179,15 @@ function useQuestion(q: string): void {
 }
 
 const planning = () =>
-  props.s.state.detail?.session.status === 'planning' || props.s.state.busySend || props.s.first.state.phase === 'sending'
+  props.s.state.detail?.session.status === 'planning' ||
+  props.s.state.busySend ||
+  props.s.first.state.phase === 'sending'
 
-// ===== 规划阶段式进度（行业 AI 对话标准：长等待要让用户看到“到哪一步了”）=====
-// 服务端规划是同步一次性模型调用（推理模型整段思考期无可见输出，token 级流式对结构化 JSON 方案无意义），
-// 故经 session.planning 透出阶段 + 秒数；POST 返回前的窗口服务端尚未登记，本地秒表补位，气泡从第 0 秒起连续计时。
-const PHASE_LABELS: Record<'analyzing' | 'refs' | 'caps' | 'model' | 'validating', string> = {
-  analyzing: '理解需求中',
-  refs: '核验并理解参考素材中（多模态解析，可能较慢）',
-  caps: '探测模型能力与预检条件中',
-  model: '调用模型生成方案中（推理模型整段思考后才返回，请耐心等待）',
-  validating: '方案校验与制作预检中',
-}
-const localPlanSec = ref(0)
-let planTimer: ReturnType<typeof setInterval> | null = null
-watch(planning, (active) => {
-  if (active && !planTimer) {
-    localPlanSec.value = 0
-    planTimer = setInterval(() => { localPlanSec.value++ }, 1000)
-  } else if (!active && planTimer) {
-    clearInterval(planTimer)
-    planTimer = null
-  }
-})
-onScopeDispose(() => { if (planTimer) clearInterval(planTimer) })
-const planningPhaseLabel = computed(() => {
-  const p = props.s.state.detail?.session.planning
-  return p ? PHASE_LABELS[p.phase] : '接收请求中'
-})
-const planningElapsed = computed(() => {
-  const p = props.s.state.detail?.session.planning
-  return Math.max(p?.elapsedSec ?? 0, localPlanSec.value)
-})
+// ===== 规划阶段式进度（阶段标签 + 本地秒表补位计时）→ 抽至 use-planning-phase.ts（行为零变更）=====
+const { planningPhaseLabel, planningElapsed } = usePlanningPhase(
+  planning,
+  () => props.s.state.detail?.session.planning,
+)
 
 // 参考附件：选件即预校验+上传（不计费）；role 默认按 kind 推断可改
 function pickFiles(): void {
@@ -172,7 +198,10 @@ async function onFiles(e: Event): Promise<void> {
   const files = Array.from(input.files ?? [])
   input.value = ''
   const id = props.s.state.currentId
-  for (const f of files) { if (id !== props.s.state.currentId) break; await props.s.addAttachment(f) }
+  for (const f of files) {
+    if (id !== props.s.state.currentId) break
+    await props.s.addAttachment(f)
+  }
 }
 </script>
 
@@ -209,7 +238,9 @@ async function onFiles(e: Event): Promise<void> {
             @open="openRefPreview(m)"
           />
           <div v-else class="bubble">{{ m.content }}</div>
-          <div v-if="typeof m.id === 'string'" class="pending-hint">{{ planning() ? '已发送 · 等待回复…' : '发送中…' }}</div>
+          <div v-if="typeof m.id === 'string'" class="pending-hint">
+            {{ planning() ? '已发送 · 等待回复…' : '发送中…' }}
+          </div>
           <div
             v-if="m.payload?.kind === 'clarify' && m.payload.questions?.length"
             class="qs"
@@ -248,29 +279,53 @@ async function onFiles(e: Event): Promise<void> {
           <div class="bubble wait">
             <span class="dot" /><span class="dot" /><span class="dot" />
             正在理解需求并生成方案…（本步骤会调用模型，可能产生费用）
-            <div class="plan-progress">{{ planningPhaseLabel }} · 已进行 {{ planningElapsed }}s</div>
+            <div class="plan-progress">
+              {{ planningPhaseLabel }} · 已进行 {{ planningElapsed }}s
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="s.state.error || s.state.detail?.session.error" class="err-text pad" role="alert">{{ s.state.error || s.state.detail?.session.error }}</div>
-    <p v-if="s.first.state.warning" class="muted pad" role="status">{{ s.first.state.warning }}</p>
-    <p v-if="s.first.state.phase === 'uploading'" class="muted pad" role="status">正在核对会话并登记参考，全部成功后才提交规划。</p>
+    <div
+      v-if="s.state.error || s.state.detail?.session.error"
+      class="err-text pad"
+      role="alert"
+    >
+      {{ s.state.error || s.state.detail?.session.error }}
+    </div>
+    <p v-if="s.first.state.warning" class="muted pad" role="status">
+      {{ s.first.state.warning }}
+    </p>
+    <p
+      v-if="s.first.state.phase === 'uploading'"
+      class="muted pad"
+      role="status"
+    >
+      正在核对会话并登记参考，全部成功后才提交规划。
+    </p>
     <div v-if="s.state.notice && !s.state.error" class="muted pad note-text">
       {{ s.state.notice }}
     </div>
 
     <form class="composer" @submit.prevent="submit">
       <AttachmentTray v-if="!started && s.state.attachments.length" :s="s" />
-      <label class="ec-input-label" for="ec-detail-input">{{ started ? '记录下一版建议，不会修改当前制作' : '补充要求或修改方案' }}</label>
+      <label class="ec-input-label" for="ec-detail-input">{{
+        started ? '记录下一版建议，不会修改当前制作' : '补充要求或修改方案'
+      }}</label>
       <textarea
         id="ec-detail-input"
         v-model="draft"
         rows="2"
         :maxlength="6000"
         :disabled="inputLocked"
-        :placeholder="started ? (s.rework.canUse.value ? '写下下一版想调整的内容；只想改个别镜头？用成果面板的局部返修' : '写下下一版想调整的内容') : '描述需求或回答助手的追问'"
+        :placeholder="
+          started
+            ? s.rework.canUse.value
+              ? '写下下一版想调整的内容；只想改个别镜头？用成果面板的局部返修'
+              : '写下下一版想调整的内容'
+            : '描述需求或回答助手的追问'
+        "
         aria-label="创作需求"
         @keydown.enter.exact.prevent="submit"
       />
@@ -316,10 +371,28 @@ async function onFiles(e: Event): Promise<void> {
           <button
             class="btn primary"
             type="submit"
-            :disabled="planning() || s.first.busy.value || uploading() || s.state.loadingDetail || !draft.trim()"
+            :disabled="
+              planning() ||
+              s.first.busy.value ||
+              uploading() ||
+              s.state.loadingDetail ||
+              !draft.trim()
+            "
           >
             <Icon name="send" :size="13" />
-            {{ s.first.busy.value || uploading() ? '处理中…' : started ? '记录建议' : s.first.state.phase === 'failed' ? '重新规划' : s.first.state.phase === 'uncertain' ? '核对后继续' : s.first.active.value ? '继续生成方案' : '发送' }}
+            {{
+              s.first.busy.value || uploading()
+                ? '处理中…'
+                : started
+                  ? '记录建议'
+                  : s.first.state.phase === 'failed'
+                    ? '重新规划'
+                    : s.first.state.phase === 'uncertain'
+                      ? '核对后继续'
+                      : s.first.active.value
+                        ? '继续生成方案'
+                        : '发送'
+            }}
           </button>
         </div>
       </div>
@@ -345,7 +418,12 @@ async function onFiles(e: Event): Promise<void> {
 </template>
 
 <style scoped>
-.ec-input-label { display: block; margin-bottom: 8px; color: var(--text-2); font-size: 13px; }
+.ec-input-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
 .composer .btn {
   min-height: 30px;
   padding: 4px 12px;

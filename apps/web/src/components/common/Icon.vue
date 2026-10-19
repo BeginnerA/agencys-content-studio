@@ -105,6 +105,11 @@ const PATHS: Record<string, string> = {
   // 候选版本（堆叠层）
   layers:
     '<path d="m12 2.75 9 4.75-9 4.75L3 7.5l9-4.75Z" /><path d="m3 12 9 4.75L21 12" /><path d="m3 16.5 9 4.75 9-4.75" />',
+  // 智能调度决策（罗盘）/ 信息提示
+  compass:
+    '<circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />',
+  info:
+    '<circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />',
 }
 
 withDefaults(

@@ -581,12 +581,14 @@ async function ensureSchemaColumns(): Promise<void> {
   }
 
   // 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
+  // Agent 化（M63）新列直接入建表语句（新库）；存量库由下方 ensureColumn 幂等补齐。
   await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_sessions (
     id integer PRIMARY KEY AUTOINCREMENT, project_id integer NOT NULL,
     request_key text NOT NULL, status text DEFAULT 'draft' NOT NULL,
     plan text, approved_plan text, plan_revision integer DEFAULT 0 NOT NULL,
     plan_hash text, preflight text, start_key text, run_id integer,
     run_history text DEFAULT '[]' NOT NULL, error text,
+    agent_mode integer, decision text, decision_hash text, workflow_id integer,
     created_at integer NOT NULL, updated_at integer NOT NULL
   )`)
   await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_creation_request ON creation_sessions (request_key)')
@@ -594,9 +596,32 @@ async function ensureSchemaColumns(): Promise<void> {
   await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_run ON creation_sessions (run_id)')
   await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_messages (
     id integer PRIMARY KEY AUTOINCREMENT, session_id integer NOT NULL,
-    role text NOT NULL, content text NOT NULL, payload text, request_key text,
+    role text NOT NULL, agent_role text, content text NOT NULL, payload text, request_key text,
     created_at integer NOT NULL
   )`)
   await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_messages_session ON creation_messages (session_id)')
   await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_creation_message_request ON creation_messages (session_id, request_key)')
+
+  // Agent 化（M63）存量库加列兜底（纯加法、可空、零迁移；与上方 pipeline_runs.template_snapshot 同先例）
+  const csCols = await sqlite.execute("PRAGMA table_info('creation_sessions')")
+  const csHas = new Set((csCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  for (const [col, decl] of [['agent_mode', 'integer'], ['decision', 'text'], ['decision_hash', 'text'], ['workflow_id', 'integer']] as const) {
+    if (csHas.has(col)) continue
+    try {
+      await sqlite.execute(`ALTER TABLE creation_sessions ADD COLUMN ${col} ${decl}`)
+      log.info(`ensureColumn: creation_sessions.${col} 已补齐`)
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+  const cmCols = await sqlite.execute("PRAGMA table_info('creation_messages')")
+  const cmHas = new Set((cmCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
+  if (!cmHas.has('agent_role')) {
+    try {
+      await sqlite.execute('ALTER TABLE creation_messages ADD COLUMN agent_role text')
+      log.info('ensureColumn: creation_messages.agent_role 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
 }

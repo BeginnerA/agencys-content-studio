@@ -11,10 +11,18 @@ import {
 } from '../../db/schema'
 import { createLogger } from '../../logger'
 import { projectAbsDir } from '../storage'
+import { deleteTemplate } from '../../pipeline/loader'
 import { CreationError } from './contract'
+import { agentDecisionSchema } from './agent/decision-schema'
 import { creationWrite, sessionRow } from './store'
 
 const log = createLogger('creation-chat')
+
+/** 宽容解析决策 JSON（非法/空 → null，交 safeParse 判定；不让清理因解析报错而中断） */
+function parseJsonSafe(raw: string | null): unknown {
+  if (!raw) return null
+  try { return JSON.parse(raw) as unknown } catch { return null }
+}
 
 /**
  * 删除轻松创作会话（清理"聊了一半放弃"的记录，顺带回收其影子项目）。
@@ -91,6 +99,16 @@ export async function deleteCreationSession(id: number): Promise<DeleteCreationR
       rmSync(projectAbsDir(result.projectId), { recursive: true, force: true })
     } catch (err) {
       log.warn(`影子项目 ${result.projectId} 磁盘目录清理失败：${(err as Error).message}`)
+    }
+  }
+  // synth 临时模板回收（M63）：仿制 key（agent-s{本会话id}- 前缀，天然会话隔离）随会话删除，不污染模板目录/专业选择器
+  if (s.decision) {
+    const d = agentDecisionSchema.safeParse(parseJsonSafe(s.decision))
+    if (d.success && d.data.mode === 'synth' && d.data.synth) {
+      try {
+        deleteTemplate(d.data.synth.templateKey)
+        log.info(`synth 临时模板已回收：${d.data.synth.templateKey}`)
+      } catch { /* 未落盘（从未确认）或已删 → 忽略 */ }
     }
   }
   log.info('轻松创作会话已删除', { sessionId: id, mode: result.mode, projectId: result.projectId, purged: result.purged })

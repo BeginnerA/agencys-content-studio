@@ -99,6 +99,7 @@ function commit(id: number, detail: CreationDetail): void {
   if (RUNNING.has(detail.progress?.status ?? '')) state.selectionDirty = false
   first.observe(detail)
   syncConfirmKey()
+  syncDecisionKey()
   syncProjectDraft()
 }
 
@@ -119,6 +120,21 @@ function syncConfirmKey(): void {
   confirmKey.hash = hash
   confirmKey.revision = s?.planRevision ?? 0
   confirmKey.key = hash ? newRequestKey('cfm') : ''
+}
+
+// route 确认幂等键（M63）：以 decisionHash+planRevision 为闸，语义同 confirmKey（改动即作废旧确认，重试点击不新起 run）
+const decisionKey = reactive<{ hash: string; revision: number; key: string }>({
+  hash: '',
+  revision: 0,
+  key: '',
+})
+function syncDecisionKey(): void {
+  const s = state.detail?.session
+  const hash = s?.decisionHash ?? ''
+  if (decisionKey.hash === hash && decisionKey.revision === (s?.planRevision ?? 0)) return
+  decisionKey.hash = hash
+  decisionKey.revision = s?.planRevision ?? 0
+  decisionKey.key = hash ? newRequestKey('rfm') : ''
 }
 
 // ===== 立项信息可编辑态：默认用平台智能填写值（Tier A），用户改过的字段确认后随 confirm 提交（Tier B 可覆盖） =====
@@ -256,6 +272,7 @@ async function open(id: number): Promise<void> {
     state.error = ''; state.notice = ''
     clearPending()
     confirmKey.hash = ''
+    decisionKey.hash = ''
     retryTicket = { signature: '', key: '' }
     sendTicket = { signature: '', key: '' }
     gateTicket = { signature: '', key: '' }
@@ -394,6 +411,50 @@ async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?:
     })
     await fetchDetail(id)
     // 立项已随确认完成：编辑态交回服务端真值（转正后的项目信息只读展示）
+    projectDraft.dirty = false
+    syncProjectDraft()
+    ensurePolling()
+    return runId
+  } catch (e) {
+    if (id === state.currentId) state.error = errText(e)
+    return null
+  } finally {
+    state.busyAction = false
+  }
+}
+
+/** 当前会话是否为 route 执行形态（agent 且 decision.mode≠easy）：决定确认走 easy 原路还是 route 分派 */
+const isRoute = computed(() => {
+  const s = state.detail?.session
+  return !!s?.agentMode && !!s.decision && s.decision.mode !== 'easy'
+})
+
+/**
+ * route 确认（template/chain/synth）：携 decisionHash+decisionRevision 走服务端 confirmRoute 分派。
+ * 与 easy confirm 彻底分道：不携 easy 专属字段（reviewGate/resolution/brandApply/subtitleBurn，服务端 strict 会拒），零回归。
+ */
+async function confirmRoute(acceptUnpriced = false): Promise<number | null> {
+  const s = state.detail?.session
+  const id = state.currentId
+  if (!s || !id || s.status !== 'ready' || !s.decisionHash || !isRoute.value || state.busyAction)
+    return null
+  if (
+    !decisionKey.key ||
+    decisionKey.hash !== s.decisionHash ||
+    decisionKey.revision !== s.planRevision
+  )
+    syncDecisionKey()
+  state.busyAction = true
+  state.error = ''
+  try {
+    const { runId } = await creationChatApi.confirm(id, {
+      decisionRevision: s.planRevision,
+      decisionHash: s.decisionHash,
+      idempotencyKey: decisionKey.key,
+      acceptUnpriced,
+      ...(projectOverrides() ? { project: projectOverrides() } : {}),
+    })
+    await fetchDetail(id)
     projectDraft.dirty = false
     syncProjectDraft()
     ensurePolling()
@@ -653,6 +714,8 @@ export function useEasyCreate() {
     enterHome,
     replaceAttachmentFile: attachments.replaceAttachmentFile,
     confirmKey,
+    decisionKey,
+    isRoute,
     projectDraft,
     projectEditable,
     modeLabel,
@@ -672,6 +735,7 @@ export function useEasyCreate() {
     refreshPreflight,
     refreshStatus,
     confirm,
+    confirmRoute,
     cancel,
     retry,
     graduate,

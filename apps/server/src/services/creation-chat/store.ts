@@ -4,6 +4,9 @@ import { creationMessages, creationSessions, genTasks, pipelineRuns, pipelineSte
 import { CreationError, initialDraftSchema } from './contract'
 import { jsonRecord, loadCreationProjection } from './projection'
 import { planningProgress } from './planning-progress'
+import { agentDecisionSchema } from './agent/decision-schema'
+import { getRole } from './agent/roles'
+import { computeSideCards } from './side-cards'
 
 /** 只串行化短数据库操作；模型/媒体调用不占锁。数据库条件更新仍是最终仲裁。 */
 let tail: Promise<unknown> = Promise.resolve()
@@ -40,11 +43,36 @@ export async function creationDetail(id: number) {
   const usages = await db.select().from(usageRecords).where(eq(usageRecords.projectId, session.projectId))
   const planning = usages.filter((u) => u.kind === 'llm' && parseJson<Record<string, unknown>>(u.meta, {}).sessionId === id)
   const initial = messages.map((m) => initialDraftSchema.safeParse(jsonRecord(m.payload))).find((p) => p.success)
+  // Agent 决策旁注（切片 4）：解析 decision 列；仅 route 形态（mode≠easy）暴露调度语义供 decisionCard 渲染
+  const decisionParsed = agentDecisionSchema.safeParse(parseJson<unknown>(session.decision, null))
+  const decision = decisionParsed.success ? decisionParsed.data : null
+  const decisionMode = decision && decision.mode !== 'easy' ? decision.mode : null
+  const preflightReady = parseJson<{ ready?: boolean } | null>(session.preflight, null)?.ready === true
+  const confirmable = session.status === 'ready' && preflightReady
+  const runStatus = projection?.progress?.status ?? null
+  const sideCards = computeSideCards({
+    status: session.status,
+    agentMode: session.agentMode === 1,
+    decisionMode,
+    hasPlan: !!session.plan,
+    confirmable,
+    workflowId: session.workflowId ?? null,
+    hasRun: !!run,
+    runStatus,
+    hasReview: !!projection?.progress?.review,
+    hasResult: !!projection?.result,
+    hasArtifacts: !!projection && (projection.artifacts.documents.length > 0 || projection.artifacts.shots.length > 0),
+  })
   return {
     session: {
       id, projectId: session.projectId, status: session.status, plan: parseJson(session.plan, null),
       planRevision: session.planRevision, planHash: session.planHash, preflight: parseJson(session.preflight, null),
       runId: session.runId, runHistory: parseJson(session.runHistory, []), error: session.error,
+      // Agent 化旁注（切片 4）：agentMode 标记新会话；decision 为归一后权威决策（含 roleKey/team/rationale/各模式执行体），legacy 无 decision 时为 null
+      agentMode: session.agentMode === 1, decision,
+      // route 确认闸真源：decisionHash 参与确认（语义同 planHash，改动即作废旧确认）；easy/legacy 为 null
+      decisionHash: session.decisionHash ?? null,
+      workflowId: session.workflowId ?? null,
       // 规划在途进度（内存旁信道）：阶段 + 已进行秒数；非 planning 态恒为 null，不残留旧进度
       planning: session.status === 'planning' ? planningProgress(id) : null,
       initialDraft: initial?.success && initial.data.deferPlanning ? { content: initial.data.content, requestKey: initial.data.requestKey } : null,
@@ -58,11 +86,14 @@ export async function creationDetail(id: number) {
           }
         : null,
     },
-    messages: messages.filter((m) => jsonRecord(m.payload).kind !== 'initial_draft').map((m) => ({ id: m.id, role: m.role, content: m.content, payload: parseJson(m.payload, null), requestKey: m.requestKey, createdAt: m.createdAt })),
+    // 角色署名（切片 4）：助手消息带 agentRole（注册表 key）+ roleName（中文名）；无角色的历史消息两者皆 null，前端回落「策划助手」
+    messages: messages.filter((m) => jsonRecord(m.payload).kind !== 'initial_draft').map((m) => ({ id: m.id, role: m.role, content: m.content, payload: parseJson(m.payload, null), requestKey: m.requestKey, agentRole: m.agentRole ?? null, roleName: m.agentRole ? getRole(m.agentRole)?.name ?? null : null, createdAt: m.createdAt })),
     planningUsage: { cost: planning.reduce((n, u) => n + (u.cost ?? 0), 0), unpriced: planning.filter((u) => u.cost === null).length },
     progress: projection?.progress ?? null,
     artifacts: projection?.artifacts ?? { shots: [], documents: [] },
     result: projection?.result ?? null,
+    // 服务端权威卡片流（切片 4）：前端组件注册表按序渲染，显隐裁决权在后端
+    sideCards,
   }
 }
 

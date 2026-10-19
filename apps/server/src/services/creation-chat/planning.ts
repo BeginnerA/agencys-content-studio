@@ -22,6 +22,11 @@ import { normalizeRefsAnalysis, normalizeImageAnalysis, parseStoryboardDraft, re
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
 import { beginPlanningProgress, endPlanningProgress, setPlanningPhase } from './planning-progress'
+import { parseAgentReply, type AgentReply, type PlanningReply } from './agent/reply-schema'
+import { normalizeAgentReply, decisionHashOf } from './agent/normalize'
+import { buildTemplateCatalog, type CatalogEntry } from './agent/template-catalog'
+import { getRole, resolveRole } from './agent/roles'
+import { agentModeEnabled, buildAgentSystemMessages, persistRouteDecision, insertHandoffIfChanged } from './agent-run'
 
 import { jsonRecord } from './projection'
 export { messageSchema, createSessionSchema } from './contract'
@@ -43,7 +48,7 @@ export async function createSession(raw: unknown) {
     }
     const now = Date.now()
     const [project] = await tx.insert(projects).values({ name: input.content.slice(0, 40), brief: input.content, genre: 'other', templateKey: resolveDefaultTemplateKey('other'), status: 'draft', tags: JSON.stringify(['轻松创作']), createdAt: now, updatedAt: now }).returning()
-    const [session] = await tx.insert(creationSessions).values({ projectId: project!.id, requestKey: input.requestKey, createdAt: now, updatedAt: now }).returning()
+    const [session] = await tx.insert(creationSessions).values({ projectId: project!.id, requestKey: input.requestKey, agentMode: agentModeEnabled() ? 1 : null, createdAt: now, updatedAt: now }).returning()
     await tx.insert(creationMessages).values({ sessionId: session!.id, role: 'system', content: '', payload: JSON.stringify(snapshot), createdAt: now })
     return session!.id
   }))
@@ -157,6 +162,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
   })
   if (!claimed) return creationDetail(id)
+  // agent 模式（M63 切片 2）：新会话默认进入，legacy 会话（agentMode 非 1）逐字走旧路径零回归。
+  const isAgent = claimed.agentMode === 1
+  const catalog: CatalogEntry[] = isAgent ? buildTemplateCatalog() : []
   // 阶段进度登记（内存旁信道）：等待期 detail.session.planning 实时透出「阶段 + 已进行秒数」，
   // 把「只有转圈」升级为阶段式反馈；未claimed（重复/建议路径）不经过此处，无泄漏。
   beginPlanningProgress(id)
@@ -175,6 +183,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     const thisTurnRefs = await resolveAttachmentRefs(id, claimed.projectId, input.attachments ?? [])
     const priorRefs: CreationRef[] = claimed.plan ? creationPlanSchema.parse(JSON.parse(claimed.plan)).refs : []
     const effectiveRefs = mergeRefs(priorRefs, thisTurnRefs)
+    // route 物化输入的 asset 引用只能落此集合（已编译 refs ∪ 本轮上传附件）；幽灵 id 由归一层剔除并留痕。
+    const allowedAssetIds = new Set<number>([...effectiveRefs.map((r) => r.assetId), ...(input.attachments ?? [])])
     const reverseIntent = wantsReverseIntent(input.content)
     const refComp = effectiveRefs.length ? await compileReferenceContext(claimed.projectId, effectiveRefs, vision, reverseIntent) : { messages: [] as ChatMessage[], analyses: [] as RefsAnalysisEntry[], imageAnalyses: [] as ImageAnalysisEntry[] }
     // 反推分镜初稿：命中反推措辞（措辞真源与 route-hint 同源）且本轮已有解析产物时，用现成 video-storyboard.md
@@ -246,6 +256,8 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       ...(draftNote ? [draftNote] : []),
       ...recent.reverse().map((m) => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content.slice(0, 6000) })),
     ]
+    // agent 模式追加路由上下文（四模式判定 + 可调度目录 + 角色注册表 + 本会话可用素材 id）；legacy 会话不注入，旧提示词逐字不变。
+    if (isAgent) messages.push(...buildAgentSystemMessages({ catalog, allowedAssetIds: [...allowedAssetIds] }))
     // 预算估算取 reasoning+正文 的典型用量（24000）而非上限——上限只用于防 provider 拒单，不该把预算内规划硬挡
     const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 24000 * (prices[1] ?? 0) })
     if (budget) throw new CreationError(budget.code, budget.message, 409)
@@ -261,7 +273,14 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     })
     if (ep.apiKey && result.content.includes(ep.apiKey)) throw new CreationError('unsafe_output', '模型输出包含敏感信息，已拒绝保存', 422)
     setPlanningPhase(id, 'validating')
-    const reply = parsePlanningReply(result.content, result.finishReason)
+    const parsed = isAgent ? parseAgentReply(result.content, result.finishReason) : parsePlanningReply(result.content, result.finishReason)
+    // route 形（template/chain/synth）：归一 + 结构校验 + 决策落库后直接返回，不进入 easy 方案下游（easy 零回归）。
+    if (isAgent && parsed.kind === 'route') {
+      await persistRouteDecision(id, claimed, parsed, catalog, { sessionId: id, allowedAssetIds })
+      endPlanningProgress(id)
+      return creationDetail(id)
+    }
+    const reply = parsed as PlanningReply
     // 方案后置钳制：LLM 可能给出越界时长/画幅/无能力下动态 → clamp 到合法域，同时候选钳制描述追到 assistant message（不静默降级）。
     if (reply.kind === 'plan') {
       const { plan: clampedPlan, report } = clampPlanToCaps(reply.plan, caps, hasVideo)
@@ -294,6 +313,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     // 直接交付物应在对话流可见，不受「本轮规划模型返回 clarify 而非 plan」影响（旧逻辑仅 plan 才写方案卡，
     // clarify 轮反推虽已在 L180 算出却不可见，即用户所报「反推不对」根因）。无图片反推 → 无此键（老路径零漂移）。
     const imgAnalysisPayload = refComp.imageAnalyses.length ? { imageAnalysis: refComp.imageAnalyses } : {}
+    // easy 决策旁注（仅 agent 模式）：plan 形派生展示用 decision + 角色署名；clarify 无决策 → 不写。legacy 会话恒 null，零回归。
+    const easyDecision = isAgent && reply.kind === 'plan' ? normalizeAgentReply(parsed as AgentReply, catalog, { sessionId: id, allowedAssetIds }) : null
+    const agentRoleKey = easyDecision?.roleKey ?? null
     await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，规划结果未采纳', 409)
@@ -301,9 +323,11 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       const updated = await tx.update(creationSessions).set({ status: plan ? 'ready' : 'draft', plan: plan ? JSON.stringify(plan) : null,
         planRevision: claimed.planRevision + 1, planHash: plan ? hashJson({ plan, execution: pf?.execution }) : null,
         preflight: pf ? JSON.stringify(pf) : null, updatedAt: Date.now(), error: null,
+        ...(easyDecision ? { decision: JSON.stringify(easyDecision), decisionHash: decisionHashOf(easyDecision) } : {}),
       }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
       if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
-      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions, ...imgAnalysisPayload } : { kind: reply.kind, revision: claimed.planRevision + 1, ...(routeHint ? { routeHint } : {}), ...imgAnalysisPayload }), createdAt: Date.now() })
+      if (agentRoleKey) await insertHandoffIfChanged(tx, id, agentRoleKey, `⏭ 本次方案由「${(getRole(agentRoleKey) ?? resolveRole(agentRoleKey)).name}」为你规划`)
+      await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', ...(agentRoleKey ? { agentRole: agentRoleKey } : {}), content: reply.message, payload: JSON.stringify(reply.kind === 'clarify' ? { kind: reply.kind, questions: reply.questions, ...imgAnalysisPayload } : { kind: reply.kind, revision: claimed.planRevision + 1, ...(routeHint ? { routeHint } : {}), ...imgAnalysisPayload }), createdAt: Date.now() })
       // 智能填写立项信息（仅未转正的 draft 行；已立项项目归用户所有，不再被规划覆写）
       if (plan && projectMeta && project.status === 'draft') {
         const m = projectMeta.meta

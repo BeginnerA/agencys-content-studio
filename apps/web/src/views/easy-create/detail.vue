@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from 'vue'
+import type { Component } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from '../../components/common/Icon.vue'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
@@ -9,15 +10,31 @@ import CreationProgress from './CreationProgress.vue'
 import CreationReview from './CreationReview.vue'
 import CreationResult from './CreationResult.vue'
 import CreationArtifacts from './CreationArtifacts.vue'
+import AgentGuideCard from './AgentGuideCard.vue'
+import AgentDecisionCard from './AgentDecisionCard.vue'
+import ChainProgressCard from './ChainProgressCard.vue'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
 const route = useRoute()
 
+// 卡片注册表：服务端 sideCards[].key → 组件。显隐与顺序完全由后端裁决，前端只登记可渲染单元（M63）。
+const registry: Record<string, Component> = {
+  guide: AgentGuideCard,
+  planning: AgentGuideCard,
+  planCard: CreationPlanCard,
+  decisionCard: AgentDecisionCard,
+  review: CreationReview,
+  chainProgress: ChainProgressCard,
+  result: CreationResult,
+  progress: CreationProgress,
+  artifacts: CreationArtifacts,
+}
+
 const id = computed(() => Number(route.params.id))
 const detail = computed(() => s.state.detail)
 const session = computed(() => detail.value?.session ?? null)
-const hasPlan = computed(() => !!detail.value?.session.plan)
+const sideCards = computed(() => detail.value?.sideCards ?? [])
 const projectId = computed(() => session.value?.projectId ?? null)
 // 确认前项目仍是 draft 影子态（不进项目列表）：此时不暴露「项目」入口，避免点进半成品
 const projectIsDraft = computed(() => session.value?.project?.isDraft === true)
@@ -59,7 +76,7 @@ onUnmounted(() => s.leave())
   <div class="ecw">
     <header class="appbar panel">
       <RouterLink class="back" to="/create">
-        <Icon name="chevron-left" :size="16" /> 轻松创作
+        <Icon name="chevron-left" :size="16" /> 智能创作
       </RouterLink>
       <span class="sep" aria-hidden="true" />
       <div class="wt">
@@ -87,22 +104,15 @@ onUnmounted(() => s.leave())
     <div v-else class="cols">
       <ConversationPanel class="col conv" :s="s" />
       <div class="col ec-side">
-        <!-- 等待审阅时置顶决策面板（其余时候自身 v-if 隐藏，不影响原有顺序） -->
-        <CreationReview :s="s" />
-        <CreationResult :s="s" />
-        <CreationProgress :s="s" />
-        <CreationArtifacts :s="s" />
-        <CreationPlanCard v-if="hasPlan" :s="s" />
-        <div
-          v-if="!hasPlan && !detail?.progress && !detail?.result"
-          class="panel idle"
-        >
-          <Icon name="wand" :size="22" />
-          <p class="idle-t">策划助手正在听你描述</p>
-          <p class="muted">
-            左侧继续补充需求，方案会在这里生成。确认方案前不立项、不产生媒体制作费用。
-          </p>
-        </div>
+        <!-- 服务端权威卡片流：按 sideCards 顺序渲染注册表组件；未知 key 跳过（不阻断其余卡片） -->
+        <component
+          :is="registry[card.key]"
+          v-for="card in sideCards"
+          :key="card.key"
+          :s="s"
+          v-bind="card.props"
+        />
+        <AgentGuideCard v-if="!sideCards.length" :s="s" />
       </div>
     </div>
   </div>

@@ -16,6 +16,8 @@ import { assertRecipeSources, recipeOf, recipeSchema, type CreationRecipe, type 
 import { preflightPlan, type CreationPreflight } from './preflight'
 import { projectMetaFromRow, renderMetaNotes, sanitizeProjectMeta } from './project-meta'
 import { activeProject, creationWrite, parseJson, sessionRow } from './store'
+import { confirmRoute, routeDecisionOf } from './route-execution'
+import { setWorkflowStatus } from '../workflow'
 
 /**
  * 确认即立项：点「开始制作」前项目一直为 draft 影子态，本函数在同一事务里
@@ -23,7 +25,18 @@ import { activeProject, creationWrite, parseJson, sessionRow } from './store'
  * 覆盖值不改 planHash（立项信息不是执行数据），因此改项目名称不会作废已确认的方案。
  */
 
-export async function confirmCreation(id: number, raw: unknown): Promise<{ runId: number }> {
+/**
+ * 确认入口分发（M63 切片 3）：按会话当前决策形态路由——
+ *  - route 会话（agentMode=1 且 decision.mode≠easy）→ confirmRoute（template/chain/synth，route-execution.ts）；
+ *  - easy 会话（含 agent 模式 plan 旁注、legacy 无 decision）→ confirmEasy（下列主体逐字原样，零回归）。
+ */
+export async function confirmCreation(id: number, raw: unknown): Promise<{ runId: number; workflowId?: number }> {
+  const s = await sessionRow(id)
+  if (routeDecisionOf(s)) return confirmRoute(id, raw)
+  return confirmEasy(id, raw)
+}
+
+async function confirmEasy(id: number, raw: unknown): Promise<{ runId: number }> {
   const request = confirmationSchema.parse(raw)
   const result = await creationWrite(async () => {
     const s = await sessionRow(id)
@@ -102,6 +115,8 @@ export async function confirmCreation(id: number, raw: unknown): Promise<{ runId
 export async function cancelCreation(id: number): Promise<void> {
   const s = await sessionRow(id)
   if (s.runId) await engine.cancelRun(s.runId)
+  // 链式执行：取消关联编排链（阻断 advanceWorkflow 段间级联；已起 run 由上行 cancelRun 停止）
+  if (s.workflowId) await setWorkflowStatus(s.workflowId, 'cancelled').catch(() => undefined)
 }
 
 export const retryCreationSchema = confirmationSchema.extend({

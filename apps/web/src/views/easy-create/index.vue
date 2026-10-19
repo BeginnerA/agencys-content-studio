@@ -259,8 +259,8 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
     <header class="hero">
       <div class="hero-glow" aria-hidden="true" />
       <div class="hero-in">
-        <h1 class="title"><Icon name="sparkles" :size="26" /> 轻松创作</h1>
-        <p class="tagline">一句话，交给策划助手 —— 从灵感到成片。</p>
+        <h1 class="title"><Icon name="sparkles" :size="26" /> 智能创作</h1>
+        <p class="tagline">一句话，交给智能创作助手 —— 从灵感到成片。</p>
         <ol class="steps" aria-label="创作流程">
           <li v-for="(st, i) in STEPS" :key="st" class="step">
             <span class="dot">{{ i + 1 }}</span>

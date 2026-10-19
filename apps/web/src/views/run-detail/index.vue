@@ -134,9 +134,9 @@ const {
             v-if="u.creationSessionId.value"
             class="btn"
             :to="`/create/${u.creationSessionId.value}`"
-            title="查看发起该运行的轻松创作会话（完整方案 / 对话 / 供应商核验）"
+            title="查看发起该运行的智能创作会话（完整方案 / 对话 / 供应商核验）"
           >
-            去轻松创作会话
+            去智能创作会话
           </RouterLink>
         </template>
         <button

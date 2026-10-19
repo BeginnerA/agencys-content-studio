@@ -313,6 +313,18 @@ export interface CreationChatMessagePayload {
   stepKey?: string
   decision?: CreationGateDecision
   note?: string | null
+  /** Agent 化消息（kind='route'|'run'|'chain-start'|'handoff'）：调度模式/角色、目标模板、链段与幂等回显 */
+  mode?: string
+  roleKey?: string
+  templateKey?: string
+  /** kind='chain-start'：链段模板 key 序列（供 ChainProgressCard 取段列表） */
+  segments?: string[]
+  /** chain 工作流 id（kind='chain-start'） */
+  workflowId?: number
+  /** kind='route'：决策置信与可确认标记 */
+  confidence?: number
+  rationale?: string
+  ready?: boolean
 }
 
 /** system 角色（ 审阅决策留痕）：进对话流展示，但不进后续规划的 LLM 上下文 */
@@ -322,6 +334,13 @@ export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
   user: '我',
   assistant: '策划助手',
   system: '审阅记录',
+}
+
+/** Agent 化角色署名（M63）：消息带 roleName（服务端注册表投影的中文名）时用之，否则回落默认标签；system 留痕仍按类型标签。 */
+export function creationRoleLabel(m: { role: CreationChatRole; roleName?: string | null; payload?: CreationChatMessagePayload | null }): string {
+  if (m.role === 'system') return creationSystemLabel(m.payload?.kind)
+  if (m.role === 'user') return CREATION_ROLE_LABELS.user
+  return m.roleName || CREATION_ROLE_LABELS.assistant
 }
 
 /** system 留痕按类型给来源标签（审阅 / 返修 / 合成），不与策划助手的话混同 */
@@ -337,6 +356,10 @@ export interface CreationChatMessage {
   content: string
   payload: CreationChatMessagePayload | null
   requestKey: string | null
+  /** Agent 发言角色 key（注册表）；null = 无角色（历史/默认策划助手） */
+  agentRole?: string | null
+  /** 角色中文名（服务端随消息投影）；null = 回落「策划助手」 */
+  roleName?: string | null
   createdAt: number
 }
 
@@ -359,6 +382,14 @@ export interface CreationSessionView {
   initialDraft: { content: string; requestKey: string } | null
   /** 立项预览：未确认时为 draft 影子项目（不进项目列表），确认后转正 */
   project: CreationProjectPreview | null
+  /** Agent 会话标记（agent_mode=1）；legacy/easy 会话为 false/缺省 */
+  agentMode?: boolean
+  /** 归一后权威调度决策（route/easy 旁注）；legacy 无 decision 时为 null */
+  decision?: AgentDecisionView | null
+  /** route 确认闸真源（改动即作废旧确认）；easy/legacy 为 null */
+  decisionHash?: string | null
+  /** chain 工作流 id（制作中出 chainProgress 卡） */
+  workflowId?: number | null
 }
 
 /** 中途审阅：run 挂在闸门上的那一步（服务端从模板快照 gate.message 透出，非引擎状态） */
@@ -448,6 +479,36 @@ export interface CreationResult {
   duration: number | null
 }
 
+/** 输入物化描述的前端只读视图（与后端 inputSpecItemSchema 对齐：kind + 对应载荷） */
+export interface InputSpecView {
+  kind: 'text' | 'number' | 'boolean' | 'asset' | 'assets' | 'default' | 'prev'
+  value?: string | number | boolean
+  assetId?: number
+  assetIds?: number[]
+  ref?: string
+  source?: string
+}
+
+/** Agent 调度决策视图（服务端归一后下发的只读展示形态，与后端 agentDecisionSchema 对齐） */
+export interface AgentDecisionView {
+  mode: 'easy' | 'template' | 'chain' | 'synth'
+  roleKey: string
+  team: Array<{ roleKey: string; stage: string }>
+  confidence: number
+  rationale: string
+  templateRun?: { templateKey: string; catalogSnapshot?: { key: string; version: number }; inputSpec?: Record<string, InputSpecView> } | null
+  chain?: Array<{ templateKey: string; title: string; inputSpec?: Record<string, InputSpecView> }> | null
+  synth?: { name: string; templateKey: string; stepCount: number; inputSpec?: Record<string, InputSpecView> } | null
+  escalateTo?: { templateKey: string; reason: string } | null
+  capabilityNotes?: string[]
+}
+
+/** 服务端下发的面板卡片描述（key = 前端组件注册表键；props = 渲染分支最小标记） */
+export interface SideCardView {
+  key: string
+  props: Record<string, unknown>
+}
+
 /** 会话详情：create/send/preflight/cancel 统一返回体 */
 export interface CreationDetail {
   session: CreationSessionView
@@ -456,6 +517,8 @@ export interface CreationDetail {
   progress: CreationProgress | null
   artifacts: CreationArtifacts
   result: CreationResult | null
+  /** 服务端权威卡片流（显隐裁决权在后端，前端组件注册表按序渲染） */
+  sideCards?: SideCardView[]
 }
 
 /** 删除会话结果：未立项时连影子项目一并回收；已立项只删记录（项目保留，reason 说明原因） */
@@ -496,6 +559,16 @@ export interface CreationConfirmBody {
   brandApply?: boolean
   /** 字幕烧录开关：缺省/true = 成片烧硬字幕；仅逐次关闭时传 false（成片不含硬字幕、字幕文件仍生成可下载；不入 planHash，缺省不传键） */
   subtitleBurn?: boolean
+}
+
+/** route 确认请求（template/chain/synth）：decisionHash+decisionRevision 承担确认闸（服务端 strict，不携 easy 专属字段） */
+export interface CreationRouteConfirmBody {
+  decisionRevision: number
+  decisionHash: string
+  idempotencyKey: string
+  acceptUnpriced: boolean
+  /** 立项覆盖值：只带用户改过的字段（不入 decisionHash） */
+  project?: Partial<CreationProjectMeta>
 }
 
 /** 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */

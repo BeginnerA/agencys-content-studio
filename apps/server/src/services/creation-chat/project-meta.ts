@@ -109,10 +109,11 @@ export function projectMetaFromRow(row: { name: string; genre: string; templateK
  */
 export function sanitizeProjectMeta(
   input: ProjectMetaInput | undefined | null,
-  plan: CreationPlan,
+  plan: CreationPlan | null,
   base?: ProjectMeta,
 ): { meta: ProjectMeta; notes: string[] } {
-  const fb = base ?? deriveProjectMeta(plan)
+  // route 执行（M63）无 CreationPlan：调用方必传 base（草稿行现值投影）；base 缺位时才回落到按方案派生。
+  const fb = base ?? deriveProjectMeta(plan as CreationPlan)
   const notes: string[] = []
   const text = (v: unknown, fallback: string, max: number, label: string): string => {
     if (v === undefined || v === null) return fallback

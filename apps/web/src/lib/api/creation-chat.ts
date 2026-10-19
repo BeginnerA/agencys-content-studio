@@ -3,6 +3,7 @@ import type {
   CreationAttachmentResult,
   CreationCandidateStep,
   CreationConfirmBody,
+  CreationRouteConfirmBody,
   CreationDeleteResult,
   CreationDetail,
   CreationGateBody,
@@ -69,8 +70,8 @@ export const creationChatApi = {
     }),
   preflight: (id: number) =>
     api.post<CreationDetail>(`${BASE}/${id}/preflight`),
-  confirm: (id: number, body: CreationConfirmBody) =>
-    api.post<{ runId: number }>(`${BASE}/${id}/confirm`, body),
+  confirm: (id: number, body: CreationConfirmBody | CreationRouteConfirmBody) =>
+    api.post<{ runId: number; workflowId?: number }>(`${BASE}/${id}/confirm`, body),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
   /** 删除会话：未立项时一并回收影子项目；已立项只删记录（项目原样保留） */
   remove: (id: number) => api.del<CreationDeleteResult>(`${BASE}/${id}`),

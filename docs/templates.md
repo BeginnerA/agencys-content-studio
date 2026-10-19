@@ -1,6 +1,6 @@
 # 内置模板详表
 
-19 个内置模板（`workspace/templates/*.yaml`）逐一说明与典型工作流链。模板分**两类入口**：「启动流水线」（专业端场景选卡，按 出成品 / 做规划 / 发布与复盘 三组呈现）与「轻松创作」（对话式立项页）。三个 `easy-*` 模板**仅由轻松创作对话页在方案确认后内部调度**，不出现在「启动流水线」选卡（其入参为对话页生成的 `recipe` 执行快照，手动启动无 `script/lines/shots/recipe` 无法运行）。模板均可独立运行，亦可按链串联。
+19 个内置模板（`workspace/templates/*.yaml`）逐一说明与典型工作流链。模板分**两类入口**：「启动流水线」（专业端场景选卡，按 出成品 / 做规划 / 发布与复盘 三组呈现）与「智能创作（原轻松创作）」（对话式立项页）。三个 `easy-*` 模板**仅由智能创作对话页的 easy 模式在方案确认后内部调度**，不出现在「启动流水线」选卡（其入参为对话页生成的 `recipe` 执行快照，手动启动无 `script/lines/shots/recipe` 无法运行）。**M63 Agent 化后**：智能创作不再受限于 easy-* 二选一——LLM 意图路由可从下表**全部专业模板目录**中智能选型（命中即 `template` 直调 / `chain` 编排 M27 工作流），未命中任何既有模板时可合成一份**临时 synth 模板**执行（仿制 key `agent-s{sid}-*`、`visibility:conversation`、不进专业选择器、随会话删除回收，故不在本内置表内）。模板均可独立运行，亦可按链串联。
 
 **内置 vs 自定义（改删权限）**：上表 19 份模板与 `workspace/prompts/` 出厂提示词均为**系统内置**，前端只读、服务端拒绝修改/删除（409）——真源是 `apps/server/src/pipeline/builtin-assets.ts` 的清单。要定制内置资产，用模板页的「**另存为副本**」（或画布编辑落盘）派生出一份**自定义模板**（新 key、不登记于清单），即可自由编辑/删除；提示词则新建自定义 `.md` 后在自定义模板中改引用。新增体裁 / 新流程 = 自定义模板 YAML（模板页保存即生效，无需改代码、无需重启）。
 
@@ -27,7 +27,7 @@
 | `image-reverse` v1 | 图片反推链（note） | 图片入库 → `image_analyze`（等比缩宽 ≤1280 临时编码含原图回退 + 多模态 LLM 逐图反推主体/风格/构图/光线/色板 → 可投产 image_prompt/negative_prompt，必审门控，产物 json+md 双资产 purpose=image_analysis）→ 文案包（标题/描述/话题/逐图配文）；原图只读不改，video-reverse 同源图片形态 | 同 video-reverse 反推方法论 |
 | `photo-montage` v3 | 素材混剪成片（other，M53/M54/M61） | 现成照片/视频 → 一支完整成片，**默认零 LLM 零付费**（婚宴大屏 / 纪念册 / 快闪成片类场景）；photos+clips 双输入按「照片在前」混排，引擎两段式混剪：逐段归一化 → 轻量拼接合成（fade 等转场、视频原声保留 keep_clip_audio 与配音/BGM 并存混音）；定长字幕 mode:fixed（标题/台词行零 LLM 计时）；每镜时长/帧率/分辨率/KB 模式经标量调参桥直连 run 输入，成片审阅闸（confirm 默认开）。**v2（M54 智能增强，均显式开启才生效）**：Ken Burns `auto` 智能定向（横图缓推/竖图缓拉，ffprobe 实测尺寸）；`analyze_composition=true` 时插入 `image_analyze` 构图感知步（when 门控，付费 LLM）产出主体方位偏置缓推锚点；`layout` duo/grid/auto 多图同屏拼贴（vstack/xstack，与音字对齐时间轴互斥）；`bgm_mode` 智能 BGM：auto 库内自动选曲（项目音频 ∪ MONTAGE_BGM_DIR，时长≥片长优先），music_gen AI 生乐（kit music 协议族 MiniMax，付费计量 kind=music，失败/未配置降级库内绝不断链）；用户手绑 BGM 永远优先。**v3（M61 标题智能编排，默认全 off = v2 行为逐字节）**：`style_mode` rule 规则排版（标题字号按宽度预算阶梯自适应/加粗/置顶或居中，竖屏加粗描边；llm 付费可选，失败降级规则）产出写进字幕资产 `params.style_plan`，与品牌手工配置字段级合并（恒手工胜）；`title_card` local 片首标题字卡（本地 drawtext 渲染零计费，启用后 ASS 裁标题 cue 防双呈现；字体缺失/失败降级字幕烧录），ai 背景字卡（`title_card=ai` 时模板内 `card_bg`（title-card-bg.md 提示词，无文字纯氛围底图）→ `card_bg_img`（ai_image，产物 purpose=title_card_bg）两步 when 子链；标题文字永远本地 drawtext 叠加（生图模型画汉字必乱码铁律），底图满幅 scale/crop + 半透压暗后叠字，成片溯源 `title_card.mode=ai|local`；无底图产物自动回落本地色底，未配 LLM/图像实例时子链步失败 run 报错（引擎全局失败语义，可改 local 重跑）；`title_card_bg` 卡底色 #RRGGBB（留空默认 #101826） | M53 + M54 + M61（生乐/LLM/生图需配对应端点，余纯本地 ffmpeg） |
 
-**轻松创作专用模板**（`CREATION_TEMPLATE_KEYS`，仅由 `easy-create` 对话页在方案确认后内部调度，**不出现在「启动流水线」选卡**；它们是「纯执行已批准方案」的批准链载体：全步 `retry:0` + `strict_delivery`、不自动付费重试，`recipe` 钉死 `templateHash`/端点/素材来源供恢复校验）：
+**轻松创作（智能创作）easy 模式专用模板**（`CREATION_TEMPLATE_KEYS`，仅由 `easy-create` 对话页 easy 模式在方案确认后内部调度，**不出现在「启动流水线」选卡**；M63 Agent 化后它们只是四执行模式之一（easy）的批准链载体，`template`/`chain`/`synth` 模式则直接调度上表专业模板或临时模板；本组模板仍是「纯执行已批准方案」的批准链载体：全步 `retry:0` + `strict_delivery`、不自动付费重试，`recipe` 钉死 `templateHash`/端点/素材来源供恢复校验）：
 
 | key | 场景 | 要点 |
 |---|---|---|
