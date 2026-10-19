@@ -10,6 +10,7 @@ import PlanImageAnalysis from './PlanImageAnalysis.vue'
 import { assetApi } from '../../lib/api'
 import { whoLabel, avatarIcon, pickReverseSourceId } from './conversation-utils'
 import { usePlanningPhase } from './use-planning-phase'
+import { useDraftTicketSync } from './use-draft-ticket-sync'
 import { isAttachment, refAssetId } from './ref-utils'
 import type { Asset, CreationChatMessage } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
@@ -76,23 +77,8 @@ const started = computed(() => !!props.s.state.detail?.session.runId)
 const inputLocked = computed(
   () => props.s.first.locked.value || planning() || props.s.state.loadingDetail,
 )
-watch(
-  () => props.s.first.state.ticket?.content,
-  (content, previous) => {
-    if (submitting.value) return
-    if (props.s.first.active.value && content !== undefined)
-      draft.value = content
-    else if (previous !== undefined) draft.value = ''
-  },
-  { immediate: true },
-)
-watch(
-  draft,
-  (value) => {
-    if (!submitting.value) props.s.first.setContent(value)
-  },
-  { flush: 'sync' },
-)
+// 首轮票据 ↔ 可见草稿双向同步（含「已发送即腾空输入框」修复）抽至 use-draft-ticket-sync，行为一致
+useDraftTicketSync(props.s, draft, submitting)
 watch(
   () => props.s.state.currentId,
   () => {
