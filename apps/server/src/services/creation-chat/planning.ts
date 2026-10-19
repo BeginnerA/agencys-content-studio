@@ -17,7 +17,7 @@ import { creationPlanSchema, CreationError, hashJson, parsePlanningReply, create
 import { resolveAttachmentRefs, MAX_REFS } from './attachments'
 import { preflightPlan, requiredEndpoint } from './preflight'
 import { projectMetaPrompt, renderMetaNotes, resolveDefaultTemplateKey, sanitizeProjectMeta } from './project-meta'
-import { deriveRouteHint, wantsReverseIntent } from './route-hint'
+import { deriveRouteHint, wantsReverseIntent, wantsPhotoMontage } from './route-hint'
 import { normalizeRefsAnalysis, normalizeImageAnalysis, parseStoryboardDraft, renderStoryboardDraft, renderImageReverseBrief } from './refs-analysis'
 import { applyCreationPresets, resolveCreationPresetHint } from './presets'
 import { activeProject, creationDetail, creationWrite, sessionRow } from './store'
@@ -258,6 +258,9 @@ export async function sendCreationMessage(id: number, raw: unknown) {
     ]
     // agent 模式追加路由上下文（四模式判定 + 可调度目录 + 角色注册表 + 本会话可用素材 id）；legacy 会话不注入，旧提示词逐字不变。
     if (isAgent) messages.push(...buildAgentSystemMessages({ catalog, allowedAssetIds: [...allowedAssetIds] }))
+    // 上传素材拼片意图的确定性路由指令（agent 模式）：命中混剪措辞 + 有图片参考 → 显式令模型 route 到 photo-montage 并把原图 id 填进 photos，
+    // 兜住「模型把上传图当风格参考、面对『把这些图剪成视频』无所适从吐散文」这一实弹暴露的路由盲区。
+    if (isAgent) messages.push(...buildMontageRouteNudge(input.content, effectiveRefs.filter((r) => r.kind === 'image').map((r) => r.assetId)))
     // 预算估算取 reasoning+正文 的典型用量（24000）而非上限——上限只用于防 provider 拒单，不该把预算内规划硬挡
     const budget = await checkBudget({ projectId: claimed.projectId, estimatedCost: Buffer.byteLength(JSON.stringify(messages)) * (prices[0] ?? 0) + 24000 * (prices[1] ?? 0) })
     if (budget) throw new CreationError(budget.code, budget.message, 409)
@@ -282,6 +285,13 @@ export async function sendCreationMessage(id: number, raw: unknown) {
       // 判定与落库各抽为可探针直测的导出单元（行为等价重构）；普通成片诉求解析失败仍按 invalid_plan 可见拒绝。
       if (shouldDeliverReverseFallback({ reverseIntent, imageAnalysisCount: refComp.imageAnalyses.length, error: err })) {
         await persistReverseFallback(id, claimed, refComp.imageAnalyses)
+        endPlanningProgress(id)
+        return creationDetail(id)
+      }
+      // agent 决策解析失败的通用兜底（反推之外的所有 invalid_plan/截断）：不再死胡同红字，回落为一次「已理解 + 下一步追问」。
+      // 混剪意图给专属追问（素材混剪 vs 生成新画面）；其余给通用重述引导。easy/legacy 会话（isAgent=false）逐字零回归。
+      if (isAgent && shouldDeliverParseFallback(err)) {
+        await persistParseFallback(id, claimed, { montage: wantsPhotoMontage(input.content, effectiveRefs.some((r) => r.kind === 'image')) })
         endPlanningProgress(id)
         return creationDetail(id)
       }
@@ -396,6 +406,50 @@ export async function persistReverseFallback(id: number, claimed: CreationSessio
       sessionId: id, role: 'assistant',
       content: '已从你上传的参考图反推出可投产提示词（见反推结果卡，可直接复制使用）。这属于图片反推能力，本轮未生成视频方案。要我据此再规划一条成片，还是调整风格/主体后重新反推？',
       payload: JSON.stringify({ kind: 'clarify', questions: ['据此反推提示词规划一条成片', '调整风格/主体后重新反推'], imageAnalysis: imageAnalyses }),
+      createdAt: Date.now(),
+    })
+  }))
+}
+
+/**
+ * 上传素材拼片意图的确定性路由指令（agent 模式专用，纯函数可探针直测）：命中 wantsPhotoMontage 且有可用图片 assetId → 返回一条决定性 system 指令，
+ * 令模型 route 到 photo-montage 并把原图 id 填进 photos；未命中（非混剪措辞 / 无图片）→ 空数组（不干扰其它意图）。
+ */
+export function buildMontageRouteNudge(content: string, imageAssetIds: number[]): ChatMessage[] {
+  if (!imageAssetIds.length || !wantsPhotoMontage(content, true)) return []
+  return [{ role: 'system', content: `【本轮路由指令】检测到「把已上传素材直接拼成成片」意图（相册/混剪/剪辑成视频）。请输出 kind="route"、mode="template"、templateKey="photo-montage"：photos 用 {"kind":"assets","assetIds":[${imageAssetIds.join(', ')}],"source":"用户上传的图片"}，视频片段（若有）填 clips，其余字段用 {"kind":"default"}。不要产出 easy 生成式方案（那会重新生成画面而非使用原图），也不要因「没有脚本/台词」而降级或澄清。` }]
+}
+
+/**
+ * agent 决策解析失败的通用兜底判定（纯谓词，探针直测）：仅 invalid_plan（含输出截断）触发。反推交付已在上游单独处理，此处接其余所有解析失败。
+ * 作用：任何真实模型输出不合三形契约的情况都不再是死胡同红字，而是回落为一次「已理解 + 下一步追问」。easy/legacy 会话不走此路径（isAgent 前置）。
+ */
+export function shouldDeliverParseFallback(error: unknown): boolean {
+  return error instanceof CreationError && error.code === 'invalid_plan'
+}
+
+/**
+ * agent 决策解析失败的通用兜底落库（探针直测）：乐观锁回 draft（清 plan/decision/preflight/error），插一条 clarify 助手消息携下一步追问 chips。
+ * 混剪意图 → 追问「素材混剪成片 / 生成新画面短视频 / 我再补充」；否则通用「换种说法 / 按常见设置出一条」。绝不静默、不产生媒体费用。
+ */
+export async function persistParseFallback(id: number, claimed: CreationSession, opts: { montage: boolean }): Promise<void> {
+  const message = opts.montage
+    ? '我理解你想把上传的图片/片段直接拼成一条视频（相册·混剪）。刚才没能生成可执行计划（模型返回格式异常，未产生任何媒体费用，也不会自动开始制作）。要我按「素材混剪」用这些原图直接拼片（不重新生成画面），还是改成生成带新画面的短视频？'
+    : '我收到了你的想法，但这次没能整理成可执行的方案（模型返回格式异常，未产生任何媒体费用，也不会自动开始制作）。可以换种说法，或补充一句目标时长 / 画面风格吗？'
+  const questions = opts.montage
+    ? ['用这些图片做素材混剪成片', '改成生成带新画面的短视频', '我再补充说明']
+    : ['我换个说法重新描述', '先按常见设置帮我出一条']
+  await creationWrite(() => db.transaction(async (tx) => {
+    const [project] = await tx.select().from(projects).where(and(eq(projects.id, claimed.projectId), isNull(projects.deletedAt)))
+    if (!project) throw new CreationError('project_deleted', '项目已删除，规划结果未采纳', 409)
+    const updated = await tx.update(creationSessions).set({
+      status: 'draft', plan: null, planHash: null, preflight: null, decision: null, decisionHash: null, error: null,
+      planRevision: claimed.planRevision + 1, updatedAt: Date.now(),
+    }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'planning'), eq(creationSessions.planRevision, claimed.planRevision))).returning()
+    if (!updated.length) throw new CreationError('conflict', '会话版本已变化，旧回复未采纳', 409)
+    await tx.insert(creationMessages).values({
+      sessionId: id, role: 'assistant', content: message,
+      payload: JSON.stringify({ kind: 'clarify', questions }),
       createdAt: Date.now(),
     })
   }))

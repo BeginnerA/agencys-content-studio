@@ -21,7 +21,7 @@ const { cleanup: envCleanup } = isolatedEnv('m64', { bridge: ['prompts'] })
 const WS_TPL = join(process.env.CSTUDIO_WORKSPACE as string, 'templates')
 cpSync(join(REPO_ROOT, 'workspace', 'templates'), WS_TPL, { recursive: true })
 
-const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback'] as const
+const SECTIONS = ['confirm-template', 'confirm-synth', 'confirm-chain', 'chain-await', 'guards', 'synth-gc', 'reverse-fallback', 'parse-fallback'] as const
 
 /** synth 正例 YAML：单 literal 步、模板级无 inputs（空输入即过 createRunRow）。key 归一为 agent-s{sid}-flow */
 const SYNTH_OK_YAML = 'name: 智能临时流程\nsteps:\n  - key: say\n    action: literal\n    inputs:\n      text: hello\n'
@@ -265,6 +265,58 @@ async function main(): Promise<void> {
       check(Array.isArray(payload.imageAnalysis) && (payload.imageAnalysis as { imagePrompt: string }[])[0]!.imagePrompt.includes('ghibli'), 'fallback 消息 payload 携带反推交付物（前端 payload.imageAnalysis 渲染反推卡）')
       // 乐观锁：会话已回 draft 再落 → conflict（幂等防重复写）
       check(await codeOf(() => persistReverseFallback(claimed!.id, claimed!, imgEntries)) === 'conflict', 'fallback 乐观锁：会话已回 draft 再落 → conflict')
+    },
+
+    // ================= parse-fallback：agent 决策解析失败通用兜底 + 混剪路由指令 + 右侧下一步卡（用户实弹「把图剪成视频」暴露的缺口收口） =================
+    'parse-fallback': async () => {
+      const { shouldDeliverParseFallback, persistParseFallback, buildMontageRouteNudge } = await import('../src/services/creation-chat/planning')
+      const { computeSideCards } = await import('../src/services/creation-chat/side-cards')
+      const { wantsPhotoMontage } = await import('../src/services/creation-chat/route-hint')
+      const { CreationError } = await import('../src/services/creation-chat/contract')
+      // 1) 混剪谓词：用户原句「将这些图片剪辑成一个视频」旧表漏判，现须命中；无图参考 / 无图类词仍不命中（双前置防线零回归）
+      check(wantsPhotoMontage('将这些图片剪辑成一个视频', true) === true, '「将这些图片剪辑成一个视频」（有图片参考）→ wantsPhotoMontage 命中（用户实弹原句）')
+      check(wantsPhotoMontage('将这些图片剪辑成一个视频', false) === false, '同句但无图片参考 → 不命中（弱词双前置）')
+      check(wantsPhotoMontage('把这段文案做成视频', false) === false, '无图类词/无参考的「做成视频」→ 不命中（回归锁）')
+      // 2) 混剪路由指令：命中措辞 + 有图片 id → 一条含 photo-montage 与原图 id 的 system 指令；否则空
+      const nudge = buildMontageRouteNudge('把这些照片拼成一个视频', [101, 102, 103])
+      check(nudge.length === 1 && nudge[0]!.role === 'system' && typeof nudge[0]!.content === 'string' && (nudge[0]!.content as string).includes('photo-montage') && (nudge[0]!.content as string).includes('101, 102, 103'), '混剪意图 + 图片 id → 注入 route photo-montage 指令（含原图 id）')
+      check(buildMontageRouteNudge('做一条科普短视频', [101]).length === 0, '非混剪措辞 → 不注入路由指令（不干扰其它意图）')
+      check(buildMontageRouteNudge('把这些照片拼成视频', []).length === 0, '混剪措辞但无可用图片 id → 不注入（无米下锅）')
+      // 3) 通用兜底判定真值表：invalid_plan（含截断）→ 接管；非 invalid_plan / 非 CreationError → 不接管
+      check(shouldDeliverParseFallback(new CreationError('invalid_plan', 'x', 422)) === true, '兜底判定：invalid_plan → 接管')
+      check(shouldDeliverParseFallback(new CreationError('conflict', 'x', 409)) === false, '兜底判定：非 invalid_plan → 不接管')
+      check(shouldDeliverParseFallback(new Error('boom')) === false, '兜底判定：非 CreationError → 不接管')
+      // 4) 真实落库：seed planning 态会话 → persistParseFallback(montage) → draft + revision+1 + 带追问的 clarify 消息
+      const t = Date.now()
+      const mkPlanning = async (tag: string) => {
+        const proj = await seedProject(tag)
+        const key = `m64pf${t}${tag}${Math.random().toString(36).slice(2, 7)}`
+        await db.insert(creationSessions).values({ projectId: proj, requestKey: key, status: 'planning', agentMode: 1, planRevision: 5, runHistory: '[]', createdAt: t, updatedAt: t })
+        const [row] = await db.select().from(creationSessions).where(eq(creationSessions.requestKey, key))
+        return row!
+      }
+      const claimedM = await mkPlanning('混剪兜底')
+      await persistParseFallback(claimedM.id, claimedM, { montage: true })
+      const [afterM] = await db.select().from(creationSessions).where(eq(creationSessions.id, claimedM.id))
+      check(afterM!.status === 'draft' && afterM!.planRevision === 6 && afterM!.plan === null && afterM!.error === null, 'persistParseFallback(montage) → 回 draft + revision+1 + 清 plan/error（非死胡同红字）')
+      const msgsM = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, claimedM.id))
+      const fbM = msgsM.find((m) => m.role === 'assistant')
+      const payM = fbM?.payload ? JSON.parse(fbM.payload) as Record<string, unknown> : {}
+      check(!!fbM && payM.kind === 'clarify' && Array.isArray(payM.questions) && (payM.questions as unknown[]).length === 3 && (fbM.content as string).includes('素材混剪'), 'montage 兜底 → 写 clarify 助手消息（含「素材混剪」话术 + 3 条追问）')
+      // 通用（非混剪）兜底 → 2 条追问，话术不含混剪
+      const claimedG = await mkPlanning('通用兜底')
+      await persistParseFallback(claimedG.id, claimedG, { montage: false })
+      const msgsG = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, claimedG.id))
+      const fbG = msgsG.find((m) => m.role === 'assistant')
+      const payG = fbG?.payload ? JSON.parse(fbG.payload) as Record<string, unknown> : {}
+      check(Array.isArray(payG.questions) && (payG.questions as unknown[]).length === 2 && !(fbG!.content as string).includes('素材混剪'), '通用兜底 → clarify 2 条追问（换种说法 / 按常见设置出一条）')
+      // 乐观锁：会话已回 draft 再落 → conflict
+      check(await codeOf(() => persistParseFallback(claimedG.id, claimedG, { montage: false })) === 'conflict', '兜底乐观锁：会话已回 draft 再落 → conflict（幂等防重复写）')
+      // 5) 右侧面板上下文：draft·无方案·无 run + awaitingClarify → clarify 卡（取代固定 guide）；反推产物优先；皆无 → guide
+      const base = { status: 'draft', agentMode: true, decisionMode: null, hasPlan: false, confirmable: false, workflowId: null, chainAwaiting: false, hasRun: false, runStatus: null, hasReview: false, hasResult: false, hasArtifacts: false, hasReverseDeliverable: false, awaitingClarify: false } as const
+      check((computeSideCards({ ...base, awaitingClarify: true }) as { key: string }[]).some((c) => c.key === 'clarify'), 'clarify 待补充态 → 右侧出 clarify 下一步卡（体现对话上下文，非固定 guide）')
+      check((computeSideCards(base) as { key: string }[]).every((c) => c.key === 'guide'), 'draft 无 clarify/无反推 → 回落 guide（零回归）')
+      check((computeSideCards({ ...base, awaitingClarify: true, hasReverseDeliverable: true }) as { key: string }[]).some((c) => c.key === 'reverseAnalysis') === true && (computeSideCards({ ...base, awaitingClarify: true, hasReverseDeliverable: true }) as { key: string }[]).length === 1, '反推产物优先于 clarify（同处 draft 只出反推成果卡）')
     },
   }
 

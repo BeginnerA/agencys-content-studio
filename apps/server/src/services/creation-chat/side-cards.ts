@@ -42,6 +42,8 @@ export interface SideCardsInput {
   hasArtifacts: boolean
   /** 最新一轮 assistant 消息是否携图片反推产物（纯反推交付；仅在 draft·无方案·无 run 时抬为右侧成果卡） */
   hasReverseDeliverable: boolean
+  /** 最新一轮 assistant 消息是否为 clarify（携追问）：draft·无方案·无 run 时抬为右侧「待你补充」卡（取代固定 guide，体现对话上下文） */
+  awaitingClarify: boolean
 }
 
 /**
@@ -60,8 +62,9 @@ export function computeSideCards(i: SideCardsInput): SideCard[] {
       return [{ key: 'guide', props: {} }]
     }
     // draft / starting 前瞬态 / 需求含糊（clarify 后回到 draft）：
-    // 若本轮是纯图片反推交付（无方案无 run但携反推产物）→ 右侧出成果卡；否则引导卡。
+    // 若本轮是纯图片反推交付（无方案无 run但携反推产物）→ 右侧出成果卡；否则若为 clarify 待补充态→ 下一步卡；否则引导卡。
     if (i.hasReverseDeliverable) return [{ key: 'reverseAnalysis', props: {} }]
+    if (i.awaitingClarify) return [{ key: 'clarify', props: {} }]
     return [{ key: 'guide', props: {} }]
   }
 

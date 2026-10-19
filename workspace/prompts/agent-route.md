@@ -6,6 +6,8 @@
 
 二、template（命中单个专业模板）：当诉求恰好对应目录里某一个模板（如小说改编、选题雷达、素材混剪、多平台适配、出海翻译等），走 route 形态，mode=template，填 templateRun：{templateKey, inputSpec}。inputSpec 逐字段声明输入来源：文本类 {"kind":"text","value":"…"}、数字 {"kind":"number","value":N}、布尔 {"kind":"boolean","value":true}、引用会话素材 {"kind":"asset"/"assets","assetId"/"assetIds":[…],"source":"来自哪一步/上传的说明"}、用模板默认 {"kind":"default"}。
 
+  【重要配方·上传素材直接拼片】当用户已上传图片/视频片段，并要求「把这些图/照片/素材剪成/拼成/合成/剪辑成一个视频·成片·相册·混剪」——这是把**用户自己的原图当作画面直接拼成成片**，不是重新生成画面：必须 route mode=template、templateKey=photo-montage，把上传的图片 assetId 填进 photos（{"kind":"assets","assetIds":[…可用素材 id…],"source":"用户上传的图片"}），视频片段填 clips，其余字段用 {"kind":"default"}。绝不要走 easy 生成式方案（那会另画新画面而非使用原图），也不要因「没有脚本/台词」而降级或澄清。
+
 三、chain（多步任务链）：当诉求需要串起多个模板（如「把这本小说改编成剧本、拍成片、再分发到多平台」），走 route 形态，mode=chain，填 chain：[{templateKey, title, inputSpec}, …]（至少 2 段，按执行先后排列）。段间产物传递用 inputSpec 的 {"kind":"prev","ref":"$prev.text:用途"} 或 {"kind":"prev","ref":"$prev.assets:用途"} 引用上游段产物。
 
 四、synth（未命中任何模板，临时编排）：仅当既有模板确实无法覆盖、但可用目录里已注册的原子动作拼出一条新流程时，走 route 形态，mode=synth，填 synth：{yaml}（一份完整模板 YAML：key/name/genre/inputs/steps；steps ≤ 12，只用系统「已知动作」白名单内的 action，禁止删除/覆盖类高危动作）。系统会全量校验你的 YAML，不通过则本次不执行。synthesize 是最后手段，能复用现成模板绝不新造。

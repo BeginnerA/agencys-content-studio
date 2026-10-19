@@ -53,8 +53,10 @@ export async function creationDetail(id: number) {
   const runStatus = projection?.progress?.status ?? null
   // 纯图片反推交付判定：最新一条 assistant 消息携非空 imageAnalysis（是否抬为右侧成果卡由 computeSideCards 统一按状态门控）
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-  const lastAssistantPayload = parseJson<{ imageAnalysis?: unknown } | null>(lastAssistant?.payload ?? null, null)
+  const lastAssistantPayload = parseJson<{ imageAnalysis?: unknown; kind?: string; questions?: unknown } | null>(lastAssistant?.payload ?? null, null)
   const hasReverseDeliverable = Array.isArray(lastAssistantPayload?.imageAnalysis) && (lastAssistantPayload!.imageAnalysis as unknown[]).length > 0
+  // 待你补充态：最新一条 assistant 为 clarify 且携追问（右侧下一步卡据此取代固定 guide）
+  const awaitingClarify = lastAssistantPayload?.kind === 'clarify' && Array.isArray(lastAssistantPayload?.questions) && (lastAssistantPayload!.questions as unknown[]).length > 0
   // chain 段间待续跑投影：纯读派生——链 active + 有已落定段 + 下一段未起 → 出批准卡（不回写会话态）
   let chainAwaiting = false
   if (session.workflowId && decisionMode === 'chain' && session.status === 'started') {
@@ -82,6 +84,7 @@ export async function creationDetail(id: number) {
     hasResult: !!projection?.result,
     hasArtifacts: !!projection && (projection.artifacts.documents.length > 0 || projection.artifacts.shots.length > 0),
     hasReverseDeliverable,
+    awaitingClarify,
   })
   return {
     session: {

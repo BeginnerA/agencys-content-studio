@@ -71,9 +71,9 @@ function wantsNovelAdapt(text: string): boolean {
 
 /** 「混剪/相册片」强词表——无须其他前置；词表取舍：婚宴/年会/拼贴/裸「相册」不入表，防误报（留档见「路由信号扩展」spec §三）。 */
 const MONTAGE_INTENT_WORDS = ['混剪', '电子相册', '纪念相册', '音乐相册', '相册视频', '相册短片', '照片拼', '拼照片', '照片配乐', '照片配音乐'] as const
-/** 弱词句式 + 双前置（须已采纳图片参考 + 文本含图/照片/素材：防「把这段文案做成视频」误报）。 */
-const MONTAGE_WEAK_RE = /(合成|拼成|做成|变成|合到|拼到).{0,4}(视频|短片|成片)/
-function wantsPhotoMontage(text: string, hasImageRef: boolean): boolean {
+/** 弱词句式 + 双前置（须已采纳图片参考 + 文本含图/照片/素材：防「把这段文案做成视频」误报）。动词表含「剪成/剪辑成/混剪成」（用户常以「把这些图剪辑成一个视频」表达拼片诉求，旧表漏判）。 */
+const MONTAGE_WEAK_RE = /(合成|拼成|做成|变成|剪成|剪辑成|混剪成|合到|拼到).{0,4}(视频|短片|成片)/
+export function wantsPhotoMontage(text: string, hasImageRef: boolean): boolean {
   if (includes(text, ...MONTAGE_INTENT_WORDS)) return true
   return hasImageRef && includes(text, '图', '照片', '素材') && MONTAGE_WEAK_RE.test(text)
 }

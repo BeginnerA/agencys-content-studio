@@ -148,7 +148,9 @@ async function main() {
       check(second.status === 201 && calls === 2, '原文字直达 API 默认仍创建并规划')
       content = 'not-json'
       const failed = await (await post(`/${id}/messages`, { ...message, requestKey: 'm41-failed-message' })).json()
-      check(!!failed.session.error && calls === 3, '规划解析失败以详情 error 回传，不误报成功')
+      // 收口：agent 会话模型输出不合三形契约（invalid_plan）不再回「结构契约」死胡同红字，而是优雅回落 draft + 一条 clarify 追问；
+      // 核心不变式「不误报成功」保持——status 停 draft（非 ready/started）、不起 run、零媒体计费。
+      check(failed.session.status === 'draft' && !failed.session.error && calls === 3, '规划解析失败优雅兜底为 draft·clarify，不伪报成功也不留 error 死胡同')
       await post(`/${id}/messages`, { ...message, requestKey: 'm41-failed-message' })
       check(calls === 3, '失败请求同键重试不自动再次调用模型')
       const project = (await db.select().from(projects).where(eq(projects.id, first.session.projectId)))[0]!

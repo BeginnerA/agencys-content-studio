@@ -61,6 +61,7 @@ async function main(): Promise<void> {
       check(deriveRouteHint({ ...base, userText: '做一个相册视频' })?.target === 'photo-montage', '「相册视频」强词 → photo-montage')
       check(deriveRouteHint({ ...base, hasImageRef: true, userText: '把这些图片合成一个视频' })?.target === 'photo-montage', '图片参考 + 「图片…合成…视频」→ photo-montage（弱词正例）')
       check(deriveRouteHint({ ...base, hasImageRef: true, userText: '把这几张照片拼成视频' })?.target === 'photo-montage', '图片参考 + 「照片拼成视频」→ photo-montage（弱词正例）')
+      check(deriveRouteHint({ ...base, hasImageRef: true, userText: '将这些图片剪辑成一个视频' })?.target === 'photo-montage', '图片参考 + 「图片…剪辑成…视频」→ photo-montage（弱词正例·用户实弹原句，M64 补动词表）')
       check(deriveRouteHint({ ...base, userText: '把这段文案做成视频' }) === null, '无图类词/无图片参考的「做成视频」→ null（弱词双前置防线）')
     },
 

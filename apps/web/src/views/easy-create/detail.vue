@@ -11,6 +11,7 @@ import CreationReview from './CreationReview.vue'
 import CreationResult from './CreationResult.vue'
 import CreationArtifacts from './CreationArtifacts.vue'
 import AgentGuideCard from './AgentGuideCard.vue'
+import ClarifyNextStepCard from './ClarifyNextStepCard.vue'
 import AgentDecisionCard from './AgentDecisionCard.vue'
 import ReverseAnalysisCard from './ReverseAnalysisCard.vue'
 import ChainProgressCard from './ChainProgressCard.vue'
@@ -24,6 +25,7 @@ const route = useRoute()
 const registry: Record<string, Component> = {
   guide: AgentGuideCard,
   planning: AgentGuideCard,
+  clarify: ClarifyNextStepCard,
   reverseAnalysis: ReverseAnalysisCard,
   planCard: CreationPlanCard,
   decisionCard: AgentDecisionCard,
@@ -80,7 +82,7 @@ onUnmounted(() => s.leave())
   <div class="ecw">
     <header class="appbar panel">
       <RouterLink class="back" to="/create">
-        <Icon name="chevron-left" :size="16" /> 智能创作
+        <Icon name="chevron-left" :size="16" /> 轻松创作
       </RouterLink>
       <span class="sep" aria-hidden="true" />
       <div class="wt">
