@@ -1,7 +1,7 @@
 {
   "name": "agencys-content-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）",
   "packageManager": "pnpm@12.3.4",
   "engines": {
