@@ -244,6 +244,8 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
   // 失败就当场说清（在途制作/规划未结束会被服务端拒），不假称已删
   if (!res) {
     delError.value = s.state.error
+    // 删除失败只在本区（创作记录网格下方）就地提示一次；清空共享 state.error 以免顶部全局错误条重复显示同一条
+    s.state.error = ''
     return
   }
   delNotice.value =
