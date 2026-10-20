@@ -250,6 +250,12 @@ export function useRunDetail(deps: {
     busy.value = true
     err.value = ''
     try {
+      // 中止：走取消端点（run 置 cancelled），非闸门决策——GateDialog 已二次确认，此处不再重复弹窗
+      if (action === 'abort') {
+        await runApi.cancel(runId)
+        await loadDetail()
+        return
+      }
       const body: Record<string, unknown> = {
         step_key: gateStep.value.stepKey,
         decision: action,

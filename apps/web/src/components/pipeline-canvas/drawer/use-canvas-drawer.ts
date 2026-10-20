@@ -104,6 +104,13 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     gateBusy.value = true
     gateErr.value = ''
     try {
+      // 中止：走取消端点（run 置 cancelled），非闸门决策——GateDialog 已二次确认，此处不再重复弹窗
+      if (action === 'abort') {
+        await runApi.cancel(props.runId)
+        notice.value = '已请求中止运行，正在对账…'
+        emit('refresh')
+        return
+      }
       const body: Record<string, unknown> = {
         step_key: n.key,
         decision: action,
