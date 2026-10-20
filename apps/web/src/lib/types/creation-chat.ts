@@ -449,6 +449,7 @@ export interface CreationArtifact {
   assetId: number
   kind: string
   name: string
+  label?: string
   available: boolean
   sourceRunId: number | null
   reused: boolean

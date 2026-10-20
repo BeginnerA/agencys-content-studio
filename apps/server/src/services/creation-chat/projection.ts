@@ -28,6 +28,7 @@ export interface CreationArtifact {
   assetId: number
   kind: string
   name: string
+  label?: string
   available: boolean
   sourceRunId: number | null
   reused: boolean
@@ -232,7 +233,10 @@ async function projectGenericRun(session: CreationSession, run: PipelineRun, ste
   const avail = (id: number, kind: string): CreationArtifact | null => {
     const a = byId.get(id)
     if (!a || a.deletedAt !== null || a.kind !== kind) return null
-    return { assetId: a.id, kind, name: a.name, available: readable(a), sourceRunId: a.runId, reused: a.runId !== null && a.runId !== run.id }
+    // 定妆照（reference_character）出图任务以角色名作 shotId（下游按 id 归属定妆照）：审阅面板据此显示角色名而非文件名
+    const shotId = a.purpose === 'reference_character' ? jsonRecord(a.params).shotId : undefined
+    const label = typeof shotId === 'string' && shotId.trim() ? shotId.trim() : undefined
+    return { assetId: a.id, kind, name: a.name, ...(label ? { label } : {}), available: readable(a), sourceRunId: a.runId, reused: a.runId !== null && a.runId !== run.id }
   }
   const settledBad = ['failed', 'cancelled'].includes(run.status)
   const doneTasks = tasks.filter((t) => t.status === 'succeeded').length

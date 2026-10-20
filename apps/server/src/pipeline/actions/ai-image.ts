@@ -17,6 +17,7 @@ import { RunCancelledError } from '../types'
 import { runCancelled } from '../cancel'
 import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services/creation-chat/recipe'
 import { compileDialogueShot } from '../../services/creation-chat/dialogue'
+import { buildIdentityRefMap, pickExistingRefs } from './reference-reuse'
 
 interface ShotSpec {
   id: string
@@ -147,6 +148,22 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   if (useRefs && refCap !== 'base64' && finalShots.some((s) => collectRefAssetIds(s, indexes).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
     ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（锚定注入仍生效）')
   }
+  // 定妆照身份锚定（identity-lock）：步级 inputs.ref_images 指向用户按「文件名=角色名」上传的参考图资产，
+  // 命中的镜头以该图作身份锚定（复刻「严格参考图片1的五官/发型/脸型」的参考图发送生成），未命中镜头零影响。
+  const refImageIds = ctx.assetIdsOf('ref_images')
+  const identityRefByShot = new Map<string, number>()
+  if (useRefs && refImageIds.length > 0) {
+    const refAssets = await ctx.assetsOf(refImageIds)
+    for (const [shotId, assetId] of buildIdentityRefMap(refAssets, finalShots)) identityRefByShot.set(shotId, assetId)
+    ctx.log(`定妆照身份参考图 ${refAssets.length} 张入料（按角色文件名匹配，命中 ${identityRefByShot.size}/${finalShots.length} 镜头）`)
+  }
+  // 智能复用（auto）：定妆照 / 场景 / 道具参考图步在 params.reuse_existing_refs=true 且步级输入 ref_mode=auto 时，
+  // 逐镜查角色/场景/道具库内已有参考图→命中即复用（不建任务、不计费），仅缺图的新对象才出图（与出图能力 refCap 解耦）。
+  const refMode = typeof ctx.input['ref_mode'] === 'string' ? ctx.input['ref_mode'].trim() : ''
+  const reuseByShot = stepParams['reuse_existing_refs'] === true && refMode === 'auto'
+    ? pickExistingRefs(finalShots, indexes)
+    : new Map<string, number>()
+  if (reuseByShot.size > 0) ctx.log(`智能复用：${reuseByShot.size}/${finalShots.length} 个对象库内已有参考图，直接复用不重画`)
 
   // 既有任务（幂等续跑）：shotId → task 行
   const existing = await db
@@ -164,8 +181,14 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   for (const shot of finalShots) {
-    const promptText = dialogue ? compileDialogueShot(recipe.plan, shot.id).imagePrompt : shot.image_prompt.trim()
-    const refAssetIds = mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), collectRefAssetIds(shot, indexes))
+    if (reuseByShot.has(shot.id)) continue // 库内已有参考图（auto 复用）：不建任务、不计费
+    const identityId = identityRefByShot.get(shot.id)
+    let promptText = dialogue ? compileDialogueShot(recipe.plan, shot.id).imagePrompt : shot.image_prompt.trim()
+    if (identityId !== undefined) promptText = `严格保持参考图中人物的五官、发型、脸型与所有识别特征完全一致，仅改变视角与姿态。${promptText}`
+    const refAssetIds = mergeRefIds(
+      identityId !== undefined ? [identityId] : [],
+      mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), collectRefAssetIds(shot, indexes)),
+    )
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
     const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, MAX_REFS_PER_SHOT) : 0
     const purpose = purposeOf(shot, stepParams, outputPurpose)
@@ -229,17 +252,18 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  // 执行队列：非 succeeded 且有重试余量；cancelled 不参与
-  const queue = finalShots
+  // 执行队列：非复用镜头中，非 succeeded 且有重试余量；cancelled 不参与
+  const genShots = finalShots.filter((s) => !reuseByShot.has(s.id))
+  const queue = genShots
     .map((s) => taskByShotId.get(s.id)!)
     .filter((t) => {
       if (t.status === 'succeeded' || t.status === 'cancelled') return false
       if (t.status === 'failed' && t.attempts > maxRetry) return false
       return true
     })
-  const doneCount = finalShots.length - queue.length
+  const doneCount = genShots.length - queue.length
   if (doneCount > 0) ctx.log(`跳过已有成功产物的 ${doneCount} 个镜头`)
-  if (queue.length === 0) ctx.log('全部镜头已有成功产物，无新生成')
+  if (queue.length === 0) ctx.log(reuseByShot.size > 0 ? '无待生成镜头（库内已有 / 已成功覆盖全部）' : '全部镜头已有成功产物，无新生成')
 
   const failures: Array<{ shotId: string; error: string }> = []
   await runPool(queue, concurrency, async (task) => {
@@ -255,9 +279,9 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     throw new Error(`出图失败 ${failures.length} 个镜头（可修正后断点续跑/重试任务）：${sample}`)
   }
 
-  // 产物按 shots 顺序聚合
+  // 产物按 shots 顺序聚合：复用镜头取库内已有 asset id，其余取本步任务产物（保序、总量不变）
   const assetIds = finalShots
-    .map((s) => taskByShotId.get(s.id)!.resultAssetId)
+    .map((s) => reuseByShot.get(s.id) ?? taskByShotId.get(s.id)?.resultAssetId)
     .filter((id): id is number => typeof id === 'number')
   if (assetIds.length !== finalShots.length) {
     throw new Error(`产物与镜头数不符（${assetIds.length}/${finalShots.length}），请重试`)

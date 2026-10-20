@@ -1,6 +1,6 @@
 key: series-setup
 builtin: true
-version: 5
+version: 7
 name: 短剧立项
 description: 适合：为短剧系列做整剧立项（设定包 + 分集地图 + 商业结构 + 角色/场景/道具建档）。流程：创意入库 → 整剧立项（可审阅）→ 商业结构设计（可审阅；卡点为剧情设计思路非真实付费门禁）→ 定妆照（可选，出图后人工审阅）→ 角色建档 → 场景道具档案与参考图（可选，出图后人工审阅）→ 系列记忆沉淀。
 genre: drama_short
@@ -22,15 +22,24 @@ inputs:
     required: false
     accept: [.md, .txt]
   - key: with_character_refs
-    label: 生成定妆照并入档（true=角色参考图；false=仅建档）
-    kind: bool
+    label: 定妆照生成模式（auto=已有则复用仅补缺图；on=全部重画；off=不生成仅建档）
+    kind: select
     required: false
-    default: false
+    options: [auto, on, off]
+    option_labels: [智能（已有则复用、仅补缺图，推荐）, 全部重新生成, 不生成（仅建档）]
+    default: auto
+  - key: character_ref_images
+    label: 定妆照身份参考图（选填，png/jpg/jpeg/webp：文件名（去扩展名）=角色名；命中角色以该图锚定五官/发型/脸型，仅改变视角，未命中不影响）
+    kind: files
+    required: false
+    accept: [.png, .jpg, .jpeg, .webp]
   - key: with_set_refs
-    label: 生成场景/道具参考图并入档（true=素材参考图；false=仅建档）
-    kind: bool
+    label: 场景/道具参考图生成模式（auto=已有则复用仅补缺图；on=全部重画；off=不生成仅建档）
+    kind: select
     required: false
-    default: false
+    options: [auto, on, off]
+    option_labels: [智能（已有则复用、仅补缺图，推荐）, 全部重新生成, 不生成（仅建档）]
+    default: auto
   - key: with_monetization
     label: 产出商业结构设计（true=逐集钩子/悬念收口/卡点建议；false=仅设定包。卡点为剧情设计思路，真实付费由发布平台决定）
     kind: bool
@@ -114,12 +123,16 @@ steps:
   - key: gen_refs
     action: ai_image
     title: 定妆照生成
-    when: input.with_character_refs == true
+    when: input.with_character_refs != off
     after: [ref_prompts]
     inputs:
       shots: steps.ref_prompts.asset
+      ref_images: input.character_ref_images
+      ref_mode: input.with_character_refs
     params:
       output_purpose: reference_character
+      # auto 智能复用：命中角色库已有定妆照则直接复用、不为该角色重画计费（仅 on 全量重画）
+      reuse_existing_refs: true
       # 定妆照为 16:9 横画幅多视角角色设定图（半身胸像 + 三视图），覆盖项目竖幅默认
       image_size: "1536x864"
     batch: { field: shots, max_concurrent: 1, retry: 1 }
@@ -161,13 +174,16 @@ steps:
   - key: gen_set_refs
     action: ai_image
     title: 场景/道具参考图生成
-    when: input.with_set_refs == true
+    when: input.with_set_refs != off
     after: [set_ref_prompts]
     inputs:
       shots: steps.set_ref_prompts.asset
+      ref_mode: input.with_set_refs
     params:
       output_purpose: reference_scene
       output_purpose_by_category: { prop: reference_prop }
+      # auto 智能复用：命中场景/道具库已有参考图则直接复用、不重画计费（仅 on 全量重画）
+      reuse_existing_refs: true
     batch: { field: shots, max_concurrent: 1, retry: 1 }
     gate:
       mode: required

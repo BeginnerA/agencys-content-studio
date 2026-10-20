@@ -461,14 +461,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v16：版本 16 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构；v16 定妆照 16:9 多视角设定图） ——
+    // —— T1 mengbao-episode v18：版本 18 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构；v16 定妆照 16:9 多视角设定图；v17 定妆照身份参考图接入 gen_refs；v18 参考图升三态 auto/on/off + 智能复用） ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 16, `version=16（实际 ${t.version}）`)
+        check(t.version === 18, `version=18（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
         check(
           ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
@@ -482,7 +482,20 @@ async function main(): Promise<void> {
           ['set_profile', 'set_ref_prompts', 'gen_set_refs', 'sync_set'].every((k) => keys.includes(k)),
           'mengbao-episode 含场景道具链（set_profile/set_ref_prompts/gen_set_refs/sync_set）',
         )
-        check(t.inputs.some((i) => i.key === 'with_set_refs'), 'inputs 含 with_set_refs')
+        const wsrE = t.inputs.find((i) => i.key === 'with_set_refs')
+        check(!!wsrE && wsrE.kind === 'select' && (wsrE.options as readonly string[] | undefined)?.join(',') === 'auto,on,off' && wsrE.default === 'auto', 'mengbao-episode inputs 含 with_set_refs（三态 select，默认 auto）')
+        // [v17] 定妆照身份锁：character_ref_images files 选填输入 + gen_refs.ref_images 接线 input.character_ref_images
+        const criE = t.inputs.find((i) => i.key === 'character_ref_images')
+        check(!!criE && criE.kind === 'files' && criE.required === false && (criE.accept ?? []).includes('.png'), 'mengbao-episode inputs 含 character_ref_images（files 选填，接受 png）')
+        check(stepOf('gen_refs')?.inputs?.['ref_images'] === 'input.character_ref_images', 'mengbao-episode gen_refs.inputs.ref_images 接线 identity-lock 参考图输入')
+        // [v18] 定妆照/参考图三态 + 智能复用接线
+        const wcrE = t.inputs.find((i) => i.key === 'with_character_refs')
+        check(!!wcrE && wcrE.kind === 'select' && (wcrE.options as readonly string[] | undefined)?.join(',') === 'auto,on,off' && wcrE.default === 'auto', 'mengbao-episode with_character_refs 升三态 select（auto/on/off，默认 auto）')
+        const grE = stepOf('gen_refs')
+        check(!!grE && typeof grE.when === 'string' && grE.when.includes('!= off'), 'mengbao-episode gen_refs.when 采三态（!= off，auto/on 都放行）')
+        check(grE?.inputs?.['ref_mode'] === 'input.with_character_refs' && grE?.params?.['reuse_existing_refs'] === true, 'mengbao-episode gen_refs 接 ref_mode + reuse_existing_refs（auto 智能复用）')
+        const gsrE = stepOf('gen_set_refs')
+        check(gsrE?.inputs?.['ref_mode'] === 'input.with_set_refs' && gsrE?.params?.['reuse_existing_refs'] === true, 'mengbao-episode gen_set_refs 接 ref_mode + reuse_existing_refs')
         check(t.inputs.some((i) => i.key === 'prev_script' && !i.required), 'inputs 含 prev_script 选填（v12 集间承接）')
         const bgmIn = t.inputs.find((i) => i.key === 'bgm_mode')
         check(!!bgmIn && bgmIn.default === 'auto' && (bgmIn.options as readonly string[] | undefined)?.join(',') === 'none,auto,music_gen', 'v13 inputs 含 bgm_mode（默认 auto，三值选项）')
@@ -513,14 +526,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2 series-setup v5：版本 5 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ M60 商业结构设计步 + v5 定妆照 16:9 多视角设定图 ——
+    // —— T2 series-setup v7：版本 7 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ M60 商业结构设计步 + v5 定妆照 16:9 多视角设定图 + v6 定妆照身份参考图接入 gen_refs + v7 参考图升三态 auto/on/off 与智能复用 ——
     if (copyTpl('series-setup')) {
       const t = tryLoad('series-setup')
       check(t !== null, 'series-setup 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 5, `series-setup version=5（实际 ${t.version}）`)
+        check(t.version === 7, `series-setup version=7（实际 ${t.version}）`)
         check(t.steps.length === 13, `series-setup steps=13（实际 ${t.steps.length}）`)
         // [M60] 商业结构设计：开关输入 + monetize 步接线 + 必审可跳闸
         const wm = t.inputs.find((i) => i.key === 'with_monetization')
@@ -530,6 +543,17 @@ async function main(): Promise<void> {
         check(!!mz && mz.inputs?.['series'] === 'steps.write_series.asset' && (mz.after ?? []).includes('write_series'), 'monetize.after/inputs 吃设定包（分集地图为唯一上游）')
         check(typeof mz?.when === 'string' && mz.when.includes('with_monetization'), 'monetize.when 绑 with_monetization（可关零漂移）')
         check(mz?.gate?.mode === 'required' && !!mz.gate.skip_label, 'monetize 挂必审可跳闸（卡点结构需人工确认）')
+        // [v6] 定妆照身份锁：character_ref_images files 选填输入 + gen_refs.ref_images 接线 input.character_ref_images
+        const criS = t.inputs.find((i) => i.key === 'character_ref_images')
+        check(!!criS && criS.kind === 'files' && criS.required === false && (criS.accept ?? []).includes('.png'), 'series-setup inputs 含 character_ref_images（files 选填，接受 png）')
+        check(stepOf('gen_refs')?.inputs?.['ref_images'] === 'input.character_ref_images', 'series-setup gen_refs.inputs.ref_images 接线 identity-lock 参考图输入')
+        // [v7] 定妆照/参考图三态 + 智能复用接线
+        const wcrS = t.inputs.find((i) => i.key === 'with_character_refs')
+        check(!!wcrS && wcrS.kind === 'select' && (wcrS.options as readonly string[] | undefined)?.join(',') === 'auto,on,off' && wcrS.default === 'auto', 'series-setup with_character_refs 升三态 select（auto/on/off，默认 auto）')
+        const grS = stepOf('gen_refs')
+        check(!!grS && typeof grS.when === 'string' && grS.when.includes('!= off'), 'series-setup gen_refs.when 采三态（!= off）')
+        check(grS?.inputs?.['ref_mode'] === 'input.with_character_refs' && grS?.params?.['reuse_existing_refs'] === true, 'series-setup gen_refs 接 ref_mode + reuse_existing_refs')
+        check(stepOf('gen_set_refs')?.inputs?.['ref_mode'] === 'input.with_set_refs' && stepOf('gen_set_refs')?.params?.['reuse_existing_refs'] === true, 'series-setup gen_set_refs 接 ref_mode + reuse_existing_refs')
         check(
           ['gen_refs', 'gen_set_refs'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),
           'series-setup 出图步均挂人工审阅闸（required + 可跳过）',

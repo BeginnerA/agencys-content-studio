@@ -528,8 +528,8 @@ async function main(): Promise<void> {
     cpSync(join(REPO_ROOT, 'workspace', 'templates', 'mengbao-episode.yaml'), join(TEMPLATES_DIR, 'mengbao-episode.yaml'))
 
     const tpl = loadTemplate('mengbao-episode', true)
-    // v16：v15 基础上 gen_refs 定妆照改 16:9 横画幅多视角设定图（仅加 image_size）；步骤数/其余结构不变
-    check(tpl.version === 16, `version=16（实际 ${tpl.version}）`)
+    // v18：v17 基础上定妆照/场景道具参考图升三态 select（auto/on/off）+ 引擎智能复用（reuse_existing_refs + ref_mode）；步骤数/其余结构不变
+    check(tpl.version === 18, `version=18（实际 ${tpl.version}）`)
     check(tpl.steps.find((s) => s.key === 'write_script')?.inputs['prev_script'] === 'input.prev_script', 'v12 write_script 接 prev_script（上集剧本承接输入）')
     const gm = tpl.steps.find((s) => s.key === 'gen_motion')
     check(!!gm && (gm.after ?? []).includes('voice') && gm.inputs['voices'] === 'steps.voice.assets', 'v10 以音定画：gen_motion 依赖 voice 并注入实测音频')
@@ -537,6 +537,12 @@ async function main(): Promise<void> {
     for (const k of ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames']) {
       check(stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label, `${k} 挂人工审阅闸（required + 可跳过）`)
     }
+    // [v18] 智能复用接线：定妆照/参考图步 when != off（三态）+ ref_mode 接三态输入 + params.reuse_existing_refs
+    const gr18 = stepOf('gen_refs')
+    check(typeof gr18?.when === 'string' && gr18.when.includes('!= off'), 'gen_refs.when 采三态（!= off，auto/on 都放行）')
+    check(gr18?.inputs?.['ref_mode'] === 'input.with_character_refs' && gr18?.params?.['reuse_existing_refs'] === true, 'gen_refs 接 ref_mode 输入 + reuse_existing_refs（auto 智能复用开关）')
+    const gsr18 = stepOf('gen_set_refs')
+    check(gsr18?.inputs?.['ref_mode'] === 'input.with_set_refs' && gsr18?.params?.['reuse_existing_refs'] === true, 'gen_set_refs 接 ref_mode 输入 + reuse_existing_refs')
     const ms = stepOf('make_storyboard')
     check(!!ms && (ms.after ?? []).includes('cast_lines'), 'make_storyboard.after 含 cast_lines')
     check(ms?.inputs['lines'] === 'steps.cast_lines.asset', `inputs.lines 指向台词表（实际 ${String(ms?.inputs['lines'])}）`)
@@ -567,11 +573,11 @@ async function main(): Promise<void> {
     const lmg = loadedV8.steps.find((s) => s.key === 'compose_video')!
     check(!('transition' in (lmg.params ?? {})), 'v8 快照 compose 参数无 M11 键')
 
-    // ---- 无快照 → 文件 v16；损坏快照 → 回退文件 ----
+    // ---- 无快照 → 文件 v18；损坏快照 → 回退文件 ----
     const noSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: null })
-    check(noSnap.version === 16, '无快照 → v16 文件加载')
+    check(noSnap.version === 18, '无快照 → v18 文件加载')
     const badSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: 'junk' })
-    check(badSnap.version === 16, '损坏快照 → 回退文件加载')
+    check(badSnap.version === 18, '损坏快照 → 回退文件加载')
   }
 
   // ================= 分发 =================

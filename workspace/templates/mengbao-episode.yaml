@@ -1,6 +1,6 @@
 key: mengbao-episode
 builtin: true
-version: 16
+version: 18
 name: 短剧·单集
 description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音 + 背景音乐智能选曲）。多集连载在「同一项目」下逐集运行，集间承接：前集 write_script 剧本经多段工作流链段 inputSpec（prev_script 映射 $prev.asset:script）自动流入本集剧本步，或由用户手动选入既往剧本资产。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
@@ -35,15 +35,24 @@ inputs:
     required: false
     default: false
   - key: with_character_refs
-    label: 生成定妆照并入档（true=角色参考图；false=仅建档）
-    kind: bool
+    label: 定妆照生成模式（auto=已有则复用仅补缺图；on=全部重画；off=不生成仅建档）
+    kind: select
     required: false
-    default: false
+    options: [auto, on, off]
+    option_labels: [智能（已有则复用、仅补缺图，推荐）, 全部重新生成, 不生成（仅建档）]
+    default: auto
+  - key: character_ref_images
+    label: 定妆照身份参考图（选填，png/jpg/jpeg/webp：文件名（去扩展名）=角色名；命中角色以该图锚定五官/发型/脸型，仅改变视角，未命中不影响）
+    kind: files
+    required: false
+    accept: [.png, .jpg, .jpeg, .webp]
   - key: with_set_refs
-    label: 生成场景/道具参考图并入档（true=素材参考图；false=仅建档）
-    kind: bool
+    label: 场景/道具参考图生成模式（auto=已有则复用仅补缺图；on=全部重画；off=不生成仅建档）
+    kind: select
     required: false
-    default: false
+    options: [auto, on, off]
+    option_labels: [智能（已有则复用、仅补缺图，推荐）, 全部重新生成, 不生成（仅建档）]
+    default: auto
   - key: with_deep_review
     label: 剧本深度审查（true=剧本后附深度审查报告；false=关闭）
     kind: bool
@@ -95,8 +104,7 @@ defaults:
   #                （motion_prompt 缺则回退 image_prompt）；出图+视频双重计费。
   #                ⚠ motion=false 时 i2v 无效（gen_frames/gen_motion 均不触发，仍走静态路径）
   # 【审阅闸·不改执行】with_storyboard_review=true → make_storyboard 后挂人工审阅闸（步本身恒执行，仅闸开关）
-  # 【出图开关】with_character_refs=true → gen_refs 定妆照生成；false 仅 char_profile 建档，sync_characters 用空参考图
-  #           with_set_refs=true → gen_set_refs 场景/道具参考图；false 仅 set_profile 建档，sync_set 用空参考图
+  # 【参考图模式】with_character_refs / with_set_refs 三态：auto（默认，库内已有则直接复用不重画、仅缺图新对象出图）｜on（全量重画）｜off（不生成，仅建档，同步用空参考图）
   #           （四出图步 gen_refs/gen_set_refs/gen_images/gen_frames 均挂 required 可跳过审阅闸）
   # 【可选附加步】with_deep_review=true → script_review（+其审阅闸）；
   #               with_narrative_doc=true → storyboard_narrative；with_edit_review=true → edit_audit
@@ -188,12 +196,16 @@ steps:
   - key: gen_refs
     action: ai_image
     title: 定妆照生成
-    when: input.with_character_refs == true
+    when: input.with_character_refs != off
     after: [ref_prompts]
     inputs:
       shots: steps.ref_prompts.asset
+      ref_images: input.character_ref_images
+      ref_mode: input.with_character_refs
     params:
       output_purpose: reference_character
+      # auto 智能复用：命中角色库已有定妆照则直接复用、不为该角色重画计费（仅 on 全量重画）
+      reuse_existing_refs: true
       # 定妆照为 16:9 横画幅多视角角色设定图（半身胸像 + 三视图），覆盖项目竖幅默认
       image_size: "1536x864"
     batch: { field: shots, max_concurrent: 1, retry: 1 }
@@ -235,13 +247,16 @@ steps:
   - key: gen_set_refs
     action: ai_image
     title: 场景/道具参考图生成
-    when: input.with_set_refs == true
+    when: input.with_set_refs != off
     after: [set_ref_prompts]
     inputs:
       shots: steps.set_ref_prompts.asset
+      ref_mode: input.with_set_refs
     params:
       output_purpose: reference_scene
       output_purpose_by_category: { prop: reference_prop }
+      # auto 智能复用：命中场景/道具库已有参考图则直接复用、不重画计费（仅 on 全量重画）
+      reuse_existing_refs: true
     batch: { field: shots, max_concurrent: 1, retry: 1 }
     gate:
       mode: required

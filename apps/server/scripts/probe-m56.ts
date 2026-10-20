@@ -12,7 +12,7 @@
  *     旁路 LLM 与真实媒体执行。
  *
  * 断言聚焦 M56 契约：批准剧本经既有 setting_docs（单集）/plan_doc（连载）锚定、毕业不新增模板步骤/不改结构（M60 后
- * 出厂版本为 mengbao-episode v16 / series-setup v5（v16/v5 仅 gen_refs 加定妆照横画幅参数），毕业链仍零改动），幂等复用未启动专业 run、未确认拒绝、prev_script 不被误用。
+ * 出厂版本为 mengbao-episode v18 / series-setup v7（v18/v7 定妆照参考图升三态 auto/on/off + 智能复用），毕业链仍零改动），幂等复用未启动专业 run、未确认拒绝、prev_script 不被误用。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。
  */
@@ -206,11 +206,37 @@ async function main(): Promise<void> {
     drift: async () => {
       const { loadTemplate } = await import('../src/pipeline/loader')
       const ep = loadTemplate('mengbao-episode')
-      check(ep.version === 16, 'mengbao-episode 当前 v16（v16 仅 gen_refs 加定妆照横画幅参数，毕业锚定面未动）')
+      check(ep.version === 18, 'mengbao-episode 当前 v18（v18 定妆照参考图升三态 + 智能复用，毕业锚定面未动）')
       check(JSON.stringify(ep.steps).includes('write_script'), 'write_script 步骤仍在位（毕业不 skip 任何步、不删结构）')
       check(ep.inputs.some((i) => i.key === 'setting_docs' && i.kind === 'files'), 'setting_docs 仍为既有 files 输入（锚定依赖未新增列/键）')
       const se = loadTemplate('series-setup')
-      check(se.version === 5 && se.inputs.some((i) => i.key === 'plan_doc'), 'series-setup 当前 v5（v5 仅 gen_refs 加定妆照横画幅参数）且 plan_doc 输入在位（连载锚定输入未动）')
+      check(se.version === 7 && se.inputs.some((i) => i.key === 'plan_doc'), 'series-setup 当前 v7（v7 定妆照参考图升三态 + 智能复用）且 plan_doc 输入在位（连载锚定输入未动）')
+      // [v7/v18] 定妆照身份锁纯函数：按文件名（去扩展名）=角色名匹配→ shotId→参考图 id（同名取首个，未命中不含）
+      const { buildIdentityRefMap, pickExistingRefs } = await import('../src/pipeline/actions/reference-reuse')
+      const idMap = buildIdentityRefMap(
+        [{ id: 11, name: '妈妈.png' }, { id: 12, name: 'Ava.JPG' }, { id: 13, name: '妈妈_dup.png' }],
+        [{ id: '妈妈' }, { id: 'ava' }, { id: '路人' }],
+      )
+      check(idMap.get('妈妈') === 11 && idMap.get('ava') === 12, 'buildIdentityRefMap：文件名去扩展=角色名命中（大小写不敏感，同名取首个）')
+      check(!idMap.has('路人') && idMap.size === 2, 'buildIdentityRefMap：无同名参考图的镜头不入表（零注入、不越界）')
+      // [v7/v18] 智能复用纯函数：逐镜查库内实体已有参考图→命中复用、空 ref/未建档/未命中均不复用（照常生成）
+      const idx = (rows: Array<{ name: string; ids: number[] }>): Map<string, unknown> => {
+        const m = new Map<string, unknown>()
+        for (const r of rows) { const row = { name: r.name, refAssetIds: JSON.stringify(r.ids) }; m.set(r.name, row); m.set(r.name.toLowerCase(), row) }
+        return m
+      }
+      const indexes = {
+        characters: idx([{ name: '妈妈', ids: [7] }, { name: '爸爸', ids: [] }]),
+        scenes: idx([{ name: '客厅', ids: [9] }]),
+        props: idx([]),
+      } as unknown as Parameters<typeof pickExistingRefs>[1]
+      const reuse = pickExistingRefs(
+        [{ id: '妈妈', characters: ['妈妈'] }, { id: '爸爸', characters: ['爸爸'] }, { id: '新角色', characters: ['新角色'] }, { id: '客厅', category: 'scene' }, { id: '空镜', category: 'scene' }],
+        indexes,
+      )
+      check(reuse.get('妈妈') === 7, 'pickExistingRefs：定妆照角色库内已有参考图→复用其 asset id')
+      check(!reuse.has('爸爸') && !reuse.has('新角色'), 'pickExistingRefs：库内空 ref / 未建档角色→不复用（照常生成）')
+      check(reuse.get('客厅') === 9 && !reuse.has('空镜'), 'pickExistingRefs：category=scene 命中场景库已有→复用；未命中→不复用')
     },
   }
 

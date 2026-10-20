@@ -67,6 +67,10 @@ const gateMedia = computed(() => gateArts.value.filter((a) => a.kind === 'image'
 const gateDocs = computed(() => gateArts.value.filter((a) => a.kind !== 'image' && a.kind !== 'video'))
 const gateAvailableCount = computed(() => gateArts.value.filter((a) => a.available).length)
 
+// 缩略图角标：优先服务端友好标签（定妆照=角色名），否则回退到「第 N 张图/段视频」；不展示原始文件名
+const mediaLabel = (a: CreationArtifact, mi: number): string =>
+  a.label?.trim() || (a.kind === 'video' ? `第 ${mi + 1} 段视频` : `第 ${mi + 1} 张图`)
+
 const preview = ref<Asset | null>(null)
 const loading = ref<number | null>(null)
 let request = 0
@@ -173,12 +177,12 @@ async function onReject(): Promise<void> {
     <div v-if="!dialogue && !frames.length && gateArts.length" class="ec-gate-arts">
       <p class="muted">本步骤「{{ review.title }}」已产出 {{ gateAvailableCount }}/{{ gateArts.length }} 项，点开可放大查看，确认后再决定继续或驳回。</p>
       <ul v-if="gateMedia.length" class="thumbs">
-        <li v-for="a in gateMedia" :key="a.assetId">
-          <button class="thumb" type="button" :disabled="!a.available || loading !== null" :aria-label="`放大查看 ${a.name}`" @click="open(a)">
-            <img v-if="a.available && a.kind === 'image'" :src="`/api/v1/assets/${a.assetId}/thumb?v=2`" :alt="a.name" loading="lazy" />
+        <li v-for="(a, mi) in gateMedia" :key="a.assetId">
+          <button class="thumb" type="button" :disabled="!a.available || loading !== null" :aria-label="`放大查看 ${mediaLabel(a, mi)}`" @click="open(a)">
+            <img v-if="a.available && a.kind === 'image'" :src="`/api/v1/assets/${a.assetId}/thumb?v=2`" :alt="mediaLabel(a, mi)" loading="lazy" />
             <video v-else-if="a.available && a.kind === 'video'" class="ec-gate-video" :src="`/api/v1/assets/${a.assetId}/file`" muted preload="metadata" playsinline />
             <span v-else class="off">素材不可用</span>
-            <span class="idx">{{ a.name }}</span>
+            <span class="idx">{{ mediaLabel(a, mi) }}</span>
           </button>
         </li>
       </ul>
