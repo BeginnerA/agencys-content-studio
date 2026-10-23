@@ -1,0 +1,1347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>百工工作室 · 本地优先的 AI 内容创作工作台</title>
+<meta name="description" content="19 个创作模板、三种创作方式、四通道 AI。百工工作室把选题到成片收进一条可审阅的本地流水线，项目数据与密钥留在你的电脑。" />
+<meta name="theme-color" content="#070a12" />
+<meta property="og:title" content="百工工作室 · 本地优先的 AI 内容创作工作台" />
+<meta property="og:description" content="19 个创作模板、三种创作方式、四通道 AI。数据留本机，成片出工坊。" />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<style>
+  :root {
+    --bg: #070a12;
+    --bg-2: #0a0f1b;
+    --panel: rgba(148, 163, 184, 0.045);
+    --panel-2: #0d1424;
+    --line: rgba(148, 163, 184, 0.13);
+    --line-2: rgba(148, 163, 184, 0.24);
+    --text: #e8edf6;
+    --text-2: #9aa8c0;
+    --text-3: #7b879f;
+    --violet: #8b5cf6;
+    --indigo: #6366f1;
+    --indigo-d: #4f46e5;
+    --green: #22c55e;
+    --green-l: #4ade80;
+    --amber: #fbbf24;
+    --grad: linear-gradient(135deg, #8b5cf6 0%, #6366f1 62%, #4f46e5 100%);
+    --mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --max: 1180px;
+    --pad: clamp(20px, 4vw, 40px);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(1100px 520px at 72% -8%, rgba(124, 58, 237, 0.16), transparent 62%),
+      radial-gradient(900px 460px at 4% 24%, rgba(79, 70, 229, 0.08), transparent 60%),
+      radial-gradient(760px 420px at 86% 92%, rgba(34, 197, 94, 0.05), transparent 62%),
+      var(--bg);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 30%, transparent 78%);
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 30%, transparent 78%);
+  }
+  ::selection { background: rgba(139, 92, 246, 0.4); color: #fff; }
+  a { color: inherit; }
+  img { max-width: 100%; }
+  h1, h2, h3, p, figure { margin: 0; }
+  h1, h2, h3 { line-height: 1.18; letter-spacing: -0.02em; font-weight: 700; }
+
+  :focus-visible {
+    outline: 2px solid var(--green-l);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .skip {
+    position: absolute;
+    left: 16px;
+    top: -60px;
+    z-index: 100;
+    padding: 8px 14px;
+    background: var(--green);
+    color: #04120a;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: top 0.2s;
+  }
+  .skip:focus { top: 12px; }
+
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--pad); }
+
+  /* ---------- header ---------- */
+  .site-head {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid var(--line);
+    background: rgba(7, 10, 18, 0.78);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  .head-in {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 var(--pad);
+    height: 68px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    text-decoration: none;
+    flex: none;
+  }
+  .brand svg { display: block; width: 34px; height: 34px; }
+  .brand-name { font-weight: 700; font-size: 16px; letter-spacing: 0.04em; line-height: 1.2; }
+  .brand-sub {
+    display: block;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    color: var(--text-3);
+    margin-top: 2px;
+  }
+  .nav { display: flex; align-items: center; gap: 26px; margin-left: auto; }
+  .nav a {
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 0;
+    border-bottom: 1px solid transparent;
+    transition: color 0.18s, border-color 0.18s;
+  }
+  .nav a:hover { color: var(--text); border-color: var(--line-2); }
+  .head-actions { display: flex; align-items: center; gap: 12px; flex: none; }
+  .ver {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--text-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+  .menu-btn {
+    display: none;
+    width: 38px;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .menu-btn:hover { border-color: var(--line-2); }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 20px;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: transform 0.16s, box-shadow 0.16s, background 0.16s, border-color 0.16s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--grad);
+    color: #fff;
+    box-shadow: 0 8px 26px rgba(99, 102, 241, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 34px rgba(99, 102, 241, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+  .btn-ghost {
+    border-color: var(--line-2);
+    color: var(--text);
+    background: rgba(148, 163, 184, 0.04);
+  }
+  .btn-ghost:hover { border-color: rgba(148, 163, 184, 0.45); background: rgba(148, 163, 184, 0.08); }
+  .btn-sm { min-height: 36px; padding: 0 14px; font-size: 13px; border-radius: 8px; }
+  .btn .arrow { font-family: var(--mono); font-size: 13px; opacity: 0.85; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+    gap: clamp(36px, 5vw, 72px);
+    align-items: center;
+    padding: clamp(56px, 8vw, 104px) 0 clamp(44px, 6vw, 72px);
+  }
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--text-2);
+    text-transform: uppercase;
+    margin-bottom: 26px;
+  }
+  .kicker .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+  }
+  h1 {
+    font-size: clamp(42px, 6.1vw, 76px);
+    line-height: 1.06;
+    letter-spacing: -0.035em;
+    margin-bottom: 26px;
+  }
+  h1 .accent {
+    background: linear-gradient(100deg, #c4b5fd 0%, #8b5cf6 46%, #4ade80 120%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    position: relative;
+    white-space: nowrap;
+  }
+  h1 .accent::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.04em;
+    height: 0.07em;
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.75), rgba(74, 222, 128, 0.55));
+    border-radius: 99px;
+  }
+  .lede {
+    font-size: clamp(16px, 1.6vw, 18px);
+    line-height: 1.85;
+    color: var(--text-2);
+    max-width: 34em;
+    margin-bottom: 34px;
+  }
+  .lede strong { color: var(--text); font-weight: 600; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .hero-meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+    color: var(--text-3);
+  }
+  .hero-meta span + span::before { content: " · "; color: var(--line-2); }
+
+  /* ---------- run panel ---------- */
+  .run-panel {
+    position: relative;
+    border: 1px solid var(--line-2);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(20, 28, 48, 0.92), rgba(10, 15, 27, 0.96));
+    box-shadow: 0 30px 80px rgba(2, 6, 18, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+  }
+  .run-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(560px 220px at 82% -10%, rgba(139, 92, 246, 0.22), transparent 70%);
+  }
+  .rp-head {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 15px 18px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--text-2);
+  }
+  .rp-head .tag-demo {
+    color: var(--text-3);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+  }
+  .rp-status { color: var(--green-l); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .rp-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .rp-body { position: relative; padding: 8px 18px 6px; }
+  .step {
+    display: grid;
+    grid-template-columns: 26px 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 13px 0;
+    border-bottom: 1px dashed rgba(148, 163, 184, 0.1);
+    position: relative;
+  }
+  .step:last-child { border-bottom: 0; }
+  .step-no {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-3);
+    background: rgba(148, 163, 184, 0.04);
+  }
+  .step.done .step-no { border-color: rgba(34, 197, 94, 0.35); color: var(--green-l); background: rgba(34, 197, 94, 0.07); }
+  .step.gate .step-no { border-color: rgba(251, 191, 36, 0.4); color: var(--amber); background: rgba(251, 191, 36, 0.07); }
+  .step-t { font-size: 13.5px; font-weight: 600; color: var(--text); line-height: 1.5; }
+  .step-d { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); margin-top: 2px; letter-spacing: 0.02em; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    color: var(--text-3);
+    white-space: nowrap;
+    align-self: center;
+  }
+  .chip.ok { color: var(--green-l); border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.06); }
+  .chip.wait { color: var(--amber); border-color: rgba(251, 191, 36, 0.32); background: rgba(251, 191, 36, 0.06); }
+  .rp-foot {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-3);
+    letter-spacing: 0.03em;
+  }
+  .rp-foot span { white-space: nowrap; }
+  .rp-foot b { color: var(--text-2); font-weight: 500; }
+
+  /* ---------- stats ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: clamp(56px, 8vw, 96px);
+  }
+  .stat { padding: 24px 8px 24px 0; }
+  .stat + .stat { border-left: 1px solid var(--line); padding-left: clamp(16px, 2.4vw, 32px); }
+  .stat b {
+    display: block;
+    font-family: var(--mono);
+    font-size: clamp(24px, 3vw, 34px);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--text);
+  }
+  .stat b em { font-style: normal; color: var(--text-3); font-size: 0.55em; margin-left: 3px; }
+  .stat span { display: block; margin-top: 6px; font-size: 12.5px; color: var(--text-3); }
+
+  /* ---------- section scaffolding ---------- */
+  section { scroll-margin-top: 90px; }
+  .sec { padding: clamp(56px, 8vw, 96px) 0; }
+  .sec-rule { border-top: 1px solid var(--line); }
+  .sec-head {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: clamp(20px, 4vw, 64px);
+    align-items: end;
+    margin-bottom: clamp(32px, 5vw, 56px);
+  }
+  .sec-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    color: var(--text-3);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .sec-label::before { content: ""; width: 18px; height: 1px; background: var(--line-2); }
+  .sec-head h2 { font-size: clamp(27px, 3.6vw, 42px); letter-spacing: -0.03em; }
+  .sec-head p { color: var(--text-2); font-size: 15.5px; line-height: 1.9; max-width: 38em; }
+
+  /* ---------- screenshot feature ---------- */
+  .shot-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: clamp(24px, 4vw, 48px);
+    align-items: start;
+  }
+  .frame {
+    border: 1px solid var(--line-2);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #0a0f1b;
+    box-shadow: 0 24px 70px rgba(2, 6, 18, 0.55);
+  }
+  .frame-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-3);
+    letter-spacing: 0.05em;
+    background: rgba(148, 163, 184, 0.035);
+  }
+  .frame-bar span:last-child { color: var(--text-3); }
+  .frame img { display: block; width: 100%; height: auto; }
+  .frame a { display: block; }
+  .shot-notes { display: grid; gap: 22px; padding-top: 6px; }
+  .note b {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--green-l);
+    margin-bottom: 5px;
+  }
+  .note p { color: var(--text-2); font-size: 13.5px; line-height: 1.8; }
+  .note + .note { padding-top: 20px; border-top: 1px solid var(--line); }
+
+  /* ---------- modes ---------- */
+  .mode {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: clamp(20px, 3.4vw, 48px);
+    padding: clamp(34px, 5vw, 56px) 0;
+    border-top: 1px solid var(--line);
+    align-items: center;
+  }
+  .mode-no {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-3);
+    align-self: start;
+    padding-top: 6px;
+  }
+  .mode h3 { font-size: clamp(22px, 2.6vw, 30px); margin-bottom: 14px; }
+  .mode h3 small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--text-3);
+    font-weight: 400;
+    margin-top: 7px;
+    text-transform: uppercase;
+  }
+  .mode p { color: var(--text-2); font-size: 15px; line-height: 1.9; }
+  .mode p + p { margin-top: 12px; }
+  .mode-media .frame { border-radius: 12px; }
+  .canvas-map {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.14) 1px, transparent 0) 0 0 / 20px 20px,
+      rgba(13, 20, 36, 0.65);
+    min-height: 268px;
+    overflow: hidden;
+  }
+  .cm-node {
+    position: absolute;
+    border: 1px solid var(--line-2);
+    background: rgba(13, 20, 36, 0.94);
+    border-radius: 8px;
+    padding: 8px 11px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-2);
+    box-shadow: 0 10px 24px rgba(2, 6, 18, 0.45);
+    white-space: nowrap;
+  }
+  .cm-node b { display: block; color: var(--text); font-family: var(--sans); font-size: 12px; font-weight: 600; }
+  .cm-node.gen { border-color: rgba(139, 92, 246, 0.5); }
+  .cm-node.out { border-color: rgba(34, 197, 94, 0.45); }
+  .cm-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .cm-line path { fill: none; stroke: rgba(148, 163, 184, 0.32); stroke-width: 1; stroke-dasharray: 3 4; }
+  .cm-cap {
+    position: absolute;
+    left: 14px;
+    bottom: 12px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    color: var(--text-3);
+  }
+
+  /* ---------- capabilities ---------- */
+  .cap-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(13, 20, 36, 0.4);
+  }
+  .cap {
+    padding: clamp(24px, 3.4vw, 38px);
+  }
+  .cap:nth-child(2n) { border-left: 1px solid var(--line); }
+  .cap:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .cap-k {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .cap-k h3 { font-size: 18px; }
+  .cap-k span { font-family: var(--mono); font-size: 10px; color: var(--text-3); letter-spacing: 0.1em; }
+  .cap ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+  .cap li {
+    position: relative;
+    padding-left: 16px;
+    color: var(--text-2);
+    font-size: 13.8px;
+    line-height: 1.75;
+  }
+  .cap li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.72em;
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--line-2);
+  }
+
+  /* ---------- providers ---------- */
+  .provider-panel {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: clamp(24px, 3.6vw, 40px);
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.055), rgba(13, 20, 36, 0.35));
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: clamp(24px, 4vw, 56px);
+  }
+  .channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
+  .channel {
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 13px 15px;
+    background: rgba(7, 10, 18, 0.4);
+  }
+  .channel b { display: block; font-size: 14px; font-weight: 600; }
+  .channel span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--text-3); }
+  .provider-panel h3 { font-size: clamp(20px, 2.2vw, 26px); margin-bottom: 12px; }
+  .provider-panel p { color: var(--text-2); font-size: 14px; line-height: 1.85; }
+  .provider-side { border-left: 1px solid var(--line); padding-left: clamp(20px, 3vw, 36px); }
+  .provider-side h4 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    color: var(--green-l);
+    margin: 0 0 12px;
+    font-weight: 500;
+  }
+  .provider-side ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .provider-side li { font-size: 13.5px; color: var(--text-2); padding-left: 16px; position: relative; line-height: 1.75; }
+  .provider-side li::before { content: "─"; position: absolute; left: 0; color: var(--text-3); }
+  .provider-side .fine { font-size: 11.5px; color: var(--text-3); margin-top: 18px; line-height: 1.7; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    color: #c4b5fd;
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    padding: 1px 5px;
+    border-radius: 4px;
+    word-break: break-all;
+  }
+
+  /* ---------- local ---------- */
+  .local-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    gap: clamp(28px, 5vw, 64px);
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(28px, 4.4vw, 52px);
+    background:
+      radial-gradient(520px 260px at 12% 10%, rgba(34, 197, 94, 0.07), transparent 70%),
+      linear-gradient(180deg, rgba(13, 20, 36, 0.72), rgba(10, 15, 27, 0.5));
+    position: relative;
+    overflow: hidden;
+  }
+  .stamp {
+    width: 168px;
+    height: 168px;
+    border-radius: 50%;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+    transform: rotate(-8deg);
+    color: var(--green-l);
+    box-shadow: inset 0 0 0 7px rgba(34, 197, 94, 0.06), 0 0 40px rgba(34, 197, 94, 0.08);
+    margin: 0 auto;
+  }
+  .stamp b { font-size: 26px; letter-spacing: 0.12em; font-weight: 700; }
+  .stamp span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.24em; color: rgba(74, 222, 128, 0.75); }
+  .stamp i { font-style: normal; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--text-3); margin-top: 8px; }
+  .local-copy h3 { font-size: clamp(22px, 2.8vw, 32px); margin-bottom: 14px; }
+  .local-copy > p { color: var(--text-2); font-size: 15px; line-height: 1.9; margin-bottom: 22px; }
+  .local-list { display: grid; gap: 0; }
+  .local-item {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 16px;
+    padding: 13px 0;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
+    line-height: 1.75;
+  }
+  .local-item:last-child { border-bottom: 1px solid var(--line); }
+  .local-item b { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; color: var(--text-3); font-weight: 500; padding-top: 2px; }
+  .local-item span { color: var(--text-2); }
+  .local-callout {
+    margin-top: 20px;
+    padding: 12px 14px;
+    border: 1px dashed rgba(251, 191, 36, 0.28);
+    border-radius: 8px;
+    background: rgba(251, 191, 36, 0.045);
+    font-size: 12.5px;
+    color: #e7d7a7;
+    line-height: 1.7;
+  }
+  .local-callout b { color: var(--amber); font-weight: 600; }
+
+  /* ---------- download ---------- */
+  .download-card {
+    position: relative;
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    border-radius: 18px;
+    padding: clamp(28px, 5vw, 56px);
+    background:
+      radial-gradient(760px 320px at 84% -12%, rgba(139, 92, 246, 0.22), transparent 66%),
+      radial-gradient(600px 300px at 4% 108%, rgba(34, 197, 94, 0.07), transparent 66%),
+      linear-gradient(180deg, rgba(18, 25, 44, 0.9), rgba(10, 15, 27, 0.94));
+    overflow: hidden;
+  }
+  .download-card::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 260px;
+    height: 260px;
+    border: 1px solid rgba(139, 92, 246, 0.16);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .dl-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: clamp(28px, 4vw, 56px); align-items: center; position: relative; }
+  .dl-grid h2 { font-size: clamp(28px, 4vw, 44px); margin-bottom: 16px; letter-spacing: -0.03em; }
+  .dl-grid h2 span { color: var(--text-3); }
+  .dl-grid > div > p { color: var(--text-2); font-size: 15px; line-height: 1.9; margin-bottom: 26px; max-width: 30em; }
+  .dl-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .dl-fine { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); letter-spacing: 0.03em; line-height: 1.8; }
+  .dl-spec {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(7, 10, 18, 0.45);
+    padding: 6px 18px;
+    margin: 0;
+  }
+  .dl-spec div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .dl-spec div:last-child { border-bottom: 0; }
+  .dl-spec dt { color: var(--text-3); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; }
+  .dl-spec dd { margin: 0; color: var(--text-2); text-align: right; }
+  .dl-spec dd b { color: var(--green-l); font-weight: 500; }
+
+  /* ---------- faq ---------- */
+  .faq { display: grid; gap: 0; border-top: 1px solid var(--line); }
+  .faq details { border-bottom: 1px solid var(--line); }
+  .faq summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 0;
+    font-size: 15.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "+";
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--text-3);
+    flex: none;
+    transition: transform 0.18s;
+  }
+  .faq details[open] summary::after { transform: rotate(45deg); color: var(--green-l); }
+  .faq .a { padding: 0 0 24px; color: var(--text-2); font-size: 14px; line-height: 1.9; max-width: 62em; }
+  .faq .a p + p { margin-top: 10px; }
+
+  /* ---------- footer ---------- */
+  .site-foot {
+    border-top: 1px solid var(--line);
+    padding: 40px 0 52px;
+    margin-top: clamp(40px, 6vw, 72px);
+  }
+  .foot-grid {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .foot-brand { display: flex; align-items: center; gap: 11px; }
+  .foot-brand svg { width: 28px; height: 28px; }
+  .foot-brand b { display: block; font-size: 14px; letter-spacing: 0.04em; }
+  .foot-brand span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.2em; color: var(--text-3); }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 22px; font-size: 13px; }
+  .foot-links a { color: var(--text-2); text-decoration: none; }
+  .foot-links a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+  .foot-base {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--text-3);
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1040px) {
+    .hero { grid-template-columns: 1fr; gap: 48px; }
+    .run-panel { max-width: 620px; }
+    .shot-grid { grid-template-columns: 1fr; }
+    .shot-notes { grid-template-columns: repeat(3, 1fr); gap: 20px; padding-top: 4px; }
+    .note + .note { padding-top: 0; border-top: 0; }
+    .note { border-top: 1px solid var(--line); padding-top: 14px; }
+    .mode { grid-template-columns: 44px 1fr; }
+    .mode-media { grid-column: 2; }
+    .provider-panel { grid-template-columns: 1fr; }
+    .provider-side { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 24px; }
+  }
+  @media (max-width: 960px) {
+    .ver { display: none; }
+  }
+  @media (max-width: 820px) {
+    .nav { display: none; }
+    .menu-btn { display: inline-flex; margin-left: auto; }
+    .head-actions { margin-left: 0; }
+    .site-head.open .nav {
+      display: flex;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 68px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding: 8px var(--pad) 16px;
+      background: rgba(7, 10, 18, 0.97);
+      border-bottom: 1px solid var(--line);
+    }
+    .site-head.open .nav a { padding: 13px 0; font-size: 15px; border-bottom: 1px solid var(--line); }
+    .site-head.open .nav a:last-child { border-bottom: 0; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat { padding: 20px 0; }
+    .stat:nth-child(3) { border-left: 0; padding-left: 0; }
+    .stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
+    .sec-head { grid-template-columns: 1fr; align-items: start; gap: 16px; }
+    .cap-grid { grid-template-columns: 1fr; }
+    .cap:nth-child(2n) { border-left: 0; }
+    .cap:nth-child(n + 2) { border-top: 1px solid var(--line); }
+    .local-panel { grid-template-columns: 1fr; }
+    .stamp { transform: rotate(-6deg) scale(0.92); }
+    .dl-grid { grid-template-columns: 1fr; }
+    .shot-notes { grid-template-columns: 1fr; }
+    .note + .note { padding-top: 0; }
+    .mode { grid-template-columns: 1fr; gap: 18px; }
+    .mode-media { grid-column: 1; }
+    .mode-no { padding-top: 0; }
+    .channels { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 520px) {
+    .head-in { gap: 12px; }
+    .brand-sub { display: none; }
+    .cta-row .btn { width: 100%; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stat b { font-size: 24px; }
+    .channels { grid-template-columns: 1fr; }
+    .local-item { grid-template-columns: 1fr; gap: 4px; }
+    .dl-spec div { font-size: 12px; }
+    .cm-node { font-size: 9px; padding: 6px 8px; }
+    .cm-node b { font-size: 10.5px; }
+  }
+
+  @media (max-width: 400px) {
+    .rp-head { padding: 12px 14px; font-size: 10px; }
+    .rp-head .tag-demo { display: none; }
+    .rp-foot { padding: 10px 14px; font-size: 9.5px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero-copy { animation: rise 0.6s ease-out both; }
+  .run-panel { animation: rise 0.7s 0.08s ease-out both; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="site-head" id="top">
+  <div class="head-in">
+    <a class="brand" href="#top" aria-label="百工工作室首页">
+      <svg viewBox="0 0 84 84" aria-hidden="true">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8b5cf6"/><stop offset=".62" stop-color="#6366f1"/><stop offset="1" stop-color="#4f46e5"/>
+          </linearGradient>
+          <linearGradient id="gn" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+          </linearGradient>
+        </defs>
+        <rect width="84" height="84" rx="19" fill="url(#bg)"/>
+        <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#0d1730"/>
+        <rect x="22" y="33" width="6.5" height="24" rx="3" fill="#16224a"/>
+        <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gn)"/>
+        <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gn)"/>
+      </svg>
+      <span>
+        <span class="brand-name">百工工作室</span>
+        <span class="brand-sub">BAIGONG STUDIO</span>
+      </span>
+    </a>
+
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="#workbench">工作台</a>
+      <a href="#modes">创作方式</a>
+      <a href="#capabilities">能力</a>
+      <a href="#local">本地优先</a>
+      <a href="#download">下载</a>
+    </nav>
+
+    <div class="head-actions">
+      <span class="ver">v0.2.0 · WIN x64</span>
+      <a class="btn btn-primary btn-sm" href="#download">获取便携版</a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="打开导航菜单" id="menuBtn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="kicker"><span class="dot" aria-hidden="true"></span>Local-first · Content pipeline</p>
+        <h1 id="hero-title">一句话想法，<br />成片<span class="accent">出坊</span>。</h1>
+        <p class="lede">百工工作室把选题、剧本、分镜、出图、配音与合成收进同一条可审阅的流水线。<strong>19 个模板、三种创作方式</strong>，项目数据与密钥留在你的电脑里。</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">下载 Windows 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
+          <a class="btn btn-ghost" href="https://github.com/BeginnerA/agencys-content-studio" target="_blank" rel="noopener noreferrer">查看源码</a>
+        </div>
+        <p class="hero-meta"><span>Windows x64</span><span>约 178 MB</span><span>解压即用</span><span>Apache-2.0</span></p>
+      </div>
+
+      <figure class="run-panel" aria-label="流水线运行面板示意">
+        <div class="rp-head">
+          <span>RUN · 深度长文 · v2 <span class="tag-demo">界面示意</span></span>
+          <span class="rp-status"><i aria-hidden="true"></i>进行中</span>
+        </div>
+        <div class="rp-body">
+          <div class="step done">
+            <span class="step-no">01</span>
+            <div><div class="step-t">选题与目标受众</div><div class="step-d">LLM · 结构化输出</div></div>
+            <span class="chip ok">完成</span>
+          </div>
+          <div class="step gate">
+            <span class="step-no">02</span>
+            <div><div class="step-t">深度长文主稿</div><div class="step-d">人工闸门 · 批准后继续</div></div>
+            <span class="chip wait">待审阅</span>
+          </div>
+          <div class="step">
+            <span class="step-no">03</span>
+            <div><div class="step-t">头图提示词与出图</div><div class="step-d">批量 3 张 · 候选选片</div></div>
+            <span class="chip">排队</span>
+          </div>
+          <div class="step">
+            <span class="step-no">04</span>
+            <div><div class="step-t">多平台适配</div><div class="step-d">公众号 / 小红书 / 视频号</div></div>
+            <span class="chip">条件执行</span>
+          </div>
+          <div class="step">
+            <span class="step-no">05</span>
+            <div><div class="step-t">发布稿合规审核</div><div class="step-d">本地词库 · 命中 0</div></div>
+            <span class="chip">待运行</span>
+          </div>
+        </div>
+        <div class="rp-foot">
+          <span>断点续跑 <b>已开启</b></span>
+          <span>单步重跑 <b>可用</b></span>
+          <span>预算闸门 <b>¥ 5.00</b></span>
+        </div>
+      </figure>
+    </section>
+
+    <div class="stats" aria-label="产品概览">
+      <div class="stat"><b>19<em>套</em></b><span>内置创作模板</span></div>
+      <div class="stat"><b>04<em>通道</em></b><span>LLM / 图像 / 视频 / 语音</span></div>
+      <div class="stat"><b>03<em>种</em></b><span>智能创作 · 流水线 · 画布</span></div>
+      <div class="stat"><b>100<em>%</em></b><span>项目与密钥本地存放</span></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <section class="sec" id="workbench" aria-labelledby="workbench-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">01 / Workbench</p>
+          <h2 id="workbench-title">把流水线摊开，<br />每一步都看得见。</h2>
+        </div>
+        <p>模板不是黑盒。启动前先看清字段、步骤和闸门；运行时逐段推进，可暂停、可重跑、可批量。下方是真实工作台的模板页截图。</p>
+      </div>
+
+      <div class="shot-grid">
+        <figure class="frame">
+          <div class="frame-bar"><span>百工工作室 · 模板</span><span>真实界面 1600×1100</span></div>
+          <a href="assets/templates.png" target="_blank" rel="noopener noreferrer" aria-label="查看模板页截图大图">
+            <img src="assets/templates.png" width="1600" height="1100" alt="百工工作室模板页：左侧为 19 个模板列表，右侧展示深度长文模板的字段、流水线步骤与人工审阅节点" />
+          </a>
+        </figure>
+        <div class="shot-notes">
+          <div class="note">
+            <b>字段即接口</b>
+            <p>选题、平台、账号档案、素材与开关都写在模板里，启动时按需填写，默认值可见可改。</p>
+          </div>
+          <div class="note">
+            <b>步骤即契约</b>
+            <p>每一步标注执行方式与条件：AI 写文本、AI 出图、批量逐项、条件执行、人工审阅。</p>
+          </div>
+          <div class="note">
+            <b>保存即生效</b>
+            <p>模板是 workspace 里的 YAML 文件。新增体裁不需要改代码，保存后下一次运行直接可用。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="modes" aria-labelledby="modes-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">02 / Three ways in</p>
+          <h2 id="modes-title">从一句话，<br />到一条可复用的产线。</h2>
+        </div>
+        <p>先用最轻的方式拿到成片，再把批准过的方案升级为专业流水线。三条路径共用同一套资产、供应商与成本账本。</p>
+      </div>
+
+      <article class="mode">
+        <div class="mode-no">01</div>
+        <div>
+          <h3>智能创作<small>Prompt to cut</small></h3>
+          <p>一句话描述想法，Agent 自动调度全部专业模板；命中即直调，未命中就合成一条临时流程。30–90 秒、最多 16 镜，支持参考图、参考视频与 BGM 约束。</p>
+          <p>方案先确认再生成，中途可暂停审阅，成片支持候选选片与自然语言局部返修。批准后的方案可一键升级到专业流水线继续精修。</p>
+        </div>
+        <div class="mode-media">
+          <figure class="frame">
+            <div class="frame-bar"><span>轻松创作 · 输入台</span><span>真实界面</span></div>
+            <img src="assets/create.png" width="1600" height="640" alt="轻松创作页面：一句话输入框，可添加参考、角色与画风，下方给出选题推荐" />
+          </figure>
+        </div>
+      </article>
+
+      <article class="mode">
+        <div class="mode-no">02</div>
+        <div>
+          <h3>模板流水线<small>DAG · Gates · Resume</small></h3>
+          <p>按「我想做什么」选场景卡启动。DAG 并行调度、人工闸门（批准 / 驳回 / 免审放行）、断点续跑、单步重跑与批量运行，多模板还能编排串链。</p>
+          <p>一套 19 个模板覆盖深度长文、图文笔记、口播成片、小说改编、短剧单集、视频反推、多平台适配等体裁。</p>
+        </div>
+        <div class="mode-media">
+          <div class="frame">
+            <div class="frame-bar"><span>模板链 · 多段编排</span><span>结构示意</span></div>
+            <svg viewBox="0 0 640 250" width="100%" role="img" aria-label="模板编排示意：选题雷达、深度长文、平台适配、发布复盘四段串联，中间设有一个人工闸门">
+              <defs>
+                <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+              <rect width="640" height="250" fill="rgba(13,20,36,0.55)"/>
+              <g font-family="SFMono-Regular, Consolas, monospace" font-size="10" fill="#66738e">
+                <path d="M128 92 H164 M292 92 H328 M456 92 H492" stroke="rgba(148,163,184,0.3)" stroke-dasharray="3 4"/>
+                <path d="M210 122 V166 H520 V122" stroke="rgba(251,191,36,0.35)" stroke-dasharray="3 4" fill="none"/>
+              </g>
+              <g>
+                <rect x="28" y="58" width="100" height="68" rx="8" fill="#0d1424" stroke="rgba(148,163,184,0.22)"/>
+                <text x="44" y="88" font-size="12" fill="#e8edf6">选题雷达</text>
+                <text x="44" y="107" font-size="9" fill="#66738e" font-family="Consolas,monospace">topic_radar</text>
+              </g>
+              <g>
+                <rect x="164" y="58" width="128" height="68" rx="8" fill="#0d1424" stroke="rgba(139,92,246,0.5)"/>
+                <text x="180" y="88" font-size="12" fill="#e8edf6">深度长文</text>
+                <text x="180" y="107" font-size="9" fill="#a78bfa" font-family="Consolas,monospace">article_clip</text>
+              </g>
+              <g>
+                <rect x="328" y="58" width="128" height="68" rx="8" fill="#0d1424" stroke="rgba(148,163,184,0.22)"/>
+                <text x="344" y="88" font-size="12" fill="#e8edf6">多平台适配</text>
+                <text x="344" y="107" font-size="9" fill="#66738e" font-family="Consolas,monospace">platform_adapt</text>
+              </g>
+              <g>
+                <rect x="492" y="58" width="120" height="68" rx="8" fill="#0d1424" stroke="rgba(34,197,94,0.45)"/>
+                <text x="508" y="88" font-size="12" fill="#e8edf6">发布与复盘</text>
+                <text x="508" y="107" font-size="9" fill="#4ade80" font-family="Consolas,monospace">review</text>
+              </g>
+              <g>
+                <rect x="264" y="166" width="128" height="30" rx="15" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.4)"/>
+                <circle cx="282" cy="181" r="3" fill="#fbbf24"/>
+                <text x="294" y="185" font-size="10" fill="#fbbf24" font-family="Consolas,monospace">人工闸门 · 批准</text>
+              </g>
+              <text x="28" y="226" font-size="9" fill="#66738e" font-family="Consolas,monospace" letter-spacing="2">CHAIN · 4 TEMPLATES · 1 GATE · RESUME ON</text>
+            </svg>
+          </div>
+        </div>
+      </article>
+
+      <article class="mode">
+        <div class="mode-no">03</div>
+        <div>
+          <h3>创作画布<small>Spatial generation</small></h3>
+          <p>素材自由摆放、引用连线、就地生成：文生图、图生图、文生视频、图生视频、TTS、LLM 与视频合成都能落在同一张画布上。</p>
+          <p>支持局部重绘、消除、扩图与变体抽卡。成片可一键导出 FCPXML、EDL、OTIO 多轨剪辑工程，回到熟悉的剪辑软件继续。</p>
+        </div>
+        <div class="mode-media">
+          <div class="canvas-map" role="img" aria-label="创作画布示意：参考图、角色与分镜节点汇聚到生成节点，再输出为剪辑工程">
+            <svg class="cm-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M26 24 C 34 24, 34 45, 41 45" />
+              <path d="M26 50 C 34 50, 34 48, 41 48" />
+              <path d="M26 76 C 34 76, 34 51, 41 51" />
+              <path d="M60 46 C 69 46, 69 33, 76 33" />
+              <path d="M60 49 C 69 49, 69 64, 76 64" />
+            </svg>
+            <span class="cm-node" style="left:3%; top:14%;"><b>参考图</b>ref_01.png</span>
+            <span class="cm-node" style="left:3%; top:40%;"><b>角色卡</b>character · 阿禾</span>
+            <span class="cm-node" style="left:3%; top:66%;"><b>分镜</b>shot · 03</span>
+            <span class="cm-node gen" style="left:41%; top:36%;"><b>就地生成</b>图生视频 · 6s</span>
+            <span class="cm-node out" style="right:3%; top:16%;"><b>成片</b>1080×1920</span>
+            <span class="cm-node" style="right:3%; top:54%;"><b>剪辑工程</b>FCPXML</span>
+            <span class="cm-cap">CANVAS · DRAG · CONNECT · GENERATE</span>
+          </div>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="capabilities" aria-labelledby="cap-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">03 / Bench drawers</p>
+          <h2 id="cap-title">工坊里的抽屉，<br />各归其位。</h2>
+        </div>
+        <p>角色、场景、道具统一入库，版本可追溯；小说、网页、长视频都能成为输入源；品牌与成本规则贯穿每一次运行。</p>
+      </div>
+
+      <div class="cap-grid">
+        <div class="cap">
+          <div class="cap-k"><h3>统一资产</h3><span>ASSETS</span></div>
+          <ul>
+            <li>角色 / 场景 / 道具实体库，参考图链与风格预设</li>
+            <li>版本与来源追溯、回收站、跨项目全局素材池</li>
+            <li>图像质量检测，不合规素材在入库前拦下</li>
+          </ul>
+        </div>
+        <div class="cap">
+          <div class="cap-k"><h3>输入源扩展</h3><span>INPUTS</span></div>
+          <ul>
+            <li>小说导入 txt / md / docx / epub，自动分集改编</li>
+            <li>URL 素材抓取，保留来源与抓取时间</li>
+            <li>长视频抽帧 + ASR + 时间轴解析，支持视频反推</li>
+          </ul>
+        </div>
+        <div class="cap">
+          <div class="cap-k"><h3>品牌与分发</h3><span>DELIVERY</span></div>
+          <ul>
+            <li>平台 / 项目 / 运行三层品牌配置</li>
+            <li>字幕、水印、片头片尾，多画幅输出与发布包导出</li>
+            <li>素材混剪、开场标题字卡、短剧商业化结构设计</li>
+          </ul>
+        </div>
+        <div class="cap">
+          <div class="cap-k"><h3>成本与用量</h3><span>LEDGER</span></div>
+          <ul>
+            <li>逐次调用记录用量与单价快照</li>
+            <li>预算闸门与计费幂等，重跑不重复计费</li>
+            <li>发布登记与数据复盘回灌，下一轮选题有据可依</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="providers" aria-labelledby="providers-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">04 / Providers</p>
+          <h2 id="providers-title">多家 AI，<br />一张工作台。</h2>
+        </div>
+        <p>LLM、图像、视频、语音四通道，每通道可建多个实例。在线服务按 OpenAI 兼容协议接入，本地模型零代码复用同一套接口。</p>
+      </div>
+
+      <div class="provider-panel">
+        <div>
+          <h3>按任务挑模型，按通道配实例。</h3>
+          <p>在线拉取模型列表、一键连通测试；每次调用落一条用量与单价快照。云端与本地可以混用，同一条流水线不必绑定单一供应商。</p>
+          <div class="channels" aria-label="四类 AI 通道">
+            <div class="channel"><b>LLM</b><span>TEXT / REASONING</span></div>
+            <div class="channel"><b>图像</b><span>IMAGE / EDIT</span></div>
+            <div class="channel"><b>视频</b><span>VIDEO / I2V</span></div>
+            <div class="channel"><b>语音</b><span>TTS / CLONE</span></div>
+          </div>
+        </div>
+        <div class="provider-side">
+          <h4>本地与离线</h4>
+          <ul>
+            <li>LocalAI 零代码接入，复用 OpenAI 兼容实例</li>
+            <li>ComfyUI 适配，本地出图工作流</li>
+            <li>本地向量记忆基于 ONNX，检索完全离线</li>
+          </ul>
+          <p class="fine">密钥仅存本地 <code>data/secrets.json</code>（0600），不入库、不进 git。云厂商密钥也不会写入模板或运行日志。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="local" aria-labelledby="local-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">05 / Local first</p>
+          <h2 id="local-title">作坊开在你的电脑里。</h2>
+        </div>
+        <p>项目、素材、密钥与日志都落在本机目录。没有账号，没有云端工作区，也没有把作品交出去才能使用的步骤。</p>
+      </div>
+
+      <div class="local-panel">
+        <div class="stamp" aria-label="本地运行">
+          <b>本机</b>
+          <span>LOCAL ONLY</span>
+          <i>NO CLOUD WORKSPACE</i>
+        </div>
+        <div class="local-copy">
+          <h3>能离线跑的部分，就别离开这台机器。</h3>
+          <p>SQLite 存项目与运行记录，workspace 存模板、提示词与素材。便携版自带 Node 运行时和依赖，对方解压双击即可用，不需要开发环境。</p>
+          <div class="local-list">
+            <div class="local-item"><b>PROJECTS</b><span>项目、运行、版本与回收站存本机 SQLite</span></div>
+            <div class="local-item"><b>WORKSPACE</b><span>模板 YAML、提示词、素材与品牌资材在本地目录</span></div>
+            <div class="local-item"><b>SECRETS</b><span>密钥独立存放，权限 0600，不进数据库与版本库</span></div>
+            <div class="local-item"><b>PORTABLE</b><span>Windows x64 便携包，自带运行时与全部依赖</span></div>
+          </div>
+          <p class="local-callout"><b>边界说明：</b>调用云端 AI 时，必要的提示词与素材会发送给你配置的供应商；使用 LocalAI / ComfyUI 与本地记忆时，链路可完全离线。本站只做展示与下载，应用本身在本地运行。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="download" aria-labelledby="download-title">
+      <div class="download-card">
+        <div class="dl-grid">
+          <div>
+            <p class="sec-label">06 / Take it home</p>
+            <h2 id="download-title">下载，<br /><span>把作坊装进硬盘。</span></h2>
+            <p>最新便携版已打包 Node 运行时与全部依赖。解压后双击「启动.bat」，首次启动自动建库并初始化供应商目录。</p>
+            <div class="dl-actions">
+              <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">下载 v0.2.0 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
+              <a class="btn btn-ghost" href="https://gitee.com/agencys/agencys-content-studio" target="_blank" rel="noopener noreferrer">Gitee 仓库</a>
+            </div>
+            <p class="dl-fine">源码运行需 Node 20+ 与 pnpm；仓库内含上手指南、模板详表与 AI 配置文档。<br />Windows 便携包无需安装 Node，也无需联网激活。</p>
+          </div>
+          <dl class="dl-spec">
+            <div><dt>VERSION</dt><dd><b>v0.2.0</b></dd></div>
+            <div><dt>PLATFORM</dt><dd>Windows · x64</dd></div>
+            <div><dt>PACKAGE</dt><dd>约 178 MB · ZIP</dd></div>
+            <div><dt>RUNTIME</dt><dd>内置 Node，解压即用</dd></div>
+            <div><dt>LICENSE</dt><dd>Apache-2.0</dd></div>
+            <div><dt>NETWORK</dt><dd><b>本地优先</b> · 云 AI 可选</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="sec sec-rule" id="faq" aria-labelledby="faq-title">
+      <div class="sec-head">
+        <div>
+          <p class="sec-label">07 / Before you start</p>
+          <h2 id="faq-title">先把边界说清楚。</h2>
+        </div>
+        <p>这是一个本地单机应用，不是在线服务。下面几件事，决定了它是否适合你的工作方式。</p>
+      </div>
+
+      <div class="faq">
+        <details>
+          <summary>需要联网吗？</summary>
+          <div class="a"><p>界面、模板、资产管理与本地记忆可离线使用。调用云端 LLM、图像、视频或语音时需要网络，以及对应供应商的 API Key。接入 LocalAI 或 ComfyUI 后，生成链路也可以完全留在本机。</p></div>
+        </details>
+        <details>
+          <summary>我的项目和数据会上传吗？</summary>
+          <div class="a"><p>项目、素材、运行记录与密钥默认存本机，不会同步到任何工作区。只有你主动发起的云端 AI 请求，才会把该次请求所需的提示词与素材发送给你配置的供应商。具体保留策略取决于供应商条款。</p></div>
+        </details>
+        <details>
+          <summary>能直接在网页里使用吗？</summary>
+          <div class="a"><p>不能。本站是产品展示与下载页，不提供在线创作功能。完整应用需要下载到本地运行，因为合成、抽帧、转码与本地模型依赖本机进程与 ffmpeg。</p></div>
+        </details>
+        <details>
+          <summary>模板可以自己加吗？</summary>
+          <div class="a"><p>可以。模板就是 <code>workspace/templates</code> 下的 YAML 文件，在模板页可视化编辑字段与步骤，保存后下一次运行即生效。新增体裁不需要改代码，也可以复制内置模板另存为副本再改。</p></div>
+        </details>
+        <details>
+          <summary>有 macOS 或 Linux 版吗？</summary>
+          <div class="a"><p>目前提供 Windows x64 便携包。源码依赖 Node 20+，其他平台可自行安装依赖并运行，但尚未提供预构建包，也未做平台验收。便携包的分发脚本以 Windows 为目标。</p></div>
+        </details>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <svg viewBox="0 0 84 84" aria-hidden="true">
+          <defs>
+            <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#8b5cf6"/><stop offset=".62" stop-color="#6366f1"/><stop offset="1" stop-color="#4f46e5"/>
+            </linearGradient>
+            <linearGradient id="gn2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22c55e"/>
+            </linearGradient>
+          </defs>
+          <rect width="84" height="84" rx="19" fill="url(#bg2)"/>
+          <rect x="22" y="33" width="13" height="24" rx="3.5" fill="#0d1730"/>
+          <rect x="41.5" y="28.5" width="25" height="33" rx="8.5" fill="url(#gn2)"/>
+          <rect x="34.5" y="38" width="7" height="14" rx="2.4" fill="url(#gn2)"/>
+        </svg>
+        <span><b>百工工作室</b><span>百工协力，各执一器</span></span>
+      </div>
+      <nav class="foot-links" aria-label="页脚链接">
+        <a href="https://github.com/BeginnerA/agencys-content-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://gitee.com/agencys/agencys-content-studio" target="_blank" rel="noopener noreferrer">Gitee</a>
+        <a href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">Release v0.2.0</a>
+        <a href="#top">回到顶部 ↑</a>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <span>© 2026 百工工作室 · Apache-2.0</span>
+      <span>本地优先 · 本站无统计脚本</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var head = document.querySelector('.site-head');
+    var btn = document.getElementById('menuBtn');
+    if (!head || !btn) return;
+    btn.addEventListener('click', function () {
+      var open = head.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-label', open ? '关闭导航菜单' : '打开导航菜单');
+    });
+    head.addEventListener('click', function (e) {
+      if (e.target.closest('.nav a')) {
+        head.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  })();
+</script>
+</body>
+</html>
