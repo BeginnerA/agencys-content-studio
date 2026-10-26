@@ -19,6 +19,9 @@ workspace/brand/
 .env.local
 secrets.json
 
+# SDD 执行工作区（子代理驱动开发的账本/简报/评审包，git 忽略）
+.superpowers/
+
 # misc
 *.log
 .DS_Store
