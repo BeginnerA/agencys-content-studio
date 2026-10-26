@@ -8,10 +8,11 @@
  * 用量走既有 usage_records（kind='music'，second 口径，付费可见）。
  * 协议形态与契约纯函数（build/parse 系列）在 kit，探针 live 节经 globalThis.fetch 桩做契约测试（不真付费），本文件不直接触碰 HTTP。
  */
-import { writeFileSync, statSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 import { resolveEndpoint } from '../adapters/provider'
 import { getMusicAdapter } from '@agencys/ai-provider-kit'
-import { absPathOf, registerAsset, relPathOf } from './storage'
+import { absPathOf, registerAsset, relPathOf, sha256Hex } from './storage'
+import { labelGeneratedFile } from './compliance-label'
 import { probeMediaDuration } from './ffmpeg'
 import { recordUsage } from './usage'
 import type { Asset } from '../db/schema'
@@ -45,6 +46,10 @@ export async function generateMusicAsset(ctx: StepContext, prompt: string): Prom
     const rel = relPathOf(ctx.run.projectId, 'audio', name)
     const abs = absPathOf(rel)
     writeFileSync(abs, Buffer.from(music.audio))
+    // M66：AI 生成音乐恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+    const label = await labelGeneratedFile(abs, 'mp3')
+    const labeledBuf = readFileSync(abs)
+    const aigc = label.ok && label.produceId ? { produceId: label.produceId, produceAt: Date.now() } : null
     const duration = music.durationMs !== null ? Math.round(music.durationMs / 100) / 10 : probeMediaDuration(abs) ?? undefined
     const asset = await registerAsset(ctx.run.projectId, {
       name,
@@ -53,11 +58,12 @@ export async function generateMusicAsset(ctx: StepContext, prompt: string): Prom
       relPath: rel,
       ext: 'mp3',
       mime: 'audio/mpeg',
-      fileSize: statSync(abs).size,
+      fileSize: labeledBuf.byteLength,
       duration,
+      sha256: sha256Hex(labeledBuf),
       prompt,
-      params: { generator: ep.providerKey, model, music_duration_ms: music.durationMs },
-      tags: ['bgm_ai'],
+      params: { generator: ep.providerKey, model, music_duration_ms: music.durationMs, ...(aigc ? { aigc } : {}) },
+      tags: ['bgm_ai', ...(aigc ? ['aigc'] : ['aigc', 'compliance_failed'])],
     })
     await recordUsage({
       projectId: ctx.run.projectId,

@@ -301,5 +301,60 @@ await runSections({
       if (arg) check(!!arg.text && !!arg.fontAbs && arg.margin_px >= 0, '开启时角标参数形状完整')
       else check(true, '无 CJK 字体环境 → null 降级（合法路径）')
     },
+    implicit: async () => {
+      const { saveGeneratedMedia } = await import('../src/services/net')
+      const { labelGeneratedFile } = await import('../src/services/compliance-label')
+      const { absPathOf, sha256Hex } = await import('../src/services/storage')
+      const { resolveFfmpeg } = await import('../src/services/ffmpeg')
+      const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+      const { execFileSync } = await import('node:child_process')
+      const { db } = await import('../src/db')
+      const { assets } = await import('../src/db/schema')
+      const { eq } = await import('drizzle-orm')
+      const { createProject } = await import('./probe-m66-fixtures')
+
+      const ffmpegBin = resolveFfmpeg()!
+      const projectId = await createProject()
+      const dir = mkdtempSync(join(tmpdir(), 'm66-imp-'))
+      // 最小合法 PNG（ffmpeg lavfi 画单帧；不手工拼字节，保证与真实落盘同源）
+      const pngPath = join(dir, 'tiny.png')
+      execFileSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=8x8', '-frames:v', '1', pngPath], { stdio: 'ignore' })
+
+      // base64 通道：saveGeneratedMedia 落盘即带 tEXt + params.aigc + tags（隐式标识不可关）
+      const asset = await saveGeneratedMedia({
+        projectId, kind: 'image', purpose: 'probe', prompt: 't', params: {},
+        source: { kind: 'base64', data: readFileSync(pngPath).toString('base64'), mime: 'image/png' },
+      })
+      check(asset.kind === 'image', '图像资产已登记')
+      const raw = readFileSync(absPathOf(asset.relPath!))
+      check(raw.readUInt32BE(0) === 0x89504e47, '落盘文件为合法 PNG')
+      check(raw.includes(Buffer.from('AIGC\0', 'latin1')), '落盘文件含 AIGC tEXt 隐式标识')
+      const assetTags = JSON.parse(asset.tags ?? '[]') as string[]
+      check(assetTags.includes('aigc'), 'tags 含 aigc 标记')
+      // params 落库为 JSON 字符串（registerAsset JSON.stringify）→ 解析后断言
+      const p = JSON.parse(asset.params ?? '{}') as { aigc?: { produceId?: string; produceAt?: number } }
+      check(typeof p.aigc?.produceId === 'string' && p.aigc.produceId.length === 36, 'params.aigc.produceId 已留痕')
+      check(typeof p.aigc?.produceAt === 'number', 'params.aigc.produceAt 已留痕')
+      // fileSize/sha256 以打标后文件为准（而非原始字节）
+      check(asset.fileSize === raw.byteLength, 'fileSize 为打标后文件尺寸')
+      check(asset.sha256 === sha256Hex(raw), 'sha256 为打标后文件指纹')
+
+      // 成功路径 tags 语义：无 compliance_failed（失败旁路语义已在 remux 节直测）
+      const row = (await db.select().from(assets).where(eq(assets.id, asset.id)).limit(1))[0]!
+      check(!(JSON.parse(row.tags ?? '[]') as string[]).includes('compliance_failed'), '成功路径无 compliance_failed 标记')
+
+      // 旁路契约直测（接线所依赖的最小单元）：不支持扩展名 → ok:false 且 promise 正常 resolve 不抛
+      const xyzPath = join(dir, 'noext.xyz')
+      writeFileSync(xyzPath, 'm66')
+      let bypass: Awaited<ReturnType<typeof labelGeneratedFile>> | null = null
+      let bypassResolved = false
+      try {
+        bypass = await labelGeneratedFile(xyzPath, 'xyz')
+        bypassResolved = true
+      } catch { /* 旁路契约禁止抛出 */ }
+      check(bypassResolved && bypass?.ok === false, 'labelGeneratedFile 不支持扩展名 ok:false 且不抛（旁路契约）')
+    },
   },
 })

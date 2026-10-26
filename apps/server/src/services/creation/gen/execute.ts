@@ -14,7 +14,8 @@ import { chatCompleteDetailed, resolveLlmEndpoint, type ChatContentPart } from '
 import { probeMediaDuration, resolveFfmpeg, resolveFfprobe } from '../../ffmpeg'
 import { scheduleImageCheck } from '../../image-check'
 import { saveGeneratedMedia } from '../../net'
-import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, writeTextAsset } from '../../storage'
+import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, sha256Hex, writeTextAsset } from '../../storage'
+import { labelGeneratedFile } from '../../compliance-label'
 import { combineStyleSnippets, resolveProjectStyleSnippets } from '../../style-preset'
 import { assetInput, entityInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../provenance'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../tts'
@@ -378,6 +379,11 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
   const relPath = relPathOf(canvas.projectId, 'creation_audio', fileName)
   ensureProjectDirs(canvas.projectId)
   writeFileSync(absPathOf(relPath), data)
+  // M66：AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+  const abs = absPathOf(relPath)
+  const label = await labelGeneratedFile(abs, 'mp3')
+  const labeledBuf = readFileSync(abs)
+  const aigc = label.ok && label.produceId ? { produceId: label.produceId, produceAt: Date.now() } : null
   const asset = await registerAsset(canvas.projectId, {
     taskId,
     runId: null,
@@ -387,7 +393,7 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
     name: fileName,
     mime: 'audio/mpeg',
     ext: 'mp3',
-    fileSize: data.byteLength,
+    fileSize: labeledBuf.byteLength,
     prompt: text.slice(0, 4000),
     params: {
       canvasId: canvas.id,
@@ -402,8 +408,9 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
       clone_name: clone?.name ?? null,
       speed: spec.speed ?? null,
       chars: text.length,
+      ...(aigc ? { aigc } : {}),
     },
-    tags: ['voice'],
+    tags: ['voice', ...(aigc ? ['aigc'] : ['aigc', 'compliance_failed'])],
   })
   await db
     .update(genTasks)

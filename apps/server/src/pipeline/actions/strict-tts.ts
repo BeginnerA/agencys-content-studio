@@ -1,11 +1,12 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks } from '../../db/schema'
 import { recipeOf, mediaFailure } from '../../services/creation-chat/recipe'
 import { runCancelled } from '../cancel'
 import { resolveAudioEndpoint, resolveEmotionPayload, synthSpeech } from '../../services/tts'
-import { absPathOf, ensureProjectDirs, registerAsset, relPathOf } from '../../services/storage'
+import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, sha256Hex } from '../../services/storage'
+import { labelGeneratedFile } from '../../services/compliance-label'
 import { recordUsage } from '../../services/usage'
 import { emitStudioEvent } from '../../services/events'
 import { strictVoicePlan } from './ffmpeg-merge/strict'
@@ -47,10 +48,16 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
       const name = `${Date.now()}-voice-${line.id}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', name)
       writeFileSync(absPathOf(relPath), data)
+      // M66：AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+      const abs = absPathOf(relPath)
+      const label = await labelGeneratedFile(abs, 'mp3')
+      const labeledBuf = readFileSync(abs)
+      const aigc = label.ok && label.produceId ? { produceId: label.produceId, produceAt: Date.now() } : null
       const asset = await registerAsset(ctx.run.projectId, {
         runId: ctx.run.id, stepId: ctx.step.id, taskId: task!.id, kind: 'audio', purpose: 'voice',
-        name, relPath, mime: 'audio/mpeg', ext: 'mp3', fileSize: data.byteLength,
-        prompt: line.text, params: { lineId: line.id, voice: recipe.voice, provider: pin.provider, model: pin.model, emotionHint: line.emotion_hint ?? null, emotionSent: emotionPayload?.value ?? null },
+        name, relPath, mime: 'audio/mpeg', ext: 'mp3', fileSize: labeledBuf.byteLength, sha256: sha256Hex(labeledBuf),
+        prompt: line.text, params: { lineId: line.id, voice: recipe.voice, provider: pin.provider, model: pin.model, emotionHint: line.emotion_hint ?? null, emotionSent: emotionPayload?.value ?? null, ...(aigc ? { aigc } : {}) },
+        tags: aigc ? ['aigc'] : ['aigc', 'compliance_failed'],
       })
       await db.update(genTasks).set({ status: 'succeeded', resultAssetId: asset.id, updatedAt: Date.now(), completedAt: Date.now() }).where(eq(genTasks.id, task!.id))
       await recordUsage({ projectId: ctx.run.projectId, runId: ctx.run.id, stepId: ctx.step.id, taskId: task!.id, assetId: asset.id,
