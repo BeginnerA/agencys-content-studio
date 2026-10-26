@@ -91,27 +91,51 @@ export function insertJpegApp1(jpeg: Buffer, metaJson: string): Buffer | null {
  *  wav 不支持：RIFF INFO muxer 丢弃未知元数据键 → 打标不落盘，按不支持处理；遗留：如需支持可用 `-write_id3v2` TXXX 通道再议 */
 const REMUX_FORMAT: Record<string, string> = { mp4: 'mp4', m4v: 'mp4', mov: 'mov', mp3: 'mp3', m4a: 'ipod' }
 
-/** ffmpeg -c copy 重封装写元数据（流复制不重编码；tmp+rename 原子替换）；成功 true / 失败 false。
- *  -movflags +use_metadata_tags：mp4/mov 系 muxer 默认丢弃未知元数据键，须显式开启自由键写入
- *  （mp3 muxer 忽略该选项，走 ID3v2 TXXX 原生路径） */
-export function remuxMediaMeta(absPath: string, ext: string, metaJson: string): boolean {
+/** REMUX_FORMAT 查找（原型链防护：'constructor' 等非自有键不得命中；未知 ext → null = 不支持） */
+function remuxFormatFor(ext: string): string | null {
+  if (!Object.hasOwn(REMUX_FORMAT, ext)) return null
   const fmt = REMUX_FORMAT[ext]
+  return typeof fmt === 'string' && fmt ? fmt : null
+}
+
+/** 共享内核：-c copy 流复制重封装写元数据到 outAbs（含 -movflags +use_metadata_tags——mp4/mov 系 muxer
+ *  默认丢弃未知元数据键，须显式开启自由键写入；mp3 muxer 忽略该选项，走 ID3v2 TXXX 原生路径）。
+ *  outAbs 的生命周期由调用方负责；成功 true / 失败 false */
+function remuxToFile(srcAbs: string, ext: string, metaJson: string, outAbs: string): boolean {
+  const fmt = remuxFormatFor(ext)
   const ffmpeg = resolveFfmpeg()
   if (!fmt || !ffmpeg) return false
-  const tmp = `${absPath}.aigc-tmp`
   try {
     const r = spawnSync(
       ffmpeg,
-      ['-y', '-i', absPath, '-map', '0', '-c', 'copy', '-movflags', '+use_metadata_tags', '-metadata', `${AIGC_META_KEY}=${metaJson}`, '-f', fmt, tmp],
+      ['-y', '-i', srcAbs, '-map', '0', '-c', 'copy', '-movflags', '+use_metadata_tags', '-metadata', `${AIGC_META_KEY}=${metaJson}`, '-f', fmt, outAbs],
       { stdio: 'ignore', timeout: 60_000, windowsHide: true },
     )
-    if (r.error || r.status !== 0 || !existsSync(tmp)) return false
-    renameSync(tmp, absPath)
-    return true
+    return !r.error && r.status === 0 && existsSync(outAbs)
   } catch {
-    try { unlinkSync(tmp) } catch { /* 清理失败不影响判定 */ }
     return false
   }
+}
+
+/** ffmpeg -c copy 重封装写元数据（流复制不重编码；tmp+rename 原子替换）；成功 true / 失败 false */
+export function remuxMediaMeta(absPath: string, ext: string, metaJson: string): boolean {
+  const tmp = `${absPath}.aigc-tmp`
+  let ok = false
+  try {
+    ok = remuxToFile(absPath, ext, metaJson, tmp)
+    if (ok) renameSync(tmp, absPath)
+    return ok
+  } catch {
+    return false
+  } finally {
+    // 所有失败路径清除 .aigc-tmp 残留（成功路径 tmp 已被 rename 走 → ENOENT 静默）
+    try { unlinkSync(tmp) } catch { /* 清理失败不影响判定 */ }
+  }
+}
+
+/** 重封装写元数据到指定输出（非破坏性：不改原文件；发布包打标用）；成功 true / 失败 false */
+export function remuxMediaMetaToFile(absPath: string, ext: string, metaJson: string, outAbs: string): boolean {
+  return remuxToFile(absPath, ext, metaJson, outAbs)
 }
 
 export interface ImplicitLabelResult { ok: boolean; produceId: string | null; error?: string }
@@ -131,7 +155,7 @@ export async function applyImplicitLabel(absPath: string, ext: string, opts: { p
       renameSync(tmp, absPath)
       return { ok: true, produceId }
     }
-    if (REMUX_FORMAT[ext]) {
+    if (remuxFormatFor(ext)) {
       return remuxMediaMeta(absPath, ext, json) ? { ok: true, produceId } : { ok: false, produceId: null, error: `remux failed: ext=${ext}` }
     }
     return { ok: false, produceId: null, error: `unsupported ext=${ext}` }

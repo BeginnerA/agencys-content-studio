@@ -2,18 +2,29 @@
  * 导出分发服务（E3；spec §5 + §E）
  * - 发布包 zip（store 不压缩）+ manifest.json 首 entry（包内路径为准）
  * - 任何状态的 run 均可导出已有产物；串行流式写，失败清理临时文件
+ * - M66 合规打标：开启态发布包内音视频/图像为打标副本（非破坏性，工作区原件不动）+ AI生成内容说明.txt
  */
-import { createReadStream, createWriteStream, existsSync, renameSync, statSync } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream, existsSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { Zip, ZipPassThrough } from 'fflate'
 import { db } from '../db'
 import { assets, pipelineRuns, pipelineSteps, projects, type Asset } from '../db/schema'
 import { createLogger } from '../logger'
+import { resolveBrandConfig } from './brand-config'
+import { aigcMetadata, remuxMediaMetaToFile } from './compliance-label'
+import { resolveFfmpeg } from './ffmpeg'
 import { absPathOf, ensureProjectDirs, registerAsset, sanitizeName } from './storage'
+import { complianceDrawtextFilter } from '../pipeline/actions/ffmpeg-merge/compliance'
+import { resolveCjkFont } from '../pipeline/actions/ffmpeg-merge/title-card'
 
 const log = createLogger('export')
+
+/** M66 声明文件包内路径（开启态才入包） */
+const DECLARATION_NAME = 'AI生成内容说明.txt'
 
 export class ExportError extends Error {
   constructor(readonly code: string, message: string) {
@@ -83,9 +94,9 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       throw new ExportError('asset_file_missing', `资产 ${a.id}（${a.name}）文件缺失: ${a.relPath}`)
     }
   }
-  // 包内路径（role 目录 + 重名 -1/-2 后缀；manifest.path 为准）
+  // 包内路径（role 目录 + 重名 -1/-2 后缀；manifest.path 为准）；srcAbs = 打标副本来源（缺省读工作区原件）
   const used = new Set<string>()
-  const entries = picked.map((a) => {
+  const entries: Array<{ a: Asset; path: string; srcAbs?: string }> = picked.map((a) => {
     const { dir } = roleOfAsset(a)
     const base = sanitizeName(a.name)
     let path = `${dir}/${base}`
@@ -102,19 +113,6 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
   })
   const fallback = `${project?.name ?? `project${run.projectId}`}_${run.templateKey}_run${run.id}`
   const pkgName = (p.name ?? '').trim() || fallback
-  const manifest = {
-    version: 1,
-    generatedAt: Date.now(),
-    project: { id: run.projectId, name: project?.name ?? '' },
-    run: {
-      id: run.id, templateKey: run.templateKey, batchId: run.batchId, batchSeq: run.batchSeq,
-      input: safeParse(run.input) ?? {}, status: run.status,
-    },
-    files: entries.map(({ a, path }) => ({
-      path, role: roleOfAsset(a).role, assetId: a.id, purpose: a.purpose, size: a.fileSize, sha256: a.sha256,
-    })),
-  }
-  ensureProjectDirs(run.projectId)
   const zipName = `${pkgName}.zip`
   // [F05] 交付包唯一不可变身份：存储路径带 run id + 时间戳 + 去重后缀，绝不覆盖历史包；
   // 显示名仍为 zipName（下载文件名不变），每条 archive 资产指向各自独立、字节稳定的文件
@@ -127,8 +125,89 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
   }
   const absFinal = absPathOf(relPath)
   const absTmp = `${absFinal}.tmp-${stamp}-${process.pid}`
-  await writeZip(absTmp, manifest, entries)
-  renameSync(absTmp, absFinal)
+  // M66 发布包合规打标：图像 drawtext 打标副本（重编码单帧）+ 音视频 -c copy 重封装（含 PropagateID）。
+  // 非破坏性：打标产物写独立临时目录，绝不覆盖工作区原件；关闭/不支持/失败回落原文件 + warn
+  const brand = await resolveBrandConfig(run.projectId, run.input)
+  const compliance = brand.compliance ?? null
+  const propagateId = compliance?.enabled ? randomUUID() : ''
+  const labelTempDir = compliance?.enabled ? mkdtempSync(join(tmpdir(), 'acs-export-aigc-')) : null
+  const labeledTemps: string[] = []
+  const exportMeta = new Map<number, { produceId: string | null; propagateId: string; labeled: boolean }>()
+  let declaration: string | null = null
+  try {
+    if (compliance?.enabled && labelTempDir) {
+      const ffmpeg = resolveFfmpeg()
+      const fontAbs = resolveCjkFont()
+      const lines: string[] = [
+        '本发布包含有人工智能生成合成内容（依据《人工智能生成合成内容标识办法》标识）。',
+        `生成主体：${compliance.producer}`,
+        `导出时间：${new Date().toISOString()}`,
+        '清单：',
+      ]
+      for (const e of entries) {
+        const { a, path } = e
+        const produceId = readAigcProduceId(a)
+        const srcAbs = absPathOf(a.relPath!)
+        let labeledAbs: string | null = null
+        try {
+          // 图像仅 png/jpg/jpeg 重编码打标（动图等其他格式 -frames:v 1 会毁帧 → 回落原文件）
+          if (ffmpeg && a.kind === 'image' && fontAbs && (a.ext === 'png' || a.ext === 'jpg' || a.ext === 'jpeg')) {
+            const { json } = aigcMetadata({ producer: compliance.producer, contentPropagator: compliance.producer, propagateId })
+            const out = join(labelTempDir, `labeled-${a.id}.${a.ext}`)
+            const enc = a.ext === 'jpg' || a.ext === 'jpeg' ? ['-q:v', '2'] : []
+            const r = spawnSync(
+              ffmpeg,
+              [
+                '-y', '-i', srcAbs,
+                '-vf', complianceDrawtextFilter({ text: compliance.text, position: compliance.position, margin_px: compliance.margin_px, fontAbs }, a.height ?? 720),
+                ...enc, '-frames:v', '1', '-metadata', `AIGC=${json}`, out,
+              ],
+              { stdio: 'ignore', timeout: 60_000, windowsHide: true },
+            )
+            if (!r.error && r.status === 0 && existsSync(out)) { e.srcAbs = out; labeledAbs = out }
+          } else if (ffmpeg && (a.kind === 'video' || a.kind === 'audio')) {
+            const { json } = aigcMetadata({ producer: compliance.producer, contentPropagator: compliance.producer, propagateId })
+            const out = join(labelTempDir, `labeled-${a.id}.${a.ext ?? 'mp4'}`)
+            if (remuxMediaMetaToFile(srcAbs, a.ext ?? 'mp4', json, out)) { e.srcAbs = out; labeledAbs = out }
+          }
+        } catch { /* 打标失败 → 回落原文件 */ }
+        if (labeledAbs) labeledTemps.push(labeledAbs)
+        else if (a.kind === 'image' || a.kind === 'video' || a.kind === 'audio') log.warn(`发布包打标失败，回落原文件: 资产 #${a.id}（${path}）`)
+        exportMeta.set(a.id, { produceId, propagateId, labeled: labeledAbs !== null })
+        lines.push(`- ${path}（ProduceID: ${produceId ?? '未登记'}；PropagateID: ${propagateId}）`)
+      }
+      declaration = lines.join('\n')
+    }
+    const manifest = {
+      version: 1,
+      generatedAt: Date.now(),
+      project: { id: run.projectId, name: project?.name ?? '' },
+      run: {
+        id: run.id, templateKey: run.templateKey, batchId: run.batchId, batchSeq: run.batchSeq,
+        input: safeParse(run.input) ?? {}, status: run.status,
+      },
+      // M66 只增键（向后兼容）：开启态记录 compliance + 逐文件 aigc；关闭态 = null / 无 aigc 键
+      compliance: compliance?.enabled ? { enabled: true, producer: compliance.producer } : null,
+      files: entries.map(({ a, path }) => {
+        const meta = exportMeta.get(a.id)
+        return {
+          path, role: roleOfAsset(a).role, assetId: a.id, purpose: a.purpose, size: a.fileSize, sha256: a.sha256,
+          ...(meta ? { aigc: meta } : {}),
+        }
+      }),
+    }
+    ensureProjectDirs(run.projectId)
+    await writeZip(absTmp, manifest, entries, declaration)
+    renameSync(absTmp, absFinal)
+  } finally {
+    // 打标临时副本清理（成功/失败都执行；清理失败不影响导出结果）
+    for (const t of labeledTemps) {
+      try { rmSync(t, { force: true }) } catch { /* 清理失败不影响导出 */ }
+    }
+    if (labelTempDir) {
+      try { rmSync(labelTempDir, { recursive: true, force: true }) } catch { /* 清理失败不影响导出 */ }
+    }
+  }
   const fileSize = statSync(absFinal).size
   const sha256 = await sha256File(absFinal)
   log.info(`导出包生成: ${zipName}（${entries.length} 文件, ${fileSize} bytes）`)
@@ -157,8 +236,13 @@ function sha256File(absPath: string): Promise<string> {
   })
 }
 
-/** fflate 流式 zip（store 不压缩；manifest 首 entry；64KB 分块；失败清理临时文件） */
-function writeZip(absPath: string, manifest: object, entries: Array<{ a: Asset; path: string }>): Promise<void> {
+/** fflate 流式 zip（store 不压缩；manifest 首 entry，M66 开启态声明文件紧随其后；64KB 分块；失败清理临时文件） */
+function writeZip(
+  absPath: string,
+  manifest: object,
+  entries: Array<{ a: Asset; path: string; srcAbs?: string }>,
+  declaration: string | null,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const out = createWriteStream(absPath)
     out.on('error', reject)
@@ -171,11 +255,16 @@ function writeZip(absPath: string, manifest: object, entries: Array<{ a: Asset; 
     const mEntry = new ZipPassThrough('manifest.json')
     zip.add(mEntry)
     mEntry.push(new TextEncoder().encode(JSON.stringify(manifest, null, 2)), true)
+    if (declaration !== null) {
+      const dEntry = new ZipPassThrough(DECLARATION_NAME)
+      zip.add(dEntry)
+      dEntry.push(new TextEncoder().encode(declaration), true)
+    }
     void (async () => {
-      for (const { a, path } of entries) {
+      for (const { a, path, srcAbs } of entries) {
         const entry = new ZipPassThrough(path)
         zip.add(entry)
-        const rs = createReadStream(absPathOf(a.relPath!))
+        const rs = createReadStream(srcAbs ?? absPathOf(a.relPath!))
         try {
           await new Promise<void>((res, rej) => {
             rs.on('data', (chunk) => entry.push(chunk as Uint8Array, false))
@@ -209,5 +298,15 @@ function safeParse(s: string | null): unknown {
     return JSON.parse(s)
   } catch {
     return s
+  }
+}
+
+/** 从资产 params.aigc 读生成期 ProduceID（M66 前旧资产/缺失/损坏 → null） */
+function readAigcProduceId(a: Asset): string | null {
+  try {
+    const p = JSON.parse(a.params ?? '{}') as { aigc?: { produceId?: string } }
+    return typeof p.aigc?.produceId === 'string' ? p.aigc.produceId : null
+  } catch {
+    return null
   }
 }

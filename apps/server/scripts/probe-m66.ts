@@ -356,5 +356,117 @@ await runSections({
       } catch { /* 旁路契约禁止抛出 */ }
       check(bypassResolved && bypass?.ok === false, 'labelGeneratedFile 不支持扩展名 ok:false 且不抛（旁路契约）')
     },
+    export: async () => {
+      const { buildRunExport } = await import('../src/services/export')
+      const { createProject } = await import('./probe-m66-fixtures')
+      const { db } = await import('../src/db')
+      const { pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
+      const { eq } = await import('drizzle-orm')
+      const { resolveFfmpeg, resolveFfprobe } = await import('../src/services/ffmpeg')
+      const { execFileSync } = await import('node:child_process')
+      const { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { dirname, join } = await import('node:path')
+      const { unzipSync } = await import('fflate')
+      const { registerAsset, absPathOf, sha256Hex } = await import('../src/services/storage')
+
+      // —— 播种：项目 + run + step + 1 图像资产（真实 PNG 小样）+ 1 视频资产（1s mp4）——
+      const projectId = await createProject()
+      const dir = mkdtempSync(join(tmpdir(), 'm66-exp-'))
+      try {
+        const ffmpeg = resolveFfmpeg()
+        check(!!ffmpeg, '内置 ffmpeg 可用')
+        const pngSrc = join(dir, 'cover.png')
+        execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', pngSrc], { stdio: 'ignore' })
+        const mp4Src = join(dir, 'clip.mp4')
+        execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1', '-pix_fmt', 'yuv420p', mp4Src], { stdio: 'ignore' })
+
+        // 拷小样到资产路径（先落盘后登记：fileSize/sha256 按拷贝后真实文件诚实计算）
+        const imgRel = `${projectId}/exports-probe/cover.png`
+        const vidRel = `${projectId}/exports-probe/clip.mp4`
+        mkdirSync(dirname(absPathOf(imgRel)), { recursive: true })
+        copyFileSync(pngSrc, absPathOf(imgRel))
+        copyFileSync(mp4Src, absPathOf(vidRel))
+        const imgAsset = await registerAsset(projectId, {
+          name: 'cover.png', kind: 'image', purpose: 'thumbnail', relPath: imgRel, ext: 'png',
+          fileSize: statSync(absPathOf(imgRel)).size, sha256: sha256Hex(readFileSync(absPathOf(imgRel))),
+        })
+        const vidAsset = await registerAsset(projectId, {
+          name: 'clip.mp4', kind: 'video', purpose: 'final_video', relPath: vidRel, ext: 'mp4',
+          fileSize: statSync(absPathOf(vidRel)).size, sha256: sha256Hex(readFileSync(absPathOf(vidRel))),
+        })
+
+        // schema 适配：pipelineRuns.input/createdAt/updatedAt 与 pipelineSteps.seq/stepKey/actionKey/createdAt/updatedAt 为 NOT NULL 无默认
+        const now = Date.now()
+        const runRows = await db.insert(pipelineRuns).values({ projectId, templateKey: 'probe-m66', status: 'completed', input: '{}', createdAt: now, updatedAt: now }).returning()
+        const run = runRows[0]!
+        await db.insert(pipelineSteps).values({ runId: run.id, seq: 1, stepKey: 'probe-m66', actionKey: 'probe', status: 'succeeded', output: JSON.stringify({ asset_ids: [imgAsset.id, vidAsset.id] }), createdAt: now, updatedAt: now })
+
+        // —— 开启态（平台缺省即开）——
+        const pkg = await buildRunExport({ runId: run.id, name: 'm66probe' })
+        const files = unzipSync(readFileSync(absPathOf(pkg.relPath!)))
+        const names = Object.keys(files)
+        check(names.includes('AI生成内容说明.txt'), '声明文件已入包')
+        check(names.some((n) => n.startsWith('cover/')), '图像产物目录存在')
+        const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']!)) as {
+          compliance?: { enabled: boolean; producer: string } | null
+          files: Array<{ path: string; aigc?: { produceId: string | null; propagateId: string; labeled: boolean } }>
+        }
+        check(manifest.compliance?.enabled === true, 'manifest.compliance 记录开启态')
+        const imgFile = manifest.files.find((f) => f.path.startsWith('cover/'))!
+        check(imgFile.aigc?.labeled === true && !!imgFile.aigc.propagateId, '图像副本 manifest 标记已打标')
+        const declRaw = files['AI生成内容说明.txt']
+        const decl = declRaw ? new TextDecoder().decode(declRaw) : ''
+        check(decl.includes(imgFile.aigc?.propagateId ?? '\u0000-nope') || decl.includes('ProduceID'), '声明文件含标识清单')
+        // 图像副本为合法 PNG（drawtext 重编码单帧）
+        const pngOut = Buffer.from(files[imgFile.path]!)
+        check(pngOut.readUInt32BE(0) === 0x89504e47, '图像副本仍为合法 PNG')
+
+        // —— 视频副本：-c copy 重封装（非空 + AIGC tag 落盘读回）——
+        const vidFile = manifest.files.find((f) => f.path.startsWith('video/'))!
+        check(!!vidFile && !!vidFile.aigc, '视频副本 manifest 含 aigc 标记')
+        const mp4Out = Buffer.from(files[vidFile!.path]!)
+        check(mp4Out.length > 1024, '视频副本非空')
+        // 读回断言（回归守卫）：副本落临时文件 → ffprobe format_tags=AIGC → Label=1 且 PropagateID 与 manifest 一致（mp4 muxer 丢键即在此暴露）
+        const ffprobe = resolveFfprobe()
+        check(!!ffprobe, '内置 ffprobe 可用')
+        const readAigcTag = (file: string): string | null => {
+          try {
+            const r = execFileSync(ffprobe!, ['-v', 'error', '-show_entries', 'format_tags=AIGC', '-of', 'json', file], { encoding: 'utf8' })
+            return (JSON.parse(r) as { format?: { tags?: Record<string, string> } }).format?.tags?.['AIGC'] ?? null
+          } catch {
+            return null
+          }
+        }
+        const vidDir = mkdtempSync(join(tmpdir(), 'm66-exp-vid-'))
+        try {
+          const vidTmp = join(vidDir, 'clip.mp4')
+          writeFileSync(vidTmp, mp4Out)
+          const tagRaw = readAigcTag(vidTmp)
+          const tag = tagRaw ? (JSON.parse(tagRaw) as Record<string, string>) : null
+          check(tag?.['Label'] === '1', '视频副本 AIGC tag 落盘可读回（Label=1）')
+          check(!!vidFile.aigc && tag?.['PropagateID'] === vidFile.aigc.propagateId, '视频副本 PropagateID 与 manifest 一致')
+        } finally {
+          rmSync(vidDir, { recursive: true, force: true })
+        }
+
+        // —— 非破坏性红线：工作区原件未被改动、无临时残留 ——
+        check(sha256Hex(readFileSync(absPathOf(imgRel))) === imgAsset.sha256, '图像原件未被改动（sha256 一致）')
+        check(sha256Hex(readFileSync(absPathOf(vidRel))) === vidAsset.sha256, '视频原件未被改动（sha256 一致）')
+        check(readAigcTag(absPathOf(vidRel)) === null, '视频原件未含 AIGC tag（发布包打标未回写原件）')
+        check(!readdirSync(dirname(absPathOf(vidRel))).some((n) => n.endsWith('.aigc-tmp')), '工作区无 .aigc-tmp 临时残留')
+
+        // —— 显式关闭：无声明文件、无 aigc 键——
+        await db.update(projects).set({ settings: JSON.stringify({ brand: { compliance: { enabled: false } } }) }).where(eq(projects.id, projectId))
+        const pkg2 = await buildRunExport({ runId: run.id, name: 'm66probe-off' })
+        const files2 = unzipSync(readFileSync(absPathOf(pkg2.relPath!)))
+        check(!Object.keys(files2).includes('AI生成内容说明.txt'), '关闭态无声明文件')
+        const manifest2 = JSON.parse(new TextDecoder().decode(files2['manifest.json']!)) as { compliance?: unknown; files: Array<{ aigc?: unknown }> }
+        check(manifest2.compliance === null || manifest2.compliance === undefined, '关闭态 manifest.compliance 不记录开启')
+        check(manifest2.files.every((f) => f.aigc === undefined), '关闭态逐文件无 aigc 键')
+      } finally {
+        try { rmSync(dir, { recursive: true, force: true }) } catch { /* 清理失败不掩盖断言结果 */ }
+      }
+    },
   },
 })
