@@ -87,8 +87,9 @@ export function insertJpegApp1(jpeg: Buffer, metaJson: string): Buffer | null {
 
 // ---------- ffmpeg 重封装（视频/音频容器） ----------
 
-/** 容器 ext → ffmpeg 输出格式名（重封装用；未知 ext → null = 不支持） */
-const REMUX_FORMAT: Record<string, string> = { mp4: 'mp4', m4v: 'mp4', mov: 'mov', mp3: 'mp3', m4a: 'ipod', wav: 'wav' }
+/** 容器 ext → ffmpeg 输出格式名（重封装用；未知 ext → null = 不支持）
+ *  wav 不支持：RIFF INFO muxer 丢弃未知元数据键 → 打标不落盘，按不支持处理；遗留：如需支持可用 `-write_id3v2` TXXX 通道再议 */
+const REMUX_FORMAT: Record<string, string> = { mp4: 'mp4', m4v: 'mp4', mov: 'mov', mp3: 'mp3', m4a: 'ipod' }
 
 /** ffmpeg -c copy 重封装写元数据（流复制不重编码；tmp+rename 原子替换）；成功 true / 失败 false。
  *  -movflags +use_metadata_tags：mp4/mov 系 muxer 默认丢弃未知元数据键，须显式开启自由键写入
