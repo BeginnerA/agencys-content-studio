@@ -285,5 +285,21 @@ await runSections({
       const arg = resolveComplianceArg(sanitizeCompliance({ text: 'AI生成' }))
       check(!!arg && arg.text === 'AI生成' && !!arg.fontAbs, 'enabled:true → 角标参数齐全')
     },
+    wiring: async () => {
+      const { resolveComplianceArg } = await import('../src/pipeline/actions/ffmpeg-merge/compliance')
+      const { sanitizeCompliance, readPlatformBrand, readComposeBrand, mergeBrand } = await import('../src/services/brand-config')
+
+      // run 层显式关闭贯穿解析链（readComposeBrand 纯函数直测）
+      const runLayer = readComposeBrand(JSON.stringify({ _compose: { brand: { compliance: { enabled: false } } } }))
+      check(runLayer.compliance?.enabled === false, 'run 层 _compose.brand.compliance 可解析')
+      const merged = mergeBrand(await readPlatformBrand(), { compliance: { enabled: true, text: '项目文案' } }, runLayer)
+      check(merged.compliance?.enabled === false, 'run 层 enabled:false 覆盖项目层（字段级合并）')
+      check(resolveComplianceArg(sanitizeCompliance(merged.compliance)) === null, '贯穿链末端关闭 → 不产角标参数')
+
+      // enabled:true 链路产参（隔离环境字体存在性不定 → 只断言形状）
+      const arg = resolveComplianceArg(sanitizeCompliance({ enabled: true }))
+      if (arg) check(!!arg.text && !!arg.fontAbs && arg.margin_px >= 0, '开启时角标参数形状完整')
+      else check(true, '无 CJK 字体环境 → null 降级（合法路径）')
+    },
   },
 })

@@ -23,6 +23,8 @@ import { buildComposeArgs } from './args'
 import { numParam, clamp, round3 } from './util'
 import { runFfmpeg } from './exec'
 import { recordMergeProvenance } from './merge-provenance'
+import { resolveComplianceArg } from './compliance'
+import { aigcMetadata } from '../../../services/compliance-label'
 import type { ComposeSfxInput } from './args'
 import type { Segment } from './segments'
 import type { AlignPlan } from './align'
@@ -535,6 +537,10 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
 
   // 组装 filter_complex 与编码参数（提炼 buildComposeArgs 纯函数；无水印/片头尾→ 与既有实现逐字节一致）
   const hasAudio = voicePaths.length > 0 || !!dialogueClips || (montageOn && params['keep_clip_audio'] === true)
+  // M66 合规标识：隐式元数据恒写（不可关）；显式角标默认开、enabled:false 逐级关闭；无 CJK 字体 → 跳过角标（warn）
+  const aigc = aigcMetadata({ producer: brand.compliance?.producer ?? '个人创作者' })
+  const complianceArg = resolveComplianceArg(brand.compliance)
+  if (brand.compliance?.enabled && !complianceArg) ctx.log('合规角标跳过：未找到 CJK 字体（隐式元数据不受影响）')
   const { args, cwd, totalAll, derived } = buildComposeArgs({
     strictDelivery: strict,
     ...(dialogueClips ? { nativeAudio: dialogueClips.map((clip) => clip.timing) } : {}),
@@ -564,6 +570,8 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       multiAspect && maTargets.length > 0
         ? { strategy: multiAspect.strategy, targets: maTargets, subtitleCfg: styleCfg }
         : undefined,
+    compliance: complianceArg,
+    metadataJson: aigc.json,
     outAbs,
   })
   if (derived.length > 0) {
@@ -689,6 +697,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
       intro: introArg ? { source: brand.intro!.source, duration: round3(introArg.durSec) } : null,
       outro: outroArg ? { source: brand.outro!.source, duration: round3(outroArg.durSec) } : null,
       sfx: sfxList.length > 0 ? { count: sfxList.length, volume: sfxVolume } : null,
+      compliance: { enabled: !!complianceArg, text: brand.compliance?.text ?? null, position: brand.compliance?.position ?? null, producer: brand.compliance?.producer ?? null, produce_id: aigc.produceId },
       // 标题智能编排溯源（仅实际启用追加键；off → 零增键逐字节不变）
       ...(smartCfg ? { title_style: { groups: (m61StylePlan?.styles ?? [smartCfg]).length, cue_mapped: m61StylePlan?.cue_style?.length ?? 0 } } : {}),
       ...(m61CardOk ? { title_card: { mode: m61CardMode, dur_sec: round3(m61CardDurSec), title_lines: m61TitleLines } } : {}),
