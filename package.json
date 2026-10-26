@@ -6,7 +6,7 @@
   "packageManager": "pnpm@12.3.4",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.2"
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @acs/server --filter @acs/web dev",
