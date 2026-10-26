@@ -48,6 +48,9 @@ await runSections({
       const meta2 = JSON.parse(m2.json) as Record<string, string>
       check(meta2['ContentPropagator'] === '发行方A' && meta2['PropagateID'] === 'pid-1', '传播者字段发布环节可填')
       check(m2.produceId !== m1.produceId, '每次调用 ProduceID 唯一')
+      // 发布包透传契约：显式传入生成期 ProduceID → 原样使用（不另发新 UUID），返回值与 JSON 字段同源
+      const m3 = aigcMetadata({ producer: 'x', produceId: 'fixed-id' })
+      check(m3.produceId === 'fixed-id' && (JSON.parse(m3.json) as Record<string, string>)['ProduceID'] === 'fixed-id', 'produceId 显式传入时 ProduceID 透传该值而非新 UUID')
 
       // —— PNG tEXt ——
       // 最小合法 PNG：签名 + IHDR(13B) + IDAT(4B) + IEND（手工构造，结构合法即可）
@@ -362,6 +365,7 @@ await runSections({
       const { db } = await import('../src/db')
       const { pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
       const { eq } = await import('drizzle-orm')
+      const { randomUUID } = await import('node:crypto')
       const { resolveFfmpeg, resolveFfprobe } = await import('../src/services/ffmpeg')
       const { execFileSync } = await import('node:child_process')
       const { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = await import('node:fs')
@@ -387,13 +391,18 @@ await runSections({
         mkdirSync(dirname(absPathOf(imgRel)), { recursive: true })
         copyFileSync(pngSrc, absPathOf(imgRel))
         copyFileSync(mp4Src, absPathOf(vidRel))
+        // 生成期 ProduceID 留痕（模拟 M66 生成链路 params.aigc 落库）：发布包声明与内嵌元数据须与其一致
+        const imgGenId = randomUUID()
+        const vidGenId = randomUUID()
         const imgAsset = await registerAsset(projectId, {
           name: 'cover.png', kind: 'image', purpose: 'thumbnail', relPath: imgRel, ext: 'png',
           fileSize: statSync(absPathOf(imgRel)).size, sha256: sha256Hex(readFileSync(absPathOf(imgRel))),
+          params: { aigc: { produceId: imgGenId } },
         })
         const vidAsset = await registerAsset(projectId, {
           name: 'clip.mp4', kind: 'video', purpose: 'final_video', relPath: vidRel, ext: 'mp4',
           fileSize: statSync(absPathOf(vidRel)).size, sha256: sha256Hex(readFileSync(absPathOf(vidRel))),
+          params: { aigc: { produceId: vidGenId } },
         })
 
         // schema 适配：pipelineRuns.input/createdAt/updatedAt 与 pipelineSteps.seq/stepKey/actionKey/createdAt/updatedAt 为 NOT NULL 无默认
@@ -415,9 +424,11 @@ await runSections({
         check(manifest.compliance?.enabled === true, 'manifest.compliance 记录开启态')
         const imgFile = manifest.files.find((f) => f.path.startsWith('cover/'))!
         check(imgFile.aigc?.labeled === true && !!imgFile.aigc.propagateId, '图像副本 manifest 标记已打标')
+        check(imgFile.aigc?.produceId === imgGenId, '图像副本 manifest ProduceID 与生成期记录一致')
         const declRaw = files['AI生成内容说明.txt']
         const decl = declRaw ? new TextDecoder().decode(declRaw) : ''
         check(decl.includes(imgFile.aigc?.propagateId ?? '\u0000-nope') || decl.includes('ProduceID'), '声明文件含标识清单')
+        check(decl.includes(`ProduceID: ${imgGenId}`) && decl.includes(`ProduceID: ${vidGenId}`), '声明文件图像/视频条目 ProduceID 与生成期记录一致')
         // 图像副本为合法 PNG（drawtext 重编码单帧）
         const pngOut = Buffer.from(files[imgFile.path]!)
         check(pngOut.readUInt32BE(0) === 0x89504e47, '图像副本仍为合法 PNG')
@@ -446,6 +457,7 @@ await runSections({
           const tag = tagRaw ? (JSON.parse(tagRaw) as Record<string, string>) : null
           check(tag?.['Label'] === '1', '视频副本 AIGC tag 落盘可读回（Label=1）')
           check(!!vidFile.aigc && tag?.['PropagateID'] === vidFile.aigc.propagateId, '视频副本 PropagateID 与 manifest 一致')
+          check(tag?.['ProduceID'] === vidGenId, '视频副本内嵌 ProduceID 与声明一致（透传生成期记录）')
         } finally {
           rmSync(vidDir, { recursive: true, force: true })
         }

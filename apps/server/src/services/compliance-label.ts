@@ -26,8 +26,8 @@ export interface AigcMeta {
   PropagateID: string
 }
 
-/** 产国标六字段 JSON（纯函数；producer 空值兜底「个人创作者」） */
-export function aigcMetadata(opts: { producer: string; contentPropagator?: string; propagateId?: string }): {
+/** 产国标六字段 JSON（纯函数；producer 空值兜底「个人创作者」；produceId 非空透传生成期记录，缺省生成新 UUID） */
+export function aigcMetadata(opts: { producer: string; contentPropagator?: string; propagateId?: string; produceId?: string }): {
   json: string
   produceId: string
   meta: AigcMeta
@@ -35,7 +35,7 @@ export function aigcMetadata(opts: { producer: string; contentPropagator?: strin
   const meta: AigcMeta = {
     Label: '1',
     ContentProducer: opts.producer?.trim() || '个人创作者',
-    ProduceID: randomUUID(),
+    ProduceID: opts.produceId?.trim() || randomUUID(),
     ReservedCode1: '',
     ContentPropagator: opts.contentPropagator?.trim() ?? '',
     PropagateID: opts.propagateId?.trim() ?? '',
