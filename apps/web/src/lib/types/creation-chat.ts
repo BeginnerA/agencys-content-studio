@@ -205,7 +205,13 @@ export interface CreationPreflight {
   /** 画质候选（仅 dynamic 且视频档位可背书时非 null）；pf 顶层字段，不入 planHash */
   resolutionOptions: { choices: string[]; default: string } | null
   /** 品牌叠加摘要（平台/项目已配水印/片头/片尾/字幕）；pf 顶层字段，不入 planHash；未配品牌 available=false */
-  brandSummary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
+  brandSummary: {
+    available: boolean
+    watermark: boolean
+    intro: boolean
+    outro: boolean
+    subtitle: boolean
+  } | null
   /** 对白执行路线（pf 顶层信息透出，不入 planHash）：strict = 严格 ASR（执行链仍冻结）；estimated = 免核验原生出声 + 估算字幕；null = 非对白 */
   dialogueMode: 'strict' | 'estimated' | null
 }
@@ -337,7 +343,11 @@ export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
 }
 
 /** Agent 化角色署名（M63）：消息带 roleName（服务端注册表投影的中文名）时用之，否则回落默认标签；system 留痕仍按类型标签。 */
-export function creationRoleLabel(m: { role: CreationChatRole; roleName?: string | null; payload?: CreationChatMessagePayload | null }): string {
+export function creationRoleLabel(m: {
+  role: CreationChatRole
+  roleName?: string | null
+  payload?: CreationChatMessagePayload | null
+}): string {
   if (m.role === 'system') return creationSystemLabel(m.payload?.kind)
   if (m.role === 'user') return CREATION_ROLE_LABELS.user
   return m.roleName || CREATION_ROLE_LABELS.assistant
@@ -375,7 +385,10 @@ export interface CreationSessionView {
   runHistory: unknown[]
   error: string | null
   /** 规划在途进度（仅 status=planning 且服务端已受理时有值）：阶段 + 已进行秒数 */
-  planning?: { phase: 'analyzing' | 'refs' | 'caps' | 'model' | 'validating'; elapsedSec: number } | null
+  planning?: {
+    phase: 'analyzing' | 'refs' | 'caps' | 'model' | 'validating'
+    elapsedSec: number
+  } | null
   createdAt: number
   updatedAt: number
   projectDeleted: boolean
@@ -438,9 +451,25 @@ export interface CreationProgress {
   uncertainTasks: CreationUncertainTask[]
   completedShots: number
   steps: CreationProgressStep[]
-  stages: Array<{ key: string; title: string; applicable: boolean | null; status: string; completed: number | null; total: number | null }>
-  recovery: { resumable: boolean; requiredTaskIds: number[]; queryTaskCount: number; unpriced: string[]; configDrift?: ResumeConfigDrift[] }
-  issue: { summary: string; details: Array<{ message: string; scopes: string[] }> } | null
+  stages: Array<{
+    key: string
+    title: string
+    applicable: boolean | null
+    status: string
+    completed: number | null
+    total: number | null
+  }>
+  recovery: {
+    resumable: boolean
+    requiredTaskIds: number[]
+    queryTaskCount: number
+    unpriced: string[]
+    configDrift?: ResumeConfigDrift[]
+  }
+  issue: {
+    summary: string
+    details: Array<{ message: string; scopes: string[] }>
+  } | null
   /** 成片字幕烧录当前态（来自 run._compose.subtitleBurn，缺省=true）：驱动「已有成果」面板字幕开关回显 */
   subtitleBurn: boolean
 }
@@ -464,7 +493,17 @@ export interface CreationArtifactChoice {
   candidates: CreationArtifact[]
 }
 export interface CreationArtifacts {
-  shots: Array<{ shotId: string; index: number; duration: number; text: string; image: CreationArtifactChoice; video: CreationArtifactChoice; voices: CreationArtifact[]; speaker?: CreationCast | null; verification?: CreationDialogueVerification[] }>
+  shots: Array<{
+    shotId: string
+    index: number
+    duration: number
+    text: string
+    image: CreationArtifactChoice
+    video: CreationArtifactChoice
+    voices: CreationArtifact[]
+    speaker?: CreationCast | null
+    verification?: CreationDialogueVerification[]
+  }>
   documents: Array<CreationArtifact & { label: string }>
 }
 
@@ -499,9 +538,22 @@ export interface AgentDecisionView {
   team: Array<{ roleKey: string; stage: string }>
   confidence: number
   rationale: string
-  templateRun?: { templateKey: string; catalogSnapshot?: { key: string; version: number }; inputSpec?: Record<string, InputSpecView> } | null
-  chain?: Array<{ templateKey: string; title: string; inputSpec?: Record<string, InputSpecView> }> | null
-  synth?: { name: string; templateKey: string; stepCount: number; inputSpec?: Record<string, InputSpecView> } | null
+  templateRun?: {
+    templateKey: string
+    catalogSnapshot?: { key: string; version: number }
+    inputSpec?: Record<string, InputSpecView>
+  } | null
+  chain?: Array<{
+    templateKey: string
+    title: string
+    inputSpec?: Record<string, InputSpecView>
+  }> | null
+  synth?: {
+    name: string
+    templateKey: string
+    stepCount: number
+    inputSpec?: Record<string, InputSpecView>
+  } | null
   escalateTo?: { templateKey: string; reason: string } | null
   capabilityNotes?: string[]
 }

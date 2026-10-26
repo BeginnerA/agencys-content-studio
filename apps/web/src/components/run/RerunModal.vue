@@ -89,7 +89,8 @@ onMounted(async () => {
 })
 
 watch(scope, (s) => {
-  if (s === 'cascade' && !preview.value && !previewLoading.value) void loadPreview()
+  if (s === 'cascade' && !preview.value && !previewLoading.value)
+    void loadPreview()
 })
 watch(mode, () => {
   if (scope.value === 'cascade') void loadPreview()
@@ -128,12 +129,7 @@ async function submit() {
       <!-- 重跑范围（仅两种都可用时供选择） -->
       <div v-if="showScope" class="rr-scope">
         <label class="rr-opt">
-          <input
-            v-model="scope"
-            type="radio"
-            value="single"
-            :disabled="busy"
-          />
+          <input v-model="scope" type="radio" value="single" :disabled="busy" />
           <span class="rr-opt-main">
             <span class="tt">仅本步骤</span>
             <span class="muted">只重跑该步骤；已成功的其他步骤照常跳过。</span>
@@ -147,7 +143,9 @@ async function submit() {
             :disabled="busy"
           />
           <span class="rr-opt-main">
-            <span class="tt">级联到末尾<em v-if="!allowSingle">（推荐）</em></span>
+            <span class="tt"
+              >级联到末尾<em v-if="!allowSingle">（推荐）</em></span
+            >
             <span class="muted">
               从本步起重做到末尾，下游步骤按新产物依次重做（可解开「首帧不理想但下游已失败」的死角）。
             </span>
@@ -226,8 +224,7 @@ async function submit() {
           <div class="rr-chain-sum">
             <Icon name="alert" :size="12" />
             <span
-              >从本步起重做
-              <b>{{ preview.chain.length }}</b> 步，其中
+              >从本步起重做 <b>{{ preview.chain.length }}</b> 步，其中
               <b class="bad">{{ preview.chargedSteps }}</b> 步含生成计费，预计
               <b>{{ preview.totalTasksToRun }}</b> 个子任务。</span
             >
@@ -239,7 +236,10 @@ async function submit() {
               <span class="muted mono ac">{{ c.actionKey }}</span>
               <span v-if="c.isTarget" class="tag tgt">目标</span>
               <span v-if="c.charged" class="tag charge"
-                >计费 {{ c.tasksToRun }}<template v-if="c.tasksTotal">/{{ c.tasksTotal }}</template></span
+                >计费 {{ c.tasksToRun
+                }}<template v-if="c.tasksTotal"
+                  >/{{ c.tasksTotal }}</template
+                ></span
               >
               <span v-else class="tag run">执行</span>
             </li>
@@ -253,8 +253,7 @@ async function submit() {
       <div v-if="mode === 'all' && !noTasks" class="rr-warn">
         <Icon name="alert" :size="12" />
         <span
-          >全量重跑会重新调用生成服务（图像 / 视频 /
-          语音均可能计费）。</span
+          >全量重跑会重新调用生成服务（图像 / 视频 / 语音均可能计费）。</span
         >
       </div>
 
@@ -266,11 +265,7 @@ async function submit() {
       <button class="btn primary" :disabled="!canSubmit" @click="submit">
         <Icon name="refresh" :size="13" />
         {{
-          busy
-            ? '提交中…'
-            : scope === 'cascade'
-              ? '确认级联重跑'
-              : '确认重跑'
+          busy ? '提交中…' : scope === 'cascade' ? '确认级联重跑' : '确认重跑'
         }}
       </button>
     </template>

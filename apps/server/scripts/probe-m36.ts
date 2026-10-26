@@ -242,17 +242,17 @@ async function main(): Promise<void> {
       // daily：count 个升序、间隔恰 1 天
       const d = expandCadence({ startAt, count: 7, cadence: { kind: 'daily' } })
       check(d.errors.length === 0 && d.timestamps.length === 7, 'daily count=7 → 7 条无错')
-      check(d.timestamps.every((t, i) => i === 0 || t - d.timestamps[i - 1] === DAY), 'daily 相邻间隔恰 24h')
+      check(d.timestamps.every((t, i) => i === 0 || t - d.timestamps[i - 1]! === DAY), 'daily 相邻间隔恰 24h')
       check(d.timestamps[0] === startAt && d.timestamps[6] === startAt + 6 * DAY, 'daily 首=startAt、末=startAt+6d（保时刻）')
 
       // interval intervalDays=3
       const iv = expandCadence({ startAt, count: 4, cadence: { kind: 'interval', intervalDays: 3 } })
-      check(iv.timestamps.length === 4 && iv.timestamps[1] - iv.timestamps[0] === 3 * DAY, 'interval 3 天间隔')
+      check(iv.timestamps.length === 4 && iv.timestamps[1]! - iv.timestamps[0]! === 3 * DAY, 'interval 3 天间隔')
 
       // weekly：命中起始 weekday → 首条 = startAt、间隔 7 天
       const w = new Date(startAt).getUTCDay()
       const wk = expandCadence({ startAt, count: 3, cadence: { kind: 'weekly', weekdays: [w] } })
-      check(wk.timestamps[0] === startAt && wk.timestamps.length === 3 && wk.timestamps[1] - wk.timestamps[0] === 7 * DAY, 'weekly 命中起始 weekday → 首=startAt、7d 递增')
+      check(wk.timestamps[0] === startAt && wk.timestamps.length === 3 && wk.timestamps[1]! - wk.timestamps[0]! === 7 * DAY, 'weekly 命中起始 weekday → 首=startAt、7d 递增')
       const wk2 = expandCadence({ startAt, count: 2, cadence: { kind: 'weekly', weekdays: [(w + 1) % 7] } })
       check(wk2.timestamps[0] === startAt + DAY, 'weekly 次一 weekday → 首条向后 1 天')
 

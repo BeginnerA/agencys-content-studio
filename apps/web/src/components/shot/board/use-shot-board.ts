@@ -9,7 +9,10 @@ import { assetApi, shotApi } from '../../../lib/api'
 import { confirmDialog } from '../../../lib/confirm'
 import { composeInputReworkApi, ReworkApiError } from '../../../lib/api/rework'
 import { newRequestKey } from '../../../lib/api/creation-chat'
-import type { ComposeInputChangeView, ComposeInputPreviewView } from '../../../lib/types/rework'
+import type {
+  ComposeInputChangeView,
+  ComposeInputPreviewView,
+} from '../../../lib/types/rework'
 import type {
   Asset,
   ComposeConfig,
@@ -71,7 +74,10 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   const bgm = ref<Asset | null>(null)
   const composeSettingsOpen = ref(false)
   // 合成返修可用性（成片已产出→候选改选走本地返修闸；仅换版本可表达，结构性启用/剔除仍走原草稿+重合成）
-  const composeRework = ref<{ supported: boolean; message: string }>({ supported: false, message: '' })
+  const composeRework = ref<{ supported: boolean; message: string }>({
+    supported: false,
+    message: '',
+  })
   // per-shot 音效（shotId → 绑定资产；镜头卡片「音效」按钮用）
   const sfxMap = ref<Record<string, Asset>>({})
   const sfxShotId = ref<string | null>(null)
@@ -373,8 +379,13 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   /** 是否存在结构性改动（剔除当前在用镜 / 新启用未曾入选的镜）——这些不属于候选改选 */
   function hasStructuralSelection(): boolean {
     return shots.value.some((s) => {
-      if (draftExcluded.value.includes(s.shotId) && s.selectedAssetId !== null) return true
-      if (draftSelected.value[s.shotId] !== undefined && s.selectedAssetId === null) return true
+      if (draftExcluded.value.includes(s.shotId) && s.selectedAssetId !== null)
+        return true
+      if (
+        draftSelected.value[s.shotId] !== undefined &&
+        s.selectedAssetId === null
+      )
+        return true
       return false
     })
   }
@@ -385,7 +396,8 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     for (const s of shots.value) {
       const d = draftSelected.value[s.shotId]
       if (d === undefined || s.selectedAssetId === null) continue
-      if (d !== s.selectedAssetId) changes.push({ kind: 'shot-select', shotId: s.shotId, assetId: d })
+      if (d !== s.selectedAssetId)
+        changes.push({ kind: 'shot-select', shotId: s.shotId, assetId: d })
     }
     return changes
   }
@@ -393,7 +405,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   /** 版本 id → 名称（未命中降级 #id） */
   function versionNameOf(shotId: string, assetId: unknown): string {
     if (assetId === null || assetId === undefined) return '（无）'
-    const v = shots.value.find((x) => x.shotId === shotId)?.versions.find((x) => x.id === assetId)
+    const v = shots.value
+      .find((x) => x.shotId === shotId)
+      ?.versions.find((x) => x.id === assetId)
     return v ? v.name : `#${String(assetId)}`
   }
 
@@ -401,8 +415,13 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   function buildSelectionConfirmMessage(pv: ComposeInputPreviewView): string {
     const lines = pv.diffs
       .filter((d) => d.kind === 'shot-select')
-      .map((d) => `· 镜头 ${d.field}：${versionNameOf(d.field, d.before)} → ${versionNameOf(d.field, d.after)}`)
-    const impact = pv.impact.resetSteps.length ? `重置步骤：${pv.impact.resetSteps.join('、')}` : ''
+      .map(
+        (d) =>
+          `· 镜头 ${d.field}：${versionNameOf(d.field, d.before)} → ${versionNameOf(d.field, d.after)}`,
+      )
+    const impact = pv.impact.resetSteps.length
+      ? `重置步骤：${pv.impact.resetSteps.join('、')}`
+      : ''
     return [
       ...lines,
       '',
@@ -415,7 +434,9 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   }
 
   /** 候选改选走合成返修闸：幂等预览→确认（携 previewHash）→本地重合成入队 */
-  async function applySelectionViaRework(changes: ComposeInputChangeView[]): Promise<void> {
+  async function applySelectionViaRework(
+    changes: ComposeInputChangeView[],
+  ): Promise<void> {
     if (opBusy.value) return
     const stepKey = compose.value?.stepKey ?? 'compose'
     const key = newRequestKey('selrw')
@@ -423,7 +444,12 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
     err.value = ''
     notice.value = ''
     try {
-      const pv = await composeInputReworkApi.preview(props.runId, key, changes, stepKey)
+      const pv = await composeInputReworkApi.preview(
+        props.runId,
+        key,
+        changes,
+        stepKey,
+      )
       const ok = await confirmDialog({
         title: '确认候选改选并本地重合成',
         message: buildSelectionConfirmMessage(pv.preview),
@@ -431,13 +457,22 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
         cancelText: '取消',
       })
       if (!ok) return
-      await composeInputReworkApi.apply(props.runId, pv.request_id, pv.preview.previewHash)
+      await composeInputReworkApi.apply(
+        props.runId,
+        pv.request_id,
+        pv.preview.previewHash,
+      )
       draftSelected.value = {}
       draftExcluded.value = []
       notice.value = '候选改选已确认：本地重合成已入队，旧成片批准已作废待复审'
       await load()
     } catch (e) {
-      err.value = e instanceof ReworkApiError ? e.message : e instanceof Error ? e.message : '候选改选失败'
+      err.value =
+        e instanceof ReworkApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : '候选改选失败'
     } finally {
       opBusy.value = false
     }
@@ -447,7 +482,10 @@ export function useShotBoard(props: ShotBoardProps, emit: ShotBoardEmitFn) {
   async function probeComposeRework(stepKey: string): Promise<void> {
     try {
       const c = await composeInputReworkApi.capability(props.runId, stepKey)
-      composeRework.value = { supported: c.capability.supported, message: c.capability.message }
+      composeRework.value = {
+        supported: c.capability.supported,
+        message: c.capability.message,
+      }
     } catch {
       composeRework.value = { supported: false, message: '' }
     }

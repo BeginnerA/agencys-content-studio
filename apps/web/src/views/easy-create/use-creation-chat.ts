@@ -2,41 +2,29 @@ import { computed, reactive } from 'vue'
 import { createFirstInput } from './use-first-input'
 import { createRework } from './use-rework'
 import { createChainAdvance } from './use-creation-chain'
-import { createAttachments, type AttachmentItem } from './use-creation-attachments'
+import {
+  createAttachments,
+  type AttachmentItem,
+} from './use-creation-attachments'
 import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
-import { studioOff, studioOn } from '../../lib/socket'
+import { createCreationConfirm } from './use-creation-confirm'
+import { createPolling, RUNNING_STATUSES } from './use-creation-polling'
 import type {
   CreationCandidateStep,
   CreationDeleteResult,
   CreationDetail,
   CreationGateDecision,
   CreationGraduateResult,
-  CreationProjectMeta,
   CreationSessionListItem,
   CreationMode,
 } from '../../lib/types'
 
 // 附件视图模型迁移至 use-creation-attachments；此处再导出保持 use-first-input 等既有 import 路径不变
 export type { AttachmentItem } from './use-creation-attachments'
+export { parseTagsText } from './use-creation-confirm'
 
 // ===== 轻松创作状态机（模块级单例：列表页与详情页共享，切页不丢在途状态） =====
-
-// waiting_input 不在本集合内：它是「等用户决策」而不是「等在途请求」，已挂起闸门时继续 4s 轮询只会空转（见 isPollable 的 parked 分支）
-const RUNNING = new Set(['queued', 'running', 'pending', 'processing'])
-
-function isPollable(d: CreationDetail | null): boolean {
-  if (!d) return false
-  const p = d.progress
-  // 投影带 review = 闸门真的在等用户点按钮 → 不轮询；waiting_input 但无待审步骤 = 决策后的瞬时态（run 行比步骤行晚一步更新），继续轮询至收敛
-  const parked = !!p && p.status === 'waiting_input' && !!p.review
-  const runActive =
-    !!p &&
-    !parked &&
-    (RUNNING.has(p.status) || p.status === 'processing' || p.status === 'waiting_input')
-  const starting = d.session.status === 'starting'
-  return (runActive || starting || d.session.status === 'planning') && !d.result
-}
 
 const state = reactive({
   currentId: 0,
@@ -59,6 +47,20 @@ const state = reactive({
   pendingMessages: [] as { id: string; content: string }[],
 })
 
+// 刷新调度 / 确认键 / 立项编辑态外抽（守住本文件 800 行红线；语义逐字不变）
+const polling = createPolling({
+  detailOf: () => state.detail,
+  currentIdOf: () => state.currentId,
+  refresh: fetchDetail,
+})
+const { ensurePolling, stopPolling, wireSocket } = polling
+const confirmState = createCreationConfirm(() => state.detail)
+const { confirmKey, decisionKey, projectDraft, projectEditable } = confirmState
+const syncConfirmKey = confirmState.syncConfirmKey
+const syncDecisionKey = confirmState.syncDecisionKey
+const syncProjectDraft = confirmState.syncProjectDraft
+const projectOverrides = confirmState.projectOverrides
+
 // ===== 乐观上屏（行业 AI 对话标准：发送即上屏，不等模型回复）=====
 // 幂等键即唯一 id：同一次提交（含重试复用同键）只占一个气泡；服务端确认后经 dropPending 摘除
 function addPending(id: string, content: string): void {
@@ -73,16 +75,24 @@ function clearPending(): void {
 }
 
 // 附件域抽为 composable：与主状态机共享同一 reactive state；uploadItem 经此反向注入 first-input 的上传钩子（闭包惰性取 attachments，构造后恒可解析）
-const first = createFirstInput(state, { commit, upload: (item) => attachments.uploadItem(item), polling: ensurePolling, optimistic: { add: addPending, drop: dropPending } })
+const first = createFirstInput(state, {
+  commit,
+  upload: (item) => attachments.uploadItem(item),
+  polling: ensurePolling,
+  optimistic: { add: addPending, drop: dropPending },
+})
 // 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
 // chain 段间批准续跑独立成 composable（M64 G1，同样为守住本文件工程红线而外抽）
 const chain = createChainAdvance(state, { commit, polling: ensurePolling })
-const attachments = createAttachments(state, { viewEpoch: () => viewEpoch, commit, first, errText })
+const attachments = createAttachments(state, {
+  viewEpoch: () => viewEpoch,
+  commit,
+  first,
+  errText,
+})
 let viewEpoch = 0
 let autoFirstId = 0
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let wired = false
 let retryTicket = { signature: '', key: '' }
 let sendTicket = { signature: '', key: '' }
 let gateTicket = { signature: '', key: '' }
@@ -99,100 +109,12 @@ function commit(id: number, detail: CreationDetail): void {
   if (id !== state.currentId) return
   state.detail = detail
   // run 一旦重新推进（含本地重合成），选定版本正在落到新成片上 → 摘掉「待重新合成」提示
-  if (RUNNING.has(detail.progress?.status ?? '')) state.selectionDirty = false
+  if (RUNNING_STATUSES.has(detail.progress?.status ?? ''))
+    state.selectionDirty = false
   first.observe(detail)
   syncConfirmKey()
   syncDecisionKey()
   syncProjectDraft()
-}
-
-// 确认幂等键：同一 planHash+revision 复用，重试点击不新起 run；方案变化后重置
-const confirmKey = reactive<{ hash: string; revision: number; key: string }>({
-  hash: '',
-  revision: 0,
-  key: '',
-})
-function syncConfirmKey(): void {
-  const s = state.detail?.session
-  const hash = s?.planHash ?? ''
-  if (
-    confirmKey.hash === hash &&
-    confirmKey.revision === (s?.planRevision ?? 0)
-  )
-    return
-  confirmKey.hash = hash
-  confirmKey.revision = s?.planRevision ?? 0
-  confirmKey.key = hash ? newRequestKey('cfm') : ''
-}
-
-// route 确认幂等键（M63）：以 decisionHash+planRevision 为闸，语义同 confirmKey（改动即作废旧确认，重试点击不新起 run）
-const decisionKey = reactive<{ hash: string; revision: number; key: string }>({
-  hash: '',
-  revision: 0,
-  key: '',
-})
-function syncDecisionKey(): void {
-  const s = state.detail?.session
-  const hash = s?.decisionHash ?? ''
-  if (decisionKey.hash === hash && decisionKey.revision === (s?.planRevision ?? 0)) return
-  decisionKey.hash = hash
-  decisionKey.revision = s?.planRevision ?? 0
-  decisionKey.key = hash ? newRequestKey('rfm') : ''
-}
-
-// ===== 立项信息可编辑态：默认用平台智能填写值（Tier A），用户改过的字段确认后随 confirm 提交（Tier B 可覆盖） =====
-export const projectDraft = reactive({
-  name: '',
-  genre: '',
-  tagsText: '',
-  brief: '',
-  /** 用户改过任一项 → true：服务端回读不再覆盖本地编辑；确认成功后重置 */
-  dirty: false,
-})
-
-/** 标签文本 → 数组（支持中英文逗号/顿号分隔；去空去重） */
-export function parseTagsText(text: string): string[] {
-  const out: string[] = []
-  for (const t of text.split(/[,，、]/)) {
-    const v = t.trim()
-    if (v && !out.includes(v)) out.push(v)
-  }
-  return out
-}
-
-/** 服务端智能填写值回同步到编辑态（用户未改动时才覆盖，避免冲掉正在输入的内容） */
-function syncProjectDraft(): void {
-  const p = state.detail?.session.project
-  if (!p) {
-    projectDraft.dirty = false
-    return
-  }
-  if (projectDraft.dirty) return
-  projectDraft.name = p.name
-  projectDraft.genre = p.genre
-  projectDraft.tagsText = p.tags.join('，')
-  projectDraft.brief = p.brief
-}
-
-/** 可编辑窗口：仅未立项（draft 影子态）且方案就绪时展示编辑区 */
-const projectEditable = computed(
-  () => state.detail?.session.project?.isDraft === true,
-)
-
-/** 确认时携带的覆盖值：只提交与平台智能填写值不同的字段；全无改动 → undefined（沿用服务端值） */
-function projectOverrides(): Partial<CreationProjectMeta> | undefined {
-  const p = state.detail?.session.project
-  if (!p || !p.isDraft || !projectDraft.dirty) return undefined
-  const o: Partial<CreationProjectMeta> = {}
-  if (projectDraft.name.trim() && projectDraft.name.trim() !== p.name)
-    o.name = projectDraft.name.trim()
-  if (projectDraft.genre && projectDraft.genre !== p.genre)
-    o.genre = projectDraft.genre
-  const tags = parseTagsText(projectDraft.tagsText)
-  if (tags.length && tags.join(',') !== p.tags.join(',')) o.tags = tags
-  if (projectDraft.brief.trim() && projectDraft.brief.trim() !== p.brief)
-    o.brief = projectDraft.brief.trim()
-  return Object.keys(o).length ? o : undefined
 }
 
 async function fetchDetail(id: number): Promise<void> {
@@ -200,48 +122,11 @@ async function fetchDetail(id: number): Promise<void> {
   const prior = state.detail
   try {
     const detail = await creationChatApi.detail(id)
-    if (token === viewEpoch && prior === state.detail && !first.busy.value) commit(id, detail)
+    if (token === viewEpoch && prior === state.detail && !first.busy.value)
+      commit(id, detail)
   } catch (e) {
     if (token === viewEpoch && id === state.currentId) state.error = errText(e)
   }
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
-function tickPoll(): void {
-  if (!isPollable(state.detail)) {
-    stopPolling()
-    return
-  }
-  void fetchDetail(state.currentId)
-}
-
-/** 运行中：Socket 事件即时重拉 + 定时兜底（断线/漏事件仍能收敛，刷新页面不中止后端制作） */
-function ensurePolling(): void {
-  if (isPollable(state.detail) && !pollTimer)
-    pollTimer = setInterval(tickPoll, 4000)
-  if (!isPollable(state.detail)) stopPolling()
-}
-
-function onRunEvent(): void {
-  const p = state.detail?.progress
-  if (p && state.currentId) void fetchDetail(state.currentId)
-}
-
-function wireSocket(): void {
-  if (wired) return
-  wired = true
-  studioOn('run.completed', onRunEvent)
-  studioOn('run.failed', onRunEvent)
-  studioOn('run.step', onRunEvent)
-  // 闸门挂起：不靠下一轮轮询，事件到达即重拉（审阅面板即时出现）
-  studioOn('run.gate', onRunEvent)
-  studioOn('task.updated', onRunEvent)
 }
 
 // ===== 公开动作 =====
@@ -263,6 +148,8 @@ async function open(id: number): Promise<void> {
   if (id !== state.currentId) {
     first.detach()
     rework.reset()
+    // 续段 busy 属会话级在途状态：切会话必须释放（否则单例置灰继承到新会话，只能整页刷新）
+    chain.reset()
     viewEpoch++
     autoFirstId = 0
     state.currentId = id
@@ -272,7 +159,8 @@ async function open(id: number): Promise<void> {
     state.characterPresetIds = []
     state.busySend = false
     state.busyAction = false
-    state.error = ''; state.notice = ''
+    state.error = ''
+    state.notice = ''
     clearPending()
     confirmKey.hash = ''
     decisionKey.hash = ''
@@ -293,11 +181,13 @@ async function open(id: number): Promise<void> {
     if (token !== viewEpoch || id !== state.currentId) return
     first.activate(detail)
     commit(id, detail)
-    if (auto && first.active.value) void first.submit(first.state.ticket!.content)
+    if (auto && first.active.value)
+      void first.submit(first.state.ticket!.content)
   } catch (e) {
     if (token === viewEpoch && id === state.currentId) state.error = errText(e)
   } finally {
-    if (token === viewEpoch && id === state.currentId) state.loadingDetail = false
+    if (token === viewEpoch && id === state.currentId)
+      state.loadingDetail = false
     ensurePolling()
   }
 }
@@ -313,7 +203,8 @@ function enterHome(): void {
   leave()
   first.home()
   state.detail = null
-  state.error = ''; state.notice = ''
+  state.error = ''
+  state.notice = ''
 }
 
 async function send(content: string, replan = false): Promise<boolean> {
@@ -321,41 +212,61 @@ async function send(content: string, replan = false): Promise<boolean> {
   const id = state.currentId
   const token = viewEpoch
   if (!id || state.busySend) return false
-  if (!state.detail?.session.runId && state.attachments.some((a) => a.uploading || a.error || !a.assetId)) {
+  if (
+    !state.detail?.session.runId &&
+    state.attachments.some((a) => a.uploading || a.error || !a.assetId)
+  ) {
     state.error = '请先重试失败的参考项，或明确移除后再发送。'
     return false
   }
   state.busySend = true
   state.error = ''
   // 本条消息采纳已上传成功的参考附件（上传中/失败的项保留，不静默丢参考）
-  const sentAssetIds = state.detail?.session.runId ? [] : [...new Set(state.attachments
-    .filter((a) => a.assetId && !a.error)
-    .map((a) => a.assetId!))]
+  const sentAssetIds = state.detail?.session.runId
+    ? []
+    : [
+        ...new Set(
+          state.attachments
+            .filter((a) => a.assetId && !a.error)
+            .map((a) => a.assetId!),
+        ),
+      ]
   const signature = JSON.stringify([id, content.trim(), sentAssetIds])
-  if (signature !== sendTicket.signature) sendTicket = { signature, key: newRequestKey('msg') }
+  if (signature !== sendTicket.signature)
+    sendTicket = { signature, key: newRequestKey('msg') }
   // 发送即上屏；规划在途（错误提示「请更新状态」）时保留气泡——消息确已被服务端接收，轮询确认后自然摘除
   addPending(sendTicket.key, content.trim())
   // 规划在途回读轮询：同步 send 动辄数十秒，期间定期 fetchDetail → ①阶段进度实时推进（不再卡「接收请求中」）；
   // ②服务端首事务落库用户消息后由轮询确认（同 requestKey 真消息进列表 → 占位气泡自然摘除，不再误显「发送中」）。
   // fetchDetail 的 commit 有 token/prior/first.busy 三重守卫，POST 返回的终态 detail 不会被在途旧值覆盖。
-  const inflight = setInterval(() => { void fetchDetail(id) }, 3000)
+  const inflight = setInterval(() => {
+    void fetchDetail(id)
+  }, 3000)
   try {
     const detail = await creationChatApi.send(
       id,
       content,
       sendTicket.key,
       sentAssetIds,
-      { stylePresetIds: state.stylePresetIds, characterPresetIds: state.characterPresetIds },
+      {
+        stylePresetIds: state.stylePresetIds,
+        characterPresetIds: state.characterPresetIds,
+      },
     )
     if (token !== viewEpoch || id !== state.currentId) return false
     commit(id, detail)
     ensurePolling()
     if (detail.session.error || detail.session.status === 'planning') {
-      if (detail.session.error && id === state.currentId) dropPending(sendTicket.key)
-      if (id === state.currentId) state.error = detail.session.error || '请求已接收，正在规划；请更新状态，不要重复发送。'
+      if (detail.session.error && id === state.currentId)
+        dropPending(sendTicket.key)
+      if (id === state.currentId)
+        state.error =
+          detail.session.error ||
+          '请求已接收，正在规划；请更新状态，不要重复发送。'
       return false
     }
-    if (id === state.currentId && (detail.session.plan || detail.session.runId)) state.attachments = []
+    if (id === state.currentId && (detail.session.plan || detail.session.runId))
+      state.attachments = []
     sendTicket = { signature: '', key: '' }
     return true
   } catch (e) {
@@ -382,7 +293,13 @@ async function refreshPreflight(): Promise<void> {
   }
 }
 
-async function confirm(acceptUnpriced: boolean, reviewGate = false, resolution?: string, brandApply = true, subtitleBurn = true): Promise<number | null> {
+async function confirm(
+  acceptUnpriced: boolean,
+  reviewGate = false,
+  resolution?: string,
+  brandApply = true,
+  subtitleBurn = true,
+): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
   if (!s || !id || s.status !== 'ready' || !s.planHash || state.busyAction)
@@ -439,7 +356,14 @@ const isRoute = computed(() => {
 async function confirmRoute(acceptUnpriced = false): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
-  if (!s || !id || s.status !== 'ready' || !s.decisionHash || !isRoute.value || state.busyAction)
+  if (
+    !s ||
+    !id ||
+    s.status !== 'ready' ||
+    !s.decisionHash ||
+    !isRoute.value ||
+    state.busyAction
+  )
     return null
   if (
     !decisionKey.key ||
@@ -485,24 +409,55 @@ async function cancel(): Promise<void> {
   }
 }
 
-async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false, acceptConfigDrift = false): Promise<number | null> {
+async function retry(
+  verifiedFailedTaskIds: number[],
+  acceptUnpriced = false,
+  acceptConfigDrift = false,
+): Promise<number | null> {
   const s = state.detail?.session
   const p = state.detail?.progress
   const id = state.currentId
-  if (!s || !p || !id || !s.planHash || state.busyAction || !p.recovery.resumable) return null
+  if (
+    !s ||
+    !p ||
+    !id ||
+    !s.planHash ||
+    state.busyAction ||
+    !p.recovery.resumable
+  )
+    return null
   const token = viewEpoch
   const drift = p.recovery.configDrift ?? []
   if (drift.some((d) => d.to === null)) {
-    state.error = '当前无可用配置，请检查实例是否启用、协议是否合格及凭据是否可用，再更新状态。'
+    state.error =
+      '当前无可用配置，请检查实例是否启用、协议是否合格及凭据是否可用，再更新状态。'
     return null
   }
-  if (p.recovery.requiredTaskIds.some((taskId) => !verifiedFailedTaskIds.includes(taskId)) || (p.recovery.unpriced.length && !acceptUnpriced) || (drift.length && !acceptConfigDrift)) {
+  if (
+    p.recovery.requiredTaskIds.some(
+      (taskId) => !verifiedFailedTaskIds.includes(taskId),
+    ) ||
+    (p.recovery.unpriced.length && !acceptUnpriced) ||
+    (drift.length && !acceptConfigDrift)
+  ) {
     state.error = '请完成任务核实、未计价及配置变化确认后恢复。'
     return null
   }
   const verified = [...new Set(verifiedFailedTaskIds)].sort((a, b) => a - b)
-  const signature = JSON.stringify([id, p.runId, s.planRevision, s.planHash, p.status, p.uncertainTasks, verified, acceptUnpriced, drift, acceptConfigDrift])
-  if (signature !== retryTicket.signature) retryTicket = { signature, key: newRequestKey('rt') }
+  const signature = JSON.stringify([
+    id,
+    p.runId,
+    s.planRevision,
+    s.planHash,
+    p.status,
+    p.uncertainTasks,
+    verified,
+    acceptUnpriced,
+    drift,
+    acceptConfigDrift,
+  ])
+  if (signature !== retryTicket.signature)
+    retryTicket = { signature, key: newRequestKey('rt') }
   state.busyAction = true
   state.error = ''
   try {
@@ -523,7 +478,8 @@ async function retry(verifiedFailedTaskIds: number[], acceptUnpriced = false, ac
   } catch (e) {
     if (token === viewEpoch && id === state.currentId) {
       state.error = errText(e)
-      if (e instanceof ApiError && e.code === 'configuration_changed') await fetchDetail(id)
+      if (e instanceof ApiError && e.code === 'configuration_changed')
+        await fetchDetail(id)
     }
     return null
   } finally {
@@ -543,17 +499,27 @@ async function decideGate(
   const p = state.detail?.progress
   const id = state.currentId
   if (!id || !p?.review || state.busyAction) return false
-  const signature = JSON.stringify([id, p.runId, stepKey, decision, note?.trim() ?? ''])
-  if (signature !== gateTicket.signature) gateTicket = { signature, key: newRequestKey('gate') }
+  const signature = JSON.stringify([
+    id,
+    p.runId,
+    stepKey,
+    decision,
+    note?.trim() ?? '',
+  ])
+  if (signature !== gateTicket.signature)
+    gateTicket = { signature, key: newRequestKey('gate') }
   state.busyAction = true
   state.error = ''
   try {
-    commit(id, await creationChatApi.gate(id, {
-      stepKey,
-      decision,
-      ...(note?.trim() ? { note: note.trim() } : {}),
-      idempotencyKey: gateTicket.key,
-    }))
+    commit(
+      id,
+      await creationChatApi.gate(id, {
+        stepKey,
+        decision,
+        ...(note?.trim() ? { note: note.trim() } : {}),
+        idempotencyKey: gateTicket.key,
+      }),
+    )
     // 决策后 run 已转 queued/running（驳回重跑同理）：恢复轮询把新进度接回来
     ensurePolling()
     gateTicket = { signature: '', key: '' }
@@ -579,15 +545,19 @@ async function applySelection(
   const runId = state.detail?.progress?.runId
   if (!id || !runId || state.busyAction) return false
   const signature = JSON.stringify([id, runId, stepKey, shotId, assetId])
-  if (signature !== selectionTicket.signature) selectionTicket = { signature, key: newRequestKey('sel') }
+  if (signature !== selectionTicket.signature)
+    selectionTicket = { signature, key: newRequestKey('sel') }
   state.busyAction = true
   state.error = ''
   try {
-    commit(id, await creationChatApi.selectShots(id, {
-      stepKey,
-      picks: [{ shot_id: shotId, asset_id: assetId }],
-      idempotencyKey: selectionTicket.key,
-    }))
+    commit(
+      id,
+      await creationChatApi.selectShots(id, {
+        stepKey,
+        picks: [{ shot_id: shotId, asset_id: assetId }],
+        idempotencyKey: selectionTicket.key,
+      }),
+    )
     if (id === state.currentId) state.selectionDirty = true
     state.notice = '已选定该版本；重新合成后成片才会用上这一版。'
     selectionTicket = { signature: '', key: '' }
@@ -609,12 +579,24 @@ async function recompose(subtitleBurn?: boolean): Promise<boolean> {
   const runId = state.detail?.progress?.runId
   if (!id || !runId || state.busyAction) return false
   // 签名含 subtitleBurn：开关取值一变→换新幂等键（否则同键会被服务端去重→重合成不生效）
-  const signature = JSON.stringify([id, runId, 'recompose', subtitleBurn ?? null])
-  if (signature !== recomposeTicket.signature) recomposeTicket = { signature, key: newRequestKey('rec') }
+  const signature = JSON.stringify([
+    id,
+    runId,
+    'recompose',
+    subtitleBurn ?? null,
+  ])
+  if (signature !== recomposeTicket.signature)
+    recomposeTicket = { signature, key: newRequestKey('rec') }
   state.busyAction = true
   state.error = ''
   try {
-    commit(id, await creationChatApi.recompose(id, { idempotencyKey: recomposeTicket.key, ...(subtitleBurn === undefined ? {} : { subtitleBurn }) }))
+    commit(
+      id,
+      await creationChatApi.recompose(id, {
+        idempotencyKey: recomposeTicket.key,
+        ...(subtitleBurn === undefined ? {} : { subtitleBurn }),
+      }),
+    )
     if (id === state.currentId) state.selectionDirty = false
     ensurePolling()
     recomposeTicket = { signature: '', key: '' }
@@ -632,7 +614,9 @@ async function recompose(subtitleBurn?: boolean): Promise<boolean> {
  * episode=专业单集成片（mengbao-episode）；series=连载立项（series-setup）。
  * 服务端仅建 queued run、零计费不自动 start；成功后刷新会话（展示毕业消息）并回传 runId 供页面跳转专业工作台。
  */
-async function graduate(mode: 'episode' | 'series'): Promise<CreationGraduateResult | null> {
+async function graduate(
+  mode: 'episode' | 'series',
+): Promise<CreationGraduateResult | null> {
   const id = state.currentId
   if (!id || state.busyAction) return null
   state.busyAction = true
@@ -653,13 +637,18 @@ async function refreshStatus(): Promise<void> {
   const id = state.currentId
   if (!id || state.loadingDetail) return
   state.loadingDetail = true
-  try { await fetchDetail(id); ensurePolling() }
-  finally { if (id === state.currentId) state.loadingDetail = false }
+  try {
+    await fetchDetail(id)
+    ensurePolling()
+  } finally {
+    if (id === state.currentId) state.loadingDetail = false
+  }
 }
 
 function leave(): void {
   first.detach()
   rework.reset()
+  chain.reset()
   viewEpoch++
   autoFirstId = 0
   state.busySend = false

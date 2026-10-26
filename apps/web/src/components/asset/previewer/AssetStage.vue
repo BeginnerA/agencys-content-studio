@@ -70,11 +70,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
     <div v-else class="midwrap">
       <Icon name="photo" :size="38" class="big-ic" />
       <div>图片加载失败</div>
-      <a
-        class="btn sm"
-        :href="cur.urls.file"
-        target="_blank"
-        rel="noopener"
+      <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener"
         >新标签重试</a
       >
     </div>
@@ -131,10 +127,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
     <div v-if="tooBig" class="midwrap">
       <Icon name="doc" :size="38" class="big-ic" />
       <div>文件较大（{{ fmtSize(cur.fileSize) }}），不内联预览</div>
-      <a
-        class="btn primary"
-        :href="downloadHref(cur)"
-        :download="cur.name"
+      <a class="btn primary" :href="downloadHref(cur)" :download="cur.name"
         >下载查看</a
       >
     </div>
@@ -144,11 +137,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
     </div>
     <div v-else-if="textErr" class="midwrap">
       <div class="err-text">{{ textErr }}</div>
-      <a
-        class="btn sm"
-        :href="cur.urls.file"
-        target="_blank"
-        rel="noopener"
+      <a class="btn sm" :href="cur.urls.file" target="_blank" rel="noopener"
         >新标签打开</a
       >
     </div>
@@ -172,9 +161,7 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
     <div v-else class="doc">
       <MarkdownPreview v-if="vkind === 'markdown'" :source="text" />
       <template v-else-if="vkind === 'json'">
-        <div v-if="jsonBad" class="jsonhint">
-          JSON 解析失败，按原文展示
-        </div>
+        <div v-if="jsonBad" class="jsonhint">JSON 解析失败，按原文展示</div>
         <pre class="prebox json" v-html="jsonHtml" />
       </template>
       <pre v-else class="prebox">{{ text }}</pre>
@@ -187,17 +174,10 @@ const imgErr = defineModel<boolean>('imgErr', { required: true })
     <div class="fname">{{ cur.name }}</div>
     <div class="muted">该格式暂不支持内联预览</div>
     <div class="fbtns">
-      <a
-        class="btn primary"
-        :href="downloadHref(cur)"
-        :download="cur.name"
+      <a class="btn primary" :href="downloadHref(cur)" :download="cur.name"
         >下载文件</a
       >
-      <a
-        class="btn"
-        :href="cur.urls.file"
-        target="_blank"
-        rel="noopener"
+      <a class="btn" :href="cur.urls.file" target="_blank" rel="noopener"
         >新标签打开</a
       >
     </div>

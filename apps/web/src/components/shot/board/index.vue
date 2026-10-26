@@ -142,7 +142,11 @@ const {
       <ComposeBar :sb="sb" :save-transition="saveTransition" />
       <!-- 字幕精确返修：与轻创作/运行详情/抽屉同一编辑器与确认流（面向 compose 步，能力由后端判定） -->
       <div v-if="compose" class="wb-grp">
-        <SubtitleReworkEntry :run-id="props.runId" :disabled="active" @applied="emit('changed')" />
+        <SubtitleReworkEntry
+          :run-id="props.runId"
+          :disabled="active"
+          @applied="emit('changed')"
+        />
       </div>
       <template v-if="shots.length">
         <span v-if="compose" class="wb-sep" />
@@ -491,7 +495,9 @@ const {
 
 .wb-num {
   width: 64px;
-  background: var(--bg); /* 比 strip 底色（--code-bg）更深，避免输入框与控制条融为一体 */
+  background: var(
+    --bg
+  ); /* 比 strip 底色（--code-bg）更深，避免输入框与控制条融为一体 */
   border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 6px;

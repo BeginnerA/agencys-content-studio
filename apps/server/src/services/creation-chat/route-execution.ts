@@ -11,15 +11,18 @@ import { db } from '../../db'
 import { creationMessages, creationSessions, projects, type CreationSession } from '../../db/schema'
 import { engine } from '../../pipeline/engine'
 import { saveTemplate } from '../../pipeline/loader'
-import { createRunRow } from '../run-create'
+import { createRunRow, InvalidRunInputError } from '../run-create'
 import { checkBudget } from '../budget'
-import { WorkflowError, createWorkflow, setWorkflowStatus, startWorkflow, type WorkflowSegment } from '../workflow'
+import { createLogger } from '../../logger'
+import { activateWorkflowIn, createWorkflow, prepareFirstSegment, WorkflowError, type WorkflowSegment } from '../workflow'
 import { CreationError, PROJECT_GENRE_VALUES, hashJson, projectMetaInputSchema, type ProjectGenre, type ProjectMeta } from './contract'
 import { agentDecisionSchema, type AgentDecision, type InputSpecItem } from './agent/decision-schema'
 import { toWorkflowToken } from './agent/normalize'
 import { buildTemplateCatalog, preflightDecision } from './agent-run'
 import { sanitizeProjectMeta, renderMetaNotes } from './project-meta'
 import { activeProject, creationWrite, parseJson, sessionRow } from './store'
+
+const log = createLogger('creation-route')
 
 const routeConfirmationSchema = z.object({
   decisionRevision: z.number().int().positive(),
@@ -65,10 +68,11 @@ function routeBaseMeta(project: { name: string; genre: string; templateKey: stri
   }
 }
 
-/** WorkflowError → CreationError（保持路由层错误契约统一，code 透传） */
+/** WorkflowError / InvalidRunInputError → CreationError（保持路由层错误契约统一，code 透传，绝不糊成 503） */
 function asCreationError(err: unknown): CreationError {
   if (err instanceof CreationError) return err
   if (err instanceof WorkflowError) return new CreationError(err.code, err.message, 409)
+  if (err instanceof InvalidRunInputError) return new CreationError(err.code, err.message, 409)
   return new CreationError('route_start_failed', err instanceof Error ? err.message : '执行启动失败', 503)
 }
 
@@ -150,34 +154,45 @@ async function startSynth(id: number, s: CreationSession, decision: AgentDecisio
   }
 }
 
-/** chain：立项 active + createWorkflow（autoAdvance=0 段间安全默认）+ startWorkflow（首段，orchestrator 自管锁与计费闸，非事务） */
+/**
+ * chain：一个事务内完成「项目转正 + ready→starting 认领 + 建链 + 建首段 queued run + 链置 active + 会话绑定 + 留痕」，
+ * 提交后才拉起执行（与 confirmEasy / rework apply 的「事务内立项、提交后起跑」同律）。
+ * 为什么必须同事务（CodeReview P1#8）：旧版先置 starting 再建链再起跑、workflowId 起完段才回写，
+ * 建链异常会遗留永久锁死会话的 starting，起跑后崩溃会留下「链与 run 已在库、会话无关联」的孤儿运行——
+ * 用户再确认即二次建链二次计费。同事务后：任一环节失败整体回滚（零孤儿、零计费）；提交成功则关联与 run
+ * 已持久，崩溃窗口交由既有 queued 恢复 + 30s 全局泵兜底，启动对账据关联认领而不重跑立项。
+ * 首段输入/预算闸复用编排服务 prepareFirstSegment（与专业链同源，不另判一套）；段间默认不自动级联计费。
+ */
 async function startChain(id: number, s: CreationSession, decision: AgentDecision, request: z.infer<typeof routeConfirmationSchema>): Promise<{ runId: number; workflowId: number }> {
   const segments: WorkflowSegment[] = decision.chain!.map((seg) => {
     const spec: Record<string, string> = {}
     for (const [k, v] of Object.entries(seg.inputSpec)) { const t = toWorkflowToken(v); if (t !== undefined) spec[k] = t }
     return { templateKey: seg.templateKey, inputSpec: Object.keys(spec).length ? spec : undefined }
   })
-  const result = await creationWrite(async () => {
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
+  // 事务外先过只读段闸（模板可载 / 必填输入 / 预算熔断）：不过则连链都不建
+  const gate = await prepareFirstSegment({ projectId: s.projectId, segments: JSON.stringify(segments) }).catch((err) => { throw asCreationError(err) })
+  const committed = await creationWrite(() => db.transaction(async (tx) => {
+    const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
     if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
     const base = routeBaseMeta(project, decision.chain![0]!.templateKey, decision.rationale)
     const { meta } = sanitizeProjectMeta(request.project, null, base)
-    await db.update(projects).set({ name: meta.name, genre: meta.genre, templateKey: meta.templateKey, tags: JSON.stringify(meta.tags), brief: meta.brief, status: 'active', updatedAt: Date.now() }).where(eq(projects.id, project.id))
-    const claimed = await db.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
+    await tx.update(projects).set({ name: meta.name, genre: meta.genre, templateKey: meta.templateKey, tags: JSON.stringify(meta.tags), brief: meta.brief, status: 'active', updatedAt: Date.now() }).where(eq(projects.id, project.id))
+    const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
       .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
     if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
-    const wf = await createWorkflow({ projectId: s.projectId, name: meta.name, segments, autoAdvance: 0, note: decision.rationale })
-    let started: { runId: number }
-    try {
-      started = await startWorkflow(wf.id)
-    } catch (err) {
-      await setWorkflowStatus(wf.id, 'cancelled').catch(() => undefined)
-      await db.update(creationSessions).set({ status: 'ready', updatedAt: Date.now() }).where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'starting')))
-      throw asCreationError(err)
-    }
-    await db.update(creationSessions).set({ status: 'started', workflowId: wf.id, runId: started.runId, updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
-    await db.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已创建 ${segments.length} 段编排链并启动首段制作。段间将暂停回对话请求你的批准（安全默认，不自动级联计费）。`, payload: JSON.stringify({ kind: 'chain-start', workflowId: wf.id, runId: started.runId, mode: 'chain', segments: decision.chain!.map((x) => x.templateKey) }), createdAt: Date.now() })
-    return { runId: started.runId, workflowId: wf.id }
-  })
-  return { runId: result.runId, workflowId: result.workflowId }
+    const wf = await createWorkflow({ projectId: s.projectId, name: meta.name, segments, autoAdvance: 0, note: decision.rationale }, tx)
+    const run = await createRunRow({ projectId: s.projectId, templateKey: gate.templateKey, input: gate.inputs, creationSessionId: id, chainKind: 'route', workflowId: wf.id, workflowSeq: 0 }, tx)
+    // active 与建 run 同批落库：绝不留「有 queued run 却仍 draft」的死角（advanceWorkflow 只认 active 链，draft 会让链永久卡住）
+    await activateWorkflowIn(tx, wf.id)
+    await tx.update(creationSessions).set({ status: 'started', workflowId: wf.id, runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
+    await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已创建 ${segments.length} 段编排链并把首段排入执行队列。段间将暂停回对话请求你的批准（安全默认，不自动级联计费）。`, payload: JSON.stringify({ kind: 'chain-start', workflowId: wf.id, runId: run.id, mode: 'chain', segments: decision.chain!.map((x) => x.templateKey) }), createdAt: Date.now() })
+    return { runId: run.id, workflowId: wf.id }
+  })).catch((err) => { throw asCreationError(err) })
+  // 提交后拉起：抛错不改已提交事实（run 留在 queued，boot 恢复与全局泵自会接住）——比回滚更诚实，也更不会二次计费
+  try {
+    engine.startRun(committed.runId)
+  } catch (err) {
+    log.warn(`chain 首段拉起失败，交由 queued 恢复兜底：run ${committed.runId}`, err)
+  }
+  return committed
 }

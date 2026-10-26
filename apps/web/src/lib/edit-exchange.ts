@@ -15,8 +15,16 @@ export interface EditExchangeFormatMeta {
 
 /** 三格式能力表（按目标软件兼容矩阵标注；EDL 为语义降级面：仅视频 + 旁白轨） */
 export const EDIT_EX_FORMATS: EditExchangeFormatMeta[] = [
-  { key: 'fcpxml', label: 'FCPXML', hint: '剪映 / Final Cut / DaVinci Resolve' },
-  { key: 'edl', label: 'EDL', hint: 'Premiere / Avid（仅视频 + 旁白轨，降级面）' },
+  {
+    key: 'fcpxml',
+    label: 'FCPXML',
+    hint: '剪映 / Final Cut / DaVinci Resolve',
+  },
+  {
+    key: 'edl',
+    label: 'EDL',
+    hint: 'Premiere / Avid（仅视频 + 旁白轨，降级面）',
+  },
   { key: 'otio', label: 'OTIO', hint: 'Resolve / 程序化管线' },
 ]
 

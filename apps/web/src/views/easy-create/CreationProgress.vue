@@ -10,8 +10,15 @@ const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 const detail = computed(() => props.s.state.detail)
 const prog = computed(() => detail.value?.progress ?? null)
 const stages = computed(() => prog.value?.stages ?? [])
-const total = computed(() => stages.value.filter((s) => s.applicable === true).length)
-const done = computed(() => stages.value.filter((s) => s.applicable === true && s.status === 'succeeded').length)
+const total = computed(
+  () => stages.value.filter((s) => s.applicable === true).length,
+)
+const done = computed(
+  () =>
+    stages.value.filter(
+      (s) => s.applicable === true && s.status === 'succeeded',
+    ).length,
+)
 const active = computed(
   () =>
     !!prog.value &&
@@ -26,8 +33,19 @@ const recovery = computed(() => prog.value?.recovery)
 const acceptUnpriced = ref(false)
 const acceptConfigDrift = ref(false)
 const configDrift = computed(() => recovery.value?.configDrift ?? [])
-const configUnavailable = computed(() => configDrift.value.some((d) => d.to === null))
-const canRetry = computed(() => !!recovery.value?.resumable && !configUnavailable.value && recovery.value.requiredTaskIds.every((id) => resubmitIds.value.includes(id)) && (!recovery.value.unpriced.length || acceptUnpriced.value) && (!configDrift.value.length || acceptConfigDrift.value))
+const configUnavailable = computed(() =>
+  configDrift.value.some((d) => d.to === null),
+)
+const canRetry = computed(
+  () =>
+    !!recovery.value?.resumable &&
+    !configUnavailable.value &&
+    recovery.value.requiredTaskIds.every((id) =>
+      resubmitIds.value.includes(id),
+    ) &&
+    (!recovery.value.unpriced.length || acceptUnpriced.value) &&
+    (!configDrift.value.length || acceptConfigDrift.value),
+)
 // 运行态/步骤态文案（后端 status 为宽字符串，经映射兜底，未知态原样显示）
 // waiting_input 在轻松创作里说「等待审阅」（专业工作台沿用 format.ts 的「待审阅」）；徽章复用全局 .waiting_input 色类
 const runMeta = computed(() =>
@@ -35,14 +53,32 @@ const runMeta = computed(() =>
     ? { text: '等待审阅', cls: 'waiting_input' }
     : runStatus((prog.value?.status ?? '') as never),
 )
-const stepMeta = (s: string) => s === 'not_applicable' ? { text: '不适用' } : s === 'unknown' ? { text: '信息待核实' } : s === 'waiting_input' ? { text: '等待审阅' } : stepStatus(s as never)
+const stepMeta = (s: string) =>
+  s === 'not_applicable'
+    ? { text: '不适用' }
+    : s === 'unknown'
+      ? { text: '信息待核实' }
+      : s === 'waiting_input'
+        ? { text: '等待审阅' }
+        : stepStatus(s as never)
 // 无编号的请求必须逐项核实；有编号的未完成任务默认恢复查询。
 const resubmitIds = ref<number[]>([])
-watch(() => JSON.stringify([detail.value?.session.id, prog.value?.runId, detail.value?.session.planRevision, detail.value?.session.planHash, recovery.value]), () => {
-  resubmitIds.value = []
-  acceptUnpriced.value = false
-  acceptConfigDrift.value = false
-}, { flush: 'sync' })
+watch(
+  () =>
+    JSON.stringify([
+      detail.value?.session.id,
+      prog.value?.runId,
+      detail.value?.session.planRevision,
+      detail.value?.session.planHash,
+      recovery.value,
+    ]),
+  () => {
+    resubmitIds.value = []
+    acceptUnpriced.value = false
+    acceptConfigDrift.value = false
+  },
+  { flush: 'sync' },
+)
 
 function toggle(id: number): void {
   const i = resubmitIds.value.indexOf(id)
@@ -54,7 +90,12 @@ async function onCancel(): Promise<void> {
   await props.s.cancel()
 }
 async function onRetry(): Promise<void> {
-  if (canRetry.value) await props.s.retry(resubmitIds.value, acceptUnpriced.value, acceptConfigDrift.value)
+  if (canRetry.value)
+    await props.s.retry(
+      resubmitIds.value,
+      acceptUnpriced.value,
+      acceptConfigDrift.value,
+    )
 }
 </script>
 
@@ -65,15 +106,22 @@ async function onRetry(): Promise<void> {
       <span class="badge" :class="runMeta.cls">{{ runMeta.text }}</span>
     </header>
 
-    <p class="ec-progress-summary" aria-live="polite">已完成 {{ done }}/{{ total }} 个适用阶段</p>
-    <p v-if="waiting" class="ec-progress-summary">制作已在审阅闸暂停，请在上方审阅面板确认是否继续。</p>
+    <p class="ec-progress-summary" aria-live="polite">
+      已完成 {{ done }}/{{ total }} 个适用阶段
+    </p>
+    <p v-if="waiting" class="ec-progress-summary">
+      制作已在审阅闸暂停，请在上方审阅面板确认是否继续。
+    </p>
 
     <ol class="steps">
       <li v-for="st in stages" :key="st.key">
         <span class="badge" :class="st.status"
           >{{ st.title }} · {{ stepMeta(st.status).text }}</span
         >
-        <span v-if="st.total !== null" class="ec-progress-count">{{ st.completed }}/{{ st.total }} {{ st.key === 'voice' ? '句' : '镜' }}</span>
+        <span v-if="st.total !== null" class="ec-progress-count"
+          >{{ st.completed }}/{{ st.total }}
+          {{ st.key === 'voice' ? '句' : '镜' }}</span
+        >
       </li>
     </ol>
 
@@ -82,12 +130,19 @@ async function onRetry(): Promise<void> {
     </div>
     <details v-if="prog.issue?.details.length" class="ec-progress-technical">
       <summary>技术详情</summary>
-      <p v-for="d in prog.issue.details" :key="d.message">{{ d.scopes.join('、') }}：{{ d.message }}</p>
+      <p v-for="d in prog.issue.details" :key="d.message">
+        {{ d.scopes.join('、') }}：{{ d.message }}
+      </p>
     </details>
 
     <div v-if="settledBad && recovery?.resumable" class="verify">
-      <p class="vt">恢复将复用成功产物；{{ recovery.queryTaskCount }} 个有编号的未完成任务默认恢复查询。后续制作及核实后重新提交可能产生费用，不承诺预算硬封顶。</p>
-      <p v-if="recovery.requiredTaskIds.length" class="vt">以下无编号请求必须先在供应商侧逐项核实失败，全部勾选后才可恢复。</p>
+      <p class="vt">
+        恢复将复用成功产物；{{ recovery.queryTaskCount }}
+        个有编号的未完成任务默认恢复查询。后续制作及核实后重新提交可能产生费用，不承诺预算硬封顶。
+      </p>
+      <p v-if="recovery.requiredTaskIds.length" class="vt">
+        以下无编号请求必须先在供应商侧逐项核实失败，全部勾选后才可恢复。
+      </p>
       <label
         v-for="t in prog.uncertainTasks.filter((x) => !x.hasExternalId)"
         :key="t.id"
@@ -103,18 +158,32 @@ async function onRetry(): Promise<void> {
         {{ t.provider || '供应商未知' }}）已核实失败，授权重新提交
       </label>
       <template v-if="configDrift.length">
-        <p class="vt">已批准配置已变化，恢复需重新确认；同型号也可能发生价格或协议变化。</p>
+        <p class="vt">
+          已批准配置已变化，恢复需重新确认；同型号也可能发生价格或协议变化。
+        </p>
         <ul class="ec-progress-drift">
-          <li v-for="d in configDrift" :key="d.service">{{ configDriftText(d) }}</li>
+          <li v-for="d in configDrift" :key="d.service">
+            {{ configDriftText(d) }}
+          </li>
         </ul>
-        <p v-if="configUnavailable" class="vt" role="alert">当前无可用配置，暂不能恢复。请检查实例是否启用、协议是否合格及凭据是否可用，再点击“更新状态”。</p>
+        <p v-if="configUnavailable" class="vt" role="alert">
+          当前无可用配置，暂不能恢复。请检查实例是否启用、协议是否合格及凭据是否可用，再点击“更新状态”。
+        </p>
         <label v-else class="vrow">
-          <input v-model="acceptConfigDrift" type="checkbox" :disabled="s.state.busyAction" />
+          <input
+            v-model="acceptConfigDrift"
+            type="checkbox"
+            :disabled="s.state.busyAction"
+          />
           我接受改用当前配置，模型、协议或价格可能与批准时不同，后续制作可能产生费用
         </label>
       </template>
       <label v-if="recovery.unpriced.length" class="vrow">
-        <input v-model="acceptUnpriced" type="checkbox" :disabled="s.state.busyAction" />
+        <input
+          v-model="acceptUnpriced"
+          type="checkbox"
+          :disabled="s.state.busyAction"
+        />
         我接受未计价项目可能产生费用：{{ recovery.unpriced.join('、') }}
       </label>
     </div>
@@ -136,14 +205,24 @@ async function onRetry(): Promise<void> {
         :disabled="s.state.busyAction || !canRetry"
         @click="onRetry"
       >
-        <Icon name="refresh" :size="13" /> {{ s.state.busyAction ? '恢复中…' : '恢复制作' }}
+        <Icon name="refresh" :size="13" />
+        {{ s.state.busyAction ? '恢复中…' : '恢复制作' }}
       </button>
-      <button class="btn sm" type="button" :disabled="s.state.loadingDetail" @click="s.refreshStatus()">更新状态</button>
+      <button
+        class="btn sm"
+        type="button"
+        :disabled="s.state.loadingDetail"
+        @click="s.refreshStatus()"
+      >
+        更新状态
+      </button>
       <RouterLink class="btn sm" :to="`/runs/${prog.runId}`"
         ><Icon name="external" :size="13" /> 查看制作详情</RouterLink
       >
     </footer>
-    <small class="ec-progress-local">更新状态只重新读取本地记录，不主动查询供应商。</small>
+    <small class="ec-progress-local"
+      >更新状态只重新读取本地记录，不主动查询供应商。</small
+    >
   </div>
 </template>
 
@@ -226,11 +305,33 @@ async function onRetry(): Promise<void> {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
-.ec-progress-drift { margin: 0; padding-left: 20px; color: var(--text-2); overflow-wrap: anywhere; }
-.ec-progress-summary { margin: 0; font-weight: 600; }
-.ec-progress-technical { overflow-wrap: anywhere; color: var(--text-2); }
-.ec-progress-technical summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
-.ec-progress-count, .ec-progress-local { color: var(--text-2); }
-.vrow { min-height: 44px; font-size: 13px; }
+.ec-progress-drift {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.ec-progress-summary {
+  margin: 0;
+  font-weight: 600;
+}
+.ec-progress-technical {
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+}
+.ec-progress-technical summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.ec-progress-count,
+.ec-progress-local {
+  color: var(--text-2);
+}
+.vrow {
+  min-height: 44px;
+  font-size: 13px;
+}
 /* 按钮尺寸统一由全局 .btn（桌面紧凑 / 触屏 media query 兜底 44px）管，此处不再写死 */
 </style>

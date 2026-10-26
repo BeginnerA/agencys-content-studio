@@ -373,7 +373,7 @@ async function main(): Promise<void> {
     check(findC(c1, 'cross_format_consistency')?.status === 'not_applicable', '#1 单格式 cross=not_applicable')
     const ei = findC(c1, 'editor_import_certified')
     check(ei?.status === 'not_tested' && ei?.evidenceType === 'manual_review', '#6 editor_import 恒 not_tested+manual_review（产品不代答编辑器）')
-    const [bCur] = await db.select().from(assets).where(eq(assets.id, bPkg.id))
+    const bCur = (await db.select().from(assets).where(eq(assets.id, bPkg.id)))[0]!
     const bParams = JSON.parse(bCur.params!) as Record<string, unknown>
     check(!!bParams.cert && bParams.format === 'otio' && 'finalAssetId' in bParams && 'includeMedia' in bParams, '#8 params.cert 写入且保留 format/finalAssetId/includeMedia 等其余键（零新列）')
     check((await db.select().from(assets)).filter((a) => a.purpose === 'edit_exchange').length === cArchB && (await db.select().from(genTasks)).length === cGenB && (await db.select().from(usageRecords)).length === cUseB, '#9 认证全程零 gen_tasks/零 usage_records/零新增 archive')

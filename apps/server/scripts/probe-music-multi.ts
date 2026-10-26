@@ -23,6 +23,7 @@
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
+import type { BlobBytes, ResponseBody } from './node-body-types'
 import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib'
 
 const { cleanup } = isolatedEnv('musicx')
@@ -182,7 +183,7 @@ await runSections({
             aliCalls.push({ url, auth: String((init?.headers as Record<string, string>)?.Authorization ?? ''), body: JSON.parse(String(init?.body ?? '{}')) })
             return new Response(JSON.stringify({ output: { audio: { data: '', url: 'https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/x/a.mp3' }, finish_reason: 'stop' }, usage: { duration: 12 }, request_id: 'r-9' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
           }
-          if (url.includes('oss-cn-beijing')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          if (url.includes('oss-cn-beijing')) return new Response(mp3Bytes as unknown as ResponseBody, { status: 200 })
           throw new Error(`music 桩仅放行白名单端点：${url}`)
         }) as typeof fetch
         const aliEp = { providerKey: 'aliyun_bailian_music', baseUrl: 'https://dashscope.aliyuncs.com/api/v1', apiKey: 'sk-probe', model: 'fun-music-v1', extra: {} }
@@ -218,7 +219,7 @@ await runSections({
               return new Response(JSON.stringify({ Code: 0, Result: { Status: 2, SongDetail: { AudioUrl: 'https://v9-default.douyinvod.com/a.mp3', Duration: 45.5 } } }), { status: 200 })
             }
           }
-          if (url.includes('douyinvod')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          if (url.includes('douyinvod')) return new Response(mp3Bytes as unknown as ResponseBody, { status: 200 })
           throw new Error(`music 桩仅放行白名单端点：${url}`)
         }) as typeof fetch
         const volcEp = { providerKey: 'volcengine_music', baseUrl: 'https://open.volcengineapi.com', apiKey: 'AKID123/SECRET456', model: '', extra: {} }
@@ -245,7 +246,7 @@ await runSections({
           const url = String(input)
           if (url.includes('gen.pollinations.ai/audio/')) {
             polSeen.push({ url, auth: String(((init?.headers ?? {}) as Record<string, string>).Authorization ?? '') })
-            return new Response(mp3Bytes as unknown as BodyInit, { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
+            return new Response(mp3Bytes as unknown as ResponseBody, { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
           }
           throw new Error(`music 桩仅放行白名单端点：${url}`)
         }) as typeof fetch
@@ -276,7 +277,7 @@ await runSections({
             if (mkRound < 2) return new Response(JSON.stringify({ id: '152312779', status: 'running' }), { status: 200 })
             return new Response(JSON.stringify({ id: '152312779', status: 'succeeded', choices: [{ id: 'c1', url: 'https://cdn.mureka.example/a.mp3', duration: 128000 }] }), { status: 200 })
           }
-          if (url.includes('cdn.mureka.example')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          if (url.includes('cdn.mureka.example')) return new Response(mp3Bytes as unknown as ResponseBody, { status: 200 })
           throw new Error(`music 桩仅放行白名单端点：${url}`)
         }) as typeof fetch
         const mkEp = { providerKey: 'mureka_music', baseUrl: 'https://platform.mureka.cn', apiKey: 'mk-probe', model: 'mureka-7.6', extra: {} }
@@ -309,7 +310,7 @@ await runSections({
             if (ycRound < 2) return new Response(JSON.stringify({ choices: [{ id: 's1', status: 'running' }] }), { status: 200 })
             return new Response(JSON.stringify({ choices: [{ id: 's1', status: 'done', audio_url: 'https://cdn.yinchaoyx.example/b.mp3' }] }), { status: 200 })
           }
-          if (url.includes('cdn.yinchaoyx.example')) return new Response(mp3Bytes as unknown as BodyInit, { status: 200 })
+          if (url.includes('cdn.yinchaoyx.example')) return new Response(mp3Bytes as unknown as ResponseBody, { status: 200 })
           throw new Error(`music 桩仅放行白名单端点：${url}`)
         }) as typeof fetch
         const ycEp = { providerKey: 'yinchao_music', baseUrl: 'https://open.yinchaoyongxian.com', apiKey: 'yc-probe', model: '', extra: {} }

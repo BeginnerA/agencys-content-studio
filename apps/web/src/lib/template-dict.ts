@@ -71,8 +71,10 @@ const KIND_DESC: Record<string, string> = {
   int: '整数（如：目标秒数、数量）',
   float: '小数（如：音量比例、倍速）',
   bool: '是 / 否 开关',
-  select: '从 options 候选项里单选（下拉框，如：风格、分辨率；可用 option_labels 配中文显示名）',
-  multi_select: '从 options 候选项里多选（如：目标平台、标签；可用 option_labels 配中文显示名）',
+  select:
+    '从 options 候选项里单选（下拉框，如：风格、分辨率；可用 option_labels 配中文显示名）',
+  multi_select:
+    '从 options 候选项里多选（如：目标平台、标签；可用 option_labels 配中文显示名）',
   date: '日期（YYYY-MM-DD，日期选择器）',
   files: '图片 / 音频等文件（可用 accept 限定格式）',
   publications: '勾选项目发布记录（复盘回灌专用，无需导 CSV）',

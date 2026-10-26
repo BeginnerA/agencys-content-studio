@@ -74,7 +74,11 @@ export interface RunStep {
 }
 
 /** 已批准配置与当前可用配置的差异；to=null 表示当前无可用配置。 */
-export interface ResumeConfigDrift { service: string; from: string; to: string | null }
+export interface ResumeConfigDrift {
+  service: string
+  from: string
+  to: string | null
+}
 
 export interface RunDetail {
   run: Run

@@ -43,17 +43,25 @@ async function load() {
     ])
     const g = s.items.find((it) => it.key === 'dialogue_asr')?.value
     globalStrict.value =
-      g && typeof g === 'object' && typeof (g as { strict?: unknown }).strict === 'boolean'
+      g &&
+      typeof g === 'object' &&
+      typeof (g as { strict?: unknown }).strict === 'boolean'
         ? (g as { strict: boolean }).strict
         : true
     const ps = (p.project.settings ?? {}) as Record<string, unknown>
     const d = ps['dialogue_asr']
     overrideStrict.value =
-      d && typeof d === 'object' && typeof (d as { strict?: unknown }).strict === 'boolean'
+      d &&
+      typeof d === 'object' &&
+      typeof (d as { strict?: unknown }).strict === 'boolean'
         ? (d as { strict: boolean }).strict
         : null
     mode.value =
-      overrideStrict.value === null ? 'inherit' : overrideStrict.value ? 'strict' : 'off'
+      overrideStrict.value === null
+        ? 'inherit'
+        : overrideStrict.value
+          ? 'strict'
+          : 'off'
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -68,7 +76,9 @@ async function save() {
   notice.value = ''
   try {
     const p = await projectApi.detail(projectId)
-    const settings = { ...((p.project.settings ?? {}) as Record<string, unknown>) }
+    const settings = {
+      ...((p.project.settings ?? {}) as Record<string, unknown>),
+    }
     if (mode.value === 'inherit') delete settings['dialogue_asr']
     else settings['dialogue_asr'] = { strict: mode.value === 'strict' }
     await projectApi.update(projectId, { settings })
@@ -117,16 +127,32 @@ watch(activeTab, (t) => {
         <div class="pc-state">
           当前生效：<strong>{{ effectiveText }}</strong>
           <span class="muted">· {{ sourceText }}</span>
-          <span class="muted">· 全局默认：{{ globalStrict ? '严格' : '免 ASR' }}</span>
+          <span class="muted"
+            >· 全局默认：{{ globalStrict ? '严格' : '免 ASR' }}</span
+          >
         </div>
 
-        <div class="pc-radios" role="radiogroup" aria-label="对白严格 ASR 覆盖模式">
+        <div
+          class="pc-radios"
+          role="radiogroup"
+          aria-label="对白严格 ASR 覆盖模式"
+        >
           <label class="pc-radio">
-            <input v-model="mode" type="radio" value="inherit" :disabled="busy" />
+            <input
+              v-model="mode"
+              type="radio"
+              value="inherit"
+              :disabled="busy"
+            />
             继承全局默认
           </label>
           <label class="pc-radio">
-            <input v-model="mode" type="radio" value="strict" :disabled="busy" />
+            <input
+              v-model="mode"
+              type="radio"
+              value="strict"
+              :disabled="busy"
+            />
             强制严格核验（开）
           </label>
           <label class="pc-radio">
@@ -149,7 +175,8 @@ watch(activeTab, (t) => {
 
         <div class="pc-note muted">
           关闭后本项目对白走免核验路线：视频模型原生出声、字幕按批准台词估算（非实测），要求视频模型命中原生对白背书（如
-          Seedance 2.0 / 万相 3.0 系），未命中时规划自动改走旁白；成片交付前必须经人工收听审阅。仅影响新建方案，已批准会话不受影响。
+          Seedance 2.0 / 万相 3.0
+          系），未命中时规划自动改走旁白；成片交付前必须经人工收听审阅。仅影响新建方案，已批准会话不受影响。
         </div>
       </template>
 

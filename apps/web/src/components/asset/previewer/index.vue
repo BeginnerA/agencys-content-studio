@@ -324,10 +324,21 @@ const {
 </template>
 
 <style scoped>
-.ec-readonly-preview .head { flex-wrap: wrap; }
-.ec-readonly-preview .ops { flex-wrap: wrap; }
-.ec-readonly-preview .ops .btn, .ec-readonly-preview .icon-btn { min-width: 44px; min-height: 44px; }
-.ec-readonly-preview button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ec-readonly-preview .head {
+  flex-wrap: wrap;
+}
+.ec-readonly-preview .ops {
+  flex-wrap: wrap;
+}
+.ec-readonly-preview .ops .btn,
+.ec-readonly-preview .icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+.ec-readonly-preview button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .mask {
   position: fixed;
   inset: 0;

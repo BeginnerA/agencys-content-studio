@@ -58,7 +58,12 @@ const renderedMessages = computed<CreationChatMessage[]>(() => {
 })
 
 // 反推交付左右收敛（见 pickReverseSourceId）：右侧已抬 reverseAnalysis 卡时隐藏左侧对应气泡内联渲染
-const reverseSourceId = computed(() => pickReverseSourceId(props.s.state.detail?.messages ?? [], props.s.state.detail?.sideCards))
+const reverseSourceId = computed(() =>
+  pickReverseSourceId(
+    props.s.state.detail?.messages ?? [],
+    props.s.state.detail?.sideCards,
+  ),
+)
 // 新消息滚动到底部（尊重 reduced-motion：无平滑）
 watch(
   () => [
@@ -241,7 +246,8 @@ async function onFiles(e: Event): Promise<void> {
             class="qs"
           >
             <div class="qs-h">
-              <Icon name="chat" :size="12" /> {{ clarifyHeader(m.payload.questions ?? []) }}
+              <Icon name="chat" :size="12" />
+              {{ clarifyHeader(m.payload.questions ?? []) }}
             </div>
             <button
               v-for="(q, i) in m.payload.questions"

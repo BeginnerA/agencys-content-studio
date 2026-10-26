@@ -211,7 +211,9 @@ export function useBrandActions(ctx: {
     void wrap(
       async () => {
         const pid = props.projectId ?? 0
-        const next = JSON.parse(JSON.stringify(projectBrand.value)) as BrandConfig
+        const next = JSON.parse(
+          JSON.stringify(projectBrand.value),
+        ) as BrandConfig
         if (clearing) {
           delete next.subtitle
           subPersisted.value = false
@@ -279,7 +281,9 @@ export function useBrandActions(ctx: {
           color: v.sub.color,
           outline_color: v.sub.outlineColor,
           outline_pct: pctStore(v.sub.outline, 0, 0.5),
-          shadow: Math.round(Math.min(8, Math.max(0, Number(v.sub.shadow) || 0))),
+          shadow: Math.round(
+            Math.min(8, Math.max(0, Number(v.sub.shadow) || 0)),
+          ),
           margin_v_pct: pctStore(v.sub.marginV, 0, 10),
           alignment: v.sub.align,
           bold: v.sub.bold,

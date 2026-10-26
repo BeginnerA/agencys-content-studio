@@ -128,7 +128,9 @@ const formInputs = defineModel<Array<Record<string, unknown>>>('formInputs', {
               :assets="assets"
               :publications="publications"
               :values="row"
-              :project-id="typeof projectId === 'number' ? projectId : undefined"
+              :project-id="
+                typeof projectId === 'number' ? projectId : undefined
+              "
               @change="(k, v) => (row[k] = v)"
               @assets-appended="emit('assets-appended', $event)"
               @notice="notice = $event"

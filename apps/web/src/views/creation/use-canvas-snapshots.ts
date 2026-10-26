@@ -63,6 +63,7 @@ export function useCanvasSnapshots(deps: Dependencies) {
   async function restoreSnap(s: CanvasSnapshotMeta): Promise<void> {
     const cid = canvasId.value
     if (cid == null || snapActing.value != null) return
+    const epoch = history.epoch.value
     const ok = await confirmDialog({
       title: '恢复快照',
       message: `将画布回退到「${s.label}」（${s.nodeCount} 节点 · ${s.edgeCount} 边）？当前状态会先自动备份为新快照；节点 id 原样保留，生成任务历史不断链。`,
@@ -70,9 +71,12 @@ export function useCanvasSnapshots(deps: Dependencies) {
       danger: true,
     })
     if (!ok) return
+    // 确认期间已换画布 → 不恢复旧画布，更不能清空新画布的命令栈
+    if (canvasId.value !== cid || history.epoch.value !== epoch) return
     snapActing.value = s.id
     try {
       const r = await creationApi.restoreSnapshot(cid, s.id)
+      if (canvasId.value !== cid || history.epoch.value !== epoch) return
       showSnaps.value = false
       history.clear() // 快照恢复重放文档 → 命令栈失效
       toast(

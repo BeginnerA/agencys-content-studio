@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../../db'
 import { assets, canvasEdges, canvasNodes, genTasks } from '../../../db/schema'
 import type { Canvas, CanvasNode } from '../../../db/schema'
+import { checkBudget } from '../../budget'
 import { resolveLlmEndpoint } from '../../llm'
 import { resolveAudioEndpoint } from '../../tts'
 import { resolveUnitPrice, type UsageKind, type UsageUnit } from '../../usage'
@@ -11,16 +12,41 @@ import { safeParseSpec, specProblems, type InputPlan, type NodeSpec } from '../s
 
 // ---------- 启动执行 ----------
 
-/** 节点预检（spec/输入计划/问题清单一次性解析）——startCanvasNodeRun 与 run-preview 共用 */
+/** 入边（执行快照与输入计划的共同来源） */
+export interface NodeEdge {
+  from: number
+  to: number
+  port: string
+}
+
+/** 单节点已知成本（compose 零成本；未计价 = total null / unpriced true） */
+export interface NodeEstimate {
+  units: PreviewUnitLine[]
+  total: number | null
+  unpriced: boolean
+}
+
+/** 节点预检（spec/输入计划/成本预估/问题清单一次性解析）——startCanvasNodeRun 与 run-preview 共用 */
 export interface NodePreflight {
   node: CanvasNode
   canvas: Canvas
   spec: NodeSpec
   plan: InputPlan
+  /** 入边快照（与 plan 同一时刻读取；startCanvasNodeRun 冻结进 exec_snapshot） */
+  edges: NodeEdge[]
+  /** 已知成本预估（就绪节点才计价；与 run-preview 同源） */
+  estimate: NodeEstimate
   problems: string[]
 }
 
-export async function preflightNode(nodeId: number): Promise<NodePreflight> {
+/**
+ * 节点预检：结构 + 输入计划 + 蒙版/BGM 归属 + LLM 配置 + 预算硬闸。
+ *
+ * 预算闸（`variants` 缺省 1）：与 run / 编排链 / 返修 / 重出同源 checkBudget——已计价节点按
+ * 「单价 × 变体数 + 已花费」超阈即拦（计入 problems，故单节点 400 / 批量 skipped / 预览未就绪
+ * 三处文案一致）。未计价部分（llm tokens）按 knownCost 口径放行，与创作会话零漂移。
+ */
+export async function preflightNode(nodeId: number, variants = 1): Promise<NodePreflight> {
   const node = await findNode(nodeId)
   if (!node) throw new Error(`画布节点 ${nodeId} 不存在`)
   if (node.kind !== 'gen') throw new Error('仅生成节点可执行')
@@ -58,7 +84,17 @@ export async function preflightNode(nodeId: number): Promise<NodePreflight> {
       problems.push('LLM 未配置：请在 Settings → AI 配置检查 llm 实例（或 .env 设置 AGENT_LLM_BASE_URL/AGENT_LLM_API_KEY）')
     }
   }
-  return { node, canvas, spec, plan, problems }
+  // 成本预估先于预算闸：被预算拦下的节点仍要显示金额（否则用户看不到超限原因里的数字）
+  const ready = problems.length === 0
+  const estimate = ready ? await estimateNodeUnits(spec, plan) : { units: [], total: null, unpriced: false }
+  if (ready) {
+    const hit = await checkBudget({
+      projectId: canvas.projectId,
+      estimatedCost: (estimate.total ?? 0) * Math.max(1, Math.trunc(variants)),
+    })
+    if (hit) problems.push(`预算拦截：${hit.message}`)
+  }
+  return { node, canvas, spec, plan, edges: incoming, estimate, problems }
 }
 
 // ---------- 执行成本预估 ----------
@@ -69,6 +105,57 @@ export interface PreviewUnitLine {
   quantity: number
   unitPrice: number | null
   subtotal: number | null
+}
+
+/**
+ * 单节点单位矩阵 → 已知成本（run-preview 与预算闸共用，口径零漂移）：
+ * image → 1 张；video → spec.duration ?? 5 秒；audio → 指令文本字数（promptText ?? spec.prompt）；
+ * compose → 本地零成本（total=0）；llm → unpriced（tokens 不可预知，前端显示「按量计费」）。
+ * 单价链 resolveUnitPrice（实例级 → settings.pricing → null）与 recordUsage 快照同源。
+ */
+export async function estimateNodeUnits(spec: NodeSpec, plan: InputPlan): Promise<NodeEstimate> {
+  const units: PreviewUnitLine[] = []
+  let unpriced = false
+  const pushUnit = async (
+    kind: UsageKind,
+    unit: UsageUnit,
+    quantity: number,
+    provider: string | null,
+    model: string | null,
+  ): Promise<void> => {
+    const unitPrice = await resolveUnitPrice({ kind, provider, model, unit })
+    const subtotal = unitPrice === null ? null : Math.round(quantity * unitPrice * 1e6) / 1e6
+    if (unitPrice === null) unpriced = true
+    units.push({ unit, quantity, unitPrice, subtotal })
+  }
+  if (spec.genKind === 'image') {
+    await pushUnit('image', 'image', 1, spec.provider ?? null, spec.model ?? null)
+  } else if (spec.genKind === 'video') {
+    const duration = typeof spec.duration === 'number' && spec.duration > 0 ? spec.duration : 5
+    await pushUnit('video', 'second', duration, spec.provider ?? null, spec.model ?? null)
+  } else if (spec.genKind === 'audio') {
+    const text = (plan.promptText ?? spec.prompt).trim()
+    let provider = spec.provider ?? null
+    let model = spec.model ?? null
+    try {
+      const endpoint = await resolveAudioEndpoint(spec.provider)
+      provider = endpoint.providerKey
+      model = endpoint.model
+    } catch { /* 音频端点未配置 → 退回 spec 声明（未命中即 unpriced） */ }
+    await pushUnit('tts', 'char', text.length, provider, model)
+  } else if ((spec.genKind as string) === 'llm') {
+    unpriced = true // [P4] tokens 不可预知（按量计费）
+  }
+  // compose：本地零成本（units 空 → total=0）
+  let total: number | null = null
+  if (units.length > 0) {
+    total = units.every((u) => u.subtotal != null)
+      ? Math.round(units.reduce((s, u) => s + (u.subtotal ?? 0), 0) * 1e6) / 1e6
+      : null
+  } else if (spec.genKind === 'compose') {
+    total = 0
+  }
+  return { units, total, unpriced }
 }
 
 /** 预估节点条目（ready = 无 problems 且非 busy） */
@@ -93,10 +180,8 @@ export interface PreviewCanvasResult {
 /**
  * 画布执行成本预估（零副作用：不建任务、不发外部请求）：
  * - 节点集合：nodeIds 缺省 = 全部 gen 节点；显式 → 去重正整数（画布域校验）；
- * - 单位矩阵：image → 1 张；video → spec.duration ?? 5 秒；audio → 指令文本字数（promptText ?? spec.prompt）；
- *   compose → 本地零成本（total=0）；llm → unpriced（tokens 不可预知，前端显示「按量计费」）；
- * - 单价链：resolveUnitPrice（实例级 → settings.pricing → null）与 recordUsage 快照同源；
- * - 就绪性复用 preflightNode（与 startCanvasNodeRun 同源）。
+ * - 单位矩阵与预算闸复用 preflightNode / estimateNodeUnits（与 startCanvasNodeRun 同源，口径零漂移）；
+ * - 就绪节点才计价：不可执行节点 units 空 + total null；被预算拦下的节点仍带金额（超限原因可读）。
  */
 export async function previewCanvasRun(canvas: Canvas, nodeIds?: unknown): Promise<PreviewCanvasResult> {
   let ids: number[]
@@ -142,50 +227,7 @@ export async function previewCanvasRun(canvas: Canvas, nodeIds?: unknown): Promi
       })
       continue
     }
-    const units: PreviewUnitLine[] = []
-    let unpriced = false
-    const pushUnit = async (
-      kind: UsageKind,
-      unit: UsageUnit,
-      quantity: number,
-      provider: string | null,
-      model: string | null,
-    ): Promise<void> => {
-      const unitPrice = await resolveUnitPrice({ kind, provider, model, unit })
-      const subtotal = unitPrice === null ? null : Math.round(quantity * unitPrice * 1e6) / 1e6
-      if (unitPrice === null) unpriced = true
-      units.push({ unit, quantity, unitPrice, subtotal })
-    }
-    if (pf.problems.length === 0) {
-      if (pf.spec.genKind === 'image') {
-        await pushUnit('image', 'image', 1, pf.spec.provider ?? null, pf.spec.model ?? null)
-      } else if (pf.spec.genKind === 'video') {
-        const duration = typeof pf.spec.duration === 'number' && pf.spec.duration > 0 ? pf.spec.duration : 5
-        await pushUnit('video', 'second', duration, pf.spec.provider ?? null, pf.spec.model ?? null)
-      } else if (pf.spec.genKind === 'audio') {
-        const text = (pf.plan.promptText ?? pf.spec.prompt).trim()
-        let provider = pf.spec.provider ?? null
-        let model = pf.spec.model ?? null
-        try {
-          const endpoint = await resolveAudioEndpoint(pf.spec.provider)
-          provider = endpoint.providerKey
-          model = endpoint.model
-        } catch { /* 音频端点未配置 → 退回 spec 声明（未命中即 unpriced） */ }
-        await pushUnit('tts', 'char', text.length, provider, model)
-      } else if ((pf.spec.genKind as string) === 'llm') {
-        unpriced = true // [P4] tokens 不可预知（按量计费）
-      }
-      // compose：本地零成本（units 空 → total=0）
-    }
     const busy = busySet.has(id)
-    let total: number | null = null
-    if (units.length > 0) {
-      total = units.every((u) => u.subtotal != null)
-        ? Math.round(units.reduce((s, u) => s + (u.subtotal ?? 0), 0) * 1e6) / 1e6
-        : null
-    } else if (pf.spec.genKind === 'compose') {
-      total = 0
-    }
     items.push({
       nodeId: id,
       title: pf.node.title ?? `#${id}`,
@@ -193,9 +235,9 @@ export async function previewCanvasRun(canvas: Canvas, nodeIds?: unknown): Promi
       ready: pf.problems.length === 0 && !busy,
       busy,
       problems: pf.problems,
-      units,
-      total,
-      unpriced,
+      units: pf.estimate.units,
+      total: pf.estimate.total,
+      unpriced: pf.estimate.unpriced,
     })
   }
 

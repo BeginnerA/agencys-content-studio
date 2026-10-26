@@ -24,6 +24,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
   }
   const doc: CanvasDoc = {
     canvas: { id: 77, projectId: PID, name: '夹具画布', viewport: { x: 0, y: 0, zoom: 1 } },
+    groups: [],
     nodes: [
       {
         ...emptyNode,

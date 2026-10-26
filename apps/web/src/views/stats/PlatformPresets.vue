@@ -79,7 +79,10 @@ async function seedFromCatalog() {
   try {
     const r = await exportApi.seed()
     presets.value = r.items
-    seedMsg.value = r.added > 0 ? `已从平台目录补全 ${r.added} 个缺失预设` : '所有已知平台均已配置，无需补全'
+    seedMsg.value =
+      r.added > 0
+        ? `已从平台目录补全 ${r.added} 个缺失预设`
+        : '所有已知平台均已配置，无需补全'
     seedAdded.value = r.added
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -101,7 +104,8 @@ async function seedFromCatalog() {
           <h3>平台导出预设</h3>
           <div class="pv-actions">
             <button class="btn sm" :disabled="seeding" @click="seedFromCatalog">
-              <Icon name="download" :size="12" /> {{ seeding ? '补全中…' : '从平台目录补全' }}
+              <Icon name="download" :size="12" />
+              {{ seeding ? '补全中…' : '从平台目录补全' }}
             </button>
             <button class="btn sm" @click="startEdit">
               <Icon name="edit" :size="12" /> 编辑

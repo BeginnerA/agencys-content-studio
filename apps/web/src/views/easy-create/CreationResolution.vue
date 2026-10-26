@@ -7,7 +7,10 @@ import Icon from '../../components/common/Icon.vue'
  * 请求体与旧版逐字一致）。改档不触发重新规划（画质不入 planHash——成立前提是价格表无档位维度）。
  * 文案红线：不承诺「更高画质不加价」——视频按秒计价，实际计费以供应商对所选档为准。
  */
-defineProps<{ modelValue: string; options: { choices: string[]; default: string } }>()
+defineProps<{
+  modelValue: string
+  options: { choices: string[]; default: string }
+}>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 </script>
 
@@ -19,7 +22,9 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
         class="ec-res-select"
         :value="modelValue"
         :aria-label="'视频清晰度档位，当前' + (modelValue || '模型默认')"
-        @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+        @change="
+          emit('update:modelValue', ($event.target as HTMLSelectElement).value)
+        "
       >
         <option value="">模型默认（{{ options.default }}）</option>
         <option v-for="c in options.choices" :key="c" :value="c">
@@ -27,7 +32,9 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
         </option>
       </select>
     </label>
-    <p class="ec-res-hint">仅可选当前视频模型已核实的档位；视频按秒计价，实际计费以供应商对所选档位的定价为准。</p>
+    <p class="ec-res-hint">
+      仅可选当前视频模型已核实的档位；视频按秒计价，实际计费以供应商对所选档位的定价为准。
+    </p>
   </div>
 </template>
 

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
+    "probe:all": "tsx scripts/run-probes.ts",
     "probe:ci": "tsx scripts/run-probes.ts --fail-fast",
     "validate:templates": "tsx scripts/validate-templates.ts",
     "bench": "tsx scripts/bench-stress.ts",

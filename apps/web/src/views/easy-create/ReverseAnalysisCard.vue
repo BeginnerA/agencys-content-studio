@@ -17,7 +17,9 @@ const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 // 取最新一条携带反推产物的 assistant 消息（draft 态下即本轮 fallback 落库的交付物）
 const entries = computed<CreationImageAnalysisEntry[]>(() => {
   const msgs = props.s.state.detail?.messages ?? []
-  const m = [...msgs].reverse().find((x) => x.role === 'assistant' && !!x.payload?.imageAnalysis?.length)
+  const m = [...msgs]
+    .reverse()
+    .find((x) => x.role === 'assistant' && !!x.payload?.imageAnalysis?.length)
   return m?.payload?.imageAnalysis ?? []
 })
 </script>
@@ -26,7 +28,9 @@ const entries = computed<CreationImageAnalysisEntry[]>(() => {
   <div v-if="entries.length" class="card panel" aria-label="图片反推结果">
     <header class="hd">
       <h2><Icon name="sparkles" :size="16" /> 图片反推结果</h2>
-      <p class="muted">从你上传的参考图实际反推出的可投产提示词，可直接复制使用；本轮未生成视频方案。</p>
+      <p class="muted">
+        从你上传的参考图实际反推出的可投产提示词，可直接复制使用；本轮未生成视频方案。
+      </p>
     </header>
     <PlanImageAnalysis :entries="entries" />
   </div>

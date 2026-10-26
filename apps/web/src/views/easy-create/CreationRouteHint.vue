@@ -15,10 +15,14 @@ const expanded = ref(false)
 
 // 毕业通道覆盖的两个目标（成片后一键升级专业链）
 const graduable = computed(
-  () => props.hint.target === 'series-setup' || props.hint.target === 'mengbao-episode',
+  () =>
+    props.hint.target === 'series-setup' ||
+    props.hint.target === 'mengbao-episode',
 )
 const graduateAction = computed(() =>
-  props.hint.target === 'series-setup' ? '立项为连载系列' : '本集升级为专业成片',
+  props.hint.target === 'series-setup'
+    ? '立项为连载系列'
+    : '本集升级为专业成片',
 )
 </script>
 
@@ -34,16 +38,27 @@ const graduateAction = computed(() =>
     </div>
     <div v-if="expanded" class="rh-body">
       <p>
-        当前方案仍会按轻松创作正常制作，本建议不改变任何执行内容。想要
-        〈{{ hint.label }}〉 的完整能力，可以：
+        当前方案仍会按轻松创作正常制作，本建议不改变任何执行内容。想要 〈{{
+          hint.label
+        }}〉 的完整能力，可以：
       </p>
       <ol>
         <template v-if="graduable">
-          <li>先点「开始制作」拿到本片，完成后在成片页用「{{ graduateAction }}」一键升级专业链（已批准剧本自动作强锚定，不重复计费生成）。</li>
-          <li>或到专业端用〈{{ hint.label }}〉模板直接建项目，走完整专业流程。</li>
+          <li>
+            先点「开始制作」拿到本片，完成后在成片页用「{{
+              graduateAction
+            }}」一键升级专业链（已批准剧本自动作强锚定，不重复计费生成）。
+          </li>
+          <li>
+            或到专业端用〈{{ hint.label }}〉模板直接建项目，走完整专业流程。
+          </li>
         </template>
         <template v-else>
-          <li>到专业端用〈{{ hint.label }}〉模板建项目，走完整专业流程（本目标的专属链路，轻松创作不做替代）。</li>
+          <li>
+            到专业端用〈{{
+              hint.label
+            }}〉模板建项目，走完整专业流程（本目标的专属链路，轻松创作不做替代）。
+          </li>
         </template>
       </ol>
     </div>

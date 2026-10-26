@@ -53,6 +53,13 @@ export async function getWorkflow(id: number): Promise<Workflow | null> {
 
 // ========== 建 / 改 / 删 ==========
 
+/**
+ * 写库句柄：既接受模块级 db（独立调用），也接受调用方的事务对象（route 确认要把
+ * 「建链 + 置 active + 建首段 run + 绑会话」压进同一事务，任一环节失败整体回滚）。
+ * 形状按 db 侧取 Pick——事务对象缺 batch 等旁支方法，用 typeof db 会拒收 tx。
+ */
+export type WorkflowWriter = Pick<typeof db, 'insert' | 'update' | 'select'>
+
 export async function createWorkflow(p: {
   projectId: number
   name: string
@@ -60,9 +67,9 @@ export async function createWorkflow(p: {
   autoAdvance?: number
   budgetCap?: number | null
   note?: string | null
-}): Promise<Workflow> {
+}, executor: WorkflowWriter = db): Promise<Workflow> {
   const t = Date.now()
-  const row = await db
+  const row = await executor
     .insert(workflows)
     .values({
       projectId: p.projectId,
@@ -127,6 +134,11 @@ export async function setWorkflowStatus(id: number, status: Workflow['status']):
   const fresh = await getWorkflow(id)
   if (fresh) log.info(`workflow ${id} status: ${cur.status} → ${status}`)
   return fresh
+}
+
+/** 事务内激活链（route 确认专用）：与建链、建首段 run、绑会话同批提交。 */
+export async function activateWorkflowIn(tx: WorkflowWriter, id: number): Promise<void> {
+  await tx.update(workflows).set({ status: 'active', updatedAt: Date.now() }).where(eq(workflows.id, id))
 }
 
 // ========== 链有效性校验（纯函数；spec §2.1）==========
@@ -291,6 +303,33 @@ export class WorkflowError extends Error {
   }
 }
 
+/**
+ * 首段启动闸（纯校验 + 输入解析；不写库、不起 run、零计费）：
+ * 链有段 → 段模板可载 → 必填输入可满足 → 预算未熔断。
+ * startWorkflow（专业链显式启动）与对话 route 确认（同事务建链建段）同源复用，
+ * 杜绝「两条路径各判一次、口径漂移」；调用方据此在同一事务里落首段 run。
+ * 入参只取 projectId + segments（序列化后的段定义）：route 确认在链尚未落库时也要能预跑同一套闸。
+ */
+export async function prepareFirstSegment(wf: Pick<Workflow, 'projectId' | 'segments'>): Promise<{ templateKey: string; inputs: Record<string, unknown> }> {
+  const segments = parseSegments(wf.segments)
+  const first = segments[0]
+  if (!first) throw new WorkflowError('empty_chain', '链无段可启动')
+  let template: Template
+  try {
+    template = loadTemplate(first.templateKey)
+  } catch {
+    throw new WorkflowError('bad_template', `首段模板不存在：${first.templateKey}`)
+  }
+  const { inputs, missingRequired } = await resolveSegmentInput({ template, prevRunId: null, inputSpec: first.inputSpec })
+  if (missingRequired.length) {
+    throw new WorkflowError('bad_input', `首段必填输入未满足：${missingRequired.join(', ')}`)
+  }
+  // [F06] 预算闸门：首段启动与 advanceWorkflowCore ⑦ 同源拦截（此前首段绕过熔断，仅后续段受检）
+  const budgetHit = await checkBudget({ projectId: wf.projectId })
+  if (budgetHit) throw new WorkflowError('budget_exceeded', budgetHit.message)
+  return { templateKey: first.templateKey, inputs }
+}
+
 /** 显式启动链首段（仅 draft|paused 且链内无既有 run）；首段 autoAdvance 决定后续是否级联 */
 export async function startWorkflow(id: number): Promise<{ workflow: Workflow; runId: number }> {
   const wf = await getWorkflow(id)
@@ -304,26 +343,11 @@ export async function startWorkflow(id: number): Promise<{ workflow: Workflow; r
   try {
     const existing = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, id)).limit(1)
     if (existing.length) throw new WorkflowError('already_started', '链已启动（续跑请用 resume，或克隆为新链）')
-    const segments = parseSegments(wf.segments)
-    const first = segments[0]
-    if (!first) throw new WorkflowError('empty_chain', '链无段可启动')
-    let template: Template
-    try {
-      template = loadTemplate(first.templateKey)
-    } catch {
-      throw new WorkflowError('bad_template', `首段模板不存在：${first.templateKey}`)
-    }
-    const { inputs, missingRequired } = await resolveSegmentInput({ template, prevRunId: null, inputSpec: first.inputSpec })
-    if (missingRequired.length) {
-      throw new WorkflowError('bad_input', `首段必填输入未满足：${missingRequired.join(', ')}`)
-    }
-    // [F06] 预算闸门：首段启动与 advanceWorkflowCore ⑦ 同源拦截（此前首段绕过熔断，仅后续段受检）
-    const budgetHit = await checkBudget({ projectId: wf.projectId })
-    if (budgetHit) throw new WorkflowError('budget_exceeded', budgetHit.message)
+    const first = await prepareFirstSegment(wf)
     const run = await createRunRow({
       projectId: wf.projectId,
       templateKey: first.templateKey,
-      input: inputs,
+      input: first.inputs,
       workflowId: wf.id,
       workflowSeq: 0,
     })

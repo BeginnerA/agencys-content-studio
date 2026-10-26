@@ -211,7 +211,8 @@ export function useCanvasDrawer(props: DrawerProps, emit: DrawerEmitFn) {
     if (needConfirm) {
       const ok = await confirmDialog({
         title: '重试任务',
-        message: '该任务已提交但无回执（可能已被供应商计费）。重试将重新提交，可能产生重复费用。请确认已在供应商侧核验或接受该风险。',
+        message:
+          '该任务已提交但无回执（可能已被供应商计费）。重试将重新提交，可能产生重复费用。请确认已在供应商侧核验或接受该风险。',
         confirmText: '已核验，重试',
       })
       if (!ok) return

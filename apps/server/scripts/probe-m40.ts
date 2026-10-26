@@ -50,7 +50,8 @@ async function main(): Promise<void> {
   }
   const codeOf = async (fn: () => Promise<unknown>): Promise<string> => {
     const e = await errOf(fn)
-    return e && typeof (e as { code?: unknown }).code === 'string' ? (e as { code: string }).code : e ? 'other' : 'none'
+    const code = (e as (Error & { code?: unknown }) | null)?.code
+    return typeof code === 'string' ? code : e ? 'other' : 'none'
   }
 
   // ---- 立项建议（LLM 侧形状：与 plan 同级的 project 对象）----

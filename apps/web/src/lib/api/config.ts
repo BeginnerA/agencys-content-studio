@@ -1,4 +1,4 @@
-import { ApiError, api, type Items } from './core'
+import { ApiError, api, LONG_TIMEOUT_MS, type Items } from './core'
 import type {
   ApiConfig,
   ApiErrorBody,
@@ -22,11 +22,21 @@ export const configApi = {
   update: (id: number, body: Record<string, unknown>) =>
     api.put<ApiConfig>(`/api/v1/api-configs/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/api-configs/${id}`),
+  /** 连通测试：走真实最小生成/合成 ping（图像/音频可能是十几秒级）→ 走 LONG */
   test: (id: number) =>
-    api.post<Record<string, unknown>>(`/api/v1/api-configs/${id}/test`),
+    api.post<Record<string, unknown>>(
+      `/api/v1/api-configs/${id}/test`,
+      undefined,
+      LONG_TIMEOUT_MS,
+    ),
   /** 在线拉取供应商可用模型目录（ 阿里百炼 LLM 走 DashScope 原生带价口，其余 OpenAI 兼容仅 id，失败回退预置） */
+  /** 模型目录拉取：同步打供应商列表口（慢网下分钟级）→ 走 LONG */
   fetchModels: (body: Record<string, unknown>) =>
-    api.post<FetchModelsResult>('/api/v1/api-configs/fetch-models', body),
+    api.post<FetchModelsResult>(
+      '/api/v1/api-configs/fetch-models',
+      body,
+      LONG_TIMEOUT_MS,
+    ),
   /** 查询视频模型能力单一真源表（命中→平台自动背书档位；未命中→回退手填声明） */
   videoCaps: (providerKey: string, model: string) =>
     api.get<VideoCapsResult>(

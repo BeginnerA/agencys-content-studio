@@ -15,8 +15,22 @@ const ELABORATE_MAX_LEN = 30
 
 /** 明确指向「需用户提供内容」的请求词——短句里出现即说明这不是可点即答的建议回复。 */
 const ELABORATE_MARKERS = [
-  '上传', '请提供', '请补充', '请给出', '请说明', '请一并', '也请', '一并给出',
-  '以及', '并说明', '或说明', '是否', '可多份', '若干', '格式', '范围',
+  '上传',
+  '请提供',
+  '请补充',
+  '请给出',
+  '请说明',
+  '请一并',
+  '也请',
+  '一并给出',
+  '以及',
+  '并说明',
+  '或说明',
+  '是否',
+  '可多份',
+  '若干',
+  '格式',
+  '范围',
 ]
 
 /** 单条追问是否为开放追问（需用户真正补信息/传文件，而非点一下即答）。 */
@@ -32,9 +46,12 @@ export function clarifyNeedsElaborate(questions: readonly string[]): boolean {
 }
 
 export const CLARIFY_HEADER_DIRECT = '点击下方问题可直接作答'
-export const CLARIFY_HEADER_ELABORATE = '点击下方问题把要点带入输入框，请补充或上传素材后发送'
+export const CLARIFY_HEADER_ELABORATE =
+  '点击下方问题把要点带入输入框，请补充或上传素材后发送'
 
 /** 依追问内容返回 chip 区标题：全为短回复 → 「可直接作答」；含开放追问 → 降级为「带入输入框·补充后发送」。 */
 export function clarifyHeader(questions: readonly string[]): string {
-  return clarifyNeedsElaborate(questions) ? CLARIFY_HEADER_ELABORATE : CLARIFY_HEADER_DIRECT
+  return clarifyNeedsElaborate(questions)
+    ? CLARIFY_HEADER_ELABORATE
+    : CLARIFY_HEADER_DIRECT
 }

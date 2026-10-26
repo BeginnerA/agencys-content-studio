@@ -11,7 +11,13 @@ import Icon from '../../components/common/Icon.vue'
 const props = defineProps<{
   modelValue: boolean
   /** 预检品牌摘要； 前的旧存 preflight JSON 或预检失败→ null（此时本组件不渲染） */
-  summary: { available: boolean; watermark: boolean; intro: boolean; outro: boolean; subtitle: boolean } | null
+  summary: {
+    available: boolean
+    watermark: boolean
+    intro: boolean
+    outro: boolean
+    subtitle: boolean
+  } | null
   /** 方案已批准的背景乐段数（参考托盘音频 role:'bgm'）；>0 时给一行可发现性提示 */
   bgmCount?: number
 }>()
@@ -37,9 +43,13 @@ const slots = computed(() => {
         :checked="modelValue"
         type="checkbox"
         :aria-label="'应用品牌风格：' + slots"
-        @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)"
+        @change="
+          emit('update:modelValue', ($event.target as HTMLInputElement).checked)
+        "
       />
-      <span><Icon name="palette" :size="13" /> 应用品牌风格（{{ slots }}）</span>
+      <span
+        ><Icon name="palette" :size="13" /> 应用品牌风格（{{ slots }}）</span
+      >
     </label>
     <p class="ec-brand-hint">
       {{
@@ -48,7 +58,9 @@ const slots = computed(() => {
           : '已关闭：本次成片不含品牌水印 / 片头尾与自定义字幕样式（不影响方案确认与计费）。'
       }}
     </p>
-    <p v-if="bgmCount" class="ec-brand-hint">背景音乐：{{ bgmCount }} 段（来自参考托盘音频，将混入成片）</p>
+    <p v-if="bgmCount" class="ec-brand-hint">
+      背景音乐：{{ bgmCount }} 段（来自参考托盘音频，将混入成片）
+    </p>
   </div>
 </template>
 

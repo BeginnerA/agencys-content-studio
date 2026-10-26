@@ -142,7 +142,9 @@ export function useScheduleForm(opts: {
     }
     // 序列化表单输入
     const inputTemplate = formInputs.value
-      .map((row) => serializeInputRow(row, formTemplateDetail.value?.inputs ?? []))
+      .map((row) =>
+        serializeInputRow(row, formTemplateDetail.value?.inputs ?? []),
+      )
       .filter((row) => Object.keys(row).length > 0)
     if (!inputTemplate.length) {
       err.value = '至少填写一组输入'

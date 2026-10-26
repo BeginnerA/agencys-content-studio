@@ -251,6 +251,7 @@ export async function runComposeInputSection(check: CheckFn): Promise<void> {
   check(rWrongHash.outcome === 'rejected' && rWrongHash.code === 'stale_preview' && runAfterWrong.status === 'completed', 'previewHash 不符拒绝：零状态变化')
   const rCfg = await apply.applyComposeInputRework({ requestId: (apCfgPv as { requestId: string }).requestId, previewHash: apCfgHash })
   check(rCfg.outcome === 'applied' && rCfg.result.enqueued === true && rCfg.result.resetSteps.join() === 'compose' && rCfg.result.gateInvalidated === true, '配置返修确认 → applied 回执（仅重置合成步、旧 gate 作废）')
+  if (rCfg.outcome === 'rejected') throw new Error(`配置返修未确认：${rCfg.code} ${rCfg.message}`)
   const runCfgRow = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, apRun)).limit(1))[0]!
   check(runCfgRow.status === 'queued' && (JSON.parse(runCfgRow.input) as { _compose?: { bgm_volume?: number } })._compose?.bgm_volume === 0.3, '确认后 run→queued 且 _compose.bgm_volume 落真源 0.3')
   const apCfgStep = await composeStepRow(apRun)

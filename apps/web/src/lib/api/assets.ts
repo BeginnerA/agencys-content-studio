@@ -1,4 +1,4 @@
-import { ApiError, api, type Items } from './core'
+import { ApiError, api, LONG_TIMEOUT_MS, type Items } from './core'
 import type {
   ApiErrorBody,
   Asset,
@@ -55,7 +55,9 @@ export const assetApi = {
     ),
   /** 清空回收站（批量彻底删除：物理删文件 + 硬删记录，不可逆；被字幕引用的条目跳过保留） */
   emptyTrash: (projectId: number) =>
-    api.post<EmptyTrashResult>(`/api/v1/projects/${projectId}/assets/trash/empty`),
+    api.post<EmptyTrashResult>(
+      `/api/v1/projects/${projectId}/assets/trash/empty`,
+    ),
 }
 
 /** 全局搜索（关键词九域 + 语义文本域；模型不可用自动降级不抛错） */
@@ -109,9 +111,16 @@ export const entityApi = {
   update: (id: number, body: Record<string, unknown>) =>
     api.put<{ entity: EntityItem }>(`/api/v1/entities/${id}`, body),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/entities/${id}`),
-  /** 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动） */
+  /**
+   * 批量润色 appearance（ids 1..10 去重；逐项串行，失败项进 failed 不改动）。
+   * 串行 ≤10 次文本模型调用同步返回 → 走 LONG（默认 2 分钟必超）。
+   */
   polish: (ids: number[]) =>
-    api.post<EntityPolishResult>('/api/v1/entities/polish', { ids }),
+    api.post<EntityPolishResult>(
+      '/api/v1/entities/polish',
+      { ids },
+      LONG_TIMEOUT_MS,
+    ),
   /** 批量发起参考图生成（≤10 实体 × 1-4 变体；202 入队即返，完成后服务端自动挂接 ref_asset_ids） */
   refGen: (projectId: number, entityIds: number[], variants = 1) =>
     api.post<EntityRefGenIssueResult>('/api/v1/entities/ref-gen', {
@@ -168,7 +177,8 @@ export async function uploadEntityRefImage(
 /** 全局素材池（虚拟项目 #0）：全局实体（角色/场景/道具）的参考图域；
  * 挂接经 entityApi.create/update 的 ref_asset_ids（服务端仅接受池资产） */
 export const globalAssetApi = {
-  list: (params = '') => api.get<Items<Asset>>(`/api/v1/global/assets${params}`),
+  list: (params = '') =>
+    api.get<Items<Asset>>(`/api/v1/global/assets${params}`),
   /** 批量上传入池（multipart，字段 file 可多张；仅图片；sha256 去重） */
   upload: async (files: File[], purpose = 'source'): Promise<Asset[]> => {
     const form = new FormData()
@@ -203,12 +213,16 @@ export const globalAssetApi = {
 export const stylePresetApi = {
   list: (params = '') =>
     api.get<Items<StylePresetItem>>(`/api/v1/style-presets${params}`),
-  /** 从项目参考图提取画风词（1..4 张；不落库，前端预填表单） */
+  /** 从项目参考图提取画风词（1..4 张；不落库，前端预填表单）——视觉 LLM 同步返回 → 走 LONG */
   extract: (projectId: number, assetIds: number[]) =>
-    api.post<StyleExtractResult>('/api/v1/style-presets/extract', {
-      project_id: projectId,
-      asset_ids: assetIds,
-    }),
+    api.post<StyleExtractResult>(
+      '/api/v1/style-presets/extract',
+      {
+        project_id: projectId,
+        asset_ids: assetIds,
+      },
+      LONG_TIMEOUT_MS,
+    ),
   create: (body: Record<string, unknown>) =>
     api.post<{ preset: StylePresetItem }>('/api/v1/style-presets', body),
   update: (id: number, body: Record<string, unknown>) =>

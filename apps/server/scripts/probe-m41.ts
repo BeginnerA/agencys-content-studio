@@ -116,13 +116,20 @@ async function main() {
         return Response.json({ choices: [{ message: { content }, finish_reason: 'stop' }], usage: { prompt_tokens: 30, completion_tokens: 40, total_tokens: 70 } })
       }
       const post = (path: string, data: unknown) => app.request(`/api/v1/creation-sessions${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      // `Response.json()` 在 Node 类型下是 unknown：探针直接按会话详情形态取值，故在此收窄一次
+      type SessionJson = {
+        session: { id: number; status: string; projectId: number; error?: string | null; initialDraft?: { content?: string } | null }
+        messages: Array<{ requestKey?: string | null }>
+      }
+      const jsonOf = async (res: Response): Promise<SessionJson> => (await res.json()) as SessionJson
+      const assetOf = async (res: Response): Promise<{ assetId: number }> => (await res.json()) as { assetId: number }
       const request = { content: '首轮初始文字', requestKey: 'm41-first-draft', deferPlanning: true }
       const firstResponse = await post('', request)
-      const first = await firstResponse.json()
+      const first = await jsonOf(firstResponse)
       const id = first.session.id
       check(firstResponse.status === 201 && first.session.status === 'draft' && calls === 0 && first.messages.length === 0, '仅创建草稿零模型调用，元数据不显示为已发送消息')
-      check(first.session.initialDraft.content === request.content, '初始文字可从服务端安全快照恢复')
-      check((await (await post('', request)).json()).session.id === id && calls === 0, '同创建键同输入返回原会话，不重复规划')
+      check(first.session.initialDraft?.content === request.content, '初始文字可从服务端安全快照恢复')
+      check((await jsonOf(await post('', request))).session.id === id && calls === 0, '同创建键同输入返回原会话，不重复规划')
       check((await post('', { ...request, content: '不同文字' })).status === 409, '同创建键不同文字返回冲突')
       check((await post('', { ...request, deferPlanning: false })).status === 409, '同创建键不同模式返回冲突')
       check(!messageSchema.safeParse(request).success, '消息 schema 拒绝创建专用字段')
@@ -133,11 +140,11 @@ async function main() {
         return app.request(`/api/v1/creation-sessions/${id}/attachments`, { method: 'POST', body: form })
       }
       const uploaded = await upload('reference.png')
-      const ref = await uploaded.json()
+      const ref = await assetOf(uploaded)
       check(uploaded.status === 201 && calls === 0, '附件登记零模型调用')
       check((await upload('bad.txt')).status === 422 && calls === 0, '部分上传失败不触发无参考规划')
       const message = { content: '现在生成方案', requestKey: 'm41-first-message', attachments: [ref.assetId, ref.assetId] }
-      const planned = await (await post(`/${id}/messages`, message)).json()
+      const planned = await jsonOf(await post(`/${id}/messages`, message))
       check(calls === 1 && planned.session.status === 'draft' && !planned.session.error, '全部参考就绪后一次规划，追问正常返回')
       check(!captured.includes('initial_draft') && !captured.includes(request.content), '草稿元数据不混入规划上下文')
       await post(`/${id}/messages`, { ...message, attachments: [ref.assetId] })
@@ -147,7 +154,7 @@ async function main() {
       const second = await post('', { content: '旧文字直达', requestKey: 'm41-legacy-create' })
       check(second.status === 201 && calls === 2, '原文字直达 API 默认仍创建并规划')
       content = 'not-json'
-      const failed = await (await post(`/${id}/messages`, { ...message, requestKey: 'm41-failed-message' })).json()
+      const failed = await jsonOf(await post(`/${id}/messages`, { ...message, requestKey: 'm41-failed-message' }))
       // 收口：agent 会话模型输出不合三形契约（invalid_plan）不再回「结构契约」死胡同红字，而是优雅回落 draft + 一条 clarify 追问；
       // 核心不变式「不误报成功」保持——status 停 draft（非 ready/started）、不起 run、零媒体计费。
       check(failed.session.status === 'draft' && !failed.session.error && calls === 3, '规划解析失败优雅兜底为 draft·clarify，不伪报成功也不留 error 死胡同')
@@ -157,7 +164,7 @@ async function main() {
       check(project.status === 'draft', '规划与附件均不使项目提前转正')
       const messages = await db.select().from(creationMessages).where(eq(creationMessages.sessionId, id))
       check(messages.filter((m) => m.role === 'system').length === 1, '创建重试不回写或重复快照')
-      check(planned.messages.some((m: { requestKey?: string }) => m.requestKey === message.requestKey), '详情携带已接收请求键，响应丢失后可先核对')
+      check(planned.messages.some((m) => m.requestKey === message.requestKey), '详情携带已接收请求键，响应丢失后可先核对')
     },
     'first-input-client': async () => {
       const { createFirstInput } = await import('../../web/src/views/easy-create/use-first-input')
@@ -165,7 +172,7 @@ async function main() {
       type Item = import('../../web/src/views/easy-create/use-creation-chat').AttachmentItem
       const data = new Map<string, string>()
       const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v) }, removeItem: (k: string) => { data.delete(k) } }
-      const host = { currentId: 0, attachments: [] as Item[], error: '', notice: '' }
+      const host = { currentId: 0, attachments: [] as Item[], error: '', notice: '', stylePresetIds: [], characterPresetIds: [] }
       let detail = { session: { id: 1, status: 'draft', plan: null, runId: null, error: null, initialDraft: { content: '初始文字', requestKey: 'client-create-key' } }, messages: [], artifacts: { shots: [], documents: [] }, progress: null, result: null } as unknown as Detail
       let creates = 0, sends = 0, uploads = 0, reads = 0
       let failUpload = '', loseCreate = false, loseSend = false, clarify = false, failPlan = false, failRead = false, routeDecision = false
@@ -235,7 +242,7 @@ async function main() {
       const saved = data.get('ec-first-input:2')!
       check(!saved.includes('blob:') && !saved.includes('bytes') && !saved.includes('"file"'), '本地存储不含文件字节或对象 URL')
       first.detach(); first = make(); first.activate(copy())
-      check(host.attachments[0]?.error?.includes('重新选择') && first.state.phase === 'paused' && sends === 3, '刷新只恢复草稿，未上传文件明确要求重新选择')
+      check((host.attachments[0]?.error?.includes('重新选择') ?? false) && first.state.phase === 'paused' && sends === 3, '刷新只恢复草稿，未上传文件明确要求重新选择')
       let resolveRead!: (value: Detail) => void
       waitRead = new Promise((resolve) => { resolveRead = resolve })
       const pending = first.submit('继续')

@@ -231,7 +231,9 @@ function fmtDur(sec: number | null): string {
               :disabled="busy"
               @applied="emit('changed')"
             />
-            <span class="muted bg-lb-tip">成片已产出后改配置/换配乐请用「合成返修」：预览逐处旧→新、零模型费用、旧批准必复审</span>
+            <span class="muted bg-lb-tip"
+              >成片已产出后改配置/换配乐请用「合成返修」：预览逐处旧→新、零模型费用、旧批准必复审</span
+            >
           </div>
         </div>
 
@@ -379,7 +381,9 @@ function fmtDur(sec: number | null): string {
         <!-- ===== 成片字幕开关（有无硬字幕）：与轻创作确认卡/运行详情同一 _compose 真源，重新合成后生效 ===== -->
         <div class="bg-sec">
           <SubtitleBurnToggle :run-id="runId" :disabled="busy" />
-          <div class="muted bg-none">关闭后重新合成：成片画面不含字幕；字幕文件（.srt）仍生成，可在成果页单独下载。</div>
+          <div class="muted bg-none">
+            关闭后重新合成：成片画面不含字幕；字幕文件（.srt）仍生成，可在成果页单独下载。
+          </div>
         </div>
 
         <div class="bg-sep" />

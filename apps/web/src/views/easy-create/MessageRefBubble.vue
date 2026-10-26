@@ -6,7 +6,14 @@
  */
 import Icon from '../../components/common/Icon.vue'
 import type { CreationChatMessage, CreationShot } from '../../lib/types'
-import { kindIcon, refKind, refName, refRoleLabel, refShotLabel, refThumb } from './ref-utils'
+import {
+  kindIcon,
+  refKind,
+  refName,
+  refRoleLabel,
+  refShotLabel,
+  refThumb,
+} from './ref-utils'
 
 defineProps<{
   m: CreationChatMessage
@@ -48,7 +55,9 @@ const emit = defineEmits<{ open: [] }>()
       <span class="ref-tag">
         <Icon :name="kindIcon(refKind(m))" :size="10" /> 参考 ·
         {{ refRoleLabel(m) }}
-        <span v-if="refShotLabel(m, shots)" class="ref-shot-badge">{{ refShotLabel(m, shots) }}</span>
+        <span v-if="refShotLabel(m, shots)" class="ref-shot-badge">{{
+          refShotLabel(m, shots)
+        }}</span>
       </span>
       <span class="ref-file" :title="refName(m)">{{ refName(m) }}</span>
     </span>

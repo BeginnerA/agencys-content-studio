@@ -136,8 +136,8 @@ function resetSubForm() {
       <input v-model="subOn" type="checkbox" :disabled="busy" />
       <span class="bg-lb"
         >自定义字幕样式<span class="muted bg-lb-tip"
-          >run 级覆盖；未启用时继承项目/平台配置或默认（字号 1.8% 高 /
-          底边距 2%）</span
+          >run 级覆盖；未启用时继承项目/平台配置或默认（字号 1.8% 高 / 底边距
+          2%）</span
         ></span
       >
     </label>
@@ -204,9 +204,7 @@ function resetSubForm() {
           class="st-color"
           :disabled="busy || !subOn"
         />
-        <span class="muted mono">{{
-          subOutlineColor.toUpperCase()
-        }}</span>
+        <span class="muted mono">{{ subOutlineColor.toUpperCase() }}</span>
       </div>
       <div class="st-row">
         <span class="st-lb">底边距</span>
@@ -233,11 +231,7 @@ function resetSubForm() {
       </div>
       <div class="st-row">
         <label class="bg-ck">
-          <input
-            v-model="subBold"
-            type="checkbox"
-            :disabled="busy || !subOn"
-          />
+          <input v-model="subBold" type="checkbox" :disabled="busy || !subOn" />
           <span class="muted">加粗</span>
         </label>
       </div>
@@ -253,11 +247,7 @@ function resetSubForm() {
         <Icon name="check" :size="12" />
         {{ subOn ? '保存样式' : '清除覆盖（用继承）' }}
       </button>
-      <button
-        class="btn sm"
-        :disabled="busy || !subOn"
-        @click="resetSubForm"
-      >
+      <button class="btn sm" :disabled="busy || !subOn" @click="resetSubForm">
         恢复默认
       </button>
       <span class="muted bg-lb-tip"

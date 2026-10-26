@@ -1,7 +1,16 @@
 export interface TemplateInputDef {
   key: string
   label: string
-  kind: 'text' | 'int' | 'float' | 'bool' | 'select' | 'multi_select' | 'date' | 'files' | 'publications'
+  kind:
+    | 'text'
+    | 'int'
+    | 'float'
+    | 'bool'
+    | 'select'
+    | 'multi_select'
+    | 'date'
+    | 'files'
+    | 'publications'
   required: boolean
   accept?: string[]
   /** select / multi_select 的候选项列表 */

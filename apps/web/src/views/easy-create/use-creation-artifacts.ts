@@ -45,9 +45,15 @@ export function useCreationArtifacts(s: ReturnType<typeof useEasyCreate>) {
   // ===== 候选版本：展开态 / 待应用选择 / board 缓存（按步共享，不逐镜重复拉） =====
 
   const SETTLED = new Set(['completed', 'failed'])
-  const CANDIDATE_STEPS: CreationCandidateStep[] = ['images', 'frames', 'motion']
+  const CANDIDATE_STEPS: CreationCandidateStep[] = [
+    'images',
+    'frames',
+    'motion',
+  ]
   /** run 收敛才允许改版本（制作中产物还在长，选了也不知道最终是哪版） */
-  const settled = computed(() => SETTLED.has(s.state.detail?.progress?.status ?? ''))
+  const settled = computed(() =>
+    SETTLED.has(s.state.detail?.progress?.status ?? ''),
+  )
   /** 画面模态走哪一步由方案决定：图文成片=images，动态镜头首帧=frames（与服务端投影同一判定） */
   const imageStep = computed<CreationCandidateStep>(() =>
     s.state.detail?.session.plan?.mode === 'slideshow' ? 'images' : 'frames',
@@ -58,7 +64,9 @@ export function useCreationArtifacts(s: ReturnType<typeof useEasyCreate>) {
   const boards = reactive<
     Partial<Record<CreationCandidateStep, ShotBoardData | null>>
   >({})
-  const boardError = reactive<Partial<Record<CreationCandidateStep, string>>>({})
+  const boardError = reactive<Partial<Record<CreationCandidateStep, string>>>(
+    {},
+  )
   const boardLoading = ref<CreationCandidateStep | null>(null)
   // 重合成说明按需展开（不常驻，避免和「应用选择」的提示抢视线）
   const recomposing = ref(false)
@@ -91,7 +99,9 @@ export function useCreationArtifacts(s: ReturnType<typeof useEasyCreate>) {
 
   /** 该镜该模态是否值得给出候选入口（缺文件的占位不可选，不计入可用数） */
   function showCandidates(choice: { candidates: CreationArtifact[] }): boolean {
-    return settled.value && choice.candidates.filter((c) => c.available).length > 1
+    return (
+      settled.value && choice.candidates.filter((c) => c.available).length > 1
+    )
   }
 
   async function ensureBoard(step: CreationCandidateStep): Promise<void> {
@@ -152,8 +162,7 @@ export function useCreationArtifacts(s: ReturnType<typeof useEasyCreate>) {
   async function onRecompose(): Promise<void> {
     const ok = await confirmDialog({
       title: '重新合成成片',
-      message:
-        `本地合成：只把现有素材重新拼成成片，不调用任何付费生成模型、不产生生成费用。${subBurn.value ? '成片将烧录字幕。' : '成片将不含字幕（字幕文件仍生成，可单独下载）。'}确认开始？`,
+      message: `本地合成：只把现有素材重新拼成成片，不调用任何付费生成模型、不产生生成费用。${subBurn.value ? '成片将烧录字幕。' : '成片将不含字幕（字幕文件仍生成，可单独下载）。'}确认开始？`,
       confirmText: '重新合成',
     })
     if (!ok) return

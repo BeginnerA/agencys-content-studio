@@ -6,9 +6,20 @@ import AssetPickerModal from './AssetPickerModal.vue'
 import Icon from '../../components/common/Icon.vue'
 import { fmtTime } from '../../lib/format'
 import { creationStatusLabel, creationStatusTone } from '../../lib/types'
-import { memoryApi, templateApi, stylePresetApi, entityApi } from '../../lib/api'
+import {
+  memoryApi,
+  templateApi,
+  stylePresetApi,
+  entityApi,
+} from '../../lib/api'
 import { confirmDialog } from '../../lib/confirm'
-import type { Asset, CreationSessionListItem, RecommendItem, StylePresetItem, EntityItem } from '../../lib/types'
+import type {
+  Asset,
+  CreationSessionListItem,
+  RecommendItem,
+  StylePresetItem,
+  EntityItem,
+} from '../../lib/types'
 import { useEasyCreate } from './use-creation-chat'
 
 const s = useEasyCreate()
@@ -36,11 +47,29 @@ const castOptions = ref<EntityItem[]>([])
 const selStyle = ref<string[]>([])
 const selCast = ref<string[]>([])
 async function loadPresets(): Promise<void> {
-  try { styleOptions.value = (await stylePresetApi.list('?active=1')).items } catch { /* 无预设不阻断创作 */ }
-  try { castOptions.value = (await entityApi.list('character')).items } catch { /* 同上 */ }
+  try {
+    styleOptions.value = (await stylePresetApi.list('?active=1')).items
+  } catch {
+    /* 无预设不阻断创作 */
+  }
+  try {
+    castOptions.value = (await entityApi.list('character')).items
+  } catch {
+    /* 同上 */
+  }
 }
-watch(selStyle, (v) => { s.state.stylePresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_STYLE) })
-watch(selCast, (v) => { s.state.characterPresetIds = v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_CAST) })
+watch(selStyle, (v) => {
+  s.state.stylePresetIds = v
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0)
+    .slice(0, MAX_STYLE)
+})
+watch(selCast, (v) => {
+  s.state.characterPresetIds = v
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0)
+    .slice(0, MAX_CAST)
+})
 // 锁定（上传中）时禁止展开预设面板
 function guardLocked(e: Event): void {
   if (s.first.locked.value) e.preventDefault()
@@ -48,7 +77,10 @@ function guardLocked(e: Event): void {
 // 预设气泡互斥：一个展开时自动收起另一个（同时只出现一个）
 const stylePopEl = ref<HTMLDetailsElement | null>(null)
 const castPopEl = ref<HTMLDetailsElement | null>(null)
-function exclusivePop(openEl: HTMLDetailsElement | null, closeEl: HTMLDetailsElement | null): void {
+function exclusivePop(
+  openEl: HTMLDetailsElement | null,
+  closeEl: HTMLDetailsElement | null,
+): void {
   if (openEl?.open && closeEl?.open) closeEl.open = false
 }
 // 点击空白处关闭预设面板（对齐「从素材选取」弹窗的背景关闭体验）：
@@ -67,19 +99,36 @@ onBeforeRouteLeave((to) => {
   departed = true
   if (to.path !== handoffPath) s.leave()
 })
-onBeforeUnmount(() => { if (ideaRecTimer) clearTimeout(ideaRecTimer); document.removeEventListener('click', onDocClick, true) })
+onBeforeUnmount(() => {
+  if (ideaRecTimer) clearTimeout(ideaRecTimer)
+  document.removeEventListener('click', onDocClick, true)
+})
 async function onFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
-  for (const file of files) { if (departed) break; await s.addAttachment(file) }
+  for (const file of files) {
+    if (departed) break
+    await s.addAttachment(file)
+  }
 }
 async function onPickAssets(assets: Asset[]) {
   showPicker.value = false
-  for (const asset of assets) { if (departed) break; await s.addAssetReference(asset) }
+  for (const asset of assets) {
+    if (departed) break
+    await s.addAssetReference(asset)
+  }
 }
 async function abandonLocal() {
-  if (!await confirmDialog({ title: '放弃本地草稿', message: '清除本次本地文字与参考选择？已创建的服务端草稿仍可在创作记录中查看或删除。', confirmText: '放弃本地草稿' })) return
+  if (
+    !(await confirmDialog({
+      title: '放弃本地草稿',
+      message:
+        '清除本次本地文字与参考选择？已创建的服务端草稿仍可在创作记录中查看或删除。',
+      confirmText: '放弃本地草稿',
+    }))
+  )
+    return
   s.first.clear(0)
   s.state.attachments = []
   idea.value = ''
@@ -96,7 +145,11 @@ const EXAMPLES = [
 // 无选题沉淀 / 接口失败 / 解析为空 → 静默回退静态 EXAMPLES（不编造原则）。
 // 推荐以「短标题 + 形态标签」卡片展示，点击才把完整一句话填入输入台（避免长句胶囊换行乱）。
 type TopicChip = { title: string; tag: string; sentence: string }
-const FALLBACK_CHIPS: TopicChip[] = EXAMPLES.map((e) => ({ title: e, tag: '示例', sentence: e }))
+const FALLBACK_CHIPS: TopicChip[] = EXAMPLES.map((e) => ({
+  title: e,
+  tag: '示例',
+  sentence: e,
+}))
 const topicPool = ref<TopicChip[]>([])
 const hasTopics = ref(false)
 const chips = ref<TopicChip[]>([...FALLBACK_CHIPS])
@@ -121,12 +174,28 @@ function topicChip(t: { title: string; format: string }): TopicChip {
   const title = t.title.length > 36 ? `${t.title.slice(0, 36)}…` : t.title
   const f = t.format
   if (f.startsWith('drama') || f.startsWith('anime'))
-    return { title, tag: '短剧 · 45秒 · 竖屏', sentence: `用 45 秒把「${full}」拍成有故事感的短剧视频，竖屏。` }
+    return {
+      title,
+      tag: '短剧 · 45秒 · 竖屏',
+      sentence: `用 45 秒把「${full}」拍成有故事感的短剧视频，竖屏。`,
+    }
   if (f.startsWith('talking'))
-    return { title, tag: '口播 · 30秒', sentence: `口播一条 30 秒的短视频：「${full}」，轻松一点。` }
+    return {
+      title,
+      tag: '口播 · 30秒',
+      sentence: `口播一条 30 秒的短视频：「${full}」，轻松一点。`,
+    }
   if (f === 'article' || f === 'note')
-    return { title, tag: '图文 · 30秒', sentence: `把「${full}」做成 30 秒短视频，图文配音即可。` }
-  return { title, tag: '视频 · 30秒 · 竖屏', sentence: `做一条 30 秒的短视频：「${full}」，竖屏，轻松一点。` }
+    return {
+      title,
+      tag: '图文 · 30秒',
+      sentence: `把「${full}」做成 30 秒短视频，图文配音即可。`,
+    }
+  return {
+    title,
+    tag: '视频 · 30秒 · 竖屏',
+    sentence: `做一条 30 秒的短视频：「${full}」，竖屏，轻松一点。`,
+  }
 }
 
 /** 点击推荐卡：把完整一句话填入输入台 */
@@ -192,7 +261,10 @@ async function go(): Promise<void> {
   if (id && !departed) {
     handoffPath = `/create/${id}`
     const failed = await router.push(handoffPath)
-    if (failed) { s.first.pause(); s.state.error = '草稿已创建，请从创作记录进入并手动继续。' }
+    if (failed) {
+      s.first.pause()
+      s.state.error = '草稿已创建，请从创作记录进入并手动继续。'
+    }
   }
 }
 
@@ -300,38 +372,120 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         <div class="crow">
           <div class="crow-tools">
             <!-- [batch5] 风格 / 角色预设：工具行胶囊 + 向上展开勾选面板（软提示基线，零计费、不进幂等） -->
-            <details ref="stylePopEl" class="pop" :class="{ on: selStyle.length }" @toggle="exclusivePop(stylePopEl, castPopEl)">
-              <summary class="pop-btn" aria-label="选择画风预设（可多选，作为画风基线）" @click="guardLocked">
+            <details
+              ref="stylePopEl"
+              class="pop"
+              :class="{ on: selStyle.length }"
+              @toggle="exclusivePop(stylePopEl, castPopEl)"
+            >
+              <summary
+                class="pop-btn"
+                aria-label="选择画风预设（可多选，作为画风基线）"
+                @click="guardLocked"
+              >
                 <Icon name="palette" :size="14" /> 画风
-                <span class="pop-cnt mono">{{ selStyle.length }}/{{ MAX_STYLE }}</span>
+                <span class="pop-cnt mono"
+                  >{{ selStyle.length }}/{{ MAX_STYLE }}</span
+                >
               </summary>
               <div class="pop-panel">
-                <label v-for="p in styleOptions" :key="p.id" class="pop-opt" :title="p.description || p.snippet">
-                  <input type="checkbox" :value="String(p.id)" v-model="selStyle" :disabled="s.first.locked.value || (!selStyle.includes(String(p.id)) && selStyle.length >= MAX_STYLE)" />
+                <label
+                  v-for="p in styleOptions"
+                  :key="p.id"
+                  class="pop-opt"
+                  :title="p.description || p.snippet"
+                >
+                  <input
+                    type="checkbox"
+                    :value="String(p.id)"
+                    v-model="selStyle"
+                    :disabled="
+                      s.first.locked.value ||
+                      (!selStyle.includes(String(p.id)) &&
+                        selStyle.length >= MAX_STYLE)
+                    "
+                  />
                   <span class="pop-name">{{ p.name }}</span>
                 </label>
-                <p v-if="!styleOptions.length" class="pop-empty muted">暂无启用的画风预设，可在工作台创建</p>
-                <p class="pop-tip muted">软提示：作为画风基线喂给规划模型，可在其上细化，不会凭空替换风格。</p>
+                <p v-if="!styleOptions.length" class="pop-empty muted">
+                  暂无启用的画风预设，可在工作台创建
+                </p>
+                <p class="pop-tip muted">
+                  软提示：作为画风基线喂给规划模型，可在其上细化，不会凭空替换风格。
+                </p>
               </div>
             </details>
-            <details ref="castPopEl" class="pop" :class="{ on: selCast.length }" @toggle="exclusivePop(castPopEl, stylePopEl)">
-              <summary class="pop-btn" aria-label="选择可复用角色（可多选，作为角色基线）" @click="guardLocked">
+            <details
+              ref="castPopEl"
+              class="pop"
+              :class="{ on: selCast.length }"
+              @toggle="exclusivePop(castPopEl, stylePopEl)"
+            >
+              <summary
+                class="pop-btn"
+                aria-label="选择可复用角色（可多选，作为角色基线）"
+                @click="guardLocked"
+              >
                 <Icon name="users" :size="14" /> 角色
-                <span class="pop-cnt mono">{{ selCast.length }}/{{ MAX_CAST }}</span>
+                <span class="pop-cnt mono"
+                  >{{ selCast.length }}/{{ MAX_CAST }}</span
+                >
               </summary>
               <div class="pop-panel">
                 <label v-for="c in castOptions" :key="c.id" class="pop-opt">
-                  <input type="checkbox" :value="String(c.id)" v-model="selCast" :disabled="s.first.locked.value || (!selCast.includes(String(c.id)) && selCast.length >= MAX_CAST)" />
+                  <input
+                    type="checkbox"
+                    :value="String(c.id)"
+                    v-model="selCast"
+                    :disabled="
+                      s.first.locked.value ||
+                      (!selCast.includes(String(c.id)) &&
+                        selCast.length >= MAX_CAST)
+                    "
+                  />
                   <span class="pop-name">{{ c.name }}</span>
                 </label>
-                <p v-if="!castOptions.length" class="pop-empty muted">暂无角色，可先在工作台新建</p>
-                <p class="pop-tip muted">软提示：作为角色基线喂给规划模型，不会丢弃已选角色特征。</p>
+                <p v-if="!castOptions.length" class="pop-empty muted">
+                  暂无角色，可先在工作台新建
+                </p>
+                <p class="pop-tip muted">
+                  软提示：作为角色基线喂给规划模型，不会丢弃已选角色特征。
+                </p>
               </div>
             </details>
-            <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" multiple hidden @change="onFiles" />
-            <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="fileInput?.click()"><Icon name="upload" :size="14" /> 添加参考</button>
-            <button class="btn ghost" type="button" :disabled="s.attachmentsLocked.value" @click="showPicker = true"><Icon name="arrange" :size="14" /> 从素材选取</button>
-            <button v-if="s.first.state.ticket" class="btn ghost" type="button" :disabled="s.first.busy.value" @click="abandonLocal">放弃本地草稿</button>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*,video/*,audio/*"
+              multiple
+              hidden
+              @change="onFiles"
+            />
+            <button
+              class="btn ghost"
+              type="button"
+              :disabled="s.attachmentsLocked.value"
+              @click="fileInput?.click()"
+            >
+              <Icon name="upload" :size="14" /> 添加参考
+            </button>
+            <button
+              class="btn ghost"
+              type="button"
+              :disabled="s.attachmentsLocked.value"
+              @click="showPicker = true"
+            >
+              <Icon name="arrange" :size="14" /> 从素材选取
+            </button>
+            <button
+              v-if="s.first.state.ticket"
+              class="btn ghost"
+              type="button"
+              :disabled="s.first.busy.value"
+              @click="abandonLocal"
+            >
+              放弃本地草稿
+            </button>
           </div>
           <button
             class="cta"
@@ -346,19 +500,28 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
 
         <details class="notes">
           <summary><Icon name="alert" :size="12" /> 费用与立项说明</summary>
-          <p>参考仅保存在本地托盘，点击「生成方案」后才上传；上传中本批输入会锁定。</p>
-          <p>上传不计模型费用；规划及参考视频解析可能计费。确认方案前不生成媒体、不立项；点「开始制作」才转为正式项目。</p>
+          <p>
+            参考仅保存在本地托盘，点击「生成方案」后才上传；上传中本批输入会锁定。
+          </p>
+          <p>
+            上传不计模型费用；规划及参考视频解析可能计费。确认方案前不生成媒体、不立项；点「开始制作」才转为正式项目。
+          </p>
         </details>
       </div>
 
-      <p v-if="s.first.state.warning" class="muted" role="status">{{ s.first.state.warning }}</p>
-      <div v-if="s.state.error" class="err-text" role="alert">{{ s.state.error }}</div>
+      <p v-if="s.first.state.warning" class="muted" role="status">
+        {{ s.first.state.warning }}
+      </p>
+      <div v-if="s.state.error" class="err-text" role="alert">
+        {{ s.state.error }}
+      </div>
 
       <!-- 创意→模板推荐提示（零成本 embedding，仅展示不预选不自动路由） -->
       <div v-if="ideaRec" class="idea-rec" role="status">
         <Icon name="sparkles" :size="13" />
         <span>
-          此创意接近模板「<b>{{ ideaRec.name }}</b>」（score
+          此创意接近模板「<b>{{ ideaRec.name }}</b
+          >」（score
           {{ ideaRec.score.toFixed(2) }}）——仅供参考，不会自动选用该模板。
         </span>
       </div>
@@ -474,7 +637,11 @@ async function removeItem(c: CreationSessionListItem): Promise<void> {
         <Icon name="alert" :size="13" /> {{ delError }}
       </div>
     </section>
-    <AssetPickerModal v-if="showPicker" @close="showPicker = false" @pick="onPickAssets" />
+    <AssetPickerModal
+      v-if="showPicker"
+      @close="showPicker = false"
+      @pick="onPickAssets"
+    />
   </div>
 </template>
 

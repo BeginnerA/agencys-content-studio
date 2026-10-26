@@ -289,7 +289,7 @@ async function main(): Promise<void> {
       check(!!r1.report.mode && r1.report.mode.from === 'dynamic' && r1.report.mode.to === 'slideshow', 'report.mode 记录降级明细')
       check(r1.report.changed === true && r1.report.notes.some((n) => n.includes('slideshow')), 'report.notes 含人类可读降级说明（不静默）')
       // 原对象不被就地修改（shots 深拷贝）
-      check(basePlan().shots[1] && (basePlan() as never as { shots: Array<{ duration: number }> }).shots[1]!.duration === 20, '原 plan 对象不被就地修改（返回新对象）')
+      check((basePlan() as unknown as { shots: Array<{ duration: number }> }).shots[1]!.duration === 20, '原 plan 对象不被就地修改（返回新对象）')
 
       // ② 有 caps（durations 4/6/10/15、aspectRatios 9:16）→ shot 20 就近上取 15；duration 重算
       const caps = {

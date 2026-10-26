@@ -47,7 +47,9 @@ function seedStr(f: ExtraField): string {
     case 'url-list':
       return Array.isArray(raw) ? raw.join('\n') : String(raw)
     case 'json':
-      return typeof raw === 'object' ? JSON.stringify(raw, null, 2) : String(raw)
+      return typeof raw === 'object'
+        ? JSON.stringify(raw, null, 2)
+        : String(raw)
     default:
       return String(raw)
   }
@@ -69,7 +71,10 @@ function reseed(): void {
         b[f.key] = typeof raw === 'boolean' ? raw : !!raw
       }
     } else {
-      s[f.key] = dirty && f.key in strVals.value ? (strVals.value[f.key] ?? '') : seedStr(f)
+      s[f.key] =
+        dirty && f.key in strVals.value
+          ? (strVals.value[f.key] ?? '')
+          : seedStr(f)
     }
     if (f.key in src) keys.add(f.key)
   }
@@ -83,21 +88,33 @@ function reseed(): void {
 function selectOptions(f: ExtraField): { value: string; label: string }[] {
   const opts = f.options ?? []
   const cur = String(strVals.value[f.key] ?? '').trim()
-  if (cur && !opts.some((o) => o.value === cur)) return [...opts, { value: cur, label: `${cur}（当前值）` }]
+  if (cur && !opts.some((o) => o.value === cur))
+    return [...opts, { value: cur, label: `${cur}（当前值）` }]
   return opts
 }
 
-watch(() => [props.fields, props.initial], reseed, { immediate: true, deep: true })
+watch(() => [props.fields, props.initial], reseed, {
+  immediate: true,
+  deep: true,
+})
 
 const managedKeys = computed(() => props.fields.map((f) => f.key))
 
-function fail(msg: string): { ok: false; values: Record<string, unknown>; error: string } {
+function fail(msg: string): {
+  ok: false
+  values: Record<string, unknown>
+  error: string
+} {
   err.value = msg
   return { ok: false, values: {}, error: msg }
 }
 
 /** 组装并校验：产出表单托管的已知 key（空值省略、类型归一、必填/JSON 校验） */
-function buildExtra(): { ok: boolean; values: Record<string, unknown>; error?: string } {
+function buildExtra(): {
+  ok: boolean
+  values: Record<string, unknown>
+  error?: string
+} {
   err.value = ''
   const out: Record<string, unknown> = {}
   for (const f of props.fields) {
@@ -118,7 +135,10 @@ function buildExtra(): { ok: boolean; values: Record<string, unknown>; error?: s
       continue
     }
     if (f.type === 'url-list') {
-      const lines = s.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+      const lines = s
+        .split(/\r?\n/)
+        .map((x) => x.trim())
+        .filter(Boolean)
       if (lines.length) out[f.key] = lines
       continue
     }
@@ -126,7 +146,8 @@ function buildExtra(): { ok: boolean; values: Record<string, unknown>; error?: s
       if (!s) continue
       try {
         const parsed = JSON.parse(s) as unknown
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail(`「${f.label}」需为 JSON 对象`)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+          return fail(`「${f.label}」需为 JSON 对象`)
         out[f.key] = parsed
       } catch {
         return fail(`「${f.label}」JSON 语法错误：请检查双引号与括号配对`)
@@ -153,13 +174,19 @@ defineExpose({ buildExtra, managedKeys })
     <div v-for="f in fields" :key="f.key" class="xfld">
       <!-- 开关 -->
       <label v-if="f.type === 'boolean'" class="xcheck">
-        <input v-model="boolVals[f.key]" type="checkbox" @change="markDirty(f.key)" />
+        <input
+          v-model="boolVals[f.key]"
+          type="checkbox"
+          @change="markDirty(f.key)"
+        />
         <span>{{ f.label }}</span>
       </label>
 
       <!-- 可选可输（allowCustom）：候选为核实常用款，仍可手输目录外当前/克隆值（如火山 speaker 数百款 + S_ 克隆） -->
       <label v-else-if="f.type === 'select' && f.allowCustom" class="xin">
-        <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
+        <span class="xlab"
+          >{{ f.label }}<em v-if="f.required" class="req">必填</em></span
+        >
         <input
           v-model="strVals[f.key]"
           type="text"
@@ -168,35 +195,61 @@ defineExpose({ buildExtra, managedKeys })
           @input="markDirty(f.key)"
         />
         <datalist :id="`xd-${f.key}`">
-          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">{{ o.label }}</option>
+          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
         </datalist>
       </label>
 
       <!-- 下拉 -->
       <label v-else-if="f.type === 'select'" class="xin">
-        <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
+        <span class="xlab"
+          >{{ f.label }}<em v-if="f.required" class="req">必填</em></span
+        >
         <select v-model="strVals[f.key]" @change="markDirty(f.key)">
           <option value="">—— 使用默认 ——</option>
-          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">{{ o.label }}</option>
+          <option v-for="o in selectOptions(f)" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
         </select>
       </label>
 
       <!-- 多行 URL -->
       <label v-else-if="f.type === 'url-list'" class="xin">
         <span class="xlab">{{ f.label }}</span>
-        <textarea v-model="strVals[f.key]" rows="2" spellcheck="false" placeholder="每行一个 URL" @input="markDirty(f.key)"></textarea>
+        <textarea
+          v-model="strVals[f.key]"
+          rows="2"
+          spellcheck="false"
+          placeholder="每行一个 URL"
+          @input="markDirty(f.key)"
+        ></textarea>
       </label>
 
       <!-- JSON -->
       <label v-else-if="f.type === 'json'" class="xin">
         <span class="xlab">{{ f.label }}</span>
-        <textarea v-model="strVals[f.key]" class="code" rows="2" spellcheck="false" :placeholder="f.placeholder || '{}'" @input="markDirty(f.key)"></textarea>
+        <textarea
+          v-model="strVals[f.key]"
+          class="code"
+          rows="2"
+          spellcheck="false"
+          :placeholder="f.placeholder || '{}'"
+          @input="markDirty(f.key)"
+        ></textarea>
       </label>
 
       <!-- 数字 / 文本 -->
       <label v-else class="xin">
-        <span class="xlab">{{ f.label }}<em v-if="f.required" class="req">必填</em></span>
-        <input v-model="strVals[f.key]" :type="f.type === 'number' ? 'number' : 'text'" :placeholder="f.placeholder || ''" @input="markDirty(f.key)" />
+        <span class="xlab"
+          >{{ f.label }}<em v-if="f.required" class="req">必填</em></span
+        >
+        <input
+          v-model="strVals[f.key]"
+          :type="f.type === 'number' ? 'number' : 'text'"
+          :placeholder="f.placeholder || ''"
+          @input="markDirty(f.key)"
+        />
       </label>
 
       <span v-if="f.help" class="note">{{ f.help }}</span>

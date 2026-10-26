@@ -33,8 +33,12 @@ export const runApi = {
     projectId: number,
     body: { template_key: string; input: Record<string, unknown> },
   ) => api.post<{ run: Run }>(`/api/v1/projects/${projectId}/runs`, body),
+  /**
+   * 闸门决策（approve|reject|skip）。服务端与 cancel/resume 同构，只回 `{run}`（无 steps）——
+   * 决策后步骤/会话反查等完整视图由调用方 `runApi.detail()` 重载，勿把返回值当 RunDetail 用。
+   */
   gate: (id: number, body: Record<string, unknown>) =>
-    api.post<RunDetail>(`/api/v1/runs/${id}/gate`, body),
+    api.post<{ run: Run }>(`/api/v1/runs/${id}/gate`, body),
   cancel: (id: number) => api.post<{ run: Run }>(`/api/v1/runs/${id}/cancel`),
   /** 删除运行记录（仅终态；产物资产与成本记录保留，级联删步骤/子任务） */
   remove: (id: number) =>

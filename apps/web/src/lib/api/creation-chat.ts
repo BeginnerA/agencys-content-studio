@@ -43,17 +43,33 @@ export interface CreationPresetSelection {
   characterPresetIds?: number[]
 }
 /** 仅在非空时携带对应键（缺省不下发 → 请求体与旧版逐字一致） */
-function presetBody(presets?: CreationPresetSelection): Record<string, number[]> {
+function presetBody(
+  presets?: CreationPresetSelection,
+): Record<string, number[]> {
   return {
-    ...(presets?.stylePresetIds?.length ? { stylePresetIds: presets.stylePresetIds } : {}),
-    ...(presets?.characterPresetIds?.length ? { characterPresetIds: presets.characterPresetIds } : {}),
+    ...(presets?.stylePresetIds?.length
+      ? { stylePresetIds: presets.stylePresetIds }
+      : {}),
+    ...(presets?.characterPresetIds?.length
+      ? { characterPresetIds: presets.characterPresetIds }
+      : {}),
   }
 }
 
 export const creationChatApi = {
   list: () => api.get<Items<CreationSessionListItem>>(BASE),
-  create: (content: string, requestKey: string, deferPlanning = false, presets?: CreationPresetSelection) =>
-    api.post<CreationDetail>(BASE, { content, requestKey, ...(deferPlanning ? { deferPlanning: true } : {}), ...presetBody(presets) }),
+  create: (
+    content: string,
+    requestKey: string,
+    deferPlanning = false,
+    presets?: CreationPresetSelection,
+  ) =>
+    api.post<CreationDetail>(BASE, {
+      content,
+      requestKey,
+      ...(deferPlanning ? { deferPlanning: true } : {}),
+      ...presetBody(presets),
+    }),
   detail: (id: number) => api.get<CreationDetail>(`${BASE}/${id}`),
   send: (
     id: number,
@@ -71,7 +87,10 @@ export const creationChatApi = {
   preflight: (id: number) =>
     api.post<CreationDetail>(`${BASE}/${id}/preflight`),
   confirm: (id: number, body: CreationConfirmBody | CreationRouteConfirmBody) =>
-    api.post<{ runId: number; workflowId?: number }>(`${BASE}/${id}/confirm`, body),
+    api.post<{ runId: number; workflowId?: number }>(
+      `${BASE}/${id}/confirm`,
+      body,
+    ),
   cancel: (id: number) => api.post<CreationDetail>(`${BASE}/${id}/cancel`),
   /** chain 段间批准续跑（M64 G1）：启动下一段（预算/输入/幂等与自动级联同源），回 202 + 最新快照 */
   advanceChain: (id: number, body: { idempotencyKey: string }) =>
@@ -90,8 +109,10 @@ export const creationChatApi = {
   selectShots: (id: number, body: CreationSelectionBody) =>
     api.post<CreationDetail>(`${BASE}/${id}/selection`, body),
   /** 本地重新合成：仅重置合成步（不调用付费模型），回 202 + 最新快照；可选 subtitleBurn 逐次改写字幕烧录 */
-  recompose: (id: number, body: { idempotencyKey: string; subtitleBurn?: boolean }) =>
-    api.post<CreationDetail>(`${BASE}/${id}/recompose`, body),
+  recompose: (
+    id: number,
+    body: { idempotencyKey: string; subtitleBurn?: boolean },
+  ) => api.post<CreationDetail>(`${BASE}/${id}/recompose`, body),
   /** 返修第一步 · 解析指令：只调用一次文本模型（小额费用），零媒体计费，不启动任何生成 */
   reworkPlan: (id: number, body: { instruction: string; requestKey: string }) =>
     api.post<CreationReworkPlanResult>(`${BASE}/${id}/rework/plan`, body),
@@ -137,10 +158,10 @@ export const creationChatApi = {
   },
   /** 从素材选取：存量资产登记为参考（跨项目由服务端自动复制进会话项目）；与上传同规则、不计费 */
   attachAsset: (id: number, assetId: number, role?: CreationRefRole) =>
-    api.post<CreationAttachmentResult>(
-      `${BASE}/${id}/attachments/from-asset`,
-      { assetId, ...(role ? { role } : {}) },
-    ),
+    api.post<CreationAttachmentResult>(`${BASE}/${id}/attachments/from-asset`, {
+      assetId,
+      ...(role ? { role } : {}),
+    }),
   /** 参考绑定（用途 + 逐镜）：双写 payload + plan.refs，hash 变则需重新确认；零 LLM、零计费 */
   bindRef: (id: number, assetId: number, body: CreationRefBindBody) =>
     api.patch<CreationDetail>(`${BASE}/${id}/attachments/${assetId}/ref`, body),

@@ -457,9 +457,13 @@ export function useSettingsPage() {
     const p = providers.value.find((pp) => pp.key === prov)
     if (p)
       return (
-        { llm: 'llm', image: 'image', video: 'video', audio: 'tts', music: 'music' }[
-          p.serviceType
-        ] ?? 'llm'
+        {
+          llm: 'llm',
+          image: 'image',
+          video: 'video',
+          audio: 'tts',
+          music: 'music',
+        }[p.serviceType] ?? 'llm'
       )
     if (prov.endsWith('_image')) return 'image'
     if (prov.endsWith('_video')) return 'video'

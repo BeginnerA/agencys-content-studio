@@ -32,7 +32,9 @@ const emit = defineEmits<{ done: []; close: [] }>()
 const isEdit = computed(() => !!props.project)
 const templates = ref<TemplateMeta[]>([])
 // 下拉选项只列可手动启动的模板（剔除 conversationOnly）；templates 仍存全量供反查名字/回填
-const tplGroups = computed(() => groupTemplates(filterSelectable(templates.value)))
+const tplGroups = computed(() =>
+  groupTemplates(filterSelectable(templates.value)),
+)
 // 当前绑定项为轻松创作专用（不在选项内）→ 单列一条如实标注的选项，避免被误标「已失效」
 const boundConversationTpl = computed(() =>
   templates.value.find((t) => t.key === tplKey.value && t.conversationOnly),
@@ -236,10 +238,7 @@ async function submit() {
         <option v-if="tplMissing" :value="tplKey">
           {{ tplKey }}（已失效）
         </option>
-        <option
-          v-if="boundConversationTpl"
-          :value="boundConversationTpl.key"
-        >
+        <option v-if="boundConversationTpl" :value="boundConversationTpl.key">
           {{ boundConversationTpl.name }}（轻松创作专用·由对话页管理）
         </option>
         <optgroup v-for="g in tplGroups" :key="g.key" :label="g.label">

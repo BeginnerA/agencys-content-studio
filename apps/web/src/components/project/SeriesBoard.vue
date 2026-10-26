@@ -70,7 +70,10 @@ const monoAssetId = ref<number | null>(null)
 
 async function loadMonetization() {
   try {
-    const r = await projectApi.assets(props.projectId, '?kind=text&purpose=monetization&limit=1')
+    const r = await projectApi.assets(
+      props.projectId,
+      '?kind=text&purpose=monetization&limit=1',
+    )
     const a = r.items[0]
     if (!a) {
       mono.value = null
@@ -84,7 +87,8 @@ async function loadMonetization() {
       return
     }
     const doc = (await res.json()) as MonetizationDoc
-    mono.value = Array.isArray(doc.episodes) && doc.episodes.length > 0 ? doc : null
+    mono.value =
+      Array.isArray(doc.episodes) && doc.episodes.length > 0 ? doc : null
   } catch {
     mono.value = null // 展示面非致命：读取/解析失败折叠卡隐藏，不打扰主流程
   }
@@ -255,25 +259,59 @@ async function doRemoveEpisode(e: Episode) {
 
     <!-- 商业结构折叠卡：仅在立项产出过「商业结构设计.json」时出现 -->
     <div v-if="mono" class="mono-card">
-      <button class="mono-head" :aria-expanded="monoOpen" @click="monoOpen = !monoOpen">
-        <Icon :name="monoOpen ? 'chevron-down' : 'chevron-right'" :size="12" :stroke-width="2.2" />
-        <span class="mono-title">商业结构 · {{ mono.episodes.length }} 集钩子/悬念链</span>
-        <span v-if="mono.free_episode_range && mono.free_episode_range.length >= 2" class="muted mono-free">
-          建议免费：第 {{ mono.free_episode_range[0] }}–{{ mono.free_episode_range[1] }} 集
+      <button
+        class="mono-head"
+        :aria-expanded="monoOpen"
+        @click="monoOpen = !monoOpen"
+      >
+        <Icon
+          :name="monoOpen ? 'chevron-down' : 'chevron-right'"
+          :size="12"
+          :stroke-width="2.2"
+        />
+        <span class="mono-title"
+          >商业结构 · {{ mono.episodes.length }} 集钩子/悬念链</span
+        >
+        <span
+          v-if="mono.free_episode_range && mono.free_episode_range.length >= 2"
+          class="muted mono-free"
+        >
+          建议免费：第 {{ mono.free_episode_range[0] }}–{{
+            mono.free_episode_range[1]
+          }}
+          集
         </span>
-        <span class="muted mono-cap">卡点为剧情设计思路，付费由发布平台决定</span>
+        <span class="muted mono-cap"
+          >卡点为剧情设计思路，付费由发布平台决定</span
+        >
       </button>
       <div v-if="monoOpen" class="mono-body">
-        <p v-if="mono.positioning_rationale" class="mono-why">{{ mono.positioning_rationale }}</p>
+        <p v-if="mono.positioning_rationale" class="mono-why">
+          {{ mono.positioning_rationale }}
+        </p>
         <div v-for="e in mono.episodes" :key="e.ep" class="mono-row">
           <span class="mono-ep mono">{{ String(e.ep).padStart(2, '0') }}</span>
           <span class="mono-hooks">
-            <span v-if="e.opening_hook" class="mono-hook">钩：{{ e.opening_hook }}</span>
+            <span v-if="e.opening_hook" class="mono-hook"
+              >钩：{{ e.opening_hook }}</span
+            >
             <span class="mono-cliff">悬念：{{ e.ending_cliffhanger }}</span>
-            <span v-if="e.paywall_note" class="muted">卡点理由：{{ e.paywall_note }}</span>
+            <span v-if="e.paywall_note" class="muted"
+              >卡点理由：{{ e.paywall_note }}</span
+            >
           </span>
-          <span v-if="e.paywall_candidate" class="badge running" title="此集结尾适合作为卡点（剧情设计建议）">卡点</span>
-          <RouterLink v-if="monoAssetId" class="muted mono-link" :to="`/projects/${props.projectId}?tab=assets`">资产</RouterLink>
+          <span
+            v-if="e.paywall_candidate"
+            class="badge running"
+            title="此集结尾适合作为卡点（剧情设计建议）"
+            >卡点</span
+          >
+          <RouterLink
+            v-if="monoAssetId"
+            class="muted mono-link"
+            :to="`/projects/${props.projectId}?tab=assets`"
+            >资产</RouterLink
+          >
         </div>
       </div>
     </div>

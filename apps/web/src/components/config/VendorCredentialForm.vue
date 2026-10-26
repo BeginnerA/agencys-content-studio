@@ -31,8 +31,12 @@ watch(
 )
 
 async function submit() {
-  if (isCreate.value && !/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(vendor.value.trim())) {
-    err.value = '厂商标识必填：字母/数字/下划线/连字符，1–32 位（如 my-gateway）'
+  if (
+    isCreate.value &&
+    !/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(vendor.value.trim())
+  ) {
+    err.value =
+      '厂商标识必填：字母/数字/下划线/连字符，1–32 位（如 my-gateway）'
     return
   }
   if (!name.value.trim()) {
@@ -74,9 +78,7 @@ async function submit() {
     <label v-if="isCreate" class="fld">
       厂商标识（vendor）
       <input v-model="vendor" type="text" placeholder="如：my-gateway" />
-      <span class="note"
-        >唯一标识，建后不可改；与内置厂商重名将合并为一条</span
-      >
+      <span class="note">唯一标识，建后不可改；与内置厂商重名将合并为一条</span>
     </label>
     <label class="fld">
       显示名

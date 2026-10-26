@@ -120,6 +120,9 @@ export async function run(ctx: M16Ctx): Promise<void> {
     videoAssetIds: [],
     audioAssetIds: [],
     textInputs: [],
+    promptSource: null,
+    textSources: [],
+    entitySources: [],
     problems: [],
     notes: [],
   }

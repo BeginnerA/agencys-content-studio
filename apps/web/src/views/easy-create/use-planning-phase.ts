@@ -19,7 +19,8 @@ const PHASE_LABELS: Record<
 
 export function usePlanningPhase(
   planning: () => boolean,
-  sessionPlanning: () => { phase: keyof typeof PHASE_LABELS; elapsedSec: number } | null | undefined,
+  sessionPlanning: () =>
+    { phase: keyof typeof PHASE_LABELS; elapsedSec: number } | null | undefined,
 ) {
   const localPlanSec = ref(0)
   let planTimer: ReturnType<typeof setInterval> | null = null

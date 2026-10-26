@@ -146,7 +146,6 @@ const {
   introFile,
   outroFile,
 })
-
 </script>
 
 <template>

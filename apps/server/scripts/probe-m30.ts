@@ -51,7 +51,8 @@ async function main(): Promise<void> {
   }
   const codeOf = async (fn: () => Promise<unknown>): Promise<string> => {
     const e = await errOf(fn)
-    return e && typeof (e as { code?: unknown }).code === 'string' ? (e as { code: string }).code : e ? 'other' : 'none'
+    const code = (e as (Error & { code?: unknown }) | null)?.code
+    return typeof code === 'string' ? code : e ? 'other' : 'none'
   }
 
   // ---- 共用建项目助手 ----
@@ -311,8 +312,8 @@ async function main(): Promise<void> {
       try {
         // ---- 动态：真实合成可播放 MP4，镜头数一致、旁白完整、字幕不越界 ----
         const dyn = await runWithMedia('dynamic')
-        const dynSrt = await runSubtitle(dyn.run, dyn.voices, dyn.recipe.sources[1].id)
-        const dynFinal = await runMerge(dyn.run, 'dynamic', dyn.voices, dyn.shots, dynSrt, dyn.recipe.sources[2].id)
+        const dynSrt = await runSubtitle(dyn.run, dyn.voices, dyn.recipe.sources[1]!.id)
+        const dynFinal = await runMerge(dyn.run, 'dynamic', dyn.voices, dyn.shots, dynSrt, dyn.recipe.sources[2]!.id)
         const dynAsset = (await db.select().from(assets).where(eq(assets.id, dynFinal)))[0]!
         check(dynAsset.purpose === 'final_video' && dynAsset.kind === 'video', '动态路径产出成片视频资产')
         const { absPathOf } = await import('../src/services/storage')
@@ -323,24 +324,24 @@ async function main(): Promise<void> {
 
         // ---- 图文：静态画面 + 旁白字幕 → 可播放 MP4 ----
         const sl = await runWithMedia('slideshow')
-        const slSrt = await runSubtitle(sl.run, sl.voices, sl.recipe.sources[1].id)
-        const slFinal = await runMerge(sl.run, 'slideshow', sl.voices, sl.shots, slSrt, sl.recipe.sources[2].id)
+        const slSrt = await runSubtitle(sl.run, sl.voices, sl.recipe.sources[1]!.id)
+        const slFinal = await runMerge(sl.run, 'slideshow', sl.voices, sl.shots, slSrt, sl.recipe.sources[2]!.id)
         const slAsset = (await db.select().from(assets).where(eq(assets.id, slFinal)))[0]!
         check(slAsset.purpose === 'final_video' && Math.abs((probeMediaDuration(absPathOf(slAsset.relPath!)) ?? 0) - 30) <= 0.15, '图文成片可播放且时长≈30s（镜头数量与方案一致）')
 
         // ---- 负例：缺镜 / 损坏 / 时长不足 / 错台词映射，均不得报成功 ----
-        const missErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, dyn.shots.slice(0, 2), dynSrt, dyn.recipe.sources[2].id))
+        const missErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, dyn.shots.slice(0, 2), dynSrt, dyn.recipe.sources[2]!.id))
         check(!!missErr && missErr.message.includes('缺镜'), '缺少镜头 → 严格合成拒绝（不走旧宽容跳过后仍报成功）')
         const corruptId = await (async () => {
           const { ensureProjectDirs, relPathOf, absPathOf: abs, registerAsset: reg } = await import('../src/services/storage')
           ensureProjectDirs(dyn.run.projectId); const rel = relPathOf(dyn.run.projectId, 'shot_video', `corrupt-${Date.now()}.mp4`); writeFileSync(abs(rel), 'not-a-real-mp4'); const a = await reg(dyn.run.projectId, { name: 'corrupt.mp4', kind: 'video', purpose: 'shot_video', relPath: rel, ext: 'mp4', runId: dyn.run.id, params: { shotId: 's1' } }); return a.id
         })()
-        const corruptErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, [corruptId, dyn.shots[1]!, dyn.shots[2]!], dynSrt, dyn.recipe.sources[2].id))
+        const corruptErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, [corruptId, dyn.shots[1]!, dyn.shots[2]!], dynSrt, dyn.recipe.sources[2]!.id))
         check(!!corruptErr && /损坏|解码/.test(corruptErr.message), '损坏媒体镜头 → 严格合成拒绝')
         const shortId = await genMedia(dyn.run.projectId, 'video', 'short', 9, dyn.run.id, { shotId: 's1' })
-        const shortErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, [shortId, dyn.shots[1]!, dyn.shots[2]!], dynSrt, dyn.recipe.sources[2].id))
+        const shortErr = await errOf(() => runMerge(dyn.run, 'dynamic', dyn.voices, [shortId, dyn.shots[1]!, dyn.shots[2]!], dynSrt, dyn.recipe.sources[2]!.id))
         check(!!shortErr && shortErr.message.includes('时长不足'), '镜头时长不足（超 0.5s 尾帧容差）→ 拒绝')
-        const mapErr = await errOf(() => runSubtitle(dyn.run, [dyn.voices[1]!, dyn.voices[0]!, dyn.voices[2]!], dyn.recipe.sources[1].id))
+        const mapErr = await errOf(() => runSubtitle(dyn.run, [dyn.voices[1]!, dyn.voices[0]!, dyn.voices[2]!], dyn.recipe.sources[1]!.id))
         check(!!mapErr && /映射|归属/.test(mapErr.message), '配音台词错映射 → 严格字幕拒绝')
 
         // ---- strict 关闭：旧合成参数序列不引入 trim/tpad、保留转场（零漂移红线）----
@@ -403,10 +404,10 @@ async function main(): Promise<void> {
         const rr = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)))[0]!
         const rc = (await import('../src/services/creation-chat/recipe')).recipeOf(rr)!
         const otherPid = await mkProject('m30-rec-foreign')
-        await db.update(assets).set({ projectId: otherPid }).where(eq(assets.id, rc.sources[0].id))
+        await db.update(assets).set({ projectId: otherPid }).where(eq(assets.id, rc.sources[0]!.id))
         const crossErr = await errOf(() => assertRecipeSources(rr, rc))
         check(!!crossErr && /不属于本项目|被修改|不存在/.test(crossErr.message), '批准素材被移出本项目 → 执行前来源核验拒绝（不静默消费）')
-        await db.update(assets).set({ projectId: sPid }).where(eq(assets.id, rc.sources[0].id))
+        await db.update(assets).set({ projectId: sPid }).where(eq(assets.id, rc.sources[0]!.id))
       } finally {
         engine.engine.startRun = origStart as typeof engine.engine.startRun
       }

@@ -81,7 +81,8 @@ function onPricingSuggest(p: {
   pricingSummaryHit.value = p.hit
   pricingSource.value = p.source
   suggestDefault.value = p.suggestDefault
-  if (p.suggestDefault && !props.config && !defaultTouched.value) isDefault.value = true
+  if (p.suggestDefault && !props.config && !defaultTouched.value)
+    isDefault.value = true
 }
 /** 主区只读摘要文案（不需用户配定价） */
 const pricingSummaryText = computed(() => {
@@ -119,7 +120,8 @@ const selectedEntry = computed(
 const livePricing = computed(() => selectedEntry.value?.pricing ?? null)
 /** 自动生成实例名（供应商·模型） */
 const autoName = computed(
-  () => `${props.provider.name}${model.value.trim() ? `·${model.value.trim()}` : ''}`,
+  () =>
+    `${props.provider.name}${model.value.trim() ? `·${model.value.trim()}` : ''}`,
 )
 watch(model, () => {
   if (!props.config && !nameTouched.value) name.value = autoName.value
@@ -143,12 +145,15 @@ watch(
     credentialId.value = c?.credentialId ?? null
     apiKey.value = ''
     modelOptions.value = props.provider.presetModels ?? []
-    modelEntries.value = (props.provider.presetModels ?? []).map((id) => ({ id }))
+    modelEntries.value = (props.provider.presetModels ?? []).map((id) => ({
+      id,
+    }))
     fetchNote.value = ''
     fetchNoteWarn.value = false
     fetchBusy.value = false
     // 扩展参数回显：已知 key 交结构化编辑器、creationCapabilities 交 VideoCapsEditor、其余留 JSON 框
-    currentExtra.value = c?.extra && typeof c.extra === 'object' ? { ...c.extra } : {}
+    currentExtra.value =
+      c?.extra && typeof c.extra === 'object' ? { ...c.extra } : {}
     applyEcho()
     // 定价回显（ 交子组件 PricingSuggest：有存量则尊重、否则按平台参考价自动预填）
     pricingInitial.value =
@@ -196,7 +201,11 @@ let extraSchemaSeq = 0
 async function loadExtraSchema(): Promise<void> {
   const seq = ++extraSchemaSeq
   try {
-    const res = await configApi.extraSchema(props.provider.key, props.provider.serviceType, model.value.trim())
+    const res = await configApi.extraSchema(
+      props.provider.key,
+      props.provider.serviceType,
+      model.value.trim(),
+    )
     if (seq !== extraSchemaSeq) return
     extraFields.value = res.fields ?? []
   } catch {
@@ -350,7 +359,8 @@ async function submit() {
         </option>
       </select>
       <span class="note"
-        >选择后无需每次填写 API Key，Key 在「密钥保管」页签统一管理（可自由添加厂商/网关条目）</span
+        >选择后无需每次填写 API Key，Key
+        在「密钥保管」页签统一管理（可自由添加厂商/网关条目）</span
       >
     </div>
 

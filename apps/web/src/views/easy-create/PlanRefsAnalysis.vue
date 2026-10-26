@@ -12,7 +12,9 @@ defineProps<{ entries: CreationRefsAnalysisEntry[] }>()
 
 const open = ref<number[]>([])
 const toggle = (i: number): void => {
-  open.value = open.value.includes(i) ? open.value.filter((x) => x !== i) : [...open.value, i]
+  open.value = open.value.includes(i)
+    ? open.value.filter((x) => x !== i)
+    : [...open.value, i]
 }
 </script>
 
@@ -24,10 +26,22 @@ const toggle = (i: number): void => {
       >
     </div>
     <div v-for="(e, i) in entries" :key="e.assetId" class="ra-item">
-      <button class="ra-head" type="button" :aria-expanded="open.includes(i)" @click="toggle(i)">
-        <Icon :name="open.includes(i) ? 'chevron-down' : 'chevron-right'" :size="13" />
+      <button
+        class="ra-head"
+        type="button"
+        :aria-expanded="open.includes(i)"
+        @click="toggle(i)"
+      >
+        <Icon
+          :name="open.includes(i) ? 'chevron-down' : 'chevron-right'"
+          :size="13"
+        />
         <span class="ra-name">{{ e.name }}</span>
-        <span class="ra-meta muted">{{ e.duration.toFixed(1) }}s · {{ e.scenes.length }} 段场景{{ e.transcribed ? ' · 含人声转写' : '' }}</span>
+        <span class="ra-meta muted"
+          >{{ e.duration.toFixed(1) }}s · {{ e.scenes.length }} 段场景{{
+            e.transcribed ? ' · 含人声转写' : ''
+          }}</span
+        >
       </button>
       <div v-if="open.includes(i)" class="ra-body">
         <ol class="ra-scenes">
@@ -37,7 +51,8 @@ const toggle = (i: number): void => {
           </li>
         </ol>
         <p v-if="e.truncated?.scenes" class="ra-trunc muted">
-          <Icon name="alert" :size="11" /> 场景超出展示上限，已截断（完整反推请走专业端）
+          <Icon name="alert" :size="11" />
+          场景超出展示上限，已截断（完整反推请走专业端）
         </p>
         <div v-if="e.transcript" class="ra-say">
           <div class="ra-say-h">可听内容（转写）</div>

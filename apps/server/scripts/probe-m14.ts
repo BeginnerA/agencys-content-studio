@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   }
 
   // HTTP POST /runs 会触发 engine 真跑流水线 → 实例属性覆盖为 no-op（只验创建链路/快照/联动回写）
-  engine.startRun = () => {}
+  engine.startRun = () => 'deferred'
 
   const log = createLogger('probe-m14')
   let failed = 0

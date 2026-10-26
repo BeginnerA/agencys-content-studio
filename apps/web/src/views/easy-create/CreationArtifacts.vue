@@ -80,9 +80,19 @@ const {
         <label
           v-if="hasFilm"
           class="ec-art-sub"
-          :title="subBurn ? '成片烧录硬字幕；取消后下次重新合成成片不含字幕' : '已关闭：重新合成后成片不含字幕（字幕文件仍生成可下载）'"
+          :title="
+            subBurn
+              ? '成片烧录硬字幕；取消后下次重新合成成片不含字幕'
+              : '已关闭：重新合成后成片不含字幕（字幕文件仍生成可下载）'
+          "
         >
-          <input type="checkbox" :checked="subBurn" :disabled="s.state.busyAction" aria-label="在成片烧录字幕" @change="subBurn = ($event.target as HTMLInputElement).checked" />
+          <input
+            type="checkbox"
+            :checked="subBurn"
+            :disabled="s.state.busyAction"
+            aria-label="在成片烧录字幕"
+            @change="subBurn = ($event.target as HTMLInputElement).checked"
+          />
           <span><Icon name="doc" :size="13" /> 成片字幕</span>
         </label>
         <!-- 字幕精确返修：与其他三入口同一编辑器与确认流（本地修订、零模型计费） -->

@@ -40,12 +40,17 @@ interface ReworkErrorBody {
   request_id?: string
 }
 
-async function reworkRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function reworkRequest<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
   let res: Response
   try {
     res = await fetch(path, {
       method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      headers:
+        body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
@@ -81,22 +86,38 @@ export const subtitleReworkApi = {
     ),
 
   /** 结构化预览：同 requestKey 同签名幂等回放；blocked 抛 ReworkApiError（含 errors[]） */
-  preview: (runId: number, requestKey: string, changes: SubtitleChangeView[], stepKey?: string) =>
-    reworkRequest<PreviewResponseView>('POST', `${V}/runs/${runId}/rework/preview`, {
-      request_key: requestKey,
-      ...(stepKey ? { step_key: stepKey } : {}),
-      changes,
-    }),
+  preview: (
+    runId: number,
+    requestKey: string,
+    changes: SubtitleChangeView[],
+    stepKey?: string,
+  ) =>
+    reworkRequest<PreviewResponseView>(
+      'POST',
+      `${V}/runs/${runId}/rework/preview`,
+      {
+        request_key: requestKey,
+        ...(stepKey ? { step_key: stepKey } : {}),
+        changes,
+      },
+    ),
 
   /** 请求回放视图（刷新/响应丢失后恢复现场） */
   getRequest: (runId: number, requestId: string) =>
-    reworkRequest<ReworkRequestView>('GET', `${V}/runs/${runId}/rework/${requestId}`),
+    reworkRequest<ReworkRequestView>(
+      'GET',
+      `${V}/runs/${runId}/rework/${requestId}`,
+    ),
 
   /** 原子确认：逐字回传 previewHash；冲突抛 ReworkApiError（409 族） */
   apply: (runId: number, requestId: string, previewHash: string) =>
-    reworkRequest<ApplyResponseView>('POST', `${V}/runs/${runId}/rework/${requestId}/apply`, {
-      preview_hash: previewHash,
-    }),
+    reworkRequest<ApplyResponseView>(
+      'POST',
+      `${V}/runs/${runId}/rework/${requestId}/apply`,
+      {
+        preview_hash: previewHash,
+      },
+    ),
 }
 
 // 合成输入本地返修 API（切片2）：与 routes/rework.ts compose-input 端点对齐；复用同款带
@@ -110,16 +131,29 @@ export const composeInputReworkApi = {
     ),
 
   /** 结构化预览：同 requestKey 同签名幂等回放；blocked 抛 ReworkApiError */
-  preview: (runId: number, requestKey: string, changes: ComposeInputChangeView[], stepKey?: string) =>
-    reworkRequest<ComposeInputPreviewResponse>('POST', `${V}/runs/${runId}/rework/compose-input/preview`, {
-      request_key: requestKey,
-      ...(stepKey ? { step_key: stepKey } : {}),
-      changes,
-    }),
+  preview: (
+    runId: number,
+    requestKey: string,
+    changes: ComposeInputChangeView[],
+    stepKey?: string,
+  ) =>
+    reworkRequest<ComposeInputPreviewResponse>(
+      'POST',
+      `${V}/runs/${runId}/rework/compose-input/preview`,
+      {
+        request_key: requestKey,
+        ...(stepKey ? { step_key: stepKey } : {}),
+        changes,
+      },
+    ),
 
   /** 原子确认：逐字回传 previewHash；成功即本地续跑（零付费） */
   apply: (runId: number, requestId: string, previewHash: string) =>
-    reworkRequest<ComposeInputApplyResponse>('POST', `${V}/runs/${runId}/rework/compose-input/${requestId}/apply`, {
-      preview_hash: previewHash,
-    }),
+    reworkRequest<ComposeInputApplyResponse>(
+      'POST',
+      `${V}/runs/${runId}/rework/compose-input/${requestId}/apply`,
+      {
+        preview_hash: previewHash,
+      },
+    ),
 }

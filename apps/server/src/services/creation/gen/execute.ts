@@ -2,14 +2,13 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '../../../db'
-import { assets, canvasEdges, genTasks, projects } from '../../../db/schema'
+import { assets, genTasks, projects } from '../../../db/schema'
 import type { Canvas, CanvasNode, GenTask } from '../../../db/schema'
 import { buildImageRequest, getImageAdapter, resolveEndpoint } from '../../../adapters/provider'
 import { buildVideoRequest } from '../../../adapters/video'
 import { resolveVoiceChain } from '../../../pipeline/actions/tts'
 import { createLogger } from '../../../logger'
 import { assetToDataUri } from '../../asset-ref'
-import { loadInputPlan } from '../inputs'
 import type { InputPlan, NodeSpec } from '../spec'
 import { chatCompleteDetailed, resolveLlmEndpoint, type ChatContentPart } from '../../llm'
 import { probeMediaDuration, resolveFfmpeg, resolveFfprobe } from '../../ffmpeg'
@@ -30,13 +29,21 @@ const log = createLogger('creation-gen')
 
 const COMPOSE_TIMEOUT_MS = 10 * 60 * 1000 // 合成子进程上限（对齐视频轮询）
 
-/** 单次执行：输入解析 → 分派（audio/compose/llm 独立径；编辑/图片/视频主径）→ 落盘 → succeeded + 用量 */
-export async function executeOnce(taskId: number, task: GenTask, node: CanvasNode, canvas: Canvas, spec: NodeSpec): Promise<void> {
-  const incoming = await db
-    .select({ from: canvasEdges.from, to: canvasEdges.to, port: canvasEdges.port })
-    .from(canvasEdges)
-    .where(eq(canvasEdges.to, node.id))
-  const plan = await loadInputPlan(node, incoming, spec)
+/**
+ * 单次执行：按调用方解算好的输入（入队快照优先）分派（audio/compose/llm 独立径；编辑/图片/视频主径）
+ * → 落盘 → succeeded + 用量。
+ *
+ * `plan` / `spec` 由 queue.resolveExecInput 提供：快照存在即为入队那一刻的输入（执行期不再读连线），
+ * 自动重试因此与首发共用同一份真实计费输入。
+ */
+export async function executeOnce(
+  taskId: number,
+  task: GenTask,
+  node: CanvasNode,
+  canvas: Canvas,
+  spec: NodeSpec,
+  plan: InputPlan,
+): Promise<void> {
   if (plan.problems.length > 0) throw new Error(`输入未就绪：${plan.problems.join('；')}`)
   // audio / compose 独立执行径（不展开风格与参考图 URI）
   if (spec.genKind === 'audio') return executeAudioOnce(taskId, canvas, node, spec, plan)

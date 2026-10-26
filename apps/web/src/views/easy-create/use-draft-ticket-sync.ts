@@ -11,9 +11,14 @@ type Easy = ReturnType<typeof useEasyCreate>
  *   不主动清空就会在规划等待期让用户看到刚发出的文字仍留在框内（即「发送后内容没清除」的错觉）。
  * - 反向：draft 变化回写 setContent（提交在途 submitting 冻结，防回填）。
  */
-export function useDraftTicketSync(s: Easy, draft: Ref<string>, submitting: Ref<boolean>): void {
+export function useDraftTicketSync(
+  s: Easy,
+  draft: Ref<string>,
+  submitting: Ref<boolean>,
+): void {
   watch(
-    () => [s.first.state.ticket?.content, !!s.first.state.ticket?.sent] as const,
+    () =>
+      [s.first.state.ticket?.content, !!s.first.state.ticket?.sent] as const,
     ([content, sent], previous) => {
       if (submitting.value) return
       if (sent) {

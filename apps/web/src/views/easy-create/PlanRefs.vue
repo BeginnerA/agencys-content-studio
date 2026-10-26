@@ -54,7 +54,9 @@ function roleHint(r: CreationRef): string {
         <span class="ref-body">
           <span class="ref-role">
             <Icon name="check" :size="11" /> {{ REF_ROLE_LABELS[r.role]
-            }}<span v-if="r.shotId" class="ref-shot mono"> · {{ r.shotId }}</span>
+            }}<span v-if="r.shotId" class="ref-shot mono">
+              · {{ r.shotId }}</span
+            >
           </span>
           <span class="ref-hint muted">{{ roleHint(r) }}</span>
         </span>
@@ -63,7 +65,8 @@ function roleHint(r: CreationRef): string {
     </ul>
     <p v-if="videoAnalysisCount > 0" class="ref-note">
       <Icon name="alert" :size="11" /> 含
-      {{ videoAnalysisCount }} 段参考视频解析（多模态 + 转写），价格依供应商，见上方未计价项。
+      {{ videoAnalysisCount }} 段参考视频解析（多模态 +
+      转写），价格依供应商，见上方未计价项。
     </p>
   </div>
 </template>

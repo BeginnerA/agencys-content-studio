@@ -343,10 +343,10 @@ async function main(): Promise<void> {
         const shots: number[] = []
         for (const shot of recipe.plan.shots) shots.push(await genMedia(projectId, 'image', shot.id, shot.duration, runId, { shotId: shot.id }))
         const s1 = (await db.insert(pipelineSteps).values({ runId, seq: 900, stepKey: 'captions', actionKey: 'subtitle', title: 'captions', status: 'running', createdAt: Date.now(), updatedAt: Date.now() }).returning())[0]!
-        const ctx1 = await createStepContext({ run, step: s1, template: tmpl, def: defCap, input: { lines: [recipe.sources[1].id], voices }, projectSettings: {} })
+        const ctx1 = await createStepContext({ run, step: s1, template: tmpl, def: defCap, input: { lines: [recipe.sources[1]!.id], voices }, projectSettings: {} })
         const srtId = (await subtitle(ctx1)).assetIds[0]!
         const s2 = (await db.insert(pipelineSteps).values({ runId, seq: 901, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: 'compose', status: 'running', createdAt: Date.now(), updatedAt: Date.now() }).returning())[0]!
-        const ctx2 = await createStepContext({ run, step: s2, template: tmpl, def: defCompose, input: { shots: [recipe.sources[2].id], images: shots, voices, subtitle: [srtId] }, projectSettings: {} })
+        const ctx2 = await createStepContext({ run, step: s2, template: tmpl, def: defCompose, input: { shots: [recipe.sources[2]!.id], images: shots, voices, subtitle: [srtId] }, projectSettings: {} })
         return (await ffmpegMerge(ctx2)).assetIds[0]!
       }
 
@@ -427,10 +427,10 @@ async function main(): Promise<void> {
         const clips: number[] = []
         for (const shot of recipe.plan.shots) clips.push(await genMedia(session.projectId, 'video', shot.id, shot.duration, run.runId, { shotId: shot.id }))
         const s1 = (await db.insert(pipelineSteps).values({ runId: run.runId, seq: 900, stepKey: 'captions', actionKey: 'subtitle', title: 'captions', status: 'running', createdAt: Date.now(), updatedAt: Date.now() }).returning())[0]!
-        const ctx1 = await createStepContext({ run: rr, step: s1, template: tmpl, def: defCap, input: { lines: [recipe.sources[1].id], voices }, projectSettings: {} })
+        const ctx1 = await createStepContext({ run: rr, step: s1, template: tmpl, def: defCap, input: { lines: [recipe.sources[1]!.id], voices }, projectSettings: {} })
         const srtId = (await subtitle(ctx1)).assetIds[0]!
         const s2 = (await db.insert(pipelineSteps).values({ runId: run.runId, seq: 901, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: 'compose', status: 'running', createdAt: Date.now(), updatedAt: Date.now() }).returning())[0]!
-        const ctx2 = await createStepContext({ run: rr, step: s2, template: tmpl, def: defCompose, input: { shots: [recipe.sources[2].id], motion_clips: clips, voices, subtitle: [srtId] }, projectSettings: {} })
+        const ctx2 = await createStepContext({ run: rr, step: s2, template: tmpl, def: defCompose, input: { shots: [recipe.sources[2]!.id], motion_clips: clips, voices, subtitle: [srtId] }, projectSettings: {} })
         const finalAsset = (await db.select().from(assets).where(eq(assets.id, (await ffmpegMerge(ctx2)).assetIds[0]!)))[0]!
         let decodable = true
         try { assertStrictOutput(absPathOf(finalAsset.relPath!), recipe.plan.duration) } catch { decodable = false }

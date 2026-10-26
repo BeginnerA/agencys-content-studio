@@ -22,7 +22,13 @@ const props = defineProps<{
   live?: ModelPricing | null
 }>()
 const emit = defineEmits<{
-  suggest: [payload: { hit: boolean; source: 'live' | 'table' | 'stored' | 'none'; suggestDefault: boolean }]
+  suggest: [
+    payload: {
+      hit: boolean
+      source: 'live' | 'table' | 'stored' | 'none'
+      suggestDefault: boolean
+    },
+  ]
 }>()
 
 const priceInput = ref('')
@@ -37,7 +43,12 @@ const edited = ref(false)
 /** 当前能力类型对应的定价单位与是否双栏（迁移自父组件 pricingUnits） */
 const units = computed(() => {
   const st = props.serviceType
-  if (st === 'llm') return { input: '元/百万 token（输入）', output: '元/百万 token（输出）', dual: true }
+  if (st === 'llm')
+    return {
+      input: '元/百万 token（输入）',
+      output: '元/百万 token（输出）',
+      dual: true,
+    }
   if (st === 'image') return { input: '元/张', output: '', dual: false }
   if (st === 'video') return { input: '元/秒', output: '', dual: false }
   return { input: '元/千字符', output: '', dual: false } // audio/tts
@@ -52,7 +63,8 @@ function fillFromPrices(prices: ModelPricing['prices']): void {
   const st = props.serviceType
   if (st === 'llm') {
     priceInput.value = prices.tokens_in != null ? String(prices.tokens_in) : ''
-    priceOutput.value = prices.tokens_out != null ? String(prices.tokens_out) : ''
+    priceOutput.value =
+      prices.tokens_out != null ? String(prices.tokens_out) : ''
   } else {
     const u = st === 'image' ? 'image' : st === 'video' ? 'second' : 'char'
     priceInput.value = prices[u] != null ? String(prices[u]!) : ''
@@ -64,7 +76,11 @@ function fillFromPrices(prices: ModelPricing['prices']): void {
 async function refresh(): Promise<void> {
   fetching.value = true
   try {
-    const res = await configApi.modelSuggest(props.providerKey, props.serviceType, (props.model ?? '').trim())
+    const res = await configApi.modelSuggest(
+      props.providerKey,
+      props.serviceType,
+      (props.model ?? '').trim(),
+    )
     applyPricing(res.pricing ?? null, !!res.suggestDefault)
   } catch {
     // model-suggest 失败：仍有 live（父组件已从 fetch-models 拿到）/ 存量则照带，否则回落手填（不猜）
@@ -140,7 +156,8 @@ function buildPricing(): Record<string, number> {
 defineExpose({ buildPricing, suggested, mode })
 
 watch(
-  () => [props.providerKey, props.serviceType, (props.model ?? '').trim()] as const,
+  () =>
+    [props.providerKey, props.serviceType, (props.model ?? '').trim()] as const,
   () => void refresh(),
   { immediate: true },
 )
@@ -165,7 +182,10 @@ watch(
         min="0"
         step="0.0001"
         :placeholder="units.input"
-        @input="edited = true; mode = 'manual'"
+        @input="
+          edited = true
+          mode = 'manual'
+        "
       />
       <input
         v-if="units.dual"
@@ -174,7 +194,10 @@ watch(
         min="0"
         step="0.0001"
         :placeholder="units.output"
-        @input="edited = true; mode = 'manual'"
+        @input="
+          edited = true
+          mode = 'manual'
+        "
       />
     </div>
 

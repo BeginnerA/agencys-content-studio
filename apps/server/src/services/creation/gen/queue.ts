@@ -1,14 +1,16 @@
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '../../../db'
-import { canvasNodes, genTasks } from '../../../db/schema'
-import type { Canvas } from '../../../db/schema'
+import { canvasEdges, canvasNodes, genTasks } from '../../../db/schema'
+import type { Canvas, CanvasNode, GenTask } from '../../../db/schema'
 import { createLogger } from '../../../logger'
 import { resolveProjectStyleSnippets } from '../../style-preset'
+import { loadInputPlan } from '../inputs'
 import { canvasOfNode, findNode } from '../nodes'
-import { safeParseSpec } from '../spec'
+import { safeParseSpec, type InputPlan, type NodeSpec } from '../spec'
 import { executeOnce } from './execute'
 import { buildNodeTaskParams, extendTaskParams } from './params'
 import { preflightNode } from './preflight'
+import { decodeExecSnapshot, encodeExecSnapshot } from './snapshot'
 import { CanvasTaskCancelled, emitCanvasChanged, nowMs, reloadTask, sleep, taskCancelled } from './video'
 
 const log = createLogger('creation-gen')
@@ -39,12 +41,18 @@ function releaseSlot(): void {
   }
 }
 
+/**
+ * 入队执行（variants 1-4）：预检（含预算硬闸）→ 任务行 + 执行快照落库 → 异步排队执行。
+ *
+ * 快照冻结：`exec_snapshot = {spec, edges, plan}` 与任务行同一事务语义落库，执行期（含进程内
+ * 自动重试）一律以它为准——排队期间改节点配置 / 改连线 / 改上游文本不再改变本次真实计费输入。
+ */
 export async function startCanvasNodeRun(
   nodeId: number,
   variants = 1,
 ): Promise<{ taskId: number; taskIds: number[] }> {
   if (!Number.isInteger(variants) || variants < 1 || variants > 4) throw new Error('variants 需为 1-4 的整数')
-  const { node, canvas, spec, plan, problems } = await preflightNode(nodeId)
+  const { node, canvas, spec, plan, edges, problems } = await preflightNode(nodeId, variants)
 
   const busy = await db
     .select({ id: genTasks.id })
@@ -59,6 +67,7 @@ export async function startCanvasNodeRun(
       ? await resolveProjectStyleSnippets(canvas.projectId)
       : []
   const params = extendTaskParams(buildNodeTaskParams(spec, { stylePresetIds: styleResolved.map((s) => s.id), plan }), spec)
+  const execSnapshot = encodeExecSnapshot({ spec, edges, plan })
   const now = nowMs()
   const taskIds: number[] = []
   for (let i = 0; i < variants; i += 1) {
@@ -74,6 +83,7 @@ export async function startCanvasNodeRun(
         model: spec.model ?? null,
         prompt: spec.prompt,
         params: JSON.stringify(params),
+        execSnapshot,
         status: 'pending',
         createdAt: now,
         updatedAt: now,
@@ -90,6 +100,33 @@ export async function startCanvasNodeRun(
 
 // ---------- 任务执行（镜像 runOneTask 生命周期） ----------
 
+/** 解算后的执行输入（spec + 输入计划；fromSnapshot = false 表示存量行实时回退） */
+interface ResolvedExecInput {
+  spec: NodeSpec
+  plan: InputPlan
+  fromSnapshot: boolean
+}
+
+/**
+ * 执行输入解算：优先入队快照（`exec_snapshot`），无快照 / 结构漂移 → 回落实时读取（迁移前存量行）。
+ * 节点行与画布行始终实读：产物落库与广播依赖其存在（节点被删则任务判失败，不猜测执行）。
+ */
+async function resolveExecInput(
+  task: GenTask,
+  node: CanvasNode,
+): Promise<{ ok: true; input: ResolvedExecInput } | { ok: false; error: string }> {
+  const snap = decodeExecSnapshot(task.execSnapshot)
+  if (snap) return { ok: true, input: { spec: snap.spec, plan: snap.plan, fromSnapshot: true } }
+  const parsed = safeParseSpec(node.spec)
+  if (!parsed.spec) return { ok: false, error: parsed.error ?? 'spec 损坏' }
+  const incoming = await db
+    .select({ from: canvasEdges.from, to: canvasEdges.to, port: canvasEdges.port })
+    .from(canvasEdges)
+    .where(eq(canvasEdges.to, node.id))
+  const plan = await loadInputPlan(node, incoming, parsed.spec)
+  return { ok: true, input: { spec: parsed.spec, plan, fromSnapshot: false } }
+}
+
 async function runCanvasTask(taskId: number): Promise<void> {
   await acquireSlot()
   try {
@@ -105,12 +142,13 @@ async function runCanvasTask(taskId: number): Promise<void> {
       await failTask(taskId, '画布缺失', null)
       return
     }
-    const parsed = safeParseSpec(node.spec)
-    if (!parsed.spec) {
-      await failTask(taskId, `spec 损坏：${parsed.error}`, canvas, node.id)
+    const resolved = await resolveExecInput(task, node)
+    if (!resolved.ok) {
+      await failTask(taskId, `spec 损坏：${resolved.error}`, canvas, node.id)
       return
     }
-    const spec = parsed.spec
+    const { input } = resolved
+    if (!input.fromSnapshot) log.info(`canvas task ${taskId} 无执行快照（存量行）→ 按当前节点配置实时解析`)
     let attempts = task.attempts
     for (;;) {
       if (await taskCancelled(taskId)) return // 任务行已 cancelled（取消端点）
@@ -121,7 +159,7 @@ async function runCanvasTask(taskId: number): Promise<void> {
         .where(eq(genTasks.id, taskId))
       emitCanvasChanged(canvas, node.id)
       try {
-        await executeOnce(taskId, task, node, canvas, spec)
+        await executeOnce(taskId, task, node, canvas, input.spec, input.plan)
         return
       } catch (err) {
         if (err instanceof CanvasTaskCancelled) return

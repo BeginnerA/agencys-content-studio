@@ -309,7 +309,7 @@ await runSections({
           projectId: pid, templateKey: 'photo-montage', templateSnapshot: JSON.stringify(tplSnap),
           status: 'queued', input: JSON.stringify({ photos: [wideA, wideB] }), createdAt: nowE, updatedAt: nowE,
         } as never).returning()
-        engine.startRun(runE.id)
+        engine.startRun(runE!.id)
         const rE = await settle(runE!.id)
         check(rE.status === 'completed', `run E 非混剪链自动选曲 completed（实际 ${rE.status}${rE.error ? ` / ${String(rE.error).slice(0, 160)}` : ''}）`)
         const fvE = await finalOf(runE!.id)

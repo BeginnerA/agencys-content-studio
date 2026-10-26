@@ -67,18 +67,18 @@ export async function run(ctx: M18Ctx): Promise<void> {
   const unz = unzipSync(new Uint8Array(zipBytes))
   const names = Object.keys(unz)
   check(names.includes('manifest.json'), 'zip：manifest.json 存在')
-  const mf = JSON.parse(strFromU8(unz['manifest.json']))
+  const mf = JSON.parse(strFromU8(unz['manifest.json']!))
   check(mf.files.length === 3 && mf.skipped.length === 1 && mf.canvas.id === CZ, 'manifest：files 3 / skipped 1 / canvas 一致')
   const textEntry = names.find((n) => n.endsWith('.txt'))
-  check(textEntry != null && strFromU8(unz[textEntry]) === TXT_CONTENT, 'zip：文本条目内容逐字节等价')
+  check(textEntry != null && strFromU8(unz[textEntry]!) === TXT_CONTENT, 'zip：文本条目内容逐字节等价')
   const imgEntry = names.find((n) => n.endsWith('.png'))
   check(
-    imgEntry != null && Array.from(unz[imgEntry]).join() === Array.from(readFileSync(absPathOf(pngRel))).join(),
+    imgEntry != null && Array.from(unz[imgEntry]!).join() === Array.from(readFileSync(absPathOf(pngRel))).join(),
     'zip：媒体条目 store 内容等价',
   )
   const bigEntry = names.find((n) => n.endsWith('.bin'))
   check(
-    bigEntry != null && unz[bigEntry].length === 30 * 1024 * 1024 && unz[bigEntry][0] === 7 && unz[bigEntry][unz[bigEntry].length - 1] === 7,
+    bigEntry != null && unz[bigEntry]!.length === 30 * 1024 * 1024 && unz[bigEntry]![0] === 7 && unz[bigEntry]![unz[bigEntry]!.length - 1] === 7,
     'zip：30MB 流式 store 长度/字节等价',
   )
   check(ex!.asset.kind === 'archive' && ex!.asset.purpose === 'creation_export', '导出资产登记：archive / creation_export')

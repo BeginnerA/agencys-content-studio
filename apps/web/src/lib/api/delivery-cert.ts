@@ -16,6 +16,8 @@ export const deliveryCertApi = {
     const params = new URLSearchParams()
     if (opts?.format) params.set('format', opts.format)
     params.set('refresh', opts?.refresh === false ? '0' : '1')
-    return api.get<DeliveryCertView>(`${V}/runs/${runId}/delivery-cert?${params.toString()}`)
+    return api.get<DeliveryCertView>(
+      `${V}/runs/${runId}/delivery-cert?${params.toString()}`,
+    )
   },
 }

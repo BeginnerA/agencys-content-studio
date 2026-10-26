@@ -12,21 +12,52 @@ import Icon from '../../common/Icon.vue'
 import { useComposeInputRework } from './use-compose-input-rework'
 import type { ComposeInputDiffView } from '../../../lib/types/rework'
 
-const props = defineProps<{ runId: number; projectId: number; stepKey?: string }>()
+const props = defineProps<{
+  runId: number
+  projectId: number
+  stepKey?: string
+}>()
 const emit = defineEmits<{ close: []; applied: [requestId: string] }>()
 
 const {
-  capability, baseBgm, baseSfx, shotAxis, candidates, form, loading, submitting, applying, loadError, previewError,
-  preview, supported, dirty, changeCount, load, onFormEdited, requestPreview, applyConfirmed, guardClose,
-} = useComposeInputRework(toRef(props, 'runId'), computed(() => props.stepKey), computed(() => props.projectId), {
-  onApplied: (id) => emit('applied', id),
-})
+  capability,
+  baseBgm,
+  baseSfx,
+  shotAxis,
+  candidates,
+  form,
+  loading,
+  submitting,
+  applying,
+  loadError,
+  previewError,
+  preview,
+  supported,
+  dirty,
+  changeCount,
+  load,
+  onFormEdited,
+  requestPreview,
+  applyConfirmed,
+  guardClose,
+} = useComposeInputRework(
+  toRef(props, 'runId'),
+  computed(() => props.stepKey),
+  computed(() => props.projectId),
+  {
+    onApplied: (id) => emit('applied', id),
+  },
+)
 
 const appliedNote = ref('')
 
 /** 可编辑图片镜（仅这些镜渲染时长输入）；motion 视频镜另列只读 */
-const durImageShots = computed(() => shotAxis.value.filter((s) => s.kind === 'image'))
-const durVideoShots = computed(() => shotAxis.value.filter((s) => s.kind === 'video'))
+const durImageShots = computed(() =>
+  shotAxis.value.filter((s) => s.kind === 'image'),
+)
+const durVideoShots = computed(() =>
+  shotAxis.value.filter((s) => s.kind === 'video'),
+)
 
 const TRANSITIONS: Array<{ value: string; label: string }> = [
   { value: 'none', label: '无转场' },
@@ -66,7 +97,11 @@ function assetLabel(id: unknown): string {
 function fmtVal(d: ComposeInputDiffView, v: unknown): string {
   if (v === null || v === undefined) return '（无）'
   if (typeof v === 'boolean') return v ? '开' : '关'
-  if ((d.kind === 'bgm' || d.kind === 'sfx' || d.kind === 'shot-select') && typeof v === 'number') return assetLabel(v)
+  if (
+    (d.kind === 'bgm' || d.kind === 'sfx' || d.kind === 'shot-select') &&
+    typeof v === 'number'
+  )
+    return assetLabel(v)
   return String(v)
 }
 
@@ -77,7 +112,9 @@ async function onClose() {
 
 async function onApply() {
   const ok = await applyConfirmed()
-  if (ok) appliedNote.value = '已确认：新版本已登记，本地重合成已入队，旧成片批准已作废待复审'
+  if (ok)
+    appliedNote.value =
+      '已确认：新版本已登记，本地重合成已入队，旧成片批准已作废待复审'
 }
 
 function chooseBgm(v: number | 'keep' | 'remove') {
@@ -96,7 +133,8 @@ function sfxSelectValue(shotId: string): string {
 function onSfxSelect(shotId: string, raw: string) {
   form.value.sfxChoices = {
     ...form.value.sfxChoices,
-    [shotId]: raw === 'keep' ? 'keep' : raw === 'remove' ? 'remove' : Number(raw),
+    [shotId]:
+      raw === 'keep' ? 'keep' : raw === 'remove' ? 'remove' : Number(raw),
   }
   onFormEdited()
 }
@@ -126,8 +164,14 @@ load()
       <button class="btn" @click="load()">重试</button>
     </div>
     <div v-else-if="!supported" class="crw-state" role="alert">
-      <div class="crw-bad">{{ capability?.message || '当前运行不支持合成输入受控返修' }}</div>
-      <div class="crw-hint">原因码：{{ capability?.code }}。返修只在有可返修成片且依赖可复验时开放；无成片请用「合成设置」直接保存草稿。</div>
+      <div class="crw-bad">
+        {{ capability?.message || '当前运行不支持合成输入受控返修' }}
+      </div>
+      <div class="crw-hint">
+        原因码：{{
+          capability?.code
+        }}。返修只在有可返修成片且依赖可复验时开放；无成片请用「合成设置」直接保存草稿。
+      </div>
       <button class="btn" @click="load()">重新检查</button>
     </div>
     <div v-else class="crw-body">
@@ -137,28 +181,71 @@ load()
         <div class="crw-grid">
           <label class="crw-field">
             <span>转场</span>
-            <select v-model="form.transition" :disabled="submitting || applying" @change="onFormEdited()">
-              <option v-for="o in TRANSITIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <select
+              v-model="form.transition"
+              :disabled="submitting || applying"
+              @change="onFormEdited()"
+            >
+              <option v-for="o in TRANSITIONS" :key="o.value" :value="o.value">
+                {{ o.label }}
+              </option>
             </select>
           </label>
           <label class="crw-field">
             <span>转场时长（0.1–2 秒）</span>
-            <input v-model.number="form.transitionDuration" type="number" min="0.1" max="2" step="0.1" :disabled="submitting || applying" @input="onFormEdited()" />
+            <input
+              v-model.number="form.transitionDuration"
+              type="number"
+              min="0.1"
+              max="2"
+              step="0.1"
+              :disabled="submitting || applying"
+              @input="onFormEdited()"
+            />
           </label>
           <label class="crw-field">
             <span>BGM 音量（{{ Math.round(form.bgmVolume * 100) }}%）</span>
-            <input v-model.number="form.bgmVolume" type="range" min="0" max="1" step="0.05" :disabled="submitting || applying" @input="onFormEdited()" />
+            <input
+              v-model.number="form.bgmVolume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              :disabled="submitting || applying"
+              @input="onFormEdited()"
+            />
           </label>
           <label class="crw-field">
             <span>BGM 淡入（0–2 秒）</span>
-            <input v-model.number="form.bgmFade" type="number" min="0" max="2" step="0.1" :disabled="submitting || applying" @input="onFormEdited()" />
+            <input
+              v-model.number="form.bgmFade"
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+              :disabled="submitting || applying"
+              @input="onFormEdited()"
+            />
           </label>
           <label class="crw-field">
             <span>音效音量（{{ Math.round(form.sfxVolume * 100) }}%）</span>
-            <input v-model.number="form.sfxVolume" type="range" min="0" max="2" step="0.05" :disabled="submitting || applying" @input="onFormEdited()" />
+            <input
+              v-model.number="form.sfxVolume"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              :disabled="submitting || applying"
+              @input="onFormEdited()"
+            />
           </label>
           <label class="crw-check">
-            <input v-model="form.subtitleBurn" type="checkbox" :disabled="submitting || applying" @change="onFormEdited()" />
+            <input
+              v-model="form.subtitleBurn"
+              type="checkbox"
+              :disabled="submitting || applying"
+              @change="onFormEdited()"
+            />
             <span>成片烧录字幕</span>
           </label>
         </div>
@@ -166,15 +253,35 @@ load()
 
       <!-- ===== BGM 换绑 / 移除（已存在项目音频；不在此上传新素材） ===== -->
       <section class="crw-sec">
-        <div class="crw-lb"><Icon name="speaker-wave" :size="12" /> 配乐（BGM）</div>
+        <div class="crw-lb">
+          <Icon name="speaker-wave" :size="12" /> 配乐（BGM）
+        </div>
         <div class="crw-cur">
           当前：{{ baseBgm.name || '（无）' }}
-          <span v-if="form.bgmChoice === 'remove'" class="crw-tag danger">将移除</span>
-          <span v-else-if="typeof form.bgmChoice === 'number'" class="crw-tag">将换绑 → {{ assetLabel(form.bgmChoice) }}</span>
+          <span v-if="form.bgmChoice === 'remove'" class="crw-tag danger"
+            >将移除</span
+          >
+          <span v-else-if="typeof form.bgmChoice === 'number'" class="crw-tag"
+            >将换绑 → {{ assetLabel(form.bgmChoice) }}</span
+          >
         </div>
         <div class="crw-btnrow">
-          <button class="btn sm" :class="{ primary: form.bgmChoice === 'keep' }" :disabled="submitting || applying" @click="chooseBgm('keep')">保持当前</button>
-          <button class="btn sm danger" :class="{ primary: form.bgmChoice === 'remove' }" :disabled="submitting || applying || baseBgm.assetId === null" @click="chooseBgm('remove')">移除 BGM</button>
+          <button
+            class="btn sm"
+            :class="{ primary: form.bgmChoice === 'keep' }"
+            :disabled="submitting || applying"
+            @click="chooseBgm('keep')"
+          >
+            保持当前
+          </button>
+          <button
+            class="btn sm danger"
+            :class="{ primary: form.bgmChoice === 'remove' }"
+            :disabled="submitting || applying || baseBgm.assetId === null"
+            @click="chooseBgm('remove')"
+          >
+            移除 BGM
+          </button>
         </div>
         <div v-if="candidates.length" class="crw-list">
           <div v-for="a in candidates" :key="a.id" class="crw-item">
@@ -191,25 +298,46 @@ load()
             </button>
           </div>
         </div>
-        <div v-else class="crw-hint">项目内暂无可换绑的音频素材（上传新素材请在「合成设置」走原绑定路径，不进入本返修闸）。</div>
+        <div v-else class="crw-hint">
+          项目内暂无可换绑的音频素材（上传新素材请在「合成设置」走原绑定路径，不进入本返修闸）。
+        </div>
       </section>
 
       <!-- ===== 逐镜音效（per-shot SFX）换绑 / 移除（仅当前已绑音效的镜；不在此新增） ===== -->
       <section v-if="baseSfx.length" class="crw-sec">
-        <div class="crw-lb"><Icon name="speaker-wave" :size="12" /> 镜头音效（SFX）</div>
-        <div class="crw-hint">仅列出当前已绑定音效的镜头——可换成项目内其它音频或移除；新增音效请走「合成设置 / 镜头工作台」的原绑定路径。</div>
+        <div class="crw-lb">
+          <Icon name="speaker-wave" :size="12" /> 镜头音效（SFX）
+        </div>
+        <div class="crw-hint">
+          仅列出当前已绑定音效的镜头——可换成项目内其它音频或移除；新增音效请走「合成设置
+          / 镜头工作台」的原绑定路径。
+        </div>
         <div class="crw-sfx">
           <div v-for="s in baseSfx" :key="s.shotId" class="crw-sfxrow">
-            <span class="crw-sfxnm" :title="s.shotId">{{ s.name || s.shotId }}</span>
+            <span class="crw-sfxnm" :title="s.shotId">{{
+              s.name || s.shotId
+            }}</span>
             <select
               class="crw-sfxsel"
               :value="sfxSelectValue(s.shotId)"
               :disabled="submitting || applying"
-              @change="onSfxSelect(s.shotId, ($event.target as HTMLSelectElement).value)"
+              @change="
+                onSfxSelect(
+                  s.shotId,
+                  ($event.target as HTMLSelectElement).value,
+                )
+              "
             >
               <option value="keep">保持当前音效</option>
               <option value="remove">移除音效</option>
-              <option v-for="a in candidates" :key="a.id" :value="String(a.id)" :disabled="a.id === s.assetId">换成：{{ a.name }}</option>
+              <option
+                v-for="a in candidates"
+                :key="a.id"
+                :value="String(a.id)"
+                :disabled="a.id === s.assetId"
+              >
+                换成：{{ a.name }}
+              </option>
             </select>
           </div>
         </div>
@@ -218,7 +346,9 @@ load()
       <!-- ===== 逐镜时长（切片2b 轻档）：仅图片镜可覆盖显示时长（本地重合成、零付费）；motion 视频镜显式不适用 ===== -->
       <section v-if="shotAxis.length" class="crw-sec">
         <div class="crw-lb"><Icon name="clock" :size="12" /> 镜头时长</div>
-        <div class="crw-hint">仅图片镜可覆盖显示时长（留空=保持当前）；改后仅本地重新合成、不重生任何媒体。视频镜（motion）时长由源素材决定，属中档文件级裁切，本入口不适用。</div>
+        <div class="crw-hint">
+          仅图片镜可覆盖显示时长（留空=保持当前）；改后仅本地重新合成、不重生任何媒体。视频镜（motion）时长由源素材决定，属中档文件级裁切，本入口不适用。
+        </div>
         <div v-if="durImageShots.length" class="crw-dur">
           <div v-for="s in durImageShots" :key="s.shotId" class="crw-durrow">
             <span class="crw-durnm" :title="s.shotId">{{ s.shotId }}</span>
@@ -231,25 +361,39 @@ load()
               placeholder="保持当前"
               :value="durInputValue(s.shotId)"
               :disabled="submitting || applying"
-              @input="onDurInput(s.shotId, ($event.target as HTMLInputElement).value)"
+              @input="
+                onDurInput(s.shotId, ($event.target as HTMLInputElement).value)
+              "
             />
             <span class="crw-dunits">秒</span>
           </div>
         </div>
-        <div v-else class="crw-hint">无可覆盖的图片镜（成片均为视频镜或缺时轴快照）。</div>
+        <div v-else class="crw-hint">
+          无可覆盖的图片镜（成片均为视频镜或缺时轴快照）。
+        </div>
         <div v-if="durVideoShots.length" class="crw-durv">
-          <span v-for="s in durVideoShots" :key="s.shotId" class="crw-tag">{{ s.shotId }}（视频镜·不适用）</span>
+          <span v-for="s in durVideoShots" :key="s.shotId" class="crw-tag"
+            >{{ s.shotId }}（视频镜·不适用）</span
+          >
         </div>
       </section>
 
       <div class="crw-actions">
-        <button class="btn btn-primary" :disabled="!dirty || submitting || applying" @click="requestPreview()">
+        <button
+          class="btn btn-primary"
+          :disabled="!dirty || submitting || applying"
+          @click="requestPreview()"
+        >
           {{ submitting ? '预览请求中…' : '预览变更（' + changeCount + '）' }}
         </button>
       </div>
 
-      <div v-if="previewError" class="crw-bad crw-live" role="alert">{{ previewError }}</div>
-      <p v-if="appliedNote && !preview" class="crw-ok" role="status">{{ appliedNote }}</p>
+      <div v-if="previewError" class="crw-bad crw-live" role="alert">
+        {{ previewError }}
+      </div>
+      <p v-if="appliedNote && !preview" class="crw-ok" role="status">
+        {{ appliedNote }}
+      </p>
 
       <section v-if="preview" class="crw-preview" aria-label="变更预览">
         <h4 class="crw-h4">变更确认</h4>
@@ -257,10 +401,15 @@ load()
           <li v-for="(d, i) in preview.diffs" :key="i">
             <b>{{ fieldLabel(d) }}</b>
             <template v-if="d.kind === 'shot-duration'">
-              <span class="crw-before">{{ d.before === null ? '当前' : d.before + '秒' }}</span>
+              <span class="crw-before">{{
+                d.before === null ? '当前' : d.before + '秒'
+              }}</span>
               →
               <span class="crw-after">{{ d.after }}秒</span>
-              <span v-if="d.warn" class="crw-clamp">（受「音画不脱节」约束，将落回 {{ d.willClampToSec }} 秒，不截断台词）</span>
+              <span v-if="d.warn" class="crw-clamp"
+                >（受「音画不脱节」约束，将落回
+                {{ d.willClampToSec }} 秒，不截断台词）</span
+              >
             </template>
             <template v-else>
               <span class="crw-before">{{ fmtVal(d, d.before) }}</span>
@@ -271,21 +420,31 @@ load()
         </ul>
         <ul class="crw-impact">
           <li>本地重新合成：0 次模型调用、不产生用量计费，但需编码时间</li>
-          <li v-if="preview.impact.resetSteps.length">重置步骤：{{ preview.impact.resetSteps.join('、') }}</li>
-          <li v-if="preview.impact.keepNotes.length">保留：{{ preview.impact.keepNotes.join('；') }}</li>
+          <li v-if="preview.impact.resetSteps.length">
+            重置步骤：{{ preview.impact.resetSteps.join('、') }}
+          </li>
+          <li v-if="preview.impact.keepNotes.length">
+            保留：{{ preview.impact.keepNotes.join('；') }}
+          </li>
           <li>新版本需重新复核：旧成片批准不自动沿用</li>
         </ul>
         <ul v-if="preview.risks.length" class="crw-risks">
           <li v-for="(risk, i) in preview.risks" :key="i">提示：{{ risk }}</li>
         </ul>
-        <button class="btn btn-primary" :disabled="applying || submitting" @click="onApply">
+        <button
+          class="btn btn-primary"
+          :disabled="applying || submitting"
+          @click="onApply"
+        >
           {{ applying ? '确认提交中…' : '确认并本地重合成' }}
         </button>
       </section>
     </div>
 
     <template #footer>
-      <span class="crw-tip">变更在确认前不落库；未确认直接关闭不影响现有成片</span>
+      <span class="crw-tip"
+        >变更在确认前不落库；未确认直接关闭不影响现有成片</span
+      >
       <button class="btn" @click="onClose">关闭</button>
     </template>
   </Modal>

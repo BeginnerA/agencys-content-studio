@@ -18,6 +18,64 @@ export const apiRoutes = new Hono()
 const SERVICE_TYPES = ['llm', 'image', 'video', 'audio', 'music']
 
 /**
+ * JSON 对象入参校验（extra / pricing 共用）：只收「扁平 JSON 对象」，数组与标量一律 400。
+ *
+ * 为何不容错：这两个列的读侧恒按 `Record<string, unknown>` 取键（extra 的 voice / emotion_param /
+ * caps，pricing 的服务类型分组）。塞进数组或字符串不会当场报错，只会在执行期静默丢参数——
+ * 配置面错误必须在入口可见，而非生成时表现为「参数没生效」。
+ *
+ * 返回 null = 请求未带该键（PUT 的「不改」语义）；显式 null 视为清空（落 `'{}'`）。
+ */
+function jsonObjectField(body: Record<string, unknown>, key: string): string | null {
+  const v = body[key]
+  if (v === undefined) return null
+  if (v === null) return '{}'
+  if (Array.isArray(v) || typeof v !== 'object') throw new HttpError(400, `bad_${key}`, `${key} 需为 JSON 对象`)
+  return JSON.stringify(v)
+}
+
+type ApiConfigRow = typeof apiConfigs.$inferSelect
+type VendorCredentialRow = typeof vendorCredentials.$inferSelect
+
+/**
+ * 配置对外视图的单一真源：GET 列表、POST 新建、PUT 更新必须返回同一形状。
+ *
+ * 库里是存储形态（extra / pricing 为 JSON 字符串，is_default / is_active 为 0|1），对外是 API 形态
+ * （对象、布尔、密钥脱敏）。写接口若直接回 DB 行，前端按 `ApiConfig` 声明的类型拿到的是字符串化
+ * extra 与 0/1 —— 挂回列表不会报错，却会在下一次按 Record 取键时静默失效。
+ */
+function configView(r: ApiConfigRow, cred: VendorCredentialRow | null = null) {
+  return {
+    id: r.id,
+    providerKey: r.providerKey,
+    serviceType: r.serviceType,
+    credentialId: r.credentialId,
+    credentialVendor: cred?.vendor ?? null,
+    credentialName: cred?.name ?? null,
+    name: r.name,
+    baseUrl: r.baseUrl,
+    apiKeyRef: r.apiKeyRef,
+    apiKeyMasked: maskKey(cred ? resolveApiKey(cred.apiKeyRef) : resolveApiKey(r.apiKeyRef)),
+    model: r.model,
+    extra: safeJson(r.extra, {}),
+    pricing: safeJson(r.pricing, {}),
+    priority: r.priority,
+    isDefault: r.isDefault === 1,
+    isActive: r.isActive === 1,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }
+}
+
+/** 单条视图：按 credentialId 补查凭证（写接口只影响一行，无需像列表那样批量查） */
+async function configViewById(r: ApiConfigRow) {
+  const credRows = r.credentialId != null
+    ? await db.select().from(vendorCredentials).where(eq(vendorCredentials.id, r.credentialId)).limit(1)
+    : []
+  return configView(r, credRows[0] ?? null)
+}
+
+/**
  * 提供零计费连通探针的视频供应商（其余视频供应商如 minimax_video 仅能用真实 run 验证）。
  * /api-providers 的 testable 能力位与下方 /:id/test 视频分支的探针路由共用，需两处同步维护。
  */
@@ -82,29 +140,7 @@ apiRoutes.get('/api-configs', h(async (c) => {
     : []
   const credMap = new Map(creds.map((cr) => [cr.id, cr]))
   return c.json({
-    items: rows.map((r) => {
-      const cred = r.credentialId != null ? credMap.get(r.credentialId) : null
-      return {
-        id: r.id,
-        providerKey: r.providerKey,
-        serviceType: r.serviceType,
-        credentialId: r.credentialId,
-        credentialVendor: cred?.vendor ?? null,
-        credentialName: cred?.name ?? null,
-        name: r.name,
-        baseUrl: r.baseUrl,
-        apiKeyRef: r.apiKeyRef,
-        apiKeyMasked: maskKey(cred ? resolveApiKey(cred.apiKeyRef) : resolveApiKey(r.apiKeyRef)),
-        model: r.model,
-        extra: safeJson(r.extra, {}),
-        pricing: safeJson(r.pricing, {}),
-        priority: r.priority,
-        isDefault: r.isDefault === 1,
-        isActive: r.isActive === 1,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }
-    }),
+    items: rows.map((r) => configView(r, r.credentialId != null ? credMap.get(r.credentialId) ?? null : null)),
   })
 }))
 
@@ -144,8 +180,8 @@ apiRoutes.post('/api-configs', h(async (c) => {
       baseUrl: typeof body['base_url'] === 'string' && body['base_url'] ? body['base_url'] : null,
       apiKeyRef,
       model: typeof body['model'] === 'string' ? body['model'] : null,
-      extra: body['extra'] && typeof body['extra'] === 'object' ? JSON.stringify(body['extra']) : '{}',
-      pricing: body['pricing'] && typeof body['pricing'] === 'object' ? JSON.stringify(body['pricing']) : '{}',
+      extra: jsonObjectField(body, 'extra') ?? '{}',
+      pricing: jsonObjectField(body, 'pricing') ?? '{}',
       priority: typeof body['priority'] === 'number' ? body['priority'] : 0,
       isDefault: body['is_default'] === true ? 1 : 0,
       isActive: 1,
@@ -162,7 +198,8 @@ apiRoutes.post('/api-configs', h(async (c) => {
     created.apiKeyRef = ref
   }
   if (created?.isDefault === 1) await clearOtherDefaults(created.id, serviceType as string)
-  return c.json({ config: created }, 201)
+  // 与 GET 列表同形状（extra/pricing 已解析、布尔位已转换、密钥已脱敏），避免调用方挂回列表后静默失效
+  return c.json({ config: created ? await configViewById(created) : null }, 201)
 }))
 
 // POST /api-configs/fetch-models —— 在线拉取供应商可用模型目录（协议分派与预置回退由 kit services/fetch-models 承担）
@@ -274,8 +311,10 @@ apiRoutes.put('/api-configs/:id', h(async (c) => {
   }
   if (body['base_url'] !== undefined) patch['baseUrl'] = body['base_url'] ? String(body['base_url']) : null
   if (body['model'] !== undefined) patch['model'] = body['model'] ? String(body['model']) : null
-  if (body['extra'] !== undefined && typeof body['extra'] === 'object') patch['extra'] = JSON.stringify(body['extra'])
-  if (body['pricing'] !== undefined && typeof body['pricing'] === 'object') patch['pricing'] = JSON.stringify(body['pricing'])
+  const extraPatch = jsonObjectField(body, 'extra')
+  if (extraPatch !== null) patch['extra'] = extraPatch
+  const pricingPatch = jsonObjectField(body, 'pricing')
+  if (pricingPatch !== null) patch['pricing'] = pricingPatch
   if (body['priority'] !== undefined) patch['priority'] = Number(body['priority']) || 0
   if (body['is_default'] !== undefined) patch['isDefault'] = body['is_default'] === true ? 1 : 0
   if (body['is_active'] !== undefined) patch['isActive'] = body['is_active'] === true ? 1 : 0
@@ -289,7 +328,8 @@ apiRoutes.put('/api-configs/:id', h(async (c) => {
   }
   const updated = await db.update(apiConfigs).set(patch).where(eq(apiConfigs.id, id)).returning()
   if (updated[0]?.isDefault === 1) await clearOtherDefaults(id, cfg.serviceType)
-  return c.json({ config: updated[0] })
+  // 同 GET/POST 单一视图真源：PUT 的返回值也要能直接替换列表项
+  return c.json({ config: updated[0] ? await configViewById(updated[0]) : null })
 }))
 
 // DELETE /api-configs/:id —— 删除

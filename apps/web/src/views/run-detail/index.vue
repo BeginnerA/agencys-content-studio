@@ -122,11 +122,7 @@ const {
           取消运行
         </button>
         <template v-if="canResume">
-          <button
-            class="btn primary"
-            :disabled="busy"
-            @click="resumeRun"
-          >
+          <button class="btn primary" :disabled="busy" @click="resumeRun">
             <Icon name="refresh" :size="14" /> 断点续跑
           </button>
           <!-- 轻松创作 run：续跑已可就地完成（含受理状态不明任务时弹窗确认成本后重发）；会话入口降为次要（查看完整方案/对话/供应商核验） -->

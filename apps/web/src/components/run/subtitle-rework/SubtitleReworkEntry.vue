@@ -11,7 +11,11 @@ import Icon from '../../common/Icon.vue'
 import SubtitleReworkModal from './SubtitleReworkModal.vue'
 import { subtitleReworkApi } from '../../../lib/api/rework'
 
-const props = defineProps<{ runId: number; stepKey?: string; disabled?: boolean }>()
+const props = defineProps<{
+  runId: number
+  stepKey?: string
+  disabled?: boolean
+}>()
 defineEmits<{ applied: [] }>()
 
 const show = ref(false)
@@ -20,7 +24,10 @@ const reason = ref('')
 
 onMounted(async () => {
   try {
-    const rm = await subtitleReworkApi.subtitles(props.runId, props.stepKey ?? 'compose')
+    const rm = await subtitleReworkApi.subtitles(
+      props.runId,
+      props.stepKey ?? 'compose',
+    )
     reason.value = rm.capability?.message ?? ''
     show.value = true
   } catch {

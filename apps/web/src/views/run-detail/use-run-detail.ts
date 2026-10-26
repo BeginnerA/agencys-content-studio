@@ -25,7 +25,13 @@ export function useRunDetail(deps: {
   const router = useRouter()
   const runId = Number(route.params.id)
   let resumeEpoch = 0
-  watch(() => route.fullPath, () => { resumeEpoch++ }, { flush: 'sync' })
+  watch(
+    () => route.fullPath,
+    () => {
+      resumeEpoch++
+    },
+    { flush: 'sync' },
+  )
 
   const detail = ref<RunDetail | null>(null)
   const tpl = ref<TemplateDetail | null>(null)
@@ -262,9 +268,10 @@ export function useRunDetail(deps: {
       }
       if (payload.note) body.note = payload.note
       if (payload.textOverride) body.text_override = payload.textOverride
-      const res = await runApi.gate(runId, body)
-      detail.value = res
-      void loadGate()
+      await runApi.gate(runId, body)
+      // gate 只回 `{run}`（无 steps/会话反查/漂移信息）：直接赋值会抹掉步骤列表与恢复入口，
+      // 故与取消分支一致重载全量视图（loadDetail 内部已触发 loadGate/loadBadges）
+      await loadDetail()
     } catch (e) {
       err.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -312,7 +319,8 @@ export function useRunDetail(deps: {
   async function resumeRun() {
     if (busy.value) return
     const token = resumeEpoch
-    const isCurrent = () => token === resumeEpoch && Number(route.params.id) === runId
+    const isCurrent = () =>
+      token === resumeEpoch && Number(route.params.id) === runId
     busy.value = true
     err.value = ''
     try {
@@ -371,7 +379,9 @@ export function useRunDetail(deps: {
 
   onBeforeUnmount(() => {
     resumeEpoch++
-    studio.leave()
+    // dispose = 注销本实例全部 studio.on 订阅 + leave 房间；只 leave 会把旧闭包留在分发表，
+    // 下次进详情（或别处收到同型事件）时旧页面 handler 仍被调用并重复发请求
+    studio.dispose()
     if (logTimer) window.clearInterval(logTimer)
     if (logThrottle) window.clearTimeout(logThrottle)
     if (detailRefreshTimer) window.clearTimeout(detailRefreshTimer)

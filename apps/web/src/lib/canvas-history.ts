@@ -4,6 +4,7 @@
  * - push 在写操作成功后调用；栈上限 limit（默认 100，超限丢最旧）；push 清空 redo 栈
  * - undo/redo 执行失败 → 清空双栈并向上抛（调用方 toast）——防栈内命令继续引用已失效的实体
  * - busy 防重入：命令执行期间再次触发 undo/redo 直接忽略（防连按快捷键产生交错写）
+ * - epoch 世代：clear() 自增；异步命令回写前比对，丢弃换画布/快照恢复后的迟到结果
  */
 import { ref, type Ref } from 'vue'
 
@@ -24,6 +25,8 @@ export interface CanvasHistory {
   /** 下一次撤销/重做的行为描述（null = 栈空；顶栏按钮 tooltip 用） */
   undoLabel: Ref<string | null>
   redoLabel: Ref<string | null>
+  /** 命令栈世代（clear() 自增；异步命令据此判断响应是否已跨作用域） */
+  epoch: Ref<number>
 }
 
 export function createCanvasHistory(
@@ -36,6 +39,7 @@ export function createCanvasHistory(
   const canRedo = ref(false)
   const undoLabel = ref<string | null>(null)
   const redoLabel = ref<string | null>(null)
+  const epoch = ref(0)
   let busy = false
 
   function sync(): void {
@@ -55,6 +59,7 @@ export function createCanvasHistory(
   function clear(): void {
     undoStack.length = 0
     redoStack.length = 0
+    epoch.value += 1
     sync()
   }
 
@@ -62,12 +67,14 @@ export function createCanvasHistory(
     if (busy) return
     const cmd = undoStack.pop()
     if (!cmd) return
+    const at = epoch.value
     busy = true
     try {
       await cmd.undo()
-      redoStack.push(cmd)
+      // 执行期间换画布/恢复快照 → 旧命令不得进入新作用域的重做栈
+      if (epoch.value === at) redoStack.push(cmd)
     } catch (err) {
-      clear()
+      if (epoch.value === at) clear()
       throw err
     } finally {
       busy = false
@@ -79,12 +86,13 @@ export function createCanvasHistory(
     if (busy) return
     const cmd = redoStack.pop()
     if (!cmd) return
+    const at = epoch.value
     busy = true
     try {
       await cmd.redo()
-      undoStack.push(cmd)
+      if (epoch.value === at) undoStack.push(cmd)
     } catch (err) {
-      clear()
+      if (epoch.value === at) clear()
       throw err
     } finally {
       busy = false
@@ -92,5 +100,15 @@ export function createCanvasHistory(
     }
   }
 
-  return { push, undo, redo, clear, canUndo, canRedo, undoLabel, redoLabel }
+  return {
+    push,
+    undo,
+    redo,
+    clear,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
+    epoch,
+  }
 }

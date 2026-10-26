@@ -124,7 +124,8 @@ async function selectTemplate(key: string) {
       else if (inp.kind === 'bool') form.value[inp.key] = d === true
       else if (inp.kind === 'files') form.value[inp.key] = []
       else if (inp.kind === 'publications') form.value[inp.key] = []
-      else if (inp.kind === 'multi_select') form.value[inp.key] = Array.isArray(d) ? [...d] : []
+      else if (inp.kind === 'multi_select')
+        form.value[inp.key] = Array.isArray(d) ? [...d] : []
       else form.value[inp.key] = d ?? ''
     }
     // G6 输入预填（历史 run + brief）+ G8 视频合法档位；失败非致命→回落模板默认
@@ -132,7 +133,8 @@ async function selectTemplate(key: string) {
       const pf = await templateApi.prefill(props.projectId, key)
       for (const [k, iv] of Object.entries(pf.inputs)) {
         form.value[k] = iv.value
-        if (iv.source === 'last_run' || iv.source === 'brief') sourceMap.value[k] = iv.source
+        if (iv.source === 'last_run' || iv.source === 'brief')
+          sourceMap.value[k] = iv.source
       }
       videoOverride.value = pf.overrides?.video ?? null
     } catch {
@@ -335,9 +337,7 @@ init()
                     {{ r }}
                   </option>
                 </select>
-                <span
-                  v-if="videoOverride?.defaultResolution"
-                  class="cap-hint"
+                <span v-if="videoOverride?.defaultResolution" class="cap-hint"
                   >推荐 {{ videoOverride.defaultResolution }}（本模型
                   {{ videoOverride.model }}）</span
                 >
@@ -379,7 +379,9 @@ init()
         </template>
       </template>
 
-      <div v-if="notice" class="muted" style="margin-top: 8px">{{ notice }}</div>
+      <div v-if="notice" class="muted" style="margin-top: 8px">
+        {{ notice }}
+      </div>
       <div v-if="err" class="err-text">{{ err }}</div>
     </template>
 

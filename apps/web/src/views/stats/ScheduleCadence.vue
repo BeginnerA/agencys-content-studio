@@ -45,11 +45,15 @@ const WEEKDAYS: Array<{ v: number; label: string }> = [
   { v: 0, label: '日' },
 ]
 
-const source = computed(() => sources.value.find((s) => s.id === sourceId.value) ?? null)
+const source = computed(
+  () => sources.value.find((s) => s.id === sourceId.value) ?? null,
+)
 
 function buildCadence(): Cadence {
-  if (kind.value === 'interval') return { kind: 'interval', intervalDays: Number(intervalDays.value) }
-  if (kind.value === 'weekly') return { kind: 'weekly', weekdays: [...weekdays.value] }
+  if (kind.value === 'interval')
+    return { kind: 'interval', intervalDays: Number(intervalDays.value) }
+  if (kind.value === 'weekly')
+    return { kind: 'weekly', weekdays: [...weekdays.value] }
   return { kind: 'daily' }
 }
 
@@ -128,7 +132,8 @@ async function doCreate() {
       start_at: startAt(),
       count: Number(count.value),
       cadence: buildCadence(),
-      input_template: (source.value.inputTemplate as Array<Record<string, unknown>>) ?? [],
+      input_template:
+        (source.value.inputTemplate as Array<Record<string, unknown>>) ?? [],
       template_key: source.value.templateKey,
       name_prefix: namePrefix.value.trim() || source.value.name,
       note: note.value || undefined,
@@ -153,7 +158,10 @@ function toggleWeekday(v: number) {
   <div class="cadence-panel panel">
     <div class="cp-header">
       <h3><Icon name="calendar" :size="15" /> 按节奏批量排期</h3>
-      <span class="muted sm">克隆既有计划的输入，按日更 / 隔日 / 周更展开为未来一串计划（纯日期数学，零成本）</span>
+      <span class="muted sm"
+        >克隆既有计划的输入，按日更 / 隔日 /
+        周更展开为未来一串计划（纯日期数学，零成本）</span
+      >
     </div>
 
     <div class="cp-grid">
@@ -161,14 +169,20 @@ function toggleWeekday(v: number) {
         项目
         <select v-model="projectId">
           <option value="" disabled>请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          <option v-for="p in projects" :key="p.id" :value="p.id">
+            {{ p.name }}
+          </option>
         </select>
       </label>
       <label>
         模板源计划
         <select v-model="sourceId" :disabled="projectId === ''">
-          <option value="" disabled>{{ sources.length ? '请选择' : '该项目暂无计划可选' }}</option>
-          <option v-for="s in sources" :key="s.id" :value="s.id">{{ s.name }}</option>
+          <option value="" disabled>
+            {{ sources.length ? '请选择' : '该项目暂无计划可选' }}
+          </option>
+          <option v-for="s in sources" :key="s.id" :value="s.id">
+            {{ s.name }}
+          </option>
         </select>
       </label>
       <label>
@@ -193,7 +207,10 @@ function toggleWeekday(v: number) {
       </label>
       <label>
         名称前缀
-        <input v-model="namePrefix" :placeholder="source ? source.name : '默认取模板源名称'" />
+        <input
+          v-model="namePrefix"
+          :placeholder="source ? source.name : '默认取模板源名称'"
+        />
       </label>
     </div>
 
@@ -211,7 +228,11 @@ function toggleWeekday(v: number) {
     </div>
 
     <div class="cp-actions">
-      <button class="btn sm" :disabled="previewing || !sourceId" @click="doPreview">
+      <button
+        class="btn sm"
+        :disabled="previewing || !sourceId"
+        @click="doPreview"
+      >
         {{ previewing ? '预览中…' : '预览日期' }}
       </button>
       <button
@@ -238,7 +259,9 @@ function toggleWeekday(v: number) {
     <div v-if="preview.length" class="cp-preview">
       <div class="muted sm">将创建以下 {{ preview.length }} 个时间点：</div>
       <ol>
-        <li v-for="(ts, i) in preview" :key="i" class="mono">{{ fmtTs(ts) }}</li>
+        <li v-for="(ts, i) in preview" :key="i" class="mono">
+          {{ fmtTs(ts) }}
+        </li>
       </ol>
     </div>
   </div>

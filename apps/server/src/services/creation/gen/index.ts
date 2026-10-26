@@ -1,6 +1,8 @@
 /**
  * 创作画布执行通道（不复用 pipeline actions——其全为批处理/分镜驱动）：
- * - startCanvasNodeRun：readiness 预检 → 建 gen_tasks 行（runId/stepId 恒 null，canvasNodeId 归属）→ 入队异步执行；
+ * - startCanvasNodeRun：readiness 预检（含 checkBudget 预算硬闸）→ 建 gen_tasks 行（runId/stepId 恒 null，
+ *   canvasNodeId 归属）+ **执行快照 exec_snapshot={spec,edges,plan}** → 入队异步执行；
+ *   执行期一律以快照为准（排队期间改配置/改连线不影响本次真实计费输入）；存量行无快照 → 回落实时读取；
  * variants（1-4）：一次循环建 N 条任务，随信号量排队；响应 { taskId, taskIds }（taskId = 首条，兼容）；
  * - 执行镜像 ai_image / ai_video 的 runOneTask 生命周期：attempts 递增、processing→succeeded/failed、
  *   落盘 saveGeneratedMedia + scheduleImageCheck + recordUsage、失败自动重试 1 次（1.5s 间隔）；

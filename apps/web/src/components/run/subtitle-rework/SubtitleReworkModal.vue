@@ -5,19 +5,48 @@
 // 四入口共用本组件与 use-subtitle-rework（P11 接线），此处不接入任何入口。
 import { computed, ref, toRef } from 'vue'
 import Modal from '../../common/Modal.vue'
-import { msToClock, parseClock, useSubtitleRework, type SubtitleRow } from './use-subtitle-rework'
+import {
+  msToClock,
+  parseClock,
+  useSubtitleRework,
+  type SubtitleRow,
+} from './use-subtitle-rework'
 
 const props = defineProps<{ runId: number; stepKey?: string }>()
 const emit = defineEmits<{ close: []; applied: [requestId: string] }>()
 
 const {
-  model, loading, submitting, applying, loadError, previewError, rowErrors,
-  rows, selected, preview, supported, capability, changes, dirty, changeCount,
-  load, onRowEdited, shiftSelected, toggleSelect, toggleSelectAll, allSelected,
-  requestPreview, applyConfirmed, guardClose,
-} = useSubtitleRework(toRef(props, 'runId'), computed(() => props.stepKey), {
-  onApplied: (id) => emit('applied', id),
-})
+  model,
+  loading,
+  submitting,
+  applying,
+  loadError,
+  previewError,
+  rowErrors,
+  rows,
+  selected,
+  preview,
+  supported,
+  capability,
+  changes,
+  dirty,
+  changeCount,
+  load,
+  onRowEdited,
+  shiftSelected,
+  toggleSelect,
+  toggleSelectAll,
+  allSelected,
+  requestPreview,
+  applyConfirmed,
+  guardClose,
+} = useSubtitleRework(
+  toRef(props, 'runId'),
+  computed(() => props.stepKey),
+  {
+    onApplied: (id) => emit('applied', id),
+  },
+)
 
 /** 批量平移输入（毫秒，可为负） */
 const shiftMs = ref('0')
@@ -106,8 +135,10 @@ function diffValue(field: string, v: string | number): string {
 
 const staleBanner = computed(() => {
   const edit = model.value?.current_edit
-  if (edit?.stale) return '当前人工修订已过期（依赖发生变化），将按最新基准重新计算，请核对后再确认'
-  if (model.value?.output.pending_recompose) return '已有修订尚未进入成片，确认后自动续跑合成'
+  if (edit?.stale)
+    return '当前人工修订已过期（依赖发生变化），将按最新基准重新计算，请核对后再确认'
+  if (model.value?.output.pending_recompose)
+    return '已有修订尚未进入成片，确认后自动续跑合成'
   return ''
 })
 
@@ -129,24 +160,51 @@ load()
       <button class="btn" @click="load()">重试</button>
     </div>
     <div v-else-if="!supported" class="rw-state" role="alert">
-      <div class="rw-bad">{{ capability?.message || '当前运行不支持字幕精确返修' }}</div>
-      <div class="rw-hint">原因码：{{ capability?.code }}。返修只在合成完成且依赖可复验时开放，未伪造可编辑状态。</div>
+      <div class="rw-bad">
+        {{ capability?.message || '当前运行不支持字幕精确返修' }}
+      </div>
+      <div class="rw-hint">
+        原因码：{{
+          capability?.code
+        }}。返修只在合成完成且依赖可复验时开放，未伪造可编辑状态。
+      </div>
       <button class="btn" @click="load()">重新检查</button>
     </div>
     <div v-else class="rw-body">
       <p v-if="staleBanner" class="rw-banner">{{ staleBanner }}</p>
-      <p v-if="reviewGateOpen" class="rw-banner">该运行有复核门未决策，成片交付前需在运行详情中完成复核。</p>
+      <p v-if="reviewGateOpen" class="rw-banner">
+        该运行有复核门未决策，成片交付前需在运行详情中完成复核。
+      </p>
 
       <div class="rw-toolbar">
         <label class="rw-check">
-          <input type="checkbox" :checked="allSelected()" @change="toggleSelectAll()" />
+          <input
+            type="checkbox"
+            :checked="allSelected()"
+            @change="toggleSelectAll()"
+          />
           全选
         </label>
-        <span class="rw-count">已选 {{ selected.size }} / {{ rows.length }} 条，修改 {{ changeCount }} 项</span>
+        <span class="rw-count"
+          >已选 {{ selected.size }} / {{ rows.length }} 条，修改
+          {{ changeCount }} 项</span
+        >
         <span class="rw-shift">
           <label for="rw-shift-ms">平移(ms)</label>
-          <input id="rw-shift-ms" v-model="shiftMs" type="number" step="1" class="rw-input rw-shift-input" />
-          <button class="btn" :disabled="submitting || applying" @click="onShift">平移选中行</button>
+          <input
+            id="rw-shift-ms"
+            v-model="shiftMs"
+            type="number"
+            step="1"
+            class="rw-input rw-shift-input"
+          />
+          <button
+            class="btn"
+            :disabled="submitting || applying"
+            @click="onShift"
+          >
+            平移选中行
+          </button>
         </span>
       </div>
 
@@ -171,7 +229,9 @@ load()
             :aria-label="'选择字幕 ' + r.cueId"
             @change="toggleSelect(r.cueId)"
           />
-          <div class="rw-orig" :title="r.originalText">{{ r.originalText }}</div>
+          <div class="rw-orig" :title="r.originalText">
+            {{ r.originalText }}
+          </div>
           <input
             v-model="r.text"
             type="text"
@@ -185,9 +245,18 @@ load()
             type="text"
             inputmode="numeric"
             class="rw-input rw-clock"
-            :class="{ 'rw-input-invalid': clockInvalidFor(r, 'startMs') || !!rowErrorFor(r.cueId) }"
+            :class="{
+              'rw-input-invalid':
+                clockInvalidFor(r, 'startMs') || !!rowErrorFor(r.cueId),
+            }"
             :aria-label="'起点 ' + r.cueId"
-            @input="onClockInput(r, 'startMs', ($event.target as HTMLInputElement).value)"
+            @input="
+              onClockInput(
+                r,
+                'startMs',
+                ($event.target as HTMLInputElement).value,
+              )
+            "
             @blur="onClockBlur(r, 'startMs')"
           />
           <input
@@ -195,39 +264,74 @@ load()
             type="text"
             inputmode="numeric"
             class="rw-input rw-clock"
-            :class="{ 'rw-input-invalid': clockInvalidFor(r, 'endMs') || !!rowErrorFor(r.cueId) }"
+            :class="{
+              'rw-input-invalid':
+                clockInvalidFor(r, 'endMs') || !!rowErrorFor(r.cueId),
+            }"
             :aria-label="'终点 ' + r.cueId"
-            @input="onClockInput(r, 'endMs', ($event.target as HTMLInputElement).value)"
+            @input="
+              onClockInput(
+                r,
+                'endMs',
+                ($event.target as HTMLInputElement).value,
+              )
+            "
             @blur="onClockBlur(r, 'endMs')"
           />
-          <div v-if="rowErrorFor(r.cueId)" class="rw-row-error-msg" role="alert">{{ rowErrorFor(r.cueId) }}</div>
+          <div
+            v-if="rowErrorFor(r.cueId)"
+            class="rw-row-error-msg"
+            role="alert"
+          >
+            {{ rowErrorFor(r.cueId) }}
+          </div>
         </div>
       </div>
 
       <div class="rw-actions">
-        <button class="btn btn-primary" :disabled="!dirty || submitting || applying" @click="requestPreview()">
+        <button
+          class="btn btn-primary"
+          :disabled="!dirty || submitting || applying"
+          @click="requestPreview()"
+        >
           {{ submitting ? '预览请求中…' : '预览变更（' + changeCount + '）' }}
         </button>
       </div>
 
-      <div v-if="previewError" class="rw-bad rw-live" role="alert">{{ previewError }}</div>
-      <p v-if="appliedNote && !preview" class="rw-ok" role="status">{{ appliedNote }}</p>
+      <div v-if="previewError" class="rw-bad rw-live" role="alert">
+        {{ previewError }}
+      </div>
+      <p v-if="appliedNote && !preview" class="rw-ok" role="status">
+        {{ appliedNote }}
+      </p>
 
       <section v-if="preview" class="rw-preview" aria-label="变更预览">
         <h4 class="rw-h4">变更确认</h4>
         <ul class="rw-diffs">
           <li v-for="(d, i) in preview.diffs" :key="i">
             <b>{{ d.cueId }} · {{ fieldLabel(d.field) }}</b>
-            <span class="rw-diff-before">{{ diffValue(d.field, d.before) }}</span>
+            <span class="rw-diff-before">{{
+              diffValue(d.field, d.before)
+            }}</span>
             →
             <span class="rw-diff-after">{{ diffValue(d.field, d.after) }}</span>
           </li>
         </ul>
         <ul class="rw-impact">
           <li>仅本地字幕修订：0 次模型调用，不重跑生成步骤</li>
-          <li v-if="preview.impact.resetSteps.length">重置步骤：{{ preview.impact.resetSteps.join('、') }}</li>
-          <li v-if="preview.impact.keepNotes.length">保留：{{ preview.impact.keepNotes.join('、') }}</li>
-          <li>{{ preview.impact.subtitleBurn ? '成片将烧录新字幕' : '当前配置不烧录字幕：交付含独立字幕文件' }}</li>
+          <li v-if="preview.impact.resetSteps.length">
+            重置步骤：{{ preview.impact.resetSteps.join('、') }}
+          </li>
+          <li v-if="preview.impact.keepNotes.length">
+            保留：{{ preview.impact.keepNotes.join('、') }}
+          </li>
+          <li>
+            {{
+              preview.impact.subtitleBurn
+                ? '成片将烧录新字幕'
+                : '当前配置不烧录字幕：交付含独立字幕文件'
+            }}
+          </li>
           <li>确认后需重新复核</li>
         </ul>
         <ul v-if="preview.risks.length" class="rw-risks">
@@ -247,7 +351,8 @@ load()
         <ul>
           <li v-for="v in versions" :key="v.version_id">
             <span v-if="v.is_current" class="rw-cur">当前</span>
-            r{{ v.revision }} · {{ v.source }}{{ v.label ? ' · ' + v.label : '' }} ·
+            r{{ v.revision }} · {{ v.source
+            }}{{ v.label ? ' · ' + v.label : '' }} ·
             <a :href="v.download_url" target="_blank" rel="noopener">下载</a>
             <span class="rw-hint">· {{ v.change_summary }}</span>
           </li>

@@ -101,10 +101,7 @@ async function loadAssets(reset = true): Promise<void> {
   }
 }
 
-watch(
-  [projectId, tab],
-  () => void loadAssets(true),
-)
+watch([projectId, tab], () => void loadAssets(true))
 
 onMounted(() => void loadProjects())
 
@@ -171,7 +168,11 @@ function confirmPick(): void {
     <template v-else>
       <div v-if="loading && !shown.length" class="empty">加载中…</div>
       <div v-else-if="!shown.length" class="empty">
-        {{ search ? '没有匹配的媒体素材（仅图片 / 视频 / 音频可选）' : '该项目暂无可选素材' }}
+        {{
+          search
+            ? '没有匹配的媒体素材（仅图片 / 视频 / 音频可选）'
+            : '该项目暂无可选素材'
+        }}
       </div>
       <div v-else class="pk-grid">
         <button
@@ -195,15 +196,27 @@ function confirmPick(): void {
             />
             <Icon
               v-else
-              :name="a.kind === 'video' ? 'film' : a.kind === 'audio' ? 'speaker-wave' : 'photo'"
+              :name="
+                a.kind === 'video'
+                  ? 'film'
+                  : a.kind === 'audio'
+                    ? 'speaker-wave'
+                    : 'photo'
+              "
               :size="22"
             />
-            <span v-if="selectedIds.has(a.id)" class="pk-check" aria-hidden="true">
+            <span
+              v-if="selectedIds.has(a.id)"
+              class="pk-check"
+              aria-hidden="true"
+            >
               <Icon name="check" :size="12" :stroke-width="2.5" />
             </span>
           </span>
           <span class="pk-name">{{ a.name }}</span>
-          <span class="pk-meta">{{ KIND_LABEL[a.kind] }} · {{ sizeText(a) }}</span>
+          <span class="pk-meta"
+            >{{ KIND_LABEL[a.kind] }} · {{ sizeText(a) }}</span
+          >
         </button>
       </div>
       <div v-if="loading && shown.length" class="muted pk-more">加载中…</div>

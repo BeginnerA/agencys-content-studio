@@ -132,7 +132,9 @@ const sb = props.sb
 
 .wb-num {
   width: 64px;
-  background: var(--bg); /* 同宿主控制条 strip：比 --code-bg 更深一档保证输入框可辨 */
+  background: var(
+    --bg
+  ); /* 同宿主控制条 strip：比 --code-bg 更深一档保证输入框可辨 */
   border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 6px;

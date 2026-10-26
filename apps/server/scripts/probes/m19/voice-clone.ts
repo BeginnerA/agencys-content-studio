@@ -134,9 +134,9 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const v4 = validateCloneSample({ sizeBytes: 1024, mime: 'audio/wav', durationSec: 5 })
     check(v4.ok && v4.warnings.length === 1 && v4.warnings[0]!.includes('低于建议值'), '时长不足→软警告不拒绝（ok 仍 true）')
     const v5 = validateCloneSample({ sizeBytes: 1024, mime: 'audio/wav', durationSec: 90 })
-    check(v5.ok && v5.warnings[0]?.includes('超出建议上限'), '时长超 60s→软警告（供应商仅取前段）')
+    check(v5.ok && (v5.warnings[0]?.includes('超出建议上限') ?? false), '时长超 60s→软警告（供应商仅取前段）')
     const v6 = validateCloneSample({ sizeBytes: 1024, mime: 'audio/wav' })
-    check(v6.ok && v6.warnings[0]?.includes('未能探测'), '时长不可得（ffprobe 缺失/解析失败）→ 软警告引导自查样本')
+    check(v6.ok && (v6.warnings[0]?.includes('未能探测') ?? false), '时长不可得（ffprobe 缺失/解析失败）→ 软警告引导自查样本')
 
     // ---- [P8] buildEnrollBody / parseEnrollResponse：两套 DashScope 协议快照 ----
     const bA = buildEnrollBody({ protocol: 'dashscope-qwen-enrollment', targetModel: 'qwen3-tts-vc-2026-01-22', prefix: 'probe', sampleRef: 'data:audio/mpeg;base64,AAA' })

@@ -169,7 +169,13 @@ const sb = props.sb
         :class="{ on: sb.promptShotId === shot.shotId }"
         :disabled="!sb.canEdit"
         aria-label="改提示词"
-        :title="sb.promptShotId === shot.shotId ? '收起改词' : (sb.canEdit ? '改提示词' : '审阅闸门下仅非轻松创作模板可改词，其余待收敛后进行')"
+        :title="
+          sb.promptShotId === shot.shotId
+            ? '收起改词'
+            : sb.canEdit
+              ? '改提示词'
+              : '审阅闸门下仅非轻松创作模板可改词，其余待收敛后进行'
+        "
         @click="togglePrompt(shot)"
       >
         <Icon name="pencil" :size="14" />

@@ -76,10 +76,14 @@ export function sweepStaleProbeTempDirs(prefix: string): void {
 }
 
 /**
- * 设置隔离环境：CSTUDIO_ROOT/DATA/WORKSPACE 指向一次性临时目录（独立 studio.db + workspace）。
+ * 设置隔离环境：CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db + workspace）。
+ * CSTUDIO_ROOT 仍指向仓库根 —— 模板/提示词解析依赖它，且 src/env.ts 会从仓库根加载 `.env`
+ * （既有变量不覆盖）。因此隔离的是「数据与工作区」，不是整个仓库：探针必须自带全部外部输入，
+ * 不得读取仓库内真实配置/密钥，也不得写入真实 workspace。
  * ⚠ 必须在任何 src 模块动态 import 之前调用（env 单例在首次加载时固化）。
  * @param tag 临时目录前缀标签（如 'm19' → `acs-probe-m19-`），保持与各探针历史前缀一致
- * @param opts.bridge 需要只读桥接的真实 workspace 子目录（junction 零拷贝，失败回退递归拷贝）
+ * @param opts.bridge 需要复用真实 workspace 子目录时的 junction 桥接（零拷贝，失败回退递归拷贝）。
+ *   注意：junction 不是只读视图，写入会直接落到真实 workspace；桥接子目录只能读。
  */
 export function isolatedEnv(tag: string, opts?: { bridge?: Array<'templates' | 'prompts'> }): IsolatedEnvResult {
   const prefix = `acs-probe-${tag}-`

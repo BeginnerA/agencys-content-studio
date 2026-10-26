@@ -12,6 +12,7 @@
  *
  * 退出码：0=全绿；1=有 FAIL。断言文案不嵌 PASS/FAIL 词元。
  */
+import type { ResponseBody } from './node-body-types'
 import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib'
 
 const { cleanup } = isolatedEnv('m55')
@@ -186,7 +187,7 @@ await runSections({
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         musUrl = String(input)
         void init
-        return new Response(WAV_BYTES as unknown as BodyInit, { status: 200, headers: { 'Content-Type': 'audio/wav' } })
+        return new Response(WAV_BYTES as unknown as ResponseBody, { status: 200, headers: { 'Content-Type': 'audio/wav' } })
       }) as typeof fetch
       const mus = await kit.getMusicAdapter('localai_music').generate(
         { providerKey: 'localai_music', baseUrl: 'http://localhost:8080', apiKey: '', model: 'ace-step-turbo', extra: {} },

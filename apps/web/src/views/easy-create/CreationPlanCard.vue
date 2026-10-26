@@ -160,7 +160,10 @@ async function onConfirm(): Promise<void> {
 
     <CreationRouteHint v-if="routeHint" :hint="routeHint" />
 
-    <CreationDialogueCast v-if="plan.performance === 'dialogue' && plan" :plan="plan" />
+    <CreationDialogueCast
+      v-if="plan.performance === 'dialogue' && plan"
+      :plan="plan"
+    />
 
     <div class="sections">
       <div class="sec">
@@ -209,7 +212,8 @@ async function onConfirm(): Promise<void> {
       <div class="bl">
         <Icon name="folder" :size="13" /> 将创建的项目
         <span class="bl-hint muted"
-          >默认已按方案智能填写 —— 点「开始制作」时才立项，在此之前不进项目列表；任何一项都可改</span
+          >默认已按方案智能填写 ——
+          点「开始制作」时才立项，在此之前不进项目列表；任何一项都可改</span
         >
       </div>
       <div class="pj-grid">
@@ -264,7 +268,10 @@ async function onConfirm(): Promise<void> {
     />
 
     <!-- 参考视频解析产物可检视（服务端写入才有此键；无参考/无解析完全不渲染） -->
-    <PlanRefsAnalysis v-if="plan.refsAnalysis?.length" :entries="plan.refsAnalysis" />
+    <PlanRefsAnalysis
+      v-if="plan.refsAnalysis?.length"
+      :entries="plan.refsAnalysis"
+    />
 
     <!-- 图片反推产物已改到对话流随消息直接渲染（见 ConversationPanel），方案卡不再重复展示 -->
 
@@ -295,7 +302,12 @@ async function onConfirm(): Promise<void> {
         <li v-for="sh in plan.shots" :key="sh.id">
           <span class="sidx mono">{{ sh.duration }}s</span>
           <div>
-            <div class="sp">画面：{{ sh.image_prompt }}<span v-if="sh.source === 'reverse'" class="badge pending srev">来自参考视频 · 可编辑</span></div>
+            <div class="sp">
+              画面：{{ sh.image_prompt
+              }}<span v-if="sh.source === 'reverse'" class="badge pending srev"
+                >来自参考视频 · 可编辑</span
+              >
+            </div>
             <div v-if="plan.mode === 'dynamic'" class="sm">
               运动：{{ sh.motion_prompt }}
             </div>

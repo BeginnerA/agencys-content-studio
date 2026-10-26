@@ -6,6 +6,7 @@
  * 纯 HTTP API 驱动（服务需已启动，默认 http://127.0.0.1:3001），
  * 供 seed 主流程与画布构建器（basic / drama）共同复用。
  */
+import type { BlobBytes } from './node-body-types'
 
 const BASE = process.env.CSTUDIO_BASE_URL ?? 'http://127.0.0.1:3001'
 const API = `${BASE}/api/v1`
@@ -40,7 +41,7 @@ export async function api(method: string, path: string, body?: unknown): Promise
 export async function uploadMedia(projectId: number, filename: string, bytes: Buffer | Uint8Array, mime: string, purpose: string): Promise<number> {
   const fd = new FormData()
   fd.set('purpose', purpose)
-  fd.set('file', new Blob([bytes as BlobPart], { type: mime }), filename)
+  fd.set('file', new Blob([bytes as unknown as BlobBytes], { type: mime }), filename)
   const res = await fetch(`${API}/projects/${projectId}/imports`, { method: 'POST', body: fd })
   const text = await res.text()
   let data: any = null
@@ -57,7 +58,7 @@ export async function uploadMedia(projectId: number, filename: string, bytes: Bu
 
 export async function uploadEntityRef(entityId: number, filename: string, bytes: Buffer, mime: string): Promise<void> {
   const fd = new FormData()
-  fd.set('file', new Blob([bytes as BlobPart], { type: mime }), filename)
+  fd.set('file', new Blob([bytes as unknown as BlobBytes], { type: mime }), filename)
   const res = await fetch(`${API}/entities/${entityId}/ref-images`, { method: 'POST', body: fd })
   if (!res.ok) {
     const text = await res.text()

@@ -9,7 +9,12 @@ import { onMounted, ref } from 'vue'
 import Icon from '../../common/Icon.vue'
 import { qcApi } from '../../../lib/api/qc'
 import { ApiError } from '../../../lib/api/core'
-import type { QcCheckView, QcReportView, QcStatus, QcVerdict } from '../../../lib/types/qc'
+import type {
+  QcCheckView,
+  QcReportView,
+  QcStatus,
+  QcVerdict,
+} from '../../../lib/types/qc'
 
 const props = defineProps<{ runId: number }>()
 
@@ -60,7 +65,13 @@ const VERDICT_TEXT: Record<QcVerdict, string> = {
 }
 
 const fmtVal = (v: QcCheckView['value']): string =>
-  v === null || v === undefined ? '—' : typeof v === 'boolean' ? (v ? '是' : '否') : String(v)
+  v === null || v === undefined
+    ? '—'
+    : typeof v === 'boolean'
+      ? v
+        ? '是'
+        : '否'
+      : String(v)
 
 async function load(refresh: boolean): Promise<void> {
   loading.value = true
@@ -69,7 +80,10 @@ async function load(refresh: boolean): Promise<void> {
     report.value = await qcApi.get(props.runId, refresh)
     hidden.value = false
   } catch (e) {
-    if (e instanceof ApiError && (e.code === 'no_final_video' || e.code === 'not_found')) {
+    if (
+      e instanceof ApiError &&
+      (e.code === 'no_final_video' || e.code === 'not_found')
+    ) {
       hidden.value = true // 无成片：整体隐藏，不打扰（能力探测驱动显隐）
     } else {
       errText.value = e instanceof ApiError ? e.message : '核验失败'
@@ -100,12 +114,18 @@ onMounted(() => load(false))
       </button>
     </div>
 
-    <div v-if="loading && !report" class="empty" style="padding: 8px 0">核验中…</div>
-    <div v-else-if="errText" class="empty err" style="padding: 8px 0">{{ errText }}</div>
+    <div v-if="loading && !report" class="empty" style="padding: 8px 0">
+      核验中…
+    </div>
+    <div v-else-if="errText" class="empty err" style="padding: 8px 0">
+      {{ errText }}
+    </div>
 
     <template v-if="report">
       <div class="meta">
-        <span class="muted mono">{{ new Date(report.checkedAt).toLocaleString() }}</span>
+        <span class="muted mono">{{
+          new Date(report.checkedAt).toLocaleString()
+        }}</span>
         <span v-if="report.fromCache" class="badge skip">缓存</span>
         <span class="grow" />
         <button
@@ -123,10 +143,16 @@ onMounted(() => load(false))
           <div class="rline">
             <span class="rk">{{ KEY_TEXT[c.key] }}</span>
             <span class="grow" />
-            <span class="badge" :class="STATUS_BADGE[c.status]">{{ STATUS_TEXT[c.status] }}</span>
+            <span class="badge" :class="STATUS_BADGE[c.status]">{{
+              STATUS_TEXT[c.status]
+            }}</span>
           </div>
           <div class="rsub">
-            <span v-if="c.value !== null && c.value !== undefined" class="mono rval">{{ fmtVal(c.value) }}</span>
+            <span
+              v-if="c.value !== null && c.value !== undefined"
+              class="mono rval"
+              >{{ fmtVal(c.value) }}</span
+            >
             <span v-if="c.reason" class="muted rwhy">{{ c.reason }}</span>
             <span class="src">{{ c.source }}</span>
           </div>
@@ -134,8 +160,10 @@ onMounted(() => load(false))
       </div>
 
       <p class="foot muted">
-        只读核验：面板不改动交付标记、不放行批准。主观项（视觉一致性 / 道具连续 / 听感失真）及缺项
-        <span class="mono">{{ report.missing.length }}</span> 条仍需人工看片听审后决定。
+        只读核验：面板不改动交付标记、不放行批准。主观项（视觉一致性 / 道具连续
+        / 听感失真）及缺项
+        <span class="mono">{{ report.missing.length }}</span>
+        条仍需人工看片听审后决定。
       </p>
     </template>
   </div>

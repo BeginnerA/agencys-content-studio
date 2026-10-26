@@ -10,56 +10,90 @@ import Icon from '../../components/common/Icon.vue'
 import type { useEasyCreate } from './use-creation-chat'
 import type { AgentDecisionView, InputSpecView } from '../../lib/types'
 
-const props = defineProps<{ s: ReturnType<typeof useEasyCreate>; confirmable?: boolean }>()
+const props = defineProps<{
+  s: ReturnType<typeof useEasyCreate>
+  confirmable?: boolean
+}>()
 
 const session = computed(() => props.s.state.detail?.session ?? null)
-const decision = computed<AgentDecisionView | null>(() => session.value?.decision ?? null)
+const decision = computed<AgentDecisionView | null>(
+  () => session.value?.decision ?? null,
+)
 const busy = computed(() => props.s.state.busyAction)
 // confirmable 优先取服务端下发的卡片 props（= status ready 且预检 ready）；缺省时按 ready + 有 decisionHash 兜底判定
 const canConfirm = computed(
   () =>
     props.confirmable ??
     (session.value?.status === 'ready' && !!session.value?.decisionHash),
-
 )
 const modeText = computed(() => {
   switch (decision.value?.mode) {
-    case 'template': return '命中专业模板'
-    case 'chain': return '多步执行链'
-    case 'synth': return '临时编排（未命中既有模板，智能合成）'
-    case 'easy': return '单条成片'
-    default: return '执行计划'
+    case 'template':
+      return '命中专业模板'
+    case 'chain':
+      return '多步执行链'
+    case 'synth':
+      return '临时编排（未命中既有模板，智能合成）'
+    case 'easy':
+      return '单条成片'
+    default:
+      return '执行计划'
   }
 })
 
 /** 角色名：扫描消息中带同 agentRole 的 roleName（服务端注册表投影）；找不到回落 key 本身，不伪装 */
 function roleName(key?: string | null): string {
   if (!key) return '智能助手'
-  const hit = (props.s.state.detail?.messages ?? []).find((m) => m.agentRole === key)
+  const hit = (props.s.state.detail?.messages ?? []).find(
+    (m) => m.agentRole === key,
+  )
   return hit?.roleName || key
 }
 const speakerName = computed(() => roleName(decision.value?.roleKey))
-const teamNames = computed(() => (decision.value?.team ?? []).map((t) => `${roleName(t.roleKey)}｜${t.stage}`))
+const teamNames = computed(() =>
+  (decision.value?.team ?? []).map((t) => `${roleName(t.roleKey)}｜${t.stage}`),
+)
 
 /** inputSpec 摘要：逐字段展示来源kind + 可读值（只读预览，用户可在对话中改需求重新规划） */
-const specRows = (spec?: Record<string, InputSpecView> | null): Array<{ field: string; text: string }> =>
+const specRows = (
+  spec?: Record<string, InputSpecView> | null,
+): Array<{ field: string; text: string }> =>
   Object.entries(spec ?? {}).map(([field, item]) => {
     let text: string
     switch (item.kind) {
-      case 'text': text = String(item.value ?? ''); break
-      case 'number': text = String(item.value ?? ''); break
-      case 'boolean': text = item.value ? '是' : '否'; break
-      case 'asset': text = `素材 #${item.assetId ?? '?'}`; break
-      case 'assets': text = `素材 ${(item.assetIds ?? []).map((x) => `#${x}`).join('、')}`; break
-      case 'prev': text = `上游产物 ${item.ref ?? ''}`; break
-      case 'default': text = '（用默认值）'; break
-      default: text = '—'
+      case 'text':
+        text = String(item.value ?? '')
+        break
+      case 'number':
+        text = String(item.value ?? '')
+        break
+      case 'boolean':
+        text = item.value ? '是' : '否'
+        break
+      case 'asset':
+        text = `素材 #${item.assetId ?? '?'}`
+        break
+      case 'assets':
+        text = `素材 ${(item.assetIds ?? []).map((x) => `#${x}`).join('、')}`
+        break
+      case 'prev':
+        text = `上游产物 ${item.ref ?? ''}`
+        break
+      case 'default':
+        text = '（用默认值）'
+        break
+      default:
+        text = '—'
     }
     return { field, text }
   })
 
-const templateKey = computed(() => decision.value?.templateRun?.templateKey ?? null)
-const templateSpecs = computed(() => specRows(decision.value?.templateRun?.inputSpec))
+const templateKey = computed(
+  () => decision.value?.templateRun?.templateKey ?? null,
+)
+const templateSpecs = computed(() =>
+  specRows(decision.value?.templateRun?.inputSpec),
+)
 const chainSegs = computed(() => decision.value?.chain ?? [])
 const synth = computed(() => decision.value?.synth ?? null)
 const synthSpecs = computed(() => specRows(decision.value?.synth?.inputSpec))
@@ -79,11 +113,17 @@ async function onConfirm(): Promise<void> {
     <p class="rationale">{{ decision.rationale }}</p>
 
     <!-- template：目标模板 + 输入物化预览 -->
-    <div v-if="decision.mode === 'template' && decision.templateRun" class="blk">
+    <div
+      v-if="decision.mode === 'template' && decision.templateRun"
+      class="blk"
+    >
       <div class="blk-h">执行模板</div>
       <code class="tk">{{ templateKey }}</code>
       <ul v-if="templateSpecs.length" class="spec">
-        <li v-for="r in templateSpecs" :key="r.field"><span class="f">{{ r.field }}</span>{{ r.text }}</li>
+        <li v-for="r in templateSpecs" :key="r.field">
+          <span class="f">{{ r.field }}</span
+          >{{ r.text }}
+        </li>
       </ul>
     </div>
 
@@ -93,7 +133,10 @@ async function onConfirm(): Promise<void> {
       <p class="synth-n">{{ synth.name }} · {{ synth.stepCount }} 步</p>
       <code class="tk">{{ synth.templateKey }}</code>
       <ul v-if="synthSpecs.length" class="spec">
-        <li v-for="r in synthSpecs" :key="r.field"><span class="f">{{ r.field }}</span>{{ r.text }}</li>
+        <li v-for="r in synthSpecs" :key="r.field">
+          <span class="f">{{ r.field }}</span
+          >{{ r.text }}
+        </li>
       </ul>
       <p class="hint">临时模板仅本会话可见，随会话删除自动回收。</p>
     </div>
@@ -104,36 +147,59 @@ async function onConfirm(): Promise<void> {
       <ol class="chain">
         <li v-for="(seg, i) in chainSegs" :key="i">
           <span class="idx">{{ i + 1 }}</span>
-          <div class="seg"><b>{{ seg.title }}</b><code>{{ seg.templateKey }}</code></div>
+          <div class="seg">
+            <b>{{ seg.title }}</b
+            ><code>{{ seg.templateKey }}</code>
+          </div>
         </li>
       </ol>
-      <p class="hint">段间将暂停回到对话请求你的批准（安全默认，不自动级联计费）。</p>
+      <p class="hint">
+        段间将暂停回到对话请求你的批准（安全默认，不自动级联计费）。
+      </p>
     </div>
 
     <!-- 编队 -->
     <div v-if="teamNames.length" class="blk">
       <div class="blk-h">智能编队</div>
-      <ul class="team"><li v-for="(t, i) in teamNames" :key="i">{{ t }}</li></ul>
+      <ul class="team">
+        <li v-for="(t, i) in teamNames" :key="i">{{ t }}</li>
+      </ul>
     </div>
 
     <!-- 越界升级建议 / 能力回落说明（可见不静默） -->
     <div v-if="decision.escalateTo" class="note warn">
-      <Icon name="alert" :size="13" /> 建议改用「{{ decision.escalateTo.templateKey }}」：{{ decision.escalateTo.reason }}
+      <Icon name="alert" :size="13" /> 建议改用「{{
+        decision.escalateTo.templateKey
+      }}」：{{ decision.escalateTo.reason }}
     </div>
     <div v-for="n in decision.capabilityNotes ?? []" :key="n" class="note">
       <Icon name="info" :size="13" /> {{ n }}
     </div>
 
     <footer class="pf">
-      <button class="btn primary" type="button" :disabled="!canConfirm || busy" @click="onConfirm">
+      <button
+        class="btn primary"
+        type="button"
+        :disabled="!canConfirm || busy"
+        @click="onConfirm"
+      >
         <Icon name="check" :size="13" /> {{ busy ? '启动中…' : '确认执行计划' }}
       </button>
-      <button class="btn sm ghost" type="button" :disabled="busy" @click="s.refreshPreflight()">
+      <button
+        class="btn sm ghost"
+        type="button"
+        :disabled="busy"
+        @click="s.refreshPreflight()"
+      >
         <Icon name="refresh" :size="13" /> 更新预检
       </button>
     </footer>
-    <small v-if="!canConfirm" class="muted">执行计划尚不可确认（配置待完善或已过时），请在左侧继续对话重新规划或点「更新预检」。</small>
-    <small v-else class="muted">确认后才立项并启动制作，可能产生媒体费用。</small>
+    <small v-if="!canConfirm" class="muted"
+      >执行计划尚不可确认（配置待完善或已过时），请在左侧继续对话重新规划或点「更新预检」。</small
+    >
+    <small v-else class="muted"
+      >确认后才立项并启动制作，可能产生媒体费用。</small
+    >
   </div>
 </template>
 
@@ -158,7 +224,9 @@ async function onConfirm(): Promise<void> {
   gap: 7px;
   font-weight: 700;
 }
-.ph h2 .ic { color: var(--accent-h); }
+.ph h2 .ic {
+  color: var(--accent-h);
+}
 .who-badge {
   font-size: 11.5px;
   color: var(--accent-h);
@@ -196,8 +264,14 @@ async function onConfirm(): Promise<void> {
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
-.synth-n { margin: 0; font-size: 13px; color: var(--text); }
-.spec, .team, .chain {
+.synth-n {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.spec,
+.team,
+.chain {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -236,10 +310,23 @@ async function onConfirm(): Promise<void> {
   font-size: 11px;
   font-weight: 700;
 }
-.chain .seg { display: flex; flex-direction: column; gap: 2px; }
-.chain .seg b { font-size: 13px; color: var(--text); }
-.chain .seg code { font-size: 11.5px; color: var(--text-2); }
-.team li { font-size: 12.5px; color: var(--text-2); }
+.chain .seg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chain .seg b {
+  font-size: 13px;
+  color: var(--text);
+}
+.chain .seg code {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.team li {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
 .note {
   display: flex;
   gap: 7px;
@@ -251,7 +338,11 @@ async function onConfirm(): Promise<void> {
   border-radius: 9px;
   padding: 8px 11px;
 }
-.note.warn { color: var(--warn); border-color: rgb(245 158 11 / 30%); background: var(--warn-weak); }
+.note.warn {
+  color: var(--warn);
+  border-color: rgb(245 158 11 / 30%);
+  background: var(--warn-weak);
+}
 .pf {
   display: flex;
   gap: 8px;
@@ -259,5 +350,11 @@ async function onConfirm(): Promise<void> {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
-.hint, .muted { font-size: 11.5px; color: var(--text-3); line-height: 1.6; margin: 0; }
+.hint,
+.muted {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+  margin: 0;
+}
 </style>

@@ -18,6 +18,7 @@
  * 可用环境变量 CSTUDIO_BASE_URL 覆盖服务地址。
  */
 /// <reference types="node" />
+import type { BlobBytes } from './node-body-types'
 
 const BASE = process.env.CSTUDIO_BASE_URL ?? 'http://127.0.0.1:3001'
 const API = `${BASE}/api/v1`
@@ -53,7 +54,7 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
 async function uploadMedia(projectId: number, filename: string, bytes: Buffer | Uint8Array, mime: string, purpose: string): Promise<number> {
   const fd = new FormData()
   fd.set('purpose', purpose)
-  fd.set('file', new Blob([bytes as BlobPart], { type: mime }), filename)
+  fd.set('file', new Blob([bytes as unknown as BlobBytes], { type: mime }), filename)
   const res = await fetch(`${API}/projects/${projectId}/imports`, { method: 'POST', body: fd })
   const text = await res.text()
   let data: any = null

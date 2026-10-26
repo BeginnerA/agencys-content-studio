@@ -12,7 +12,10 @@ import CreationBrand from './CreationBrand.vue'
  * 收进一个轻组件的目的：CreationPlanCard 本体已达 ≤800 行红线，将三项的本地状态与预检回落 watch 上移，
  * 令父组件净减行数；父通过 defineExpose 读回 reviewGate / resolution / brandApply（expose 的 ref 自动解包）。
  */
-const props = defineProps<{ pf: CreationPreflight | null; plan: CreationPlan | null }>()
+const props = defineProps<{
+  pf: CreationPreflight | null
+  plan: CreationPlan | null
+}>()
 
 // 中途审阅：勾选即本次用带闸门的同构变体模板（仅旁白 easy-video → easy-video-review）；对白 easy-dialogue 已内置首帧审阅闸（恒走带闸模板，不展示本勾选）
 const reviewGate = ref(false)
@@ -26,39 +29,70 @@ const subtitleBurn = ref(true)
 watch(
   () => props.pf?.resolutionOptions,
   (o) => {
-    if (resolution.value && (!o || !o.choices.includes(resolution.value))) resolution.value = ''
+    if (resolution.value && (!o || !o.choices.includes(resolution.value)))
+      resolution.value = ''
   },
 )
 
 const dynamic = computed(() => props.plan?.mode === 'dynamic')
 // 对白模板已内置首帧审阅闸（原 easy-dialogue-review 已合并入 easy-dialogue）→ 无“免审/审阅”可选项，隐藏审阅勾选
 const dialogue = computed(() => props.plan?.performance === 'dialogue')
-const bgmCount = computed(() => props.plan?.refs.filter((r) => r.role === 'bgm').length ?? 0)
+const bgmCount = computed(
+  () => props.plan?.refs.filter((r) => r.role === 'bgm').length ?? 0,
+)
 // 免核验对白路线提示：仅预检判定当前对白方案走 estimated 时展示（诚实告知字幕非实测）
-const dialogueEstimated = computed(() => props.plan?.performance === 'dialogue' && props.pf?.dialogueMode === 'estimated')
+const dialogueEstimated = computed(
+  () =>
+    props.plan?.performance === 'dialogue' &&
+    props.pf?.dialogueMode === 'estimated',
+)
 
 defineExpose({ reviewGate, resolution, brandApply, subtitleBurn })
 </script>
 
 <template>
-  <CreationReviewGate v-if="!dialogue" v-model="reviewGate" :dynamic="dynamic" />
+  <CreationReviewGate
+    v-if="!dialogue"
+    v-model="reviewGate"
+    :dynamic="dynamic"
+  />
   <!-- 画质选择：仅 dynamic 且预检透出了已背书档位时展示（slideshow / 无视频实例不现） -->
-  <CreationResolution v-if="dynamic && pf?.resolutionOptions" v-model="resolution" :options="pf.resolutionOptions" />
+  <CreationResolution
+    v-if="dynamic && pf?.resolutionOptions"
+    v-model="resolution"
+    :options="pf.resolutionOptions"
+  />
   <!-- 品牌风格：仅平台/项目已配品牌（brandSummary.available）时展示；未配品牌不打扰 -->
-  <CreationBrand v-if="pf?.brandSummary?.available" v-model="brandApply" :summary="pf.brandSummary" :bgm-count="bgmCount" />
+  <CreationBrand
+    v-if="pf?.brandSummary?.available"
+    v-model="brandApply"
+    :summary="pf.brandSummary"
+    :bgm-count="bgmCount"
+  />
   <!-- 字幕烧录：独立于品牌（成片画面是否含硬字幕）；取消不删字幕文件，仍可单独下载 -->
   <div class="ec-sub">
     <label class="ec-sub-row">
-      <input type="checkbox" :checked="subtitleBurn" aria-label="在成片烧录字幕" @change="subtitleBurn = ($event.target as HTMLInputElement).checked" />
+      <input
+        type="checkbox"
+        :checked="subtitleBurn"
+        aria-label="在成片烧录字幕"
+        @change="subtitleBurn = ($event.target as HTMLInputElement).checked"
+      />
       <span><Icon name="doc" :size="13" /> 在成片烧录字幕</span>
     </label>
     <p class="ec-sub-hint">
-      {{ subtitleBurn ? '台词将作为硬字幕烧进画面（不可在播放器关闭）。' : '已关闭：成片画面不含字幕；字幕文件（.srt）仍会生成，可在成果页单独下载或导入剪辑器。' }}
+      {{
+        subtitleBurn
+          ? '台词将作为硬字幕烧进画面（不可在播放器关闭）。'
+          : '已关闭：成片画面不含字幕；字幕文件（.srt）仍会生成，可在成果页单独下载或导入剪辑器。'
+      }}
     </p>
   </div>
   <!-- 免核验对白告知条：模型原生出声、字幕按台词估算（非实测），交付前强制人工审阅 -->
   <p v-if="dialogueEstimated" class="ec-est-hint">
-    <Icon name="alert" :size="13" /> 免核验对白：由视频模型原生生成人声与口型，字幕按批准台词估算（非实测），成片必须经你收听审阅后才会交付；如需逐字核验可在设置中恢复「严格 ASR 核验」。
+    <Icon name="alert" :size="13" />
+    免核验对白：由视频模型原生生成人声与口型，字幕按批准台词估算（非实测），成片必须经你收听审阅后才会交付；如需逐字核验可在设置中恢复「严格
+    ASR 核验」。
   </p>
 </template>
 

@@ -51,10 +51,33 @@ export function useShotBoardOps(ctx: {
   sfxShotId: Ref<string | null>
 }) {
   const {
-    props, emit, run, load, err, notice, opBusy, shots, compose, canOperate,
-    selectedVersion, durationDrafts, bulkPicked, bulkDuration, dragShotId,
-    dropTarget, uploadShotId, uploadBusy, uploadInput, editorOpen, composeCfg,
-    cfgTransition, cfgDur, cfgBusy, bgm, sfxMap, sfxShotId,
+    props,
+    emit,
+    run,
+    load,
+    err,
+    notice,
+    opBusy,
+    shots,
+    compose,
+    canOperate,
+    selectedVersion,
+    durationDrafts,
+    bulkPicked,
+    bulkDuration,
+    dragShotId,
+    dropTarget,
+    uploadShotId,
+    uploadBusy,
+    uploadInput,
+    editorOpen,
+    composeCfg,
+    cfgTransition,
+    cfgDur,
+    cfgBusy,
+    bgm,
+    sfxMap,
+    sfxShotId,
   } = ctx
 
   // ---------- 时长编辑（change 即提交） ----------

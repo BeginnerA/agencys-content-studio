@@ -66,7 +66,13 @@ const VERDICT_TEXT: Record<CertVerdict, string> = {
 }
 
 const fmtVal = (v: CertCheckView['value']): string =>
-  v === null || v === undefined ? '—' : typeof v === 'boolean' ? (v ? '是' : '否') : String(v)
+  v === null || v === undefined
+    ? '—'
+    : typeof v === 'boolean'
+      ? v
+        ? '是'
+        : '否'
+      : String(v)
 
 async function load(refresh: boolean): Promise<void> {
   loading.value = true
@@ -78,7 +84,10 @@ async function load(refresh: boolean): Promise<void> {
     else hidden.value = false
     cert.value = r
   } catch (e) {
-    if (e instanceof ApiError && (e.code === 'run_not_found' || e.code === 'not_found')) {
+    if (
+      e instanceof ApiError &&
+      (e.code === 'run_not_found' || e.code === 'not_found')
+    ) {
       hidden.value = true // run 不存在：整体隐藏，不打扰
     } else {
       errText.value = e instanceof ApiError ? e.message : '认证失败'
@@ -109,12 +118,18 @@ onMounted(() => load(false))
       </button>
     </div>
 
-    <div v-if="loading && !cert" class="empty" style="padding: 8px 0">认证中…</div>
-    <div v-else-if="errText" class="empty err" style="padding: 8px 0">{{ errText }}</div>
+    <div v-if="loading && !cert" class="empty" style="padding: 8px 0">
+      认证中…
+    </div>
+    <div v-else-if="errText" class="empty err" style="padding: 8px 0">
+      {{ errText }}
+    </div>
 
     <template v-if="cert">
       <div class="meta">
-        <span class="muted mono">{{ new Date(cert.checkedAt).toLocaleString() }}</span>
+        <span class="muted mono">{{
+          new Date(cert.checkedAt).toLocaleString()
+        }}</span>
         <span class="badge skip">{{ cert.format }}</span>
         <span v-if="cert.fromCache" class="badge skip">缓存</span>
         <span class="grow" />
@@ -133,10 +148,16 @@ onMounted(() => load(false))
           <div class="rline">
             <span class="rk">{{ KEY_TEXT[c.key] }}</span>
             <span class="grow" />
-            <span class="badge" :class="STATUS_BADGE[c.status]">{{ STATUS_TEXT[c.status] }}</span>
+            <span class="badge" :class="STATUS_BADGE[c.status]">{{
+              STATUS_TEXT[c.status]
+            }}</span>
           </div>
           <div class="rsub">
-            <span v-if="c.value !== null && c.value !== undefined" class="mono rval">{{ fmtVal(c.value) }}</span>
+            <span
+              v-if="c.value !== null && c.value !== undefined"
+              class="mono rval"
+              >{{ fmtVal(c.value) }}</span
+            >
             <span v-if="c.reason" class="muted rwhy">{{ c.reason }}</span>
             <span class="src">{{ c.source }}</span>
           </div>
@@ -144,8 +165,10 @@ onMounted(() => load(false))
       </div>
 
       <p class="foot muted">
-        只读认证：面板不造包、不改交付标记、不放行批准。结构良构 ≠ 编辑器已验证通过——
-        编辑器导入 <span class="mono">{{ cert.missing.length }}</span> 项待人工实测（含导入 FCPx/EDL/OTIO 后人工核对）。
+        只读认证：面板不造包、不改交付标记、不放行批准。结构良构 ≠
+        编辑器已验证通过—— 编辑器导入
+        <span class="mono">{{ cert.missing.length }}</span> 项待人工实测（含导入
+        FCPx/EDL/OTIO 后人工核对）。
       </p>
     </template>
   </div>

@@ -163,7 +163,9 @@ const {
           :key="f.key"
           class="btn sm"
           :aria-busy="editExBusy"
-          :disabled="busy || active || editExBusy || !editExEnabled(editExFormats, f.key)"
+          :disabled="
+            busy || active || editExBusy || !editExEnabled(editExFormats, f.key)
+          "
           :title="editExTitle(editExFormats, f.key, editExBusy)"
           @click="exportEditExchange(f.key)"
         >

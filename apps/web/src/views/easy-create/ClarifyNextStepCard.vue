@@ -11,15 +11,27 @@ import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
 
-interface ClarifyPayload { kind?: string; questions?: unknown }
+interface ClarifyPayload {
+  kind?: string
+  questions?: unknown
+}
 const lastClarify = computed(() => {
   const msgs = props.s.state.detail?.messages ?? []
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
     const m = msgs[i]!
     if (m.role !== 'assistant') continue
     const p = (m.payload ?? null) as ClarifyPayload | null
-    if (p?.kind === 'clarify' && Array.isArray(p.questions) && p.questions.length) {
-      return { content: m.content, questions: p.questions.filter((q): q is string => typeof q === 'string') }
+    if (
+      p?.kind === 'clarify' &&
+      Array.isArray(p.questions) &&
+      p.questions.length
+    ) {
+      return {
+        content: m.content,
+        questions: p.questions.filter(
+          (q): q is string => typeof q === 'string',
+        ),
+      }
     }
     return null
   }
@@ -37,7 +49,9 @@ const questions = computed(() => lastClarify.value?.questions ?? [])
     <ul v-if="questions.length" class="qs">
       <li v-for="(q, i) in questions" :key="i">{{ q }}</li>
     </ul>
-    <p class="muted">点下方对话区的选项，或直接补充一句，助手会继续规划。此阶段不立项、不产生任何媒体制作费用。</p>
+    <p class="muted">
+      点下方对话区的选项，或直接补充一句，助手会继续规划。此阶段不立项、不产生任何媒体制作费用。
+    </p>
   </div>
 </template>
 

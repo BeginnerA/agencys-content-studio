@@ -22,9 +22,14 @@ const gateHint = () =>
       <input
         :checked="modelValue"
         type="checkbox"
-        @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)"
+        @change="
+          emit('update:modelValue', ($event.target as HTMLInputElement).checked)
+        "
       />
-      <span><Icon name="eye" :size="13" /> 生成首帧后暂停，我确认画面后再继续（推荐用于重要成片）</span>
+      <span
+        ><Icon name="eye" :size="13" />
+        生成首帧后暂停，我确认画面后再继续（推荐用于重要成片）</span
+      >
     </label>
     <p class="ec-gate-hint">{{ gateHint() }}</p>
   </div>

@@ -10,7 +10,12 @@ import Icon from '../../common/Icon.vue'
 import ComposeInputReworkModal from './ComposeInputReworkModal.vue'
 import { composeInputReworkApi } from '../../../lib/api/rework'
 
-const props = defineProps<{ runId: number; projectId: number; stepKey?: string; disabled?: boolean }>()
+const props = defineProps<{
+  runId: number
+  projectId: number
+  stepKey?: string
+  disabled?: boolean
+}>()
 defineEmits<{ applied: [] }>()
 
 const show = ref(false)
@@ -19,7 +24,10 @@ const reason = ref('')
 
 onMounted(async () => {
   try {
-    const res = await composeInputReworkApi.capability(props.runId, props.stepKey ?? 'compose')
+    const res = await composeInputReworkApi.capability(
+      props.runId,
+      props.stepKey ?? 'compose',
+    )
     if (res.capability.supported) {
       reason.value = '核对合成输入并受控返修（本地重合成，零模型费用）'
       show.value = true

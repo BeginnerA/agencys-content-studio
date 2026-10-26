@@ -66,7 +66,14 @@ async function main(): Promise<void> {
   }
   const failFast = hasFlag('fail-fast')
   const jobsArg = argvFlag('jobs')
-  const jobs = failFast ? 1 : Math.max(1, jobsArg ? Number(jobsArg) : Math.min(4, cpus.cpus().length - 1))
+  const requestedJobs = jobsArg === undefined ? Math.min(4, Math.max(1, cpus.cpus().length - 1)) : Number(jobsArg)
+  // 非法并发数必须显式失败：旧实现把 NaN 传给 Math.max → 创建 0 个 worker → 零探针执行却退出 0（假绿）
+  if (!Number.isInteger(requestedJobs) || requestedJobs < 1) {
+    console.error(`非法 --jobs=${jobsArg ?? ''}：需为正整数`)
+    process.exitCode = 1
+    return
+  }
+  const jobs = failFast ? 1 : requestedJobs
   console.log(`▶ 运行 ${targets.length} 枚探针（并发=${jobs}${failFast ? '，fail-fast' : ''}）…`)
 
   const results: ProbeResult[] = []

@@ -88,7 +88,9 @@ defineProps<{
           </div>
           <div class="help-row">
             <dt>平移画布</dt>
-            <dd><kbd>空格</kbd><span>+</span><kbd>拖动</kbd><span>/ 中键</span></dd>
+            <dd>
+              <kbd>空格</kbd><span>+</span><kbd>拖动</kbd><span>/ 中键</span>
+            </dd>
           </div>
           <div class="help-row">
             <dt>缩放 / 适应</dt>

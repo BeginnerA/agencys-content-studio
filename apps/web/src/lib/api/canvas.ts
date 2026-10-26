@@ -1,4 +1,4 @@
-import { api, type Items } from './core'
+import { api, LONG_TIMEOUT_MS, type Items } from './core'
 import type {
   AnyNodeSpec,
   Asset,
@@ -256,17 +256,20 @@ export const creationApi = {
       nodes?: CanvasNodeRow[]
       assets?: Asset[]
     }>(`/api/v1/nodes/${nodeId}/extract-frame`, body),
-  /** AI 扩写（内容源 = text.text / gen.prompt；不落库；未配置 LLM → 400 引导 Settings） */
+  /** AI 扩写（内容源 = text.text / gen.prompt；不落库；未配置 LLM → 400 引导 Settings）——文本模型同步返回 → 走 LONG */
   promptExpand: (nodeId: number, instruction?: string) =>
     api.post<{ prompt: string; provider: string; model: string }>(
       `/api/v1/nodes/${nodeId}/prompt-expand`,
       { instruction },
+      LONG_TIMEOUT_MS,
     ),
-  /** 打包导出 zip（→ archive 资产；下载复用 GET /assets/:id/file?download=1） */
+  /** 打包导出 zip（→ archive 资产；下载复用 GET /assets/:id/file?download=1）——全量媒体同步打包 → 走 LONG */
   exportZip: (canvasId: number, nodeIds?: number[]) =>
-    api.post<CanvasExportResult>(`/api/v1/canvases/${canvasId}/export`, {
-      nodeIds,
-    }),
+    api.post<CanvasExportResult>(
+      `/api/v1/canvases/${canvasId}/export`,
+      { nodeIds },
+      LONG_TIMEOUT_MS,
+    ),
   /** 布局图导出（SVG 落资产库；svg 文本供前端光栅化 PNG） */
   exportImage: (canvasId: number, format: 'svg' = 'svg') =>
     api.post<{ assetId: number; svg: string }>(

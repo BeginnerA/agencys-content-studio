@@ -24,7 +24,8 @@ export function usePrompts(deps: { refreshMetas: () => Promise<void> }) {
 
   /** [内置保护] 当前选中提示词是否系统内置（真源取服务端 prompts.builtin）：内置则只读、不可保存/删除 */
   const currentPromptBuiltin = computed(
-    () => prompts.value.find((p) => p.name === pSelected.value)?.builtin === true,
+    () =>
+      prompts.value.find((p) => p.name === pSelected.value)?.builtin === true,
   )
 
   async function refreshPrompts() {

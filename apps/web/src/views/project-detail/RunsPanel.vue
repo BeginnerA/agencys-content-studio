@@ -193,7 +193,9 @@ const {
                 >
                   删除
                 </button>
-                <RouterLink class="muted" :to="`/runs/${row.run.id}`">详情 →</RouterLink>
+                <RouterLink class="muted" :to="`/runs/${row.run.id}`"
+                  >详情 →</RouterLink
+                >
               </td>
             </tr>
 
@@ -236,7 +238,9 @@ const {
                 >
                   删除
                 </button>
-                <RouterLink class="muted" :to="`/runs/${row.run.id}`">详情 →</RouterLink>
+                <RouterLink class="muted" :to="`/runs/${row.run.id}`"
+                  >详情 →</RouterLink
+                >
               </td>
             </tr>
 
@@ -311,7 +315,9 @@ const {
                 >
                   删除
                 </button>
-                <RouterLink class="muted" :to="`/runs/${row.run.id}`">详情 →</RouterLink>
+                <RouterLink class="muted" :to="`/runs/${row.run.id}`"
+                  >详情 →</RouterLink
+                >
               </td>
             </tr>
 

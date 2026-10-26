@@ -223,7 +223,7 @@ export async function runComposeSection(check: CheckFn): Promise<void> {
   const args6 = fpArgs(gRef, { wantCover: true }, lg6)
   const ids6 = await md.tryNoBurnManualRecompose(args6 as never)
   check(Array.isArray(ids6) && ids6.length === 2, '快速路径命中：新成片+封面两件资产（封面走一次抽帧编码，主流程零 ffmpeg）')
-  const n6 = (await db.select().from(assets).where(eq(assets.id, ids6![0])).limit(1))[0]!
+  const n6 = (await db.select().from(assets).where(eq(assets.id, ids6![0]!)).limit(1))[0]!
   check(n6.purpose === 'final_video' && n6.runId === runG && n6.stepId === fixG.composeId, '新成片登记到原 run/步骤（新版本不可变资产）')
   check(Buffer.compare(fs.readFileSync(absPathOf(n6.relPath!)), baseBytes) === 0, '基准成片逐字节复制（视频/音频未动 → 台词/音频位置不变）')
   const p6 = JSON.parse(n6.params ?? '{}') as Record<string, unknown>
@@ -239,7 +239,7 @@ export async function runComposeSection(check: CheckFn): Promise<void> {
   const gTasks = await db.select().from(genTasks).where(eq(genTasks.runId, runG))
   check(gTasks.length === 1 && gTasks[0]!.status === 'succeeded', '生成任务不动（不重置不新增，本地路径供应商调用=0）')
   check(provHits === 1 && ffHits === 1 && ids6!.length === 2, '溯源快照回调恰执行一次；ffmpeg 仅封面抽帧一次')
-  const cover6 = (await db.select().from(assets).where(eq(assets.id, ids6![1])).limit(1))[0]!
+  const cover6 = (await db.select().from(assets).where(eq(assets.id, ids6![1]!)).limit(1))[0]!
   check(cover6.purpose === 'thumbnail' && JSON.parse(cover6.params ?? '{}').sourceVideo === n6.id, '封面从复制件重抽帧并指向新成片')
   // 派生画幅一致时同样逐字节复制
   const dBytes = Buffer.from('DERIVED-9x16-\u00ff')
@@ -538,7 +538,7 @@ export async function runExchangeSection(check: CheckFn): Promise<void> {
   const mdClips = clipsOf('Markdown')
   check(mdClips.length === 3 && doc.metadata['subtitle_source'] === 'subtitle' && doc.metadata['subtitle_origin'] === 'manual', 'OTIO Markdown 轨取有效快照 cues（来源/origin 入 metadata）')
   const mdEdited = mdClips.find((cl) => (cl['metadata'] as Record<string, unknown>)?.['text'] === '魔改首句')
-  const editedStart = ((mdEdited?.['source_range'] as Record<string, Record<string, number>>)['start_time'])['value']
+  const editedStart = ((mdEdited?.['source_range'] as Record<string, Record<string, number>>)['start_time']!)['value']
   check(editedStart === 125, 'OTIO 修订 cue 起点 125 帧=5s@25fps（绝对轴不叠加 intro）')
   check(clipsOf('Dialogue Audio').length === 3, 'OTIO Dialogue Audio 轨仍只读 lines（字幕接线不影响对白音轨）')
 

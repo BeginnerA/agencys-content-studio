@@ -302,8 +302,13 @@ export function useProjectDetailPage() {
   // ===== 续跑链折叠：同一创作的断点续跑派生 run（resumedFromRunId 串链）折叠为最新一条，可展开看历史 =====
   // 仅在「全部」视图折叠；带状态筛选时保持平铺（否则过滤命不中 head 会连带藏起其失败的历史 run）。
   // 折叠计算另拆 use-resume-chains.ts，同名解构保持装配面不变。
-  const { resumeChains, expandedChains, isChainHead, chainHistory, toggleChain } =
-    useResumeChains(standaloneRuns)
+  const {
+    resumeChains,
+    expandedChains,
+    isChainHead,
+    chainHistory,
+    toggleChain,
+  } = useResumeChains(standaloneRuns)
 
   interface TopRow {
     kind: 'batch' | 'run'
@@ -443,7 +448,14 @@ export function useProjectDetailPage() {
     fetching,
     fetchErr,
     doFetchSource,
-  } = useProjectAssetOps({ projectId, assets, assetTotal, assetErr, loadAssets, loadCore })
+  } = useProjectAssetOps({
+    projectId,
+    assets,
+    assetTotal,
+    assetErr,
+    loadAssets,
+    loadCore,
+  })
 
   // ===== 资产筛选（接口上限 200 在网格下方明示） =====
   const ASSET_LIMIT = 200

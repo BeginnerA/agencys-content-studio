@@ -22,7 +22,7 @@ const PHASE_LABELS: Record<string, string> = {
 }
 const phaseLabel = computed(() => {
   const p = session.value?.planning
-  return p ? PHASE_LABELS[p.phase] ?? '规划中' : '接收请求中'
+  return p ? (PHASE_LABELS[p.phase] ?? '规划中') : '接收请求中'
 })
 const elapsed = computed(() => session.value?.planning?.elapsedSec ?? 0)
 </script>
@@ -37,7 +37,10 @@ const elapsed = computed(() => session.value?.planning?.elapsedSec ?? 0)
         <span class="dot" /><span class="dot" /><span class="dot" />
         <span>{{ phaseLabel }} · 已进行 {{ elapsed }}s</span>
       </div>
-      <p class="muted">Agent 正在判断执行模式（单条成片 / 命中模板 / 多步链 / 临时编排）并规划调度，规划阶段仅调用文本模型。</p>
+      <p class="muted">
+        Agent 正在判断执行模式（单条成片 / 命中模板 / 多步链 /
+        临时编排）并规划调度，规划阶段仅调用文本模型。
+      </p>
     </template>
     <template v-else>
       <span class="idle-ic"><Icon name="wand" :size="22" /></span>
@@ -107,13 +110,24 @@ const elapsed = computed(() => session.value?.planning?.elapsedSec ?? 0)
   display: inline-block;
   animation: blink 1.1s infinite;
 }
-.dot:nth-child(2) { animation-delay: 0.18s; }
-.dot:nth-child(3) { animation-delay: 0.36s; }
+.dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
 @keyframes blink {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dot { animation: none; }
+  .dot {
+    animation: none;
+  }
 }
 </style>

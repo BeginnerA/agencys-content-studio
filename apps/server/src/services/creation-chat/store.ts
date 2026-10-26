@@ -7,7 +7,7 @@ import { planningProgress } from './planning-progress'
 import { agentDecisionSchema } from './agent/decision-schema'
 import { getRole } from './agent/roles'
 import { computeSideCards } from './side-cards'
-import { getWorkflow, parseSegments } from '../workflow'
+import { getWorkflow, parseSegments, setWorkflowStatus } from '../workflow'
 
 /** 只串行化短数据库操作；模型/媒体调用不占锁。数据库条件更新仍是最终仲裁。 */
 let tail: Promise<unknown> = Promise.resolve()
@@ -162,8 +162,43 @@ async function notifyChainSegmentAwaiting(runId: number): Promise<void> {
   await db.insert(creationMessages).values({ sessionId: session.id, role: 'assistant', agentRole, content: `第 ${seq + 1} 段已完成（共 ${total} 段）。请在右侧核对成果后批准继续下一段（段间不自动级联计费）。`, payload: JSON.stringify({ kind: 'chain-await', workflowId: run.workflowId, seq, nextSeq: seq + 1, totalSegments: total }), createdAt: Date.now() })
 }
 
-/** 启动时只对账控制态；从不重新发起规划或媒体请求。 */
+/**
+ * 启动时对账控制态；从不重新发起规划、建 run 或拉起媒体执行（零计费、零网络）。
+ * planning → draft：规划被打断，原语义逐字不变。
+ * starting → 依持久关联核对（CodeReview P1#8 的兜底面）：route chain 现已把「建链 + 建首段 queued run +
+ * 绑会话 workflowId/runId」压进同一事务，正常不会再漏出 starting；这里覆盖旧版遗留与任何未预期残留，
+ * 并且只核对、不重跑：
+ *   ① 关联里有 run → 认领（started + runId + 对话留痕）：已提交的立项不该被重启推翻，更不该二次建链二次计费；
+ *   ② 关联里无 run → 仍为 draft 的链从未起段，作废它（免得与再确认新建的链并存），会话回 ready 由用户显式再确认；
+ *   ③ 无任何可核关联（旧版崩溃残留）→ 同样解锁（starting 会永久拒规划/绑素材/删除），
+ *      但 error 明示「可能已计费，请核验」——不替用户假定安全。
+ */
 export async function reconcileCreationSessions(): Promise<void> {
   await db.update(creationSessions).set({ status: 'draft', error: '规划被服务重启中断，可能已计费。请核验后发送新消息重试', preflight: null, updatedAt: Date.now() }).where(eq(creationSessions.status, 'planning'))
+  const stuck = await db.select().from(creationSessions).where(eq(creationSessions.status, 'starting'))
+  for (const s of stuck) {
+    // 关联核对顺序：会话自带 runId 优先；否则取该链 seq 最小的段落 run（首段认领即恢复「制作中」真相）
+    let adoptedRunId: number | null = s.runId == null ? null : (await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.id, s.runId)).limit(1))[0]?.id ?? null
+    if (adoptedRunId == null && s.workflowId != null) {
+      adoptedRunId = (await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, s.workflowId)).orderBy(asc(pipelineRuns.workflowSeq), asc(pipelineRuns.id)).limit(1))[0]?.id ?? null
+    }
+    if (adoptedRunId != null) {
+      const [owned] = await db.update(creationSessions).set({ status: 'started', runId: adoptedRunId, error: null, updatedAt: Date.now() })
+        .where(and(eq(creationSessions.id, s.id), eq(creationSessions.status, 'starting'))).returning()
+      if (!owned) continue // 已被别的路径落定（并发窗口）：不重复留痕
+      await db.insert(creationMessages).values({ sessionId: s.id, role: 'system', content: '服务重启打断了启动动作：已按编排链关联认领既有运行，未重复建任务、未重复计费。', payload: JSON.stringify({ kind: 'reconcile', adoptedRunId, workflowId: s.workflowId }), createdAt: Date.now() })
+      continue
+    }
+    const draftChain = s.workflowId != null ? await getWorkflow(s.workflowId) : null
+    const cancelledDraft = !!draftChain && draftChain.status === 'draft'
+    if (cancelledDraft) await setWorkflowStatus(s.workflowId!, 'cancelled')
+    const error = cancelledDraft
+      ? '服务重启打断了启动动作，该编排链尚未起任何段落，已作废未启动的草稿链。请重新确认启动。'
+      : '服务重启打断了启动动作，且无可核对的执行关联（可能已计费）。请先核验运行/编排链列表，再重新确认启动。'
+    const [released] = await db.update(creationSessions).set({ status: s.decision || s.plan ? 'ready' : 'draft', error, updatedAt: Date.now() })
+      .where(and(eq(creationSessions.id, s.id), eq(creationSessions.status, 'starting'))).returning()
+    if (!released) continue
+    await db.insert(creationMessages).values({ sessionId: s.id, role: 'system', content: error, payload: JSON.stringify({ kind: 'reconcile', workflowId: s.workflowId ?? null, cancelledDraft }), createdAt: Date.now() })
+  }
 }
 

@@ -3,7 +3,11 @@
  * 消息 → 参考素材展示元信息（类型图标 / 角色标签 / 文件名 / 缩略图端点）判定。
  */
 import { REF_ROLE_LABELS } from '../../lib/types'
-import type { CreationChatMessage, CreationRefKind, CreationShot } from '../../lib/types'
+import type {
+  CreationChatMessage,
+  CreationRefKind,
+  CreationShot,
+} from '../../lib/types'
 
 export function kindIcon(kind: CreationRefKind): string {
   return kind === 'image' ? 'photo' : kind === 'video' ? 'film' : 'doc'
@@ -40,7 +44,10 @@ export const refName = (m: CreationChatMessage): string =>
 
 // 图片/视频缩略图端点（与方案卡同源 ?v=2 破缓存）；音频或无 assetId → null（无缩略图走图标）。
 // 单一真源：上传回填 / 会话恢复 / 消息气泡三处共用，避免各构造点漏设 thumbUrl 导致缩略图丢失。
-export const refThumbUrl = (kind: CreationRefKind, assetId?: number | null): string | null =>
+export const refThumbUrl = (
+  kind: CreationRefKind,
+  assetId?: number | null,
+): string | null =>
   (kind === 'image' || kind === 'video') && assetId
     ? `/api/v1/assets/${assetId}/thumb?v=2`
     : null

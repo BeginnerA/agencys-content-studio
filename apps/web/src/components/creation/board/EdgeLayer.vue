@@ -66,7 +66,11 @@ const emit = defineEmits<{
       <path
         :d="e.d"
         class="cb-edge"
-        :class="{ sel: e.sel, 'rel-out': e.rel === 'out', 'rel-in': e.rel === 'in' }"
+        :class="{
+          sel: e.sel,
+          'rel-out': e.rel === 'out',
+          'rel-in': e.rel === 'in',
+        }"
         :port="e.port"
         :marker-end="
           e.sel || e.rel === 'out'

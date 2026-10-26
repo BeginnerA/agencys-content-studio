@@ -57,7 +57,9 @@ export interface VideoCapsResult {
  * source 为供应商公开定价页锚点 + 口径说明，供前端「为何是这个值」提示。
  */
 export interface ModelPricing {
-  prices: Partial<Record<'tokens_in' | 'tokens_out' | 'image' | 'second' | 'char', number>>
+  prices: Partial<
+    Record<'tokens_in' | 'tokens_out' | 'image' | 'second' | 'char', number>
+  >
   source: string
 }
 
@@ -153,7 +155,8 @@ export interface FetchModelsResult {
  * 结构化表单（替代裸 JSON 天书框）。type 决定控件：select 下拉 / boolean 开关 / number 数字 /
  * text 文本 / url-list 多行 URL / json 对象。default 为 Tier A 预填（用户可覆盖），required 标必填。
  */
-export type ExtraFieldType = 'text' | 'select' | 'boolean' | 'number' | 'url-list' | 'json'
+export type ExtraFieldType =
+  'text' | 'select' | 'boolean' | 'number' | 'url-list' | 'json'
 export interface ExtraFieldOption {
   value: string
   label: string
@@ -257,7 +260,8 @@ export interface RecommendResult {
 }
 
 /** G11 下一步建议条目（服务端规则引擎产 ≤3 条） */
-export type NextStepKind = 'run' | 'publish' | 'next_tpl' | 'progress' | 'workbench'
+export type NextStepKind =
+  'run' | 'publish' | 'next_tpl' | 'progress' | 'workbench'
 export interface NextStep {
   key: string
   kind: NextStepKind

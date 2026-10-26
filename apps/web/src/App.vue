@@ -189,7 +189,10 @@ onBeforeUnmount(() => {
       </div>
     </aside>
     <main class="main">
-      <RouterView />
+      <!-- 复用键 = 路径：详情视图（run/batch/项目/会话）把 route.params.id 读成初值快照，
+           同路由换 id 必须重建组件，否则停在旧实体（旧数据 + 旧 socket room）；
+           只取 path 不取 fullPath，query 变化（画布切换 / 列表筛选）保留实例与编辑态 -->
+      <RouterView :key="route.path" />
     </main>
     <!-- 全局命令式确认弹窗（confirmDialog()）宿主 -->
     <ConfirmHost />

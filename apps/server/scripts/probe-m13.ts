@@ -25,6 +25,7 @@
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
+import type { BlobBytes } from './node-body-types'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -356,7 +357,7 @@ async function main(): Promise<void> {
 
     const fd = (name: string, bytes: Uint8Array): FormData => {
       const form = new FormData()
-      form.append('file', new File([bytes as unknown as BlobPart], name, { type: 'image/png' }))
+      form.append('file', new File([bytes as unknown as BlobBytes], name, { type: 'image/png' }))
       return form
     }
     const upload = async (id: number, form: FormData): Promise<{ status: number; body: any }> => {

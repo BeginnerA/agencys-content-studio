@@ -53,10 +53,13 @@ const emit = defineEmits<{ close: []; expand: []; apply: [] }>()
     </div>
     <div v-if="err" class="err-text">{{ err }}</div>
     <template #footer>
-      <button type="button" class="btn" @click="emit('close')">
-        关闭
-      </button>
-      <button type="button" class="btn" :disabled="busy" @click="emit('expand')">
+      <button type="button" class="btn" @click="emit('close')">关闭</button>
+      <button
+        type="button"
+        class="btn"
+        :disabled="busy"
+        @click="emit('expand')"
+      >
         <Icon name="sparkles" :size="12" />
         {{ busy ? '扩写中…' : draft ? '重新扩写' : '开始扩写' }}
       </button>

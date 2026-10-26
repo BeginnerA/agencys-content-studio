@@ -78,7 +78,11 @@ export function createAttachments(
         ? await creationChatApi.uploadAttachment(id, item.file, item.role)
         : await creationChatApi.attachAsset(id, item.sourceAssetId!, item.role)
       // 异步竞态：仅当该项仍在当前托盘且未切会话时回填
-      if (token === deps.viewEpoch() && state.currentId === id && state.attachments.includes(item)) {
+      if (
+        token === deps.viewEpoch() &&
+        state.currentId === id &&
+        state.attachments.includes(item)
+      ) {
         item.assetId = res.assetId
         item.hash = res.hash
         item.thumbUrl = res.thumbUrl
@@ -108,7 +112,8 @@ export function createAttachments(
       return
     }
     if (file.size > REF_MAX_PER_KIND[kind]) {
-      const label = kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频'
+      const label =
+        kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频'
       state.error = `${label}参考超过 ${Math.floor(REF_MAX_PER_KIND[kind] / 1024 / 1024)}MB 上限：${file.name}`
       return
     }
@@ -126,7 +131,8 @@ export function createAttachments(
     }
     state.attachments.push(item)
     // 必须通过响应式代理回填上传态（push 后读回数组元素为 reactive 代理；直接改 push 前的 raw 引用不触发 set 陷阱，UI 会永久停在「上传中」）
-    if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
+    if (state.currentId && !first.active.value)
+      await uploadItem(state.attachments[state.attachments.length - 1]!)
   }
 
   /** 从素材选取：存量资产登记为参考（服务端同规则校验 kind/大小/用途；跨项目自动复制，sha256 去重） */
@@ -154,7 +160,8 @@ export function createAttachments(
       sourceAssetId: asset.id,
     }
     state.attachments.push(item)
-    if (state.currentId && !first.active.value) await uploadItem(state.attachments[state.attachments.length - 1]!)
+    if (state.currentId && !first.active.value)
+      await uploadItem(state.attachments[state.attachments.length - 1]!)
   }
 
   /** 更改用途：已有方案时走 PATCH（ 与逐镜绑定同一语义：双写 payload + plan.refs，不重传文件）；
@@ -182,10 +189,20 @@ export function createAttachments(
 
   /** 参考绑定写入口（用途 + 逐镜共用）：PATCH 双写 payload + plan.refs，零 LLM、零计费；
    *  hash 变则服务端 planRevision+1，旧确认失效。失败不写回本地（服务端为权威）；成功才同步 item + 提示重新确认。 */
-  async function bindAttachment(clientId: string, patch: CreationRefBindBody): Promise<void> {
+  async function bindAttachment(
+    clientId: string,
+    patch: CreationRefBindBody,
+  ): Promise<void> {
     const id = state.currentId
     const item = state.attachments.find((a) => a.clientId === clientId)
-    if (!id || !item?.assetId || state.busyAction || attachmentsLocked.value || first.active.value) return
+    if (
+      !id ||
+      !item?.assetId ||
+      state.busyAction ||
+      attachmentsLocked.value ||
+      first.active.value
+    )
+      return
     const token = deps.viewEpoch()
     const prevRole = item.role
     const prevShot = item.shotId ?? null
@@ -197,7 +214,8 @@ export function createAttachments(
       commit(id, detail)
       if (patch.role !== undefined) item.role = patch.role
       if (patch.shotId !== undefined) item.shotId = patch.shotId
-      state.notice = '参考绑定已更新，方案需重新确认后才开始制作（此操作不计费）。'
+      state.notice =
+        '参考绑定已更新，方案需重新确认后才开始制作（此操作不计费）。'
     } catch (e) {
       if (id === state.currentId) {
         state.error = errText(e)
@@ -210,7 +228,10 @@ export function createAttachments(
   }
 
   /** 逐镜绑定切换：'' = 整片级（shotId null，服务端删键） */
-  async function setAttachmentShot(clientId: string, shotId: string): Promise<void> {
+  async function setAttachmentShot(
+    clientId: string,
+    shotId: string,
+  ): Promise<void> {
     await bindAttachment(clientId, { shotId: shotId || null })
   }
 
@@ -230,15 +251,30 @@ export function createAttachments(
     if (attachmentsLocked.value) return
     const item = state.attachments.find((a) => a.clientId === clientId)
     if (!item) return
-    if (refKindByExt(file.name) !== item.kind || !file.size || file.size > REF_MAX_PER_KIND[item.kind]) {
+    if (
+      refKindByExt(file.name) !== item.kind ||
+      !file.size ||
+      file.size > REF_MAX_PER_KIND[item.kind]
+    ) {
       item.error = '请选择同类型且大小符合限制的文件'
       return
     }
-    item.file = file; item.name = file.name; item.sourceAssetId = undefined
-    item.assetId = undefined; item.hash = undefined; item.error = undefined
+    item.file = file
+    item.name = file.name
+    item.sourceAssetId = undefined
+    item.assetId = undefined
+    item.hash = undefined
+    item.error = undefined
   }
 
-  const attachmentsLocked = computed(() => first.locked.value || state.busySend || state.attachments.some((a) => a.uploading) || !!state.detail?.session.runId || state.detail?.session.status === 'planning')
+  const attachmentsLocked = computed(
+    () =>
+      first.locked.value ||
+      state.busySend ||
+      state.attachments.some((a) => a.uploading) ||
+      !!state.detail?.session.runId ||
+      state.detail?.session.status === 'planning',
+  )
   const uploadingAttachments = computed(() =>
     state.attachments.some((a) => a.uploading),
   )

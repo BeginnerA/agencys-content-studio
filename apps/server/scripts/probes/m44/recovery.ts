@@ -283,7 +283,7 @@ export async function probeRecoveryClient({ check }: Checker): Promise<void> {
         if (id.endsWith('/api')) return { runApi }
         if (id.endsWith('/confirm')) return confirm
         if (id.endsWith('/format')) return format
-        if (id.endsWith('/socket')) return { useStudio: () => ({ leave: () => {} }) }
+        if (id.endsWith('/socket')) return { useStudio: () => ({ join: () => {}, leave: () => {}, on: () => {}, dispose: () => {} }) }
         if (id === './use-canvas-edit') return { useCanvasEdit: () => ({ editMode: vue.ref(false), dirty: vue.ref(false), overriddenCount: vue.ref(0) }) }
         if (id === './use-canvas-design') return { useCanvasDesign: () => ({}) }
         if (id === './use-canvas-realtime') return { useCanvasRealtime: () => ({ logText: vue.ref('') }) }

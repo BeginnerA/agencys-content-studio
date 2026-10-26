@@ -40,7 +40,9 @@ export function parseClock(text: string): number | null {
   const minutes = c === undefined ? Number(a) : Number(b)
   const seconds = c === undefined ? Number(b) : Number(c)
   if (Number(minutes) > 59 || Number(seconds) > 59) return null
-  const ms = ((hours * 60 + minutes) * 60 + seconds) * 1000 + Number((frac ?? '0').padEnd(3, '0'))
+  const ms =
+    ((hours * 60 + minutes) * 60 + seconds) * 1000 +
+    Number((frac ?? '0').padEnd(3, '0'))
   return Math.round(ms)
 }
 
@@ -56,15 +58,24 @@ export interface SubtitleRow {
 }
 
 /** 行编辑态 → 结构化变更（与 baseline 逐字段 diff；空文本不生成变更交由服务端裁决） */
-export function buildSubtitleChanges(rows: SubtitleRow[], baseline: SubtitleCueView[]): SubtitleChangeView[] {
+export function buildSubtitleChanges(
+  rows: SubtitleRow[],
+  baseline: SubtitleCueView[],
+): SubtitleChangeView[] {
   const changes: SubtitleChangeView[] = []
   const baseById = new Map(baseline.map((c) => [c.id, c]))
   for (const row of rows) {
     const base = baseById.get(row.cueId)
     if (!base) continue
-    if (row.text !== base.text) changes.push({ kind: 'subtitle-text', cueId: row.cueId, text: row.text })
+    if (row.text !== base.text)
+      changes.push({ kind: 'subtitle-text', cueId: row.cueId, text: row.text })
     if (row.startMs !== base.startMs || row.endMs !== base.endMs) {
-      changes.push({ kind: 'subtitle-time', cueId: row.cueId, startMs: row.startMs, endMs: row.endMs })
+      changes.push({
+        kind: 'subtitle-time',
+        cueId: row.cueId,
+        startMs: row.startMs,
+        endMs: row.endMs,
+      })
     }
   }
   return changes
@@ -80,7 +91,11 @@ export interface SubtitleReworkHooks {
   onApplied?: (requestId: string) => void
 }
 
-export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | undefined>, hooks: SubtitleReworkHooks = {}) {
+export function useSubtitleRework(
+  runId: Ref<number>,
+  stepKey: Ref<string | undefined>,
+  hooks: SubtitleReworkHooks = {},
+) {
   const model = ref<SubtitleReadModelView | null>(null)
   const loading = ref(false)
   const submitting = ref(false)
@@ -99,10 +114,14 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
   /** epoch：晚到响应保护（重新加载/编辑后旧预览响应一律丢弃） */
   let epoch = 0
 
-  const baselineCues = computed<SubtitleCueView[]>(() => model.value?.baseline?.cues ?? [])
+  const baselineCues = computed<SubtitleCueView[]>(
+    () => model.value?.baseline?.cues ?? [],
+  )
   const capability = computed(() => model.value?.capability ?? null)
   const supported = computed(() => capability.value?.supported === true)
-  const changes = computed(() => buildSubtitleChanges(rows.value, baselineCues.value))
+  const changes = computed(() =>
+    buildSubtitleChanges(rows.value, baselineCues.value),
+  )
   const dirty = computed(() => changes.value.length > 0)
   const changeCount = computed(() => changes.value.length)
 
@@ -112,7 +131,10 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
     loading.value = true
     loadError.value = ''
     try {
-      const res = await subtitleReworkApi.subtitles(runId.value, stepKey.value ?? 'compose')
+      const res = await subtitleReworkApi.subtitles(
+        runId.value,
+        stepKey.value ?? 'compose',
+      )
       if (token !== epoch) return
       model.value = res
       rows.value = (res.baseline?.cues ?? []).map((c) => ({
@@ -128,7 +150,8 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
       resetPreview()
     } catch (err) {
       if (token !== epoch) return
-      loadError.value = err instanceof Error ? err.message : '加载字幕返修状态失败'
+      loadError.value =
+        err instanceof Error ? err.message : '加载字幕返修状态失败'
       model.value = null
       rows.value = []
     } finally {
@@ -148,7 +171,11 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
   /** 行编辑后签名变化即作废预览（同签名连续输入不回退已展示的预览） */
   function onRowEdited(): void {
     if (!preview.value && !previewError.value) return
-    if (previewSignature.value && previewSignature.value === changesSignature(changes.value)) return
+    if (
+      previewSignature.value &&
+      previewSignature.value === changesSignature(changes.value)
+    )
+      return
     resetPreview()
   }
 
@@ -172,11 +199,16 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
   }
 
   function allSelected(): boolean {
-    return rows.value.length > 0 && rows.value.every((r) => selected.value.has(r.cueId))
+    return (
+      rows.value.length > 0 &&
+      rows.value.every((r) => selected.value.has(r.cueId))
+    )
   }
 
   function toggleSelectAll(): void {
-    selected.value = allSelected() ? new Set() : new Set(rows.value.map((r) => r.cueId))
+    selected.value = allSelected()
+      ? new Set()
+      : new Set(rows.value.map((r) => r.cueId))
   }
 
   /** 请求预览：同签名复用 ticket；blocked 时按 errors[].cueId 定位行 */
@@ -197,7 +229,12 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
     previewError.value = ''
     rowErrors.value = new Map()
     try {
-      const res = await subtitleReworkApi.preview(runId.value, key, list, stepKey.value)
+      const res = await subtitleReworkApi.preview(
+        runId.value,
+        key,
+        list,
+        stepKey.value,
+      )
       if (token !== epoch) return
       requestId.value = res.request_id
       preview.value = res.preview
@@ -215,7 +252,11 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
         }
         rowErrors.value = map
         // 基准漂移类错误：预览不再可信，清空并提示重载
-        if (err.code === 'idempotency_conflict' || err.code === 'stale_preview' || err.code === 'fingerprint_drift') {
+        if (
+          err.code === 'idempotency_conflict' ||
+          err.code === 'stale_preview' ||
+          err.code === 'fingerprint_drift'
+        ) {
           preview.value = null
           ticket.value = null
         }
@@ -234,15 +275,23 @@ export function useSubtitleRework(runId: Ref<number>, stepKey: Ref<string | unde
     applying.value = true
     previewError.value = ''
     try {
-      const res = await subtitleReworkApi.apply(runId.value, requestId.value, pv.previewHash)
+      const res = await subtitleReworkApi.apply(
+        runId.value,
+        requestId.value,
+        pv.previewHash,
+      )
       preview.value = null
       ticket.value = null
       await load()
       hooks.onApplied?.(res.request_id)
       return true
     } catch (err) {
-      previewError.value = err instanceof Error ? `${err.message}；未确认，可重新预览后重试` : '确认请求失败'
-      if (err instanceof ReworkApiError && err.status === 409) preview.value = null
+      previewError.value =
+        err instanceof Error
+          ? `${err.message}；未确认，可重新预览后重试`
+          : '确认请求失败'
+      if (err instanceof ReworkApiError && err.status === 409)
+        preview.value = null
       return false
     } finally {
       applying.value = false

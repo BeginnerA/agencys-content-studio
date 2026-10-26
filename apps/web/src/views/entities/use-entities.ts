@@ -563,8 +563,7 @@ export function useEntitiesPage() {
       for (const t of r.tasks) refBatch.value.add(t.id)
       showRefGen.value = false
       selected.value = new Set()
-      notice.value =
-        `已入队 ${r.count} 个出图任务（宿主项目#${refPid.value}${allGlobal ? '，全局素材：产物入全局素材池' : ''}），完成后自动挂接参考图。`
+      notice.value = `已入队 ${r.count} 个出图任务（宿主项目#${refPid.value}${allGlobal ? '，全局素材：产物入全局素材池' : ''}），完成后自动挂接参考图。`
       ensureRefPolling()
       await refreshRefTasks()
     } catch (e) {
@@ -654,7 +653,8 @@ export function useEntitiesPage() {
             : 'reference_prop'
       const created = await globalAssetApi.upload(files, purpose)
       await loadAssets(0)
-      for (const a of created) if (!form.refIds.includes(a.id)) form.refIds.push(a.id)
+      for (const a of created)
+        if (!form.refIds.includes(a.id)) form.refIds.push(a.id)
       upNote.value = `已入全局素材池 ${created.length} 张并勾选（共 ${form.refIds.length} 张）`
     } catch (ex) {
       formErr.value = ex instanceof ApiError ? ex.message : String(ex)

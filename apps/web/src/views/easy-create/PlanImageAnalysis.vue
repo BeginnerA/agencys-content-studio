@@ -15,11 +15,15 @@ const props = defineProps<{ entries: CreationImageAnalysisEntry[] }>()
 const open = ref<number[]>([])
 watch(
   () => props.entries,
-  (list) => { open.value = list.map((_, i) => i) },
+  (list) => {
+    open.value = list.map((_, i) => i)
+  },
   { immediate: true },
 )
 const toggle = (i: number): void => {
-  open.value = open.value.includes(i) ? open.value.filter((x) => x !== i) : [...open.value, i]
+  open.value = open.value.includes(i)
+    ? open.value.filter((x) => x !== i)
+    : [...open.value, i]
 }
 
 const copied = ref<number | null>(null)
@@ -27,7 +31,9 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
   try {
     await navigator.clipboard.writeText(e.imagePrompt)
     copied.value = i
-    setTimeout(() => { if (copied.value === i) copied.value = null }, 1600)
+    setTimeout(() => {
+      if (copied.value === i) copied.value = null
+    }, 1600)
   } catch {
     /* 剪贴板不可用：静默（不阻断浏览） */
   }
@@ -42,8 +48,16 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
       >
     </div>
     <div v-for="(e, i) in entries" :key="e.assetId" class="ia-item">
-      <button class="ia-head" type="button" :aria-expanded="open.includes(i)" @click="toggle(i)">
-        <Icon :name="open.includes(i) ? 'chevron-down' : 'chevron-right'" :size="13" />
+      <button
+        class="ia-head"
+        type="button"
+        :aria-expanded="open.includes(i)"
+        @click="toggle(i)"
+      >
+        <Icon
+          :name="open.includes(i) ? 'chevron-down' : 'chevron-right'"
+          :size="13"
+        />
         <span class="ia-name">{{ e.name }}</span>
       </button>
       <div v-if="open.includes(i)" class="ia-body">
@@ -59,7 +73,8 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
           <div class="ia-label">
             正向提示词
             <button class="ia-copy" type="button" @click="copy(e, i)">
-              <Icon :name="copied === i ? 'check' : 'copy'" :size="11" /> {{ copied === i ? '已复制' : '复制' }}
+              <Icon :name="copied === i ? 'check' : 'copy'" :size="11" />
+              {{ copied === i ? '已复制' : '复制' }}
             </button>
           </div>
           <p class="ia-prompt mono">{{ e.imagePrompt }}</p>
@@ -71,7 +86,12 @@ async function copy(e: CreationImageAnalysisEntry, i: number): Promise<void> {
         <div v-if="e.palette?.length" class="ia-field">
           <div class="ia-label">主色板</div>
           <div class="ia-swatches">
-            <span v-for="(c, ci) in e.palette" :key="ci" class="ia-swatch" :title="c">
+            <span
+              v-for="(c, ci) in e.palette"
+              :key="ci"
+              class="ia-swatch"
+              :title="c"
+            >
               <i :style="{ background: c }" /> {{ c }}
             </span>
           </div>

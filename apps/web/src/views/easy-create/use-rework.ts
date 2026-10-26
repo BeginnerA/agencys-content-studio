@@ -23,7 +23,8 @@ const MAX_INSTRUCTION = 2000
 /** 只有 run 收敛（完成或失败）才有「已批准的镜头」可返修：制作中不给出会烧钱的入口 */
 const SETTLED = new Set(['completed', 'failed'])
 
-const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+const message = (e: unknown): string =>
+  e instanceof Error ? e.message : String(e)
 
 /** 预览 → 确认载荷：只回传镜头与新提示词，金额 / 版本 / 未计价项全部由服务端按当前方案重算 */
 function opsOf(targets: readonly CreationReworkTarget[]): CreationReworkOp[] {
@@ -38,10 +39,17 @@ function opsOf(targets: readonly CreationReworkTarget[]): CreationReworkOp[] {
  * 两步式返修状态机：解析（一次文本模型小额调用，零媒体计费）→ 用户看逐镜「原→新」与预估费用 → 显式确认才重置目标镜。
  * 晚到响应保护沿用 use-first-input 的 epoch 范式；幂等键按 `{signature,key}` 先例（同签名复用，连点不重复计费）。
  */
-export function createRework(host: Host, hooks: {
-  commit: (id: number, detail: CreationDetail) => void
-  polling: () => void
-}, api: Pick<typeof creationChatApi, 'reworkPlan' | 'reworkApply'> = creationChatApi) {
+export function createRework(
+  host: Host,
+  hooks: {
+    commit: (id: number, detail: CreationDetail) => void
+    polling: () => void
+  },
+  api: Pick<
+    typeof creationChatApi,
+    'reworkPlan' | 'reworkApply'
+  > = creationChatApi,
+) {
   const state = reactive({
     open: false,
     instruction: '',
@@ -56,11 +64,16 @@ export function createRework(host: Host, hooks: {
   let epoch = 0
   let parseTicket = { signature: '', key: '' }
   let applyTicket = { signature: '', key: '' }
-  const live = (token: number, id: number) => token === epoch && host.currentId === id
+  const live = (token: number, id: number) =>
+    token === epoch && host.currentId === id
 
   const canUse = computed(() => {
     const d = host.detail
-    return !!d?.session.runId && !!d.session.planHash && SETTLED.has(d.progress?.status ?? '')
+    return (
+      !!d?.session.runId &&
+      !!d.session.planHash &&
+      SETTLED.has(d.progress?.status ?? '')
+    )
   })
   const targets = computed(() => state.preview?.targets ?? [])
   const unclear = computed(() => state.preview?.unclear ?? '')
@@ -69,7 +82,12 @@ export function createRework(host: Host, hooks: {
   const knownCost = computed(() => state.preview?.estimate.knownCost ?? 0)
   /** 确认闸：有可执行目标、run 仍收敛、且未在途 */
   const confirmable = computed(
-    () => canUse.value && !!state.preview && !unclear.value && targets.value.length > 0 && !state.busy,
+    () =>
+      canUse.value &&
+      !!state.preview &&
+      !unclear.value &&
+      targets.value.length > 0 &&
+      !state.busy,
   )
   const tooLong = computed(() => state.instruction.length > MAX_INSTRUCTION)
   /** 已动笔但还不够定位镜头的长度：主按钮禁用时给出成因提示 */
@@ -80,7 +98,8 @@ export function createRework(host: Host, hooks: {
 
   // 切会话 / 方案推进（含返修后 revision+1）/ run 重新开跑 → 上一次解析立即作废，不留可点的确认按钮
   watch(
-    () => `${host.currentId}|${host.detail?.session.planHash ?? ''}|${host.detail?.session.planRevision ?? 0}|${host.detail?.progress?.status ?? ''}`,
+    () =>
+      `${host.currentId}|${host.detail?.session.planHash ?? ''}|${host.detail?.session.planRevision ?? 0}|${host.detail?.progress?.status ?? ''}`,
     () => {
       state.preview = null
       state.acceptUnpriced = false
@@ -108,21 +127,32 @@ export function createRework(host: Host, hooks: {
     if (!id || !s?.planHash || state.busy || !canUse.value) return false
     const instruction = state.instruction.trim()
     if (instruction.length < MIN_INSTRUCTION) {
-      state.error = '请写清楚要返修第几镜、改成什么样子，例如「第 2 镜：改成夜晚街景，霓虹反光」。'
+      state.error =
+        '请写清楚要返修第几镜、改成什么样子，例如「第 2 镜：改成夜晚街景，霓虹反光」。'
       return false
     }
     const token = ++epoch
     state.busy = true
     state.error = ''
-    const signature = JSON.stringify([id, s.planHash, s.planRevision, instruction])
-    if (signature !== parseTicket.signature) parseTicket = { signature, key: newRequestKey('rwp') }
+    const signature = JSON.stringify([
+      id,
+      s.planHash,
+      s.planRevision,
+      instruction,
+    ])
+    if (signature !== parseTicket.signature)
+      parseTicket = { signature, key: newRequestKey('rwp') }
     try {
-      const res = await api.reworkPlan(id, { instruction, requestKey: parseTicket.key })
+      const res = await api.reworkPlan(id, {
+        instruction,
+        requestKey: parseTicket.key,
+      })
       if (!live(token, id)) return false
       const { reworkPreview, ...detail } = res
       hooks.commit(id, detail as CreationDetail)
       if (!reworkPreview) {
-        state.error = '解析结果未随响应返回，请点击「更新状态」后重试；尚未启动任何生成。'
+        state.error =
+          '解析结果未随响应返回，请点击「更新状态」后重试；尚未启动任何生成。'
         return false
       }
       state.preview = reworkPreview
@@ -143,7 +173,8 @@ export function createRework(host: Host, hooks: {
   async function apply(): Promise<boolean> {
     const preview = state.preview
     const id = host.currentId
-    if (!preview || preview.unclear || !id || state.busy || !confirmable.value) return false
+    if (!preview || preview.unclear || !id || state.busy || !confirmable.value)
+      return false
     if (unpriced.value.length && !state.acceptUnpriced) {
       state.error = '存在未知价格的生成项，请先勾选接受未计价项再确认。'
       return false
@@ -152,8 +183,14 @@ export function createRework(host: Host, hooks: {
     state.busy = true
     state.error = ''
     const ops = opsOf(preview.targets)
-    const signature = JSON.stringify([id, preview.planHash, preview.planRevision, ops])
-    if (signature !== applyTicket.signature) applyTicket = { signature, key: newRequestKey('rw') }
+    const signature = JSON.stringify([
+      id,
+      preview.planHash,
+      preview.planRevision,
+      ops,
+    ])
+    if (signature !== applyTicket.signature)
+      applyTicket = { signature, key: newRequestKey('rw') }
     try {
       const body: CreationReworkApplyBody = {
         planRevision: preview.planRevision,
@@ -172,7 +209,8 @@ export function createRework(host: Host, hooks: {
       state.stamp += 1
       applyTicket = { signature: '', key: '' }
       parseTicket = { signature: '', key: '' }
-      host.notice = '已开始局部返修：只有目标镜头会重新生成，完成后成片会自动重新合成。'
+      host.notice =
+        '已开始局部返修：只有目标镜头会重新生成，完成后成片会自动重新合成。'
       hooks.polling()
       return true
     } catch (e) {

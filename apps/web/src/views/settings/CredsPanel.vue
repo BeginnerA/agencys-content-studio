@@ -17,9 +17,12 @@ function editCred(cr: (typeof credentials.value)[number]) {
   <section class="creds-page">
     <div class="creds-head">
       <div class="ch-left">
-        <h2 class="ch-title"><Icon name="key" :size="15" /> 密钥保管（厂商/网关）</h2>
+        <h2 class="ch-title">
+          <Icon name="key" :size="15" /> 密钥保管（厂商/网关）
+        </h2>
         <p class="ch-sub">
-          每个厂商或网关只需配置一次 API Key，所有模型实例共享；可自由添加自建网关条目。
+          每个厂商或网关只需配置一次 API
+          Key，所有模型实例共享；可自由添加自建网关条目。
         </p>
       </div>
       <button class="btn primary sm" @click="openNewCred()">
@@ -45,7 +48,9 @@ function editCred(cr: (typeof credentials.value)[number]) {
           }}</span>
         </div>
         <div class="cc-keyrow">
-          <span v-if="cr.hasKey" class="cc-key mono">{{ cr.apiKeyMasked }}</span>
+          <span v-if="cr.hasKey" class="cc-key mono">{{
+            cr.apiKeyMasked
+          }}</span>
           <span v-else class="cc-key warn">未配置 Key</span>
         </div>
         <div class="cc-meta">
@@ -73,7 +78,8 @@ function editCred(cr: (typeof credentials.value)[number]) {
     </div>
 
     <p class="creds-note muted">
-      删除内置条目后不会在重启时重新出现；之后重新「添加密钥」填相同厂商标识即可恢复并再次填入 Key。自建条目删除后彻底移除。
+      删除内置条目后不会在重启时重新出现；之后重新「添加密钥」填相同厂商标识即可恢复并再次填入
+      Key。自建条目删除后彻底移除。
     </p>
   </section>
 </template>

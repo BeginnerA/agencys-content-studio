@@ -154,7 +154,8 @@ export interface ReworkRequestView {
   stepKey: string
   state: 'parsing' | 'uncertain' | 'ready' | 'blocked' | 'applied'
   baseFingerprint: string | null
-  preview: SubtitlePreviewView | { errors?: ReworkErrorView[] } | Record<string, never>
+  preview:
+    SubtitlePreviewView | { errors?: ReworkErrorView[] } | Record<string, never>
   result: Record<string, unknown>
   createdAt: number
   updatedAt: number

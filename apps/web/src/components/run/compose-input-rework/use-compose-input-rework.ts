@@ -44,7 +44,8 @@ export interface ComposeInputReworkHooks {
   onApplied?: (requestId: string) => void
 }
 
-const numOr = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+const numOr = (v: unknown, d: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : d
 
 /** 表单草稿 → 结构化变更：与 baseline 逐字段 diff；无变化返回空数组（交 UI 禁用以避免 no_effect） */
 export function buildComposeInputChanges(
@@ -58,28 +59,35 @@ export function buildComposeInputChanges(
   const baseTransition = base.transition ?? 'none'
   if (form.transition !== baseTransition) patch.transition = form.transition
   const baseDur = numOr(base.transition_duration, 0.5)
-  if (Math.abs(form.transitionDuration - baseDur) > 1e-6) patch.transition_duration = form.transitionDuration
+  if (Math.abs(form.transitionDuration - baseDur) > 1e-6)
+    patch.transition_duration = form.transitionDuration
   const baseVol = numOr(base.bgm_volume, 0.25)
-  if (Math.abs(form.bgmVolume - baseVol) > 1e-6) patch.bgm_volume = form.bgmVolume
+  if (Math.abs(form.bgmVolume - baseVol) > 1e-6)
+    patch.bgm_volume = form.bgmVolume
   const baseFade = numOr(base.bgm_fade, 0)
   if (Math.abs(form.bgmFade - baseFade) > 1e-6) patch.bgm_fade = form.bgmFade
   const baseSfx = numOr(base.sfx_volume, 1)
-  if (Math.abs(form.sfxVolume - baseSfx) > 1e-6) patch.sfx_volume = form.sfxVolume
+  if (Math.abs(form.sfxVolume - baseSfx) > 1e-6)
+    patch.sfx_volume = form.sfxVolume
   const baseBurn = base.subtitleBurn !== false // 缺省/true=烧录
   if (form.subtitleBurn !== baseBurn) patch.subtitleBurn = form.subtitleBurn
 
   const changes: ComposeInputChangeView[] = []
-  if (Object.keys(patch).length > 0) changes.push({ kind: 'compose-config', patch })
+  if (Object.keys(patch).length > 0)
+    changes.push({ kind: 'compose-config', patch })
   if (form.bgmChoice === 'remove') {
     if (bgmAssetId !== null) changes.push({ kind: 'bgm', assetId: null })
   } else if (typeof form.bgmChoice === 'number') {
-    if (form.bgmChoice !== bgmAssetId) changes.push({ kind: 'bgm', assetId: form.bgmChoice })
+    if (form.bgmChoice !== bgmAssetId)
+      changes.push({ kind: 'bgm', assetId: form.bgmChoice })
   }
   // sfx：仅覆盖当前有音效的镜（换绑到同类另一音频 / 移除）；新增音效走原绑定路径，不入本返修闸
   for (const shotId of Object.keys(sfxByShot).sort()) {
     const choice = form.sfxChoices[shotId]
-    if (choice === 'remove') changes.push({ kind: 'sfx', shotId, assetId: null })
-    else if (typeof choice === 'number' && choice !== sfxByShot[shotId]) changes.push({ kind: 'sfx', shotId, assetId: choice })
+    if (choice === 'remove')
+      changes.push({ kind: 'sfx', shotId, assetId: null })
+    else if (typeof choice === 'number' && choice !== sfxByShot[shotId])
+      changes.push({ kind: 'sfx', shotId, assetId: choice })
   }
   // 镜头时长（切片2b）：仅对已渲染的可编镜（图片镜）且输入为有限正数、与当前段长不同才产出变更；
   //   motion 视频镜 UI 不渲染输入（后端对其 fail-closed blocked），故不在此发变更。
@@ -90,13 +98,16 @@ export function buildComposeInputChanges(
     if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) continue
     const seg = axisByShot.get(shotId)
     if (!seg || seg.kind === 'video') continue
-    if (Math.abs(sec - seg.durSec) > 1e-6) changes.push({ kind: 'shot-duration', shotId, sec })
+    if (Math.abs(sec - seg.durSec) > 1e-6)
+      changes.push({ kind: 'shot-duration', shotId, sec })
   }
   return changes
 }
 
 /** 变更签名（幂等 ticket 判据：签名一致复用同 requestKey，连点不重复建请求） */
-export function composeInputSignature(changes: ComposeInputChangeView[]): string {
+export function composeInputSignature(
+  changes: ComposeInputChangeView[],
+): string {
   return JSON.stringify(changes)
 }
 
@@ -108,7 +119,10 @@ export function useComposeInputRework(
 ) {
   const capability = ref<ComposeInputCapabilityView | null>(null)
   const baseConfig = ref<ComposeConfig>({})
-  const baseBgm = ref<{ assetId: number | null; name: string | null }>({ assetId: null, name: null })
+  const baseBgm = ref<{ assetId: number | null; name: string | null }>({
+    assetId: null,
+    name: null,
+  })
   const baseSfx = ref<SfxBaseline[]>([])
   const shotAxis = ref<ComposeInputShotAxisView[]>([])
   const candidates = ref<Asset[]>([])
@@ -141,12 +155,25 @@ export function useComposeInputRework(
     for (const s of baseSfx.value) m[s.shotId] = s.assetId
     return m
   })
-  const changes = computed(() => buildComposeInputChanges(form.value, baseConfig.value, baseBgm.value.assetId, sfxByShot.value, shotAxis.value))
+  const changes = computed(() =>
+    buildComposeInputChanges(
+      form.value,
+      baseConfig.value,
+      baseBgm.value.assetId,
+      sfxByShot.value,
+      shotAxis.value,
+    ),
+  )
   const dirty = computed(() => changes.value.length > 0)
   const changeCount = computed(() => changes.value.length)
 
   /** 用后端返回的基准配置回填表单初值（显示口径与 ComposeSettingsModal 一致） */
-  function seedForm(cfg: ComposeConfig, bgmAssetId: number | null, sfxShots: string[], durationShots: string[]): void {
+  function seedForm(
+    cfg: ComposeConfig,
+    bgmAssetId: number | null,
+    sfxShots: string[],
+    durationShots: string[],
+  ): void {
     const sfxChoices: Record<string, BgmChoice> = {}
     for (const shotId of sfxShots) sfxChoices[shotId] = 'keep'
     const durations: Record<string, number | null> = {}
@@ -171,7 +198,10 @@ export function useComposeInputRework(
     loading.value = true
     loadError.value = ''
     try {
-      const cap = await composeInputReworkApi.capability(runId.value, stepKey.value ?? 'compose')
+      const cap = await composeInputReworkApi.capability(
+        runId.value,
+        stepKey.value ?? 'compose',
+      )
       if (token !== epoch) return
       capability.value = cap.capability
       if (!cap.capability.supported) {
@@ -186,20 +216,38 @@ export function useComposeInputRework(
       ])
       if (token !== epoch) return
       baseConfig.value = (cfgRes.config ?? {}) as ComposeConfig
-      baseBgm.value = { assetId: bgmRes.bgm?.id ?? null, name: bgmRes.bgm?.name ?? null }
+      baseBgm.value = {
+        assetId: bgmRes.bgm?.id ?? null,
+        name: bgmRes.bgm?.name ?? null,
+      }
       baseSfx.value = (sfxRes.items ?? [])
-        .map((x) => ({ shotId: x.shotId, assetId: x.asset.id, name: x.asset.name }))
-        .sort((a, b) => (a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0))
-      seedForm(baseConfig.value, baseBgm.value.assetId, baseSfx.value.map((s) => s.shotId), shotAxis.value.filter((s) => s.kind === 'image').map((s) => s.shotId))
+        .map((x) => ({
+          shotId: x.shotId,
+          assetId: x.asset.id,
+          name: x.asset.name,
+        }))
+        .sort((a, b) =>
+          a.shotId < b.shotId ? -1 : a.shotId > b.shotId ? 1 : 0,
+        )
+      seedForm(
+        baseConfig.value,
+        baseBgm.value.assetId,
+        baseSfx.value.map((s) => s.shotId),
+        shotAxis.value.filter((s) => s.kind === 'image').map((s) => s.shotId),
+      )
       if (projectId.value > 0) {
-        const r = await projectApi.assets(projectId.value, '?kind=audio&limit=50')
+        const r = await projectApi.assets(
+          projectId.value,
+          '?kind=audio&limit=50',
+        )
         if (token !== epoch) return
         candidates.value = r.items
       }
       resetPreview()
     } catch (err) {
       if (token !== epoch) return
-      loadError.value = err instanceof Error ? err.message : '加载合成返修状态失败'
+      loadError.value =
+        err instanceof Error ? err.message : '加载合成返修状态失败'
       capability.value = null
     } finally {
       if (token === epoch) loading.value = false
@@ -217,7 +265,11 @@ export function useComposeInputRework(
   /** 表单编辑后签名变化即作废预览（同签名连续输入不回退已展示的预览） */
   function onFormEdited(): void {
     if (!preview.value && !previewError.value) return
-    if (previewSignature.value && previewSignature.value === composeInputSignature(changes.value)) return
+    if (
+      previewSignature.value &&
+      previewSignature.value === composeInputSignature(changes.value)
+    )
+      return
     resetPreview()
   }
 
@@ -238,7 +290,12 @@ export function useComposeInputRework(
     submitting.value = true
     previewError.value = ''
     try {
-      const res = await composeInputReworkApi.preview(runId.value, key, list, stepKey.value)
+      const res = await composeInputReworkApi.preview(
+        runId.value,
+        key,
+        list,
+        stepKey.value,
+      )
       if (token !== epoch) return
       requestId.value = res.request_id
       preview.value = res.preview
@@ -247,7 +304,11 @@ export function useComposeInputRework(
       if (token !== epoch) return
       if (err instanceof ReworkApiError) {
         previewError.value = `${err.message}${err.requestId ? `（请求 ${err.requestId}）` : ''}`
-        if (err.code === 'idempotency_conflict' || err.code === 'stale_preview' || err.code === 'no_effect') {
+        if (
+          err.code === 'idempotency_conflict' ||
+          err.code === 'stale_preview' ||
+          err.code === 'no_effect'
+        ) {
           preview.value = null
           ticket.value = null
         }
@@ -266,15 +327,23 @@ export function useComposeInputRework(
     applying.value = true
     previewError.value = ''
     try {
-      const res = await composeInputReworkApi.apply(runId.value, requestId.value, pv.previewHash)
+      const res = await composeInputReworkApi.apply(
+        runId.value,
+        requestId.value,
+        pv.previewHash,
+      )
       preview.value = null
       ticket.value = null
       await load()
       hooks.onApplied?.(res.request_id)
       return true
     } catch (err) {
-      previewError.value = err instanceof Error ? `${err.message}；未确认，可重新预览后重试` : '确认请求失败'
-      if (err instanceof ReworkApiError && err.status === 409) preview.value = null
+      previewError.value =
+        err instanceof Error
+          ? `${err.message}；未确认，可重新预览后重试`
+          : '确认请求失败'
+      if (err instanceof ReworkApiError && err.status === 409)
+        preview.value = null
       return false
     } finally {
       applying.value = false

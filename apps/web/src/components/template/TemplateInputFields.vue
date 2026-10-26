@@ -55,12 +55,35 @@ function acceptOf(key: string): string {
  * docx/epub 导入时已在服务端转成 md 文本资产，故归 text。
  */
 const EXT_KIND: Record<string, string> = {
-  png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image', bmp: 'image',
-  mp4: 'video', mov: 'video', webm: 'video', mkv: 'video', avi: 'video',
-  mp3: 'audio', wav: 'audio', aac: 'audio', m4a: 'audio', flac: 'audio',
-  md: 'text', txt: 'text', json: 'text', yaml: 'text', yml: 'text', csv: 'text',
-  srt: 'text', vtt: 'text', log: 'text', ini: 'text', toml: 'text',
-  docx: 'text', epub: 'text',
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  webp: 'image',
+  gif: 'image',
+  bmp: 'image',
+  mp4: 'video',
+  mov: 'video',
+  webm: 'video',
+  mkv: 'video',
+  avi: 'video',
+  mp3: 'audio',
+  wav: 'audio',
+  aac: 'audio',
+  m4a: 'audio',
+  flac: 'audio',
+  md: 'text',
+  txt: 'text',
+  json: 'text',
+  yaml: 'text',
+  yml: 'text',
+  csv: 'text',
+  srt: 'text',
+  vtt: 'text',
+  log: 'text',
+  ini: 'text',
+  toml: 'text',
+  docx: 'text',
+  epub: 'text',
 }
 const KIND_WORDS = new Set(['image', 'video', 'audio', 'text', 'archive'])
 
@@ -122,7 +145,10 @@ async function onFilesChosen(e: Event) {
     }
     emit('notice', `已上传 ${created.length} 个素材并勾选`)
   } catch (err) {
-    emit('notice', `上传失败：${err instanceof Error ? err.message : String(err)}`)
+    emit(
+      'notice',
+      `上传失败：${err instanceof Error ? err.message : String(err)}`,
+    )
   } finally {
     uploading.value = false
     uploadTargetKey.value = ''
@@ -214,7 +240,12 @@ function srcChip(k: string): string {
     <template v-for="inp in tpl?.inputs ?? []" :key="inp.key">
       <label v-if="inp.kind === 'text'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <ProvenanceBadge
+          v-if="srcChip(inp.key)"
+          kind="auto"
+          :text="srcChip(inp.key)"
+          title="系统自动预填，可直接修改"
+        />
         <textarea
           v-if="!dense"
           :value="textOf(inp.key)"
@@ -231,7 +262,12 @@ function srcChip(k: string): string {
 
       <label v-else-if="inp.kind === 'int'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <ProvenanceBadge
+          v-if="srcChip(inp.key)"
+          kind="auto"
+          :text="srcChip(inp.key)"
+          title="系统自动预填，可直接修改"
+        />
         <input
           type="number"
           :value="numOf(inp.key)"
@@ -241,7 +277,12 @@ function srcChip(k: string): string {
 
       <label v-else-if="inp.kind === 'float'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <ProvenanceBadge
+          v-if="srcChip(inp.key)"
+          kind="auto"
+          :text="srcChip(inp.key)"
+          title="系统自动预填，可直接修改"
+        />
         <input
           type="number"
           step="any"
@@ -252,13 +293,22 @@ function srcChip(k: string): string {
 
       <label v-else-if="inp.kind === 'select'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <ProvenanceBadge
+          v-if="srcChip(inp.key)"
+          kind="auto"
+          :text="srcChip(inp.key)"
+          title="系统自动预填，可直接修改"
+        />
         <select
           :value="selOf(inp.key)"
-          @change="emit('change', inp.key, ($event.target as HTMLSelectElement).value)"
+          @change="
+            emit('change', inp.key, ($event.target as HTMLSelectElement).value)
+          "
         >
           <option value="" :disabled="inp.required">（未选）</option>
-          <option v-for="(o, oi) in inp.options ?? []" :key="o" :value="o">{{ optLabel(inp, oi, o) }}</option>
+          <option v-for="(o, oi) in inp.options ?? []" :key="o" :value="o">
+            {{ optLabel(inp, oi, o) }}
+          </option>
         </select>
       </label>
 
@@ -269,7 +319,12 @@ function srcChip(k: string): string {
             inp.required ? '必填' : '选填'
           }}</span>
           <span class="muted">（选 {{ pickedOpts(inp.key).length }} 项）</span>
-          <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+          <ProvenanceBadge
+            v-if="srcChip(inp.key)"
+            kind="auto"
+            :text="srcChip(inp.key)"
+            title="系统自动预填，可直接修改"
+          />
         </div>
         <div class="picklist">
           <label v-for="(o, oi) in inp.options ?? []" :key="o" class="opt">
@@ -285,7 +340,12 @@ function srcChip(k: string): string {
 
       <label v-else-if="inp.kind === 'date'" class="fld">
         {{ inp.label }} <span v-if="inp.required" class="req">*</span>
-        <ProvenanceBadge v-if="srcChip(inp.key)" kind="auto" :text="srcChip(inp.key)" title="系统自动预填，可直接修改" />
+        <ProvenanceBadge
+          v-if="srcChip(inp.key)"
+          kind="auto"
+          :text="srcChip(inp.key)"
+          title="系统自动预填，可直接修改"
+        />
         <input
           type="date"
           :value="selOf(inp.key)"
@@ -324,7 +384,8 @@ function srcChip(k: string): string {
             :disabled="uploading"
             @click="triggerUpload(inp.key)"
           >
-            <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传' }}
+            <Icon name="upload" :size="12" />
+            {{ uploading ? '上传中…' : '上传' }}
           </button>
           <div v-if="openKey === inp.key" class="picklist">
             <label v-for="a in visibleAssets(inp)" :key="a.id" class="opt">
@@ -350,7 +411,7 @@ function srcChip(k: string): string {
             <div v-if="!visibleAssets(inp).length" class="muted">
               {{
                 assets.length
-                  ? `项目内无符合「${inp.accept?.join(' / ') || inp.label}」的资产——点上方上传` 
+                  ? `项目内无符合「${inp.accept?.join(' / ') || inp.label}」的资产——点上方上传`
                   : '项目暂无资产'
               }}
             </div>
@@ -373,7 +434,8 @@ function srcChip(k: string): string {
               :disabled="uploading"
               @click="triggerUpload(inp.key)"
             >
-              <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传素材' }}
+              <Icon name="upload" :size="12" />
+              {{ uploading ? '上传中…' : '上传素材' }}
             </button>
           </div>
           <p v-if="!inp.required" class="tif-hint muted">

@@ -24,23 +24,33 @@ const MAX_NOTE = 500
 const dialogue = computed(() => review.value?.kind === 'dialogue')
 // 驳回即暂停（成果保留、不自动重做）：对白最终审阅，或模板 gate 声明 reject:stop（如 photo-montage 合成成片闸）。
 // route/专业模板的 stop 闸门不能沿用“驳回=整阶段重做计费”的旁白文案，否则误导用户以为会重复扣费。
-const stopsOnReject = computed(() => dialogue.value || review.value?.rejectStops === true)
+const stopsOnReject = computed(
+  () => dialogue.value || review.value?.rejectStops === true,
+)
 // 免核验路线：字幕按批准台词估算（非实测），发声只能靠人工收听比对，文案必须如实区分
-const subtitlesEstimated = computed(() => review.value?.subtitlesEstimated === true)
+const subtitlesEstimated = computed(
+  () => review.value?.subtitlesEstimated === true,
+)
 const dialogueVideoUrl = computed(() =>
   review.value?.videoId ? `/api/v1/assets/${review.value.videoId}/file` : '',
 )
 const subtitleUrl = computed(() =>
-  review.value?.subtitleId ? `/api/v1/assets/${review.value.subtitleId}/file` : '',
+  review.value?.subtitleId
+    ? `/api/v1/assets/${review.value.subtitleId}/file`
+    : '',
 )
 // 逐镜原声核验未通过的镜头（无原声 / 转写失败）：审阅卡必须点名，不能笼统放行
 const verificationIssues = computed(() =>
-  (props.s.state.detail?.artifacts.shots ?? [])
-    .flatMap((shot) =>
-      (shot.verification ?? [])
-        .filter((v) => v.status !== 'succeeded')
-        .map((v) => ({ index: shot.index, speaker: shot.speaker?.name ?? null, status: v.status, error: v.error })),
-    ),
+  (props.s.state.detail?.artifacts.shots ?? []).flatMap((shot) =>
+    (shot.verification ?? [])
+      .filter((v) => v.status !== 'succeeded')
+      .map((v) => ({
+        index: shot.index,
+        speaker: shot.speaker?.name ?? null,
+        status: v.status,
+        error: v.error,
+      })),
+  ),
 )
 
 // 切会话/换闸门步即收起驳回态，避免把上一阶段的意见误提交到新的等待步
@@ -54,22 +64,35 @@ watch(
 
 // 待审产物：图文画面（slideshow）与动态首帧（i2v）都是逐镜 image，复用成果投影的在用版本
 // 投影已候选化（{selected, candidates}）：审阅只看正在用的那一版，逐镜换版走成果面板的候选选择
-const frames = computed<Array<{ index: number; artifact: CreationArtifact }>>(() =>
-  (props.s.state.detail?.artifacts.shots ?? [])
-    .map((shot) => ({ index: shot.index, artifact: shot.image.selected }))
-    .filter((row): row is { index: number; artifact: CreationArtifact } => !!row.artifact),
+const frames = computed<Array<{ index: number; artifact: CreationArtifact }>>(
+  () =>
+    (props.s.state.detail?.artifacts.shots ?? [])
+      .map((shot) => ({ index: shot.index, artifact: shot.image.selected }))
+      .filter(
+        (row): row is { index: number; artifact: CreationArtifact } =>
+          !!row.artifact,
+      ),
 )
-const usableCount = computed(() => frames.value.filter((f) => f.artifact.available).length)
+const usableCount = computed(
+  () => frames.value.filter((f) => f.artifact.available).length,
+)
 
 // 通用（route/专业模板）闸门：本步骤产出就地盘点——图片/视频出缩略图，文本/音频出预览按钮，审完即批免往返运行详情
 const gateArts = computed(() => review.value?.artifacts ?? [])
-const gateMedia = computed(() => gateArts.value.filter((a) => a.kind === 'image' || a.kind === 'video'))
-const gateDocs = computed(() => gateArts.value.filter((a) => a.kind !== 'image' && a.kind !== 'video'))
-const gateAvailableCount = computed(() => gateArts.value.filter((a) => a.available).length)
+const gateMedia = computed(() =>
+  gateArts.value.filter((a) => a.kind === 'image' || a.kind === 'video'),
+)
+const gateDocs = computed(() =>
+  gateArts.value.filter((a) => a.kind !== 'image' && a.kind !== 'video'),
+)
+const gateAvailableCount = computed(
+  () => gateArts.value.filter((a) => a.available).length,
+)
 
 // 缩略图角标：优先服务端友好标签（定妆照=角色名），否则回退到「第 N 张图/段视频」；不展示原始文件名
 const mediaLabel = (a: CreationArtifact, mi: number): string =>
-  a.label?.trim() || (a.kind === 'video' ? `第 ${mi + 1} 段视频` : `第 ${mi + 1} 张图`)
+  a.label?.trim() ||
+  (a.kind === 'video' ? `第 ${mi + 1} 段视频` : `第 ${mi + 1} 张图`)
 
 const preview = ref<Asset | null>(null)
 const loading = ref<number | null>(null)
@@ -82,7 +105,8 @@ async function open(a: CreationArtifact): Promise<void> {
     const { asset } = await assetApi.detail(a.assetId)
     if (token === request) preview.value = asset
   } catch {
-    if (token === request) props.s.state.error = '素材当前不可用，请更新状态后再审阅。'
+    if (token === request)
+      props.s.state.error = '素材当前不可用，请更新状态后再审阅。'
   } finally {
     if (token === request) loading.value = null
   }
@@ -98,13 +122,21 @@ async function onReject(): Promise<void> {
   const r = review.value
   if (!r) return
   const ok = await confirmDialog({
-    title: dialogue.value ? '驳回人物对白成片' : stopsOnReject.value ? '驳回并暂停交付' : '驳回并重做该阶段',
+    title: dialogue.value
+      ? '驳回人物对白成片'
+      : stopsOnReject.value
+        ? '驳回并暂停交付'
+        : '驳回并重做该阶段',
     message: dialogue.value
       ? '驳回后成片将保持待修状态并停止交付，不会自动重新生成。请用「局部返修」逐镜修正问题镜头、重新合成后再来审阅。'
       : stopsOnReject.value
         ? `「${r.title}」的当前产物会保留、交付暂停，不会自动重新生成或计费。可调整输入后重新制作，或用「局部返修 / 本地重合成」修正后再来审阅。`
         : `「${r.title}」的全部产物都会重新生成，会再次调用图片生成，可能产生费用。重做完成后制作会自动继续，不会再暂停等你确认。确认驳回？`,
-    confirmText: dialogue.value ? '确认驳回（停机待修）' : stopsOnReject.value ? '确认驳回（暂停交付）' : '确认驳回并重做',
+    confirmText: dialogue.value
+      ? '确认驳回（停机待修）'
+      : stopsOnReject.value
+        ? '确认驳回（暂停交付）'
+        : '确认驳回并重做',
   })
   if (!ok) return
   await props.s.decideGate(r.stepKey, 'reject', note.value)
@@ -123,7 +155,8 @@ async function onReject(): Promise<void> {
     <!-- 对白最终审阅：播放带原声的待审成片 + 字幕入口（实测/估算如实标注）+ 逐镜原声核验问题 -->
     <div v-if="dialogue" class="ec-dlg">
       <p v-if="subtitlesEstimated" class="warnline">
-        <Icon name="alert" :size="13" /> 免核验路线：字幕按批准台词估算（非实测），模型实际发声未经逐字核验，请务必收听原声比对台词、说话人与口型后再交付。
+        <Icon name="alert" :size="13" />
+        免核验路线：字幕按批准台词估算（非实测），模型实际发声未经逐字核验，请务必收听原声比对台词、说话人与口型后再交付。
       </p>
       <video
         v-if="dialogueVideoUrl"
@@ -134,23 +167,41 @@ async function onReject(): Promise<void> {
         playsinline
       />
       <p v-else class="warnline">
-        <Icon name="alert" :size="13" /> 尚无带原声且可读取的待审成片，不能通过交付。
+        <Icon name="alert" :size="13" />
+        尚无带原声且可读取的待审成片，不能通过交付。
       </p>
       <p class="ec-dlg-tools">
-        <a v-if="subtitleUrl" class="btn sm" :href="subtitleUrl" target="_blank" rel="noopener"
-          ><Icon name="doc" :size="13" /> {{ subtitlesEstimated ? '查看估算字幕（按批准台词，非实测）' : '查看实测字幕（来自真实音轨）' }}</a
+        <a
+          v-if="subtitleUrl"
+          class="btn sm"
+          :href="subtitleUrl"
+          target="_blank"
+          rel="noopener"
+          ><Icon name="doc" :size="13" />
+          {{
+            subtitlesEstimated
+              ? '查看估算字幕（按批准台词，非实测）'
+              : '查看实测字幕（来自真实音轨）'
+          }}</a
         >
         <span v-if="verificationIssues.length" class="warnline">
           <Icon name="alert" :size="13" />
-          {{ verificationIssues.length }} 个镜头原声未通过核验（{{ verificationIssues.map((v) => `第 ${v.index} 镜${v.speaker ? '·' + v.speaker : ''}`).join('、') }}），请核对台词与时间戳。
+          {{ verificationIssues.length }} 个镜头原声未通过核验（{{
+            verificationIssues
+              .map((v) => `第 ${v.index} 镜${v.speaker ? '·' + v.speaker : ''}`)
+              .join('、')
+          }}），请核对台词与时间戳。
         </span>
-        <span v-else-if="subtitlesEstimated" class="muted">免核验路线不产生逐字核验记录，发声一致性以本轮人工审阅为准。</span>
+        <span v-else-if="subtitlesEstimated" class="muted"
+          >免核验路线不产生逐字核验记录，发声一致性以本轮人工审阅为准。</span
+        >
         <span v-else class="muted">逐镜原声均已通过核验。</span>
       </p>
     </div>
 
     <p v-if="!dialogue && frames.length" class="muted">
-      本阶段已生成 {{ usableCount }}/{{ frames.length }} 镜画面，点开可放大查看。
+      本阶段已生成 {{ usableCount }}/{{ frames.length }}
+      镜画面，点开可放大查看。
     </p>
     <ul v-if="!dialogue && frames.length" class="thumbs">
       <li v-for="f in frames" :key="f.artifact.assetId">
@@ -174,20 +225,53 @@ async function onReject(): Promise<void> {
     </ul>
 
     <!-- 通用（route/专业模板）闸门：就地展示本步骤产出，看着结果直接决定，免去往返运行详情 -->
-    <div v-if="!dialogue && !frames.length && gateArts.length" class="ec-gate-arts">
-      <p class="muted">本步骤「{{ review.title }}」已产出 {{ gateAvailableCount }}/{{ gateArts.length }} 项，点开可放大查看，确认后再决定继续或驳回。</p>
+    <div
+      v-if="!dialogue && !frames.length && gateArts.length"
+      class="ec-gate-arts"
+    >
+      <p class="muted">
+        本步骤「{{ review.title }}」已产出 {{ gateAvailableCount }}/{{
+          gateArts.length
+        }}
+        项，点开可放大查看，确认后再决定继续或驳回。
+      </p>
       <ul v-if="gateMedia.length" class="thumbs">
         <li v-for="(a, mi) in gateMedia" :key="a.assetId">
-          <button class="thumb" type="button" :disabled="!a.available || loading !== null" :aria-label="`放大查看 ${mediaLabel(a, mi)}`" @click="open(a)">
-            <img v-if="a.available && a.kind === 'image'" :src="`/api/v1/assets/${a.assetId}/thumb?v=2`" :alt="mediaLabel(a, mi)" loading="lazy" />
-            <video v-else-if="a.available && a.kind === 'video'" class="ec-gate-video" :src="`/api/v1/assets/${a.assetId}/file`" muted preload="metadata" playsinline />
+          <button
+            class="thumb"
+            type="button"
+            :disabled="!a.available || loading !== null"
+            :aria-label="`放大查看 ${mediaLabel(a, mi)}`"
+            @click="open(a)"
+          >
+            <img
+              v-if="a.available && a.kind === 'image'"
+              :src="`/api/v1/assets/${a.assetId}/thumb?v=2`"
+              :alt="mediaLabel(a, mi)"
+              loading="lazy"
+            />
+            <video
+              v-else-if="a.available && a.kind === 'video'"
+              class="ec-gate-video"
+              :src="`/api/v1/assets/${a.assetId}/file`"
+              muted
+              preload="metadata"
+              playsinline
+            />
             <span v-else class="off">素材不可用</span>
             <span class="idx">{{ mediaLabel(a, mi) }}</span>
           </button>
         </li>
       </ul>
       <div v-if="gateDocs.length" class="ec-gate-docs">
-        <button v-for="a in gateDocs" :key="a.assetId" class="ec-gate-doc" type="button" :disabled="!a.available || loading !== null" @click="open(a)">
+        <button
+          v-for="a in gateDocs"
+          :key="a.assetId"
+          class="ec-gate-doc"
+          type="button"
+          :disabled="!a.available || loading !== null"
+          @click="open(a)"
+        >
           <Icon name="doc" :size="14" />
           <span>{{ a.name }}</span>
           <span v-if="a.reused" class="ec-gate-reuse">复用</span>
@@ -197,7 +281,9 @@ async function onReject(): Promise<void> {
     </div>
 
     <div class="ec-review-note">
-      <label class="nl" for="ec-review-note-input">审阅意见（可选，随驳回一并提交）</label>
+      <label class="nl" for="ec-review-note-input"
+        >审阅意见（可选，随驳回一并提交）</label
+      >
       <textarea
         id="ec-review-note-input"
         v-model="note"
@@ -210,8 +296,14 @@ async function onReject(): Promise<void> {
     </div>
 
     <div class="rf">
-      <button class="btn ok big" type="button" :disabled="busy" @click="onApprove">
-        <Icon name="bolt" :size="15" /> {{ busy ? '处理中…' : dialogue ? '通过并交付成片' : '继续制作' }}
+      <button
+        class="btn ok big"
+        type="button"
+        :disabled="busy"
+        @click="onApprove"
+      >
+        <Icon name="bolt" :size="15" />
+        {{ busy ? '处理中…' : dialogue ? '通过并交付成片' : '继续制作' }}
       </button>
       <button
         v-if="!rejecting"
@@ -220,23 +312,57 @@ async function onReject(): Promise<void> {
         :disabled="busy"
         @click="rejecting = true"
       >
-        <Icon name="refresh" :size="13" /> {{ dialogue ? '驳回（停机待修）' : stopsOnReject ? '驳回（暂停交付）' : '驳回重做该阶段' }}
+        <Icon name="refresh" :size="13" />
+        {{
+          dialogue
+            ? '驳回（停机待修）'
+            : stopsOnReject
+              ? '驳回（暂停交付）'
+              : '驳回重做该阶段'
+        }}
       </button>
       <template v-else>
         <span class="warnline">
           <Icon name="alert" :size="13" />
-          {{ dialogue ? '驳回将停止交付并保持成片待修，不会自动重做；请逐镜返修后重新合成。' : stopsOnReject ? '驳回将暂停交付并保留当前成果，不会自动重新生成或计费；调整后可重新制作或局部返修。' : '将重新生成该阶段全部画面并自动继续制作，可能再次计费。' }}
+          {{
+            dialogue
+              ? '驳回将停止交付并保持成片待修，不会自动重做；请逐镜返修后重新合成。'
+              : stopsOnReject
+                ? '驳回将暂停交付并保留当前成果，不会自动重新生成或计费；调整后可重新制作或局部返修。'
+                : '将重新生成该阶段全部画面并自动继续制作，可能再次计费。'
+          }}
         </span>
         <div class="rrow">
-          <button class="btn danger sm" type="button" :disabled="busy" @click="onReject">
-            {{ dialogue ? '确认驳回（停机待修）' : stopsOnReject ? '确认驳回（暂停交付）' : '确认驳回并重做' }}
+          <button
+            class="btn danger sm"
+            type="button"
+            :disabled="busy"
+            @click="onReject"
+          >
+            {{
+              dialogue
+                ? '确认驳回（停机待修）'
+                : stopsOnReject
+                  ? '确认驳回（暂停交付）'
+                  : '确认驳回并重做'
+            }}
           </button>
-          <button class="btn sm" type="button" :disabled="busy" @click="rejecting = false">
+          <button
+            class="btn sm"
+            type="button"
+            :disabled="busy"
+            @click="rejecting = false"
+          >
             取消
           </button>
         </div>
       </template>
-      <button class="btn sm" type="button" :disabled="busy" @click="s.refreshStatus()">
+      <button
+        class="btn sm"
+        type="button"
+        :disabled="busy"
+        @click="s.refreshStatus()"
+      >
         <Icon name="refresh" :size="13" /> 更新状态
       </button>
     </div>
@@ -245,7 +371,12 @@ async function onReject(): Promise<void> {
     </p>
 
     <p v-if="loading !== null" role="status">正在加载预览…</p>
-    <AssetPreviewer v-if="preview" :assets="[preview]" :index="0" @close="preview = null" />
+    <AssetPreviewer
+      v-if="preview"
+      :assets="[preview]"
+      :index="0"
+      @close="preview = null"
+    />
   </section>
 </template>
 

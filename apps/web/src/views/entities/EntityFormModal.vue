@@ -84,7 +84,9 @@ const {
         />
       </label>
       <label class="fld voice-fld">
-        <span class="voice-label">音色令牌 / 克隆（进 TTS 声线链 L2，选填）</span>
+        <span class="voice-label"
+          >音色令牌 / 克隆（进 TTS 声线链 L2，选填）</span
+        >
         <div class="voice-row">
           <textarea
             v-model="form.voice"
@@ -167,7 +169,13 @@ const {
           @click="pickUpload"
         >
           <Icon name="plus" :size="12" />
-          {{ uploading ? '上传中…' : form.projectId ? '上传新图' : '上传入池并挂接' }}
+          {{
+            uploading
+              ? '上传中…'
+              : form.projectId
+                ? '上传新图'
+                : '上传入池并挂接'
+          }}
         </button>
         <!-- 新建全局态：无实体可挂，文件直传全局素材池，入池后在下方缩略图勾选 -->
         <button
@@ -234,7 +242,9 @@ const {
         </div>
         <div class="muted" style="font-size: 11.5px">
           已选 {{ form.refIds.length }} 张（点击切换；建议覆盖主要角度/光线）
-          <template v-if="!form.projectId">；全局实体仅可挂全局素材池图片</template>
+          <template v-if="!form.projectId"
+            >；全局实体仅可挂全局素材池图片</template
+          >
         </div>
       </template>
     </div>

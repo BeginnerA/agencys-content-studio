@@ -15,13 +15,26 @@ export type QcCheckKey =
   | 'manual_quality_review'
 
 /** 单条结论状态（复用第一期 result 词表）。 */
-export type QcStatus = 'passed' | 'failed' | 'not_tested' | 'unsupported' | 'not_applicable' | 'stale'
+export type QcStatus =
+  | 'passed'
+  | 'failed'
+  | 'not_tested'
+  | 'unsupported'
+  | 'not_applicable'
+  | 'stale'
 
 /** 证据类型（复用第一期 evidenceType 词表）。 */
-export type QcEvidenceType = 'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
+export type QcEvidenceType =
+  'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
 
 /** 测量/判定来源。 */
-export type QcSource = 'ffprobe' | 'params.timeline' | 'rework_ledger' | '_compose' | 'asset_params' | 'manual'
+export type QcSource =
+  | 'ffprobe'
+  | 'params.timeline'
+  | 'rework_ledger'
+  | '_compose'
+  | 'asset_params'
+  | 'manual'
 
 /** 交付就绪三态。 */
 export type QcVerdict = 'ready' | 'needs_review' | 'not_ready'

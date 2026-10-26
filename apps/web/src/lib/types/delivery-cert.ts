@@ -14,19 +14,33 @@ export type CertCheckKey =
   | 'editor_import_certified'
 
 /** 单条结论状态（复用第一期 result 词表）。 */
-export type CertStatus = 'passed' | 'failed' | 'not_tested' | 'unsupported' | 'not_applicable' | 'stale'
+export type CertStatus =
+  | 'passed'
+  | 'failed'
+  | 'not_tested'
+  | 'unsupported'
+  | 'not_applicable'
+  | 'stale'
 
 /** 证据类型（复用第一期 evidenceType 词表）。 */
-export type CertEvidenceType = 'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
+export type CertEvidenceType =
+  'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
 
 /** 认证/解析来源（本期域特化：认证对象是导出工程包，非成片 mp4）。 */
-export type CertSource = 'zip' | 'project_file' | 'manifest' | 'params.timeline' | 'media_fs' | 'manual'
+export type CertSource =
+  | 'zip'
+  | 'project_file'
+  | 'manifest'
+  | 'params.timeline'
+  | 'media_fs'
+  | 'manual'
 
 /** 三种工程交换格式（与 edit-exchange 同源）。 */
 export type CertFormat = 'fcpxml' | 'edl' | 'otio'
 
 /** 交付可信四态（规格 §3：verdict 天花板 = 至多 needs_attention，editor_import 恒缺项）。 */
-export type CertVerdict = 'package_sound' | 'needs_attention' | 'package_broken' | 'needs_package'
+export type CertVerdict =
+  'package_sound' | 'needs_attention' | 'package_broken' | 'needs_package'
 
 /** 单条认证结论。 */
 export interface CertCheckView {

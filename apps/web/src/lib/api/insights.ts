@@ -1,4 +1,4 @@
-import { api, type Items } from './core'
+import { api, LONG_TIMEOUT_MS, type Items } from './core'
 import type {
   ExportAssetLite,
   Overview,
@@ -25,8 +25,13 @@ export const statsApi = {
 }
 
 export const exportApi = {
+  /** 导出产物生成：同步渲染/打包（长任务）→ 走 LONG */
   create: (runId: number, body: Record<string, unknown>) =>
-    api.post<{ asset: ExportAssetLite }>(`/api/v1/runs/${runId}/exports`, body),
+    api.post<{ asset: ExportAssetLite }>(
+      `/api/v1/runs/${runId}/exports`,
+      body,
+      LONG_TIMEOUT_MS,
+    ),
   list: (params = '') =>
     api.get<Items<ExportAssetLite>>(`/api/v1/exports${params}`),
   runAssets: (runId: number) =>
@@ -72,13 +77,19 @@ export interface EditExchangeFormatsResult {
 export const editExchangeApi = {
   /** 能力探测：成片存在=全开；无 timeline 且不可重算=置灰带提示 */
   formats: (runId: number) =>
-    api.get<EditExchangeFormatsResult>(`/api/v1/runs/${runId}/edit-exchange/formats`),
+    api.get<EditExchangeFormatsResult>(
+      `/api/v1/runs/${runId}/edit-exchange/formats`,
+    ),
   /** 生成剪辑工程交换包（→ archive 资产；下载复用 fileUrl） */
   create: (runId: number, format: EditExchangeFormat, includeMedia = true) =>
-    api.post<{ asset: ExportAssetLite; timeline_source: 'stored' | 'recomputed'; format: EditExchangeFormat }>(
-      `/api/v1/runs/${runId}/edit-exchange`,
-      { format, include_media: includeMedia },
-    ),
+    api.post<{
+      asset: ExportAssetLite
+      timeline_source: 'stored' | 'recomputed'
+      format: EditExchangeFormat
+    }>(`/api/v1/runs/${runId}/edit-exchange`, {
+      format,
+      include_media: includeMedia,
+    }),
   /** 下载导出包（复用资产文件端点） */
   fileUrl: (assetId: number, download = true) =>
     `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
@@ -189,15 +200,20 @@ export const scheduleApi = {
 
 export const complianceApi = {
   // 词库只读视图（source='file' 在位 / 'builtin' 缺失兜底）
-  rules: () => api.get<import('../types').ComplianceRulesView>('/api/v1/compliance/rules'),
+  rules: () =>
+    api.get<import('../types').ComplianceRulesView>('/api/v1/compliance/rules'),
   // 从既有复审结论聚合候选新词（Tier B 零新计费；projectId 缺省 = 全域）
   suggest: (projectId?: number) =>
     api.get<{ items: import('../types').SuggestedRule[] }>(
       `/api/v1/compliance/suggest${projectId ? `?project_id=${projectId}` : ''}`,
     ),
   // 采纳建议：将规则追加进词库（去重、追加不覆盖、自动建文件）
-  appendRules: (rules: Array<{ category: string; word: string; level: string }>) =>
-    api.post<{ added: number; total: number }>('/api/v1/compliance/rules', { rules }),
+  appendRules: (
+    rules: Array<{ category: string; word: string; level: string }>,
+  ) =>
+    api.post<{ added: number; total: number }>('/api/v1/compliance/rules', {
+      rules,
+    }),
 }
 
 export const budgetApi = {

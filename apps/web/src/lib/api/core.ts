@@ -11,20 +11,43 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 请求超时上限：不设上限等于「页面卡到用户整页刷新」——连接被半开挂起时 fetch 的 Promise 永不落定，
+ * 调用方的 busy 锁与轮询会一直停在原地。默认 2 分钟覆盖本地小任务；已知同步重活显式改用 LONG。
+ */
+export const DEFAULT_TIMEOUT_MS = 120_000
+/** 同步长任务（打包导出 / 本地合成 / 供应商连通测试与模型拉取）：服务端真在算，给 15 分钟 */
+export const LONG_TIMEOUT_MS = 900_000
+
+function isTimeout(err: unknown): boolean {
+  const name = (err as { name?: string })?.name
+  return name === 'TimeoutError' || name === 'AbortError'
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   let res: Response
   try {
     res = await fetch(path, {
       method,
+      signal: AbortSignal.timeout(timeoutMs),
       headers:
         body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
-  } catch {
+  } catch (err) {
+    // 超时只说明「本次等待到头」：服务端不受影响、仍在执行，文案不能暗示操作失败
+    if (isTimeout(err)) {
+      throw new ApiError(
+        0,
+        'timeout',
+        `请求超时（${Math.round(timeoutMs / 1000)} 秒）：服务可能仍在处理，请稍后刷新查看结果`,
+      )
+    }
     throw new ApiError(0, 'network', '无法连接服务（127.0.0.1:3001）')
   }
   if (!res.ok) {
@@ -45,11 +68,16 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
-  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
+  get: <T>(path: string, timeoutMs?: number) =>
+    request<T>('GET', path, undefined, timeoutMs),
+  post: <T>(path: string, body?: unknown, timeoutMs?: number) =>
+    request<T>('POST', path, body, timeoutMs),
+  patch: <T>(path: string, body: unknown, timeoutMs?: number) =>
+    request<T>('PATCH', path, body, timeoutMs),
+  put: <T>(path: string, body: unknown, timeoutMs?: number) =>
+    request<T>('PUT', path, body, timeoutMs),
+  del: <T>(path: string, body?: unknown, timeoutMs?: number) =>
+    request<T>('DELETE', path, body, timeoutMs),
 }
 
 export interface Items<T> {

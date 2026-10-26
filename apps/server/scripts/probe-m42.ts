@@ -306,9 +306,25 @@ async function main(): Promise<void> {
       await engine.rejectGate(run2.id, 'draft', { note: '重做' })
       const rejected = await stepOf(run2.id, 'draft')
       check(rejected.status === 'pending' && !!rejected.output?.includes('reject'), '驳回 → 本步回到 pending，修改意见留在 output')
-      check(await until(async () => (await runOf(run2.id)).status === 'completed'), '驳回后该步整体重跑并继续（引擎既有语义：重跑轮不再二次挂起）')
+      // 驳回不是「放行旧产物」：本步必须重做并重新挂起等人确认（旧实现按 review 豁免 gate，
+      // 导致被拒产物复用且复审被跳过——M42 此段固定修正后的契约）
+      const rehung = await until(async () => {
+        const s = await stepOf(run2.id, 'draft')
+        return s.attempts === 2 && s.status === 'waiting_input'
+      })
+      check(rehung, '驳回后该步整体重跑并再次挂起待复审（被拒产物不复用，复审不可跳过）')
       const rerun = await stepOf(run2.id, 'draft')
-      check(rerun.attempts === 2 && rerun.status === 'succeeded', '驳回＝整步重做（attempts+1，产物重新生成＝可能再次计费）')
+      check(
+        rerun.attempts === 2 && JSON.parse(rerun.input ?? '{}')._review?.note === '重做',
+        '驳回＝整步重做（attempts+1，修改意见经 _review 注入本轮输入）',
+      )
+      await engine.approveGate(run2.id, 'draft', { note: '复审通过' })
+      check(await until(async () => (await runOf(run2.id)).status === 'completed'), '复审放行 → 续跑至完成')
+      const approvedAgain = await stepOf(run2.id, 'draft')
+      check(
+        approvedAgain.attempts === 2 && approvedAgain.status === 'succeeded' && JSON.parse(approvedAgain.output!).gate?.decision === 'approve',
+        '复审 approve 落本步 succeeded（attempts 保持 2，不重复计次）',
+      )
       const sameRun = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, run2.id))
       check(sameRun.length === 1, '驳回重跑在原 run 内推进，不新建 run（与会话恢复路径区分）')
     },
@@ -452,10 +468,13 @@ async function main(): Promise<void> {
         await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: framesOut }) }).where(eq(pipelineSteps.id, step('frames').id))
 
         const detail0 = await creationDetail(sessionId)
-        const cand0 = detail0.artifacts.shots[0]!.image
+        // 投影的 shots 对调用方是弱类型（视图随模板变化）：探针按候选看板契约收窄一次
+        type ShotView = { image: { candidates: Array<{ assetId: number; available: boolean }>; selected: { assetId: number } | null } }
+        const shotView = (i: number): ShotView => detail0.artifacts.shots[i] as unknown as ShotView
+        const cand0 = shotView(0).image
         check(cand0.candidates.length === 3 && cand0.selected?.assetId === v1.id, '同镜多版本全部可见，在用者为 output 里的那一版')
         check(cand0.candidates.some((c) => c.assetId === v2.id && c.available) && cand0.candidates.find((c) => c.assetId === v3.id)?.available === false, '缺文件的候选以不可用占位保留（不静默消失）')
-        check(detail0.artifacts.shots[1]!.image.candidates.length === 1 && detail0.artifacts.shots[2]!.image.candidates.length === 1, '无多版本的镜头只有一个候选（不虚构选择）')
+        check(shotView(1).image.candidates.length === 1 && shotView(2).image.candidates.length === 1, '无多版本的镜头只有一个候选（不虚构选择）')
         check(!JSON.stringify(detail0.artifacts).includes('relPath') && !JSON.stringify(detail0.artifacts).includes(tmp), '候选视图只含安全元信息，不外泄本地路径')
 
         const get = (q: string) => app.request(`/api/v1/creation-sessions/${sessionId}/board?${q}`)
@@ -473,7 +492,7 @@ async function main(): Promise<void> {
         const selBody = await sel.json() as { artifacts?: typeof detail0.artifacts }
         const out1 = JSON.parse(String((await db.select().from(pipelineSteps).where(eq(pipelineSteps.id, step('frames').id)))[0]!.output)).asset_ids as number[]
         check(sel.status === 200 && out1.length === 3 && out1[0] === v2.id && out1[1] === others[0]!.id && out1[2] === others[1]!.id, '漏提镜头不被剔除：服务端按在用值补全为全量')
-        check(selBody.artifacts?.shots[0]?.image.selected?.assetId === v2.id, '选定返回的最新详情里在用版本已切换')
+        check((selBody.artifacts?.shots[0] as unknown as ShotView | undefined)?.image.selected?.assetId === v2.id, '选定返回的最新详情里在用版本已切换')
         // —— 归属与状态守卫 ——
         const foreignProject = await mkProject('m42-cand-foreign')
         ensureProjectDirs(foreignProject)
@@ -518,7 +537,7 @@ async function main(): Promise<void> {
         writeFileSync(absPathOf(finalRel), 'offline-fixture')
         const newerFinal = await registerAsset(projectId, { name: 'new-final', kind: 'video', purpose: 'final_video', relPath: finalRel, runId, params: { delivery_checked: true } })
         const finalDetail = await creationDetail(sessionId)
-        check(finalDetail.result?.videoId === newerFinal.id && finalDetail.artifacts.shots[0]?.image.candidates.length === 3, '重合成后详情指向最新合格成片（不回退旧版），候选版本仍可见')
+        check(finalDetail.result?.videoId === newerFinal.id && (finalDetail.artifacts.shots[0] as unknown as ShotView | undefined)?.image.candidates.length === 3, '重合成后详情指向最新合格成片（不回退旧版），候选版本仍可见')
         check(netCalls === 0 && (await creationDetail(999999).catch(() => null)) === null, '详情读取不触发任何外部调用；不存在会话按错误处理')
       } finally {
         globalThis.fetch = blocker

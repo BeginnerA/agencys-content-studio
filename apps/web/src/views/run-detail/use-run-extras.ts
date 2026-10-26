@@ -1,5 +1,6 @@
 /** 运行详情附加数据：接力推荐 / 记忆徽标 / 导出包 / 成本 / 发布记录；核心状态由 deps 注入。 */
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   assetApi,
   exportApi,
@@ -7,8 +8,14 @@ import {
   statsApi,
   templateApi,
 } from '../../lib/api'
-import type { EditExchangeFormat, EditExchangeFormatsResult } from '../../lib/api'
-import { createEditExchangeDownload, probeEditExchangeFormats } from '../../lib/edit-exchange'
+import type {
+  EditExchangeFormat,
+  EditExchangeFormatsResult,
+} from '../../lib/api'
+import {
+  createEditExchangeDownload,
+  probeEditExchangeFormats,
+} from '../../lib/edit-exchange'
 import { confirmDialog } from '../../lib/confirm'
 import { PLATFORM_TEXT } from '../../lib/format'
 import { assetIds } from './internals'
@@ -32,6 +39,7 @@ export function useRunExtras(deps: {
   err: Ref<string>
 }) {
   const { runId, detail, run, steps, err } = deps
+  const router = useRouter()
 
   // ===== 完成态「下一步建议」接力（模板元数据 next 声明） =====
   const tplMetas = ref<TemplateMeta[]>([])
@@ -71,12 +79,12 @@ export function useRunExtras(deps: {
 
   /**
    * 接力创建成功 → 跳到新 run。
-   * RouterView 无 key：同路由仅参数变化会复用本组件（runId 为静态快照），
-   * 故用整页跳转保证新 run 从零初始化（socket/日志/模板详情全部重载）。
+   * App.vue 的 RouterView 以路径为键：/runs/旧 → /runs/新 必然重建本视图，
+   * socket room / 日志 / 模板详情随 setup 重新初始化，无需整页跳转（SPA 状态与侧栏模式得以保留）。
    */
   function onRelayDone(id: number) {
     showRelay.value = false
-    window.location.href = `/runs/${id}`
+    void router.push(`/runs/${id}`)
   }
 
   // 记忆/角色步骤徽标：读产物资产 params 组装（轻量、失败静默、按 step:asset 缓存）

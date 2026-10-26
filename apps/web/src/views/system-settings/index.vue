@@ -274,9 +274,7 @@ async function loadCreation() {
     const r = await settingsApi.list()
     const raw = r.items.find((it) => it.key === 'dialogue_asr')?.value
     const o =
-      raw && typeof raw === 'object'
-        ? (raw as { strict?: unknown })
-        : {}
+      raw && typeof raw === 'object' ? (raw as { strict?: unknown }) : {}
     // 缺失/损坏 → 默认严格（true），与后端 resolveDialogueAsrPolicy 回落口径一致
     asrStrict.value = typeof o.strict === 'boolean' ? o.strict : true
   } catch {
@@ -476,8 +474,7 @@ loadCreation()
         <div class="rc-head">
           <h3>人物对白严格 ASR 核验</h3>
           <span class="muted">
-            开启时：人物对白必须由已核实的 whisper-1
-            分段时间戳 ASR
+            开启时：人物对白必须由已核实的 whisper-1 分段时间戳 ASR
             逐字核验并据真实音轨生成字幕（该核验执行链仍在接线，暂不可开始制作）。
             关闭后作为逃生阀（免核验对白模式）：对白由视频模型原生生成人声与口型、字幕按批准台词估算（非实测），仍强制视频自带原声，交付前必须人工收听审阅；要求当前视频模型命中原生对白背书（如
             Seedance 2.0 / 万相 3.0 系），未命中时规划自动改走旁白。

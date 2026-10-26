@@ -59,5 +59,11 @@ export function useResumeChains(standaloneRuns: ComputedRef<Run[]>) {
     else s.add(runId)
   }
 
-  return { resumeChains, expandedChains, isChainHead, chainHistory, toggleChain }
+  return {
+    resumeChains,
+    expandedChains,
+    isChainHead,
+    chainHistory,
+    toggleChain,
+  }
 }

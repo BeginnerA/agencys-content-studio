@@ -54,7 +54,11 @@ const router = useRouter()
           <button
             v-if="mode === 'guide'"
             class="btn primary sm"
-            :title="currentBuiltin ? '系统内置模板不可直接编辑，请先另存为副本' : '打开 YAML 编辑器（高级模式）'"
+            :title="
+              currentBuiltin
+                ? '系统内置模板不可直接编辑，请先另存为副本'
+                : '打开 YAML 编辑器（高级模式）'
+            "
             :disabled="currentBuiltin"
             @click="toEdit"
           >

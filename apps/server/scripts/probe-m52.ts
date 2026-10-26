@@ -114,13 +114,15 @@ await runSections({
       const empty = await post([])
       check(empty.status === 400 && empty.body?.error?.code === 'no_files', `空表单 → 400 no_files（${empty.status}）`)
 
-      // 列表 + 过滤
-      const list = await (await app.request('/api/v1/global/assets')).json()
-      check(list?.total === 3 && list.items.every((a: any) => a.projectId === 0), `池列表 3 行且全属池（实际 ${list?.total}）`)
-      const byPurpose = await (await app.request('/api/v1/global/assets?purpose=reference_character')).json()
-      check(byPurpose?.total === 2 && byPurpose.items.every((a: any) => a.id !== up3.body?.items?.[0]?.id), 'purpose 过滤（reference_character 2 张）')
-      const byKind = await (await app.request('/api/v1/global/assets?kind=text')).json()
-      check(byKind?.total === 0, 'kind 过滤（池内无 text → 空集）')
+      // 列表 + 过滤（json() 为 unknown：按列表信封收窄一次）
+      type AssetList = { total: number; items: Array<{ id: number; projectId: number }> }
+      const listOf = async (url: string): Promise<AssetList> => (await (await app.request(url)).json()) as AssetList
+      const list = await listOf('/api/v1/global/assets')
+      check(list.total === 3 && list.items.every((a) => a.projectId === 0), `池列表 3 行且全属池（实际 ${list.total}）`)
+      const byPurpose = await listOf('/api/v1/global/assets?purpose=reference_character')
+      check(byPurpose.total === 2 && byPurpose.items.every((a) => a.id !== up3.body?.items?.[0]?.id), 'purpose 过滤（reference_character 2 张）')
+      const byKind = await listOf('/api/v1/global/assets?kind=text')
+      check(byKind.total === 0, 'kind 过滤（池内无 text → 空集）')
 
       // 项目资产列表不泄露池
       const plist: any = await (await app.request(`/api/v1/projects/${pid}/assets`)).json()

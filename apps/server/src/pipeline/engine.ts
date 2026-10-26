@@ -108,6 +108,8 @@ interface StepOutputDoc {
  */
 class PipelineEngine {
   private active = new Set<number>()
+  /** 活跃执行链收到的续跑请求：不能在 gate 收敛出口静默丢失。 */
+  private wakeRequested = new Set<number>()
   /** 全局补位泵防重入（同刻至多一轮） */
   private pumpingGlobal = false
 
@@ -129,7 +131,11 @@ class PipelineEngine {
    * （异步将该 run 归一到 queued，等 pumpGlobal 补位）；'started'=本次真正启动。
    */
   startRun(runId: number): 'started' | 'deferred' | 'running' {
-    if (this.active.has(runId)) return 'running'
+    if (this.active.has(runId)) {
+      // 活跃链可能正处于 gate 收敛出口；记下唤醒，由执行链消费或 finally 重新启动。
+      this.wakeRequested.add(runId)
+      return 'running'
+    }
     if (this.active.size >= cachedGlobalMax) {
       void this.normalizeToQueued(runId)
       return 'deferred'
@@ -186,6 +192,18 @@ class PipelineEngine {
     }
   }
 
+  /**
+   * 闸门决策后的续跑：先把 run 从 waiting_input 原子切回 running，再启动/唤醒执行链。
+   * 仅启动不切状态时，并行步仍在活跃链内会让 startRun 被吸收，链收敛后误以为仍应暂停。
+   */
+  private async resumeFromGate(runId: number): Promise<void> {
+    await db
+      .update(pipelineRuns)
+      .set({ status: 'running', currentStepKey: null, updatedAt: now() })
+      .where(and(eq(pipelineRuns.id, runId), eq(pipelineRuns.status, 'waiting_input')))
+    this.startRun(runId)
+  }
+
   /** 闸门批准：可选文本覆盖产物 → 本步 succeeded → 自动续跑 */
   async approveGate(
     runId: number,
@@ -227,7 +245,7 @@ class PipelineEngine {
       .update(pipelineSteps)
       .set({ status: 'succeeded', output: JSON.stringify(output), completedAt: now(), updatedAt: now() })
       .where(eq(pipelineSteps.id, step.id))
-    this.startRun(runId)
+    await this.resumeFromGate(runId)
   }
 
   /** 闸门驳回：本步置回 pending（携带修改意见重跑，attempts+1） */
@@ -256,11 +274,25 @@ class PipelineEngine {
       notifySettled(runId)
       return
     }
-    await db
-      .update(pipelineSteps)
-      .set({ status: 'pending', output: JSON.stringify(output), error: null, updatedAt: now() })
-      .where(eq(pipelineSteps.id, step.id))
-    this.startRun(runId)
+    await db.transaction(async (tx) => {
+      await tx
+        .update(pipelineSteps)
+        .set({ status: 'pending', output: JSON.stringify(output), error: null, updatedAt: now() })
+        .where(eq(pipelineSteps.id, step.id))
+      // 驳回 = 用户不接受本轮产物，必须重做：旧成功/失败媒体任务重排队并清空第三方受理，
+      // 否则 ai_image/ai_video 的断点续跑会直接复用被拒产物或轮询旧成片。
+      await tx
+        .update(genTasks)
+        .set({ status: 'pending', attempts: 0, errorMsg: null, completedAt: null, taskId: null, updatedAt: now() })
+        .where(
+          and(
+            eq(genTasks.runId, runId),
+            eq(genTasks.stepId, step.id),
+            inArray(genTasks.status, ['succeeded', 'failed']),
+          ),
+        )
+    })
+    await this.resumeFromGate(runId)
   }
 
   /** 闸门跳过（免审放行，仅模板声明 skip_label 时可调用）：置 succeeded、产物保留、output 记 user_skip */
@@ -283,7 +315,7 @@ class PipelineEngine {
       .update(pipelineSteps)
       .set({ status: 'succeeded', output: JSON.stringify(output), completedAt: now(), updatedAt: now() })
       .where(eq(pipelineSteps.id, step.id))
-    this.startRun(runId)
+    await this.resumeFromGate(runId)
   }
 
   /** 取消（幂等）：run + 未完成 steps + pending/processing tasks 一并置 cancelled */
@@ -336,12 +368,15 @@ class PipelineEngine {
       while (true) {
         const run = await this.requireRun(runId)
         if (['cancelled', 'failed', 'completed'].includes(run.status)) break
-        // run 级暂停（gate 挂起）：并行步收敛后让出，等待人工闸门决策（放行后经 startRun 重进）
+        // run 级暂停（gate 挂起）：并行步收敛后让出，等待人工闸门决策（放行后经 startRun 重进）。
+        // 若等待期间收到唤醒（批准/驳回发生在其它并行步仍执行时），收敛后继续而非退出。
         if (run.status === 'waiting_input') {
-          if (inflight.size === 0) return
-          await Promise.allSettled([...inflight])
-          inflight.clear()
-          continue
+          if (inflight.size > 0) {
+            await Promise.allSettled([...inflight])
+            inflight.clear()
+          }
+          if (this.wakeRequested.delete(runId)) continue
+          return
         }
         const rows = await db
           .select()
@@ -484,6 +519,8 @@ class PipelineEngine {
       emitStudioEvent({ type: 'run.failed', runId, stepKey: '', error: msg })
     } finally {
       this.active.delete(runId)
+      // 收敛出口与 gate 决策竞争：唤醒若未被循环消费，释放槽位后重新启动，不能静默丢失。
+      if (this.wakeRequested.delete(runId)) this.startRun(runId)
       // 终态通知（单点）：覆盖全部收敛出口——allDone 完成、失败收敛、链级兜底 catch、
       // executeStep 失败（置 run failed 后循环顶部 break）、调度停滞防御、RunCancelledError。
       // 查库判定而非按分支埋点：waiting_input（gate 挂起）不是终态，不通知。
@@ -578,8 +615,9 @@ class PipelineEngine {
       ctx.log(`步骤完成，产物资产 ${result.assetIds.length} 个`)
 
       const output: StepOutputDoc = { asset_ids: result.assetIds }
-      // gate 条件门：gate.when 不满足 → 免审直过（正常 succeeded 不挂起）
-      const gateHang = !!def.gate && (!review || def.gate.reject === 'stop') && this.gateShouldHang(def, runInput, stepOutputs)
+      // gate 条件门：gate.when 不满足 → 免审直过。历史 reject 意见只注入输入，
+      // 不豁免本轮审阅——驳回重做后的产物必须重新由人确认。
+      const gateHang = !!def.gate && this.gateShouldHang(def, runInput, stepOutputs)
 
       if (gateHang) {
         await db

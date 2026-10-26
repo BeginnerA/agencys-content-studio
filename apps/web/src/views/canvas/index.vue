@@ -364,8 +364,16 @@ const curRun = computed(() =>
 const cancelBusy = ref(false)
 const resumeBusy = ref(false)
 let resumeEpoch = 0
-watch(() => route.fullPath, () => { resumeEpoch++ }, { flush: 'sync' })
-onBeforeUnmount(() => { resumeEpoch++ })
+watch(
+  () => route.fullPath,
+  () => {
+    resumeEpoch++
+  },
+  { flush: 'sync' },
+)
+onBeforeUnmount(() => {
+  resumeEpoch++
+})
 
 async function cancelRun(): Promise<void> {
   const id = runId.value

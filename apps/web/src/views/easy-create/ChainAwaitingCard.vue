@@ -8,17 +8,31 @@ import { computed } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import type { useEasyCreate } from './use-creation-chat'
 
-const props = defineProps<{ s: ReturnType<typeof useEasyCreate>; workflowId?: number }>()
+const props = defineProps<{
+  s: ReturnType<typeof useEasyCreate>
+  workflowId?: number
+}>()
 
 const detail = computed(() => props.s.state.detail)
-const wfId = computed(() => props.workflowId ?? detail.value?.session.workflowId ?? null)
+const wfId = computed(
+  () => props.workflowId ?? detail.value?.session.workflowId ?? null,
+)
 // 最新一条 chain-await 消息（服务端续跑钩子回写）→ 已完成段序 / 下一段序 / 总段数
 const awaiting = computed(() => {
   const msgs = detail.value?.messages ?? []
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
-    const p = msgs[i]?.payload as { kind?: unknown; seq?: unknown; nextSeq?: unknown; totalSegments?: unknown } | null
+    const p = msgs[i]?.payload as {
+      kind?: unknown
+      seq?: unknown
+      nextSeq?: unknown
+      totalSegments?: unknown
+    } | null
     if (p?.kind === 'chain-await') {
-      return { doneSeq: Number(p.seq), nextSeq: Number(p.nextSeq), total: Number(p.totalSegments) }
+      return {
+        doneSeq: Number(p.seq),
+        nextSeq: Number(p.nextSeq),
+        total: Number(p.totalSegments),
+      }
     }
   }
   return null
@@ -29,14 +43,22 @@ const busy = computed(() => props.s.advanceBusy.busy)
 <template>
   <div v-if="awaiting" class="card panel" aria-label="段间批准">
     <header class="ph">
-      <h2><Icon name="play" :size="16" /> 第 {{ awaiting.doneSeq + 1 }} 段已完成</h2>
+      <h2>
+        <Icon name="play" :size="16" /> 第 {{ awaiting.doneSeq + 1 }} 段已完成
+      </h2>
       <RouterLink v-if="wfId" class="wl" :to="`/workflows/${wfId}`">
         <Icon name="external" :size="12" /> 链详情
       </RouterLink>
     </header>
-    <p class="hint">共 {{ awaiting.total }} 段。本段成果见左侧对话与下方进度卡。核对无误后批准，再启动第 {{ awaiting.nextSeq + 1 }} 段（段间不自动级联计费）。</p>
+    <p class="hint">
+      共
+      {{ awaiting.total }}
+      段。本段成果见左侧对话与下方进度卡。核对无误后批准，再启动第
+      {{ awaiting.nextSeq + 1 }} 段（段间不自动级联计费）。
+    </p>
     <button class="act" :disabled="busy" @click="s.advanceChain()">
-      <Icon name="check" :size="15" /> {{ busy ? '正在启动下一段…' : '批准并继续下一段' }}
+      <Icon name="check" :size="15" />
+      {{ busy ? '正在启动下一段…' : '批准并继续下一段' }}
     </button>
   </div>
 </template>
@@ -63,7 +85,9 @@ const busy = computed(() => props.s.advanceBusy.busy)
   gap: 7px;
   font-weight: 700;
 }
-.ph h2 .ic { color: var(--accent-h); }
+.ph h2 .ic {
+  color: var(--accent-h);
+}
 .wl {
   display: inline-flex;
   align-items: center;
@@ -76,8 +100,16 @@ const busy = computed(() => props.s.advanceBusy.busy)
   border-radius: 7px;
   background: var(--panel-2);
 }
-.wl:hover { border-color: var(--accent); color: #fff; }
-.hint { font-size: 12px; color: var(--text-2); line-height: 1.6; margin: 0; }
+.wl:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+.hint {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin: 0;
+}
 .act {
   align-self: flex-start;
   display: inline-flex;
@@ -92,6 +124,11 @@ const busy = computed(() => props.s.advanceBusy.busy)
   padding: 9px 16px;
   cursor: pointer;
 }
-.act:hover:not(:disabled) { filter: brightness(1.08); }
-.act:disabled { opacity: 0.6; cursor: default; }
+.act:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.act:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 </style>

@@ -316,6 +316,102 @@ export function pickPromptText(shot: Record<string, unknown>, fields: string[]):
   return ''
 }
 
+type VideoTaskParams = {
+  shotId?: string
+  duration?: number | null
+  resolution?: string | null
+  aspectRatio?: string | null
+  firstFrameAssetId?: number | null
+  setRefAssetIds?: unknown
+}
+
+interface VideoSourceResult {
+  source: { kind: 'url'; url: string } | { kind: 'base64'; data: string; mime: string }
+  provider: string
+  model: string | null
+  thirdPartyTaskId: string | null
+}
+
+/**
+ * 提交/轮询并取得可下载产物。
+ * 一旦供应商返回 task_id，立即同步内存 task.taskId：后续重试只能查询该任务，不能再次提交计费。
+ */
+async function acquireVideoSource(
+  ctx: StepContext,
+  task: GenTask,
+  parsed: VideoTaskParams,
+  cfg: {
+    provider?: string
+    model?: string
+    frameCap: 'none' | 'base64' | 'as-reference'
+    refCap: 'none' | 'base64'
+    uriCache: Map<number, string>
+  },
+  shotId: string,
+  native: ReturnType<typeof dialogueAudioOptions> | null,
+): Promise<VideoSourceResult> {
+  // 首帧注入：能力支持且有图 → data URI（单图失败跳过 + 记日志，不使任务失败）
+  let ffUri: string | undefined
+  if (cfg.frameCap !== 'none' && typeof parsed.firstFrameAssetId === 'number') {
+    try {
+      ffUri = await assetToDataUri(parsed.firstFrameAssetId, ctx.run.projectId, cfg.uriCache)
+      ctx.log(`shot ${shotId} 首帧注入完成`)
+    } catch (err) {
+      if (recipeOf(ctx.run)) throw new Error('首帧读取失败，禁止降级文生视频')
+      ctx.log(`shot ${shotId} 首帧图跳过（${(err as Error).message}）`)
+    }
+  }
+  // 场景/道具参考图注入：首帧优先决策（frame_first 分支规避 Wan 帧/参考互斥）；单图失败跳过
+  const setRefIds = Array.isArray(parsed.setRefAssetIds)
+    ? parsed.setRefAssetIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : []
+  const decision = planVideoRefs({ hasFirstFrame: !!ffUri, setRefIds, refCap: cfg.refCap })
+  if (decision.reason === 'frame_first') ctx.log(`shot ${shotId} 首帧优先，跳过场景/道具参考图（${setRefIds.length} 张）`)
+  const setRefUris: string[] = []
+  for (const id of decision.inject) {
+    try {
+      setRefUris.push(await assetToDataUri(id, ctx.run.projectId, cfg.uriCache))
+    } catch (err) {
+      ctx.log(`shot ${shotId} 参考图 #${id} 跳过（${(err as Error).message}）`)
+    }
+  }
+  if (setRefUris.length > 0) ctx.log(`shot ${shotId} 场景/道具参考图注入 ${setRefUris.length} 张`)
+  const { adapter, request } = await buildVideoRequest({
+    prompt: task.prompt ?? '',
+    provider: cfg.provider,
+    model: cfg.model,
+    duration: parsed.duration ?? undefined,
+    resolution: parsed.resolution ?? undefined,
+    aspectRatio: parsed.aspectRatio ?? undefined,
+    firstFrameUrl: ffUri,
+    pin: pinOf(ctx.settings.video),
+    ...(native ? { extra: { ...native, referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] } }
+      : setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
+  })
+  // [F03] 续跑复用已受理第三方任务：存在 task_id → 只查询不重复提交。
+  const gen = task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
+  let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
+  let thirdPartyTaskId: string | null = gen.kind === 'poll' ? gen.taskId : null
+  if (gen.kind === 'poll') {
+    // 先同步内存再落库：即使后续查询/下载失败，本轮重试也必须复用该受理结果。
+    task.taskId = gen.taskId
+    await db
+      .update(genTasks)
+      .set({ taskId: gen.taskId, updatedAt: nowMs() })
+      .where(eq(genTasks.id, task.id))
+    ctx.log(`shot ${shotId} 已提交第三方（task_id=${gen.taskId}），开始轮询`)
+    videoUrl = await pollVideoTask(ctx, task, adapter, request, gen.taskId)
+  }
+  const source =
+    gen.kind === 'base64'
+      ? ({ kind: 'base64', data: gen.data, mime: gen.mime } as const)
+      : videoUrl
+        ? ({ kind: 'url', url: videoUrl } as const)
+        : null
+  if (!source) throw new Error('第三方返回成功但缺少视频产物（url/base64）')
+  return { source, provider: adapter.provider, model: request.model ?? null, thirdPartyTaskId }
+}
+
 /** 单任务执行：提交第三方 → 轮询 → 下载落盘；attempts 续增，达上限后不再重试 */
 async function runOneTask(
   ctx: StepContext,
@@ -329,18 +425,14 @@ async function runOneTask(
     uriCache: Map<number, string>
   },
 ): Promise<{ shotId: string; error: string } | null> {
-  const parsed = JSON.parse(task.params) as {
-    shotId?: string
-    duration?: number | null
-    resolution?: string | null
-    aspectRatio?: string | null
-    firstFrameAssetId?: number | null
-    setRefAssetIds?: unknown
-  }
+  const parsed = JSON.parse(task.params) as VideoTaskParams
   const shotId = parsed.shotId ?? '?'
   const recipe = recipeOf(ctx.run)
   const maxAttempts = recipe ? 1 : cfg.maxRetry + 1
   if (recipe && task.attempts > 0 && !task.taskId && task.status !== 'succeeded') throw new Error('此前视频提交状态需核验，不能自动重发')
+  const native = recipe?.plan.performance === 'dialogue' ? dialogueAudioOptions(cfg.provider!, cfg.model!) : null
+  // 本轮已成功取得、但尚未落盘的产物：下载/校验失败重试时复用，不重新提交供应商。
+  let acquired: VideoSourceResult | null = null
   let attempts = task.attempts
   for (;;) {
     if (await runCancelled(ctx.run.id)) {
@@ -358,66 +450,10 @@ async function runOneTask(
     emitStudioEvent({ type: 'task.updated', runId: ctx.run.id, taskId: task.id, status: 'processing' })
     let localValidationError: string | null = null
     try {
-      // 首帧注入：能力支持且有图 → data URI（单图失败跳过 + 记日志，不使任务失败）
-      let ffUri: string | undefined
-      if (cfg.frameCap !== 'none' && typeof parsed.firstFrameAssetId === 'number') {
-        try {
-          ffUri = await assetToDataUri(parsed.firstFrameAssetId, ctx.run.projectId, cfg.uriCache)
-          ctx.log(`shot ${shotId} 首帧注入完成`)
-        } catch (err) {
-          if (recipe) throw new Error('首帧读取失败，禁止降级文生视频')
-          ctx.log(`shot ${shotId} 首帧图跳过（${(err as Error).message}）`)
-        }
-      }
-      // 场景/道具参考图注入：首帧优先决策（frame_first 分支规避 Wan 帧/参考互斥）；单图失败跳过
-      const setRefIds = Array.isArray(parsed.setRefAssetIds)
-        ? parsed.setRefAssetIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
-        : []
-      const decision = planVideoRefs({ hasFirstFrame: !!ffUri, setRefIds, refCap: cfg.refCap })
-      if (decision.reason === 'frame_first') ctx.log(`shot ${shotId} 首帧优先，跳过场景/道具参考图（${setRefIds.length} 张）`)
-      const setRefUris: string[] = []
-      for (const id of decision.inject) {
-        try {
-          setRefUris.push(await assetToDataUri(id, ctx.run.projectId, cfg.uriCache))
-        } catch (err) {
-          ctx.log(`shot ${shotId} 参考图 #${id} 跳过（${(err as Error).message}）`)
-        }
-      }
-      if (setRefUris.length > 0) ctx.log(`shot ${shotId} 场景/道具参考图注入 ${setRefUris.length} 张`)
-      const native = recipe?.plan.performance === 'dialogue' ? dialogueAudioOptions(cfg.provider!, cfg.model!) : null
-      const { adapter, request } = await buildVideoRequest({
-        prompt: task.prompt ?? '',
-        provider: cfg.provider,
-        model: cfg.model,
-        duration: parsed.duration ?? undefined,
-        resolution: parsed.resolution ?? undefined,
-        aspectRatio: parsed.aspectRatio ?? undefined,
-        firstFrameUrl: ffUri,
-        pin: pinOf(ctx.settings.video),
-        ...(native ? { extra: { ...native, referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] } }
-          : setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
-      })
-      // [F03] 续跑复用已受理第三方任务：存在 task_id（轮询型供应商提交后落库、内容未变更）→ 只查询不重复提交，
-      // 覆盖普通运行（原仅 recipe 分支复用，普通 run 断点续跑会对已受理镜头二次计费）
-      const gen = task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
-      let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
-      let thirdPartyTaskId: string | null = gen.kind === 'poll' ? gen.taskId : null
-      if (gen.kind === 'poll') {
-        await db
-          .update(genTasks)
-          .set({ taskId: gen.taskId, updatedAt: nowMs() })
-          .where(eq(genTasks.id, task.id))
-        ctx.log(`shot ${shotId} 已提交第三方（task_id=${gen.taskId}），开始轮询`)
-        videoUrl = await pollVideoTask(ctx, task, adapter, request, gen.taskId)
-      }
-      // 产物形态：poll/url 型 → 远程 URL 下载；base64 型（同步长请求适配器）→ 字节直存
-      const source =
-        gen.kind === 'base64'
-          ? ({ kind: 'base64', data: gen.data, mime: gen.mime } as const)
-          : videoUrl
-            ? ({ kind: 'url', url: videoUrl } as const)
-            : null
-      if (!source) throw new Error('第三方返回成功但缺少视频产物（url/base64）')
+      // 取得产物（提交/轮询）后缓存；后续下载或核验失败重试时直接复用，不再次调用供应商。
+      const result: VideoSourceResult = acquired ?? await acquireVideoSource(ctx, task, parsed, cfg, shotId, native)
+      acquired = result
+      const { source } = result
       const asset = await saveGeneratedMedia({
         projectId: ctx.run.projectId,
         stepId: ctx.step.id,
@@ -428,9 +464,9 @@ async function runOneTask(
         prompt: task.prompt ?? '',
         params: {
           shotId,
-          provider: adapter.provider,
-          model: request.model ?? null,
-          taskId: thirdPartyTaskId,
+          provider: result.provider,
+          model: result.model,
+          taskId: result.thirdPartyTaskId,
           duration: parsed.duration ?? null,
           resolution: parsed.resolution ?? null,
           ...(native ? { dialogueHash: compileDialogueShot(recipe!.plan, shotId).dialogueHash, audioOptions: native } : {}),
@@ -456,8 +492,8 @@ async function runOneTask(
           kind: 'video',
           unit: 'second',
           quantity: secs,
-          provider: adapter.provider,
-          model: request.model ?? null,
+          provider: result.provider,
+          model: result.model,
           ...(recipe ? { unitPrice: recipe.endpoints.video!.unitPrice } : {}),
         })
       // 原视频与费用先留存，原声缺失/损坏不能用成功状态掩盖。

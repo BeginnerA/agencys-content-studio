@@ -10,7 +10,10 @@ import {
   probeEditExchangeFormats,
 } from '../../lib/edit-exchange'
 import { fmtDur } from '../../lib/format'
-import type { EditExchangeFormat, EditExchangeFormatsResult } from '../../lib/api'
+import type {
+  EditExchangeFormat,
+  EditExchangeFormatsResult,
+} from '../../lib/api'
 import type { useEasyCreate } from './use-creation-chat'
 
 const props = defineProps<{ s: ReturnType<typeof useEasyCreate> }>()
@@ -133,14 +136,24 @@ async function exportEditEx(format: EditExchangeFormat) {
       </button>
       <div v-if="gradPanel" class="grad-panel">
         <p class="note">
-          会在同一项目《{{ plan?.title }}》创建一个<strong>尚未开始</strong>的专业链任务（零计费）。
+          会在同一项目《{{
+            plan?.title
+          }}》创建一个<strong>尚未开始</strong>的专业链任务（零计费）。
           专业流程会重新生成剧本并在剧本闸口请你复核，随后点亮角色定妆照、逐句配音、背景音乐与品牌等能力；到任务详情核对预算后再启动。
         </p>
         <div class="grad-btns">
-          <button class="btn ok" :disabled="gradBusy || props.s.state.busyAction" @click="graduate('episode')">
+          <button
+            class="btn ok"
+            :disabled="gradBusy || props.s.state.busyAction"
+            @click="graduate('episode')"
+          >
             <Icon name="film" :size="13" /> 本集升级为专业成片
           </button>
-          <button class="btn" :disabled="gradBusy || props.s.state.busyAction" @click="graduate('series')">
+          <button
+            class="btn"
+            :disabled="gradBusy || props.s.state.busyAction"
+            @click="graduate('series')"
+          >
             <Icon name="layers" :size="13" /> 立项为连载系列
           </button>
         </div>

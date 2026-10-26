@@ -178,7 +178,8 @@ const warnCount = computed(
         <div class="es-ic"><Icon name="shield" :size="24" /></div>
         <div class="es-title">暂未设置预算</div>
         <p class="es-sub">
-          设定全局 / 项目级月度与总额上限后，系统会在用量触及告警阈值时提醒并拦截超支。
+          设定全局 /
+          项目级月度与总额上限后，系统会在用量触及告警阈值时提醒并拦截超支。
         </p>
         <button class="btn primary" @click="startEdit">
           <Icon name="plus" :size="13" /> 设置预算
@@ -199,12 +200,18 @@ const warnCount = computed(
                   : 'var(--text-3)',
               }"
             >
-              {{ globalMonthly ? Math.round(globalMonthly.ratio * 100) + '%' : '—' }}
+              {{
+                globalMonthly
+                  ? Math.round(globalMonthly.ratio * 100) + '%'
+                  : '—'
+              }}
             </div>
             <div class="bk-s muted mono">
               {{
                 globalMonthly
-                  ? fmtCost(globalMonthly.spent) + ' / ' + fmtCost(globalMonthly.budget)
+                  ? fmtCost(globalMonthly.spent) +
+                    ' / ' +
+                    fmtCost(globalMonthly.budget)
                   : '未设月度上限'
               }}
             </div>
@@ -222,7 +229,9 @@ const warnCount = computed(
             >
               {{ warnCount }}
             </div>
-            <div class="bk-s muted">达到 {{ Math.round(alertRatio * 100) }}% 告警线</div>
+            <div class="bk-s muted">
+              达到 {{ Math.round(alertRatio * 100) }}% 告警线
+            </div>
           </div>
           <div class="bkpi panel" :class="{ 'is-bad': overCount > 0 }">
             <div class="bk-l">已超支</div>
@@ -262,7 +271,10 @@ const warnCount = computed(
                 {{ fmtCost(globalMonthly.spent) }} /
                 {{ fmtCost(globalMonthly.budget) }}
               </div>
-              <div class="bo-pct mono" :style="{ color: ratioColor(globalMonthly.ratio) }">
+              <div
+                class="bo-pct mono"
+                :style="{ color: ratioColor(globalMonthly.ratio) }"
+              >
                 {{ Math.round(globalMonthly.ratio * 100) }}%
               </div>
             </div>
@@ -289,9 +301,13 @@ const warnCount = computed(
                 />
               </div>
               <div class="bo-text mono">
-                {{ fmtCost(pb.monthly.spent) }} / {{ fmtCost(pb.monthly.budget) }}
+                {{ fmtCost(pb.monthly.spent) }} /
+                {{ fmtCost(pb.monthly.budget) }}
               </div>
-              <div class="bo-pct mono" :style="{ color: ratioColor(pb.monthly.ratio) }">
+              <div
+                class="bo-pct mono"
+                :style="{ color: ratioColor(pb.monthly.ratio) }"
+              >
                 {{ Math.round(pb.monthly.ratio * 100) }}%
               </div>
             </div>
@@ -309,7 +325,10 @@ const warnCount = computed(
               <div class="bo-text mono">
                 {{ fmtCost(pb.total.spent) }} / {{ fmtCost(pb.total.budget) }}
               </div>
-              <div class="bo-pct mono" :style="{ color: ratioColor(pb.total.ratio) }">
+              <div
+                class="bo-pct mono"
+                :style="{ color: ratioColor(pb.total.ratio) }"
+              >
                 {{ Math.round(pb.total.ratio * 100) }}%
               </div>
             </div>
@@ -343,10 +362,14 @@ const warnCount = computed(
             <span class="alert-kind">{{
               a.kind === 'monthly' ? '月度' : '总计'
             }}</span>
-            <span class="alert-ratio mono" :style="{ color: ratioColor(a.ratio) }"
+            <span
+              class="alert-ratio mono"
+              :style="{ color: ratioColor(a.ratio) }"
               >{{ Math.round(a.ratio * 100) }}%</span
             >
-            <span class="alert-time muted mono">{{ fmtTime(a.createdAt) }}</span>
+            <span class="alert-time muted mono">{{
+              fmtTime(a.createdAt)
+            }}</span>
           </div>
         </div>
       </div>
@@ -384,7 +407,9 @@ const warnCount = computed(
         <div class="edit-section">
           <h4>告警阈值</h4>
           <label class="edit-field">
-            <span class="ef-label">使用率达到此比例时告警（0.1–1，默认 0.8）</span>
+            <span class="ef-label"
+              >使用率达到此比例时告警（0.1–1，默认 0.8）</span
+            >
             <input
               v-model="editAlertRatio"
               type="number"

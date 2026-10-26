@@ -726,5 +726,4 @@ const {
 .hint {
   font-size: 11.5px;
 }
-
 </style>

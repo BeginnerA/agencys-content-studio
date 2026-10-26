@@ -39,7 +39,12 @@ const { metas, metasLoading, listErr, selected, openTemplate, openNew } =
       </div>
       <div class="nm">{{ m.name }}</div>
       <div class="r2">
-        <span v-if="m.builtin" class="chip builtin" title="系统内置模板·只读，可另存为副本自定义">内置</span>
+        <span
+          v-if="m.builtin"
+          class="chip builtin"
+          title="系统内置模板·只读，可另存为副本自定义"
+          >内置</span
+        >
         <span class="chip">{{ m.genre }}</span>
         <span class="chip">v{{ m.version }}</span>
         <span class="chip">{{ m.stepCount }} 步</span>

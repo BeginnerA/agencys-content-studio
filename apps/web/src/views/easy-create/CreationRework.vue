@@ -16,14 +16,23 @@ const state = rw.state
 
 /** 本模式可落地的侧（服务端已按模式收口：图文成片改画面、动态成片改动态提示词） */
 const isImage = (t: CreationReworkTarget) => t.imagePrompt !== null
-const fieldOf = (t: CreationReworkTarget) => (isImage(t) ? '画面提示词' : '动态提示词')
-const fromOf = (t: CreationReworkTarget) => (isImage(t) ? t.imageFrom : t.motionFrom) ?? ''
-const toOf = (t: CreationReworkTarget) => (isImage(t) ? t.imagePrompt : t.motionPrompt) ?? ''
-const costOf = (t: CreationReworkTarget) => (isImage(t) ? t.imageCost : t.motionCost)
-const costText = (t: CreationReworkTarget) => (costOf(t) === null ? '价格未知' : fmtCost(costOf(t)))
+const fieldOf = (t: CreationReworkTarget) =>
+  isImage(t) ? '画面提示词' : '动态提示词'
+const fromOf = (t: CreationReworkTarget) =>
+  (isImage(t) ? t.imageFrom : t.motionFrom) ?? ''
+const toOf = (t: CreationReworkTarget) =>
+  (isImage(t) ? t.imagePrompt : t.motionPrompt) ?? ''
+const costOf = (t: CreationReworkTarget) =>
+  isImage(t) ? t.imageCost : t.motionCost
+const costText = (t: CreationReworkTarget) =>
+  costOf(t) === null ? '价格未知' : fmtCost(costOf(t))
 
 const canParse = computed(
-  () => !state.busy && !rw.tooLong.value && state.instruction.trim().length >= rw.minInstruction && rw.canUse.value,
+  () =>
+    !state.busy &&
+    !rw.tooLong.value &&
+    state.instruction.trim().length >= rw.minInstruction &&
+    rw.canUse.value,
 )
 
 async function onParse(): Promise<void> {
@@ -35,13 +44,20 @@ async function onApply(): Promise<void> {
 </script>
 
 <template>
-  <section v-if="state.open" id="ec-rework" class="ec-rework" aria-label="局部返修">
+  <section
+    v-if="state.open"
+    id="ec-rework"
+    class="ec-rework"
+    aria-label="局部返修"
+  >
     <h3 class="ec-rework-title">局部返修：只重做个别镜头</h3>
     <p class="muted">
       写完点「解析返修指令」只会调用一次文本模型定位镜头（计入规划费用），不会启动任何生成；看清预览并确认后才开始重新生成。
     </p>
 
-    <label class="ec-rework-label" for="ec-rework-instruction">想改哪一镜？改成什么样</label>
+    <label class="ec-rework-label" for="ec-rework-instruction"
+      >想改哪一镜？改成什么样</label
+    >
     <textarea
       id="ec-rework-instruction"
       v-model="state.instruction"
@@ -52,17 +68,38 @@ async function onApply(): Promise<void> {
       aria-describedby="ec-rework-hint"
     />
     <p id="ec-rework-hint" class="muted ec-rework-hint">
-      新提示词会整体替换原提示词，请把仍需要的主体 / 构图 / 光线 / 风格一并写全。改文案、配音、音乐或整体风格请复制需求重新规划整版。
+      新提示词会整体替换原提示词，请把仍需要的主体 / 构图 / 光线 /
+      风格一并写全。改文案、配音、音乐或整体风格请复制需求重新规划整版。
     </p>
-    <p v-if="rw.tooShort.value" class="err-text">返修指令至少 {{ rw.minInstruction }} 字：请写清楚要返修第几镜、改成什么样子。</p>
-    <p v-if="rw.tooLong" role="alert" class="err-text">返修指令最多 {{ rw.maxInstruction }} 字，请精简后再解析。</p>
+    <p v-if="rw.tooShort.value" class="err-text">
+      返修指令至少
+      {{ rw.minInstruction }} 字：请写清楚要返修第几镜、改成什么样子。
+    </p>
+    <p v-if="rw.tooLong" role="alert" class="err-text">
+      返修指令最多 {{ rw.maxInstruction }} 字，请精简后再解析。
+    </p>
 
     <div class="ec-rework-rows">
-      <button class="btn sm primary" type="button" :disabled="!canParse" @click="onParse">
-        <Icon name="wand" :size="13" /> {{ state.busy ? '解析中…' : '解析返修指令' }}
+      <button
+        class="btn sm primary"
+        type="button"
+        :disabled="!canParse"
+        @click="onParse"
+      >
+        <Icon name="wand" :size="13" />
+        {{ state.busy ? '解析中…' : '解析返修指令' }}
       </button>
-      <button class="btn sm" type="button" :disabled="state.busy" @click="rw.close()">收起</button>
-      <span v-if="state.busy" role="status" class="muted">正在定位镜头，尚未启动任何生成…</span>
+      <button
+        class="btn sm"
+        type="button"
+        :disabled="state.busy"
+        @click="rw.close()"
+      >
+        收起
+      </button>
+      <span v-if="state.busy" role="status" class="muted"
+        >正在定位镜头，尚未启动任何生成…</span
+      >
     </div>
     <p v-if="state.error" role="alert" class="err-text">{{ state.error }}</p>
 
@@ -80,7 +117,9 @@ async function onApply(): Promise<void> {
         <li v-for="t in rw.targets.value" :key="t.shotId">
           <div class="ec-rework-th">
             <span>第 {{ t.index }} 镜 · {{ fieldOf(t) }}</span>
-            <span class="badge" :class="{ queued: costOf(t) === null }">{{ costText(t) }}</span>
+            <span class="badge" :class="{ queued: costOf(t) === null }">{{
+              costText(t)
+            }}</span>
           </div>
           <p class="ec-rework-from"><span>原</span>{{ fromOf(t) }}</p>
           <p class="ec-rework-to"><span>新</span>{{ toOf(t) }}</p>
@@ -93,7 +132,9 @@ async function onApply(): Promise<void> {
       </ul>
       <p class="ec-rework-estimate">
         预估生成费用 <strong>{{ fmtCost(rw.knownCost.value) }}</strong>
-        <span v-if="rw.unpriced.value.length">（另有 {{ rw.unpriced.value.length }} 项价格未知，见下）</span>
+        <span v-if="rw.unpriced.value.length"
+          >（另有 {{ rw.unpriced.value.length }} 项价格未知，见下）</span
+        >
       </p>
       <template v-if="rw.unpriced.value.length">
         <ul class="ec-rework-unpriced">
@@ -105,10 +146,22 @@ async function onApply(): Promise<void> {
         </label>
       </template>
       <div class="ec-rework-rows">
-        <button class="btn sm primary" type="button" :disabled="!rw.confirmable.value" @click="onApply">
+        <button
+          class="btn sm primary"
+          type="button"
+          :disabled="!rw.confirmable.value"
+          @click="onApply"
+        >
           确认返修（将重新生成，可能计费）
         </button>
-        <button class="btn sm" type="button" :disabled="state.busy" @click="rw.close()">先不返修</button>
+        <button
+          class="btn sm"
+          type="button"
+          :disabled="state.busy"
+          @click="rw.close()"
+        >
+          先不返修
+        </button>
       </div>
       <p class="muted">
         只重做上面列出的镜头：其它镜头、台词、配音与字幕保持不动；返修完成后成片会自动重新合成（本地合成不再计费）。

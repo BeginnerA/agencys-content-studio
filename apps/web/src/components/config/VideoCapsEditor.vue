@@ -95,7 +95,10 @@ function manualHasContent(): boolean {
 async function refreshVideoCaps(): Promise<void> {
   capsFetching.value = true
   try {
-    const res = await configApi.videoCaps(props.providerKey, modelStr.value.trim())
+    const res = await configApi.videoCaps(
+      props.providerKey,
+      modelStr.value.trim(),
+    )
     capsSupported.value = res.supported && !!res.caps
     autoCaps.value = res.supported ? (res.caps ?? null) : null
     if (!capsSupported.value) capsMode.value = 'manual'
@@ -207,7 +210,9 @@ function loadFromExtra(caps: unknown): void {
       ? o.durations.join(', ')
       : ''
     capsAspectRatios.value = Array.isArray(o.aspectRatios)
-      ? o.aspectRatios.filter((x) => x === '9:16' || x === '16:9' || x === '1:1')
+      ? o.aspectRatios.filter(
+          (x) => x === '9:16' || x === '16:9' || x === '1:1',
+        )
       : []
     capsResolution.value = typeof o.resolution === 'string' ? o.resolution : ''
     capsErr.value = ''
@@ -263,7 +268,8 @@ watch(
         >」能力表自动背书，无需手动核实；执行前预检卡仍可复核，如需可「改为手动声明」覆盖。
       </span>
       <span v-else-if="!capsSupported" class="note">
-        该供应商 / 模型暂无平台背书档位（产出时长等未文档化），请手动声明支持范围，否则「一句话成片」预检会拒绝执行。
+        该供应商 /
+        模型暂无平台背书档位（产出时长等未文档化），请手动声明支持范围，否则「一句话成片」预检会拒绝执行。
       </span>
     </div>
 
@@ -343,11 +349,12 @@ watch(
         <span>生成模式（至少一项）</span>
         <div class="checks">
           <label
-            ><input v-model="capsModes" type="checkbox" value="i2v" /> 图生视频·首帧
-            （i2v）</label
+            ><input v-model="capsModes" type="checkbox" value="i2v" />
+            图生视频·首帧 （i2v）</label
           >
           <label
-            ><input v-model="capsModes" type="checkbox" value="t2v" /> 文生视频（t2v）</label
+            ><input v-model="capsModes" type="checkbox" value="t2v" />
+            文生视频（t2v）</label
           >
         </div>
         <span v-if="capsI2vWarn" class="note warn">{{ capsI2vWarn }}</span>
@@ -369,16 +376,16 @@ watch(
         <span>画幅（至少一项）</span>
         <div class="checks">
           <label
-            ><input v-model="capsAspectRatios" type="checkbox" value="9:16" /> 9:16
-            竖屏</label
+            ><input v-model="capsAspectRatios" type="checkbox" value="9:16" />
+            9:16 竖屏</label
           >
           <label
-            ><input v-model="capsAspectRatios" type="checkbox" value="16:9" /> 16:9
-            横屏</label
+            ><input v-model="capsAspectRatios" type="checkbox" value="16:9" />
+            16:9 横屏</label
           >
           <label
-            ><input v-model="capsAspectRatios" type="checkbox" value="1:1" /> 1:1
-            方形</label
+            ><input v-model="capsAspectRatios" type="checkbox" value="1:1" />
+            1:1 方形</label
           >
         </div>
       </div>

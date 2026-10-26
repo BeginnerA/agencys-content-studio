@@ -95,6 +95,11 @@ export const genTasks = sqliteTable(
     model: text('model'),
     prompt: text('prompt'),
     params: text('params').notNull(), // JSON 生成参数
+    /**
+     * 画布任务执行快照（JSON `{spec, edges, plan}`）：入队那一刻的节点配置 + 连线 + 解析后的输入计划。
+     * 执行期以此为准（排队窗口内的编辑/改连线不再影响本次计费输入）；NULL = 存量行 → 回落实时读取。
+     */
+    execSnapshot: text('exec_snapshot'),
     taskId: text('task_id'), // 第三方任务 id
     status: text('status').notNull().default('pending'), // pending|processing|succeeded|failed|cancelled
     errorMsg: text('error_msg'),

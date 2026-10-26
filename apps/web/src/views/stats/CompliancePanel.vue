@@ -9,7 +9,11 @@ import { computed, onMounted, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import ProvenanceBadge from '../../components/common/ProvenanceBadge.vue'
 import { complianceApi, projectApi } from '../../lib/api'
-import type { ComplianceRulesView, Project, SuggestedRule } from '../../lib/types'
+import type {
+  ComplianceRulesView,
+  Project,
+  SuggestedRule,
+} from '../../lib/types'
 
 const loading = ref(true)
 const err = ref('')
@@ -25,7 +29,9 @@ const loadingSuggest = ref(false)
 const adopting = ref(false)
 
 const catList = computed(() =>
-  view.value ? Object.entries(view.value.byCategory).sort((a, b) => b[1] - a[1]) : [],
+  view.value
+    ? Object.entries(view.value.byCategory).sort((a, b) => b[1] - a[1])
+    : [],
 )
 
 function keyOf(r: SuggestedRule): string {
@@ -47,7 +53,9 @@ async function loadSuggest() {
   msg.value = ''
   selected.value = new Set()
   try {
-    const r = await complianceApi.suggest(projectId.value === '' ? undefined : (projectId.value as number))
+    const r = await complianceApi.suggest(
+      projectId.value === '' ? undefined : (projectId.value as number),
+    )
     suggestions.value = r.items
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
@@ -63,7 +71,8 @@ function toggle(r: SuggestedRule) {
 }
 
 function toggleAll() {
-  if (selected.value.size === suggestions.value.length) selected.value = new Set()
+  if (selected.value.size === suggestions.value.length)
+    selected.value = new Set()
   else selected.value = new Set(suggestions.value.map(keyOf))
 }
 
@@ -75,7 +84,11 @@ async function adopt() {
   msg.value = ''
   try {
     const r = await complianceApi.appendRules(
-      picked.map((p) => ({ category: p.category, word: p.word, level: p.level })),
+      picked.map((p) => ({
+        category: p.category,
+        word: p.word,
+        level: p.level,
+      })),
     )
     msg.value = `已追加 ${r.added} 条新词进词库（当前词库 ${r.total} 条）`
     await loadRules()
@@ -140,15 +153,23 @@ onMounted(async () => {
           <div class="cp-tools">
             <select v-model="projectId">
               <option value="">全域项目</option>
-              <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+              <option v-for="p in projects" :key="p.id" :value="p.id">
+                {{ p.name }}
+              </option>
             </select>
-            <button class="btn primary sm" :disabled="loadingSuggest" @click="loadSuggest">
-              <Icon name="sparkles" :size="12" /> {{ loadingSuggest ? '聚合中…' : '生成建议' }}
+            <button
+              class="btn primary sm"
+              :disabled="loadingSuggest"
+              @click="loadSuggest"
+            >
+              <Icon name="sparkles" :size="12" />
+              {{ loadingSuggest ? '聚合中…' : '生成建议' }}
             </button>
           </div>
         </div>
         <p class="muted sm">
-          从既有合规复审结论中聚合高频风险词（零新计费）。建议一律 warn 起步，是否升级为 block 属法务人工判断。
+          从既有合规复审结论中聚合高频风险词（零新计费）。建议一律 warn
+          起步，是否升级为 block 属法务人工判断。
         </p>
 
         <div v-if="suggestions.length" class="cp-sg-actions">
@@ -178,17 +199,27 @@ onMounted(async () => {
           <tbody>
             <tr v-for="r in suggestions" :key="keyOf(r)">
               <td>
-                <input type="checkbox" :checked="selected.has(keyOf(r))" @change="toggle(r)" />
+                <input
+                  type="checkbox"
+                  :checked="selected.has(keyOf(r))"
+                  @change="toggle(r)"
+                />
               </td>
               <td>{{ r.category }}</td>
-              <td><strong>{{ r.word }}</strong></td>
+              <td>
+                <strong>{{ r.word }}</strong>
+              </td>
               <td class="muted">{{ r.level }}</td>
               <td class="mono">{{ r.times }}</td>
               <td class="sm muted">{{ r.evidence }}</td>
             </tr>
           </tbody>
         </table>
-        <div v-else-if="!loadingSuggest" class="empty sm" style="padding: 12px 0">
+        <div
+          v-else-if="!loadingSuggest"
+          class="empty sm"
+          style="padding: 12px 0"
+        >
           暂无可聚合的新词建议（需先有合规复审产物）。点击「生成建议」聚合。
         </div>
 

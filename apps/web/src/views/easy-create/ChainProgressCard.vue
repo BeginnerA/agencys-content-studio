@@ -8,16 +8,22 @@ import { computed } from 'vue'
 import Icon from '../../components/common/Icon.vue'
 import type { useEasyCreate } from './use-creation-chat'
 
-const props = defineProps<{ s: ReturnType<typeof useEasyCreate>; workflowId?: number }>()
+const props = defineProps<{
+  s: ReturnType<typeof useEasyCreate>
+  workflowId?: number
+}>()
 
 const detail = computed(() => props.s.state.detail)
-const wfId = computed(() => props.workflowId ?? detail.value?.session.workflowId ?? null)
+const wfId = computed(
+  () => props.workflowId ?? detail.value?.session.workflowId ?? null,
+)
 // 从最新一条 chain-start 消息取段序列（服务端真源，前端不臆造模板名）
 const segments = computed<string[]>(() => {
   const msgs = detail.value?.messages ?? []
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
     const p = msgs[i]?.payload
-    if (p?.kind === 'chain-start' && Array.isArray(p.segments)) return p.segments as string[]
+    if (p?.kind === 'chain-start' && Array.isArray(p.segments))
+      return p.segments as string[]
   }
   return []
 })
@@ -26,7 +32,9 @@ const segments = computed<string[]>(() => {
 <template>
   <div v-if="segments.length" class="card panel" aria-label="执行链进度">
     <header class="ph">
-      <h2><Icon name="layers" :size="16" /> 执行链（{{ segments.length }} 段）</h2>
+      <h2>
+        <Icon name="layers" :size="16" /> 执行链（{{ segments.length }} 段）
+      </h2>
       <RouterLink v-if="wfId" class="wl" :to="`/workflows/${wfId}`">
         <Icon name="external" :size="12" /> 链详情
       </RouterLink>
@@ -37,7 +45,9 @@ const segments = computed<string[]>(() => {
         <code class="tk">{{ seg }}</code>
       </li>
     </ol>
-    <p class="hint">段间将在每段落定后暂停，回到左侧对话请求你的批准再继续（不自动级联计费）。当前段制作进度见下方进度卡。</p>
+    <p class="hint">
+      段间将在每段落定后暂停，回到左侧对话请求你的批准再继续（不自动级联计费）。当前段制作进度见下方进度卡。
+    </p>
   </div>
 </template>
 
@@ -62,7 +72,9 @@ const segments = computed<string[]>(() => {
   gap: 7px;
   font-weight: 700;
 }
-.ph h2 .ic { color: var(--accent-h); }
+.ph h2 .ic {
+  color: var(--accent-h);
+}
 .wl {
   display: inline-flex;
   align-items: center;
@@ -75,7 +87,10 @@ const segments = computed<string[]>(() => {
   border-radius: 7px;
   background: var(--panel-2);
 }
-.wl:hover { border-color: var(--accent); color: #fff; }
+.wl:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
 .segs {
   margin: 0;
   padding: 0;
@@ -84,7 +99,11 @@ const segments = computed<string[]>(() => {
   flex-direction: column;
   gap: 7px;
 }
-.segs li { display: flex; align-items: center; gap: 9px; }
+.segs li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
 .segs .idx {
   flex: none;
   width: 20px;
@@ -107,5 +126,10 @@ const segments = computed<string[]>(() => {
   padding: 2px 8px;
   overflow-wrap: anywhere;
 }
-.hint { font-size: 11.5px; color: var(--text-3); line-height: 1.6; margin: 0; }
+.hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+  margin: 0;
+}
 </style>

@@ -48,7 +48,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
         submit1.body?.input?.base_image_url === 'data:image/png;base64,AA',
       'wan.edit inpaint 请求体快照（function/mask/prompt/base）',
     )
-    check(calls[1]?.url.includes('/tasks/probe-edit-1'), 'wan.edit 轮询任务端点')
+    check(calls[1]?.url.includes('/tasks/probe-edit-1') ?? false, 'wan.edit 轮询任务端点')
     // erase 无 prompt → 默认词
     await wan.edit({ mode: 'erase', baseImage: 'data:image/png;base64,AA', mask: 'data:image/png;base64,CC', baseUrl: 'http://probe.local', apiKey: 'k' })
     check(

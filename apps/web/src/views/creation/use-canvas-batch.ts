@@ -14,6 +14,11 @@ type Dependencies = Pick<
 export function useCanvasBatch(deps: Dependencies) {
   const { canvasId, nodes, history, loadDoc, toast, selectedIds } = deps
 
+  /** 异步编排作用域：换画布后迟到的结果不得进入新画布的命令栈 */
+  function isCurrent(cid: number, epoch: number): boolean {
+    return canvasId.value === cid && history.epoch.value === epoch
+  }
+
   // ===== 批量编排（多选浮动条 / 顶栏整理）=====
   const ARRANGE_LABEL: Record<CanvasArrangeMode, string> = {
     layered: '分层整理',
@@ -35,6 +40,7 @@ export function useCanvasBatch(deps: Dependencies) {
   ): Promise<void> {
     const cid = canvasId.value
     if (cid == null || !nodes.value.length) return
+    const epoch = history.epoch.value
     batchBusy.value = true
     try {
       const targets = nodeIds
@@ -45,21 +51,23 @@ export function useCanvasBatch(deps: Dependencies) {
         cid,
         mode === 'grid' ? { mode, nodeIds, sortBy: 'seq' } : { mode, nodeIds },
       )
+      if (!isCurrent(cid, epoch)) return
       const after = r.positions
       history.push({
         label: ARRANGE_LABEL[mode],
         undo: async () => {
           await creationApi.batchNodes(cid, before)
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
         redo: async () => {
           await creationApi.batchNodes(cid, after)
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
       })
       await loadDoc(true)
       toast(`${ARRANGE_LABEL[mode]}：更新 ${r.updated} 个节点`)
     } catch (e) {
+      if (!isCurrent(cid, epoch)) return
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       batchBusy.value = false
@@ -80,23 +88,26 @@ export function useCanvasBatch(deps: Dependencies) {
     const sorted = [...sel].sort((a, b) => a.x - b.x || a.y - b.y)
     const before = sorted.map((n) => ({ id: n.id, seq: n.seq ?? null }))
     const updates = sorted.map((n, i) => ({ id: n.id, seq: i + 1 }))
+    const epoch = history.epoch.value
     batchBusy.value = true
     try {
       await creationApi.batchNodes(cid, updates)
+      if (!isCurrent(cid, epoch)) return
       history.push({
         label: `编号 1–${updates.length}`,
         undo: async () => {
           await creationApi.batchNodes(cid, before)
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
         redo: async () => {
           await creationApi.batchNodes(cid, updates)
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
       })
       await loadDoc(true)
       toast(`已按 x 序编号 1–${updates.length}`)
     } catch (e) {
+      if (!isCurrent(cid, epoch)) return
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       batchBusy.value = false
@@ -108,9 +119,11 @@ export function useCanvasBatch(deps: Dependencies) {
     const cid = canvasId.value
     const ids = [...selectedIds.value]
     if (cid == null || ids.length < 2) return
+    const epoch = history.epoch.value
     batchBusy.value = true
     try {
       const r = await creationApi.chainNodes(cid, ids)
+      if (!isCurrent(cid, epoch)) return
       let created = r.created.map((e) => e.id)
       if (!created.length) {
         toast(`未能串联：${r.skipped[0]?.reason ?? '无可连接的相邻对'}`)
@@ -120,12 +133,12 @@ export function useCanvasBatch(deps: Dependencies) {
         label: `串联 ${created.length} 条边`,
         undo: async () => {
           await Promise.all(created.map((id) => creationApi.removeEdge(id)))
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
         redo: async () => {
           const rr = await creationApi.chainNodes(cid, ids)
           created = rr.created.map((e) => e.id)
-          await loadDoc(true)
+          if (canvasId.value === cid) await loadDoc(true)
         },
       })
       await loadDoc(true)
@@ -135,6 +148,7 @@ export function useCanvasBatch(deps: Dependencies) {
           : `已串联 ${created.length} 条边`,
       )
     } catch (e) {
+      if (!isCurrent(cid, epoch)) return
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       batchBusy.value = false
@@ -146,9 +160,11 @@ export function useCanvasBatch(deps: Dependencies) {
     const cid = canvasId.value
     const ids = [...selectedIds.value]
     if (cid == null || ids.length < 2) return
+    const epoch = history.epoch.value
     batchBusy.value = true
     try {
       const r = await creationApi.runBatch(cid, { nodeIds: ids })
+      if (!isCurrent(cid, epoch)) return
       await loadDoc(true)
       if (r.started.length && r.skipped.length)
         toast(
@@ -160,6 +176,7 @@ export function useCanvasBatch(deps: Dependencies) {
           `无可执行节点：${r.skipped[0]?.problems.join('；') ?? '均未就绪'}`,
         )
     } catch (e) {
+      if (!isCurrent(cid, epoch)) return
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       batchBusy.value = false
@@ -180,9 +197,11 @@ export function useCanvasBatch(deps: Dependencies) {
   async function onCancelAllTasks(): Promise<void> {
     const cid = canvasId.value
     if (cid == null || cancelAllBusy.value) return
+    const epoch = history.epoch.value
     cancelAllBusy.value = true
     try {
       const r = await creationApi.cancelTasks(cid)
+      if (!isCurrent(cid, epoch)) return
       await loadDoc(true)
       toast(
         r.cancelled > 0
@@ -190,6 +209,7 @@ export function useCanvasBatch(deps: Dependencies) {
           : '当前没有在途任务',
       )
     } catch (e) {
+      if (!isCurrent(cid, epoch)) return
       toast(e instanceof Error ? e.message : String(e))
     } finally {
       cancelAllBusy.value = false

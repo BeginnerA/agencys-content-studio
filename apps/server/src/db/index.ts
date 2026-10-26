@@ -156,6 +156,16 @@ async function ensureSchemaColumns(): Promise<void> {
     }
   }
 
+  // 画布执行快照列：gen_tasks.exec_snapshot（存量行 NULL = 无快照 → 执行回落实时读取）
+  if (!taskHas.has('exec_snapshot')) {
+    try {
+      await sqlite.execute('ALTER TABLE gen_tasks ADD COLUMN exec_snapshot text')
+      log.info('ensureColumn: gen_tasks.exec_snapshot 已补齐')
+    } catch (err) {
+      log.warn(`ensureColumn failed: ${(err as Error).message}`)
+    }
+  }
+
   // 创作画布建表兜底（migrate 体系外旧库；幂等）
   try {
     await sqlite.execute(

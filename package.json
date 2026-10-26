@@ -4,8 +4,9 @@
   "version": "0.2.0",
   "description": "个人内容创作平台：模板化流水线 + 统一资产 + 供应商适配层（本地单机 Web）",
   "packageManager": "pnpm@12.3.4",
+  "license": "Apache-2.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @acs/server --filter @acs/web dev",
@@ -13,7 +14,8 @@
     "dev:web": "pnpm --filter @acs/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "ci:check": "pnpm -r typecheck && pnpm --filter @acs/server validate:templates && pnpm --filter @acs/server probe:ci",
+    "format:check": "pnpm --filter @acs/web format:check",
+    "ci:check": "pnpm -r typecheck && pnpm --filter @acs/web format:check && pnpm --filter @acs/server validate:templates && pnpm --filter @acs/server probe:ci",
     "probe:all": "pnpm --filter @acs/server probe:all",
     "probe:ci": "pnpm --filter @acs/server probe:ci",
     "validate:templates": "pnpm --filter @acs/server validate:templates",

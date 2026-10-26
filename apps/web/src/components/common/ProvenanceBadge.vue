@@ -28,7 +28,12 @@ const PREFIX: Record<'auto' | 'endorse' | 'suggest' | 'builtin', string> = {
 </script>
 
 <template>
-  <span class="prov" :class="kind" :title="title" :aria-label="`${PREFIX[kind]} · ${text}`">
+  <span
+    class="prov"
+    :class="kind"
+    :title="title"
+    :aria-label="`${PREFIX[kind]} · ${text}`"
+  >
     <i class="prov-prefix">{{ PREFIX[kind] }}</i>
     <span class="prov-sep" aria-hidden="true">·</span>
     <span class="prov-text">{{ text }}</span>

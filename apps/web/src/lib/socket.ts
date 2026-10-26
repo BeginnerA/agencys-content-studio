@@ -99,11 +99,20 @@ export function studioOff<K extends StudioEventName>(
 
 /**
  * 订阅某 run 的实时事件：join run:{id} 与 project:{pid} room。
- * 组件卸载自动 leave 并取消订阅。返回当前 run 状态的重置回调。
+ *
+ * 退订不会自动发生（socket 是模块级单例，Vue 生命周期管不到它）——调用方卸载时必须调
+ * `dispose()`：它成对注销本实例经 `on()` 注册的全部 handler 并 leave 房间，幂等可重复调用。
+ * 漏调的后果是旧闭包留在 byType 分发表里：下次同类事件到达时重复发请求、并持续持有已卸载页面的状态。
  */
 export function useStudio(runId: number, projectId?: number) {
   const s = getSocket()
   wire()
+
+  /** 本实例注册的订阅（dispose 按登记顺序逐条注销，不依赖调用方记住闭包） */
+  const bindings: Array<{
+    event: StudioEventName
+    handler: (payload: never) => void
+  }> = []
 
   function join() {
     s.emit('join', `run:${runId}`)
@@ -116,10 +125,23 @@ export function useStudio(runId: number, projectId?: number) {
 
   function on<K extends StudioEventName>(event: K, handler: Handler<K>) {
     subscribe(event, handler)
+    bindings.push({ event, handler: handler as (payload: never) => void })
   }
   function off<K extends StudioEventName>(event: K, handler: Handler<K>) {
     unsubscribe(event, handler)
+    const i = bindings.findIndex(
+      (b) => b.event === event && b.handler === (handler as never),
+    )
+    if (i >= 0) bindings.splice(i, 1)
   }
 
-  return { join, leave, on, off }
+  /** 卸载 disposer：注销本实例全部订阅 + leave 房间（清副本，重复调用不重复注销） */
+  function dispose() {
+    const snapshot = bindings.splice(0, bindings.length)
+    for (const b of snapshot)
+      unsubscribe(b.event, b.handler as Handler<StudioEventName>)
+    leave()
+  }
+
+  return { join, leave, on, off, dispose }
 }
