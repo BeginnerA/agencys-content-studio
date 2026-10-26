@@ -148,5 +148,45 @@ await runSections({
       const r4 = await applyImplicitLabel(mp4, 'xyz', { producer: 'x' })
       check(!r4.ok && !!r4.error, '不支持扩展名返回 ok:false 不抛异常')
     },
+    brand: async () => {
+      const bc = await import('../src/services/brand-config')
+
+      // 缺省即开（M66 用户决策）
+      const d = bc.sanitizeCompliance(undefined)
+      check(d.enabled === true, 'compliance 缺省 enabled=true')
+      check(d.text === 'AI生成', '角标文案缺省「AI生成」')
+      check(d.position === 'br', '角标位置缺省 br')
+      check(d.margin_px === 24, '角标边距缺省 24')
+      check(d.producer === '个人创作者', '创作主体缺省「个人创作者」')
+
+      // 仅显式 false 关闭；非法字段清洗
+      // 注：margin_px:999 为合法类型越界值，按 clamp 语义回落 200（与 c1 低端 clamp 对称）；类型非法才回落默认 24
+      const off = bc.sanitizeCompliance({ enabled: false, text: '', position: 'xx' as never, margin_px: 999, producer: '  ' })
+      check(off.enabled === false, '显式 enabled:false 才关闭')
+      check(off.text === 'AI生成' && off.position === 'br' && off.producer === '个人创作者' && off.margin_px === 200, '非法字段回落默认值；越界 margin_px clamp 至 200')
+
+      // clamp 与截断
+      const c1 = bc.sanitizeCompliance({ margin_px: -5, text: 'x'.repeat(50), producer: 'y'.repeat(99) })
+      check(c1.margin_px === 0, 'margin_px clamp 至 0–200')
+      check(c1.text.length === 24, 'text 截断 24 字符')
+      check(c1.producer.length === 60, 'producer 截断 60 字符')
+
+      // mergeBrand 三层字段级覆盖 + 其余槽零影响
+      const merged = bc.mergeBrand(
+        { compliance: { producer: '平台主体' }, watermark: { position: 'tl' } },
+        { compliance: { enabled: false, text: '项目文案' } },
+        { compliance: { margin_px: 48 } },
+      )
+      check(merged.compliance?.producer === '平台主体', 'producer 平台层透传')
+      check(merged.compliance?.enabled === false && merged.compliance?.text === '项目文案', '项目层字段覆盖')
+      check(merged.compliance?.margin_px === 48, 'run 层字段覆盖')
+      check(merged.watermark?.position === 'tl', '既有槽 merge 行为零变化')
+
+      // resolveBrandConfig 恒填 compliance（隔离库：平台无配置 → 全缺省）
+      const { createProject } = await import('./probe-m66-fixtures')
+      const projectId = await createProject()
+      const resolved = await bc.resolveBrandConfig(projectId, null)
+      check(resolved.compliance?.enabled === true && resolved.compliance?.producer === '个人创作者', 'resolveBrandConfig 恒填 compliance（缺省开）')
+    },
   },
 })

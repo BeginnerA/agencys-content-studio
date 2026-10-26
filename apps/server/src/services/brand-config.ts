@@ -3,7 +3,7 @@
  * - 合并语义：字段级浅合并（槽内字段后层覆盖前层；槽整体保留）
  * - 来源解析：asset_id（须存在/属项目/未删/有 relPath，经项目目录）→ file（BRAND_DIR 内文件名）→ 无（禁用）
  * - enabled === false 强制禁用；文件缺失宽容降级（跳过 + log，不阻断合成）
- * - 纯函数（mergeBrand / sanitizeSubtitleStyle / sanitizeWatermark）导出供探针直测
+ * - 纯函数（mergeBrand / sanitizeSubtitleStyle / sanitizeWatermark / sanitizeCompliance）导出供探针直测
  * - ffmpeg-merge 经 resolveBrandConfig 读取（唯一异步入口；不改 ctx.settings 构造，零侵入）
  */
 import { existsSync } from 'node:fs'
@@ -50,12 +50,31 @@ export interface SubtitleStyleConfig {
   bold?: boolean
 }
 
+/** 合规标识配置（M66；三层同构；字段级浅合并） */
+export interface ComplianceConfig {
+  enabled?: boolean // 缺省 true（M66 决策：默认开）；仅显式 false 关闭
+  text?: string // 角标文案（缺省 'AI生成'；截断 24）
+  position?: WatermarkPosition // 缺省 'br'
+  margin_px?: number // clamp 0–200（缺省 24）
+  producer?: string // 创作主体名（隐式 ContentProducer；缺省 '个人创作者'；截断 60）
+}
+
+/** 合规参数解析结果（缺省值已应用；enabled 恒为布尔） */
+export interface ResolvedCompliance {
+  enabled: boolean
+  text: string
+  position: WatermarkPosition
+  margin_px: number
+  producer: string
+}
+
 /** 品牌配置（三层同构；字段级浅合并） */
 export interface BrandConfig {
   subtitle?: SubtitleStyleConfig
   watermark?: WatermarkConfig
   intro?: BrandMaterialSlot
   outro?: BrandMaterialSlot
+  compliance?: ComplianceConfig
 }
 
 /** 水印参数解析结果（清洗 + 默认值应用后） */
@@ -72,6 +91,7 @@ export interface ResolvedBrandConfig {
   watermark?: ResolvedWatermark & { path: string; source: 'asset' | 'file' }
   intro?: { path: string; source: 'asset' | 'file' }
   outro?: { path: string; source: 'asset' | 'file' }
+  compliance?: ResolvedCompliance
 }
 
 // ---------- 纯函数 ----------
@@ -89,6 +109,7 @@ export function mergeBrand(...layers: Array<BrandConfig | null | undefined>): Br
     if (isObj(layer.watermark)) out.watermark = { ...out.watermark, ...(layer.watermark as WatermarkConfig) }
     if (isObj(layer.intro)) out.intro = { ...out.intro, ...(layer.intro as BrandMaterialSlot) }
     if (isObj(layer.outro)) out.outro = { ...out.outro, ...(layer.outro as BrandMaterialSlot) }
+    if (isObj(layer.compliance)) out.compliance = { ...out.compliance, ...(layer.compliance as ComplianceConfig) }
   }
   return out
 }
@@ -123,6 +144,19 @@ export function sanitizeWatermark(cfg: WatermarkConfig | undefined): ResolvedWat
       ? Math.round(clamp(cfg.margin_px, 0, 200))
       : 24
   return { position, opacity, width_pct, margin_px }
+}
+
+export const COMPLIANCE_TEXT_DEFAULT = 'AI生成'
+
+/** 合规配置清洗（M66）：enabled 缺省即开（仅显式 false 关）；文案/位置/边距/主体缺省值应用；纯函数探针直测 */
+export function sanitizeCompliance(cfg: ComplianceConfig | undefined): ResolvedCompliance {
+  return {
+    enabled: !cfg || cfg.enabled !== false,
+    text: cfg && typeof cfg.text === 'string' && cfg.text.trim() ? cfg.text.trim().slice(0, 24) : COMPLIANCE_TEXT_DEFAULT,
+    position: cfg && WATERMARK_POSITIONS.includes(cfg.position as WatermarkPosition) ? (cfg.position as WatermarkPosition) : 'br',
+    margin_px: cfg && typeof cfg.margin_px === 'number' && Number.isFinite(cfg.margin_px) ? Math.round(clamp(cfg.margin_px, 0, 200)) : 24,
+    producer: cfg && typeof cfg.producer === 'string' && cfg.producer.trim() ? cfg.producer.trim().slice(0, 60) : '个人创作者',
+  }
 }
 
 /** 水印显式字段规范化（仅保留显式提供的合法字段 + clamp；默认值在消费侧 sanitizeWatermark 应用） */
@@ -264,7 +298,7 @@ async function resolveMaterialPath(
 
 /**
  * 三层合并 + 清洗 + 来源解析（ffmpeg-merge 唯一入口）。
- * 平台 → 项目 → run 字段级覆盖；无任何新配置 → 返回 {}（调用方保持现行为逐字不变）。
+ * 平台 → 项目 → run 字段级覆盖；无任何新配置 → 返回 {}（M66 起 compliance 恒填——默认开是本里程碑声明的预期行为变更，见 spec §3.2）。
  */
 export async function resolveBrandConfig(projectId: number, runInput: string | null): Promise<ResolvedBrandConfig> {
   const [platform, project] = await Promise.all([readPlatformBrand(), readProjectBrand(projectId)])
@@ -282,5 +316,6 @@ export async function resolveBrandConfig(projectId: number, runInput: string | n
     const m = await resolveMaterialPath(slot, cfg, projectId)
     if (m) out[slot] = m
   }
+  out.compliance = sanitizeCompliance(merged.compliance)
   return out
 }
