@@ -187,6 +187,23 @@ await runSections({
       const projectId = await createProject()
       const resolved = await bc.resolveBrandConfig(projectId, null)
       check(resolved.compliance?.enabled === true && resolved.compliance?.producer === '个人创作者', 'resolveBrandConfig 恒填 compliance（缺省开）')
+
+      // normalizeCompliancePatch / normalizeBrandPatch compliance 槽（写路径逐级可关）
+      const nc = bc.normalizeCompliancePatch({ enabled: false, text: '  自定义  ', margin_px: 999, position: 'tl' as never, producer: '' })
+      check(
+        nc.enabled === false && nc.text === '自定义' && nc.margin_px === 200 && nc.position === 'tl',
+        'normalizeCompliancePatch 仅保留显式合法字段（trim/越界 clamp 至 200）',
+      )
+      check(!('producer' in nc), 'normalizeCompliancePatch 空 producer 键不保留')
+      const p1 = bc.normalizeBrandPatch({ compliance: { enabled: false } })
+      check(p1.compliance?.enabled === false && Object.keys(p1.compliance!).length === 1, 'normalizeBrandPatch 携带 compliance 槽且仅保留显式字段')
+      let p2Threw = false
+      try {
+        bc.normalizeBrandPatch({ compliance: { bogus: 1 } })
+      } catch {
+        p2Threw = true
+      }
+      check(p2Threw, 'normalizeBrandPatch compliance 无合法字段时抛错')
     },
   },
 })

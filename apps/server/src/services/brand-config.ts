@@ -181,6 +181,17 @@ export function normalizeMaterialSlot(slot: BrandMaterialSlot): BrandMaterialSlo
   return out
 }
 
+/** 合规配置显式字段规范化（仅保留显式提供的合法字段 + clamp；默认值在消费侧 sanitizeCompliance 应用） */
+export function normalizeCompliancePatch(cfg: ComplianceConfig): ComplianceConfig {
+  const out: ComplianceConfig = {}
+  if (typeof cfg.enabled === 'boolean') out.enabled = cfg.enabled
+  if (typeof cfg.text === 'string' && cfg.text.trim()) out.text = cfg.text.trim().slice(0, 24)
+  if (WATERMARK_POSITIONS.includes(cfg.position as WatermarkPosition)) out.position = cfg.position
+  if (typeof cfg.margin_px === 'number' && Number.isFinite(cfg.margin_px)) out.margin_px = Math.round(clamp(cfg.margin_px, 0, 200))
+  if (typeof cfg.producer === 'string' && cfg.producer.trim()) out.producer = cfg.producer.trim().slice(0, 60)
+  return out
+}
+
 /**
  * 品牌写补丁规范化（updateComposeConfig / 设置写入共用）：类型校验 + clamp + 显式字段保留。
  * 槽值 null = 清除语义（由调用侧处理）；无任何已知槽键 → 抛错；非法子对象 → 抛错（调用侧转 WorkbenchError）。
@@ -220,7 +231,17 @@ export function normalizeBrandPatch(raw: unknown): BrandConfig {
     if (Object.keys(s).length === 0) throw new Error(`brand.${slot} 无合法字段`)
     out[slot] = s
   }
-  if (!sawSlot) throw new Error('brand 无已知槽键（subtitle/watermark/intro/outro）')
+  const compliance = cfg['compliance']
+  if (compliance !== undefined) {
+    sawSlot = true
+    if (compliance !== null) {
+      if (!isObj(compliance)) throw new Error('brand.compliance 需为对象')
+      const cm = normalizeCompliancePatch(compliance as ComplianceConfig)
+      if (Object.keys(cm).length === 0) throw new Error('brand.compliance 无合法字段')
+      out.compliance = cm
+    }
+  }
+  if (!sawSlot) throw new Error('brand 无已知槽键（subtitle/watermark/intro/outro/compliance）')
   return out
 }
 
