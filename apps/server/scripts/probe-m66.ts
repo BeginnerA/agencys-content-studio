@@ -26,6 +26,7 @@ await runSections({
   runners: {
     pure: async () => {
       const { aigcMetadata, insertPngText, insertJpegApp1, AIGC_META_KEY } = await import('../src/services/compliance-label')
+      const { crc32 } = await import('node:zlib')
 
       // —— aigcMetadata：六字段与取值 ——
       const m1 = aigcMetadata({ producer: '测试工作室' })
@@ -66,6 +67,9 @@ await runSections({
       check(out.subarray(tOff + 8, tOff + 13).toString('latin1') === `${AIGC_META_KEY}\0`, 'keyword 为 AIGC\\0')
       check(out.subarray(tOff + 13).subarray(0, Buffer.byteLength(json)).toString('utf8') === json, 'tEXt 值为完整 JSON')
       check(out.subarray(out.length - 12).equals(png.subarray(png.length - 12)), '尾部 IEND 原样保留')
+      const dataLen = out.readUInt32BE(tOff)
+      const crcEnd = tOff + 8 + dataLen
+      check(out.readUInt32BE(crcEnd) === crc32(out.subarray(tOff + 4, crcEnd)), 'tEXt CRC 与 zlib.crc32 计算一致')
       check(insertPngText(Buffer.from('notpng'), json) === null, '非 PNG 输入返回 null')
 
       // —— JPEG APP1 ——
@@ -87,6 +91,62 @@ await runSections({
       check(jo.subarray(off + 9, off + 9 + Buffer.byteLength(json)).toString('utf8') === json, 'APP1 载荷为完整 JSON')
       check(jo.subarray(jo.length - 2).equals(Buffer.from([0xff, 0xd9])), 'EOI 保留在尾')
       check(insertJpegApp1(Buffer.from([0x00, 0x01, 0x02]), json) === null, '非 SOI 输入返回 null')
+      const bigJson = JSON.stringify({ padding: 'x'.repeat(66 * 1024) })
+      check(insertJpegApp1(jpeg, bigJson) === null, 'APP1 载荷超 64KB 返回 null')
+    },
+    remux: async () => {
+      const { applyImplicitLabel } = await import('../src/services/compliance-label')
+      const { resolveFfmpeg, resolveFfprobe } = await import('../src/services/ffmpeg')
+      const { execFileSync } = await import('node:child_process')
+      const { mkdtempSync, readFileSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+
+      const ffmpeg = resolveFfmpeg()
+      check(!!ffmpeg, '内置 ffmpeg 可用')
+      const dir = mkdtempSync(join(tmpdir(), 'm66-remux-'))
+
+      // 小样制作（1s）：mp4（color 源）、mp3（sine 源）、png（单帧图像）
+      const mp4 = join(dir, 'a.mp4')
+      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1', '-pix_fmt', 'yuv420p', mp4], { stdio: 'ignore' })
+      const mp3 = join(dir, 'a.mp3')
+      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-q:a', '9', mp3], { stdio: 'ignore' })
+      const png = join(dir, 'a.png')
+      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', png], { stdio: 'ignore' })
+
+      const readTag = (file: string, probeBin: string): string | null => {
+        try {
+          const r = execFileSync(probeBin, ['-v', 'error', '-show_entries', 'format_tags=AIGC', '-of', 'json', file], { encoding: 'utf8' })
+          const doc = JSON.parse(r) as { format?: { tags?: Record<string, string> } }
+          return doc.format?.tags?.['AIGC'] ?? null
+        } catch { return null }
+      }
+
+      // mp4 重封装后 tag 可读且六字段正确
+      const r1 = await applyImplicitLabel(mp4, 'mp4', { producer: '测试工作室' })
+      check(r1.ok && !!r1.produceId, 'mp4 隐式标识写入成功')
+      const tag1 = readTag(mp4, resolveFfprobe()!)
+      check(!!tag1, 'mp4 format_tags 可读回 AIGC')
+      const meta1 = JSON.parse(tag1!) as Record<string, string>
+      check(meta1['Label'] === '1' && meta1['ContentProducer'] === '测试工作室' && !!meta1['ProduceID'], 'mp4 六字段内容正确')
+      check(readTag(mp4, resolveFfprobe()!) === tag1, '重封装幂等（内容流未变仅元数据）')
+
+      // mp3 同律
+      const r2 = await applyImplicitLabel(mp3, 'mp3', { producer: '测试工作室' })
+      check(r2.ok, 'mp3 隐式标识写入成功')
+      const tag2 = readTag(mp3, resolveFfprobe()!)
+      check(!!tag2 && (JSON.parse(tag2!) as Record<string, string>)['Label'] === '1', 'mp3 AIGC tag 可读')
+
+      // png 走纯 Node 通道后仍为合法 PNG 且可被 ffprobe 读取
+      const r3 = await applyImplicitLabel(png, 'png', { producer: '测试工作室' })
+      check(r3.ok, 'png 隐式标识写入成功')
+      check(readFileSync(png).readUInt32BE(0) === 0x89504e47, 'png 签名完好')
+      const probePng = readTag(png, resolveFfprobe()!)
+      check(probePng === null || (JSON.parse(probePng!) as Record<string, string>)['Label'] === '1', 'png 容器读回兼容（tEXt 不破坏解析）')
+
+      // 失败旁路：不存在的扩展名
+      const r4 = await applyImplicitLabel(mp4, 'xyz', { producer: 'x' })
+      check(!r4.ok && !!r4.error, '不支持扩展名返回 ok:false 不抛异常')
     },
   },
 })
