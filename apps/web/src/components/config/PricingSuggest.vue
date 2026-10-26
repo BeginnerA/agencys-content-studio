@@ -118,6 +118,12 @@ function applyPricing(table: ModelPricing | null, sd: boolean): void {
   }
 }
 
+/** 用户手改价格 → 标记已编辑并切到手填态（模板内联多语句会被 vue 编译器按单表达式解析报错，故抽成方法） */
+function onManualEdit(): void {
+  edited.value = true
+  mode.value = 'manual'
+}
+
 /** 命中平台参考价但用户想清空重填 */
 function toManual(): void {
   mode.value = 'manual'
@@ -182,10 +188,7 @@ watch(
         min="0"
         step="0.0001"
         :placeholder="units.input"
-        @input="
-          edited = true
-          mode = 'manual'
-        "
+        @input="onManualEdit"
       />
       <input
         v-if="units.dual"
@@ -194,10 +197,7 @@ watch(
         min="0"
         step="0.0001"
         :placeholder="units.output"
-        @input="
-          edited = true
-          mode = 'manual'
-        "
+        @input="onManualEdit"
       />
     </div>
 
