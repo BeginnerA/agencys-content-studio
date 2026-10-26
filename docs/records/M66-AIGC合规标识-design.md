@@ -31,7 +31,7 @@
 
 新服务 `services/compliance-label.ts`：
 
-- `aigcMetadata(opts)`：纯函数产国标六字段 JSON——`Label:"1"`、`ContentProducer`（平台 brand `compliance.producer`，缺省「个人创作者」）、`ProduceID`（`crypto.randomUUID()`）、`ProduceTime`（ISO8601）、`ReservedCode1: ""`、`ContentPropagator/PropagateID`（生成阶段空串，发布包环节填）。
+- `aigcMetadata(opts)`：纯函数产国标六字段 JSON——`Label:"1"`、`ContentProducer`（平台 brand `compliance.producer`，缺省「个人创作者」）、`ProduceID`（`crypto.randomUUID()`）、`ReservedCode1: ""`、`ContentPropagator` / `PropagateID`（生成阶段空串，发布包环节填）。**勘误**：早期版本误列 `ProduceTime` 为规范字段——国标六字段不含它；生成时间仅作非规范溯源入 `params.aigc.produceAt`。
 - **写入通道按容器分三路**（技术风险面如实标注）：
   1. **视频（mp4/mov）与音频（mp3/m4a/wav）**：ffmpeg `-c copy -metadata AIGC=<json>` 重封装（流复制，毫秒级、无重编码）。
   2. **图像 PNG**：ffmpeg 重封装写 tEXt（探针验证写入可读）。
