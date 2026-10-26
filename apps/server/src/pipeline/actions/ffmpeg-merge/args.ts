@@ -3,10 +3,12 @@ import { resolveAspectSize, aspectGeometryFilter } from './aspect'
 import { buildSubtitleStyle } from './subtitle-style'
 import { watermarkOverlayXY } from './watermark'
 import { round3 } from './util'
+import { complianceDrawtextFilter } from './compliance'
+import { AIGC_META_KEY } from '../../../services/compliance-label'
 import type { Segment } from './segments'
 import type { AlignPlan } from './align'
 import type { TransitionPlan } from './transition'
-import type { ResolvedWatermark, SubtitleStyleConfig } from '../../../services/brand-config'
+import type { ResolvedWatermark, SubtitleStyleConfig, WatermarkPosition } from '../../../services/brand-config'
 
 /** 品牌素材输入（水印：清洗参数 + 绝对路径） */
 export type ComposeWatermarkInput = ResolvedWatermark & { path: string }
@@ -70,6 +72,10 @@ export interface ComposeArgsInput {
   /** 混剪原声保留（keep_clip_audio）：per-seg [i:a] 拼连续现场轨入 [outa] 槽（voices 并存时 amix 叠加）；
    *  仅 montage=true 生效；false → 现场轨丢弃（行为同 legacy clips 态）。 */
   clipAudio?: boolean
+  /** M66 合规角标（null/缺省 = 关闭 → args 逐字节不变） */
+  compliance?: { text: string; position: WatermarkPosition; margin_px: number; fontAbs: string } | null
+  /** M66 隐式标识元数据 JSON（非空 → 每输出组追加 -metadata AIGC=<json>；null/缺省 → 逐字节不变） */
+  metadataJson?: string | null
   outAbs: string
 }
 
@@ -103,7 +109,7 @@ export interface ComposeArgsResult {
 export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const {
     segments, width, height, fps, xfadePlan, voicePaths, lineIds, alignPlan, total,
-    srtAbs, style, bgmPath, bgmVolume, bgmFade, watermark, intro, outro, outAbs,
+    srtAbs, style, bgmPath, bgmVolume, bgmFade, watermark, intro, outro, compliance: complianceArg, metadataJson, outAbs,
   } = input
   const nativeAudio = input.nativeAudio
   if (nativeAudio && (!input.strictDelivery || nativeAudio.length !== segments.length || !segments.length ||
@@ -326,7 +332,13 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     const wmIn = srtAbs && subOut ? subOut : mainBase
     fcParts.push(`[${wmIn}][${wmPad(0)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
   }
-  const videoOut = watermark || srtAbs ? 'outv' : mainBase
+  // M66 合规角标（最顶层；水印/字幕之后）：null → 链与 videoOut 逐字节不变
+  let videoOut = watermark || srtAbs ? 'outv' : mainBase
+  if (complianceArg) {
+    const cmIn = videoOut
+    fcParts.push(`[${cmIn}]${complianceDrawtextFilter(complianceArg, height)}[cmv]`)
+    videoOut = 'cmv'
+  }
 
   // 派生路：几何（与 A 派生端点同源 aspectGeometryFilter）→ 字幕（结构化配置按该路高度重算）→ 水印（[wm]split 分流后各取唯一标签 wm(k+1)）
   const derived: ComposeDerivedOutput[] = []
@@ -348,6 +360,10 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     if (watermark) {
       fcParts.push(`[${prev}][${wmPad(k + 1)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[dwm${k}]`)
       prev = `dwm${k}`
+    }
+    if (complianceArg) {
+      fcParts.push(`[${prev}]${complianceDrawtextFilter(complianceArg, h)}[dcm${k}]`)
+      prev = `dcm${k}`
     }
     derivedLabels.push(prev)
     derived.push({ aspect: t.aspect, width: w, height: h, outAbs: t.outAbs })
@@ -373,7 +389,9 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const encVideo = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-r', String(fps)]
   // 多输出：每路独立 -map 组 + 同编码参数（音频按路分流）；无派生 → token 序与单输出逐字节一致
   const am = (label: string | undefined): string[] => (label ? ['-map', label] : [])
-  const outGroups = ['-map', `[${videoOut}]`, ...am(aMaps[0]), ...encVideo, ...encAudio, '-movflags', '+faststart', outAbs]
+  // M66 隐式标识元数据：非空 → 每输出组 -movflags 之前注入 -metadata AIGC=<json>；空数组 spread 不改 token 序（逐字节红线）
+  const metaArgs = metadataJson ? ['-metadata', `${AIGC_META_KEY}=${metadataJson}`] : []
+  const outGroups = ['-map', `[${videoOut}]`, ...am(aMaps[0]), ...encVideo, ...encAudio, ...metaArgs, '-movflags', '+faststart', outAbs]
   derived.forEach((d, k) => {
     outGroups.push(
       '-map',
@@ -381,6 +399,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
       ...am(aMaps[k + 1]),
       ...encVideo,
       ...encAudio,
+      ...metaArgs,
       '-movflags',
       '+faststart',
       d.outAbs,

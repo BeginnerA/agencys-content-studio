@@ -11,6 +11,13 @@ const { cleanup } = isolatedEnv('m66')
 
 const SECTIONS = ['pure', 'remux', 'brand', 'compose-args', 'wiring', 'implicit', 'export'] as const
 
+// —— 黄金基线（Task-4 Step 1：args.ts 修改前以临时脚本 tmp-golden-m66.ts 实测固化，脚本已删除）——
+// fixture：segments [image 2s, video 3s]，1280x720@30，无转场/配音/BGM/水印/片头尾/字幕（与 compose-args 节 base 常量一致）。
+const GOLDEN_ARGS =
+  '["-y","-loop","1","-t","2","-i","a.png","-i","b.mp4","-filter_complex","[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1,fps=30,format=yuv420p[v0];[1:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1,fps=30,format=yuv420p[v1];[v0][v1]concat=n=2:v=1:a=0[basev]","-map","[basev]","-c:v","libx264","-preset","medium","-crf","20","-r","30","-movflags","+faststart","/tmp/out.mp4"]'
+// cwd 行实测输出为 JSON.stringify(undefined)（无字幕 → cwd 缺省）→ 以 undefined 值直接比对
+const GOLDEN_CWD: string | undefined = undefined
+
 const { createLogger } = await import('../src/logger')
 const log = createLogger('probe-m66')
 const checker: Checker = makeChecker(log)
@@ -204,6 +211,79 @@ await runSections({
         p2Threw = true
       }
       check(p2Threw, 'normalizeBrandPatch compliance 无合法字段时抛错')
+    },
+    'compose-args': async () => {
+      const { buildComposeArgs } = await import('../src/pipeline/actions/ffmpeg-merge/args')
+      const { complianceDrawtextFilter, resolveComplianceArg } = await import('../src/pipeline/actions/ffmpeg-merge/compliance')
+      type ComposeArgsInput = import('../src/pipeline/actions/ffmpeg-merge/args').ComposeArgsInput
+
+      // fixture 与已删除的 tmp-golden-m66.ts 完全一致（真实类型：Segment.id 为 number、TransitionPlan 含 totalDur）
+      const base: ComposeArgsInput = {
+        segments: [
+          { id: 1, path: 'a.png', kind: 'image', durSec: 2 },
+          { id: 2, path: 'b.mp4', kind: 'video', durSec: 3 },
+        ],
+        width: 1280,
+        height: 720,
+        fps: 30,
+        xfadePlan: { enabled: false, type: 'fade', durSec: 0, videoLens: [2, 3], offsets: [], totalDur: 5 },
+        voicePaths: [],
+        lineIds: [],
+        alignPlan: null,
+        total: 5,
+        srtAbs: null,
+        style: '',
+        bgmPath: null,
+        bgmVolume: 1,
+        bgmFade: 0,
+        watermark: null,
+        intro: null,
+        outro: null,
+        outAbs: '/tmp/out.mp4',
+      }
+
+      // 红线：compliance/metadataJson 缺省 → 与修改前黄金基线逐字节一致
+      const r0 = buildComposeArgs(base)
+      check(JSON.stringify(r0.args) === GOLDEN_ARGS, '缺省入参 args 与黄金基线逐字节一致')
+      check(r0.cwd === GOLDEN_CWD, 'cwd 与黄金基线一致')
+      check(!r0.args.some((a) => a.includes('AIGC') || a.includes('drawtext')), '缺省入参不含合规痕迹')
+
+      // 显式关闭同样逐字节一致
+      const rOff = buildComposeArgs({ ...base, compliance: null, metadataJson: null })
+      check(JSON.stringify(rOff.args) === GOLDEN_ARGS, '显式 null 入参 args 逐字节一致')
+
+      // 开启：drawtext 链 + videoOut 换标 + 每输出组 -metadata
+      const font = 'C:/Windows/Fonts/msyh.ttc'
+      const cArg = { text: 'AI生成', position: 'br' as const, margin_px: 24, fontAbs: font }
+      const rOn = buildComposeArgs({ ...base, compliance: cArg, metadataJson: '{"Label":"1"}' })
+      const fc = rOn.args[rOn.args.indexOf('-filter_complex') + 1]!
+      check(fc.includes('drawtext=fontfile='), '角标 drawtext 已入 filter 链')
+      check(fc.includes(`text='AI生成'`), '角标文案正确')
+      // 本 fixture 无音频链 → [cmv] 即 filter 链末标签；videoOut 换标另以主输出组 -map 实证
+      check(fc.includes('[cmv]'), '主链产出 [cmv] 标签')
+      check(rOn.args[rOn.args.indexOf('-map') + 1] === '[cmv]', '主输出组 -map 已换标 [cmv]')
+      const outIdx = rOn.args.indexOf('/tmp/out.mp4')
+      // metaArgs 插入于 -movflags 之前（outIdx-1='+faststart'、outIdx-2='-movflags'）
+      check(rOn.args[outIdx - 4] === '-metadata' && rOn.args[outIdx - 3] === 'AIGC={"Label":"1"}', '主输出组含 -metadata AIGC')
+      check(!r0.args.includes('-metadata'), '对照：基线不含 -metadata')
+      // 角标在链上位于字幕/水印之后（最顶层）：cmv 的来源标签为 outv
+      check(/\[outv\]drawtext=/.test(fc) || /\[basev\]drawtext=/.test(fc), '角标叠加于字幕/水印之后')
+
+      // complianceDrawtextFilter 纯函数：九宫格表达式与转义
+      const f1 = complianceDrawtextFilter({ text: 'AI生成', position: 'br', margin_px: 24, fontAbs: 'C:/a b/msyh.ttc' }, 720)
+      check(f1.includes('x=w-text_w-24') && f1.includes('y=h-text_h-24'), 'br 定位表达式正确')
+      check(f1.includes("fontfile='C\\:/a b/msyh.ttc'"), 'fontfile 路径转义')
+      const f2 = complianceDrawtextFilter({ text: "a'b:c", position: 'tc', margin_px: 0, fontAbs: 'f' }, 1080)
+      check(f2.includes("text='a\\'b\\:c'"), 'drawtext 文本转义（单引号/冒号）')
+      check(f2.includes('x=(w-text_w)/2') && f2.includes('y=0'), 'tc 居顶表达式')
+      check(complianceDrawtextFilter({ text: 'x', position: 'bl', margin_px: 8, fontAbs: 'f' }, 480).includes('fontsize='), 'fontsize 已输出')
+
+      // resolveComplianceArg：off → null；无字体 → null；on → 形参齐全
+      const { sanitizeCompliance } = await import('../src/services/brand-config')
+      check(resolveComplianceArg(sanitizeCompliance({ enabled: false })) === null, 'enabled:false → null')
+      check(resolveComplianceArg(sanitizeCompliance({ enabled: true }), { WINDIR: 'C:/nonexistent-dir' }) === null, '无 CJK 字体 → null（调用方 warn）')
+      const arg = resolveComplianceArg(sanitizeCompliance({ text: 'AI生成' }))
+      check(!!arg && arg.text === 'AI生成' && !!arg.fontAbs, 'enabled:true → 角标参数齐全')
     },
   },
 })
