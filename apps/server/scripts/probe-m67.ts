@@ -78,7 +78,88 @@ await runSections({
       try { parseTable(Buffer.from('not a zip'), 'xlsx') } catch (e) { code = e instanceof TableParseError ? e.code : '' }
       check(code === 'bad_zip', '非 zip 容器抛 bad_zip')
     },
-    match: async () => {},
+    match: async () => {
+      const { assembleRows, matchRows, parseMapping, ImportError } = await import('../src/services/publication-import')
+      const { db } = await import('../src/db')
+      const { publications } = await import('../src/db/schema')
+      const { createProject } = await import('./probe-m67-fixtures')
+
+      // —— parseMapping 校验面 ——
+      let bad = ''
+      try { parseMapping({}) } catch (e) { bad = e instanceof ImportError ? e.code : '' }
+      check(bad === 'bad_mapping', '空 mapping 抛 bad_mapping')
+      bad = ''
+      try { parseMapping({ title: 0, foo: 1 }) } catch (e) { bad = e instanceof ImportError ? e.code : '' }
+      check(bad === 'bad_mapping', '未知字段抛 bad_mapping')
+      bad = ''
+      try { parseMapping({ views: -1 }) } catch (e) { bad = e instanceof ImportError ? e.code : '' }
+      check(bad === 'bad_mapping', '负数列索引抛 bad_mapping')
+      const m = parseMapping({ title: 0, url: 1, publishedAt: 2, views: 3, likes: 4 })
+      check(m.views === 3 && m.title === 0, '合法 mapping 解析')
+
+      // —— assembleRows：日期双通道 / 越界缺列 / 异常日期告警 ——
+      const table = {
+        header: ['标题', '链接', '时间', '播放', '点赞'],
+        rows: [
+          ['A 片', 'https://x/1', '2026/1/5 10:00', '1,000', '50'],
+          ['B 片', '', '2026/1/6', '2000', ''],
+          ['B 片', '', '2026/1/6', '2500', '9'],
+          ['坏日期', '', 'not-a-date', '10', '1'],
+        ],
+        warnings: [],
+      }
+      const { rows: assembled, warnings } = assembleRows(table, m, 'douyin')
+      check(assembled.length === 4, '装配行数一致')
+      check(assembled[0]!.metrics.views === 1000, '指标千分位归一')
+      check(assembled[0]!.publishedAt !== null, '文本日期（斜杠形态）解析')
+      check(warnings.some((w) => w.includes('无法解析')), '异常日期触发告警')
+      check(assembled[3]!.publishedAt === null, '异常日期置空')
+
+      const partial = assembleRows(table, parseMapping({ views: 9 }), 'douyin')
+      check(partial.rows.every((r) => r.title === null && r.url === null), '未映射字段为空')
+      check(partial.warnings.some((w) => w.includes('越界')), '列索引越界告警且按缺失处理')
+
+      // —— matchRows：URL 匹配 / 更新保护 / 同文件去重 / 标题+同日 ——
+      const projectId = await createProject()
+      const t = Date.now()
+      const existing1 = (
+        await db
+          .insert(publications)
+          .values({
+            projectId, platform: 'douyin', url: 'https://x/1', title: '旧标题A',
+            metrics: JSON.stringify({ views: 999, likes: 0 }), publishedAt: new Date(2026, 0, 1).getTime(),
+            abGroup: 'B组', note: '手工备注', runId: 777, assetId: 888, createdAt: t, updatedAt: t,
+          })
+          .returning()
+      )[0]!
+      const plan = matchRows(assembled, [existing1])
+      check(plan.duplicates === 1, '文件内同键重复行计数（B 片两行取最后）')
+      check(plan.updates.length === 1 && plan.creates.length === 2, '划分：A=更新、B 与坏日期=新建')
+      const upd = plan.updates[0]!
+      check(upd.id === existing1.id, 'URL 精确匹配命中已有记录')
+      const pm = JSON.parse(upd.patch.metrics) as Record<string, number>
+      check(pm.views === 1000 && pm.likes === 50, 'metrics 非零覆盖、零值保留原值')
+      check(upd.patch.title === '旧标题A', 'title 原值非空不覆盖')
+      check(!('abGroup' in upd.patch) && !('note' in upd.patch) && !('runId' in upd.patch) && !('assetId' in upd.patch), 'patch 白名单不含保护字段')
+      const bRow = plan.creates.find((r) => r.title === 'B 片')!
+      check(bRow.metrics.views === 2500 && bRow.metrics.likes === 9, '同键重复取最后一条数值')
+
+      // 标题+同日匹配（URL 缺失）
+      const existing2 = (
+        await db
+          .insert(publications)
+          .values({ projectId, platform: 'douyin', title: 'C 片', publishedAt: new Date(2026, 0, 6, 9, 0).getTime(), metrics: '{}', createdAt: t, updatedAt: t })
+          .returning()
+      )[0]!
+      const table2 = { header: ['标题', '时间', '播放'], rows: [['C 片', '2026/1/6', '300'], ['D 片', '2026/1/7', '400']], warnings: [] }
+      const m2 = parseMapping({ title: 0, publishedAt: 1, views: 2 })
+      const plan2 = matchRows(assembleRows(table2, m2, 'douyin').rows, [existing1, existing2])
+      check(plan2.updates.length === 1 && plan2.updates[0]!.id === existing2.id, 'URL 缺失 → 标题全等+同日命中')
+      check(plan2.creates.length === 1 && plan2.creates[0]!.title === 'D 片', '未命中 → 新建')
+      // 纯函数幂等：同输入两次结果一致（落库幂等在 route 节端到端断言）
+      const plan3 = matchRows(assembleRows(table2, m2, 'douyin').rows, [existing1, existing2])
+      check(plan3.updates[0]!.id === plan2.updates[0]!.id && plan3.creates.length === plan2.creates.length, '匹配结果对同输入稳定')
+    },
     route: async () => {},
   },
 })
