@@ -70,3 +70,18 @@ export interface ExportPreset {
   includeSubtitle: boolean
   watermark?: boolean
 }
+
+/** M67 导入预览（dry_run=1；mapping 可省时无 preview 块） */
+export interface ImportPreview {
+  columns: Array<{ index: number; name: string; sample: string[] }>
+  preview?: { updateCount: number; newCount: number; duplicates: number }
+  sampleRows: Array<Record<string, unknown>>
+  warnings: string[]
+}
+
+/** M67 导入结果（dry_run=0） */
+export interface ImportResult {
+  created: number
+  updated: number
+  warnings: string[]
+}

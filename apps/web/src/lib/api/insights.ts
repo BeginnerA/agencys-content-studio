@@ -1,6 +1,8 @@
-import { api, LONG_TIMEOUT_MS, type Items } from './core'
+import { api, LONG_TIMEOUT_MS, ApiError, type Items } from './core'
 import type {
   ExportAssetLite,
+  ImportPreview,
+  ImportResult,
   Overview,
   Publication,
   RunAssetLite,
@@ -95,6 +97,9 @@ export const editExchangeApi = {
     `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
 }
 
+// M67 导入端点基址（core 未导出 BASE；模块级本地常量，参照 creation-chat.ts 先例）
+const BASE = '/api/v1'
+
 export const publicationApi = {
   list: (params = '') =>
     api.get<{
@@ -121,6 +126,47 @@ export const publicationApi = {
     api.get<{ items: import('../types').AbGroupItem[] }>(
       `/api/v1/publications/ab-groups${params}`,
     ),
+  // M67 平台数据文件导入（multipart 直传，不走 JSON 封装）
+  importFile: async (
+    file: File,
+    payload: { projectId: number; platform: string; mapping: Record<string, number>; dryRun: boolean; preset?: string },
+  ): Promise<ImportPreview | ImportResult> => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    form.append('platform', payload.platform)
+    if (Object.keys(payload.mapping).length > 0) form.append('mapping', JSON.stringify(payload.mapping))
+    if (payload.preset) form.append('preset', payload.preset)
+    let res: Response
+    try {
+      res = await fetch(
+        `${BASE}/publications/import?project_id=${payload.projectId}&dry_run=${payload.dryRun ? 1 : 0}`,
+        { method: 'POST', body: form },
+      )
+    } catch {
+      throw new ApiError(0, 'network', '无法连接服务')
+    }
+    if (!res.ok) {
+      let code = 'http_error'
+      let message = `HTTP ${res.status}`
+      try {
+        const data = (await res.json()) as { error?: { code?: string; message?: string } }
+        if (data?.error?.code) {
+          code = data.error.code
+          message = data.error.message ?? message
+        }
+      } catch {
+        /* 非 JSON 错误体 */
+      }
+      throw new ApiError(res.status, code, message)
+    }
+    return (await res.json()) as ImportPreview | ImportResult
+  },
+  importPresets: () =>
+    api.get<{ presets: Record<string, { platform: string; mapping: Record<string, number> }> }>(
+      `${BASE}/publications/import/presets`,
+    ),
+  saveImportPreset: (body: { name: string; platform: string; mapping: Record<string, number> }) =>
+    api.put<{ ok: boolean }>(`${BASE}/publications/import/presets`, body),
 }
 
 export const settingsApi = {

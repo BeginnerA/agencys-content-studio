@@ -5,9 +5,11 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import Icon from '../../components/common/Icon.vue'
-import { projectApi, publicationApi } from '../../lib/api'
+import { ApiError, projectApi, publicationApi } from '../../lib/api'
 import type {
   AbGroupItem,
+  ImportPreview,
+  ImportResult,
   Publication,
   Project,
   PublicationTrendItem,
@@ -36,6 +38,150 @@ const showBatch = ref(false)
 const batchText = ref('')
 const batchResult = ref('')
 const importing = ref(false)
+
+// —— M67 平台数据文件导入 ——
+const MAPPING_FIELDS = [
+  { key: 'title', label: '标题' },
+  { key: 'url', label: '链接 URL' },
+  { key: 'publishedAt', label: '发布时间' },
+  { key: 'views', label: '播放/曝光' },
+  { key: 'likes', label: '点赞' },
+  { key: 'comments', label: '评论' },
+  { key: 'favorites', label: '收藏' },
+  { key: 'shares', label: '转发/分享' },
+  { key: 'abGroup', label: 'A/B 组' },
+] as const
+
+const showImport = ref(false)
+const importStep = ref<1 | 3>(1)
+const importFile = ref<File | null>(null)
+const importPlatform = ref('douyin')
+const importMapping = ref<Record<string, number | ''>>({})
+const importPreview = ref<ImportPreview | null>(null)
+const importResult = ref('')
+const importErr = ref('')
+const importBusy = ref(false)
+const importPresets = ref<Record<string, { platform: string; mapping: Record<string, number> }>>({})
+const presetName = ref('')
+const importColumns = computed(() => importPreview.value?.columns ?? [])
+const mappedCount = computed(
+  () => Object.values(importMapping.value).filter((v) => v !== '').length,
+)
+
+function openImport(): void {
+  showImport.value = true
+  importStep.value = 1
+  importFile.value = null
+  importPlatform.value = 'douyin'
+  importMapping.value = {}
+  importPreview.value = null
+  importResult.value = ''
+  importErr.value = ''
+  presetName.value = ''
+  publicationApi
+    .importPresets()
+    .then((r) => {
+      importPresets.value = r.presets
+    })
+    .catch(() => {
+      /* 预设拉取失败不阻断 */
+    })
+}
+
+function onFilePick(e: Event): void {
+  importFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
+  importPreview.value = null
+  importStep.value = 1
+}
+
+function compactMapping(): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(importMapping.value)) {
+    if (typeof v === 'number') out[k] = v
+  }
+  return out
+}
+
+function applyPreset(name: string): void {
+  const p = importPresets.value[name]
+  if (!p) return
+  importPlatform.value = p.platform
+  importMapping.value = { ...p.mapping }
+}
+
+async function runParse(): Promise<void> {
+  if (!importFile.value) return
+  importBusy.value = true
+  importErr.value = ''
+  try {
+    importPreview.value = (await publicationApi.importFile(importFile.value, {
+      projectId: Number(projectId.value),
+      platform: importPlatform.value,
+      mapping: {},
+      dryRun: true,
+    })) as ImportPreview
+    importStep.value = 3
+  } catch (e) {
+    importErr.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    importBusy.value = false
+  }
+}
+
+async function runPreview(): Promise<void> {
+  if (!importFile.value) return
+  importBusy.value = true
+  importErr.value = ''
+  try {
+    const r = await publicationApi.importFile(importFile.value, {
+      projectId: Number(projectId.value),
+      platform: importPlatform.value,
+      mapping: compactMapping(),
+      dryRun: true,
+    })
+    importPreview.value = r as ImportPreview
+    importStep.value = 3
+  } catch (e) {
+    importErr.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    importBusy.value = false
+  }
+}
+
+async function savePreset(): Promise<void> {
+  const name = presetName.value.trim()
+  if (!name) return
+  importErr.value = ''
+  try {
+    await publicationApi.saveImportPreset({ name, platform: importPlatform.value, mapping: compactMapping() })
+    importPresets.value = (await publicationApi.importPresets()).presets
+  } catch (e) {
+    importErr.value = e instanceof ApiError ? e.message : String(e)
+  }
+}
+
+async function confirmImport(): Promise<void> {
+  if (!importFile.value) return
+  importBusy.value = true
+  importErr.value = ''
+  try {
+    const r = await publicationApi.importFile(importFile.value, {
+      projectId: Number(projectId.value),
+      platform: importPlatform.value,
+      mapping: compactMapping(),
+      dryRun: false,
+      preset: presetName.value.trim() || undefined,
+    })
+    const done = r as ImportResult
+    importResult.value = `导入完成：新建 ${done.created} 条、更新 ${done.updated} 条`
+    for (const w of done.warnings) importResult.value += `\n⚠ ${w}`
+    await load()
+  } catch (e) {
+    importErr.value = e instanceof ApiError ? e.message : String(e)
+  } finally {
+    importBusy.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -199,6 +345,13 @@ function projName(id: number) {
       >
         <Icon name="upload" :size="12" /> 批量导入
       </button>
+      <button
+        v-if="subTab === 'list'"
+        class="btn sm"
+        @click="openImport"
+      >
+        <Icon name="upload" :size="12" /> 导入文件
+      </button>
       <select v-if="subTab === 'trend'" v-model="days" @change="loadTrend()">
         <option :value="7">7 天</option>
         <option :value="30">30 天</option>
@@ -229,6 +382,82 @@ function projName(id: number) {
           {{ importing ? '导入中…' : '导入' }}
         </button>
       </div>
+    </div>
+
+    <!-- M67 平台数据文件导入 -->
+    <div v-if="showImport && subTab === 'list'" class="batch-import panel">
+      <h4>导入平台数据文件</h4>
+      <p class="muted sm">
+        支持创作者中心导出的 xlsx/csv（首行表头，≤2000 行）。导入按
+        URL 精确匹配；无 URL 行仅在文件含发布时间列时按 标题+发布同日
+        匹配更新（无日期列一律新建），未命中新建。
+      </p>
+      <p v-if="projectId === ''" class="muted sm">请先在顶部选择一个项目再导入。</p>
+      <template v-else>
+        <div v-if="importErr" class="batch-result">{{ importErr }}</div>
+        <div class="import-row">
+          <input type="file" accept=".xlsx,.csv,.xls" @change="onFilePick" />
+          <select v-model="importPlatform" aria-label="平台">
+            <option value="douyin">抖音</option>
+            <option value="wechat_channels">视频号</option>
+            <option value="kuaishou">快手</option>
+            <option value="xiaohongshu">小红书</option>
+            <option value="bilibili">B站</option>
+            <option value="other">其他</option>
+          </select>
+          <button class="btn sm" :disabled="!importFile || importBusy" @click="runParse">
+            {{ importBusy ? '解析中…' : '解析预览' }}
+          </button>
+        </div>
+        <template v-if="importColumns.length">
+          <h5>列映射（{{ importFile?.name }}）</h5>
+          <div class="import-mapping">
+            <label v-for="f in MAPPING_FIELDS" :key="f.key">
+              {{ f.label }}
+              <select v-model="importMapping[f.key]">
+                <option value="">（不导入）</option>
+                <option v-for="col in importColumns" :key="col.index" :value="col.index">
+                  {{ col.name }}
+                </option>
+              </select>
+            </label>
+          </div>
+          <div class="import-row">
+            <select aria-label="套用预设" @change="applyPreset(($event.target as HTMLSelectElement).value)">
+              <option value="">套用预设…</option>
+              <option v-for="(_, name) in importPresets" :key="name" :value="name">{{ name }}</option>
+            </select>
+            <input v-model="presetName" placeholder="预设名（保存当前映射）" />
+            <button class="btn sm" :disabled="!presetName.trim() || mappedCount === 0 || importBusy" @click="savePreset">
+              存为预设
+            </button>
+          </div>
+          <button class="btn sm primary" :disabled="mappedCount === 0 || importBusy" @click="runPreview">
+            {{ importBusy ? '匹配中…' : '预览匹配' }}
+          </button>
+        </template>
+        <template v-if="importPreview?.preview">
+          <h5>预览确认</h5>
+          <p>
+            将更新 <b>{{ importPreview.preview.updateCount }}</b> 条、新建
+            <b>{{ importPreview.preview.newCount }}</b> 条
+            <template v-if="importPreview.preview.duplicates">
+              （文件内重复 {{ importPreview.preview.duplicates }} 行取最后）
+            </template>
+          </p>
+          <p v-for="w in importPreview.warnings" :key="w" class="muted sm">{{ w }}</p>
+          <div class="batch-foot">
+            <span v-if="importResult" class="batch-result">{{ importResult }}</span>
+            <button class="btn sm" @click="importStep = 1; importPreview = null">返回调整</button>
+            <button class="btn sm primary" :disabled="importBusy" @click="confirmImport">
+              {{ importBusy ? '导入中…' : '确认导入' }}
+            </button>
+          </div>
+        </template>
+        <div class="batch-foot">
+          <button class="btn sm" @click="showImport = false">关闭</button>
+        </div>
+      </template>
     </div>
 
     <div v-if="loading && !publications.length" class="empty">加载中…</div>
@@ -449,6 +678,19 @@ function projName(id: number) {
 .batch-result {
   margin-right: auto;
   font-size: 12px;
+}
+.import-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.import-mapping {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0;
 }
 .chip {
   display: inline-block;
