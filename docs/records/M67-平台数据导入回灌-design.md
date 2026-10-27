@@ -47,7 +47,7 @@
 ### 3.3 API 契约（`routes/publications.ts` 追加）
 
 - `POST /publications/import?project_id=&dry_run=0|1`（multipart）：`file` + `platform`（枚举校验）+ `mapping` JSON（`{title?,url?,publishedAt?,views?,likes?,comments?,favorites?,shares?,abGroup?}` → 0 基列索引）+ 可选 `preset`（保存本次映射为具名预设）。
-  - `dry_run=1` → `{ columns: [{index,name,sample[3]}], preview: { updateCount, newCount, duplicates }, sampleRows, warnings }`；**零写库**。
+  - `dry_run=1` → `{ columns: [{index,name,sample[3]}], preview: { updateCount, newCount, duplicates }, sampleRows, warnings }`（mapping 可省——省略时退化为仅解析预览，无 preview 块，供前端列映射 UI 取列清单）；两种形态**均零写库**；**零写库**。
   - `dry_run=0` → `{ created, updated, warnings }`；服务端逐块写库（不受 batch 200 上限约束，行上限 2000 独立生效）。
 - `GET/PUT /publications/import/presets`：预设存 `settings` KV（key `publication_import_presets`，value 为 `名称 → {platform, mapping}` JSON）；PUT 校验 mapping 形状。
 
