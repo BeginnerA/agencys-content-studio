@@ -160,6 +160,116 @@ await runSections({
       const plan3 = matchRows(assembleRows(table2, m2, 'douyin').rows, [existing1, existing2])
       check(plan3.updates[0]!.id === plan2.updates[0]!.id && plan3.creates.length === plan2.creates.length, '匹配结果对同输入稳定')
     },
-    route: async () => {},
+    route: async () => {
+      const { app } = await import('../src/app')
+      const { db } = await import('../src/db')
+      const { publications, pipelineRuns, pipelineSteps } = await import('../src/db/schema')
+      const { eq } = await import('drizzle-orm')
+      const { createProject } = await import('./probe-m67-fixtures')
+      const { publicationIngest } = await import('../src/pipeline/actions/publication-ingest')
+      const { readTextAsset } = await import('../src/services/storage')
+
+      const projectId = await createProject()
+
+      // JSON 请求（预设端点用；probe-m13 同款）
+      const jreq = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
+        const init: RequestInit = { method }
+        if (body !== undefined) {
+          init.headers = { 'content-type': 'application/json' }
+          init.body = JSON.stringify(body)
+        }
+        const res = await app.request(path, init)
+        return { status: res.status, body: await res.json().catch(() => null) }
+      }
+      // multipart 导入请求
+      const importReq = async (dryRun: boolean, csv: string, mapping: Record<string, number> | null, platform = 'douyin') => {
+        const form = new FormData()
+        form.append('file', new File([csv], 'data.csv', { type: 'text/csv' }))
+        form.append('platform', platform)
+        if (mapping) form.append('mapping', JSON.stringify(mapping))
+        const res = await app.request(`/api/v1/publications/import?project_id=${projectId}&dry_run=${dryRun ? 1 : 0}`, { method: 'POST', body: form })
+        return { status: res.status, body: (await res.json().catch(() => null)) as any }
+      }
+      const M = { title: 0, url: 1, publishedAt: 2, views: 3, likes: 4 }
+      const csv1 = '标题,链接,发布时间,播放,点赞\nA 片,https://v.douyin.com/aaa,2026/1/5 10:00,1000,50\nB 片,,2026/1/6,2000,'
+
+      // —— 仅解析预览（无 mapping）：列清单 + 零写库 ——
+      const countOf = async (): Promise<number> => (await db.select().from(publications).where(eq(publications.projectId, projectId))).length
+      const before = await countOf()
+      const pre0 = await importReq(true, csv1, null)
+      check(pre0.status === 200, '无 mapping 解析预览 200')
+      check(pre0.body?.columns?.length === 5 && pre0.body.columns[0]?.name === '标题', 'columns 列清单与表头一致')
+      check(pre0.body?.preview === undefined, '无 mapping 无匹配预览块')
+      check((await countOf()) === before, '解析预览零写库')
+
+      // —— 匹配预览（有 mapping）：计数正确 + 零写库 ——
+      const pre = await importReq(true, csv1, M)
+      check(pre.status === 200 && pre.body?.preview?.newCount === 2 && pre.body?.preview?.updateCount === 0, '匹配预览：新建 2 更新 0')
+      check((await countOf()) === before, '匹配预览零写库')
+
+      // —— 首次落库 + 幂等 ——
+      const c1 = await importReq(false, csv1, M)
+      check(c1.status === 200 && c1.body?.created === 2 && c1.body?.updated === 0, '首次导入新建 2 条')
+      const c2 = await importReq(false, csv1.replace('1000', '1500'), M)
+      check(c2.body?.created === 0 && c2.body?.updated === 2, '同文件二次导入全为更新')
+      check((await countOf()) === before + 2, '重复导入不产生重复登记')
+      const all = await db.select().from(publications).where(eq(publications.projectId, projectId))
+      const aRow = all.find((r) => r.title === 'A 片')!
+      const am = JSON.parse(aRow.metrics) as Record<string, number>
+      check(am.views === 1500, 'metrics 非零覆盖')
+      check(aRow.runId === null && aRow.abGroup === null && aRow.note === null, '新建行保护字段留空')
+
+      // —— 更新保护：已有 abGroup/note 不被清空 ——
+      await db.update(publications).set({ abGroup: 'B组', note: '手工备注' }).where(eq(publications.id, aRow.id))
+      const c3 = await importReq(false, csv1.replace('1000', '1600'), M)
+      check(c3.body?.updated === 2, '第三次导入仍为更新')
+      const aRow3 = (await db.select().from(publications).where(eq(publications.id, aRow.id)))[0]!
+      check(aRow3.abGroup === 'B组' && aRow3.note === '手工备注', '更新不动 abGroup/note')
+
+      // —— 校验面：空 mapping / 非法平台 / 超行 ——
+      const badMap = await importReq(true, '标题\nx', {})
+      check(badMap.status === 400 && badMap.body?.error?.code === 'bad_mapping', '空 mapping 400 bad_mapping')
+      const badPlat = await importReq(true, '标题\nx', { title: 0 }, 'weixin')
+      check(badPlat.status === 400 && badPlat.body?.error?.code === 'bad_platform', 'platform 枚举外 400')
+      const dryNoMap = await importReq(false, csv1, null)
+      check(dryNoMap.status === 400, 'dry_run=0 缺 mapping 400')
+      const big = '标题\n' + Array.from({ length: 2001 }, (_, i) => `r${i}`).join('\n')
+      const tooBig = await importReq(true, big, { title: 0 })
+      check(tooBig.status === 400 && tooBig.body?.error?.code === 'too_many_rows', '超 2000 行 400 too_many_rows')
+
+      // —— 预设：PUT/GET 往返 ——
+      const pput = await jreq('PUT', '/api/v1/publications/import/presets', { name: '抖音作品', platform: 'douyin', mapping: { title: 0, views: 3 } })
+      check(pput.status === 200 && pput.body?.ok === true, '预设保存')
+      const pget = await jreq('GET', '/api/v1/publications/import/presets')
+      check(pget.body?.presets?.['抖音作品']?.mapping?.views === 3, '预设读回')
+      const pbad = await jreq('PUT', '/api/v1/publications/import/presets', { name: '坏', platform: 'douyin', mapping: { foo: 1 } })
+      check(pbad.status === 400, '预设 mapping 校验拒绝')
+
+      // —— 端到端闭环：publication_ingest 复盘文档含导入行与回灌指标 ——
+      const now = Date.now()
+      // NOT NULL 最小列以 schema.ts 为准（简报 input:null 违反 input NOT NULL，按约束适配，非逻辑变更）
+      const runRows = await db
+        .insert(pipelineRuns)
+        .values({ projectId, templateKey: 'probe-m67', status: 'succeeded', input: '{}', createdAt: now, updatedAt: now })
+        .returning()
+      const run = runRows[0]!
+      // pipelineSteps NOT NULL：seq/stepKey/actionKey/createdAt/updatedAt（简报骨架仅 runId+output）
+      await db.insert(pipelineSteps).values({
+        runId: run.id,
+        seq: 0,
+        stepKey: 'probe_import',
+        actionKey: 'publication_ingest',
+        output: JSON.stringify({ asset_ids: [] }),
+        createdAt: now,
+        updatedAt: now,
+      })
+      const ctx = { input: { pubs: [aRow.id] }, run: { projectId, id: run.id }, step: { id: 0 }, log: () => {} } as unknown as Parameters<
+        typeof publicationIngest
+      >[0]
+      const stepRes = await publicationIngest(ctx)
+      const reviewText = await readTextAsset(stepRes.assetIds[0]!)
+      // 末次导入（c3）后 A 的 views=1600（1500 是 c2 中间态，复盘文档取终值）
+      check(reviewText.includes('A 片') && reviewText.includes('1600'), '复盘文档含导入行与回灌指标')
+    },
   },
 })

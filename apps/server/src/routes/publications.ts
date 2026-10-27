@@ -7,8 +7,10 @@
 import { Hono } from 'hono'
 import { and, asc, desc, eq, gte, isNotNull, sql } from 'drizzle-orm'
 import { db } from '../db'
-import { publications } from '../db/schema'
+import { publications, settings } from '../db/schema'
 import { publicationTotals } from '../services/stats'
+import { parseTable, TableParseError, type ParsedTable } from '../services/table-parse'
+import { parseMapping, assembleRows, matchRows, ImportError, type ImportMapping } from '../services/publication-import'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const publicationsRoutes = new Hono()
@@ -255,4 +257,147 @@ publicationsRoutes.get('/publications/ab-groups', h(async (c) => {
     avgInteractions: v.count > 0 ? Math.round(v.interactions / v.count) : 0,
   }))
   return c.json({ items })
+}))
+
+// ---------- 平台数据文件导入（M67，spec §3.3） ----------
+
+const IMPORT_PRESETS_KEY = 'publication_import_presets'
+
+async function readImportPresets(): Promise<Record<string, { platform: string; mapping: ImportMapping }>> {
+  const row = (await db.select().from(settings).where(eq(settings.key, IMPORT_PRESETS_KEY)).limit(1))[0]
+  if (!row) return {}
+  try {
+    return JSON.parse(row.value) as Record<string, { platform: string; mapping: ImportMapping }>
+  } catch {
+    return {}
+  }
+}
+
+async function saveImportPreset(name: string, platform: string, mapping: ImportMapping): Promise<void> {
+  const presets = await readImportPresets()
+  presets[name] = { platform, mapping }
+  const value = JSON.stringify(presets)
+  const now = Date.now()
+  await db
+    .insert(settings)
+    .values({ key: IMPORT_PRESETS_KEY, value, updatedAt: now })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
+}
+
+function mappingOf(raw: string): ImportMapping {
+  let obj: unknown
+  try {
+    obj = JSON.parse(raw)
+  } catch {
+    throw new HttpError(400, 'bad_input', 'mapping 非合法 JSON')
+  }
+  try {
+    return parseMapping(obj)
+  } catch (e) {
+    if (e instanceof ImportError) throw new HttpError(400, e.code, e.message)
+    throw e
+  }
+}
+
+/** POST /publications/import?project_id=&dry_run= —— multipart: file + platform + mapping[可选] + preset[可选]（无状态两阶段，spec §3.3） */
+publicationsRoutes.post('/publications/import', h(async (c) => {
+  const projectId = Number(c.req.query('project_id'))
+  if (!Number.isInteger(projectId) || projectId <= 0) throw new HttpError(400, 'bad_input', 'project_id 必填')
+  const dryRun = c.req.query('dry_run') === '1'
+  const form = await c.req.formData().catch(() => {
+    throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求')
+  })
+  const platform = form.get('platform')
+  if (typeof platform !== 'string' || !(PLATFORMS as readonly string[]).includes(platform)) {
+    throw new HttpError(400, 'bad_platform', `platform 需为 ${PLATFORMS.join('|')}`)
+  }
+  const mappingRaw = form.get('mapping')
+  if (mappingRaw === null && !dryRun) throw new HttpError(400, 'bad_input', '导入落库需 mapping（JSON 列映射）')
+  const mapping: ImportMapping | null = typeof mappingRaw === 'string' ? mappingOf(mappingRaw) : null
+
+  const file = form.get('file')
+  if (!(file instanceof File)) throw new HttpError(400, 'bad_input', 'file 必填（xlsx/csv 文件）')
+  const ext = file.name.split('.').pop() ?? ''
+  const buf = Buffer.from(await file.arrayBuffer())
+  let table: ParsedTable
+  try {
+    table = parseTable(buf, ext)
+  } catch (e) {
+    if (e instanceof TableParseError) throw new HttpError(400, e.code, e.message)
+    throw e
+  }
+  const columns = table.header.map((name, index) => ({
+    index,
+    name,
+    sample: table.rows.slice(0, 3).map((r) => r[index] ?? ''),
+  }))
+
+  if (!mapping) {
+    // dry_run=1 无 mapping：仅解析预览（列映射 UI 取列清单），零写库
+    return c.json({ columns, sampleRows: [], warnings: table.warnings })
+  }
+
+  const assembled = assembleRows(table, mapping, platform)
+  const existing = await db
+    .select()
+    .from(publications)
+    .where(and(eq(publications.projectId, projectId), eq(publications.platform, platform)))
+  const plan = matchRows(assembled.rows, existing)
+
+  if (dryRun) {
+    return c.json({
+      columns,
+      preview: { updateCount: plan.updates.length, newCount: plan.creates.length, duplicates: plan.duplicates },
+      sampleRows: assembled.rows.slice(0, 8),
+      warnings: [...table.warnings, ...assembled.warnings],
+    })
+  }
+
+  const t = Date.now()
+  for (const r of plan.creates) {
+    await db.insert(publications).values({
+      projectId,
+      platform,
+      url: r.url,
+      publishedAt: r.publishedAt,
+      title: r.title,
+      abGroup: r.abGroup,
+      metrics: JSON.stringify(r.metrics),
+      runId: null,
+      assetId: null,
+      note: null,
+      createdAt: t,
+      updatedAt: t,
+    })
+  }
+  for (const u of plan.updates) {
+    await db
+      .update(publications)
+      .set({ ...u.patch, updatedAt: t })
+      .where(eq(publications.id, u.id))
+  }
+  const presetName = form.get('preset')
+  if (typeof presetName === 'string' && presetName.trim()) {
+    await saveImportPreset(presetName.trim(), platform, mapping)
+  }
+  return c.json({ created: plan.creates.length, updated: plan.updates.length, warnings: [...table.warnings, ...assembled.warnings] })
+}))
+
+publicationsRoutes.get('/publications/import/presets', h(async (c) => {
+  return c.json({ presets: await readImportPresets() })
+}))
+
+publicationsRoutes.put('/publications/import/presets', h(async (c) => {
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'bad_json', '请求体非合法 JSON')
+  })
+  const name = typeof body['name'] === 'string' ? body['name'].trim() : ''
+  if (!name) throw new HttpError(400, 'bad_input', 'name 必填')
+  const platform = body['platform']
+  if (typeof platform !== 'string' || !(PLATFORMS as readonly string[]).includes(platform)) {
+    throw new HttpError(400, 'bad_platform', `platform 需为 ${PLATFORMS.join('|')}`)
+  }
+  const mapping = mappingOf(JSON.stringify(body['mapping'] ?? null))
+  await saveImportPreset(name, platform, mapping)
+  return c.json({ ok: true })
 }))
