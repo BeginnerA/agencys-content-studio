@@ -183,6 +183,21 @@ async function confirmImport(): Promise<void> {
   }
 }
 
+/** 示例行（服务端 AssembledRow，前端宽化为 Record）→ 紧凑单行文本 */
+function sampleRowText(r: Record<string, unknown>): string {
+  const m = (r.metrics ?? {}) as Record<string, number>
+  const parts: string[] = [`行${String(r.rowIndex)}`, String(r.title ?? '') || '—']
+  if (typeof r.url === 'string' && r.url) parts.push(r.url)
+  if (typeof r.abGroup === 'string' && r.abGroup) parts.push(`A/B ${r.abGroup}`)
+  parts.push(
+    typeof r.publishedAt === 'number'
+      ? new Date(r.publishedAt).toLocaleDateString()
+      : '无日期',
+    `播放 ${fmtQty(m.views ?? 0)} · 赞 ${fmtQty(m.likes ?? 0)} · 评 ${fmtQty(m.comments ?? 0)} · 藏 ${fmtQty(m.favorites ?? 0)} · 转 ${fmtQty(m.shares ?? 0)}`,
+  )
+  return parts.join(' · ')
+}
+
 async function load() {
   loading.value = true
   err.value = ''
@@ -446,8 +461,14 @@ function projName(id: number) {
             </template>
           </p>
           <p v-for="w in importPreview.warnings" :key="w" class="muted sm">{{ w }}</p>
+          <div v-if="importPreview.sampleRows.length" class="import-samples">
+            <p class="muted sm">示例行（装配后前 {{ importPreview.sampleRows.length }} 行）：</p>
+            <div v-for="(r, i) in importPreview.sampleRows" :key="i" class="import-sample">
+              {{ sampleRowText(r) }}
+            </div>
+          </div>
           <div class="batch-foot">
-            <span v-if="importResult" class="batch-result">{{ importResult }}</span>
+            <span v-if="importResult" class="batch-result import-result">{{ importResult }}</span>
             <button class="btn sm" @click="importStep = 1; importPreview = null">返回调整</button>
             <button class="btn sm primary" :disabled="importBusy" @click="confirmImport">
               {{ importBusy ? '导入中…' : '确认导入' }}
@@ -691,6 +712,30 @@ function projName(id: number) {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 6px 12px;
   margin: 8px 0;
+}
+.import-samples {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.import-samples p {
+  margin: 0;
+}
+.import-sample {
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.import-result {
+  white-space: pre-line;
 }
 .chip {
   display: inline-block;
