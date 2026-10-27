@@ -226,6 +226,11 @@ await runSections({
       const aRow3 = (await db.select().from(publications).where(eq(publications.id, aRow.id)))[0]!
       check(aRow3.abGroup === 'B组' && aRow3.note === '手工备注', '更新不动 abGroup/note')
 
+      // —— claimed 兜底现行为记录：两行不同去重键（URL / 标题+同日）命中同一既有记录，后者转新建 ——
+      const csvClaim = '标题,链接,发布时间,播放,点赞\nA 片,https://v.douyin.com/aaa,2026/1/5 10:00,111,1\nA 片,,2026/1/5,222,2'
+      const claimPre = await importReq(true, csvClaim, M)
+      check(claimPre.body?.preview?.updateCount === 1 && claimPre.body?.preview?.newCount === 1, '跨键命中同一既有：URL 行更新、标题+同日行转新建（兜底现行为）')
+
       // —— 校验面：空 mapping / 非法平台 / 超行 ——
       const badMap = await importReq(true, '标题\nx', {})
       check(badMap.status === 400 && badMap.body?.error?.code === 'bad_mapping', '空 mapping 400 bad_mapping')
