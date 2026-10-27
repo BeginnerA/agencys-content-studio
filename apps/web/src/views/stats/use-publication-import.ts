@@ -70,7 +70,7 @@ export function usePublicationImport(opts: {
     importStep.value = 1
   }
 
-  /** 「返回调整」：预览确认回第 1 步（模板内联多语句对 maybe-ref 绑定不可解析，收敛为显式函数） */
+  /** 「返回调整」：预览确认回第 1 步（风格收敛：内联多语句 handler 收敛为显式函数，行为等价） */
   function backToEdit(): void {
     importStep.value = 1
     importPreview.value = null
