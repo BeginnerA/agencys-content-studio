@@ -233,7 +233,7 @@ function parseCsv(buf: Buffer): ParsedTable {
   return { header: header ?? [], rows: data, warnings: [] }
 }
 
-/** 入口：按扩展名分发；.xls 先嗅探 PK 魔数（不少平台导出实为 xlsx 改名） */
+/** 入口：按扩展名分发 */
 export function parseTable(buf: Buffer, ext: string): ParsedTable {
   if (buf.byteLength > TABLE_MAX_FILE_BYTES) {
     throw new TableParseError('too_large', `文件 ${buf.byteLength} 字节超上限 ${TABLE_MAX_FILE_BYTES}`)
