@@ -33,7 +33,7 @@
 
 - `aigcMetadata(opts)`：纯函数产国标六字段 JSON——`Label:"1"`、`ContentProducer`（平台 brand `compliance.producer`，缺省「个人创作者」）、`ProduceID`（`crypto.randomUUID()`）、`ReservedCode1: ""`、`ContentPropagator` / `PropagateID`（生成阶段空串，发布包环节填）。**勘误**：早期版本误列 `ProduceTime` 为规范字段——国标六字段不含它；生成时间仅作非规范溯源入 `params.aigc.produceAt`。
 - **写入通道按容器分三路**（技术风险面如实标注）：
-  1. **视频（mp4/mov）与音频（mp3/m4a/wav）**：ffmpeg `-c copy -metadata AIGC=<json>` 重封装（流复制，毫秒级、无重编码）。
+  1. **视频（mp4/mov/m4v）与音频（mp3/m4a）**：ffmpeg `-c copy -metadata AIGC=<json>` 重封装（流复制，毫秒级、无重编码）。**勘误**：早期版本误列 wav——ffmpeg wav muxer 对未知 RIFF INFO 键的写入支持已移除（实测丢弃，打标不落盘），`REMUX_FORMAT` 不含 wav，wav 音频按不支持走失败旁路（tags `compliance_failed`）；如需支持可用 `-write_id3v2` TXXX 通道再议（遗留）。
   2. **图像 PNG**：纯 Node **tEXt 块插入**（`zlib.crc32` 计算 CRC；IHDR 块头廉价校验防误插；不动压缩数据——**非 ffmpeg 重封装**，实现期以纯 Node 取代早期 ffmpeg 方案，无重编码风险）。
   3. **图像 JPEG**：ffmpeg 容器级 metadata 写入能力弱 → 纯 Node **APP1 段头部插入**（SOI 后插 `AIGC\0` segment，不动压缩数据，仅长度字段计算，约 40 行零依赖）。
 - **挂点（显式调用，导入素材不打标）**：`saveGeneratedMedia`（一处覆盖全部 AI 图像/视频）、`tts.ts` / `strict-tts.ts` / `music-gen.ts`；成片合成不重封装——merge 命令直接追加 `-metadata AIGC=`。实现计划须**枚举 `saveGeneratedMedia` 全部调用面核对 origin**（若混有非 AI 生成保存，加 `origin: 'ai' | 'imported'` 可选参数区分，缺省 `'ai'`，抓取/导入调用点显式传 `'imported'`——纯加法）。
