@@ -262,18 +262,28 @@ publicationsRoutes.get('/publications/ab-groups', h(async (c) => {
 // ---------- 平台数据文件导入（M67，spec §3.3） ----------
 
 const IMPORT_PRESETS_KEY = 'publication_import_presets'
+/** 预设名保留字（JSON 键名即用户输入，阻断 __proto__ 等回灌原型链）与长度上限 */
+const IMPORT_PRESET_RESERVED = new Set(['__proto__', 'constructor', 'prototype'])
+const IMPORT_PRESET_NAME_MAX = 50
 
 async function readImportPresets(): Promise<Record<string, { platform: string; mapping: ImportMapping }>> {
   const row = (await db.select().from(settings).where(eq(settings.key, IMPORT_PRESETS_KEY)).limit(1))[0]
   if (!row) return {}
   try {
-    return JSON.parse(row.value) as Record<string, { platform: string; mapping: ImportMapping }>
+    // null 原型承装：存储 JSON 的键名不可信，阻断解析结果上的 __proto__ 等保留键污染面
+    return Object.assign(Object.create(null), JSON.parse(row.value)) as Record<string, { platform: string; mapping: ImportMapping }>
   } catch {
     return {}
   }
 }
 
 async function saveImportPreset(name: string, platform: string, mapping: ImportMapping): Promise<void> {
+  if (IMPORT_PRESET_RESERVED.has(name)) {
+    throw new HttpError(400, 'bad_input', `预设名不可使用保留字（${[...IMPORT_PRESET_RESERVED].join('/')}）`)
+  }
+  if (name.length > IMPORT_PRESET_NAME_MAX) {
+    throw new HttpError(400, 'bad_input', `预设名超 ${IMPORT_PRESET_NAME_MAX} 字符上限`)
+  }
   const presets = await readImportPresets()
   presets[name] = { platform, mapping }
   const value = JSON.stringify(presets)

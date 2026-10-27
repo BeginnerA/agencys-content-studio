@@ -27,7 +27,7 @@ await runSections({
     parse: async () => {
       const { parseTable, TableParseError, TABLE_MAX_ROWS } = await import('../src/services/table-parse')
       const { zipSync, strToU8 } = await import('fflate')
-      const { makeXlsx } = await import('./probe-m67-fixtures')
+      const { makeXlsx, makeZipBombXlsx } = await import('./probe-m67-fixtures')
 
       const SI = (t: string): string => `<si><t>${t}</t></si>`
       const STYLES = `<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy/m/d h:mm"/></numFmts><cellXfs count="2"><xf numFmtId="14" applyNumberFormat="1"/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>`
@@ -77,6 +77,14 @@ await runSections({
       code = ''
       try { parseTable(Buffer.from('not a zip'), 'xlsx') } catch (e) { code = e instanceof TableParseError ? e.code : '' }
       check(code === 'bad_zip', '非 zip 容器抛 bad_zip')
+
+      // —— 健壮性防护（终审修复回归面）：zip 炸弹 / 畸形数字实体 ——
+      code = ''
+      try { parseTable(makeZipBombXlsx(), 'xlsx') } catch (e) { code = e instanceof TableParseError ? e.code : '' }
+      check(code === 'bad_zip', 'zip 单条目解压后超 128MB 上限抛 bad_zip')
+      code = ''
+      try { parseTable(makeXlsx('<row r="1"><c r="A1"><v>&#x110000;</v></c></row>', []), 'xlsx') } catch (e) { code = e instanceof TableParseError ? e.code : '' }
+      check(code === 'bad_xlsx', '畸形数字实体（码点超 0x10FFFF）抛 bad_xlsx')
     },
     match: async () => {
       const { assembleRows, matchRows, parseMapping, ImportError } = await import('../src/services/publication-import')
@@ -249,6 +257,8 @@ await runSections({
       check(pget.body?.presets?.['抖音作品']?.mapping?.views === 3, '预设读回')
       const pbad = await jreq('PUT', '/api/v1/publications/import/presets', { name: '坏', platform: 'douyin', mapping: { foo: 1 } })
       check(pbad.status === 400, '预设 mapping 校验拒绝')
+      const pproto = await jreq('PUT', '/api/v1/publications/import/presets', { name: '__proto__', platform: 'douyin', mapping: { title: 0 } })
+      check(pproto.status === 400, '预设保留名 __proto__ 拒绝 400')
 
       // —— 端到端闭环：publication_ingest 复盘文档含导入行与回灌指标 ——
       const now = Date.now()

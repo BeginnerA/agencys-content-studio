@@ -11,6 +11,7 @@ export type TableParseCode =
   | 'too_many_rows'
   | 'bad_ext'
   | 'bad_zip'
+  | 'bad_xlsx'
   | 'old_xls'
   | 'no_sheet'
 
@@ -32,6 +33,8 @@ export interface ParsedTable {
 
 export const TABLE_MAX_FILE_BYTES = 10 * 1024 * 1024
 export const TABLE_MAX_ROWS = 2000
+/** zip 炸弹防护：单条目解压后上限（zip 头声明的 originalSize，超限拒绝解包） */
+export const TABLE_MAX_ENTRY_BYTES = 128 * 1024 * 1024
 
 // ⚠ fflate 第二参语义：true = latin1（中文乱码），缺省 = UTF-8（doc-parse.ts:13 先例）
 const utf8 = (b: Uint8Array): string => strFromU8(b)
@@ -90,8 +93,18 @@ function colIndex(ref: string): number {
 function parseXlsx(buf: Buffer): ParsedTable {
   let files: Record<string, Uint8Array>
   try {
-    files = unzipSync(new Uint8Array(buf))
-  } catch {
+    files = unzipSync(new Uint8Array(buf), {
+      // zip 炸弹防护：头声明解压后超限的条目直接拒绝（filter 内抛 TableParseError 同步穿出 unzipSync；
+      // 不可改为 return false——fflate 对被过滤条目是静默跳过，会退化为误导性的 no_sheet）
+      filter: (f) => {
+        if (f.originalSize > TABLE_MAX_ENTRY_BYTES) {
+          throw new TableParseError('bad_zip', `zip 条目解压后 ${f.originalSize} 字节超上限 ${TABLE_MAX_ENTRY_BYTES}`)
+        }
+        return true
+      },
+    })
+  } catch (e) {
+    if (e instanceof TableParseError) throw e
     throw new TableParseError('bad_zip', 'xlsx 解包失败（加密或损坏？）')
   }
   const sheetKey = Object.keys(files).find((k) => /^xl\/worksheets\/sheet1\.xml$/i.test(k))
@@ -245,7 +258,13 @@ export function parseTable(buf: Buffer, ext: string): ParsedTable {
     if (e === 'xls' && buf.subarray(0, 2).toString('latin1') !== 'PK') {
       throw new TableParseError('old_xls', '旧版二进制 xls 不支持，请另存为 xlsx/csv')
     }
-    return parseXlsx(buf)
+    try {
+      return parseXlsx(buf)
+    } catch (err) {
+      if (err instanceof TableParseError) throw err
+      // 畸形数字实体等非预期异常（String.fromCodePoint 遇码点 >0x10FFFF 抛 RangeError）→ 统一 400 而非 500
+      throw new TableParseError('bad_xlsx', 'xlsx 内容解析失败（含畸形实体或数据？）')
+    }
   }
   throw new TableParseError('bad_ext', `不支持的扩展名：${ext}（支持 xlsx/csv）`)
 }
