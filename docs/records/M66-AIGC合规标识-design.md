@@ -34,11 +34,11 @@
 - `aigcMetadata(opts)`：纯函数产国标六字段 JSON——`Label:"1"`、`ContentProducer`（平台 brand `compliance.producer`，缺省「个人创作者」）、`ProduceID`（`crypto.randomUUID()`）、`ReservedCode1: ""`、`ContentPropagator` / `PropagateID`（生成阶段空串，发布包环节填）。**勘误**：早期版本误列 `ProduceTime` 为规范字段——国标六字段不含它；生成时间仅作非规范溯源入 `params.aigc.produceAt`。
 - **写入通道按容器分三路**（技术风险面如实标注）：
   1. **视频（mp4/mov）与音频（mp3/m4a/wav）**：ffmpeg `-c copy -metadata AIGC=<json>` 重封装（流复制，毫秒级、无重编码）。
-  2. **图像 PNG**：ffmpeg 重封装写 tEXt（探针验证写入可读）。
+  2. **图像 PNG**：纯 Node **tEXt 块插入**（`zlib.crc32` 计算 CRC；IHDR 块头廉价校验防误插；不动压缩数据——**非 ffmpeg 重封装**，实现期以纯 Node 取代早期 ffmpeg 方案，无重编码风险）。
   3. **图像 JPEG**：ffmpeg 容器级 metadata 写入能力弱 → 纯 Node **APP1 段头部插入**（SOI 后插 `AIGC\0` segment，不动压缩数据，仅长度字段计算，约 40 行零依赖）。
 - **挂点（显式调用，导入素材不打标）**：`saveGeneratedMedia`（一处覆盖全部 AI 图像/视频）、`tts.ts` / `strict-tts.ts` / `music-gen.ts`；成片合成不重封装——merge 命令直接追加 `-metadata AIGC=`。实现计划须**枚举 `saveGeneratedMedia` 全部调用面核对 origin**（若混有非 AI 生成保存，加 `origin: 'ai' | 'imported'` 可选参数区分，缺省 `'ai'`，抓取/导入调用点显式传 `'imported'`——纯加法）。
 - 留痕：`asset.params.aigc = { produceId, produceTime }`。
-- **失败旁路**：写入失败不阻断生成——产物照常入库，`createLogger` warn + 资产 tags 追加 `compliance:failed`（对齐 M12 检测 / M29 `safeRecordExecSnapshot` 先例，可见不静默）。
+- **失败旁路**：写入失败不阻断生成——产物照常入库，`createLogger` warn + 资产 tags 追加 `compliance_failed`（下划线键；对齐 M12 检测 / M29 `safeRecordExecSnapshot` 先例，可见不静默）。
 
 ### 3.2 显式角标（默认开，逐级可关）
 
@@ -73,6 +73,7 @@
 ## 五、遗留与边界（诚实标注）
 
 - JPEG APP1 若实现中字节级风险超预期 → 降级「PNG 先行 + JPEG 仅声明文件标注」，在 review 如实记录。
-- 历史存量产物（M66 之前生成）不回溯打标——发布包对无标视频仅以声明文件兜底；如需回溯另立项。
+- 历史存量产物（M66 之前生成）：工作区原件不回溯打标（如需回溯改写原件另立项）；发布包实现为**所有视频（含历史存量）**以 `-c copy` 重封装副本打标（非破坏性，原件不动）——早期「发布包对无标视频仅以声明文件兜底」的表述与实现不符，如实更正。
+- 画布 compose 未接线：创作画布合成走 `creation/gen/compose-args.ts` 独立 ffmpeg 链，未注入合规角标 drawtext 与 `-metadata AIGC=`（其产物仍可在发布包环节获得重封装打标副本）；如需接线另立项。
 - 音频显式标识（语音播报提示音）不做（范围决策：音频仅隐式）。
 - 不做角标/水印自动避让；不做标识内容的国家标准全文逐字核对（国标全文付费墙，字段语义以闪剪范例 + 普华永道解读 + 探针互证为准，review 标注剩余不确定度）。
