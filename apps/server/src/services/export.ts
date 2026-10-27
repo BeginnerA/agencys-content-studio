@@ -4,7 +4,7 @@
  * - 任何状态的 run 均可导出已有产物；串行流式写，失败清理临时文件
  * - M66 合规打标：开启态发布包内音视频/图像为打标副本（非破坏性，工作区原件不动）+ AI生成内容说明.txt
  */
-import { createReadStream, createWriteStream, existsSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -15,7 +15,7 @@ import { db } from '../db'
 import { assets, pipelineRuns, pipelineSteps, projects, type Asset } from '../db/schema'
 import { createLogger } from '../logger'
 import { resolveBrandConfig } from './brand-config'
-import { aigcMetadata, remuxMediaMetaToFile } from './compliance-label'
+import { aigcMetadata, insertJpegApp1, insertPngText, remuxMediaMetaToFile } from './compliance-label'
 import { resolveFfmpeg } from './ffmpeg'
 import { absPathOf, ensureProjectDirs, registerAsset, sanitizeName } from './storage'
 import { complianceDrawtextFilter } from '../pipeline/actions/ffmpeg-merge/compliance'
@@ -165,7 +165,20 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
               ],
               { stdio: 'ignore', timeout: 60_000, windowsHide: true },
             )
-            if (!r.error && r.status === 0 && existsSync(out)) { e.srcAbs = out; labeledAbs = out; labelProduceId = produceId }
+            if (!r.error && r.status === 0 && existsSync(out)) {
+              // png/jpeg muxer 丢弃 -metadata 且重编码剥离生成期 tEXt/APP1 → 编码成功后用纯 Node
+              // 段插入（insertPngText/insertJpegApp1）把同一 metaJson 写回副本文件；
+              // 插入失败保留角标副本（显式标识仍在）照常打标，仅 warn
+              try {
+                const bytes = readFileSync(out)
+                const embedded = a.ext === 'png' ? insertPngText(bytes, json) : insertJpegApp1(bytes, json)
+                if (embedded) writeFileSync(out, embedded)
+                else log.warn(`发布包图像副本内嵌标识插入失败，保留角标副本: 资产 #${a.id}（${path}）`)
+              } catch (err) {
+                log.warn(`发布包图像副本内嵌标识插入异常，保留角标副本: 资产 #${a.id}（${path}）→ ${(err as Error).message}`)
+              }
+              e.srcAbs = out; labeledAbs = out; labelProduceId = produceId
+            }
           } else if (ffmpeg && (a.kind === 'video' || a.kind === 'audio')) {
             const { json, produceId } = aigcMetadata({ producer: compliance.producer, contentPropagator: compliance.producer, propagateId, produceId: genProduceId ?? undefined })
             const out = join(labelTempDir, `labeled-${a.id}.${a.ext ?? 'mp4'}`)
@@ -192,10 +205,23 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       },
       // M66 只增键（向后兼容）：开启态记录 compliance + 逐文件 aigc；关闭态 = null / 无 aigc 键
       compliance: compliance?.enabled ? { enabled: true, producer: compliance.producer } : null,
-      files: entries.map(({ a, path }) => {
+      files: entries.map(({ a, path, srcAbs }) => {
         const meta = exportMeta.get(a.id)
+        // M66：打标条目包内字节为打标副本 → size/sha256 取副本最终字节（重编码/重封装 + 内嵌标识完成后），
+        // 与 zip 实际内容一致（包完整性消费方不失配）；未打标条目仍为工作区原件指纹
+        let size = a.fileSize
+        let sha256 = a.sha256
+        if (meta?.labeled === true && srcAbs) {
+          try {
+            const copy = readFileSync(srcAbs)
+            size = copy.byteLength
+            sha256 = createHash('sha256').update(copy).digest('hex')
+          } catch {
+            log.warn(`发布包打标副本指纹读取失败，回落原件指纹: 资产 #${a.id}（${path}）`)
+          }
+        }
         return {
-          path, role: roleOfAsset(a).role, assetId: a.id, purpose: a.purpose, size: a.fileSize, sha256: a.sha256,
+          path, role: roleOfAsset(a).role, assetId: a.id, purpose: a.purpose, size, sha256,
           ...(meta ? { aigc: meta } : {}),
         }
       }),
@@ -305,11 +331,12 @@ function safeParse(s: string | null): unknown {
   }
 }
 
-/** 从资产 params.aigc 读生成期 ProduceID（M66 前旧资产/缺失/损坏 → null） */
+/** 从资产 params.aigc 读生成期 ProduceID（M66 前旧资产/缺失/损坏/空白串 → null） */
 function readAigcProduceId(a: Asset): string | null {
   try {
     const p = JSON.parse(a.params ?? '{}') as { aigc?: { produceId?: string } }
-    return typeof p.aigc?.produceId === 'string' ? p.aigc.produceId : null
+    const pid = p.aigc?.produceId
+    return typeof pid === 'string' && pid.trim() ? pid.trim() : null
   } catch {
     return null
   }

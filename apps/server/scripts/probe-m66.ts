@@ -419,7 +419,7 @@ await runSections({
         check(names.some((n) => n.startsWith('cover/')), '图像产物目录存在')
         const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']!)) as {
           compliance?: { enabled: boolean; producer: string } | null
-          files: Array<{ path: string; aigc?: { produceId: string | null; propagateId: string; labeled: boolean } }>
+          files: Array<{ path: string; size?: number; sha256?: string; aigc?: { produceId: string | null; propagateId: string; labeled: boolean } }>
         }
         check(manifest.compliance?.enabled === true, 'manifest.compliance 记录开启态')
         const imgFile = manifest.files.find((f) => f.path.startsWith('cover/'))!
@@ -432,6 +432,10 @@ await runSections({
         // 图像副本为合法 PNG（drawtext 重编码单帧）
         const pngOut = Buffer.from(files[imgFile.path]!)
         check(pngOut.readUInt32BE(0) === 0x89504e47, '图像副本仍为合法 PNG')
+        // png muxer 丢 -metadata 且重编码剥离生成期 tEXt → 编码成功后纯 Node 段插入内嵌标识
+        check(pngOut.includes(Buffer.from('AIGC\0', 'latin1')), '图像副本内嵌 AIGC tEXt 隐式标识（纯 Node 段插入）')
+        // 打标条目 manifest size/sha256 为包内副本最终字节（完整性一致性，非工作区原件指纹）
+        check(imgFile.size === pngOut.byteLength && imgFile.sha256 === sha256Hex(pngOut), '图像副本 manifest size/sha256 与包内字节一致')
 
         // —— 视频副本：-c copy 重封装（非空 + AIGC tag 落盘读回）——
         const vidFile = manifest.files.find((f) => f.path.startsWith('video/'))!
