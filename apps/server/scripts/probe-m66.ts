@@ -437,12 +437,19 @@ await runSections({
           fileSize: statSync(absPathOf(vidRel)).size, sha256: sha256Hex(readFileSync(absPathOf(vidRel))),
           params: { aigc: { produceId: vidGenId } },
         })
+        // 非媒体条目（text）：无载体可嵌 → 发布包不应产逐文件 aigc 键、不入声明清单行
+        const txtRel = `${projectId}/exports-probe/note.txt`
+        writeFileSync(absPathOf(txtRel), 'm66 non-media entry')
+        const txtAsset = await registerAsset(projectId, {
+          name: 'note.txt', kind: 'text', purpose: 'copy', relPath: txtRel, ext: 'txt',
+          fileSize: statSync(absPathOf(txtRel)).size, sha256: sha256Hex(readFileSync(absPathOf(txtRel))),
+        })
 
         // schema 适配：pipelineRuns.input/createdAt/updatedAt 与 pipelineSteps.seq/stepKey/actionKey/createdAt/updatedAt 为 NOT NULL 无默认
         const now = Date.now()
         const runRows = await db.insert(pipelineRuns).values({ projectId, templateKey: 'probe-m66', status: 'completed', input: '{}', createdAt: now, updatedAt: now }).returning()
         const run = runRows[0]!
-        await db.insert(pipelineSteps).values({ runId: run.id, seq: 1, stepKey: 'probe-m66', actionKey: 'probe', status: 'succeeded', output: JSON.stringify({ asset_ids: [imgAsset.id, vidAsset.id] }), createdAt: now, updatedAt: now })
+        await db.insert(pipelineSteps).values({ runId: run.id, seq: 1, stepKey: 'probe-m66', actionKey: 'probe', status: 'succeeded', output: JSON.stringify({ asset_ids: [imgAsset.id, vidAsset.id, txtAsset.id] }), createdAt: now, updatedAt: now })
 
         // —— 开启态（平台缺省即开）——
         const pkg = await buildRunExport({ runId: run.id, name: 'm66probe' })
@@ -462,6 +469,11 @@ await runSections({
         const decl = declRaw ? new TextDecoder().decode(declRaw) : ''
         check(decl.includes(imgFile.aigc?.propagateId ?? '\u0000-nope') || decl.includes('ProduceID'), '声明文件含标识清单')
         check(decl.includes(`ProduceID: ${imgGenId}`) && decl.includes(`ProduceID: ${vidGenId}`), '声明文件图像/视频条目 ProduceID 与生成期记录一致')
+        // 非媒体条目（text）：无逐文件 aigc 键、不入声明清单行（container 级 compliance 记录与声明文件头行仍在）
+        const txtFile = manifest.files.find((f) => f.path.startsWith('text/'))
+        check(!!txtFile, '非媒体条目（text）已入包')
+        check(txtFile?.aigc === undefined, '非媒体条目 manifest 无 aigc 键')
+        check(!decl.includes(txtFile?.path ?? '\u0000-nope'), '非媒体条目不入声明清单行')
         // 图像副本为合法 PNG（drawtext 重编码单帧）
         const pngOut = Buffer.from(files[imgFile.path]!)
         check(pngOut.readUInt32BE(0) === 0x89504e47, '图像副本仍为合法 PNG')

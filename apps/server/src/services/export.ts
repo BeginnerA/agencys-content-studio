@@ -146,6 +146,7 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       ]
       for (const e of entries) {
         const { a, path } = e
+        const labelable = a.kind === 'image' || a.kind === 'video' || a.kind === 'audio'
         const genProduceId = readAigcProduceId(a)
         const srcAbs = absPathOf(a.relPath!)
         let labeledAbs: string | null = null
@@ -182,16 +183,19 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
           } else if (ffmpeg && (a.kind === 'video' || a.kind === 'audio')) {
             const { json, produceId } = aigcMetadata({ producer: compliance.producer, contentPropagator: compliance.producer, propagateId, produceId: genProduceId ?? undefined })
             const out = join(labelTempDir, `labeled-${a.id}.${a.ext ?? 'mp4'}`)
-            if (remuxMediaMetaToFile(srcAbs, a.ext ?? 'mp4', json, out)) { e.srcAbs = out; labeledAbs = out; labelProduceId = produceId }
+            if (await remuxMediaMetaToFile(srcAbs, a.ext ?? 'mp4', json, out)) { e.srcAbs = out; labeledAbs = out; labelProduceId = produceId }
           }
         } catch { /* 打标失败 → 回落原文件 */ }
         if (labeledAbs) labeledTemps.push(labeledAbs)
-        else if (a.kind === 'image' || a.kind === 'video' || a.kind === 'audio') log.warn(`发布包打标失败，回落原文件: 资产 #${a.id}（${path}）`)
+        else if (labelable) log.warn(`发布包打标失败，回落原文件: 资产 #${a.id}（${path}）`)
         // ProduceID 一致性：打标成功 → 声明清单与内嵌元数据同源（生成期透传；M66 前旧资产 → 本次打标新 UUID）；
-        // 打标失败/未打标（文本等）→ 保留生成期记录可读，否则「未登记」
+        // 打标失败/未打标（文本等）→ 保留生成期记录可读，否则「未登记」。
+        // M66：非媒体条目（text/archive 等）无载体可嵌 → 不入逐文件 aigc 键与声明清单行（container 级 compliance 记录与文件头行不受影响）
         const produceId = labelProduceId ?? genProduceId
-        exportMeta.set(a.id, { produceId, propagateId, labeled: labeledAbs !== null })
-        lines.push(`- ${path}（ProduceID: ${produceId ?? '未登记'}；PropagateID: ${propagateId}）`)
+        if (labelable) {
+          exportMeta.set(a.id, { produceId, propagateId, labeled: labeledAbs !== null })
+          lines.push(`- ${path}（ProduceID: ${produceId ?? '未登记'}；PropagateID: ${propagateId}）`)
+        }
       }
       declaration = lines.join('\n')
     }

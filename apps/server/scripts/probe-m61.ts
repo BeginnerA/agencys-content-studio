@@ -606,7 +606,8 @@ await runSections({
       check(pbParams.title_lines === undefined && pbParams.style_plan === undefined && pbParams.style_source === undefined, '对照字幕资产 params 零增键（off 逐字节现状）')
       const fvB = await finalOf(runB)
       const pb = JSON.parse(fvB.params ?? '{}') as Record<string, any>
-      check(pb.title_card === undefined && pb.title_style === undefined && pb.images === 2, '对照成片 params 零增键、images=2')
+      check(pb.title_card === undefined && pb.title_style === undefined && pb.images === 2, '对照成片 params 除 M66 compliance 溯源键外零增键、images=2')
+      check(typeof pb.compliance === 'object' && pb.compliance !== null && typeof pb.compliance.produce_id === 'string', '对照成片 params 含 M66 compliance 溯源键（produce_id 与内嵌元数据同源，隐式恒写不可关）')
       const durB = probeMediaDuration(absPathOf(fvB.relPath!))
       check(durB !== null && Math.abs(durB - 4) <= 0.5, `对照成片 ≈4s（无卡，现状 Σd；实际 ${durB?.toFixed(2)}s）`)
       const wb = await whitePixelsIn(absPathOf(fvB.relPath!), 1)

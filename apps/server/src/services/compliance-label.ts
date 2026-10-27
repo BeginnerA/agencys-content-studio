@@ -5,7 +5,7 @@
  * - 红线：隐式标识不可关；失败旁路不阻断（返回 ok:false，调用方 warn + tags 标记）；
  *   纯函数探针直测；绝不重新编码图像像素数据（PNG/JPEG 只做字节级段插入）
  */
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
@@ -43,9 +43,11 @@ export function aigcMetadata(opts: { producer: string; contentPropagator?: strin
   return { json: JSON.stringify(meta), produceId: meta.ProduceID, meta }
 }
 
-/** PNG tEXt 块插入（IHDR 之后；keyword AIGC\0 + JSON 值；CRC32 用 zlib.crc32（Node≥22.2）；非 PNG → null） */
+/** PNG tEXt 块插入（IHDR 之后；keyword AIGC\0 + JSON 值；CRC32 用 zlib.crc32（Node≥22.2）；非 PNG / IHDR 块头不符 → null） */
 export function insertPngText(png: Buffer, metaJson: string): Buffer | null {
   if (png.length < 33 || png.readUInt32BE(0) !== 0x89504e47 || png.readUInt32BE(4) !== 0x0d0a1a0a) return null
+  // 首块廉价校验：长度域 13 + 类型域 'IHDR'（插入点假设首块即 IHDR，防结构异常输入误插损坏文件）
+  if (png.readUInt32BE(8) !== 13 || png.subarray(12, 16).toString('latin1') !== 'IHDR') return null
   const data = Buffer.concat([Buffer.from(`${AIGC_META_KEY}\0`, 'latin1'), Buffer.from(metaJson, 'utf8')])
   const chunk = Buffer.alloc(12 + data.length)
   chunk.writeUInt32BE(data.length, 0)
@@ -100,29 +102,34 @@ function remuxFormatFor(ext: string): string | null {
 
 /** 共享内核：-c copy 流复制重封装写元数据到 outAbs（含 -movflags +use_metadata_tags——mp4/mov 系 muxer
  *  默认丢弃未知元数据键，须显式开启自由键写入；mp3 muxer 忽略该选项，走 ID3v2 TXXX 原生路径）。
- *  outAbs 的生命周期由调用方负责；成功 true / 失败 false */
-function remuxToFile(srcAbs: string, ext: string, metaJson: string, outAbs: string): boolean {
+ *  outAbs 的生命周期由调用方负责；成功 true / 失败 false。
+ *  异步 spawn（对齐 ffmpeg-merge/exec.ts runFfmpeg 仓内惯例，热路径不阻塞事件循环；
+ *  timeout 60s 由 spawn 选项 kill 等价 spawnSync timeout 语义——kill 后 close 非 0 → false） */
+async function remuxToFile(srcAbs: string, ext: string, metaJson: string, outAbs: string): Promise<boolean> {
   const fmt = remuxFormatFor(ext)
   const ffmpeg = resolveFfmpeg()
   if (!fmt || !ffmpeg) return false
   try {
-    const r = spawnSync(
-      ffmpeg,
-      ['-y', '-i', srcAbs, '-map', '0', '-c', 'copy', '-movflags', '+use_metadata_tags', '-metadata', `${AIGC_META_KEY}=${metaJson}`, '-f', fmt, outAbs],
-      { stdio: 'ignore', timeout: 60_000, windowsHide: true },
-    )
-    return !r.error && r.status === 0 && existsSync(outAbs)
+    return await new Promise<boolean>((resolve) => {
+      const child = spawn(
+        ffmpeg,
+        ['-y', '-i', srcAbs, '-map', '0', '-c', 'copy', '-movflags', '+use_metadata_tags', '-metadata', `${AIGC_META_KEY}=${metaJson}`, '-f', fmt, outAbs],
+        { stdio: 'ignore', timeout: 60_000, windowsHide: true },
+      )
+      child.on('error', () => resolve(false))
+      child.on('close', (code) => resolve(code === 0 && existsSync(outAbs)))
+    })
   } catch {
     return false
   }
 }
 
 /** ffmpeg -c copy 重封装写元数据（流复制不重编码；tmp+rename 原子替换）；成功 true / 失败 false */
-export function remuxMediaMeta(absPath: string, ext: string, metaJson: string): boolean {
+export async function remuxMediaMeta(absPath: string, ext: string, metaJson: string): Promise<boolean> {
   const tmp = `${absPath}.aigc-tmp`
   let ok = false
   try {
-    ok = remuxToFile(absPath, ext, metaJson, tmp)
+    ok = await remuxToFile(absPath, ext, metaJson, tmp)
     if (ok) renameSync(tmp, absPath)
     return ok
   } catch {
@@ -134,7 +141,7 @@ export function remuxMediaMeta(absPath: string, ext: string, metaJson: string): 
 }
 
 /** 重封装写元数据到指定输出（非破坏性：不改原文件；发布包打标用）；成功 true / 失败 false */
-export function remuxMediaMetaToFile(absPath: string, ext: string, metaJson: string, outAbs: string): boolean {
+export async function remuxMediaMetaToFile(absPath: string, ext: string, metaJson: string, outAbs: string): Promise<boolean> {
   return remuxToFile(absPath, ext, metaJson, outAbs)
 }
 
@@ -151,12 +158,17 @@ export async function applyImplicitLabel(absPath: string, ext: string, opts: { p
       const out = ext === 'png' ? insertPngText(buf, json) : insertJpegApp1(buf, json)
       if (!out) return { ok: false, produceId: null, error: `insert failed: ext=${ext}` }
       const tmp = `${absPath}.aigc-tmp`
-      writeFileSync(tmp, out)
-      renameSync(tmp, absPath)
+      try {
+        writeFileSync(tmp, out)
+        renameSync(tmp, absPath)
+      } finally {
+        // 所有失败路径清除 .aigc-tmp 残留（成功路径 tmp 已被 rename 走 → ENOENT 静默；与重封装路径同律）
+        try { unlinkSync(tmp) } catch { /* 清理失败不影响判定 */ }
+      }
       return { ok: true, produceId }
     }
     if (remuxFormatFor(ext)) {
-      return remuxMediaMeta(absPath, ext, json) ? { ok: true, produceId } : { ok: false, produceId: null, error: `remux failed: ext=${ext}` }
+      return (await remuxMediaMeta(absPath, ext, json)) ? { ok: true, produceId } : { ok: false, produceId: null, error: `remux failed: ext=${ext}` }
     }
     return { ok: false, produceId: null, error: `unsupported ext=${ext}` }
   } catch (err) {
