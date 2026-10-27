@@ -228,7 +228,7 @@ function projName(id: number) {
         <Icon name="upload" :size="12" /> 批量导入
       </button>
       <button v-if="subTab === 'list'" class="btn sm" @click="openImport">
-        <Icon name="upload" :size="12" /> 导入文件
+        <Icon name="upload" :size="12" /> 导入平台数据
       </button>
       <select v-if="subTab === 'trend'" v-model="days" @change="loadTrend()">
         <option :value="7">7 天</option>
