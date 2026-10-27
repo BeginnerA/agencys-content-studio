@@ -156,7 +156,8 @@ async function main(): Promise<void> {
       check(apply(true, 'talking-head', undefined) === false, '严格+非创建 → 从不 resolve（爆炸半径受 isCreationTemplate 限定）')
 
       const brandless = await mkProject('m45-gate-brandless')
-      check(Object.keys(await resolveBrandConfig(brandless, null)).length === 0, '项目+平台均未配 → resolveBrandConfig 返回 {}（合成逐字节不变基线）')
+      const rb0 = await resolveBrandConfig(brandless, null)
+      check(Object.keys(rb0).length === 1 && rb0.compliance?.enabled === true && !rb0.subtitle && !rb0.watermark, '项目+平台均未配 → 仅 compliance 槽默认开（M66 隐式合规；字幕/水印槽缺省不变）')
       const branded = await mkProject('m45-gate-branded', BRAND_SUBTITLE)
       const rb = await resolveBrandConfig(branded, null)
       check(!!rb.subtitle && rb.subtitle?.font === 'ProbeSerif' && !rb.watermark, '字幕样式配置（纯配置无文件）→ 非空 brand；未配水印槽缺位')

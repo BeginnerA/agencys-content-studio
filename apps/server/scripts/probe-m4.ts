@@ -499,8 +499,8 @@ async function main(): Promise<void> {
     check(names[0] === 'manifest.json', 'manifest 为首个条目')
     const set = new Set(names)
     check(
-      names.length === 5 && ['video/成片.mp4', 'cover/cover.png', 'cover/cover-1.png', 'text/script.md'].every((p) => set.has(p)),
-      `包内 role 目录与重名 -1（${names.join(' ')}）`,
+      names.length === 6 && ['video/成片.mp4', 'cover/cover.png', 'cover/cover-1.png', 'text/script.md', 'AI生成内容说明.txt'].every((p) => set.has(p)),
+      `包内 role 目录与重名 -1 + M66 声明文件包根（${names.join(' ')}）`,
     )
     const manifest = JSON.parse(new TextDecoder().decode(zip['manifest.json'])) as {
       run: { id: number }
@@ -508,8 +508,8 @@ async function main(): Promise<void> {
     }
     check(manifest.run.id === run.id && manifest.files.length === 4, `manifest.run.id / files=4（实际 ${manifest.files.length}）`)
     const mPaths = manifest.files.map((f) => f.path).sort().join('|')
-    const zPaths = names.filter((n) => n !== 'manifest.json').sort().join('|')
-    check(mPaths === zPaths, 'manifest.files 与包内文件逐一对应')
+    const zPaths = names.filter((n) => n !== 'manifest.json' && n !== 'AI生成内容说明.txt').sort().join('|')
+    check(mPaths === zPaths, 'manifest.files 与包内内容文件逐一对应（M66 声明文件为包级附函，不入 files 清单）')
     check(manifest.files.some((f) => f.path === 'video/成片.mp4' && f.role === 'main_video'), 'manifest role 标注（成片 main_video）')
 
     // [F05] 交付包不可变身份：登记 zip 自身 sha256；同名重复导出生成独立路径，历史包字节不被覆盖
@@ -521,7 +521,7 @@ async function main(): Promise<void> {
     // 勾选导出 + 错误分支
     const pkg2 = await buildRunExport({ runId: run.id, name: '勾选包', assetIds: [videoAsset.id] })
     const zip2 = unzipSync(readFileSync(absPathOf(pkg2.relPath!)))
-    check(Object.keys(zip2).filter((n) => n !== 'manifest.json').length === 1 && Object.keys(zip2).includes('video/成片.mp4'), 'assetIds 勾选导出仅含选中文件')
+    check(Object.keys(zip2).filter((n) => n !== 'manifest.json').length === 2 && Object.keys(zip2).includes('video/成片.mp4') && Object.keys(zip2).includes('AI生成内容说明.txt'), 'assetIds 勾选导出仅含选中文件 + M66 声明文件')
     const errOf = async (fn: () => Promise<unknown>): Promise<unknown> => {
       try {
         await fn()

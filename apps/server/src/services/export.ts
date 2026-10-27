@@ -195,6 +195,17 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       }
       declaration = lines.join('\n')
     }
+    // M66：打标条目指纹预取（流式哈希副本最终字节，不整读入内存；读取失败回落原件指纹）
+    const copyFingerprints = new Map<number, { size: number; sha256: string }>()
+    for (const { a, path, srcAbs } of entries) {
+      if (exportMeta.get(a.id)?.labeled === true && srcAbs) {
+        try {
+          copyFingerprints.set(a.id, { size: statSync(srcAbs).size, sha256: await sha256File(srcAbs) })
+        } catch {
+          log.warn(`发布包打标副本指纹读取失败，回落原件指纹: 资产 #${a.id}（${path}）`)
+        }
+      }
+    }
     const manifest = {
       version: 1,
       generatedAt: Date.now(),
@@ -205,21 +216,13 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       },
       // M66 只增键（向后兼容）：开启态记录 compliance + 逐文件 aigc；关闭态 = null / 无 aigc 键
       compliance: compliance?.enabled ? { enabled: true, producer: compliance.producer } : null,
-      files: entries.map(({ a, path, srcAbs }) => {
+      files: entries.map(({ a, path }) => {
         const meta = exportMeta.get(a.id)
-        // M66：打标条目包内字节为打标副本 → size/sha256 取副本最终字节（重编码/重封装 + 内嵌标识完成后），
+        // M66：打标条目包内字节为打标副本 → size/sha256 取副本最终字节（流式哈希，副本不整读入内存），
         // 与 zip 实际内容一致（包完整性消费方不失配）；未打标条目仍为工作区原件指纹
-        let size = a.fileSize
-        let sha256 = a.sha256
-        if (meta?.labeled === true && srcAbs) {
-          try {
-            const copy = readFileSync(srcAbs)
-            size = copy.byteLength
-            sha256 = createHash('sha256').update(copy).digest('hex')
-          } catch {
-            log.warn(`发布包打标副本指纹读取失败，回落原件指纹: 资产 #${a.id}（${path}）`)
-          }
-        }
+        const copyFp = copyFingerprints.get(a.id)
+        const size = copyFp ? copyFp.size : a.fileSize
+        const sha256 = copyFp ? copyFp.sha256 : a.sha256
         return {
           path, role: roleOfAsset(a).role, assetId: a.id, purpose: a.purpose, size, sha256,
           ...(meta ? { aigc: meta } : {}),

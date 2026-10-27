@@ -108,55 +108,59 @@ await runSections({
       const { applyImplicitLabel } = await import('../src/services/compliance-label')
       const { resolveFfmpeg, resolveFfprobe } = await import('../src/services/ffmpeg')
       const { execFileSync } = await import('node:child_process')
-      const { mkdtempSync, readFileSync } = await import('node:fs')
+      const { mkdtempSync, readFileSync, rmSync } = await import('node:fs')
       const { tmpdir } = await import('node:os')
       const { join } = await import('node:path')
 
       const ffmpeg = resolveFfmpeg()
       check(!!ffmpeg, '内置 ffmpeg 可用')
       const dir = mkdtempSync(join(tmpdir(), 'm66-remux-'))
+      try {
+        // 小样制作（1s）：mp4（color 源）、mp3（sine 源）、png（单帧图像）
+        const mp4 = join(dir, 'a.mp4')
+        execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1', '-pix_fmt', 'yuv420p', mp4], { stdio: 'ignore' })
+        const mp3 = join(dir, 'a.mp3')
+        execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-q:a', '9', mp3], { stdio: 'ignore' })
+        const png = join(dir, 'a.png')
+        execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', png], { stdio: 'ignore' })
 
-      // 小样制作（1s）：mp4（color 源）、mp3（sine 源）、png（单帧图像）
-      const mp4 = join(dir, 'a.mp4')
-      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1', '-pix_fmt', 'yuv420p', mp4], { stdio: 'ignore' })
-      const mp3 = join(dir, 'a.mp3')
-      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-q:a', '9', mp3], { stdio: 'ignore' })
-      const png = join(dir, 'a.png')
-      execFileSync(ffmpeg!, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', png], { stdio: 'ignore' })
+        const readTag = (file: string, probeBin: string): string | null => {
+          try {
+            const r = execFileSync(probeBin, ['-v', 'error', '-show_entries', 'format_tags=AIGC', '-of', 'json', file], { encoding: 'utf8' })
+            const doc = JSON.parse(r) as { format?: { tags?: Record<string, string> } }
+            return doc.format?.tags?.['AIGC'] ?? null
+          } catch { return null }
+        }
 
-      const readTag = (file: string, probeBin: string): string | null => {
-        try {
-          const r = execFileSync(probeBin, ['-v', 'error', '-show_entries', 'format_tags=AIGC', '-of', 'json', file], { encoding: 'utf8' })
-          const doc = JSON.parse(r) as { format?: { tags?: Record<string, string> } }
-          return doc.format?.tags?.['AIGC'] ?? null
-        } catch { return null }
+        // mp4 重封装后 tag 可读且六字段正确
+        const r1 = await applyImplicitLabel(mp4, 'mp4', { producer: '测试工作室' })
+        check(r1.ok && !!r1.produceId, 'mp4 隐式标识写入成功')
+        const tag1 = readTag(mp4, resolveFfprobe()!)
+        check(!!tag1, 'mp4 format_tags 可读回 AIGC')
+        const meta1 = JSON.parse(tag1!) as Record<string, string>
+        check(meta1['Label'] === '1' && meta1['ContentProducer'] === '测试工作室' && !!meta1['ProduceID'], 'mp4 六字段内容正确')
+        // 二次读回逐字稳定（幂等重封装会另发 ProduceID，此处只验证读回稳定，不验证二次打标）
+        check(readTag(mp4, resolveFfprobe()!) === tag1, '重封装后 AIGC tag 读回稳定')
+
+        // mp3 同律
+        const r2 = await applyImplicitLabel(mp3, 'mp3', { producer: '测试工作室' })
+        check(r2.ok, 'mp3 隐式标识写入成功')
+        const tag2 = readTag(mp3, resolveFfprobe()!)
+        check(!!tag2 && (JSON.parse(tag2!) as Record<string, string>)['Label'] === '1', 'mp3 AIGC tag 可读')
+
+        // png 走纯 Node 通道后仍为合法 PNG 且可被 ffprobe 读取
+        const r3 = await applyImplicitLabel(png, 'png', { producer: '测试工作室' })
+        check(r3.ok, 'png 隐式标识写入成功')
+        check(readFileSync(png).readUInt32BE(0) === 0x89504e47, 'png 签名完好')
+        const probePng = readTag(png, resolveFfprobe()!)
+        check(probePng === null || (JSON.parse(probePng!) as Record<string, string>)['Label'] === '1', 'png 容器读回兼容（tEXt 不破坏解析）')
+
+        // 失败旁路：不存在的扩展名
+        const r4 = await applyImplicitLabel(mp4, 'xyz', { producer: 'x' })
+        check(!r4.ok && !!r4.error, '不支持扩展名返回 ok:false 不抛异常')
+      } finally {
+        try { rmSync(dir, { recursive: true, force: true }) } catch { /* 清理失败不掩盖断言结果 */ }
       }
-
-      // mp4 重封装后 tag 可读且六字段正确
-      const r1 = await applyImplicitLabel(mp4, 'mp4', { producer: '测试工作室' })
-      check(r1.ok && !!r1.produceId, 'mp4 隐式标识写入成功')
-      const tag1 = readTag(mp4, resolveFfprobe()!)
-      check(!!tag1, 'mp4 format_tags 可读回 AIGC')
-      const meta1 = JSON.parse(tag1!) as Record<string, string>
-      check(meta1['Label'] === '1' && meta1['ContentProducer'] === '测试工作室' && !!meta1['ProduceID'], 'mp4 六字段内容正确')
-      check(readTag(mp4, resolveFfprobe()!) === tag1, '重封装幂等（内容流未变仅元数据）')
-
-      // mp3 同律
-      const r2 = await applyImplicitLabel(mp3, 'mp3', { producer: '测试工作室' })
-      check(r2.ok, 'mp3 隐式标识写入成功')
-      const tag2 = readTag(mp3, resolveFfprobe()!)
-      check(!!tag2 && (JSON.parse(tag2!) as Record<string, string>)['Label'] === '1', 'mp3 AIGC tag 可读')
-
-      // png 走纯 Node 通道后仍为合法 PNG 且可被 ffprobe 读取
-      const r3 = await applyImplicitLabel(png, 'png', { producer: '测试工作室' })
-      check(r3.ok, 'png 隐式标识写入成功')
-      check(readFileSync(png).readUInt32BE(0) === 0x89504e47, 'png 签名完好')
-      const probePng = readTag(png, resolveFfprobe()!)
-      check(probePng === null || (JSON.parse(probePng!) as Record<string, string>)['Label'] === '1', 'png 容器读回兼容（tEXt 不破坏解析）')
-
-      // 失败旁路：不存在的扩展名
-      const r4 = await applyImplicitLabel(mp4, 'xyz', { producer: 'x' })
-      check(!r4.ok && !!r4.error, '不支持扩展名返回 ok:false 不抛异常')
     },
     brand: async () => {
       const bc = await import('../src/services/brand-config')
@@ -168,6 +172,16 @@ await runSections({
       check(d.position === 'br', '角标位置缺省 br')
       check(d.margin_px === 24, '角标边距缺省 24')
       check(d.producer === '个人创作者', '创作主体缺省「个人创作者」')
+
+      // 非有限数值边界：NaN/Infinity 均按类型非法回落默认 24（Number.isFinite 防线）
+      check(bc.sanitizeCompliance({ margin_px: Number.NaN }).margin_px === 24, 'margin_px NaN 回落默认 24')
+      check(bc.sanitizeCompliance({ margin_px: Number.POSITIVE_INFINITY }).margin_px === 24, 'margin_px Infinity 回落默认 24')
+      // 空对象：全部字段回落缺省（缺省开 + 默认文案/位置/边距/主体）
+      const empty = bc.sanitizeCompliance({})
+      check(
+        empty.enabled === true && empty.text === 'AI生成' && empty.position === 'br' && empty.margin_px === 24 && empty.producer === '个人创作者',
+        '空对象 {} 全字段回落默认（enabled/text/position/margin_px/producer）',
+      )
 
       // 仅显式 false 关闭；非法字段清洗
       // 注：margin_px:999 为合法类型越界值，按 clamp 语义回落 200（与 c1 低端 clamp 对称）；类型非法才回落默认 24
@@ -272,6 +286,21 @@ await runSections({
       // 角标在链上位于字幕/水印之后（最顶层）：cmv 的来源标签为 outv
       check(/\[outv\]drawtext=/.test(fc) || /\[basev\]drawtext=/.test(fc), '角标叠加于字幕/水印之后')
 
+      // 多画幅派生路同样注入合规（M66）：filter 链含 [dcm 标签 + 派生输出组携带 -metadata AIGC
+      const rMa = buildComposeArgs({
+        ...base,
+        compliance: cArg,
+        metadataJson: '{"Label":"1"}',
+        multiAspect: { strategy: 'crop', targets: [{ aspect: '9:16', outAbs: '/tmp/out-9x16.mp4' }] },
+      })
+      const fcMa = rMa.args[rMa.args.indexOf('-filter_complex') + 1]!
+      check(fcMa.includes('[dcm0]'), '多画幅派生路角标 drawtext 已入 filter 链（[dcm0]）')
+      check(rMa.derived.length === 1 && rMa.derived[0]!.aspect === '9:16', '多画幅派生输出登记 9:16')
+      const dOutIdx = rMa.args.indexOf('/tmp/out-9x16.mp4')
+      const dMapIdx = rMa.args.lastIndexOf('-map', dOutIdx)
+      check(dMapIdx >= 0 && rMa.args[dMapIdx + 1] === '[dcm0]', '派生输出组 -map 映射 [dcm0]')
+      check(rMa.args[dOutIdx - 4] === '-metadata' && rMa.args[dOutIdx - 3] === 'AIGC={"Label":"1"}', '派生输出组含 -metadata AIGC')
+
       // complianceDrawtextFilter 纯函数：九宫格表达式与转义
       const f1 = complianceDrawtextFilter({ text: 'AI生成', position: 'br', margin_px: 24, fontAbs: 'C:/a b/msyh.ttc' }, 720)
       check(f1.includes('x=w-text_w-24') && f1.includes('y=h-text_h-24'), 'br 定位表达式正确')
@@ -309,7 +338,7 @@ await runSections({
       const { labelGeneratedFile } = await import('../src/services/compliance-label')
       const { absPathOf, sha256Hex } = await import('../src/services/storage')
       const { resolveFfmpeg } = await import('../src/services/ffmpeg')
-      const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs')
+      const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import('node:fs')
       const { tmpdir } = await import('node:os')
       const { join } = await import('node:path')
       const { execFileSync } = await import('node:child_process')
@@ -321,43 +350,47 @@ await runSections({
       const ffmpegBin = resolveFfmpeg()!
       const projectId = await createProject()
       const dir = mkdtempSync(join(tmpdir(), 'm66-imp-'))
-      // 最小合法 PNG（ffmpeg lavfi 画单帧；不手工拼字节，保证与真实落盘同源）
-      const pngPath = join(dir, 'tiny.png')
-      execFileSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=8x8', '-frames:v', '1', pngPath], { stdio: 'ignore' })
-
-      // base64 通道：saveGeneratedMedia 落盘即带 tEXt + params.aigc + tags（隐式标识不可关）
-      const asset = await saveGeneratedMedia({
-        projectId, kind: 'image', purpose: 'probe', prompt: 't', params: {},
-        source: { kind: 'base64', data: readFileSync(pngPath).toString('base64'), mime: 'image/png' },
-      })
-      check(asset.kind === 'image', '图像资产已登记')
-      const raw = readFileSync(absPathOf(asset.relPath!))
-      check(raw.readUInt32BE(0) === 0x89504e47, '落盘文件为合法 PNG')
-      check(raw.includes(Buffer.from('AIGC\0', 'latin1')), '落盘文件含 AIGC tEXt 隐式标识')
-      const assetTags = JSON.parse(asset.tags ?? '[]') as string[]
-      check(assetTags.includes('aigc'), 'tags 含 aigc 标记')
-      // params 落库为 JSON 字符串（registerAsset JSON.stringify）→ 解析后断言
-      const p = JSON.parse(asset.params ?? '{}') as { aigc?: { produceId?: string; produceAt?: number } }
-      check(typeof p.aigc?.produceId === 'string' && p.aigc.produceId.length === 36, 'params.aigc.produceId 已留痕')
-      check(typeof p.aigc?.produceAt === 'number', 'params.aigc.produceAt 已留痕')
-      // fileSize/sha256 以打标后文件为准（而非原始字节）
-      check(asset.fileSize === raw.byteLength, 'fileSize 为打标后文件尺寸')
-      check(asset.sha256 === sha256Hex(raw), 'sha256 为打标后文件指纹')
-
-      // 成功路径 tags 语义：无 compliance_failed（失败旁路语义已在 remux 节直测）
-      const row = (await db.select().from(assets).where(eq(assets.id, asset.id)).limit(1))[0]!
-      check(!(JSON.parse(row.tags ?? '[]') as string[]).includes('compliance_failed'), '成功路径无 compliance_failed 标记')
-
-      // 旁路契约直测（接线所依赖的最小单元）：不支持扩展名 → ok:false 且 promise 正常 resolve 不抛
-      const xyzPath = join(dir, 'noext.xyz')
-      writeFileSync(xyzPath, 'm66')
-      let bypass: Awaited<ReturnType<typeof labelGeneratedFile>> | null = null
-      let bypassResolved = false
       try {
-        bypass = await labelGeneratedFile(xyzPath, 'xyz')
-        bypassResolved = true
-      } catch { /* 旁路契约禁止抛出 */ }
-      check(bypassResolved && bypass?.ok === false, 'labelGeneratedFile 不支持扩展名 ok:false 且不抛（旁路契约）')
+        // 最小合法 PNG（ffmpeg lavfi 画单帧；不手工拼字节，保证与真实落盘同源）
+        const pngPath = join(dir, 'tiny.png')
+        execFileSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'color=c=red:s=8x8', '-frames:v', '1', pngPath], { stdio: 'ignore' })
+
+        // base64 通道：saveGeneratedMedia 落盘即带 tEXt + params.aigc + tags（隐式标识不可关）
+        const asset = await saveGeneratedMedia({
+          projectId, kind: 'image', purpose: 'probe', prompt: 't', params: {},
+          source: { kind: 'base64', data: readFileSync(pngPath).toString('base64'), mime: 'image/png' },
+        })
+        check(asset.kind === 'image', '图像资产已登记')
+        const raw = readFileSync(absPathOf(asset.relPath!))
+        check(raw.readUInt32BE(0) === 0x89504e47, '落盘文件为合法 PNG')
+        check(raw.includes(Buffer.from('AIGC\0', 'latin1')), '落盘文件含 AIGC tEXt 隐式标识')
+        const assetTags = JSON.parse(asset.tags ?? '[]') as string[]
+        check(assetTags.includes('aigc'), 'tags 含 aigc 标记')
+        // params 落库为 JSON 字符串（registerAsset JSON.stringify）→ 解析后断言
+        const p = JSON.parse(asset.params ?? '{}') as { aigc?: { produceId?: string; produceAt?: number } }
+        check(typeof p.aigc?.produceId === 'string' && p.aigc.produceId.length === 36, 'params.aigc.produceId 已留痕')
+        check(typeof p.aigc?.produceAt === 'number', 'params.aigc.produceAt 已留痕')
+        // fileSize/sha256 以打标后文件为准（而非原始字节）
+        check(asset.fileSize === raw.byteLength, 'fileSize 为打标后文件尺寸')
+        check(asset.sha256 === sha256Hex(raw), 'sha256 为打标后文件指纹')
+
+        // 成功路径 tags 语义：无 compliance_failed（失败旁路语义已在 remux 节直测）
+        const row = (await db.select().from(assets).where(eq(assets.id, asset.id)).limit(1))[0]!
+        check(!(JSON.parse(row.tags ?? '[]') as string[]).includes('compliance_failed'), '成功路径无 compliance_failed 标记')
+
+        // 旁路契约直测（接线所依赖的最小单元）：不支持扩展名 → ok:false 且 promise 正常 resolve 不抛
+        const xyzPath = join(dir, 'noext.xyz')
+        writeFileSync(xyzPath, 'm66')
+        let bypass: Awaited<ReturnType<typeof labelGeneratedFile>> | null = null
+        let bypassResolved = false
+        try {
+          bypass = await labelGeneratedFile(xyzPath, 'xyz')
+          bypassResolved = true
+        } catch { /* 旁路契约禁止抛出 */ }
+        check(bypassResolved && bypass?.ok === false, 'labelGeneratedFile 不支持扩展名 ok:false 且不抛（旁路契约）')
+      } finally {
+        try { rmSync(dir, { recursive: true, force: true }) } catch { /* 清理失败不掩盖断言结果 */ }
+      }
     },
     export: async () => {
       const { buildRunExport } = await import('../src/services/export')

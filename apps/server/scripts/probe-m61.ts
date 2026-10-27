@@ -494,13 +494,33 @@ await runSections({
         return run!.id
       }
       const finalOf = async (runId: number) => (await db.select().from(assets).where(and(eq(assets.runId, runId), eq(assets.purpose, 'final_video'))))[0]!
-      const whitePixelsIn = async (abs: string, atSec: number): Promise<number> => {
+      const whitePixelsIn = async (abs: string, atSec: number, excludeBrBadge = false): Promise<number> => {
         const r = spawnSync(ffmpeg, ['-v', 'error', '-ss', String(atSec), '-i', abs, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 60_000, windowsHide: true })
         const buf = r.stdout
         if (!buf || buf.length < 3 * 320 * 240) return -1
         let n = 0
-        for (let i = 0; i + 2 < buf.length; i += 3) {
-          if (buf[i]! > 200 && buf[i + 1]! > 200 && buf[i + 2]! > 200) n++
+        for (let y = 0; y < 240; y++) {
+          for (let x = 0; x < 320; x++) {
+            // M66 默认合规角标（br：x=w-text_w-24 / y=h-text_h-24，fontsize 18 @240p）固定落右下角区；
+            // excludeBrBadge 时跳过该角区，「残留标题」语义只看角标区外（残留标题居中，不会落进该角区）
+            if (excludeBrBadge && x >= 200 && y >= 180) continue
+            const i = (y * 320 + x) * 3
+            if (buf[i]! > 200 && buf[i + 1]! > 200 && buf[i + 2]! > 200) n++
+          }
+        }
+        return n
+      }
+      // M66 合规角标白像素（仅统计右下角区 x≥200/y≥180；照片为纯红/纯绿，角区白像素只能来自角标白字）
+      const badgePixelsIn = async (abs: string, atSec: number): Promise<number> => {
+        const r = spawnSync(ffmpeg, ['-v', 'error', '-ss', String(atSec), '-i', abs, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 60_000, windowsHide: true })
+        const buf = r.stdout
+        if (!buf || buf.length < 3 * 320 * 240) return -1
+        let n = 0
+        for (let y = 180; y < 240; y++) {
+          for (let x = 200; x < 320; x++) {
+            const i = (y * 320 + x) * 3
+            if (buf[i]! > 200 && buf[i + 1]! > 200 && buf[i + 2]! > 200) n++
+          }
         }
         return n
       }
@@ -560,8 +580,10 @@ await runSections({
         // 卡呈现：成片 1s 处（卡在 [0,8.5)）含白色文字像素；底色 #101826 非纯色（文字存在证明）
         const w1 = await whitePixelsIn(absA, 1)
         check(w1 > 30, `字卡帧含白字（1s 处白像素 ${w1} 个）`)
-        const w2 = await whitePixelsIn(absA, 9.5)
-        check(w2 >= 0 && w2 < 20, `正片照片帧无残留标题（9.5s 处白像素 ${w2} 个：全部标题 cue 已裁，双呈现防线）`)
+        const w2 = await whitePixelsIn(absA, 9.5, true)
+        check(w2 >= 0 && w2 < 20, `正片照片帧无残留标题（9.5s 处角标区外白像素 ${w2} 个：全部标题 cue 已裁，双呈现防线）`)
+        const wb66 = await badgePixelsIn(absA, 9.5)
+        check(wb66 > 0, `M66 默认合规角标在场（9.5s 处右下角区白像素 ${wb66} 个：AI生成 白字烧录）`)
         // 双呈现防线：成片内嵌 ASS 由 index 生成——断言字幕资产 SRT 本身不变（M29 只读），裁切仅在烧录 ASS
         const srtText = await readTextAsset(srtRow.id)
         check(srtText.includes('囍事当前') && srtText.includes('00:00:00,500 --> 00:00:04,500'), 'SRT 资产只读不动（标题 cue 仍在源文件，裁切仅烧录 ASS 侧）')

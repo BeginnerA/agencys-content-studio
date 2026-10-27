@@ -19,8 +19,12 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(Object.keys(await readProjectBrand(pid)).length === 0, 'readProjectBrand 缺省 → {}')
     check(Object.keys(readComposeBrand('not-json')).length === 0 && Object.keys(readComposeBrand(null)).length === 0, 'readComposeBrand 坏输入/空输入 → {}')
 
-    // ---- 三层皆空 → {}（零 diff 前置；须在写入平台品牌层前断言——平台层不区分项目全域生效） ----
-    check(Object.keys(await resolveBrandConfig(pid, null)).length === 0, '三层皆空 → {}（调用方保持现行为）')
+    // ---- 三层皆空 → 仅 compliance 槽（M66 隐式合规默认恒开；水印/字幕槽零增键现状；须在写入平台品牌层前断言——平台层不区分项目全域生效） ----
+    const rEmpty = await resolveBrandConfig(pid, null)
+    check(
+      Object.keys(rEmpty).length === 1 && rEmpty.compliance?.enabled === true && rEmpty.compliance.text === 'AI生成' && rEmpty.compliance.position === 'br' && rEmpty.compliance.margin_px === 24 && rEmpty.watermark === undefined && rEmpty.subtitle === undefined,
+      '三层皆空 → 仅 compliance 槽默认开启（M66：text/position/margin 默认；水印/字幕槽缺省不变）',
+    )
 
     // ---- 平台层 + 文件来源解析（水印文件真实落 BRAND_DIR） ----
     check(existsSync(BRAND_DIR), 'BRAND_DIR 已创建（ensureDirs）')

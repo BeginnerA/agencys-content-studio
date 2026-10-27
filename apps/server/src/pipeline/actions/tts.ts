@@ -307,7 +307,8 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         model: lineEp.model,
       })
       assetIds.push(asset.id)
-      ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${data.byteLength} 字节）`)
+      // M66：日志与 DB fileSize 同源（打标后字节数），避免台账与库内口径不一致
+      ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${labeledBuf.byteLength} 字节）`)
     } catch (err) {
       if (err instanceof RunCancelledError) throw err
       await db
