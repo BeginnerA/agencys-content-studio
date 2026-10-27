@@ -129,12 +129,19 @@ export const publicationApi = {
   // M67 平台数据文件导入（multipart 直传，不走 JSON 封装）
   importFile: async (
     file: File,
-    payload: { projectId: number; platform: string; mapping: Record<string, number>; dryRun: boolean; preset?: string },
+    payload: {
+      projectId: number
+      platform: string
+      mapping: Record<string, number>
+      dryRun: boolean
+      preset?: string
+    },
   ): Promise<ImportPreview | ImportResult> => {
     const form = new FormData()
     form.append('file', file, file.name)
     form.append('platform', payload.platform)
-    if (Object.keys(payload.mapping).length > 0) form.append('mapping', JSON.stringify(payload.mapping))
+    if (Object.keys(payload.mapping).length > 0)
+      form.append('mapping', JSON.stringify(payload.mapping))
     if (payload.preset) form.append('preset', payload.preset)
     let res: Response
     try {
@@ -149,7 +156,9 @@ export const publicationApi = {
       let code = 'http_error'
       let message = `HTTP ${res.status}`
       try {
-        const data = (await res.json()) as { error?: { code?: string; message?: string } }
+        const data = (await res.json()) as {
+          error?: { code?: string; message?: string }
+        }
         if (data?.error?.code) {
           code = data.error.code
           message = data.error.message ?? message
@@ -162,11 +171,17 @@ export const publicationApi = {
     return (await res.json()) as ImportPreview | ImportResult
   },
   importPresets: () =>
-    api.get<{ presets: Record<string, { platform: string; mapping: Record<string, number> }> }>(
-      `${BASE}/publications/import/presets`,
-    ),
-  saveImportPreset: (body: { name: string; platform: string; mapping: Record<string, number> }) =>
-    api.put<{ ok: boolean }>(`${BASE}/publications/import/presets`, body),
+    api.get<{
+      presets: Record<
+        string,
+        { platform: string; mapping: Record<string, number> }
+      >
+    }>(`${BASE}/publications/import/presets`),
+  saveImportPreset: (body: {
+    name: string
+    platform: string
+    mapping: Record<string, number>
+  }) => api.put<{ ok: boolean }>(`${BASE}/publications/import/presets`, body),
 }
 
 export const settingsApi = {
