@@ -9,7 +9,8 @@ import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib
 
 const { cleanup } = isolatedEnv('m69')
 
-const SECTIONS = ['scope', 'diff', 'service', 'route'] as const
+// 只声明本任务已实现的分节；后续任务各自追加一节（未注册 runner 的分节会让 probe:ci 中途失败）
+const SECTIONS = ['scope'] as const
 
 const { createLogger } = await import('../src/logger')
 const log = createLogger('probe-m69')
