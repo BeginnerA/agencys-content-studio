@@ -41,6 +41,8 @@ const sb = props.sb
 
 <template>
   <div
+    :id="`shot-${shot.shotId}`"
+    :data-shot-id="shot.shotId"
     class="wb-card"
     :class="{
       off: !isEnabled(shot),
