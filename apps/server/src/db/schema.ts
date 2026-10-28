@@ -648,6 +648,52 @@ export const reworkRequests = sqliteTable(
 
 export type ReworkRequest = typeof reworkRequests.$inferSelect
 
+// ---------- M69 审片问题单（design §4.2；1 张新表，既有表 0 新列） ----------
+
+/** 审片问题：run + 基准成片 + 范围 + 类别 + 状态；复检证据只报变化，终判由人。 */
+export const reviewFindings = sqliteTable(
+  'review_findings',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    runId: integer('run_id').notNull(),
+    stepKey: text('step_key').notNull().default('compose'),
+    baseFinalAssetId: integer('base_final_asset_id').notNull(),
+    clientKey: text('client_key'),
+    // shot|time|global
+    scopeKind: text('scope_kind').notNull(),
+    shotId: text('shot_id'),
+    startMs: integer('start_ms'),
+    endMs: integer('end_ms'),
+    // visual|prop|lip_sync|subtitle|audio|pacing|other
+    category: text('category').notNull(),
+    // blocker|major|minor
+    severity: text('severity').notNull(),
+    note: text('note').notNull(),
+    // open|in_rework|pending_recheck|verified|dismissed
+    status: text('status').notNull().default('open'),
+    reworkRequestId: text('rework_request_id'),
+    reworkNote: text('rework_note'),
+    baseSnapshot: text('base_snapshot').notNull().default('{}'),
+    // changed|unchanged|unverifiable
+    recheckState: text('recheck_state'),
+    recheckFinalAssetId: integer('recheck_final_asset_id'),
+    recheckNote: text('recheck_note'),
+    recheckAt: integer('recheck_at'),
+    resolutionNote: text('resolution_note'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    resolvedAt: integer('resolved_at'),
+  },
+  (t) => [
+    uniqueIndex('idx_findings_run_client').on(t.runId, t.clientKey),
+    index('idx_findings_run_status').on(t.runId, t.status),
+    index('idx_findings_project').on(t.projectId),
+  ],
+)
+
+export type ReviewFinding = typeof reviewFindings.$inferSelect
+
 /** 创作控制态；生产状态始终由关联 run 投影。
  *  Agent 化（M63）纯加法列：agentMode NULL=legacy 会话（冻结 planHash 逐字走旧路径）；
  *  decision/decisionHash 仅 template/chain/synth 新执行形态参与确认闸（easy 形态 decision 列只是展示旁注，确认链仍读 plan/planHash）；
