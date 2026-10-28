@@ -332,6 +332,44 @@ await runSections({
       const noFinalList = await svc.listReviewFindings(noFinal.runId, 'compose')
       check(noFinalList.capability.code === 'no_final' && noFinalList.capability.writable === false && noFinalList.final === null, 'capability：无成片 → no_final、final=null、不可写')
 
+      // capability 优先级：cancelled / running 均先于 no_final
+      const cancelledList = await svc.listReviewFindings(cancelled.runId, 'compose')
+      check(cancelledList.capability.code === 'run_cancelled' && cancelledList.capability.writable === false, 'capability：cancelled（有 final）→ run_cancelled 且不可写')
+      const cancelledNoFinal = await seed({ status: 'cancelled', withFinal: false })
+      const cancelledNoFinalList = await svc.listReviewFindings(cancelledNoFinal.runId, 'compose')
+      check(
+        cancelledNoFinalList.final === null && cancelledNoFinalList.capability.code === 'run_cancelled' && cancelledNoFinalList.capability.writable === false,
+        'capability：cancelled 且无 final → run_cancelled（run_cancelled > no_final）',
+      )
+      const runningNoFinal = await seed({ status: 'running', withFinal: false })
+      const runningNoFinalList = await svc.listReviewFindings(runningNoFinal.runId, 'compose')
+      check(
+        runningNoFinalList.final === null && runningNoFinalList.capability.code === 'run_active' && runningNoFinalList.capability.writable === false,
+        'capability：running 且无 final → run_active（run_active > no_final）',
+      )
+
+      // summary.blockers_open：只计仍未关闭的 blocker（verified / dismissed 均排除）
+      const blk = await seed({})
+      await mkFinding(blk.runId, { category: 'prop', severity: 'blocker', note: '仍未解决', scope: { kind: 'global' } })
+      const bVerified = await mkFinding(blk.runId, { category: 'prop', severity: 'blocker', note: '已修好', scope: { kind: 'global' } })
+      const bDismissed = await mkFinding(blk.runId, { category: 'prop', severity: 'blocker', note: '不修了', scope: { kind: 'global' } })
+      await svc.markReworkFinding(blk.runId, bVerified.id, {})
+      const blkFinal = await registerAsset(blk.projectId, {
+        name: `final-blk-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final-blk-${seq}.mp4`,
+        sha256: `blksha${seq}`, runId: blk.runId, duration: 6, stepId: blk.step.id,
+        params: { timeline: mkTimeline({ s1Asset: blk.s1.id, s2Asset: blk.s2.id }) },
+      })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [blkFinal.id] }) }).where(eq(pipelineSteps.id, blk.step.id))
+      await svc.recheckFinding(blk.runId, bVerified.id)
+      await svc.verifyFinding(blk.runId, bVerified.id, { result: 'verified', final_asset_id: blkFinal.id })
+      await svc.dismissFinding(blk.runId, bDismissed.id, { note: '可接受' })
+      const blkList = await svc.listReviewFindings(blk.runId, 'compose')
+      check(
+        blkList.summary.total === 3 && blkList.summary.open === 1 && blkList.summary.verified === 1
+          && blkList.summary.dismissed === 1 && blkList.summary.blockers_open === 1,
+        'summary：三个 blocker（1 open / 1 verified / 1 dismissed）→ blockers_open 只计 1',
+      )
+
       // waiting_input 不在执行中集合 → 按可审处理
       const waiting = await seed({ status: 'waiting_input' })
       const waitingList = await svc.listReviewFindings(waiting.runId, 'compose')
@@ -488,6 +526,37 @@ await runSections({
       const patchedCancelled = await svc.patchReviewFinding(a.runId, fOut.id, { note: '取消后仍可编辑' })
       check(patchedCancelled.note === '取消后仍可编辑', 'cancelled：patch note 仍成功')
       await db.update(pipelineRuns).set({ status: 'completed' }).where(eq(pipelineRuns.id, a.runId))
+
+      // —— cancelled 逐条 can：用「未取消时本应可 verify / reopen」的行证明 cancelled 闸生效 ——
+      const cancelRun = await seed({})
+      const fVerifyBeforeCancel = await mkFinding(cancelRun.runId, { category: 'visual', severity: 'blocker', note: '待终判', scope: { kind: 'global' } })
+      const fPendingAtCancel = await mkFinding(cancelRun.runId, { category: 'visual', severity: 'minor', note: '取消时仍待终判', scope: { kind: 'global' } })
+      await svc.markReworkFinding(cancelRun.runId, fVerifyBeforeCancel.id, {})
+      await svc.markReworkFinding(cancelRun.runId, fPendingAtCancel.id, {})
+      const cancelNewFinal = await registerAsset(cancelRun.projectId, {
+        name: `final-cancel-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final-cancel-${seq}.mp4`,
+        sha256: `cancelsha${seq}`, runId: cancelRun.runId, duration: 6, stepId: cancelRun.step.id,
+        params: { timeline: mkTimeline({ s1Asset: cancelRun.s1.id, s2Asset: cancelRun.s2.id }) },
+      })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [cancelNewFinal.id] }) }).where(eq(pipelineSteps.id, cancelRun.step.id))
+      const pendingAtCancelView = await svc.recheckFinding(cancelRun.runId, fPendingAtCancel.id)
+      check(pendingAtCancelView.can.verify === true && pendingAtCancelView.can.dismiss === true, '前置：pending_recheck 且成片一致 → 未取消时 can.verify/dismiss=true')
+      await svc.recheckFinding(cancelRun.runId, fVerifyBeforeCancel.id)
+      const verifiedAtCancelView = await svc.verifyFinding(cancelRun.runId, fVerifyBeforeCancel.id, { result: 'verified', final_asset_id: cancelNewFinal.id })
+      check(verifiedAtCancelView.can.reopen === true, '前置：verified → 未取消时 can.reopen=true')
+      await db.update(pipelineRuns).set({ status: 'cancelled' }).where(eq(pipelineRuns.id, cancelRun.runId))
+      const cancelList = await svc.listReviewFindings(cancelRun.runId, 'compose')
+      const pendingCancelled = cancelList.findings.find((x) => x.id === fPendingAtCancel.id)!
+      check(
+        pendingCancelled.can.link === false && pendingCancelled.can.markRework === false && pendingCancelled.can.recheck === false
+          && pendingCancelled.can.verify === false && pendingCancelled.can.reopen === false && pendingCancelled.can.dismiss === false,
+        'cancelled：pending 行 can 六键全 false（verify/dismiss 原本可用）',
+      )
+      const verifiedCancelled = cancelList.findings.find((x) => x.id === fVerifyBeforeCancel.id)!
+      check(
+        verifiedCancelled.status === 'verified' && verifiedCancelled.can.verify === false && verifiedCancelled.can.reopen === false,
+        'cancelled：verified 行 can.reopen=false（原本可用）',
+      )
 
       // —— step_key 钉住：两合成步各有成片，只对钉住那步复检 ——
       const dual = await seed({ stepKey: 'compose' })
