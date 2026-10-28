@@ -25,6 +25,7 @@ import { publicationsRoutes } from './routes/publications'
 import { runsRoutes } from './routes/runs'
 import { reworkRoutes } from './routes/rework'
 import { qcRoutes } from './routes/qc'
+import { reviewRoutes } from './routes/review'
 import { seriesRoutes } from './routes/series'
 import { shotsRoutes } from './routes/shots'
 import { statsRoutes } from './routes/stats'
@@ -56,6 +57,7 @@ api.route('/', charactersRoutes)
 api.route('/', runsRoutes)
 api.route('/', reworkRoutes)
 api.route('/', qcRoutes)
+api.route('/', reviewRoutes)
 api.route('/', seriesRoutes)
 api.route('/', shotsRoutes)
 api.route('/', composeRoutes)

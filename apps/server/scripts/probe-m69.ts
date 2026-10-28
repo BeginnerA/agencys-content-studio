@@ -10,7 +10,7 @@ import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib
 const { cleanup } = isolatedEnv('m69')
 
 // 只声明本任务已实现的分节；后续任务各自追加一节（未注册 runner 的分节会让 probe:ci 中途失败）
-const SECTIONS = ['scope', 'diff', 'service'] as const
+const SECTIONS = ['scope', 'diff', 'service', 'route'] as const
 
 const { createLogger } = await import('../src/logger')
 const log = createLogger('probe-m69')
@@ -574,6 +574,110 @@ await runSections({
       await svc.markReworkFinding(dual.runId, fB.id, {})
       const reB = await svc.recheckFinding(dual.runId, fB.id).catch((e) => e)
       check(reB instanceof svc.ReviewError && reB.code === 'final_unchanged', 'step_key 钉住：B 步成片未变不误用 A 步新片')
+    },
+    route: async () => {
+      const { db } = await import('../src/db')
+      const { projects, pipelineRuns, pipelineSteps } = await import('../src/db/schema')
+      const { registerAsset } = await import('../src/services/storage')
+      const { app } = await import('../src/app')
+      const { eq } = await import('drizzle-orm')
+
+      const jreq = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
+        const init: RequestInit = { method }
+        if (body !== undefined) {
+          init.headers = { 'content-type': 'application/json' }
+          init.body = JSON.stringify(body)
+        }
+        const res = await app.request(path, init)
+        let json: any = null
+        try { json = await res.json() } catch { /* 非 JSON */ }
+        return { status: res.status, body: json }
+      }
+
+      const now = Date.now()
+      const projectId = (await db.insert(projects).values({ name: 'M69-route', createdAt: now, updatedAt: now }).returning())[0]!.id
+      const runId = (await db.insert(pipelineRuns).values({ projectId, templateKey: 'probe-m69', status: 'completed', input: '{}', createdAt: now, updatedAt: now }).returning())[0]!.id
+      const s1 = await registerAsset(projectId, { name: 'r1', kind: 'video', purpose: 'shot_video', relPath: 'p/r1.mp4', sha256: 'r1', runId, duration: 2 })
+      const s2 = await registerAsset(projectId, { name: 'r2', kind: 'video', purpose: 'shot_video', relPath: 'p/r2.mp4', sha256: 'r2', runId, duration: 3 })
+      const step = (await db.insert(pipelineSteps).values({ runId, seq: 1, stepKey: 'compose', actionKey: 'ffmpeg_merge', title: '合成', status: 'completed', input: '{}', output: '{}', createdAt: now, updatedAt: now }).returning())[0]!
+      const timeline = {
+        v: 1, totalSec: 6, introSec: 1, outroSec: 0,
+        segments: [
+          { shotId: 'S1', assetId: s1.id, kind: 'video', durSec: 2, startSec: 0, lineIds: [], silenceSec: 0 },
+          { shotId: 'S2', assetId: s2.id, kind: 'video', durSec: 3, startSec: 2, lineIds: [], silenceSec: 0 },
+        ],
+        subtitle: { coordinate: 'final', cues: [{ id: 'c1', startMs: 1000, endMs: 2000, text: '第一句' }] },
+        bgm: null, sfx: [],
+      }
+      const final = await registerAsset(projectId, { name: 'rf', kind: 'video', purpose: 'final_video', relPath: 'p/rf.mp4', sha256: 'rf', runId, duration: 6, stepId: step.id, params: { timeline } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [final.id] }) }).where(eq(pipelineSteps.id, step.id))
+
+      // 列表能力
+      const l0 = await jreq('GET', `/api/v1/runs/${runId}/findings`)
+      check(l0.status === 200 && l0.body.capability.code === 'ok' && l0.body.capability.writable === true, '列表 capability ok/writable')
+      check(l0.body.final?.assetId === final.id && l0.body.final.durationMs === 6000, '列表成片与时长（ms）')
+      check(l0.body.timeline?.segments.length === 2 && l0.body.timeline.introMs === 1000, '列表下发段摘要与片头')
+      check((await jreq('GET', `/api/v1/runs/999999/findings`)).status === 404, 'run 不存在 404')
+      check((await jreq('GET', `/api/v1/runs/999999/findings`)).body.error.code === 'run_not_found', 'run 不存在 error.code')
+
+      // 创建
+      const c = await jreq('POST', `/api/v1/runs/${runId}/findings`, {
+        client_key: 'rk1', category: 'visual', severity: 'major', note: 'S2 穿帮', scope: { kind: 'shot', shot_id: 'S2' },
+      })
+      check(c.status === 200 && c.body.finding.status === 'open' && c.body.replayed === false, '创建返回 finding')
+      const c2 = await jreq('POST', `/api/v1/runs/${runId}/findings`, {
+        client_key: 'rk1', category: 'visual', severity: 'major', note: 'S2 穿帮', scope: { kind: 'shot', shot_id: 'S2' },
+      })
+      check(c2.body.replayed === true, '同键回放')
+      const bad = await jreq('POST', `/api/v1/runs/${runId}/findings`, { client_key: 'rk1', category: 'visual', severity: 'major', note: '改', scope: { kind: 'shot', shot_id: 'S2' } })
+      check(bad.status === 400 && bad.body.error.code === 'client_key_conflict', '同键异载荷 400')
+      check((await jreq('POST', `/api/v1/runs/${runId}/findings`, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'shot', shot_id: 'S9' } })).body.error.code === 'bad_scope', '未知镜头 400')
+      check((await jreq('POST', `/api/v1/runs/${runId}/findings`, { category: 'lip_sync', severity: 'major', note: 'x', scope: { kind: 'global' } })).status === 400, '类别/范围不匹配 400')
+
+      const fid = c.body.finding.id
+      // patch / link / mark-rework
+      const p1 = await jreq('PATCH', `/api/v1/runs/${runId}/findings/${fid}`, { severity: 'blocker' })
+      check(p1.status === 200 && p1.body.finding.severity === 'blocker', 'PATCH severity')
+      const mk = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/mark-rework`, { note: '手工换素材' })
+      check(mk.body.finding.status === 'in_rework' && mk.body.finding.reworkNote === '手工换素材', 'mark-rework')
+      const unchanged = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/recheck`, {})
+      check(unchanged.status === 409 && unchanged.body.error.code === 'final_unchanged', '同成片复检 409')
+
+      // 换片 → recheck → verify
+      const final2 = await registerAsset(projectId, { name: 'rf2', kind: 'video', purpose: 'final_video', relPath: 'p/rf2.mp4', sha256: 'rf2', runId, duration: 6, params: { timeline } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [final2.id] }) }).where(eq(pipelineSteps.id, step.id))
+      const rc = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/recheck`, {})
+      check(rc.status === 200 && rc.body.finding.status === 'pending_recheck', '换片后复检 pending_recheck')
+      check(['changed', 'unchanged', 'unverifiable'].includes(rc.body.finding.recheck.state), '复检状态在枚举内')
+      check(rc.body.finding.can.verify === true, '可终判')
+      const v = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/verify`, { result: 'verified', final_asset_id: final2.id, note: '已确认' })
+      check(v.status === 200 && v.body.finding.status === 'verified', 'verify 成功')
+      check(v.body.finding.resolutionNote === '已确认' && v.body.finding.resolvedAt !== null, '终判备注/时间')
+      const staleVerify = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/verify`, { result: 'verified', final_asset_id: final2.id })
+      check(staleVerify.status === 409 && staleVerify.body.error.code === 'bad_transition', '重复终判 bad_transition')
+
+      // reopen / dismiss / 404
+      const ro = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/reopen`, { note: '仍有问题' })
+      check(ro.status === 200 && ro.body.finding.status === 'open', 'reopen')
+      const ds = await jreq('POST', `/api/v1/runs/${runId}/findings/${fid}/dismiss`, {})
+      check(ds.body.finding.status === 'dismissed', 'dismiss')
+      check((await jreq('POST', `/api/v1/runs/${runId}/findings/999999/reopen`, {})).status === 404, 'finding 不存在 404')
+      check((await jreq('POST', `/api/v1/runs/999999/findings/${fid}/dismiss`, {})).body.error.code === 'finding_not_found', '跨 run 按不存在处理')
+
+      // 失败零写库：非法创建后计数不变
+      const before = (await jreq('GET', `/api/v1/runs/${runId}/findings`)).body.summary.total
+      await jreq('POST', `/api/v1/runs/${runId}/findings`, { category: 'visual', severity: 'major', note: '', scope: { kind: 'global' } })
+      const after = (await jreq('GET', `/api/v1/runs/${runId}/findings`)).body.summary.total
+      check(before === after, '失败请求零写库')
+
+      // 能力降级：running / cancelled / no_final
+      await db.update(pipelineRuns).set({ status: 'running' }).where(eq(pipelineRuns.id, runId))
+      const lr = await jreq('GET', `/api/v1/runs/${runId}/findings`)
+      check(lr.body.capability.code === 'run_active' && lr.body.capability.writable === false, 'running 能力降级')
+      check((await jreq('POST', `/api/v1/runs/${runId}/findings`, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } })).body.error.code === 'run_active', 'running 创建 409')
+      await db.update(pipelineRuns).set({ status: 'cancelled' }).where(eq(pipelineRuns.id, runId))
+      check((await jreq('GET', `/api/v1/runs/${runId}/findings`)).body.capability.code === 'run_cancelled', 'cancelled 优先于 no_final')
+      check((await jreq('PATCH', `/api/v1/runs/${runId}/findings/${fid}`, { note: '只读仍可改描述' })).status === 200, 'cancelled 仍可 patch')
     },
   },
 })
