@@ -1,7 +1,8 @@
 /**
  * 批次与运行删除（记录级清理，不可恢复）——runs DELETE /routes 与 batches DELETE 两个入口共用：
  * - 仅终态 run 可删（queued/running/waiting_input 或引擎在途由路由层 409 拦截，先取消再删，与项目 purge 同口径）；
- * - 删除面：pipeline_steps + 该 run 的 gen_tasks + run 行；外键式引用解绑——
+ * - 删除面：review_findings + pipeline_steps + 该 run 的 gen_tasks + run 行；问题单是审计台账，随 run 记录删除，不保孤儿行；
+ *   外键式引用解绑——
  *   创作会话.run_id 优先回落到该项目最近一次存活 run（删派生 run 不打断会话续跑，无存活 run 才置 NULL）；
  *   回落同时将存活 run 的 input.recipe 对齐到会话批准锚点（仅端点漂移差时），否则锚点已随被删派生 run 前进会与旧 run 失配、下次续跑被拒；
  *   剧集.latest_run_id 直接置 NULL（为 null 时列表回退行状态优雅降级，且跨项目无法可靠定位「上一集 run」，宁可解绑不指错）；
@@ -11,7 +12,7 @@
  */
 import { desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
-import { creationSessions, episodes, genTasks, pipelineRuns, pipelineSteps } from '../db/schema'
+import { creationSessions, episodes, genTasks, pipelineRuns, pipelineSteps, reviewFindings } from '../db/schema'
 import { createLogger } from '../logger'
 import { RUN_LOGS_DIR } from '../env'
 import { join } from 'node:path'
@@ -24,16 +25,17 @@ export const TERMINAL_RUN_STATUSES = ['completed', 'failed', 'cancelled']
 
 type Executor = Pick<typeof db, 'delete' | 'update' | 'select'>
 
-/** 批量删 run 记录（单事务）：steps → tasks → run 行 → 解绑外部引用；返回各面删除计数 */
-export async function purgeRunRecords(runIds: number[]): Promise<{ runs: number; steps: number; tasks: number }> {
-  if (!runIds.length) return { runs: 0, steps: 0, tasks: 0 }
+/** 批量删 run 记录（单事务）：findings → steps → tasks → run 行 → 解绑外部引用；返回各面删除计数 */
+export async function purgeRunRecords(runIds: number[]): Promise<{ runs: number; steps: number; tasks: number; findings: number }> {
+  if (!runIds.length) return { runs: 0, steps: 0, tasks: 0, findings: 0 }
   return db.transaction(async (tx) => {
     const cnt = async (rows: Promise<{ id: number }[]>) => (await rows).length
+    const findings = await cnt(tx.delete(reviewFindings).where(inArray(reviewFindings.runId, runIds)).returning({ id: reviewFindings.id }))
     const steps = await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
     const tasks = await cnt(tx.delete(genTasks).where(inArray(genTasks.runId, runIds)).returning({ id: genTasks.id }))
     const runs = await cnt(tx.delete(pipelineRuns).where(inArray(pipelineRuns.id, runIds)).returning({ id: pipelineRuns.id }))
     await unbindRunRefs(tx, runIds)
-    return { runs, steps, tasks }
+    return { runs, steps, tasks, findings }
   })
 }
 

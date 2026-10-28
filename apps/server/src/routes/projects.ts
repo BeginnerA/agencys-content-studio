@@ -21,6 +21,7 @@ import {
   pipelineSteps,
   projects,
   publications,
+  reviewFindings,
   usageRecords,
 } from '../db/schema'
 import { RUN_LOGS_DIR } from '../env'
@@ -244,6 +245,7 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
       steps: runIds.length
         ? await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
         : 0,
+      findings: await cnt(tx.delete(reviewFindings).where(eq(reviewFindings.projectId, id)).returning({ id: reviewFindings.id })),
       runs: await cnt(tx.delete(pipelineRuns).where(eq(pipelineRuns.projectId, id)).returning({ id: pipelineRuns.id })),
       tasks: await cnt(tx.delete(genTasks).where(eq(genTasks.projectId, id)).returning({ id: genTasks.id })),
       assets: await cnt(tx.delete(assets).where(eq(assets.projectId, id)).returning({ id: assets.id })),

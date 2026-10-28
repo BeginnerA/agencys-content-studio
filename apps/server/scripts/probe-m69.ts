@@ -574,6 +574,15 @@ await runSections({
       await svc.markReworkFinding(dual.runId, fB.id, {})
       const reB = await svc.recheckFinding(dual.runId, fB.id).catch((e) => e)
       check(reB instanceof svc.ReviewError && reB.code === 'final_unchanged', 'step_key 钉住：B 步成片未变不误用 A 步新片')
+
+      // —— 删除清理 ——
+      const { purgeRunRecords } = await import('../src/services/run-delete')
+      const { reviewFindings } = await import('../src/db/schema')
+      const before = (await db.select().from(reviewFindings).where(eq(reviewFindings.runId, a.runId))).length
+      const purged = await purgeRunRecords([a.runId])
+      const after = (await db.select().from(reviewFindings).where(eq(reviewFindings.runId, a.runId))).length
+      check(before > 0 && after === 0, 'purgeRunRecords 删除问题单')
+      check(purged.findings === before, 'purge 返回值含 findings 计数')
     },
     route: async () => {
       const { db } = await import('../src/db')
@@ -678,6 +687,17 @@ await runSections({
       await db.update(pipelineRuns).set({ status: 'cancelled' }).where(eq(pipelineRuns.id, runId))
       check((await jreq('GET', `/api/v1/runs/${runId}/findings`)).body.capability.code === 'run_cancelled', 'cancelled 优先于 no_final')
       check((await jreq('PATCH', `/api/v1/runs/${runId}/findings/${fid}`, { note: '只读仍可改描述' })).status === 200, 'cancelled 仍可 patch')
+
+      // 项目彻底删除清问题单
+      const { reviewFindings } = await import('../src/db/schema')
+      const pid2 = (await db.insert(projects).values({ name: 'M69-purge', createdAt: now, updatedAt: now }).returning())[0]!.id
+      const rid2 = (await db.insert(pipelineRuns).values({ projectId: pid2, templateKey: 'probe-m69', status: 'completed', input: '{}', createdAt: now, updatedAt: now }).returning())[0]!.id
+      await db.insert(reviewFindings).values({
+        projectId: pid2, runId: rid2, stepKey: 'compose', baseFinalAssetId: 1, scopeKind: 'global',
+        category: 'visual', severity: 'minor', note: '孤儿检查', status: 'open', createdAt: now, updatedAt: now,
+      })
+      const purgedP = await jreq('DELETE', `/api/v1/projects/${pid2}?purge=1`)
+      check(purgedP.status === 200 && purgedP.body.purged.findings === 1, '项目彻底删除清理问题单')
     },
   },
 })
