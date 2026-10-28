@@ -92,28 +92,32 @@ await runSections({
     },
     diff: async () => {
       const { parseFinalTimeline } = await import('../src/services/review/scope')
-      const { buildBaseSnapshot, parseTimelineAudio } = await import('../src/services/review/snapshot')
+      const { buildBaseSnapshot, parseBaseSnapshot, parseTimelineAudio } = await import('../src/services/review/snapshot')
       const { recheckScope } = await import('../src/services/review/recheck')
 
       const mkTl = (o: {
-        s1Asset?: number; s2Asset?: number; s1Sha?: string; s2Sha?: string
+        s1Asset?: number; s2Asset?: number; s3Asset?: number; s1Sha?: string; s2Sha?: string
+        extraSeg?: boolean
         totalSec?: number; cues?: Array<{ id: string; startMs: number; endMs: number; text: string }>
         bgm?: { assetId: number; volume: number; fadeSec: number } | null
         sfx?: Array<{ shotId: string; assetId: number }>
       }) => {
+        const segments = [
+          { shotId: 'S1', assetId: o.s1Asset ?? 11, kind: 'video', durSec: 2, startSec: 0 },
+          { shotId: 'S2', assetId: o.s2Asset ?? 12, kind: 'video', durSec: 3, startSec: 2 },
+        ]
+        // 第三段落在 1000–4000ms 窗口内（内容轴 1s + 片头 1s = 绝对 2000–3000ms）
+        if (o.extraSeg) segments.push({ shotId: 'S3', assetId: o.s3Asset ?? 13, kind: 'video', durSec: 1, startSec: 1 })
         const tl = {
           v: 1, totalSec: o.totalSec ?? 6, introSec: 1, outroSec: 0,
-          segments: [
-            { shotId: 'S1', assetId: o.s1Asset ?? 11, kind: 'video', durSec: 2, startSec: 0 },
-            { shotId: 'S2', assetId: o.s2Asset ?? 12, kind: 'video', durSec: 3, startSec: 2 },
-          ],
+          segments,
           subtitle: { coordinate: 'final', cues: o.cues ?? [{ id: 'c1', startMs: 1000, endMs: 2000, text: '第一句' }, { id: 'c2', startMs: 3000, endMs: 4500, text: '第二句' }] },
           bgm: o.bgm === undefined ? { assetId: 9, relPath: 'b.mp3', volume: 0.6, fadeSec: 1.5 } : o.bgm,
           sfx: (o.sfx ?? [{ shotId: 'S1', assetId: 77 }]).map((s) => ({ ...s, startSec: 1, relPath: 's.mp3' })),
         }
         return parseFinalTimeline(JSON.stringify({ timeline: tl }))!
       }
-      const shaMap = new Map<number, string | null>([[11, 'sha11'], [12, 'sha12'], [9, 'sha9'], [77, 'sha77'], [78, 'sha78']])
+      const shaMap = new Map<number, string | null>([[11, 'sha11'], [12, 'sha12'], [13, 'sha13'], [9, 'sha9'], [77, 'sha77'], [78, 'sha78']])
       const assetSha = (id: number | null): string | null => (id === null ? null : shaMap.get(id) ?? null)
 
       // —— 快照：shot 范围只存该镜 + 相交 cues + 该镜 SFX + BGM ——
@@ -164,6 +168,33 @@ await runSections({
       const rOut = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 2500, endMs: 5000, snapshot: timeSnap, timeline: mkTl({ totalSec: 3 }), audio: null, assetSha })
       check(rOut.state === 'unverifiable', '成片变短、时间窗越界 → unverifiable')
 
+      // —— time 范围媒体逐段比较（design §4.6 核心循环） ——
+      const winSnap = buildBaseSnapshot({
+        stepKey: 'compose', finalAssetId: 100, finalSha256: 'sha100', timeline: tl,
+        scope: { kind: 'time', startMs: 1000, endMs: 4000 }, audio: null, assetSha,
+      })
+      check(winSnap.segments.length === 2, 'time 窗 1000–4000 跨 S1/S2 两段')
+      const wSame = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 1000, endMs: 4000, snapshot: winSnap, timeline: mkTl({}), audio: null, assetSha })
+      check(wSame.state === 'unchanged', '时间窗内两段媒体未变 → unchanged')
+      const wChanged = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 1000, endMs: 4000, snapshot: winSnap, timeline: mkTl({ s2Asset: 22 }), audio: null, assetSha })
+      check(wChanged.state === 'changed' && wChanged.note.includes('S2') && wChanged.note.includes('22'), '时间窗内 S2 换媒体 → changed 且带段名与 #22')
+      const wExtra = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 1000, endMs: 4000, snapshot: winSnap, timeline: mkTl({ extraSeg: true }), audio: null, assetSha })
+      check(wExtra.state === 'changed' && wExtra.note.includes('新增'), '时间窗内新增镜头段 → changed 且注明新增')
+      const winTruncSnap = buildBaseSnapshot({
+        stepKey: 'compose', finalAssetId: 100, finalSha256: 'sha100', timeline: tl,
+        scope: { kind: 'time', startMs: 1000, endMs: 4000 }, audio: null, assetSha, limits: { segments: 1 },
+      })
+      check(winTruncSnap.segments.length === 1 && winTruncSnap.segmentsTruncated, 'segments 上限 1 → 只存首段并标记截断')
+      const wTrunc = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 1000, endMs: 4000, snapshot: winTruncSnap, timeline: mkTl({}), audio: null, assetSha })
+      check(wTrunc.state === 'unchanged' && wTrunc.note.includes('仅比较已存段'), '截断快照复检 → note 注明仅比较已存段')
+      const gSnap = buildBaseSnapshot({
+        stepKey: 'compose', finalAssetId: 100, finalSha256: 'sha100', timeline: tl,
+        scope: { kind: 'global' }, audio: null, assetSha,
+      })
+      check(recheckScope({ category: 'visual', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: gSnap, timeline: mkTl({}), audio: null, assetSha }).state === 'unchanged', 'global 范围媒体未变 → unchanged')
+      const gChanged = recheckScope({ category: 'visual', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: gSnap, timeline: mkTl({ s2Asset: 22 }), audio: null, assetSha })
+      check(gChanged.state === 'changed', 'global 范围媒体变化 → changed')
+
       // —— 字幕复检 ——
       const subBase = buildBaseSnapshot({ stepKey: 'compose', finalAssetId: 100, finalSha256: null, timeline: tl, scope: { kind: 'global' }, audio: null, assetSha })
       const subSame = recheckScope({ category: 'subtitle', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: subBase, timeline: mkTl({}), audio: null, assetSha })
@@ -190,6 +221,25 @@ await runSections({
       check(recheckScope({ category: 'pacing', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: paceBase, timeline: mkTl({ totalSec: 7 }), audio: null, assetSha }).state === 'changed', '总长变化 → changed')
       check(recheckScope({ category: 'other', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: paceBase, timeline: tl, audio: null, assetSha }).state === 'unverifiable', 'other 恒 unverifiable')
       check(recheckScope({ category: 'visual', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: paceBase, timeline: null, audio: null, assetSha }).state === 'unverifiable', 'timeline 缺失 → unverifiable')
+
+      // —— 无 timeline 基准：不得拿 0 基准当 changed（spec §4.4） ——
+      const noTlSnap = buildBaseSnapshot({ stepKey: 'compose', finalAssetId: 100, finalSha256: null, timeline: null, scope: { kind: 'global' }, audio: null, assetSha })
+      check(noTlSnap.hasTimeline === false && noTlSnap.totalMs === 0 && noTlSnap.cues.length === 0, '无 timeline 快照标记 hasTimeline=false（0ms/0 cue 仅为占位）')
+      const noTlPace = recheckScope({ category: 'pacing', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: noTlSnap, timeline: mkTl({}), audio: null, assetSha })
+      check(noTlPace.state === 'unverifiable', '无时间轴基准的 pacing 复检 → unverifiable')
+      const noTlSub = recheckScope({ category: 'subtitle', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: noTlSnap, timeline: mkTl({}), audio: null, assetSha })
+      check(noTlSub.state === 'unverifiable', '无时间轴基准的 subtitle 复检 → unverifiable')
+
+      // —— 快照读回 ——
+      const back = parseBaseSnapshot(JSON.stringify(snap))
+      check(
+        back !== null && back.hasTimeline === true && back.finalAssetId === 100 && back.finalSha256 === 'sha100'
+          && back.totalMs === 6000 && back.shot?.shotId === 'S2' && back.segments.length === 1
+          && back.cues.length === 1 && back.cues[0]!.id === 'c2' && back.audio?.bgm?.assetId === 9,
+        '快照读回：hasTimeline=true 且关键字段一致',
+      )
+      check(parseBaseSnapshot(JSON.stringify(noTlSnap))?.hasTimeline === false, '读回无时间轴快照仍为 hasTimeline=false')
+      check(parseBaseSnapshot('bad-json') === null, '损坏快照 JSON → null')
     },
   },
 })

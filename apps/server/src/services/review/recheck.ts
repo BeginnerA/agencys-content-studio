@@ -113,6 +113,7 @@ function recheckMedia(p: RecheckInput): RecheckResult {
 /** 字幕 */
 function recheckSubtitle(p: RecheckInput): RecheckResult {
   if (!p.timeline) return { state: 'unverifiable', note: '当前成片缺少时间轴快照，无法比对字幕' }
+  if (!p.snapshot.hasTimeline) return { state: 'unverifiable', note: '基准成片无时间轴证据，无法比对（需人工看片）' }
   if (windowOutOfRange(p)) return { state: 'unverifiable', note: '原时间窗超出当前成片，无法比对（需人工看片）' }
   const win = windowOf(p)
   if (!win) return { state: 'unverifiable', note: '原范围无法在当前成片重锚定' }
@@ -182,6 +183,7 @@ function recheckAudio(p: RecheckInput): RecheckResult {
 /** 节奏：总长 + 范围内段长 */
 function recheckPacing(p: RecheckInput): RecheckResult {
   if (!p.timeline) return { state: 'unverifiable', note: '当前成片缺少时间轴快照，无法比对节奏' }
+  if (!p.snapshot.hasTimeline) return { state: 'unverifiable', note: '基准成片无时间轴证据，无法比对（需人工看片）' }
   if (windowOutOfRange(p)) return { state: 'unverifiable', note: '原时间窗超出当前成片，无法比对（需人工看片）' }
   const diffs: string[] = []
   if (p.timeline.totalMs !== p.snapshot.totalMs) {

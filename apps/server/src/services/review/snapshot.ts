@@ -34,6 +34,8 @@ export interface SnapshotAudio {
 
 export interface BaseSnapshot {
   v: 1
+  /** 基准是否有时间轴证据；false 时 totalMs/cues 均为空占位，复检必须 unverifiable（spec §4.4） */
+  hasTimeline: boolean
   stepKey: string
   finalAssetId: number
   finalSha256: string | null
@@ -182,6 +184,7 @@ export function buildBaseSnapshot(p: {
 
   return {
     v: 1,
+    hasTimeline: timeline !== null,
     stepKey: p.stepKey,
     finalAssetId: p.finalAssetId,
     finalSha256: p.finalSha256,
@@ -216,6 +219,7 @@ export function parseBaseSnapshot(raw: string | null): BaseSnapshot | null {
   const shotRaw = o['shot']
   return {
     v: 1,
+    hasTimeline: o['hasTimeline'] === true,
     stepKey: str(o['stepKey']) ?? 'compose',
     finalAssetId: num(o['finalAssetId'])!,
     finalSha256: str(o['finalSha256']),
