@@ -150,8 +150,21 @@ interface ReviewContext {
 const isObj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v)
 
-const strOrUndef = (v: unknown): string | undefined =>
-  typeof v === 'string' ? v : undefined
+/** step_key：缺省 → 默认步骤；存在则必须为非空字符串（trim 后使用），不静默改写错误输入 */
+function parseStepKey(v: unknown): string {
+  if (v === undefined) return DEFAULT_STEP_KEY
+  if (typeof v !== 'string' || !v.trim()) {
+    throw new ReviewError('bad_scope', 'step_key 需为非空字符串')
+  }
+  return v.trim()
+}
+
+/** client_key：缺省 / null → 无幂等键；存在则必须为字符串（长度校验在调用处） */
+function parseClientKey(v: unknown): string | null {
+  if (v === undefined || v === null) return null
+  if (typeof v !== 'string') throw new ReviewError('bad_scope', 'client_key 需为字符串')
+  return v
+}
 
 function requireNote(v: unknown, field = 'note'): string {
   if (typeof v !== 'string') throw new ReviewError('note_required', `${field} 需为字符串`)
@@ -411,7 +424,7 @@ export async function createReviewFinding(
   runId: number,
   body: Record<string, unknown>,
 ): Promise<{ finding: FindingView; replayed: boolean }> {
-  const stepKey = strOrUndef(body['step_key']) ?? DEFAULT_STEP_KEY
+  const stepKey = parseStepKey(body['step_key'])
   const ctx = await loadContext(runId, stepKey)
   if (ctx.code === 'run_cancelled') throw new ReviewError('run_cancelled', '运行已取消，不能新增问题单')
   if (ctx.code === 'run_active') throw new ReviewError('run_active', '运行执行中不能新增问题单，请等待完成或取消')
@@ -443,7 +456,7 @@ export async function createReviewFinding(
     endMs = scope.endMs
   }
 
-  const clientKey = strOrUndef(body['client_key']) ?? null
+  const clientKey = parseClientKey(body['client_key'])
   if (clientKey !== null && (clientKey.length === 0 || clientKey.length > 100)) {
     throw new ReviewError('bad_scope', 'client_key 需为 1-100 字符')
   }
