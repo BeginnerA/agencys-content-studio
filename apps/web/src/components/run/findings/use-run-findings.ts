@@ -5,11 +5,8 @@
 import { computed, ref, type Ref } from 'vue'
 import { findingsApi } from '../../../lib/api/findings'
 import { ApiError } from '../../../lib/api/core'
-import type {
-  FindingsList,
-  FindingView,
-  ReviewScopeKind,
-} from '../../../lib/types/findings'
+import type { FindingsList, FindingView } from '../../../lib/types/findings'
+import { allowedScopes } from './finding-ui'
 
 export function useRunFindings(runId: Ref<number>, stepKey = 'compose') {
   const data = ref<FindingsList | null>(null)
@@ -100,12 +97,6 @@ export function useRunFindings(runId: Ref<number>, stepKey = 'compose') {
     } finally {
       acting.value = false
     }
-  }
-
-  function allowedScopes(category: FindingView['category']): ReviewScopeKind[] {
-    if (category === 'lip_sync') return ['shot']
-    if (category === 'pacing') return ['time', 'global']
-    return ['shot', 'time', 'global']
   }
 
   return {

@@ -8,14 +8,20 @@
 import { computed, onMounted, reactive, ref, toRef, watch } from 'vue'
 import Icon from '../../common/Icon.vue'
 import { findingsApi } from '../../../lib/api/findings'
-import type {
-  FindingView,
-  FindingsList,
-  ReviewCategory,
-  ReviewScopeKind,
-} from '../../../lib/types/findings'
+import type { FindingView } from '../../../lib/types/findings'
 import SubtitleReworkModal from '../subtitle-rework/SubtitleReworkModal.vue'
 import ComposeInputReworkModal from '../compose-input-rework/ComposeInputReworkModal.vue'
+import FindingForm from './FindingForm.vue'
+import {
+  CATEGORY_TEXT,
+  RECHECK_TEXT,
+  SEVERITY_BADGE,
+  SEVERITY_TEXT,
+  STATUS_BADGE,
+  STATUS_TEXT,
+  type FindingFormState,
+  type FindingSegment,
+} from './finding-ui'
 import { useRunFindings } from './use-run-findings'
 
 const props = defineProps<{
@@ -55,15 +61,30 @@ const srcUrl = computed(() => {
   return id === null ? '' : `/api/v1/assets/${id}/file`
 })
 
+/** 换源后待应用的定位（毫秒）：媒体元素换 src 会自行重置，metadata 就绪后再 seek */
+const pendingSeekMs = ref<number | null>(null)
+
 function compareTo(f: FindingView): void {
-  // 切源即回到 0：媒体元素换 src 会自行重置，setMs 只为让时间读数与画面一致
+  // 切到基准成片，并落到该问题的位置（spec §4.8-6：切源并 seek 到问题时间）
+  const at = f.currentLocation?.startMs ?? f.startMs ?? 0
   compareId.value = f.baseFinalAssetId
-  setMs(0)
+  pendingSeekMs.value = at
+  setMs(at)
 }
 
 function backToCurrent(): void {
+  // 切回当前成片时保留当前时刻，便于同一画面对照
+  const at = currentMs.value
   compareId.value = null
-  setMs(0)
+  pendingSeekMs.value = at
+  setMs(at)
+}
+
+function onLoadedMetadata(): void {
+  if (pendingSeekMs.value === null) return
+  const at = pendingSeekMs.value
+  pendingSeekMs.value = null
+  if (videoEl.value) videoEl.value.currentTime = Math.max(0, at / 1000)
 }
 
 function onVideoError(): void {
@@ -76,57 +97,15 @@ function onVideoError(): void {
   notice.value = '当前成片文件不可用（可能未落盘或已删除）'
 }
 const showForm = ref(false)
-const form = reactive({
-  category: 'visual' as ReviewCategory,
-  severity: 'major' as FindingView['severity'],
-  scopeKind: 'shot' as ReviewScopeKind,
+const form = reactive<FindingFormState>({
+  category: 'visual',
+  severity: 'major',
+  scopeKind: 'shot',
   shotId: '',
   startMs: 0,
   endMs: 2000,
   note: '',
 })
-
-const CATEGORY_TEXT: Record<ReviewCategory, string> = {
-  visual: '画面',
-  prop: '道具连续',
-  lip_sync: '口型',
-  subtitle: '字幕',
-  audio: '音频',
-  pacing: '节奏',
-  other: '其他',
-}
-const STATUS_TEXT: Record<FindingView['status'], string> = {
-  open: '待处理',
-  in_rework: '返修中',
-  pending_recheck: '待复检',
-  verified: '已确认',
-  dismissed: '已忽略',
-}
-const STATUS_BADGE: Record<FindingView['status'], string> = {
-  open: 'queued',
-  in_rework: 'running',
-  pending_recheck: 'queued',
-  verified: 'succeeded',
-  dismissed: 'cancelled',
-}
-const SEVERITY_TEXT: Record<FindingView['severity'], string> = {
-  blocker: '阻断',
-  major: '重要',
-  minor: '轻微',
-}
-const SEVERITY_BADGE: Record<FindingView['severity'], string> = {
-  blocker: 'failed',
-  major: 'queued',
-  minor: 'skip',
-}
-const RECHECK_TEXT: Record<
-  NonNullable<FindingView['recheck']>['state'],
-  string
-> = {
-  changed: '证据已变化',
-  unchanged: '证据未变化',
-  unverifiable: '无法自动比对',
-}
 
 const scopes = computed(() => allowedScopes(form.category))
 const canCreate = computed(() => data.value?.capability.writable === true)
@@ -134,7 +113,7 @@ const needsShot = computed(() => form.scopeKind === 'shot')
 /** 图片混剪等无镜头段的时间轴：镜头范围无锚点可选，默认落到时间窗 */
 const hasShotSegments = computed(() => segments.value.some((s) => s.shotId))
 
-type SegmentView = NonNullable<FindingsList['timeline']>['segments'][number]
+type SegmentView = FindingSegment
 
 /** 镜头条点击：seek + 预选该镜范围（类别不允许 shot 时只 seek） */
 function pickSegment(s: SegmentView): void {
@@ -161,10 +140,6 @@ function openForm(): void {
   // 无镜头段（图片混剪）：shot 范围没有可选项，默认改为时间窗，避免提交按钮永远禁用
   if (!hasShotSegments.value && scopes.value.includes('time'))
     form.scopeKind = 'time'
-}
-
-function onCategoryChange(): void {
-  if (!scopes.value.includes(form.scopeKind)) form.scopeKind = scopes.value[0]!
 }
 
 async function submit(): Promise<void> {
@@ -227,24 +202,28 @@ function jumpToMark(): void {
 
 function verify(f: FindingView, result: 'verified' | 'reopened'): void {
   if (finalAssetId.value === null) return
-  const note =
-    window.prompt(
-      result === 'verified' ? '确认已修复（可选备注）' : '仍未修复（可选备注）',
-    ) ?? undefined
+  const note = window.prompt(
+    result === 'verified' ? '确认已修复（可选备注）' : '仍未修复（可选备注）',
+  )
+  if (note === null) return // 取消 ≠ 空备注：不执行终判
   void act(
     () =>
       findingsApi.verify(props.runId, f.id, {
         result,
         final_asset_id: finalAssetId.value!,
-        note,
+        note: note.trim() || undefined,
       }),
     result === 'verified' ? '已确认修复' : '已重新打开',
   )
 }
 
 function dismiss(f: FindingView): void {
-  const note = window.prompt('忽略原因（可选）') ?? undefined
-  void act(() => findingsApi.dismiss(props.runId, f.id, note), '已忽略')
+  const note = window.prompt('忽略原因（可选）')
+  if (note === null) return // 取消不执行忽略
+  void act(
+    () => findingsApi.dismiss(props.runId, f.id, note.trim() || undefined),
+    '已忽略',
+  )
 }
 
 async function linkRequest(f: FindingView, requestId: string): Promise<void> {
@@ -303,6 +282,7 @@ watch(
           controls
           preload="metadata"
           @timeupdate="onTimeUpdate"
+          @loadedmetadata="onLoadedMetadata"
           @error="onVideoError"
         />
         <div class="ptime mono">
@@ -361,78 +341,16 @@ watch(
         <button v-if="!showForm" class="btn sm full" @click="openForm">
           <Icon name="plus" :size="12" /> 记录当前画面问题
         </button>
-        <div v-else class="form">
-          <div class="frow">
-            <select v-model="form.category" @change="onCategoryChange">
-              <option v-for="(t, k) in CATEGORY_TEXT" :key="k" :value="k">
-                {{ t }}
-              </option>
-            </select>
-            <select v-model="form.severity">
-              <option value="blocker">阻断</option>
-              <option value="major">重要</option>
-              <option value="minor">轻微</option>
-            </select>
-          </div>
-          <div class="frow">
-            <select v-model="form.scopeKind">
-              <option v-if="scopes.includes('shot')" value="shot">
-                当前镜头
-              </option>
-              <option v-if="scopes.includes('time')" value="time">
-                时间窗
-              </option>
-              <option v-if="scopes.includes('global')" value="global">
-                全片
-              </option>
-            </select>
-            <select v-if="needsShot" v-model="form.shotId">
-              <option value="" disabled>选择镜头</option>
-              <option
-                v-for="s in segments"
-                :key="s.shotId ?? s.startMs"
-                :value="s.shotId ?? ''"
-              >
-                {{ s.shotId ?? '—' }}（{{ formatMs(s.startMs) }}–{{
-                  formatMs(s.endMs)
-                }}）
-              </option>
-            </select>
-            <template v-if="form.scopeKind === 'time'">
-              <input
-                v-model.number="form.startMs"
-                type="number"
-                min="0"
-                step="100"
-              />
-              –
-              <input
-                v-model.number="form.endMs"
-                type="number"
-                min="0"
-                step="100"
-              />
-            </template>
-          </div>
-          <textarea
-            v-model="form.note"
-            rows="2"
-            maxlength="2000"
-            placeholder="描述问题（必填，≤2000 字）"
-          />
-          <div class="frow end">
-            <button class="btn sm" @click="showForm = false">取消</button>
-            <button
-              class="btn sm primary"
-              :disabled="
-                acting || !form.note.trim() || (needsShot && !form.shotId)
-              "
-              @click="submit"
-            >
-              记录问题
-            </button>
-          </div>
-        </div>
+        <FindingForm
+          v-else
+          v-model="form"
+          :segments="segments"
+          :acting="acting"
+          :needs-shot="needsShot"
+          :format-ms="formatMs"
+          @submit="submit"
+          @cancel="showForm = false"
+        />
       </template>
 
       <p v-if="notice" class="muted okmsg">{{ notice }}</p>
@@ -689,35 +607,6 @@ watch(
 .noplayer {
   font-size: 11px;
   padding: 8px 0;
-}
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 6px 0 8px;
-}
-.frow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.frow.end {
-  justify-content: flex-end;
-}
-.form select,
-.form input,
-.form textarea {
-  font-size: 12px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid rgb(148 163 184 / 25%);
-  background: var(--bg-2, transparent);
-  color: inherit;
-}
-.form textarea {
-  width: 100%;
-  resize: vertical;
 }
 .full {
   width: 100%;
