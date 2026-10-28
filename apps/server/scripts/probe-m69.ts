@@ -308,6 +308,8 @@ await runSections({
       check((await codeOf(() => mkFinding(a.runId, { step_key: 123, category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'bad_scope', 'step_key 非字符串拒绝 bad_scope')
       check((await codeOf(() => mkFinding(a.runId, { step_key: '', category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'bad_scope', 'step_key 空串拒绝 bad_scope')
       check((await codeOf(() => mkFinding(a.runId, { client_key: 123, category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'bad_scope', 'client_key 非字符串拒绝 bad_scope')
+      const fNullStep = await mkFinding(a.runId, { step_key: null, category: 'visual', severity: 'minor', note: 'null 视为未提供', scope: { kind: 'global' } })
+      check(fNullStep.stepKey === 'compose', 'step_key: null 回落默认 compose')
 
       // capability：完成且有 timeline → ok 可写；summary 统计与 blockers_open
       const aList = await svc.listReviewFindings(a.runId, 'compose')

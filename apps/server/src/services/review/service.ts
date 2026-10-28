@@ -150,9 +150,9 @@ interface ReviewContext {
 const isObj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v)
 
-/** step_key：缺省 → 默认步骤；存在则必须为非空字符串（trim 后使用），不静默改写错误输入 */
+/** step_key：缺省 / null → 默认步骤（JSON 客户端可用 null 表示未设置）；其余必须为非空字符串（trim 后使用） */
 function parseStepKey(v: unknown): string {
-  if (v === undefined) return DEFAULT_STEP_KEY
+  if (v === undefined || v === null) return DEFAULT_STEP_KEY
   if (typeof v !== 'string' || !v.trim()) {
     throw new ReviewError('bad_scope', 'step_key 需为非空字符串')
   }
