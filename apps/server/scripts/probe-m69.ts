@@ -10,7 +10,7 @@ import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib
 const { cleanup } = isolatedEnv('m69')
 
 // 只声明本任务已实现的分节；后续任务各自追加一节（未注册 runner 的分节会让 probe:ci 中途失败）
-const SECTIONS = ['scope', 'diff'] as const
+const SECTIONS = ['scope', 'diff', 'service'] as const
 
 const { createLogger } = await import('../src/logger')
 const log = createLogger('probe-m69')
@@ -240,6 +240,211 @@ await runSections({
       )
       check(parseBaseSnapshot(JSON.stringify(noTlSnap))?.hasTimeline === false, '读回无时间轴快照仍为 hasTimeline=false')
       check(parseBaseSnapshot('bad-json') === null, '损坏快照 JSON → null')
+    },
+    service: async () => {
+      const { db } = await import('../src/db')
+      const { projects, pipelineRuns, pipelineSteps, reworkRequests, assets } = await import('../src/db/schema')
+      const { registerAsset } = await import('../src/services/storage')
+      const svc = await import('../src/services/review/service')
+      const { eq } = await import('drizzle-orm')
+
+      const now = Date.now()
+      let seq = 0
+      const mkTimeline = (o: { totalSec?: number; s1Asset: number; s2Asset: number; cues?: any[] }) => ({
+        v: 1, totalSec: o.totalSec ?? 6, introSec: 1, outroSec: 0,
+        segments: [
+          { shotId: 'S1', assetId: o.s1Asset, kind: 'video', durSec: 2, startSec: 0, lineIds: [], silenceSec: 0 },
+          { shotId: 'S2', assetId: o.s2Asset, kind: 'video', durSec: 3, startSec: 2, lineIds: [], silenceSec: 0 },
+        ],
+        subtitle: { coordinate: 'final', cues: o.cues ?? [{ id: 'c1', startMs: 1000, endMs: 2000, text: '第一句' }] },
+        bgm: { assetId: 9, relPath: 'b.mp3', volume: 0.6, fadeSec: 1.5 },
+        sfx: [],
+      })
+      const seed = async (o: { status?: string; timeline?: unknown | null; durationSec?: number; stepKey?: string; withFinal?: boolean }) => {
+        seq += 1
+        const projectId = (await db.insert(projects).values({ name: `M69-${seq}`, createdAt: now, updatedAt: now }).returning())[0]!.id
+        const runId = (await db.insert(pipelineRuns).values({
+          projectId, templateKey: 'probe-m69', status: o.status ?? 'completed',
+          input: '{}', createdAt: now, updatedAt: now,
+        }).returning())[0]!.id
+        const s1 = await registerAsset(projectId, { name: `s1-${seq}`, kind: 'video', purpose: 'shot_video', relPath: `p/s1-${seq}.mp4`, sha256: `s1sha${seq}`, runId, duration: 2 })
+        const s2 = await registerAsset(projectId, { name: `s2-${seq}`, kind: 'video', purpose: 'shot_video', relPath: `p/s2-${seq}.mp4`, sha256: `s2sha${seq}`, runId, duration: 3 })
+        const stepKey = o.stepKey ?? 'compose'
+        const step = (await db.insert(pipelineSteps).values({
+          runId, seq: 1, stepKey, actionKey: 'ffmpeg_merge', title: '合成', status: 'completed',
+          input: '{}', output: '{}', createdAt: now, updatedAt: now,
+        }).returning())[0]!
+        let finalId = 0
+        if (o.withFinal !== false) {
+          const tl = o.timeline === null ? null : o.timeline ?? mkTimeline({ s1Asset: s1.id, s2Asset: s2.id })
+          const final = await registerAsset(projectId, {
+            name: `final-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final-${seq}.mp4`,
+            sha256: `finalsha${seq}`, runId, duration: o.durationSec ?? 6, stepId: step.id,
+            params: tl ? { timeline: tl } : {},
+          })
+          finalId = final.id
+          await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [final.id] }) }).where(eq(pipelineSteps.id, step.id))
+        }
+        return { projectId, runId, step, finalId, s1, s2 }
+      }
+      const mkFinding = async (runId: number, body: Record<string, unknown>) => (await svc.createReviewFinding(runId, body)).finding
+      const codeOf = async (fn: () => Promise<unknown>): Promise<string> => {
+        try { await fn(); return '' } catch (e) { return e instanceof svc.ReviewError ? e.code : `other:${(e as Error).message}` }
+      }
+
+      // —— 创建矩阵 ——
+      const a = await seed({})
+      const fTime = await mkFinding(a.runId, { category: 'visual', severity: 'major', note: 'S2 纸袋消失', scope: { kind: 'time', start_ms: 2500, end_ms: 5000 } })
+      check(fTime.status === 'open' && fTime.scopeKind === 'time' && fTime.startMs === 2500, 'visual+time 创建成功')
+      check(fTime.baseAvailable === true, '基准成片可见 → baseAvailable')
+      check(fTime.can.recheck === false && fTime.can.verify === false, 'can 投影：刚创建成片未变，不可复检/终判')
+      const fShot = await mkFinding(a.runId, { category: 'prop', severity: 'blocker', note: 'S2 道具穿帮', scope: { kind: 'shot', shot_id: 'S2' } })
+      check(fShot.shotId === 'S2' && fShot.startMs === 3000 && fShot.endMs === 6000, 'shot 范围服务端反查绝对区间')
+      check((await codeOf(() => mkFinding(a.runId, { category: 'lip_sync', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'scope_category_mismatch', 'lip_sync+global 拒绝')
+      check((await codeOf(() => mkFinding(a.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'shot', shot_id: 'S9' } }))) === 'bad_scope', '未知镜头拒绝')
+      check((await codeOf(() => mkFinding(a.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'time', start_ms: 0, end_ms: 9000 } }))) === 'bad_scope', '越界时间窗拒绝')
+      check((await codeOf(() => mkFinding(a.runId, { category: 'visual', severity: 'major', note: '   ', scope: { kind: 'global' } }))) === 'note_required', '空 note 拒绝')
+      check((await codeOf(() => mkFinding(a.runId, { category: 'visual', severity: 'huge', note: 'x', scope: { kind: 'global' } }))) === 'bad_severity', '非法 severity 拒绝')
+
+      const noTl = await seed({ timeline: null })
+      check((await codeOf(() => mkFinding(noTl.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'shot', shot_id: 'S1' } }))) === 'no_timeline', '无 timeline 时 shot 拒绝 no_timeline')
+      const fGlobalNoTl = await mkFinding(noTl.runId, { category: 'visual', severity: 'minor', note: '整体偏暗', scope: { kind: 'global' } })
+      check(fGlobalNoTl.id > 0, '无 timeline 仍可建全片问题')
+
+      const running = await seed({ status: 'running' })
+      check((await codeOf(() => mkFinding(running.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'run_active', 'run 执行中拒绝创建')
+      const cancelled = await seed({ status: 'cancelled' })
+      check((await codeOf(() => mkFinding(cancelled.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'run_cancelled', 'cancelled 拒绝创建')
+      const noFinal = await seed({ withFinal: false })
+      check((await codeOf(() => mkFinding(noFinal.runId, { category: 'visual', severity: 'major', note: 'x', scope: { kind: 'global' } }))) === 'no_final', '无成片拒绝创建')
+
+      // —— client_key 幂等 ——
+      const body = { client_key: 'k1', category: 'visual', severity: 'major', note: '同一问题', scope: { kind: 'global' } }
+      const c1 = await svc.createReviewFinding(a.runId, body)
+      const c2 = await svc.createReviewFinding(a.runId, body)
+      check(c1.replayed === false && c2.replayed === true && c1.finding.id === c2.finding.id, '同键同载荷回放')
+      check((await codeOf(() => svc.createReviewFinding(a.runId, { ...body, note: '不同载荷' }))) === 'client_key_conflict', '同键异载荷 409')
+
+      // —— 状态机 ——
+      const req = await db.insert(reworkRequests).values({
+        id: `req-${seq}`, projectId: a.projectId, runId: a.runId, stepKey: 'compose', requestKey: `rk-${seq}`,
+        requestHash: 'h', state: 'applied', createdAt: now, updatedAt: now,
+      }).returning()
+      const linked = await svc.linkFinding(a.runId, fTime.id, { request_id: req[0]!.id })
+      check(linked.status === 'in_rework' && linked.reworkRequestId === req[0]!.id, 'link applied 请求 → in_rework')
+      check(linked.can.recheck === false, '成片未变时 recheck 不可用')
+      check((await codeOf(() => svc.linkFinding(a.runId, fShot.id, { request_id: 'nope' }))) === 'request_not_found', 'link 不存在请求')
+      const otherRun = await seed({})
+      const reqOther = await db.insert(reworkRequests).values({
+        id: `req-o-${seq}`, projectId: otherRun.projectId, runId: otherRun.runId, stepKey: 'compose', requestKey: 'rk-o',
+        requestHash: 'h', state: 'applied', createdAt: now, updatedAt: now,
+      }).returning()
+      check((await codeOf(() => svc.linkFinding(a.runId, fShot.id, { request_id: reqOther[0]!.id }))) === 'request_run_mismatch', '跨 run 请求拒绝')
+      const pendingReq = await db.insert(reworkRequests).values({
+        id: `req-p-${seq}`, projectId: a.projectId, runId: a.runId, stepKey: 'compose', requestKey: 'rk-p',
+        requestHash: 'h', state: 'ready', createdAt: now, updatedAt: now,
+      }).returning()
+      check((await codeOf(() => svc.linkFinding(a.runId, fShot.id, { request_id: pendingReq[0]!.id }))) === 'request_not_applied', '未 applied 请求拒绝')
+
+      // —— 执行中仍可 link（apply 后立即关联）；recheck 仍拒绝（spec §4.5） ——
+      const fActive = await mkFinding(a.runId, { category: 'visual', severity: 'minor', note: '执行中关联', scope: { kind: 'global' } })
+      const reqActive = (await db.insert(reworkRequests).values({
+        id: `req-a-${seq}`, projectId: a.projectId, runId: a.runId, stepKey: 'compose', requestKey: `rk-a-${seq}`,
+        requestHash: 'h', state: 'applied', createdAt: now, updatedAt: now,
+      }).returning())[0]!
+      await db.update(pipelineRuns).set({ status: 'running' }).where(eq(pipelineRuns.id, a.runId))
+      const activeView = (await svc.listReviewFindings(a.runId, 'compose')).findings.find((x) => x.id === fActive.id)!
+      check(activeView.can.link === true && activeView.can.recheck === false, '执行中 can：可关联、不可复检')
+      const linkedActive = await svc.linkFinding(a.runId, fActive.id, { request_id: reqActive.id }).catch((e) => e)
+      check(!(linkedActive instanceof svc.ReviewError) && linkedActive.status === 'in_rework', '执行中 link 允许')
+      check((await codeOf(() => svc.recheckFinding(a.runId, fActive.id))) === 'run_active', '执行中 recheck 拒绝')
+      await db.update(pipelineRuns).set({ status: 'completed' }).where(eq(pipelineRuns.id, a.runId))
+
+      // 成片未变 → recheck 拒绝
+      check((await codeOf(() => svc.recheckFinding(a.runId, linked.id))) === 'final_unchanged', '同成片复检拒绝 final_unchanged')
+
+      // 外部换片 → recheck
+      const newFinal = await registerAsset(a.projectId, { name: `final2-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final2-${seq}.mp4`, sha256: 'finalsha2', runId: a.runId, duration: 6, params: { timeline: mkTimeline({ s1Asset: a.s1.id, s2Asset: a.s2.id, cues: [{ id: 'c1', startMs: 1000, endMs: 2000, text: '第一句改' }] }) } })
+      const steps = await db.select().from(pipelineSteps).where(eq(pipelineSteps.runId, a.runId))
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [newFinal.id] }) }).where(eq(pipelineSteps.id, steps[0]!.id))
+      const r1 = await svc.recheckFinding(a.runId, linked.id)
+      check(r1.status === 'pending_recheck' && r1.recheck?.state === 'unchanged', '新成片 recheck → pending_recheck')
+      check(r1.can.verify === true && r1.can.recheck === false, '待复检投影：可终判不可重复复检')
+      check(r1.needsRecheck === false && r1.staleRecheck === false, '刚复检完无陈旧标记')
+
+      // 成片再变 → staleRecheck 投影，并允许再次复检
+      const newFinal2 = await registerAsset(a.projectId, { name: `final3-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final3-${seq}.mp4`, sha256: 'finalsha3', runId: a.runId, duration: 6, params: { timeline: mkTimeline({ s1Asset: a.s1.id, s2Asset: a.s2.id }) } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [newFinal2.id] }) }).where(eq(pipelineSteps.id, steps[0]!.id))
+      const pendingView = (await svc.listReviewFindings(a.runId, 'compose')).findings.find((x) => x.id === linked.id)!
+      check(pendingView.staleRecheck === true, '成片再变 → staleRecheck 投影')
+      const staleRow = await svc.recheckFinding(a.runId, linked.id)
+      check(staleRow.recheck?.finalAssetId === newFinal2.id && staleRow.staleRecheck === false, '再次复检记录新成片')
+      // 此时 currentFinal = newFinal2，recheck_final = newFinal2，未再变 → verify 应成功
+      const verified = await svc.verifyFinding(a.runId, linked.id, { result: 'verified', final_asset_id: newFinal2.id, note: '已修好' })
+      check(verified.status === 'verified' && verified.resolvedAt !== null && verified.resolutionNote === '已修好', 'verify 人工终判')
+      check((await codeOf(() => svc.verifyFinding(a.runId, linked.id, { result: 'verified', final_asset_id: newFinal2.id }))) === 'bad_transition', '非 pending 终判拒绝')
+
+      // verify 三重匹配：先造 pending，再用错成片
+      const f2 = await mkFinding(a.runId, { category: 'visual', severity: 'major', note: '第二个', scope: { kind: 'time', start_ms: 1000, end_ms: 2500 } })
+      await svc.markReworkFinding(a.runId, f2.id, { note: '已手动换片' })
+      check((await codeOf(() => svc.verifyFinding(a.runId, f2.id, { result: 'verified', final_asset_id: newFinal2.id }))) === 'bad_transition', 'in_rework 不能直接终判')
+      const newFinal3 = await registerAsset(a.projectId, { name: `final4-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final4-${seq}.mp4`, sha256: 'finalsha4', runId: a.runId, duration: 6, params: { timeline: mkTimeline({ s1Asset: a.s1.id, s2Asset: a.s2.id }) } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [newFinal3.id] }) }).where(eq(pipelineSteps.id, steps[0]!.id))
+      await svc.recheckFinding(a.runId, f2.id)
+      check((await codeOf(() => svc.verifyFinding(a.runId, f2.id, { result: 'verified', final_asset_id: newFinal2.id }))) === 'stale_final', '终判携带旧成片 → stale_final')
+      // 成片再变 → stale_recheck
+      const newFinal4 = await registerAsset(a.projectId, { name: `final5-${seq}`, kind: 'video', purpose: 'final_video', relPath: `p/final5-${seq}.mp4`, sha256: 'finalsha5', runId: a.runId, duration: 6, params: { timeline: mkTimeline({ s1Asset: a.s1.id, s2Asset: a.s2.id }) } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [newFinal4.id] }) }).where(eq(pipelineSteps.id, steps[0]!.id))
+      const f2Row = await svc.listReviewFindings(a.runId, 'compose')
+      check(f2Row.findings.find((x) => x.id === f2.id)!.staleRecheck === true, '成片再变 → staleRecheck 投影')
+      check((await codeOf(() => svc.verifyFinding(a.runId, f2.id, { result: 'verified', final_asset_id: newFinal3.id }))) === 'stale_recheck', '成片再变 → stale_recheck')
+
+      // reopen / dismiss
+      const reopenedFromVerified = await svc.reopenFinding(a.runId, linked.id, {})
+      check(reopenedFromVerified.status === 'open' && reopenedFromVerified.resolvedAt === null, 'reopen(verified) 回 open')
+      check((await codeOf(() => svc.reopenFinding(a.runId, linked.id, {}))) === 'bad_transition', 'open 直接 reopen 拒绝')
+
+      // f2：pending → 再次复检 → verify(reopened)
+      await svc.recheckFinding(a.runId, f2.id)
+      const reopened = await svc.verifyFinding(a.runId, f2.id, { result: 'reopened', final_asset_id: newFinal4.id, note: '仍可见' })
+      check(reopened.status === 'open' && reopened.resolutionNote === '仍可见' && reopened.recheck !== null, 'verify(reopened) 回 open 并保留复检证据')
+      const dismissed = await svc.dismissFinding(a.runId, f2.id, { note: '可接受' })
+      check(dismissed.status === 'dismissed' && dismissed.resolutionNote === '可接受', 'dismiss')
+      const reopen2 = await svc.reopenFinding(a.runId, f2.id, {})
+      check(reopen2.status === 'open' && reopen2.resolvedAt === null && reopen2.recheck !== null, 'reopen 保留复检证据')
+
+      // in_rework → reopen 保留返修备注
+      const inRework = await svc.markReworkFinding(a.runId, fShot.id, { note: '手工换素材' })
+      check(inRework.status === 'in_rework' && inRework.reworkNote === '手工换素材', 'mark-rework 留痕')
+      const reopen3 = await svc.reopenFinding(a.runId, fShot.id, {})
+      check(reopen3.status === 'open' && reopen3.reworkNote === '手工换素材', 'reopen(in_rework) 回 open 且保留返修备注')
+
+      // patch
+      const patched = await svc.patchReviewFinding(a.runId, f2.id, { note: '改写', severity: 'minor' })
+      check(patched.note === '改写' && patched.severity === 'minor', 'patch note/severity')
+      check((await codeOf(() => svc.patchReviewFinding(a.runId, f2.id, { note: '' }))) === 'note_required', 'patch 空 note 拒绝')
+
+      // 基准成片被删 → baseAvailable=false（前端隐藏「看返修前」，不白屏）
+      await db.update(assets).set({ deletedAt: now }).where(eq(assets.id, newFinal2.id))
+      const gone = (await svc.listReviewFindings(a.runId, 'compose')).findings.find((x) => x.id === f2.id)!
+      check(gone.baseAvailable === false, '基准成片删除 → baseAvailable=false')
+
+      // —— step_key 钉住：两合成步各有成片，只对钉住那步复检 ——
+      const dual = await seed({ stepKey: 'compose' })
+      const stepB = (await db.insert(pipelineSteps).values({
+        runId: dual.runId, seq: 2, stepKey: 'compose_b', actionKey: 'ffmpeg_merge', title: '合成B', status: 'completed',
+        input: '{}', output: '{}', createdAt: now, updatedAt: now,
+      }).returning())[0]!
+      const bFinal = await registerAsset(dual.projectId, { name: 'final-b', kind: 'video', purpose: 'final_video', relPath: 'p/final-b.mp4', sha256: 'bsha', runId: dual.runId, duration: 6, stepId: stepB.id, params: { timeline: mkTimeline({ s1Asset: dual.s1.id, s2Asset: dual.s2.id }) } })
+      await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: [bFinal.id] }) }).where(eq(pipelineSteps.id, stepB.id))
+      const fB = await mkFinding(dual.runId, { step_key: 'compose_b', category: 'visual', severity: 'major', note: 'B 步', scope: { kind: 'global' } })
+      const listA = await svc.listReviewFindings(dual.runId, 'compose')
+      const listB = await svc.listReviewFindings(dual.runId, 'compose_b')
+      check(listA.findings.every((x) => x.stepKey === 'compose') && listB.findings.length === 1 && listB.findings[0]!.id === fB.id, 'findings 按 stepKey 隔离')
+      check(listA.final?.assetId === dual.finalId && listB.final?.assetId === bFinal.id, '列表成片按 stepKey 解析')
+      await svc.markReworkFinding(dual.runId, fB.id, {})
+      const reB = await svc.recheckFinding(dual.runId, fB.id).catch((e) => e)
+      check(reB instanceof svc.ReviewError && reB.code === 'final_unchanged', 'step_key 钉住：B 步成片未变不误用 A 步新片')
     },
   },
 })
