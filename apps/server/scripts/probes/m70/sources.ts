@@ -461,6 +461,9 @@ export async function runSources(checker: Checker) {
     const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, pick.runId))
     const template = JSON.parse(run!.templateSnapshot!)
     template.key = 'other-template'
+    // mengbao v19 declares the target role; strip it to recreate the undeclared-legacy premise.
+    const legacy = template.steps.find((step: { key: string }) => step.key === 'write_script')
+    if (legacy?.params) delete legacy.params['continuity_role']
     await db.update(pipelineRuns).set({ templateKey: template.key, templateSnapshot: JSON.stringify(template) }).where(eq(pipelineRuns.id, pick.runId))
     let candidate = (await listSources(s.projectId, s.episodes[0])).find(c => c.assetId === pick.assetId)!
     assert.equal(candidate.declaredRole, false); assert.ok(candidate.reasons.includes('undeclared_role'))

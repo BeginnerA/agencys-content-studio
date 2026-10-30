@@ -9,19 +9,21 @@ import { REPO_ROOT } from '../../probe-lib'
 import { temporaryRoot } from './bootstrap'
 
 /** Only the network/config boundary is fake; usage writes the isolated real SQLite DB. */
-export function fakeIO(result: LlmResult): { io: ContinuityIO; calls: () => number; messages: ChatMessage[][] } {
+export function fakeIO(result: LlmResult): { io: ContinuityIO; calls: () => number; messages: ChatMessage[][]; optionsLog: Array<unknown> } {
   // bootstrap copies tracked prompts only; Task3's explicitly authorized prompt is uncommitted.
   const prompt = join(REPO_ROOT, 'workspace/prompts/continuity-extract.md')
   if (existsSync(prompt)) copyFileSync(prompt, join(temporaryRoot, 'workspace/prompts/continuity-extract.md'))
   let count = 0
   const messages: ChatMessage[][] = []
-  return { calls: () => count, messages, io: {
+  const optionsLog: Array<unknown> = []
+  return { calls: () => count, messages, optionsLog, io: {
     endpoint: async () => ({ baseUrl: 'https://m70.invalid/v1', apiKey: 'fixture-only', providerKey: 'fixture', model: 'fixture' }),
-    chat: async (input, endpoint) => {
+    chat: async (input, endpoint, opts) => {
       count++
       assert.equal(endpoint?.baseUrl, 'https://m70.invalid/v1')
       assert.equal(endpoint.apiKey, 'fixture-only')
       messages.push(structuredClone(input))
+      optionsLog.push(structuredClone(opts))
       return structuredClone(result)
     },
     budget: async () => null,
@@ -119,6 +121,66 @@ steps:
     title: 备选剧本步
     inputs: {}
     params: { continuity_role: episode_script, prompt_inline: 备选目标步，必须被判为不支持。, output_purpose: script }
+`,
+  'm70-fixture-noslot': `key: m70-fixture-noslot
+name: M70离线目标·缺槽位声明
+version: 1
+genre: drama_short
+inputs:
+  - { key: brief, label: 简报, kind: text, required: true }
+  - { key: episode_number, label: 集号, kind: int, required: true }
+  - { key: with_continuity, label: 连续性, kind: bool, default: false }
+steps:
+  - key: write_script
+    action: ai_text
+    title: 生成本集剧本
+    inputs: {}
+    params:
+      continuity_role: episode_script
+      prompt_inline: 仅使用隔离测试输入生成本集剧本。
+      output_purpose: script
+`,
+  'm70-fixture-mixed': `key: m70-fixture-mixed
+name: M70离线目标·目标步+普通步
+version: 1
+genre: drama_short
+inputs:
+  - { key: brief, label: 简报, kind: text, required: true }
+  - { key: episode_number, label: 集号, kind: int, required: true }
+  - { key: with_continuity, label: 连续性, kind: bool, default: false }
+  - { key: continuity_context, label: 承接包, kind: files, required: false }
+steps:
+  - key: write_script
+    action: ai_text
+    title: 生成本集剧本
+    inputs: {}
+    params:
+      continuity_role: episode_script
+      prompt_inline: 仅使用隔离测试输入生成本集剧本。
+      output_purpose: script
+  - key: notes
+    action: ai_text
+    title: 普通笔记步
+    inputs: {}
+    params: { prompt_inline: 普通笔记步，不消费承接包。, output_purpose: script }
+`,
+  'm70-fixture-batchrole': `key: m70-fixture-batchrole
+name: M70离线目标·batch目标步
+version: 1
+genre: drama_short
+inputs:
+  - { key: brief, label: 简报, kind: text, required: true }
+  - { key: episode_number, label: 集号, kind: int, required: true }
+  - { key: with_continuity, label: 连续性, kind: bool, default: false }
+  - { key: continuity_context, label: 承接包, kind: files, required: false }
+  - { key: shots, label: 列表, kind: files, required: false }
+steps:
+  - key: write_script
+    action: ai_text
+    title: 批量剧本步
+    inputs: {}
+    params: { continuity_role: episode_script, prompt_inline: 批量目标步，必须被判为非法。, output_purpose: script }
+    batch: { field: shots, max_concurrent: 1, retry: 0 }
 `,
 }
 
@@ -235,14 +297,16 @@ export async function seedSource(story: Awaited<ReturnType<typeof seedStory>>, n
   return { pick: { runId: run!.id, stepId: step!.id, assetId: asset.id, versionId: version.id }, episodeId: episode!.id }
 }
 
-/** A prior run whose template snapshot is the Task4 fixture template, for resume-target probes. */
+/** A prior run whose template snapshot is the Task4 fixture template, for resume-target probes.
+ * opts.template picks another installed fixture snapshot (e.g. m70-fixture-batchrole = no valid target step). */
 export async function seedResumeRun(story: Awaited<ReturnType<typeof seedStory>>, number: number, input: Record<string, unknown>,
-  opts: { snapshot?: boolean } = {}): Promise<number> {
+  opts: { snapshot?: boolean; template?: string } = {}): Promise<number> {
   const { db } = await import('../../../src/db')
   const { pipelineRuns } = await import('../../../src/db/schema')
   const { loadTemplate } = await import('../../../src/pipeline/loader')
-  const [run] = await db.insert(pipelineRuns).values({ projectId: story.projectId, templateKey: 'm70-fixture-episode',
-    templateSnapshot: opts.snapshot === false ? null : JSON.stringify(loadTemplate('m70-fixture-episode')),
+  const templateKey = opts.template ?? 'm70-fixture-episode'
+  const [run] = await db.insert(pipelineRuns).values({ projectId: story.projectId, templateKey,
+    templateSnapshot: opts.snapshot === false ? null : JSON.stringify(loadTemplate(templateKey)),
     input: JSON.stringify(input), status: 'failed', createdAt: 1, updatedAt: 1 }).returning()
   return run!.id
 }
@@ -264,39 +328,52 @@ export async function seedUnknownUse(story: Awaited<ReturnType<typeof seedStory>
 }
 
 /** Binds a frozen approval to a fresh pipeline run/step (server-owned ledger binding) and builds the StepContext.
- * Idempotent: a context already bound to a run reuses that run verbatim. */
+ * Task6 gate 义务：run 行一律经公开 createRunRow（统一建 run + 批准认领 CAS）构造，不再手工插入；
+ * 引擎惰性建步，探针补目标步行并用与 ai_text 接线同一公开入口绑定 stepId。
+ * Idempotent: a context already bound to a run reuses that run (and its bound step) verbatim. */
 export async function makeStepContext(story: Awaited<ReturnType<typeof seedStory>>,
   approval: import('../../../src/services/continuity/contract').Approval): Promise<StepContext> {
   const { db } = await import('../../../src/db')
-  const { contentContinuityRecords, pipelineRuns, pipelineSteps } = await import('../../../src/db/schema')
+  const { contentContinuityRecords, pipelineSteps } = await import('../../../src/db/schema')
   const { and, eq } = await import('drizzle-orm')
   const { loadTemplate } = await import('../../../src/pipeline/loader')
   const { readContext } = await import('../../../src/services/continuity/context')
+  const { withContinuityIO } = await import('../../../src/services/continuity/runtime')
   const { createStepContext } = await import('../../../src/pipeline/context')
+  const { createRunRow } = await import('../../../src/services/run-create')
+  const { bindTargetStep } = await import('../../../src/services/continuity/run-binding')
   const template = loadTemplate('m70-fixture-episode')
   const doc = await readContext(story.projectId, approval, db)
   assert.equal(doc.target.request.kind, 'manual')
   const requestInput = doc.target.request.kind === 'manual' ? doc.target.request.input : {}
-  const input = { ...requestInput, continuity_context: [approval.document.assetId] }
+  const run = await withContinuityIO(fakeIO(emptyResult).io, () => createRunRow({
+    projectId: story.projectId,
+    templateKey: 'm70-fixture-episode',
+    input: { ...requestInput, continuity_context: [approval.document.assetId] },
+    continuityApproval: approval,
+  }))
   const [contextRow] = await db.select().from(contentContinuityRecords).where(eq(contentContinuityRecords.id, approval.contextId))
-  assert.ok(contextRow && contextRow.status === 'frozen')
-  let runId = contextRow.runId, stepId = contextRow.stepId
-  if (runId === null || stepId === null) {
-    const [run] = await db.insert(pipelineRuns).values({ projectId: story.projectId, templateKey: 'm70-fixture-episode',
-      templateSnapshot: JSON.stringify(template), input: JSON.stringify(input), status: 'running', createdAt: 1, updatedAt: 1 }).returning()
+  assert.ok(contextRow && contextRow.status === 'bound' && contextRow.runId === run.id)
+  let step
+  if (contextRow.stepId !== null) {
+    const rows = await db.select().from(pipelineSteps).where(eq(pipelineSteps.id, contextRow.stepId))
+    step = rows[0]
+    assert.ok(step, `已绑定步骤 #${contextRow.stepId} 不存在`)
+  } else {
     const def = template.steps[0]!
-    const [step] = await db.insert(pipelineSteps).values({ runId: run!.id, seq: 1, stepKey: def.key, actionKey: def.action,
+    const inserted = await db.insert(pipelineSteps).values({ runId: run.id, seq: 1, stepKey: def.key, actionKey: def.action,
       title: def.title, status: 'running', createdAt: 1, updatedAt: 1 }).returning()
-    runId = run!.id; stepId = step!.id
-    const bound = await db.update(contentContinuityRecords).set({ status: 'bound', runId, stepId, updatedAt: 1 })
-      .where(and(eq(contentContinuityRecords.id, approval.contextId), eq(contentContinuityRecords.status, 'frozen'))).returning()
-    assert.equal(bound.length, 1)
+    step = inserted[0]!
+    await bindTargetStep(story.projectId, run.id, step.id)
+    const rows = await db.select().from(pipelineSteps).where(and(eq(pipelineSteps.runId, run.id), eq(pipelineSteps.id, step.id)))
+    step = rows[0]!
   }
-  const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId))
-  const [step] = await db.select().from(pipelineSteps).where(eq(pipelineSteps.id, stepId))
-  assert.ok(run && step)
-  return createStepContext({ run, step, template, def: template.steps[0]!, input: JSON.parse(run.input) as Record<string, unknown> })
+  assert.ok(step)
+  return createStepContext({ run, step: step!, template, def: template.steps[0]!, input: JSON.parse(run.input) as Record<string, unknown> })
 }
+
+/** claim 阶段只需端点常量与冻结侧一致；chat 不发生。 */
+const emptyResult: LlmResult = { content: '', usage: null, provider: 'fixture', model: 'fixture' }
 
 export async function storyDocument(story: Awaited<ReturnType<typeof seedStory>>, index = 0, basis: EntryRef[] = []): Promise<EntryDoc> {
   const { db } = await import('../../../src/db')

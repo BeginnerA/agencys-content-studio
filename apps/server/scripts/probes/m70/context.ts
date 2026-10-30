@@ -366,7 +366,9 @@ async function runContextBody(checker: Checker) {
     const noSnapshot = await seedResumeRun(f, 3, { episode_number: 3, brief: '续写第三集' }, { snapshot: false })
     await assert.rejects(preview(f.projectId, { target: { kind: 'resume', runId: noSnapshot }, includePlans: false }),
       code(400, 'continuity_unsupported'))
-    await assert.rejects(preview(f.projectId, { target: { kind: 'resume', runId: f.sources[0]!.runId }, includePlans: false }),
+    // mengbao v19 wires its target step now; a snapshot without a non-batch target step stays unsupported.
+    const noRole = await seedResumeRun(f, 3, { episode_number: 3, brief: '续写第三集' }, { template: 'm70-fixture-batchrole' })
+    await assert.rejects(preview(f.projectId, { target: { kind: 'resume', runId: noRole }, includePlans: false }),
       code(400, 'continuity_unsupported'))
   })
 
@@ -398,14 +400,21 @@ async function runContextBody(checker: Checker) {
     assert.deepEqual((await readContext(f.projectId, ok, db)).duplicateCostAcceptance, null)
   })
 
-  await t('route and workflow targets are explicitly unsupported until their tasks wire them', async () => {
+  await t('route targets resolve via会话定位 (M70 Task 8: missing session → 404); workflow targets resolve via定位 (M70 Task 7: unknown chain → 404)', async () => {
     const f = await seedStory()
+    // M70 Task 8 起 route 目标经 route-bridge 实际定位解析：会话不存在/跨项目 → continuity_source_invalid 404
+    // （原 Task 7 的「route 一律 unsupported」已被接线取代；会话 id 取现存最大值 +1 保证必然不存在，两种运行方式下都确定）。
+    const { db } = await import('../../../src/db')
+    const { creationSessions } = await import('../../../src/db/schema')
+    const { max } = await import('drizzle-orm')
+    const missingSessionId = ((await db.select({ m: max(creationSessions.id) }).from(creationSessions))[0]?.m ?? 0) + 1
     await assert.rejects(preview(f.projectId,
-      { target: { kind: 'route', sessionId: 1, decisionRevision: 1, decisionHash: hash }, includePlans: false }),
-      code(400, 'continuity_unsupported'))
+      { target: { kind: 'route', sessionId: missingSessionId, decisionRevision: 1, decisionHash: hash }, includePlans: false }),
+      code(404, 'continuity_source_invalid'))
+    // Task 7 起 workflow 目标经 workflow-bridge 实际定位解析：链不存在/跨项目 → continuity_source_invalid 404。
     await assert.rejects(preview(f.projectId,
       { target: { kind: 'workflow', workflowId: 1, nextSeq: 2, previousRunId: null }, includePlans: false }),
-      code(400, 'continuity_unsupported'))
+      code(404, 'continuity_source_invalid'))
   })
 
   await t('configHash sanitizes credentials and URL user info while covering model identity', async () => {
@@ -435,7 +444,8 @@ async function runContextBody(checker: Checker) {
     const episodeId = f.episodes[2]!
     const asPreview = (templateKey: string, input: Record<string, unknown>): PreviewRequest =>
       ({ target: { kind: 'manual', episodeId, templateKey, input } as TargetRequest, includePlans: false })
-    await assert.rejects(preview(f.projectId, asPreview('mengbao-episode', { episode_number: 3, brief: '简报' })),
+    // mengbao v19 is a wired target; the role+batch fixture is the non-batch-step rejection case.
+    await assert.rejects(preview(f.projectId, asPreview('m70-fixture-batchrole', { episode_number: 3, brief: '简报' })),
       code(400, 'continuity_unsupported'))
     await assert.rejects(preview(f.projectId, asPreview('m70-fixture-noin', { episode_number: 3, brief: '简报' })),
       code(400, 'continuity_unsupported'))
