@@ -9,6 +9,8 @@ import { ContinuityError, TargetRequestSchema, TemplateSchema,
 import { canonicalHash } from './fold'
 import { continuityIO } from './runtime'
 import { resolveUnit } from './scope'
+import { resolveRouteContinuityTarget } from './route-bridge'
+import { resolveWorkflowContinuityTarget } from './workflow-bridge'
 
 export const TARGET_LIMITS = { render: 24_000, input: 160_000 } as const
 const LLM_FALLBACK = { temperature: 0, maxTokens: 24_000, timeoutMs: 600_000 } as const
@@ -113,7 +115,23 @@ function finish(unit: Unit, request: TargetRequest, template: Template, stepKey:
 /** Manual targets read the current real template library; resume targets read the original run snapshot. */
 export async function materializeTarget(projectId: number, request: TargetRequest, ex: Executor,
     endpoint: LlmEndpoint): Promise<MaterializedTarget> {
-  if (request.kind === 'route' || request.kind === 'workflow') return unsupported()
+  if (request.kind === 'route') {
+    // 定位信息只是线索：实际决策/模板/输入由 route-bridge 从会话行重导出（纯解析，无副作用）；
+    // 模板级支持性（单非 batch 目标步 + 必备声明）与本管线其余 kind 同闸。
+    const material = await resolveRouteContinuityTarget(projectId, request, ex)
+    const step = targetStep(material.template)
+    requireTargetInputs(material.template)
+    const input = effectiveInput(material.template, material.unit, material.input)
+    return finish(material.unit, request, material.template, step.key, input, projectId, endpoint)
+  }
+  if (request.kind === 'workflow') {
+    // 定位信息只是线索：实际段/模板/输入由 workflow-bridge 从链状态重导出（纯解析，无副作用）。
+    const material = await resolveWorkflowContinuityTarget(projectId, request, ex)
+    const step = targetStep(material.template)
+    requireTargetInputs(material.template)
+    const input = effectiveInput(material.template, material.unit, material.input)
+    return finish(material.unit, request, material.template, step.key, input, projectId, endpoint)
+  }
   if (request.kind === 'manual') {
     const unit = await resolveUnit(projectId, request.episodeId, ex)
     let template: Template

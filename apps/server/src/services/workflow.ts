@@ -13,6 +13,9 @@ import { engine } from '../pipeline/engine'
 import { loadTemplate } from '../pipeline/loader'
 import type { Template } from '../pipeline/types'
 import { checkBudget } from './budget'
+import { readContext } from './continuity/context'
+import { assertWorkflowApprovalTarget, workflowContinuityEnabled } from './continuity/workflow-bridge'
+import { ContinuityError, type Approval } from './continuity/contract'
 import { emitStudioEvent } from './events'
 import { createRunRow } from './run-create'
 import { readTextAsset } from './storage'
@@ -303,14 +306,30 @@ export class WorkflowError extends Error {
   }
 }
 
+/** 编排链启动/续跑选项（M70）：已冻结承接包批准句柄；缺省 = 未携包（启用段将 409 阻塞）。 */
+export interface WorkflowStartOptions {
+  continuityApproval?: Approval
+}
+
+/** 批准仅在服务端追加到当前段输入：槽位恒为批准包资产，绝不由调用方注入。无批准且段声明启用 → 显式 409。 */
+function withWorkflowApproval(inputs: Record<string, unknown>, approval: Approval | undefined): Record<string, unknown> {
+  if (!approval) {
+    if (workflowContinuityEnabled(inputs)) throw new ContinuityError('continuity_gaps_unaccepted', 409)
+    return inputs
+  }
+  return { ...inputs, with_continuity: true, continuity_context: [approval.document.assetId] }
+}
+
 /**
  * 首段启动闸（纯校验 + 输入解析；不写库、不起 run、零计费）：
  * 链有段 → 段模板可载 → 必填输入可满足 → 预算未熔断。
  * startWorkflow（专业链显式启动）与对话 route 确认（同事务建链建段）同源复用，
  * 杜绝「两条路径各判一次、口径漂移」；调用方据此在同一事务里落首段 run。
  * 入参只取 projectId + segments（序列化后的段定义）：route 确认在链尚未落库时也要能预跑同一套闸。
+ * M70：批准经服务端追加进首段输入（预算闸门保持既有优先级，置于批准闸之后）。
  */
-export async function prepareFirstSegment(wf: Pick<Workflow, 'projectId' | 'segments'>): Promise<{ templateKey: string; inputs: Record<string, unknown> }> {
+export async function prepareFirstSegment(wf: Pick<Workflow, 'projectId' | 'segments'>,
+    options: WorkflowStartOptions = {}): Promise<{ templateKey: string; inputs: Record<string, unknown> }> {
   const segments = parseSegments(wf.segments)
   const first = segments[0]
   if (!first) throw new WorkflowError('empty_chain', '链无段可启动')
@@ -327,11 +346,11 @@ export async function prepareFirstSegment(wf: Pick<Workflow, 'projectId' | 'segm
   // [F06] 预算闸门：首段启动与 advanceWorkflowCore ⑦ 同源拦截（此前首段绕过熔断，仅后续段受检）
   const budgetHit = await checkBudget({ projectId: wf.projectId })
   if (budgetHit) throw new WorkflowError('budget_exceeded', budgetHit.message)
-  return { templateKey: first.templateKey, inputs }
+  return { templateKey: first.templateKey, inputs: withWorkflowApproval(inputs, options.continuityApproval) }
 }
 
 /** 显式启动链首段（仅 draft|paused 且链内无既有 run）；首段 autoAdvance 决定后续是否级联 */
-export async function startWorkflow(id: number): Promise<{ workflow: Workflow; runId: number }> {
+export async function startWorkflow(id: number, options: WorkflowStartOptions = {}): Promise<{ workflow: Workflow; runId: number }> {
   const wf = await getWorkflow(id)
   if (!wf) throw new WorkflowError('not_found', `编排链 ${id} 不存在`)
   if (wf.status !== 'draft' && wf.status !== 'paused') {
@@ -343,13 +362,16 @@ export async function startWorkflow(id: number): Promise<{ workflow: Workflow; r
   try {
     const existing = await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, id)).limit(1)
     if (existing.length) throw new WorkflowError('already_started', '链已启动（续跑请用 resume，或克隆为新链）')
-    const first = await prepareFirstSegment(wf)
+    const first = await prepareFirstSegment(wf, options)
+    // M70：批准包必须恰指首段推进位置（旧包/漂移包/异种包 → 409 continuity_context_changed）
+    if (options.continuityApproval) await assertApprovalMatchesTransition(wf.projectId, options.continuityApproval, id, 0, null)
     const run = await createRunRow({
       projectId: wf.projectId,
       templateKey: first.templateKey,
       input: first.inputs,
       workflowId: wf.id,
       workflowSeq: 0,
+      continuityApproval: options.continuityApproval,
     })
     const fresh = (await setWorkflowStatus(id, 'active'))!
     engine.startRun(run.id)
@@ -364,22 +386,26 @@ export async function startWorkflow(id: number): Promise<{ workflow: Workflow; r
  * 修复 CodeReview #1 resume 死锁：仅置 active 不会重发 settle 事件，预算/输入阻塞解除后或
  * 事后开启 autoAdvance 时链会永久卡住。此处取链内最大 seq 的已落定 run 重新走 advanceWorkflow
  * （同链互斥 + 步骤9b 下游存在性守卫保幂等）：completed → 重试推进；failed/cancelled → 依不自动重试语义重新暂停。
+ * M70：携带批准时先校验批准恰指「下一推进位置」，再激活并携同一批准驱动推进。
  */
-export async function resumeWorkflow(id: number): Promise<Workflow> {
+export async function resumeWorkflow(id: number, options: WorkflowStartOptions = {}): Promise<Workflow> {
   const wf = await getWorkflow(id)
   if (!wf) throw new WorkflowError('not_found', `编排链 ${id} 不存在`)
   if (wf.status !== 'paused') throw new WorkflowError('bad_resume', `status=${wf.status} 不可续跑（仅 paused）`)
-  const fresh = await setWorkflowStatus(id, 'active')
-  if (!fresh) throw new WorkflowError('not_found', `编排链 ${id} 不存在`)
-  // 取链内最大 seq 的已落定 run 重新驱动
+  // 取链内最大 seq 的已落定 run 重新驱动（先定位后激活，批准校验失败不留下半激活态）
   const lastSettled = await db
-    .select({ id: pipelineRuns.id })
+    .select({ id: pipelineRuns.id, workflowSeq: pipelineRuns.workflowSeq, status: pipelineRuns.status })
     .from(pipelineRuns)
     .where(and(eq(pipelineRuns.workflowId, id), inArray(pipelineRuns.status, ['completed', 'failed', 'cancelled'])))
     .orderBy(desc(pipelineRuns.workflowSeq), desc(pipelineRuns.id))
     .limit(1)
   const last = lastSettled[0]
-  if (last) await advanceWorkflow(last.id)
+  if (options.continuityApproval && last) {
+    await assertApprovalMatchesTransition(wf.projectId, options.continuityApproval, id, (last.workflowSeq ?? 0) + 1, last.id)
+  }
+  const fresh = await setWorkflowStatus(id, 'active')
+  if (!fresh) throw new WorkflowError('not_found', `编排链 ${id} 不存在`)
+  if (last) await advanceWorkflow(last.id, options)
   return (await getWorkflow(id)) ?? fresh
 }
 
@@ -388,8 +414,9 @@ export async function resumeWorkflow(id: number): Promise<Workflow> {
 /** 同链推进互斥（对齐 batch pumps 批内互斥，防并发 settle 重入） */
 const advancing = new Set<number>()
 
-/** engine 钩子入口（index.ts 注册 onRunSettled(advanceWorkflow)）：非编排 run 直返 + 同链互斥 */
-export async function advanceWorkflow(runId: number): Promise<void> {
+/** engine 钩子入口（index.ts 注册 onRunSettled(advanceWorkflow)）：非编排 run 直返 + 同链互斥。
+ *  M70：显式续跑入口（resumeWorkflow）可携带批准透传给段推进；engine 自动级联路径不带批准。 */
+export async function advanceWorkflow(runId: number, options: WorkflowStartOptions = {}): Promise<void> {
   const rows = await db
     .select({ workflowId: pipelineRuns.workflowId })
     .from(pipelineRuns)
@@ -400,13 +427,13 @@ export async function advanceWorkflow(runId: number): Promise<void> {
   if (advancing.has(workflowId)) return // 同链互斥
   advancing.add(workflowId)
   try {
-    await advanceWorkflowCore(runId, workflowId)
+    await advanceWorkflowCore(runId, workflowId, options)
   } finally {
     advancing.delete(workflowId)
   }
 }
 
-async function advanceWorkflowCore(runId: number, workflowId: number): Promise<void> {
+async function advanceWorkflowCore(runId: number, workflowId: number, options: WorkflowStartOptions = {}): Promise<void> {
   const runRows = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1)
   const run = runRows[0]
   if (!run) return
@@ -429,7 +456,7 @@ async function advanceWorkflowCore(runId: number, workflowId: number): Promise<v
     return
   }
   // ⑥-⑨ 段推进尾逻辑（与对话批准续跑同源复用；行为逐字不变）
-  await advanceToNextSegment(run, wf, workflowId, parseSegments(wf.segments))
+  await advanceToNextSegmentGuarded(workflowId, run, wf, parseSegments(wf.segments), options)
 }
 
 /** 单段推进结果（对话批准续跑据此回写留痕；autoAdvance 级联路径忽略返回值） */
@@ -440,11 +467,45 @@ export type AdvanceOutcome =
   | { kind: 'inflight' }
 
 /**
+ * 输入类阻塞统一收口（M70 提取）：置 paused + 事件 + 日志。
+ * runId=null：被阻塞的段尚未建 run（budget/failed 阻塞保持原语义不走此处，web 侧不消费 runId 之外的差异）。
+ */
+async function pauseForInput(workflowId: number, code: string): Promise<void> {
+  const wf = await getWorkflow(workflowId)
+  if (!wf) return
+  await setWorkflowStatus(workflowId, 'paused')
+  emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId: null, reason: 'input' })
+  log.warn(`workflow ${workflowId} 输入阻塞（${code}）：等待当前段预览与批准`)
+}
+
+/** 仅连续性输入/批准类 409 映射原 paused/input；budget/state 自身分类与非连续性 bug 一律不吞（原样上抛）。 */
+async function advanceToNextSegmentGuarded(workflowId: number, run: PipelineRun, wf: Workflow, segments: WorkflowSegment[],
+    options: WorkflowStartOptions = {}): Promise<AdvanceOutcome> {
+  try {
+    return await advanceToNextSegment(run, wf, workflowId, segments, options)
+  } catch (error) {
+    if (!(error instanceof ContinuityError) || error.status !== 409) throw error
+    await pauseForInput(workflowId, error.code)
+    return { kind: 'blocked', reason: 'input' }
+  }
+}
+
+/** M70：批准包必须恰指「当前推进位置」（旧包/漂移包/异种包 → 409 continuity_context_changed）。 */
+async function assertApprovalMatchesTransition(projectId: number, approval: Approval, workflowId: number,
+    nextSeq: number, previousRunId: number | null): Promise<void> {
+  const doc = await readContext(projectId, approval, db)
+  assertWorkflowApprovalTarget(doc, workflowId, nextSeq, previousRunId)
+}
+
+/**
  * 段推进尾逻辑（原 advanceWorkflowCore ⑥-⑨ 逐字迁出）：无下一段→done；预算/输入闸门；
  * 状态复核（防 pause TOCTOU）+ 下游存在性幂等守卫（防并发双建同 seq）；建 run 起 run + 跨段溯源。
  * 供 autoAdvance 自动级联与对话「批准续跑」同源复用——不新增编排算法，计费安全同源。
+ * M70：批准仅在服务端追加进当前段输入（with_continuity=true + 槽位=批准包资产）；
+ * 启用而无批准 → ContinuityError 409（由 guarded 包装映射 paused/input）。
  */
-async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: number, segments: WorkflowSegment[]): Promise<AdvanceOutcome> {
+async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: number, segments: WorkflowSegment[],
+    options: WorkflowStartOptions = {}): Promise<AdvanceOutcome> {
   const runId = run.id
   const seq = run.workflowSeq ?? 0
   const next = segments[seq + 1]
@@ -478,16 +539,21 @@ async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: 
   try {
     template = loadTemplate(next.templateKey)
   } catch {
-    await setWorkflowStatus(workflowId, 'paused')
-    emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
+    await pauseForInput(workflowId, 'bad_template')
     return { kind: 'blocked', reason: 'input' }
   }
   const { inputs, missingRequired, prevSources } = await resolveSegmentInput({ template, prevRunId: runId, inputSpec: next.inputSpec })
   if (missingRequired.length) {
-    await setWorkflowStatus(workflowId, 'paused')
-    emitStudioEvent({ type: 'workflow.blocked', workflowId, projectId: wf.projectId, runId, reason: 'input' })
-    log.warn(`workflow ${workflowId} 输入阻塞：${missingRequired.join(', ')}`)
+    await pauseForInput(workflowId, `missing_required:${missingRequired.join(',')}`)
     return { kind: 'blocked', reason: 'input' }
+  }
+  // ⑧b M70 连续性闸门：批准仅在服务端追加；声明启用而无批准 → 显式 409（budget 闸门保持既有优先级）
+  const approval = options.continuityApproval
+  let runInputs = inputs
+  if (approval) {
+    runInputs = { ...inputs, with_continuity: true, continuity_context: [approval.document.assetId] }
+  } else if (workflowContinuityEnabled(inputs)) {
+    throw new ContinuityError('continuity_gaps_unaccepted', 409)
   }
 
   // ⑨ 创建并启动下一段 run
@@ -504,9 +570,10 @@ async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: 
   const newRun = await createRunRow({
     projectId: freshWf.projectId,
     templateKey: next.templateKey,
-    input: inputs,
+    input: runInputs,
     workflowId,
     workflowSeq: seq + 1,
+    continuityApproval: approval,
   })
   engine.startRun(newRun.id)
   emitStudioEvent({ type: 'workflow.advanced', workflowId, projectId: wf.projectId, fromRunId: runId, toRunId: newRun.id, seq: seq + 1 })
@@ -528,10 +595,12 @@ async function advanceToNextSegment(run: PipelineRun, wf: Workflow, workflowId: 
 
 /**
  * 对话内「批准续跑」显式单段推进（M64 G1）：供创作会话在段间暂停（autoAdvance=0）时按用户批准启动下一段。
- * 复用 advanceToNextSegment（预算/输入/幂等/状态复核与自动级联同源），只是绕过 autoAdvance 闸门、每次仅进一步。
+ * 复用段推进尾逻辑（预算/输入/幂等/状态复核与自动级联同源），只是绕过 autoAdvance 闸门、每次仅进一步。
  * 同链互斥复用 advancing 集合（与 advanceWorkflow/startWorkflow 共享）；失败/取消段落不批准续跑（依不自动重试语义）。
+ * M70：可携带已冻结承接包批准——先校验批准恰指「下一推进位置」（旧包/漂移包/异种包 409），
+ * 再携批准推进；未携批准且当前段声明启用 → 409 映射 paused/input（简报逐字口径 blocked/input）。
  */
-export async function requestNextSegment(workflowId: number): Promise<AdvanceOutcome> {
+export async function requestNextSegment(workflowId: number, options: WorkflowStartOptions = {}): Promise<AdvanceOutcome> {
   if (advancing.has(workflowId)) throw new WorkflowError('busy', `编排链 ${workflowId} 正在推进中，请稍后再试`)
   advancing.add(workflowId)
   try {
@@ -548,9 +617,13 @@ export async function requestNextSegment(workflowId: number): Promise<AdvanceOut
     const last = lastSettled[0]
     if (!last) throw new WorkflowError('nothing_to_advance', '链上尚无已落定段落，无法续跑')
     if (last.status !== 'completed') return { kind: 'blocked', reason: 'state' }
+    // M70：批准定位校验在激活前（失败不留半激活态）
+    if (options.continuityApproval) {
+      await assertApprovalMatchesTransition(wf.projectId, options.continuityApproval, workflowId, (last.workflowSeq ?? 0) + 1, last.id)
+    }
     // 段落被预算/输入阻塞过 → paused：用户批准视作显式继续，归一 active 后过尾逻辑 9a 复核
     if (wf.status === 'paused') await setWorkflowStatus(workflowId, 'active')
-    return await advanceToNextSegment(last, wf, workflowId, parseSegments(wf.segments))
+    return await advanceToNextSegmentGuarded(workflowId, last, wf, parseSegments(wf.segments), options)
   } finally {
     advancing.delete(workflowId)
   }

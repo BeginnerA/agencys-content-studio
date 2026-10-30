@@ -15,10 +15,15 @@ import { createRunRow, InvalidRunInputError } from '../run-create'
 import { checkBudget } from '../budget'
 import { createLogger } from '../../logger'
 import { activateWorkflowIn, createWorkflow, prepareFirstSegment, WorkflowError, type WorkflowSegment } from '../workflow'
+import { readContext } from '../continuity/context'
+import { assertRouteApprovalTarget } from '../continuity/route-bridge'
+import { workflowContinuityEnabled } from '../continuity/workflow-bridge'
+import { ApprovalSchema, ContinuityError, type Approval } from '../continuity/contract'
 import { CreationError, PROJECT_GENRE_VALUES, hashJson, projectMetaInputSchema, type ProjectGenre, type ProjectMeta } from './contract'
-import { agentDecisionSchema, type AgentDecision, type InputSpecItem } from './agent/decision-schema'
+import { agentDecisionSchema, type AgentDecision } from './agent/decision-schema'
 import { toWorkflowToken } from './agent/normalize'
 import { buildTemplateCatalog, preflightDecision } from './agent-run'
+import { materializeRouteInputs } from './route-inputs'
 import { sanitizeProjectMeta, renderMetaNotes } from './project-meta'
 import { activeProject, creationWrite, parseJson, sessionRow } from './store'
 
@@ -30,6 +35,8 @@ const routeConfirmationSchema = z.object({
   idempotencyKey: z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   acceptUnpriced: z.boolean().default(false),
   project: projectMetaInputSchema.optional(),
+  // M70：已冻结承接包批准（仅用户请求 schema 接入；LLM 决策契约 strict 不收此键）
+  continuityApproval: ApprovalSchema.optional(),
 }).strict()
 
 /** 会话当前是否为「可 route 确认」态：agentMode=1 且 decision 已落且 mode≠easy（easy 走 confirmEasy 原路） */
@@ -39,22 +46,7 @@ export function routeDecisionOf(s: CreationSession): AgentDecision | null {
   return parsed.success && parsed.data.mode !== 'easy' ? parsed.data : null
 }
 
-/** 输入物化：InputSpecItem → 具体值（default/prev 不参与——prev 仅链内运行期由 orchestrator 解析） */
-function materialize(spec: Record<string, InputSpecItem>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const [field, item] of Object.entries(spec)) {
-    switch (item.kind) {
-      case 'text': out[field] = item.value; break
-      case 'number': out[field] = item.value; break
-      case 'boolean': out[field] = item.value; break
-      case 'asset': out[field] = item.assetId; break
-      case 'assets': out[field] = item.assetIds; break
-      case 'default':
-      case 'prev': break
-    }
-  }
-  return out
-}
+/** 输入物化抽至 route-inputs.ts（确认侧与连续性定位侧同源，见 route-inputs.ts 头注）。 */
 
 /** route 立项：草稿行现值投影为 base（无 CreationPlan）→ 用户覆盖经 sanitizeProjectMeta；模板取真实执行目标 */
 function routeBaseMeta(project: { name: string; genre: string; templateKey: string; brief: string | null; tags: string }, execKey: string | null, rationale: string): ProjectMeta {
@@ -68,12 +60,25 @@ function routeBaseMeta(project: { name: string; genre: string; templateKey: stri
   }
 }
 
-/** WorkflowError / InvalidRunInputError → CreationError（保持路由层错误契约统一，code 透传，绝不糊成 503） */
-function asCreationError(err: unknown): CreationError {
+/** WorkflowError / InvalidRunInputError → CreationError（保持路由层错误契约统一，code 透传，绝不糊成 503）；
+ *  ContinuityError 原样透传（路由层按 404/409/413 + operationId 呈现，绝不糊成 503）。 */
+function asCreationError(err: unknown): CreationError | ContinuityError {
+  if (err instanceof ContinuityError) return err
   if (err instanceof CreationError) return err
   if (err instanceof WorkflowError) return new CreationError(err.code, err.message, 409)
   if (err instanceof InvalidRunInputError) return new CreationError(err.code, err.message, 409)
   return new CreationError('route_start_failed', err instanceof Error ? err.message : '执行启动失败', 503)
+}
+
+/**
+ * route 连续性批准注入（与 workflow withWorkflowApproval 同口径）：决策声明启用 with_continuity 而无批准
+ * → ContinuityError 409 continuity_gaps_unaccepted；携批准 → 服务端权威追加槽位（with_continuity=true +
+ * continuity_context=批准包资产，调用方伪造/漏带均以服务端为准）。
+ */
+function withRouteApproval(raw: Record<string, unknown>, approval: Approval | undefined): Record<string, unknown> {
+  if (approval) return { ...raw, with_continuity: true, continuity_context: [approval.document.assetId] }
+  if (workflowContinuityEnabled(raw)) throw new ContinuityError('continuity_gaps_unaccepted', 409)
+  return raw
 }
 
 /**
@@ -85,6 +90,12 @@ export async function confirmRoute(id: number, raw: unknown): Promise<{ runId: n
   const s0 = await sessionRow(id)
   const decision = routeDecisionOf(s0)
   if (!decision) throw new CreationError('not_ready', '当前没有可确认的调度计划，请先完成对话规划', 409)
+  // M70：批准包必须恰指本会话当前决策位置（kind=route + sessionId/decisionRevision/decisionHash 全匹配），
+  // 否则 409 continuity_context_changed。置于幂等早退之前：过期 decision / 另一会话 / 异种包在回放路径同样被拒。
+  if (request.continuityApproval) {
+    const doc = await readContext(s0.projectId, request.continuityApproval, db)
+    assertRouteApprovalTarget(doc, id, s0.planRevision, s0.decisionHash)
+  }
   if (s0.runId) return { runId: s0.runId, ...(s0.workflowId ? { workflowId: s0.workflowId } : {}) }
   await activeProject(s0.projectId)
   if (s0.status !== 'ready' || s0.decisionHash !== request.decisionHash || s0.planRevision !== request.decisionRevision) {
@@ -106,7 +117,7 @@ export async function confirmRoute(id: number, raw: unknown): Promise<{ runId: n
 /** template：立项 active + createRunRow（单发）+ engine.startRun；确认闸幂等由 status ready→starting 条件更新保证 */
 async function startTemplate(id: number, s: CreationSession, decision: AgentDecision, request: z.infer<typeof routeConfirmationSchema>): Promise<{ runId: number }> {
   const tplKey = decision.templateRun!.templateKey
-  const input = materialize(decision.templateRun!.inputSpec)
+  const input = withRouteApproval(materializeRouteInputs(decision.templateRun!.inputSpec), request.continuityApproval)
   const result = await creationWrite(() => db.transaction(async (tx) => {
     const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
     if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
@@ -116,7 +127,7 @@ async function startTemplate(id: number, s: CreationSession, decision: AgentDeci
     const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
       .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
     if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
-    const run = await createRunRow({ projectId: s.projectId, templateKey: tplKey, input, creationSessionId: id, chainKind: 'route' }, tx)
+    const run = await createRunRow({ projectId: s.projectId, templateKey: tplKey, input, creationSessionId: id, chainKind: 'route', continuityApproval: request.continuityApproval }, tx)
     await tx.update(creationSessions).set({ status: 'started', runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
     await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已按调度计划启动制作（模板「${tplKey}」）。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'run', runId: run.id, mode: 'template', templateKey: tplKey }), createdAt: Date.now() })
     return { runId: run.id, start: true }
@@ -130,7 +141,7 @@ async function startSynth(id: number, s: CreationSession, decision: AgentDecisio
   const synth = decision.synth!
   saveTemplate(synth.templateKey, synth.yaml)
   try {
-    const input = materialize(synth.inputSpec)
+    const input = withRouteApproval(materializeRouteInputs(synth.inputSpec), request.continuityApproval)
     const result = await creationWrite(() => db.transaction(async (tx) => {
       const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
       if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
@@ -140,7 +151,7 @@ async function startSynth(id: number, s: CreationSession, decision: AgentDecisio
       const claimed = await tx.update(creationSessions).set({ status: 'starting', startKey: request.idempotencyKey })
         .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
       if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
-      const run = await createRunRow({ projectId: s.projectId, templateKey: synth.templateKey, input, creationSessionId: id, chainKind: 'route' }, tx)
+      const run = await createRunRow({ projectId: s.projectId, templateKey: synth.templateKey, input, creationSessionId: id, chainKind: 'route', continuityApproval: request.continuityApproval }, tx)
       await tx.update(creationSessions).set({ status: 'started', runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))
       await tx.insert(creationMessages).values({ sessionId: id, role: 'assistant', agentRole: decision.roleKey, content: `已按临时编排计划启动制作（${synth.stepCount} 步）。${renderMetaNotes(notes).trim()}`, payload: JSON.stringify({ kind: 'run', runId: run.id, mode: 'synth', templateKey: synth.templateKey }), createdAt: Date.now() })
       return { runId: run.id, start: true }
@@ -169,8 +180,10 @@ async function startChain(id: number, s: CreationSession, decision: AgentDecisio
     for (const [k, v] of Object.entries(seg.inputSpec)) { const t = toWorkflowToken(v); if (t !== undefined) spec[k] = t }
     return { templateKey: seg.templateKey, inputSpec: Object.keys(spec).length ? spec : undefined }
   })
-  // 事务外先过只读段闸（模板可载 / 必填输入 / 预算熔断）：不过则连链都不建
-  const gate = await prepareFirstSegment({ projectId: s.projectId, segments: JSON.stringify(segments) }).catch((err) => { throw asCreationError(err) })
+  // 事务外先过只读段闸（模板可载 / 必填输入 / 预算熔断 + 批准槽位注入）：不过则连链都不建。
+  // M70：批准透传给 prepareFirstSegment（与专业链首段同源）——声明启用而无批准 409；带批准由服务端追加槽位。
+  const gate = await prepareFirstSegment({ projectId: s.projectId, segments: JSON.stringify(segments) },
+    { continuityApproval: request.continuityApproval }).catch((err) => { throw asCreationError(err) })
   const committed = await creationWrite(() => db.transaction(async (tx) => {
     const [project] = await tx.select().from(projects).where(and(eq(projects.id, s.projectId), isNull(projects.deletedAt)))
     if (!project) throw new CreationError('project_deleted', '项目已删除，不能启动', 409)
@@ -181,7 +194,7 @@ async function startChain(id: number, s: CreationSession, decision: AgentDecisio
       .where(and(eq(creationSessions.id, id), eq(creationSessions.status, 'ready'), eq(creationSessions.decisionHash, request.decisionHash), eq(creationSessions.planRevision, request.decisionRevision), isNull(creationSessions.runId))).returning()
     if (!claimed.length) throw new CreationError('conflict', '计划已被确认或修改，请刷新', 409)
     const wf = await createWorkflow({ projectId: s.projectId, name: meta.name, segments, autoAdvance: 0, note: decision.rationale }, tx)
-    const run = await createRunRow({ projectId: s.projectId, templateKey: gate.templateKey, input: gate.inputs, creationSessionId: id, chainKind: 'route', workflowId: wf.id, workflowSeq: 0 }, tx)
+    const run = await createRunRow({ projectId: s.projectId, templateKey: gate.templateKey, input: gate.inputs, creationSessionId: id, chainKind: 'route', workflowId: wf.id, workflowSeq: 0, continuityApproval: request.continuityApproval }, tx)
     // active 与建 run 同批落库：绝不留「有 queued run 却仍 draft」的死角（advanceWorkflow 只认 active 链，draft 会让链永久卡住）
     await activateWorkflowIn(tx, wf.id)
     await tx.update(creationSessions).set({ status: 'started', workflowId: wf.id, runId: run.id, decisionHash: hashJson(decision), updatedAt: Date.now(), error: null }).where(eq(creationSessions.id, id))

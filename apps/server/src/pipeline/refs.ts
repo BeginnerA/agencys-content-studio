@@ -3,6 +3,7 @@ import { db } from '../db'
 import { assets, pipelineSteps } from '../db/schema'
 import type { Template } from './types'
 import { RefResolveError, isValidDateInput } from './types'
+import { isContinuityPurpose } from '../services/continuity/reserved'
 
 /**
  * 引用解析器（spec §5.2，engine 内置 ~100 行）。
@@ -314,13 +315,20 @@ export async function assertProjectAssets(
     throw new RefResolveError(what, '包含非法资产 id')
   }
   const rows = await db
-    .select({ id: assets.id })
+    .select({ id: assets.id, purpose: assets.purpose })
     .from(assets)
     .where(and(inArray(assets.id, nums), eq(assets.projectId, projectId), isNull(assets.deletedAt)))
-  const found = new Set(rows.map((r) => r.id))
+  const found = new Map(rows.map((r) => [r.id, r.purpose]))
   const missing = nums.filter((n) => !found.has(n))
   if (missing.length > 0) {
     throw new RefResolveError(what, `资产不存在或不属于本项目: ${missing.join(', ')}`)
+  }
+  // M70：剧情连续性保留产物（entry/context/use）不得当普通素材引用（ai_text 注入闸之外的第二道闸）
+  for (const n of nums) {
+    const purpose = found.get(n)
+    if (purpose && isContinuityPurpose(purpose)) {
+      throw new RefResolveError(what, `资产 #${n} 为剧情连续性保留产物（${purpose}），不得作为普通素材引用`)
+    }
   }
   return nums
 }

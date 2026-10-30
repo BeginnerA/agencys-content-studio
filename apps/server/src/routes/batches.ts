@@ -10,6 +10,7 @@ import { cancelBatch, createBatch, summarizeBatch, toBatchView } from '../servic
 import { isRunDeletable, purgeRunRecords, removeRunLogFiles } from '../services/run-delete'
 import { engine } from '../pipeline/engine'
 import { InvalidRunInputError } from '../services/run-create'
+import { ContinuityError, type Approval } from '../services/continuity/contract'
 import { BudgetBlockedError } from '../services/budget'
 import { HttpError, h, idParam, notFound } from './helpers'
 
@@ -39,6 +40,15 @@ batchesRoutes.post('/projects/:id/batches', h(async (c) => {
       throw new HttpError(400, 'bad_schedule', 'schedule.max_concurrent 需为 1–3 的整数')
     }
   }
+  // M70：可选 continuity_approvals（与 inputs 等长按索引对应；null = 该行关闭连续性）
+  const approvalsRaw = body['continuity_approvals']
+  let continuityApprovals: Array<Approval | null> | undefined
+  if (approvalsRaw !== undefined) {
+    if (!Array.isArray(approvalsRaw) || approvalsRaw.length !== inputs.length) {
+      throw new HttpError(400, 'bad_input', `continuity_approvals 需为与 inputs 等长的数组（${inputs.length} 组）`)
+    }
+    continuityApprovals = approvalsRaw.map((a) => (a === null || a === undefined ? null : a as Approval))
+  }
   try {
     const { batch, runIds } = await createBatch({
       projectId,
@@ -46,10 +56,12 @@ batchesRoutes.post('/projects/:id/batches', h(async (c) => {
       name: typeof body['name'] === 'string' ? body['name'] : undefined,
       schedule: schedule as { max_concurrent?: number } | undefined,
       inputs: inputs as Array<Record<string, unknown>>,
+      continuityApprovals,
     })
     return c.json({ batch: toBatchView(batch), runIds }, 201)
   } catch (err) {
     if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
     // [审计G3] 预算闸门拦截（createBatch 单一真源抛出）→ 409，与 runs POST / resume 同口径
     if (err instanceof BudgetBlockedError) throw new HttpError(409, err.code, err.message)
     throw err

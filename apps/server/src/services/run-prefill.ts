@@ -63,6 +63,9 @@ export class PrefillError extends Error {
 /** run-params video.resolution 输入白名单域（与 services/run-params RULES 对齐） */
 const RESOLUTION_WHITELIST = ['480p', '720p', '1080p']
 
+/** M70 连续性保留键：预填永不复用（with_continuity 一律重置 false；continuity_context 为 files 已被媒体排除，双保险） */
+const CONTINUITY_KEYS = ['with_continuity', 'continuity_context'] as const
+
 /** brief 放置白名单：key 或 label 命中其一（大小写不敏感）方视为「可承接项目简介」的文本输入 */
 const BRIEF_RE =
   /(简介|主题|选题|方向|标题|文案|大纲|梗概|idea|topic|theme|title|brief|description|summary|outline|synopsis)/i
@@ -167,9 +170,13 @@ export async function resolveRunPrefill(projectId: number, templateKey: string):
   const inputs: Record<string, PrefillInputValue> = {}
   const defaults = (template.defaults ?? {}) as Record<string, unknown>
 
-  // ① template_default（模板声明级，兼容旧 defaults[key]）
+  // ① template_default（模板声明级，兼容旧 defaults[key]）；连续性开关强制重置 false（不继承模板真值以外的任何来源）
   for (const inp of template.inputs) {
     if (isMediaInput(inp)) continue
+    if ((CONTINUITY_KEYS as readonly string[]).includes(inp.key)) {
+      if (inp.key === 'with_continuity') inputs['with_continuity'] = { value: false, source: 'template_default' }
+      continue
+    }
     const d = inp.default !== undefined ? inp.default : defaults[inp.key]
     if (usableScalar(d)) inputs[inp.key] = { value: coerce(d, inp), source: 'template_default' }
   }
@@ -187,7 +194,8 @@ export async function resolveRunPrefill(projectId: number, templateKey: string):
     if (!parsed) continue
     lastRunId = r.id
     for (const inp of template.inputs) {
-      if (isMediaInput(inp)) continue
+      // 媒体类 / 连续性保留键不复用（M70：默认/last_run/客户端 prefill 均不可带回连续性批准）
+      if (isMediaInput(inp) || (CONTINUITY_KEYS as readonly string[]).includes(inp.key)) continue
       const v = parsed[inp.key]
       if (!usableScalar(v)) continue
       inputs[inp.key] = { value: coerce(v, inp), source: 'last_run' }

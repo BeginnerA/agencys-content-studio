@@ -5,6 +5,7 @@ import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessio
 import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError, stripResumeSubtitleEdits } from '../services/run-create'
+import { ContinuityError, type Approval } from '../services/continuity/contract'
 import { checkBudget } from '../services/budget'
 import { randomUUID } from 'node:crypto'
 import { describeRunConfigDrift, isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
@@ -54,13 +55,18 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
   // [F06] 预算闸门：与 creation-chat / workflow advance 同源，超阈即拦截（避免普通运行入口绕过熔断）
   const budgetHit = await checkBudget({ projectId })
   if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
+  // M70：可选 continuity_approval（已冻结承接包批准句柄；启用 with_continuity 时必传）
+  const approvalRaw = body['continuity_approval']
   try {
-    run = await createRunRow({ projectId, templateKey, input: input as Record<string, unknown> })
+    run = await createRunRow({ projectId, templateKey, input: input as Record<string, unknown>,
+      continuityApproval: approvalRaw === undefined || approvalRaw === null ? undefined : approvalRaw as Approval })
   } catch (err) {
     if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
     throw err
   }
-  engine.startRun(run.id)
+  // 幂等复用返回的可能是既有运行中 run：仅新 queued run 启动引擎（调用方提交后启动，创建函数绝不自启）
+  if (run.status === 'queued') engine.startRun(run.id)
   // 剧集联动（后置回写 latest_run_id；宽容降级：无剧/无集/失败均不影响 run）
   await linkEpisode(projectId, run.input, run.id)
   return c.json({ run: toRunView(run) }, 202)

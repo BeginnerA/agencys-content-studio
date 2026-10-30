@@ -11,6 +11,8 @@ import { engine } from '../pipeline/engine'
 import { BudgetBlockedError, checkBudget } from './budget'
 import { emitStudioEvent } from './events'
 import { createRunRow, loadTemplateOrThrow, prepareRunInput, InvalidRunInputError } from './run-create'
+import { ContinuityError, type Approval } from './continuity/contract'
+import { assertRawContinuityIntent } from './continuity/run-binding'
 
 const log = createLogger('batch')
 
@@ -26,9 +28,15 @@ export async function createBatch(p: {
   name?: string
   schedule?: { max_concurrent?: number }
   inputs: Array<Record<string, unknown>>
+  /** 与 inputs 等长按索引对应的承接包批准（null = 该行关闭连续性）；缺省时全部行不得启用 */
+  continuityApprovals?: Array<Approval | null>
 }): Promise<{ batch: typeof batches.$inferSelect; runIds: number[] }> {
   if (!Array.isArray(p.inputs) || p.inputs.length === 0) {
     throw new InvalidRunInputError('bad_input', 'inputs 需为非空数组（批量输入组）')
+  }
+  if (p.continuityApprovals !== undefined
+    && (!Array.isArray(p.continuityApprovals) || p.continuityApprovals.length !== p.inputs.length)) {
+    throw new InvalidRunInputError('bad_input', `continuity_approvals 需与 inputs 等长（${p.inputs.length} 组）`)
   }
   // 阶段 A：全量校验（失败零落库；报错带组号）
   const template = loadTemplateOrThrow(p.templateKey)
@@ -37,8 +45,13 @@ export async function createBatch(p: {
       throw new InvalidRunInputError('bad_input', `第 ${i + 1} 组输入：input 需为对象`)
     }
     try {
+      // 原始两键闸先于归一化：不支持不许先丢键再当关闭
+      assertRawContinuityIntent(template, raw)
       prepareRunInput(template, raw)
     } catch (err) {
+      if (err instanceof ContinuityError) {
+        throw new InvalidRunInputError('bad_input', `第 ${i + 1} 组输入：连续性输入被拒绝（${err.message}）`)
+      }
       if (err instanceof InvalidRunInputError) {
         throw new InvalidRunInputError(err.code, `第 ${i + 1} 组输入：${err.message}`)
       }
@@ -79,6 +92,7 @@ export async function createBatch(p: {
         input: raw,
         batchId: batchRow.id,
         batchSeq: i + 1,
+        continuityApproval: p.continuityApprovals?.[i] ?? undefined,
       }, tx)
       ids.push(run.id)
     }

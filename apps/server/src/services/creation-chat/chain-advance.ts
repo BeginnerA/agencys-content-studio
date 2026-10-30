@@ -8,12 +8,15 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../db'
 import { creationMessages, creationSessions } from '../../db/schema'
 import { WorkflowError, requestNextSegment, type AdvanceOutcome } from '../workflow'
+import { ContinuityError, ApprovalSchema } from '../continuity/contract'
 import { CreationError } from './contract'
 import { routeDecisionOf } from './route-execution'
 import { creationWrite, sessionRow } from './store'
 
 const advanceSchema = z.object({
   idempotencyKey: z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
+  // M70：下一推进位置的已冻结承接包批准（仅用户请求 schema 接入；批准定位校验在编排器 requestNextSegment 内）
+  continuityApproval: ApprovalSchema.optional(),
 }).strict()
 
 /**
@@ -31,8 +34,11 @@ export async function advanceChainSegment(id: number, raw: unknown): Promise<{ o
 
   let outcome: AdvanceOutcome
   try {
-    outcome = await requestNextSegment(s0.workflowId)
+    // M70：批准透传给编排器——批准哈希在 requestNextSegment 内绑定 session/workflow/nextSeq/previousRun
+    // 定位（assertApprovalMatchesTransition），旧 key 幂等语义不变（同 seq 存在性守卫兜底并发/连点）。
+    outcome = await requestNextSegment(s0.workflowId, { continuityApproval: request.continuityApproval })
   } catch (err) {
+    if (err instanceof ContinuityError) throw err // 404/409/413 + operationId 原样上抛，不糊成 503
     if (err instanceof WorkflowError) throw new CreationError(err.code, err.message, 409)
     throw new CreationError('chain_advance_failed', err instanceof Error ? err.message : '续跑启动失败', 503)
   }

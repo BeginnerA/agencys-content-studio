@@ -1,6 +1,6 @@
 key: mengbao-episode
 builtin: true
-version: 18
+version: 19
 name: 短剧·单集
 description: 适合：按单集剧本产出带配音字幕的短剧成片（角色/场景/道具锚定 + 分镜出图 + 逐句配音 + 背景音乐智能选曲）。多集连载在「同一项目」下逐集运行，集间承接：前集 write_script 剧本经多段工作流链段 inputSpec（prev_script 映射 $prev.asset:script）自动流入本集剧本步，或由用户手动选入既往剧本资产。流程：剧本 → 深度审查（可选）→ 角色档案与定妆照（可选，出图后人工审阅）→ 场景道具档案与参考图（可选，出图后人工审阅）→ 台词切句 → 分镜（可审阅）→ 逐句配音 → 以音定画出图或动效（出图后均人工审阅，动效镜时长按配音实测）→ 字幕 → 合成。
 genre: drama_short
@@ -89,6 +89,17 @@ inputs:
     label: AI 生乐风格描述（仅 music_gen 生效；留空用默认文案）
     kind: text
     required: false
+  # 【M70 跨集剧情连续性】启用后 write_script 承接已批准剧情承接包（审批冻结 → 统一建 run 认领 → 目标步注入）。
+  # continuity_context 为保留槽位：调用方只填批准包资产 id，普通参考注入会跳过该键。
+  - key: with_continuity
+    label: 使用已确认跨集剧情
+    kind: bool
+    required: false
+    default: false
+  - key: continuity_context
+    label: 已批准剧情承接包
+    kind: files
+    required: false
 defaults:
   llm: { temperature: 0.8, max_tokens: 24000 }
   image: { provider: pollinations_image, size: "832x1248" }
@@ -137,6 +148,8 @@ steps:
       prompt_tpl: script-ep.md
       output_purpose: script
       name_tpl: "{episode_number:03d}-剧本.md"
+      # 【M70】唯一连续性目标步：启用 with_continuity 时经已批准承接包注入（template defaults.llm 可下调 temperature/max_tokens）
+      continuity_role: episode_script
     gate:
       mode: required
       message: 请审阅第 {input.episode_number} 集剧本，批准后进入分镜；驳回可附修改意见重跑

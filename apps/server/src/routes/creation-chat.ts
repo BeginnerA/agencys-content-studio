@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { ZodError } from 'zod'
 import { CreationError } from '../services/creation-chat/contract'
+import { ContinuityError } from '../services/continuity/contract'
 import { createSession, refreshPreflight, sendCreationMessage } from '../services/creation-chat/planning'
 import { addAttachment, addAttachmentFromAsset } from '../services/creation-chat/attachments'
 import { bindCreationRef } from '../services/creation-chat/ref-bind'
@@ -30,6 +31,11 @@ function route(fn: (c: Context) => Promise<Response>) {
     try { return await fn(c) }
     catch (error) {
       if (error instanceof CreationError) return c.json({ error: { code: error.code, message: error.message } }, error.status)
+      // M70：连续性错误在 CreationError 边界原样保留 404/409/413 与 operationId（绝不落默认 503）
+      if (error instanceof ContinuityError) {
+        return c.json({ error: { code: error.code, message: error.message,
+          ...(error.operationId !== undefined ? { operationId: error.operationId } : {}) } }, error.status)
+      }
       if (error instanceof ZodError) return c.json({ error: { code: 'invalid_request', message: '请求字段不符合契约，请刷新并检查输入长度' } }, 422)
       return c.json({ error: { code: 'creation_failed', message: '创作请求未完成，请刷新核对状态；不会自动重复提交' } }, 503)
     }

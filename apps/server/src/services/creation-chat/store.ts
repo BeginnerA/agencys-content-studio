@@ -7,6 +7,9 @@ import { planningProgress } from './planning-progress'
 import { agentDecisionSchema } from './agent/decision-schema'
 import { getRole } from './agent/roles'
 import { computeSideCards } from './side-cards'
+import { checkBudget } from '../budget'
+import { readWorkflowContinuityBlock } from '../continuity/workflow-bridge'
+import type { TargetRequest } from '../continuity/contract'
 import { getWorkflow, parseSegments, setWorkflowStatus } from '../workflow'
 
 /** 只串行化短数据库操作；模型/媒体调用不占锁。数据库条件更新仍是最终仲裁。 */
@@ -57,17 +60,30 @@ export async function creationDetail(id: number) {
   const hasReverseDeliverable = Array.isArray(lastAssistantPayload?.imageAnalysis) && (lastAssistantPayload!.imageAnalysis as unknown[]).length > 0
   // 待你补充态：最新一条 assistant 为 clarify 且携追问（右侧下一步卡据此取代固定 guide）
   const awaitingClarify = lastAssistantPayload?.kind === 'clarify' && Array.isArray(lastAssistantPayload?.questions) && (lastAssistantPayload!.questions as unknown[]).length > 0
-  // chain 段间待续跑投影：纯读派生——链 active + 有已落定段 + 下一段未起 → 出批准卡（不回写会话态）
+  // chain 段间待续跑投影：纯读派生——active 正常等待（既有口径逐字不变）或 paused 且明确 continuity input
+  // 阻塞 → 出批准卡（不回写会话态）；budget/failure 一律不伪装待承接。
   let chainAwaiting = false
+  let chainContinuityBlock: { code: string; target: Extract<TargetRequest, { kind: 'workflow' }> } | null = null
   if (session.workflowId && decisionMode === 'chain' && session.status === 'started') {
     const wf = await getWorkflow(session.workflowId)
+    const wfRuns = wf
+      ? await db.select({ seq: pipelineRuns.workflowSeq, status: pipelineRuns.status }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, session.workflowId))
+      : []
     if (wf && wf.status === 'active') {
       const total = parseSegments(wf.segments).length
-      const wfRuns = await db.select({ seq: pipelineRuns.workflowSeq, status: pipelineRuns.status }).from(pipelineRuns).where(eq(pipelineRuns.workflowId, session.workflowId))
       const startedSeqs = new Set(wfRuns.map((r) => r.seq ?? 0))
       const doneSeqs = wfRuns.filter((r) => r.status === 'completed').map((r) => r.seq ?? 0)
       const maxDone = doneSeqs.length ? Math.max(...doneSeqs) : -1
       chainAwaiting = maxDone >= 0 && maxDone + 1 < total && !startedSeqs.has(maxDone + 1)
+    } else if (wf && wf.status === 'paused') {
+      // M70：链曾因输入/预算阻塞过 → paused；仅当「最新落定段已完成 + 未熔断 + 只读定位确有 continuity 阻塞」
+      // 才视为等待批准。段失败/取消（不自动重试语义）与预算熔断都不得伪装成「待你批准续跑」。
+      const settled = [...wfRuns].filter((r) => ['completed', 'failed', 'cancelled'].includes(r.status))
+        .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0]
+      if (settled && settled.status === 'completed' && !(await checkBudget({ projectId: session.projectId }))) {
+        const block = await readWorkflowContinuityBlock(session.projectId, session.workflowId, db)
+        if (block) { chainAwaiting = true; chainContinuityBlock = block }
+      }
     }
   }
   const sideCards = computeSideCards({
@@ -96,6 +112,10 @@ export async function creationDetail(id: number) {
       // route 确认闸真源：decisionHash 参与确认（语义同 planHash，改动即作废旧确认）；easy/legacy 为 null
       decisionHash: session.decisionHash ?? null,
       workflowId: session.workflowId ?? null,
+      // chain 段间待批投影：awaiting = active 正常等待或 paused 且明确 continuity input 阻塞；
+      // continuityBlock 仅 paused 阻塞时携带（code + 待批目标签名），active 等待/熔断/失败恒为 null
+      chainAwaiting,
+      chainContinuityBlock,
       // 规划在途进度（内存旁信道）：阶段 + 已进行秒数；非 planning 态恒为 null，不残留旧进度
       planning: session.status === 'planning' ? planningProgress(id) : null,
       initialDraft: initial?.success && initial.data.deferPlanning ? { content: initial.data.content, requestKey: initial.data.requestKey } : null,

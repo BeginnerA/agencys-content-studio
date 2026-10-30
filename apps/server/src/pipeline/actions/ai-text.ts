@@ -2,10 +2,14 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../../db'
 import { genTasks, type GenTask } from '../../db/schema'
 import { emitStudioEvent } from '../../services/events'
-import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint } from '../../services/llm'
+import { loadPromptTemplate, chatCompleteDetailed, resolveLlmEndpoint, type ChatMessage } from '../../services/llm'
 import { isJsonTextFormat, readTextAsset, writeTextAsset } from '../../services/storage'
 import { assetInput, safeRecordExecSnapshot, type ExecInputSpec } from '../../services/provenance'
 import { recordLlmUsage } from '../../services/usage'
+import { ContinuityError } from '../../services/continuity/contract'
+import { executeContinuityText } from '../../services/continuity/invocation'
+import { loadTargetPack } from '../../services/continuity/run-binding'
+import { isContinuityPurpose } from '../../services/continuity/reserved'
 import type { StepContext } from '../context'
 import { interpolate } from '../refs'
 import { runCancelled } from '../cancel'
@@ -19,9 +23,19 @@ import { RunCancelledError } from '../types'
  * output_format=storyboard-json/lines-json/characters-json/set-json/event-json/graph-json/plan-json/monetization-json
  * 时走 validateTextOutput 契约校验；
  * def.batch 存在→ aiTextBatch（按 JSON 列表逐项生成）；params.max_input_chars → 超长注入截断。
+ * M70 连续性闸门：启用 run（with_continuity=true）仅允许唯一目标步（continuity_role=episode_script）
+ * 经冻结承接包路径调用模型；batch 步一律拒绝；非目标步骤保持原 ctx.settings.llm 链不变。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
-  if (ctx.def.batch) return aiTextBatch(ctx)
+  const runInput = JSON.parse(ctx.run.input) as Record<string, unknown>
+  const enabled = runInput['with_continuity'] === true
+  const role = ((ctx.def.params ?? {}) as Record<string, unknown>)['continuity_role']
+  if (ctx.def.batch) {
+    // batch 步不得承接承接包（创建期已拦，此处执行期兜底 fail-closed，先于 batch 字段解析）
+    if (enabled) throw new ContinuityError('continuity_unsupported', 400)
+    return aiTextBatch(ctx)
+  }
+  if (enabled && role === 'episode_script') return continuityAiText(ctx, runInput)
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
   const tplFile = params['prompt_tpl']
   // prompt_inline 与 prompt_tpl 二选一必填（画布 llm 节点映射 → 直接内联指令，无需提示词文件）
@@ -35,7 +49,6 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
       : 0
   const outputPurpose = typeof params['output_purpose'] === 'string' ? params['output_purpose'] : 'text'
   const outputFormat = typeof params['output_format'] === 'string' ? params['output_format'] : 'markdown'
-  const runInput = JSON.parse(ctx.run.input) as Record<string, unknown>
 
   const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
   const sections: string[] = []
@@ -43,10 +56,15 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   const execInputs: ExecInputSpec[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
     if (k.startsWith('_')) continue // _review 等内部键不注入
+    if (k === 'continuity_context') continue // M70 槽位：普通路径永不注入（启用 run 的非目标步按原路且不携包）
     const ids = asAssetIds(v)
     if (ids && ids.length > 0) {
       const rows = await ctx.assetsOf(ids)
       for (const a of rows) {
+        if (a.purpose && isContinuityPurpose(a.purpose)) {
+          // 保留产物不得伪装普通参考（M70 refs 通用归属检查同口径）
+          throw new ContinuityError('continuity_unsupported', 400)
+        }
         if (a.kind === 'text') {
           const content = await readTextAsset(a.id)
           sections.push(`--- ${k} / ${a.name} ---\n${clipContent(content, maxInputChars)}`)
@@ -154,6 +172,64 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     inputs: execInputs,
   })
   return { assetIds: [asset.id] }
+}
+
+/**
+ * 连续性目标路径（M70 Task6）：冻结承接包渲染注入一次（不裁剪、槽位跳过、保留 purpose 拒绝），
+ * 完整 messages 交 executeContinuityText——调用证据/费用预检/产物与用量记录全部归 Task5 状态机。
+ * 口径（勿改）：本路径走 continuity llmOptions 链（targets.ts 兜底 temperature 0 / maxTokens 24000 /
+ * timeoutMs 600000，模板 defaults.llm 可覆盖 temperature/max_tokens）；非目标步骤保持原 ctx.settings.llm
+ * 链不变。两链不同源是 Task4 configHash 既定语义所迫——改用 ctx 链会令冻结包预览哈希全量 409。
+ */
+async function continuityAiText(ctx: StepContext, runInput: Record<string, unknown>): Promise<StepResult> {
+  const params = (ctx.def.params ?? {}) as Record<string, unknown>
+  const tplFile = params['prompt_tpl']
+  const inlinePrompt = params['prompt_inline']
+  const hasTpl = typeof tplFile === 'string' && tplFile.length > 0
+  const hasInline = typeof inlinePrompt === 'string' && inlinePrompt.trim().length > 0
+  if (!hasTpl && !hasInline) throw new Error('params.prompt_tpl 或 params.prompt_inline 至少其一非空')
+  const outputPurpose = typeof params['output_purpose'] === 'string' ? params['output_purpose'] : 'text'
+  const outputFormat = typeof params['output_format'] === 'string' ? params['output_format'] : 'markdown'
+  const templateText = hasTpl ? loadPromptTemplate(tplFile as string) : (inlinePrompt as string).trim()
+  // 两阶段绑定第二步（步骤级 CAS）+ 批准句柄全字段校验；行缺失/步骤不符在此 fail-closed，不派发模型
+  const { doc } = await loadTargetPack(ctx)
+  const sections: string[] = []
+  for (const [k, v] of Object.entries(ctx.input)) {
+    if (k.startsWith('_')) continue
+    if (k === 'continuity_context') continue // 槽位由冻结包渲染替代，绝不二次注入
+    const ids = asAssetIds(v)
+    if (ids && ids.length > 0) {
+      const rows = await ctx.assetsOf(ids)
+      for (const a of rows) {
+        if (a.purpose && isContinuityPurpose(a.purpose)) throw new ContinuityError('continuity_unsupported', 400)
+        if (a.kind === 'text') {
+          sections.push(`--- ${k} / ${a.name} ---\n${await readTextAsset(a.id)}`)
+        } else {
+          sections.push(`--- ${k} / ${a.name}（${a.kind} 资产：文本模型无法读取，路径 ${a.relPath ?? '?'}）---`)
+        }
+      }
+    } else if (typeof v === 'string') {
+      sections.push(`--- ${k} ---\n${v}`)
+    } else if (v !== undefined && v !== null) {
+      sections.push(`--- ${k} ---\n${JSON.stringify(v, null, 2)}`)
+    }
+  }
+  let userPrompt = templateText
+  if (sections.length > 0) userPrompt += `\n\n===== 输入资料 =====\n${sections.join('\n\n')}`
+  const review = (ctx.input['_review'] as { note?: string } | undefined)?.note
+  if (review) {
+    userPrompt += `\n\n===== 人工修改意见（必须逐条落实） =====\n${review}`
+    ctx.log('检测到驳回修改意见，已注入本次生成')
+  }
+  userPrompt += `\n\n===== 剧情连续性台账（已批准承接包） =====\n${doc.rendered}`
+  ctx.log(`连续性目标路径：承接包 ${doc.entries.length} 条基线已注入（rendered ${doc.rendered.length} 字符）`)
+  const nameTpl = typeof params['name_tpl'] === 'string' ? params['name_tpl'] : undefined
+  const name = nameTpl ? interpolate(nameTpl, runInput) : defaultName(outputFormat, outputPurpose)
+  const messages: ChatMessage[] = [
+    { role: 'system', content: '你是内容创作流水线的执行引擎，严格按用户提供的提示词模板产出。只输出任务要求的内容本体，不输出任何解释性前言或后记。' },
+    { role: 'user', content: userPrompt },
+  ]
+  return executeContinuityText(ctx, messages, { name, purpose: outputPurpose, format: outputFormat })
 }
 
 /**
@@ -503,15 +579,16 @@ async function runOneTextTask(
   }
 }
 
-/** 静态 sections：照单调用规则，但跳过 field 键（其资产由数组 + 逐项机制替代） */
+/** 静态 sections：照单调用规则，但跳过 field 键（其资产由数组 + 逐项机制替代）；M70 保留键/保留 purpose 同闸 */
 async function buildStaticSections(ctx: StepContext, skipKey: string): Promise<string[]> {
   const sections: string[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
-    if (k.startsWith('_') || k === skipKey) continue
+    if (k.startsWith('_') || k === skipKey || k === 'continuity_context') continue
     const ids = asAssetIds(v)
     if (ids && ids.length > 0) {
       const rows = await ctx.assetsOf(ids)
       for (const a of rows) {
+        if (a.purpose && isContinuityPurpose(a.purpose)) throw new ContinuityError('continuity_unsupported', 400)
         if (a.kind === 'text') {
           sections.push(`--- ${k} / ${a.name} ---\n${await readTextAsset(a.id)}`)
         } else {

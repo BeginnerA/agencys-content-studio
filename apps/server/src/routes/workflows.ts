@@ -25,6 +25,9 @@ import {
   type WorkflowSegment,
 } from '../services/workflow'
 import { HttpError, h, idParam, notFound } from './helpers'
+import { InvalidRunInputError } from '../services/run-create'
+import { ApprovalSchema, ContinuityError, type Approval } from '../services/continuity/contract'
+import type { WorkflowStartOptions } from '../services/workflow'
 
 export const workflowsRoutes = new Hono()
 
@@ -120,12 +123,16 @@ workflowsRoutes.post('/workflows/:id/clone', h(async (c) => {
 }))
 
 // POST /workflows/:id/start —— 显式创建并启动首段 run（draft|paused→active）
+// M70：body.continuity_approval（可选）= 已冻结承接包批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted。
 workflowsRoutes.post('/workflows/:id/start', h(async (c) => {
   const id = idParam(c)
   try {
-    const { workflow, runId } = await startWorkflow(id)
+    const options = await readStartOptions(c)
+    const { workflow, runId } = await startWorkflow(id, options)
     return c.json({ workflow: toWorkflowView(workflow), runId })
   } catch (err) {
+    if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
     if (err instanceof WorkflowError) throw new HttpError(err.code === 'not_found' ? 404 : 409, err.code, err.message)
     throw err
   }
@@ -141,12 +148,16 @@ workflowsRoutes.post('/workflows/:id/pause', h(async (c) => {
 }))
 
 // POST /workflows/:id/resume —— paused → active 并重新驱动推进（断点恢复）
+// M70：body.continuity_approval（可选）= 下一推进位置的批准句柄；缺包且启用段阻塞 → 回落 paused。
 workflowsRoutes.post('/workflows/:id/resume', h(async (c) => {
   const id = idParam(c)
   try {
-    const row = await resumeWorkflow(id)
+    const options = await readStartOptions(c)
+    const row = await resumeWorkflow(id, options)
     return c.json({ workflow: toWorkflowView(row) })
   } catch (err) {
+    if (err instanceof InvalidRunInputError) throw new HttpError(400, err.code, err.message)
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
     if (err instanceof WorkflowError) throw new HttpError(err.code === 'not_found' ? 404 : 409, err.code, err.message)
     throw err
   }
@@ -162,6 +173,20 @@ async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<R
     throw new HttpError(400, 'bad_json', '请求体需为对象')
   }
   return body as Record<string, unknown>
+}
+
+/** start/resume 请求体宽松解析：空体/非法 JSON 视为未携包；continuity_approval 需为完整批准句柄。 */
+async function readStartOptions(c: { req: { json: () => Promise<unknown> } }): Promise<WorkflowStartOptions> {
+  const body = await c.req.json()
+    .then((v): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}))
+    .catch((): Record<string, unknown> => ({}))
+  const raw = body['continuity_approval']
+  if (raw === undefined || raw === null) return {}
+  const parsed = ApprovalSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new HttpError(400, 'bad_approval', 'continuity_approval 需为已冻结承接包的批准句柄')
+  }
+  return { continuityApproval: parsed.data as Approval }
 }
 
 /** 解析并结构校验 segments（模板合法性校验 validateWorkflowChainDoc 于 P1 接入） */
