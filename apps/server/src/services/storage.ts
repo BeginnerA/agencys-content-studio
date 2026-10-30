@@ -32,7 +32,7 @@ export function projectAbsDir(projectId: number): string {
 }
 
 /** 文本 JSON 输出格式（mime/ext 判定与 ai_text format 透传共用） */
-export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'monetization-json', 'chapter-manifest-json', 'dialogue-transcript-json'] as const
+export const JSON_FORMATS = ['storyboard-json', 'lines-json', 'characters-json', 'set-json', 'event-json', 'graph-json', 'plan-json', 'monetization-json', 'chapter-manifest-json', 'dialogue-transcript-json', 'continuity-json'] as const
 
 /** 文本 JSON 格式判定 */
 export function isJsonTextFormat(format?: string): boolean {

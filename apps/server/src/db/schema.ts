@@ -1,4 +1,5 @@
 import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
+export { contentContinuityRecords, type ContentContinuityRecord } from './continuity-schema'
 
 /**
  * agencys-content-studio schema —— 通用领域模型（对照设计规格 §4）

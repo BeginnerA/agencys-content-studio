@@ -15,6 +15,7 @@ import { startScheduler, stopScheduler } from './services/schedule'
 import { purgeExpiredCanvases } from './services/trash-sweep'
 import { recoverCanvasTasks } from './services/creation/gen'
 import { recoverEntityRefTasks } from './services/entity-refgen'
+import { recoverContinuityOperations } from './services/continuity/recovery'
 import { onStudioEvent } from './services/events'
 import { notifyCreationSettled, reconcileCreationSessions } from './services/creation-chat/store'
 import { refreshTemplateVectors } from './services/template-recommend'
@@ -38,6 +39,15 @@ async function projectIdOf(runId: number): Promise<number> {
 
 async function main(): Promise<void> {
   await initDb()
+
+  // 剧情连续性恢复：遗留 extracting/dispatching → unknown（零模型调用；失败仅告警，不阻塞启动）
+  try {
+    const continuity = await recoverContinuityOperations()
+    if (continuity.entries || continuity.consumptions) {
+      log.info(`continuity recover: entries=${continuity.entries} consumptions=${continuity.consumptions}`)
+    }
+  } catch (err) { log.error('continuity 恢复失败（不阻塞启动）', err) }
+
   await reconcileCreationSessions()
   onRunSettled((runId) => { void notifyCreationSettled(runId).catch(() => log.warn('创作会话时间更新失败，可通过 HTTP 重拉状态')) })
 
