@@ -13,7 +13,8 @@ export {
   seriesApi,
 } from './projects'
 
-export { runApi, taskApi, stepApi, composeApi, shotApi, novelApi } from './runs'
+export { runApi, taskApi, stepApi, composeApi, shotApi, novelApi, qualityApi } from './runs'
+export type { QualityScoreView, QualityScoreBody } from './runs'
 
 export {
   assetApi,

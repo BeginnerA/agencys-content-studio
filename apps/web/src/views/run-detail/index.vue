@@ -16,6 +16,7 @@ import RunExportsPanel from './RunExportsPanel.vue'
 import RunQcPanel from '../../components/run/qc/RunQcPanel.vue'
 import RunFindingsPanel from '../../components/run/findings/RunFindingsPanel.vue'
 import RunDeliveryCertPanel from '../../components/run/cert/RunDeliveryCertPanel.vue'
+import QualityScorePanel from '../../components/run/QualityScorePanel.vue'
 import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
@@ -245,6 +246,9 @@ const {
 
           <!-- 交付包认证（只读）：编辑交换包结构/时长/媒体/字幕一致性 + 交付可信四态；无交付包时自动隐藏 -->
           <RunDeliveryCertPanel :run-id="runId" />
+
+          <!-- 质量评分（R01 基线）：四维雷达图 + 权重调整 + 元数据；不调用付费模型 -->
+          <QualityScorePanel :run-id="runId" :episode-idx="run.batchSeq ?? 0" />
 
           <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>

@@ -341,3 +341,48 @@ export const novelApi = {
   board: (runId: number) =>
     api.get<NovelBoardData>(`/api/v1/runs/${runId}/novel-board`),
 }
+
+// ===== 质量评分（R01 基线：四维评分） =====
+
+/** 单集评分结果（与 POST/GET /runs/:id/quality 响应契约对齐） */
+export interface QualityScoreView {
+  citationScore: number
+  consistencyScore: number
+  coherenceScore: number
+  costScore: number
+  overallScore: number
+  metadata: {
+    templateVersion: string
+    promptVersion: string
+    model: string
+    params: Record<string, unknown>
+    assetVersions: Record<string, string>
+  }
+}
+
+/** 触发评分的请求体 */
+export interface QualityScoreBody {
+  episodeIdx: number
+  weights?: {
+    citation?: number
+    consistency?: number
+    coherence?: number
+    cost?: number
+  }
+}
+
+export const qualityApi = {
+  /** 触发四维评分（POST /runs/:id/quality） */
+  score: (runId: number, body: QualityScoreBody) =>
+    api.post<{ score: QualityScoreView }>(`/api/v1/runs/${runId}/quality`, body),
+  /** 查询单集评分（GET /runs/:id/quality/:episodeIdx） */
+  getEpisode: (runId: number, episodeIdx: number) =>
+    api.get<{ score: QualityScoreView; createdAt: string }>(
+      `/api/v1/runs/${runId}/quality/${episodeIdx}`,
+    ),
+  /** 查询本 run 全部集评分（GET /runs/:id/quality） */
+  getAll: (runId: number) =>
+    api.get<{ scores: Array<QualityScoreView & { episodeIdx: number }>; episodeCount: number }>(
+      `/api/v1/runs/${runId}/quality`,
+    ),
+}
