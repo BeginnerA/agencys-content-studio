@@ -15,14 +15,14 @@
  */
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { Checker } from '../../probe-lib'
 import type { ChatMessage } from '../../../src/services/llm'
 import { ContinuityError, type Approval, type PreviewRequest, type TargetRequest, type UseDoc } from '../../../src/services/continuity/contract'
 import { canonicalHash } from '../../../src/services/continuity/fold'
 import { withContinuityIO } from '../../../src/services/continuity/runtime'
 import { initDatabase } from './bootstrap'
-import { confirmEpisode, fakeIO, installTargetFixture, makeStepContext, seedResumeRun, seedStory } from './fixtures'
+import { confirmEpisode, extractAndReview, fakeIO, installTargetFixture, makeStepContext, seedResumeRun, seedStory } from './fixtures'
 import { test } from './fold'
 
 const empty = { content: JSON.stringify({ subjects: [], topics: [], items: [], warnings: [], noChanges: true }),
@@ -575,6 +575,44 @@ async function runResumeBody(checker: Checker) {
     assert.equal(useRow!.stepId, meta.originalStepId)
     const doc = await readContext(f.projectId, src.approval, db)
     assert.equal(doc.target.request.kind, 'manual')
+  })
+
+  await t('引文漂移：源文本删引后零模型复核阻断，不可变版本与当前文件哈希不一致即拒绝', async () => {
+    const { f, ef } = await setupStory()
+    const { reviewEntry } = await import('../../../src/services/continuity/entries')
+    // 建第三集带引文草稿（extractAndReview = 提取 + 人工编辑，产出含 evidence 的 draft）
+    const draft = await withContinuityIO(ef.io, () => extractAndReview(f, 2, ef.io))
+    assert.equal(draft.status, 'draft')
+    assert.ok(draft.doc!.items.some(i => i.evidence.length > 0), '草稿须含引文证据')
+    // 定位源资产物理文件并删除一段引文对应文本（模拟「删除原引文」）
+    const { absPathOf } = await import('../../../src/services/storage')
+    const [asset] = await db.select().from(assets).where(eq(assets.id, f.sources[2]!.assetId))
+    const filePath = absPathOf(asset!.relPath!)
+    const originalText = readFileSync(filePath, 'utf8')
+    const deletedQuote = draft.doc!.items.find(i => i.evidence.length > 0)!.evidence[0]!.quote
+    const modifiedText = originalText.replace(deletedQuote, '')
+    assert.notEqual(modifiedText, originalText, '引文须出现在源文本中')
+    writeFileSync(filePath, modifiedText, 'utf8')
+    // 零模型复核：readContinuityVersion 检测不可变版本哈希与当前文件哈希不一致 → 409
+    await assert.rejects(
+      withContinuityIO(ef.io, () => reviewEntry(f.projectId, f.episodes[2]!,
+        { parentId: draft.id, source: f.sources[2]!, operationKey: randomUUID() })),
+      (e: unknown) => e instanceof ContinuityError && e.status === 409
+        && e.code === 'continuity_source_changed'
+    )
+    // 路由层：ContinuityError 保真映射，错误信封 code = continuity_source_changed
+    const { Hono: HonoClass } = await import('hono')
+    const { createContinuityRoutes } = await import('../../../src/routes/continuity')
+    const app2 = new (HonoClass as typeof import('hono').Hono)()
+    app2.route('/api/v1', createContinuityRoutes(ef.io))
+    const res = await app2.request(
+      `/api/v1/projects/${f.projectId}/episodes/${f.episodes[2]}/continuity/review`,
+      { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ parentId: draft.id, source: f.sources[2]!, operationKey: randomUUID() }) })
+    assert.equal(res.status, 409)
+    const body = await res.json() as { error: { code: string; message: string } }
+    assert.equal(body.error.code, 'continuity_source_changed')
+    assert.equal(typeof body.error.message, 'string')
   })
 
   } finally { engineGuard.restore() }
