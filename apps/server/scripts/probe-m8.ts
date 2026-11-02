@@ -461,14 +461,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T1 mengbao-episode v18：版本 18 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构；v16 定妆照 16:9 多视角设定图；v17 定妆照身份参考图接入 gen_refs；v18 参考图升三态 auto/on/off + 智能复用） ——
+    // —— T1 mengbao-episode v19：版本 19 / 21 步 / 角色链 + 场景道具链与注入前置（出图步挂人工审阅闸；v12 集间承接；v13 智能 BGM 映射；v14 视频兜底改真厂商；v15 setting_docs 接受 json 承接商业结构；v16 定妆照 16:9 多视角设定图；v17 定妆照身份参考图接入 gen_refs；v18 参考图升三态 auto/on/off + 智能复用；v19 跨集剧情连续性输入与 write_script continuity_role） ——
     if (copyTpl('mengbao-episode')) {
       const t = tryLoad('mengbao-episode')
       check(t !== null, 'mengbao-episode 加载成功')
       if (t) {
         const keys = t.steps.map((s) => s.key)
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
-        check(t.version === 18, `version=18（实际 ${t.version}）`)
+        check(t.version === 19, `version=19（实际 ${t.version}）`)
         check(t.steps.length === 21, `steps=21（实际 ${t.steps.length}）`)
         check(
           ['gen_refs', 'gen_set_refs', 'gen_images', 'gen_frames'].every((k) => stepOf(k)?.gate?.mode === 'required' && !!stepOf(k)?.gate?.skip_label),

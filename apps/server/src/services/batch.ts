@@ -7,7 +7,7 @@ import { and, asc, eq, inArray, isNotNull, sum } from 'drizzle-orm'
 import { db } from '../db'
 import { batches, pipelineRuns, usageRecords, type PipelineRun } from '../db/schema'
 import { createLogger } from '../logger'
-import { engine } from '../pipeline/engine'
+import { engine, settleDanglingSteps } from '../pipeline/engine'
 import { BudgetBlockedError, checkBudget } from './budget'
 import { emitStudioEvent } from './events'
 import { createRunRow, loadTemplateOrThrow, prepareRunInput, InvalidRunInputError } from './run-create'
@@ -189,6 +189,10 @@ export async function cancelBatch(batchId: number): Promise<void> {
         .update(pipelineRuns)
         .set({ status: 'cancelled', completedAt: t, updatedAt: t })
         .where(eq(pipelineRuns.id, r.id))
+      // 直置取消不走 engine.cancelRun：步骤行需同步收敛（否则画布节点停在「等待/执行中」）
+      await settleDanglingSteps(r.id).catch((err) =>
+        log.warn(`run ${r.id} 取消后收敛步骤失败`, { error: (err as Error).message }),
+      )
     } else if (r.status === 'running' || r.status === 'waiting_input') {
       await engine.cancelRun(r.id)
     }

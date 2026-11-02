@@ -529,7 +529,8 @@ async function main(): Promise<void> {
 
     const tpl = loadTemplate('mengbao-episode', true)
     // v18：v17 基础上定妆照/场景道具参考图升三态 select（auto/on/off）+ 引擎智能复用（reuse_existing_refs + ref_mode）；步骤数/其余结构不变
-    check(tpl.version === 18, `version=18（实际 ${tpl.version}）`)
+    // v19：M70 跨集剧情连续性（with_continuity/continuity_context 输入 + write_script continuity_role）；步骤数不变
+    check(tpl.version === 19, `version=19（实际 ${tpl.version}）`)
     check(tpl.steps.find((s) => s.key === 'write_script')?.inputs['prev_script'] === 'input.prev_script', 'v12 write_script 接 prev_script（上集剧本承接输入）')
     const gm = tpl.steps.find((s) => s.key === 'gen_motion')
     check(!!gm && (gm.after ?? []).includes('voice') && gm.inputs['voices'] === 'steps.voice.assets', 'v10 以音定画：gen_motion 依赖 voice 并注入实测音频')
@@ -573,11 +574,11 @@ async function main(): Promise<void> {
     const lmg = loadedV8.steps.find((s) => s.key === 'compose_video')!
     check(!('transition' in (lmg.params ?? {})), 'v8 快照 compose 参数无 M11 键')
 
-    // ---- 无快照 → 文件 v18；损坏快照 → 回退文件 ----
+    // ---- 无快照 → 文件 v19；损坏快照 → 回退文件 ----
     const noSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: null })
-    check(noSnap.version === 18, '无快照 → v18 文件加载')
+    check(noSnap.version === 19, '无快照 → v19 文件加载')
     const badSnap = templateForRun({ templateKey: 'mengbao-episode', templateSnapshot: 'junk' })
-    check(badSnap.version === 18, '损坏快照 → 回退文件加载')
+    check(badSnap.version === 19, '损坏快照 → 回退文件加载')
   }
 
   // ================= 分发 =================

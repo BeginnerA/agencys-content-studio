@@ -487,6 +487,10 @@ class PipelineEngine {
             .update(pipelineRuns)
             .set({ status: 'failed', error: '引擎调度停滞（内部错误）', completedAt: now(), updatedAt: now() })
             .where(eq(pipelineRuns.id, runId))
+          // 终止后残留的 pending/running 步必须一并收敛（否则画布节点停在「执行中/等待」）
+          await settleDanglingSteps(runId).catch((err) =>
+            log.warn(`run ${runId} 停滞收敛步骤失败`, { error: (err as Error).message }),
+          )
           break
         }
         // ⑤ 启动就绪集（并发硬上限 2；整批收敛后回到循环顶部重算就绪集）
@@ -516,6 +520,10 @@ class PipelineEngine {
         .update(pipelineRuns)
         .set({ status: 'failed', error: msg, completedAt: now(), updatedAt: now() })
         .where(and(eq(pipelineRuns.id, runId), ne(pipelineRuns.status, 'cancelled')))
+      // 链级异常退出时可能有步骤停在 running：run 已终态 → 同步收敛，防画布永久「执行中」
+      await settleDanglingSteps(runId).catch((err) =>
+        log.warn(`run ${runId} 链级兜底收敛步骤失败`, { error: (err as Error).message }),
+      )
       emitStudioEvent({ type: 'run.failed', runId, stepKey: '', error: msg })
     } finally {
       this.active.delete(runId)
@@ -724,6 +732,50 @@ class PipelineEngine {
 export const engine = new PipelineEngine()
 
 /**
+ * 终态 run 的步骤收敛（不变式：run 终态 ⇒ 步骤不得停留 pending/running/waiting_input）。
+ * 画布节点状态直读步骤行：崩溃恢复只把 run 置 failed 而步骤留 running 时，节点会永久显示
+ * 「执行中」且无法重跑/取消。failed run 的残留步 → failed（保留自有 error，缺失时用 run.error）；
+ * cancelled run 的残留步 → cancelled。幂等：仅动非终态行，不清除已完成步骤。
+ * @param runId 限定单个 run（引擎内收敛用）；缺省 = 全库对账（启动恢复 / 手动 recover）
+ * @returns 收敛的步骤数
+ */
+export async function settleDanglingSteps(runId?: number): Promise<number> {
+  const rows = await db
+    .select({
+      id: pipelineSteps.id,
+      status: pipelineSteps.status,
+      error: pipelineSteps.error,
+      runStatus: pipelineRuns.status,
+      runError: pipelineRuns.error,
+    })
+    .from(pipelineSteps)
+    .innerJoin(pipelineRuns, eq(pipelineSteps.runId, pipelineRuns.id))
+    .where(
+      and(
+        inArray(pipelineRuns.status, ['failed', 'cancelled']),
+        inArray(pipelineSteps.status, ['pending', 'running', 'waiting_input']),
+        runId === undefined ? undefined : eq(pipelineSteps.runId, runId),
+      ),
+    )
+  if (!rows.length) return 0
+  const t = now()
+  for (const row of rows) {
+    const settled = row.runStatus === 'cancelled' ? 'cancelled' : 'failed'
+    await db
+      .update(pipelineSteps)
+      .set({
+        status: settled,
+        error: settled === 'failed' ? (row.error ?? row.runError ?? '运行已中断：步骤未完成') : row.error,
+        completedAt: t,
+        updatedAt: t,
+      })
+      // 条件写：仅当该步仍非终态（与在途步骤收尾并发时不覆盖 succeeded）
+      .where(and(eq(pipelineSteps.id, row.id), inArray(pipelineSteps.status, ['pending', 'running', 'waiting_input'])))
+  }
+  return rows.length
+}
+
+/**
  * 崩溃恢复（启动时调用一次，spec §5.4）：
  * - pending/processing 的 gen_tasks → failed（可手动 retry）
  * - running 的 run → failed(interrupted)，UI 以「从断点续跑」重建
@@ -754,13 +806,16 @@ export async function recoverInterruptedState(): Promise<{ requeued: number[] }>
       .where(eq(pipelineRuns.id, run.id))
   }
   // 批内 queued run 不在此 requeue——由 reconcileBatches 按槽位约束推进（防恢复瞬间绕过批内并发限制）
+  // 步骤级对账：置 failed 的 run 与历史残留（run 早终态、步骤仍 running/waiting_input/pending）
+  // 必须同步收敛，否则画布节点永久显示「执行中」，且该步既不可重跑也不可取消。
+  const settledSteps = await settleDanglingSteps()
   const queued = await db
     .select({ id: pipelineRuns.id })
     .from(pipelineRuns)
     .where(and(eq(pipelineRuns.status, 'queued'), isNull(pipelineRuns.batchId)))
-  if (stuckTasks.length || runningRuns.length || queued.length) {
+  if (stuckTasks.length || runningRuns.length || queued.length || settledSteps) {
     log.info(
-      `崩溃恢复: tasks=${stuckTasks.length} 置 failed, runs=${runningRuns.length} 置 failed(interrupted), queued=${queued.length}`,
+      `崩溃恢复: tasks=${stuckTasks.length} 置 failed, runs=${runningRuns.length} 置 failed(interrupted), steps=${settledSteps} 置终态, queued=${queued.length}`,
     )
   }
   return { requeued: queued.map((r) => r.id) }
