@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * M70 来源选择器（brief 11.3）：展示真实步骤/版本/继承与可确认原因；
+ * 来源选择器：展示真实步骤/版本/继承与可确认原因；
  * 未捕获版本（versionId=null）的按钮发 snapshot（免费 POST），绝不用 GET 产生副作用。
  */
 import { computed, ref } from 'vue'

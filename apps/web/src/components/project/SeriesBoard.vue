@@ -50,7 +50,7 @@ async function load(silent = false) {
 }
 onMounted(() => void load())
 
-// —— M70 剧情台账：每集「未记录 / 已确认 / 待复核」徽标 + 弹层（来源 / 编辑 / 影响）——
+// —— 剧情台账：每集「未记录 / 已确认 / 待复核」徽标 + 弹层（来源 / 编辑 / 影响）——
 const ctStatus = ref<Record<number, { text: string; cls: string }>>({})
 const ctOpen = ref<number | null>(null)
 const ctLoading = ref(false)
@@ -455,7 +455,7 @@ async function doRemoveEpisode(e: Episode) {
       </div>
     </div>
 
-    <!-- M70 台账弹层：复用系统 Modal（遮罩/层级/Esc/表面色统一），内容懒加载 -->
+    <!-- 台账弹层：复用系统 Modal（遮罩/层级/Esc/表面色统一），内容懒加载 -->
     <Modal
       v-if="ctOpen !== null"
       :title="`第 ${episodes.find((x) => x.id === ctOpen)?.number ?? ''} 集 · 剧情台账`"
