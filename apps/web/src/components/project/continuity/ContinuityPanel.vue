@@ -219,6 +219,12 @@ function editEntry(entry: EntryView) {
   void openDraft(entry)
 }
 
+/** 切到影响面并定位该登记；模板内联两句赋值会被 vue 编译器当单表达式解析报错，故收敛成方法。 */
+function openImpact(entry: EntryView) {
+  impactId.value = entry.id
+  tab.value = 'impact'
+}
+
 /** 保存草稿：409 冲突保留本地编辑、提示重新载入（EntryEditor 的 doc 不被覆盖）。 */
 const conflictHint = ref(false)
 async function onSaveDoc(doc: EntryDoc) {
@@ -424,15 +430,7 @@ const validityText: Record<string, string> = {
             >
               零模型复核
             </button>
-            <button
-              class="btn sm"
-              @click="
-                impactId = e.id
-                tab = 'impact'
-              "
-            >
-              影响
-            </button>
+            <button class="btn sm" @click="openImpact(e)">影响</button>
           </span>
         </div>
       </div>

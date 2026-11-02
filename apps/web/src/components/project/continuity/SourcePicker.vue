@@ -60,6 +60,15 @@ function chooseVersion(v: { versionId: number; hash: string }) {
   )
 }
 
+/** 版本按钮：先选中该来源再选版本（顺序依赖 chooseVersion 读 selected）。 */
+function pickVersion(
+  s: SourceCandidate,
+  v: { versionId: number; hash: string },
+) {
+  choose(s)
+  chooseVersion(v)
+}
+
 /** 未捕获版本：发 snapshot（免费），返回精确版本后自动选中（不作批准）。 */
 async function doSnapshot(s: SourceCandidate) {
   snapshotBusy.value[s.runId] = true
@@ -126,10 +135,7 @@ async function doSnapshot(s: SourceCandidate) {
           class="btn sm"
           :class="{ primary: selectedVersion === v.versionId }"
           :title="`版本 #${v.versionId}（${v.hash.slice(0, 10)}…）`"
-          @click="
-            choose(s)
-            chooseVersion(v)
-          "
+          @click="pickVersion(s, v)"
         >
           v{{ v.versionId }}
         </button>
