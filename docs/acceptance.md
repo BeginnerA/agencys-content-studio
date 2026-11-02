@@ -477,3 +477,21 @@ M62「把『混剪/拼照片/纪念相册』和『小说/改编』纳入 route-h
 自动门禁（本机实测，全绿）：`pnpm -r typecheck`（server tsc + web vue-tsc）exit 0；`probe-m62` **33 断言五节全绿**；回归 `probe-m57` 26 / `m58` 44 / `m59` 24 / `m56` 33 断言全绿；`probe-m26 split-audit` 红线存量 0；终门禁 `pnpm probe:ci`（run-probes 串行 --fail-fast）**63 探针 / 5569 断言全绿**（287.9s，exit 0；m19 408 断言零回归）。首跑 m15 子进程 `probe:m2a` 退出码 3221225477（Windows 进程退出清理偶发假失败，其断言全部通过）复跑即绿，非本任务回归。零新增依赖、未自动提交、加法优先。
 
 待人工门（未声称）：① 对话内真实会话触发两新信号的端到端观感（建议条文案与「展开指专业端」交互）未做浏览器实弹；② `photo-montage`/`novel-adapt` 专业链自身的成片/改编效果不在本项验收面（本项只交付方向建议，执行载体不变）；③ 弱词双前置防线对真实用户措辞分布的误报率未做线上统计（误报收口预案见 spec §六：收窄词表，不引入模型判定）。
+
+## 运行终态收敛：崩溃恢复步骤对账（2026-11-02，缺陷修复 + 探针门禁）
+
+现场症状：项目 75「宝宝勇闯世界」Run #141 已 `failed`（error=interrupted：服务重启）并由 Run #142 从断点续跑，但运行画布该 run 仍显示「执行中」，该步既无法重跑也无法取消。
+
+根因（以代码与库实态取证）：运行画布节点 `status` 直读 `pipeline_steps.status`（`services/canvas.ts` `buildRunNode`，`row?.status ?? 'pending'`），前端 `STEP_TEXT.running = '执行中'`；而 `recoverInterruptedState()` 只把 `pipeline_runs.status` 置 `failed`，未同步收敛其 `pipeline_steps` 的 `running` 行（实测 Run #141 `write_series` 停在 `running`，updated_at 正是重启打断时刻）。run 一旦终态，再无任何路径会回修这些残留步骤，故画布永久「执行中」。
+
+同类入口全量审计（一次收口）：除崩溃恢复外，`cancelBatch` 对 `queued` run 直置 `cancelled` 也不触碰步骤（残留 `pending`）、引擎链级兜底 catch 与「调度停滞」防御分支同样只置 run 终态。统一不变式 = «run 处于终态（failed/cancelled）时其步骤不得停留 pending/running/waiting_input»。
+
+修复：新增 `engine.settleDanglingSteps(runId?)`（failed run 的残留步 → failed（保留步骤自有 error，缺失回落 run.error）；cancelled run → cancelled；条件写仅动非终态行，不覆盖在途 succeeded；幂等）。接入点：`recoverInterruptedState`（启动即全库对账，同时自愈历史脏数据）、`runChain` 链级兜底 catch、调度停滞分支、`cancelBatch` 直置取消分支。启动恢复日志增 `steps=N 置终态`。
+
+现场数据自证：修复上线后服务重启即自动对账——Run #141 步骤收敛为 recall `succeeded` / ingest `skipped` / 其余 `failed`，非终态步骤 0 条；Run #142（`waiting_input`，人工闸合法态）未被误改。
+
+顺带收口（同类漏网，非本次缺陷引入）：M70 已把 `mengbao-episode` 模板升至 v19（跨集剧情连续性输入），但 `probe-m3/m8/m11/m56/m60` 仍硬编码 v18 —— 同步更新 5 个探针的版本断言与注释（m11 三处、m60 三处，m13/m14/m15 经子探针级联转绿）。
+
+自动门禁（本机实测）：`apps/server` `tsc --noEmit` 绿；新建 `probe-run-recovery.ts` **13 断言全绿**（覆盖重启打断、历史脏数据自愈、批次直置取消、waiting_input/completed 合法态不被误改、幂等、全库不变式查询、画布面节点无「执行中/等待」）；串行全量 `run-probes --jobs=1` **76 探针 / 6403 断言 / 6395 通过**，余 8 项均为存量红（m21 5 项标签搜索、m26 1 项 >800 行红线、m44 2 项前端恢复确认器）——已用 `git stash` 剥离本项改动复跑验证，同一断言同样失败，与本项无涉。
+
+待人工门（未声称）：浏览器实际打开运行画布确认 Run #141 显示已由「执行中」转为「失败」的观感（本项以库实态 + 探针断言验收，未做浏览器实弹）。
