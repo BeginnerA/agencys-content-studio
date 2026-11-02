@@ -644,4 +644,18 @@ async function ensureSchemaColumns(): Promise<void> {
       log.warn(`ensureColumn failed: ${(err as Error).message}`)
     }
   }
+
+  // 角色人设配置表建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS role_configs (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        role_key text NOT NULL UNIQUE,
+        persona_file text,
+        updated_at integer NOT NULL
+      )`,
+    )
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

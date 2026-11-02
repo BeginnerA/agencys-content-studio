@@ -197,6 +197,33 @@ export const settingsApi = {
     ),
 }
 
+// ===== 角色人设配置 =====
+
+export interface RoleConfigItem {
+  roleKey: string
+  name: string
+  blurb: string
+  personaFile: string
+}
+
+export const rolesApi = {
+  /** 列出所有注册角色及其当前 personaFile 配置 */
+  list: () =>
+    api.get<{ items: RoleConfigItem[] }>('/api/v1/roles'),
+  /** 列出可用的 persona 文件（PROMPTS_DIR 内 .md） */
+  listPersonaFiles: () =>
+    api.get<{ items: string[] }>('/api/v1/persona-files'),
+  /** 获取代码注册表中的默认 personaFile */
+  getDefaults: () =>
+    api.get<{ items: Array<{ roleKey: string; name: string; defaultPersonaFile: string }> }>('/api/v1/roles/defaults'),
+  /** 更新角色 personaFile 覆盖 */
+  update: (roleKey: string, personaFile: string) =>
+    api.patch<{ ok: boolean; roleKey: string; personaFile: string }>(
+      `/api/v1/roles/${encodeURIComponent(roleKey)}`,
+      { personaFile },
+    ),
+}
+
 // ===== 排产计划 + 预算 =====
 
 export const scheduleApi = {

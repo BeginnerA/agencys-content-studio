@@ -10,6 +10,7 @@ import AiConfigPanel from '../settings/index.vue'
 import BrandPreview from '../../components/brand/BrandPreview.vue'
 import BrandSettings from '../../components/brand/BrandSettings.vue'
 import Icon from '../../components/common/Icon.vue'
+import RoleEditor from '../../components/role/RoleEditor.vue'
 import { settingsApi } from '../../lib/api'
 import {
   DEFAULT_NOTIFY_PREFS,
@@ -39,6 +40,12 @@ const TABS = [
     label: '创作',
     icon: 'sliders',
     hint: '人物对白严格 ASR 核验（默认开启；关闭后无 ASR 也能创作，项目可覆盖）',
+  },
+  {
+    key: 'roles',
+    label: '角色',
+    icon: 'users',
+    hint: 'Agent 角色人设文件引用（覆盖代码默认值，零代码热更新）',
   },
   {
     key: 'notify',
@@ -501,6 +508,10 @@ loadCreation()
         </div>
       </div>
     </div>
+    <!-- 角色 Tab：人设文件引用编辑 -->
+    <div v-if="activeTab === 'roles'" class="sys-roles">
+      <RoleEditor />
+    </div>
     <!-- 数据 Tab（ ⑥：回收站保留期自动清理） -->
     <div v-if="activeTab === 'data'" class="sys-data">
       <div class="panel rc-card">
@@ -729,6 +740,11 @@ loadCreation()
 /* 创作设置卡片（与数据卡片同宽，复用 rc-card/rc-ck/rc-note 原语） */
 .sys-creation {
   max-width: 640px;
+}
+
+/* 角色人设编辑卡片 */
+.sys-roles {
+  max-width: 720px;
 }
 
 .rc-ck {

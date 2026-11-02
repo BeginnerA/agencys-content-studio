@@ -8,7 +8,10 @@
  *   说话者恒在注册表内——未注册 roleKey 归一回落 planner（不静默：由调用方在 message 注明）。
  * - persona 文件缺失不致命（仅人设语气缺失，能力声明在代码里仍是权威），读不到返回空。
  */
+import { eq } from 'drizzle-orm'
 import { loadPromptTemplate } from '../../llm'
+import { db } from '../../../db/index'
+import { roleConfigs } from '../../../db/schema'
 import type { AgentMode } from './decision-schema'
 
 export interface RoleCard {
@@ -100,4 +103,45 @@ export function personaPrompt(key: string): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * 从数据库读取角色人设文件引用（动态覆盖）；未配置时回落代码侧默认值。
+ * 角色能力声明（modes/templateKeys）仍以代码注册表为真源，数据库仅覆盖 personaFile。
+ */
+export async function getRolePersona(roleKey: string): Promise<string> {
+  const card = getRole(roleKey)
+  const defaultFile = card?.personaFile ?? ''
+  const row = await db.query.roleConfigs.findFirst({
+    where: eq(roleConfigs.roleKey, roleKey),
+  })
+  return row?.personaFile || defaultFile
+}
+
+/** 列出所有注册角色的当前 personaFile 配置（含代码默认值与数据库覆盖） */
+export async function listRoleConfigs(): Promise<Array<{ roleKey: string; name: string; personaFile: string; blurb: string }>> {
+  const rows = await db.query.roleConfigs.findMany()
+  const overrideMap = new Map(rows.map((r) => [r.roleKey, r.personaFile ?? '']))
+  return ROLE_CARDS.map((card) => ({
+    roleKey: card.key,
+    name: card.name,
+    blurb: card.blurb,
+    personaFile: overrideMap.get(card.key) || card.personaFile,
+  }))
+}
+
+/** 更新角色 personaFile 覆盖（upsert：存在则更新，不存在则插入） */
+export async function setRolePersona(roleKey: string, personaFile: string): Promise<void> {
+  if (!isRegisteredRole(roleKey)) {
+    throw new Error(`未知角色 key：${roleKey}`)
+  }
+  const now = Date.now()
+  await db.insert(roleConfigs).values({
+    roleKey,
+    personaFile,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: roleConfigs.roleKey,
+    set: { personaFile, updatedAt: now },
+  })
 }

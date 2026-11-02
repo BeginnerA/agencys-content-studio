@@ -44,7 +44,9 @@ export {
   scheduleApi,
   complianceApi,
   budgetApi,
+  rolesApi,
 } from './insights'
+export type { RoleConfigItem } from './insights'
 export type { EditExchangeFormat, EditExchangeFormatsResult } from './insights'
 
 export { workflowApi } from './workflows'

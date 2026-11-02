@@ -742,3 +742,15 @@ export const creationMessages = sqliteTable('creation_messages', {
 
 export type CreationSession = typeof creationSessions.$inferSelect
 export type CreationMessage = typeof creationMessages.$inferSelect
+
+// ---------- 角色人设配置（代码侧 ROLE_CARDS 声明能力；数据库存 personaFile 覆盖，零代码热更新） ----------
+
+/** 角色人设配置：roleKey 对应代码注册表中的角色 key；personaFile 覆盖默认人设文件引用 */
+export const roleConfigs = sqliteTable('role_configs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  roleKey: text('role_key').notNull().unique(),
+  personaFile: text('persona_file'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type RoleConfig = typeof roleConfigs.$inferSelect
