@@ -386,3 +386,89 @@ export const qualityApi = {
       `/api/v1/runs/${runId}/quality`,
     ),
 }
+
+// ===== 修复闭环（R06：质量修复提案 → 批准 → 执行 → 采纳/拒绝） =====
+
+/** 修复问题条目：单个维度的质量缺陷与修复建议 */
+export interface RepairIssue {
+  /** 质量维度标识（citation / consistency / coherence / cost） */
+  dimension: string
+  /** 当前得分（百分制 0-100） */
+  score: number
+  /** 及格阈值（百分制，当前固定 70） */
+  threshold: number
+  /** 针对该维度的修复建议（自解释文本） */
+  suggestion: string
+}
+
+/** 修复影响范围：共享数据源波及的其他运行与集号 */
+export interface RepairImpactScope {
+  /** 共享相同数据源的其他 run id */
+  affectedRunIds: number[]
+  /** 受影响 run 涉及的集号集合 */
+  affectedEpisodes: number[]
+  /** 作为关联桥梁的数据源标识（srcKind:srcId） */
+  sharedSources: string[]
+  /** 当前 run 自身关联的快照数量 */
+  snapshotCount: number
+}
+
+/** 修复提案（POST /runs/:id/repair 响应中的 proposal 字段） */
+export interface RepairProposal {
+  runId: number
+  episodeIdx: number
+  issues: RepairIssue[]
+  impactScope: RepairImpactScope
+  estimatedCost: number
+  scoreSnapshot: Record<string, unknown>
+}
+
+/** 修复运行状态（与 repair_runs.status 枚举对齐） */
+export type RepairStatus =
+  | 'proposed'
+  | 'approved'
+  | 'running'
+  | 'completed'
+  | 'cancelled'
+  | 'failed'
+
+/** 修复运行视图（GET /repairs/:id 响应中的 repair 字段） */
+export interface RepairView {
+  id: string
+  sourceRunId: number
+  episodeIdx: number
+  status: RepairStatus
+  issues: RepairIssue[]
+  impactScope: RepairImpactScope
+  attemptCount: number
+  totalCost: number
+  scoreBefore: number | null
+  scoreAfter: number | null
+  stopReason: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export const repairsApi = {
+  /** 启动修复提案（POST /runs/:id/repair） */
+  propose: (runId: number, episodeIdx: number) =>
+    api.post<{ repairId: string; proposal: RepairProposal }>(
+      `/api/v1/runs/${runId}/repair`,
+      { episodeIdx },
+    ),
+  /** 查询修复状态（GET /repairs/:id） */
+  get: (repairId: string) =>
+    api.get<{ repair: RepairView }>(`/api/v1/repairs/${repairId}`),
+  /** 批准修复（POST /repairs/:id/approve） */
+  approve: (repairId: string) =>
+    api.post<{ success: boolean }>(`/api/v1/repairs/${repairId}/approve`),
+  /** 取消修复（POST /repairs/:id/cancel） */
+  cancel: (repairId: string) =>
+    api.post<{ success: boolean }>(`/api/v1/repairs/${repairId}/cancel`),
+  /** 采纳修复结果（POST /repairs/:id/accept） */
+  accept: (repairId: string) =>
+    api.post<{ success: boolean }>(`/api/v1/repairs/${repairId}/accept`),
+  /** 拒绝修复 / 保留旧版本（POST /repairs/:id/reject） */
+  reject: (repairId: string) =>
+    api.post<{ success: boolean }>(`/api/v1/repairs/${repairId}/reject`),
+}
