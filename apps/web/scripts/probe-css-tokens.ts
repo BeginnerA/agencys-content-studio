@@ -14,7 +14,8 @@
  *     变量被别的组件引用」抓不到，这类问题由渲染面负责。
  *
  * 离线：只读源码，不起服务、不联网、不写盘、不碰真实配置与数据。
- * 用法：node .superpowers/sdd/-计划/safe-run.mjs script ../web/scripts/probe-css-tokens.ts
+ * 用法：node .superpowers/sdd/M70-计划/safe-run.mjs script ../web/scripts/probe-css-tokens.ts
+ * 上面目录名保留原样 pointer-ok：它是磁盘上真实存在的路径，去掉编号后这条命令无法运行。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
