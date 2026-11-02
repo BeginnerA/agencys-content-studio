@@ -382,6 +382,18 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 
 - **M69 审片问题单与定向返修**：`P1`。**已实施（2026-10-28）**。实施内容：① **问题单实体**——新表 `review_findings`（1 新表 0 新列；迁移 `0002_*.sql` 由 `db:generate` 生成）：run + 基准成片 + 范围（shot/time/global）+ 类别/严重度/备注 + 状态机（open→in_rework→pending_recheck→verified，旁路 dismissed，reopened 回 open）+ 幂等键 `(run_id, client_key)`（同载荷回放、异载荷 400 `client_key_conflict`）+ 删除面随 run / 项目 purge 清理（审计台账不保孤儿）。② **时间定位唯一真源**——`params.timeline` 内容轴 → 绝对轴（`introMs + startSec*1000`），`locateAt` 半开区间；无 timeline 时按 `assets.duration*1000` 兜底；`cues.coordinate='final'` 直接复用。③ **证据快照与复检纯函数**——`snapshot.ts` 存与范围相交的段 / cues 摘要 / 音频绑定 sha，`hasTimeline=false` 的快照（无时间轴基准）subtitle/pacing 恒 `unverifiable`；`recheck.ts` 按 shot/time/global 与类别分流，只报 changed/unchanged/unverifiable，永不自动判过；成片变短令时间窗越界 → unverifiable，不做重映射。④ **服务与路由**——`services/review/service.ts` 能力投影 `run_cancelled > run_active > no_final > degraded_no_timeline > ok`，`run_active`（queued/running）只拦 create/recheck、link 与 mark-rework 仍可用，`cancelled` 只读 + patch；`routes/review.ts` 列表 + 8 写端点，错误面 404/400/409 全量映射（实现期补 `bad_result`），失败请求零写库；`run-delete.ts` / 项目 purge 增 findings 计数。⑤ **前端右栏面板**——`RunFindingsPanel`（只读播放器 + 镜头条 seek/预选 + 返修前/后对照 + 创建表单按类别收窄范围 + 服务端 `can` 驱动动作 + 证据文案），`refreshToken=run.updatedAt` 随重合成自动刷新；`ShotCard` 加 `shot-<id>` 锚点；无成片且无历史问题时整体隐藏。红线守住：0 新依赖 0 付费 0 模型调用；单文件 ≤800 行（终审按计划拆 `FindingForm.vue` 与 `finding-ui.ts`：面板 680 / 表单 128 / 文案常量 75）；探针零网络。断言总数：probe-m69 四节 **179 断言**全绿；全量回归 74 探针 6191 断言（首次 `ci:check` 中 m65 以 0 断言失败，单独复跑与全量复跑均绿，判定为并行启动争用偶发）；全仓 `pnpm ci:check` exit 0。遗留（诚实标注）：time 范围在新成片位移时不重映射；多合成步按 `step_key` 隔离、首版面板默认 `compose`；无 shotId 的时间轴（图片混剪）创建表单默认时间窗范围；`ShotCard` 只有 `shot-<shotId>` 锚点（`ShotBoardShot` 无 `stepKey`，不从卡片反推步骤）；真实成片主观质量（视觉一致/口型/听感）仍需人看片，探针只证明证据变化判定，不代表出片质量。
 
+## M71：质量基线与缺口收尾（2026-11-02）
+
+**目标**：收尾 M70 四项登记缺口 + 建立 R01 质量基线测量基础设施
+
+**交付**：
+- M70 缺口收尾：引文漂移专测、templateKey 消费面、草稿删入口、personaFile 动态化
+- R01 质量基线：quality_scores 表、评分服务、评分端点、评分 UI、评分探针
+
+**验收**：全量探针 exit 0，server/web tsc exit 0
+
+**后续**：M72 定向返修闭环（R06）
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）
