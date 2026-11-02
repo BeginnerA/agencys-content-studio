@@ -682,4 +682,29 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // R06 修复闭环：repair_runs 建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS repair_runs (
+        id text PRIMARY KEY,
+        source_run_id integer NOT NULL REFERENCES pipeline_runs(id),
+        episode_idx integer NOT NULL,
+        status text NOT NULL,
+        issues text NOT NULL,
+        impact_scope text NOT NULL,
+        attempt_count integer DEFAULT 0 NOT NULL,
+        total_cost real DEFAULT 0 NOT NULL,
+        score_before real,
+        score_after real,
+        stop_reason text,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_repair_runs_source ON repair_runs (source_run_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_repair_runs_status ON repair_runs (status)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }

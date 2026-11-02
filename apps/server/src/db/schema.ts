@@ -782,3 +782,36 @@ export const qualityScores = sqliteTable(
 )
 
 export type QualityScore = typeof qualityScores.$inferSelect
+
+// ---------- R06 修复闭环（repair_runs：跟踪修复流程状态与成本） ----------
+
+/** 修复运行记录：source_run_id 指向原始 pipeline run；episode_idx 定位集号；
+ *  status 状态机：proposed → approved → running → completed/cancelled/failed；
+ *  issues/impact_scope 为 JSON 字符串（应用层校验）；attempt_count 累计尝试次数；
+ *  total_cost 累计成本（元）；score_before/score_after 修复前后质量分；
+ *  stop_reason 记录终止原因（如预算上限、连续失败等）。 */
+export const repairRuns = sqliteTable(
+  'repair_runs',
+  {
+    id: text('id').primaryKey(), // UUID（调用方 randomUUID 生成）
+    sourceRunId: integer('source_run_id').notNull().references(() => pipelineRuns.id),
+    episodeIdx: integer('episode_idx').notNull(),
+    // proposed|approved|running|completed|cancelled|failed
+    status: text('status').notNull(),
+    issues: text('issues').notNull(), // JSON: 问题列表
+    impactScope: text('impact_scope').notNull(), // JSON: 影响范围
+    attemptCount: integer('attempt_count').notNull().default(0),
+    totalCost: real('total_cost').notNull().default(0),
+    scoreBefore: real('score_before'),
+    scoreAfter: real('score_after'),
+    stopReason: text('stop_reason'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_repair_runs_source').on(t.sourceRunId),
+    index('idx_repair_runs_status').on(t.status),
+  ],
+)
+
+export type RepairRun = typeof repairRuns.$inferSelect
