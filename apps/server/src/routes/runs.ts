@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { and, asc, desc, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm'
 import { db } from '../db'
-import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions, type PipelineRun } from '../db/schema'
+import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions, qualityScores, type PipelineRun } from '../db/schema'
 import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError, stripResumeSubtitleEdits } from '../services/run-create'
@@ -22,6 +22,7 @@ import { isRunDeletable, purgeRunRecords, removeRunLogFiles } from '../services/
 import { recountBatch } from '../services/batch'
 import { resetStepForRerun, describeChainRerun, resetChainForRerun } from '../services/shot'
 import { mapRunToEpisode } from '../services/series'
+import { scoreQuality } from '../services/eval-quality.js'
 
 export const runsRoutes = new Hono()
 
@@ -558,6 +559,71 @@ runsRoutes.patch('/runs/:id/params', h(async (c) => {
   if (upd.rowsAffected === 0) throw new HttpError(409, 'run_settled', 'run 已终态：本次参数未写入（与终态并发）')
   const fresh = await findRun(runId)
   return c.json({ run: toRunView(fresh!), applied: changes })
+}))
+
+// POST /runs/:id/quality —— 触发四维评分（引文完整度/角色一致性/剧情连贯度/费用效率），结果写入 quality_scores
+runsRoutes.post('/runs/:id/quality', h(async (c) => {
+  const runId = idParam(c)
+  const run = await findRun(runId)
+  if (!run) return notFound(c, `run ${runId}`)
+  const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
+  const { episodeIdx, weights } = body
+  if (typeof episodeIdx !== 'number' || !Number.isInteger(episodeIdx) || episodeIdx < 0) {
+    throw new HttpError(400, 'bad_episode_idx', 'episodeIdx 必须是非负整数')
+  }
+  const result = await scoreQuality({ runId, episodeIdx, weights })
+  return c.json({ score: result }, 202)
+}))
+
+// GET /runs/:id/quality/:episodeIdx —— 查询单集评分
+runsRoutes.get('/runs/:id/quality/:episodeIdx', h(async (c) => {
+  const runId = idParam(c)
+  const rawEpisode = c.req.param('episodeIdx')
+  if (!rawEpisode) throw new HttpError(400, 'bad_episode_idx', 'episodeIdx 路径参数缺失')
+  const episodeIdx = parseInt(rawEpisode)
+  if (!Number.isInteger(episodeIdx) || episodeIdx < 0) {
+    throw new HttpError(400, 'bad_episode_idx', 'episodeIdx 必须是非负整数')
+  }
+  const rows = await db
+    .select()
+    .from(qualityScores)
+    .where(and(eq(qualityScores.runId, runId), eq(qualityScores.episodeIdx, episodeIdx)))
+    .limit(1)
+  const score = rows[0]
+  if (!score) return notFound(c, `run ${runId} 第 ${episodeIdx} 集评分`)
+  return c.json({
+    score: {
+      citationScore: score.citationScore,
+      consistencyScore: score.consistencyScore,
+      coherenceScore: score.coherenceScore,
+      costScore: score.costScore,
+      overallScore: score.overallScore,
+      metadata: JSON.parse(score.metadata),
+    },
+    createdAt: new Date(score.createdAt).toISOString(),
+  })
+}))
+
+// GET /runs/:id/quality —— 查询本 run 全部集评分
+runsRoutes.get('/runs/:id/quality', h(async (c) => {
+  const runId = idParam(c)
+  const rows = await db
+    .select()
+    .from(qualityScores)
+    .where(eq(qualityScores.runId, runId))
+    .orderBy(qualityScores.episodeIdx)
+  return c.json({
+    scores: rows.map((s) => ({
+      episodeIdx: s.episodeIdx,
+      citationScore: s.citationScore,
+      consistencyScore: s.consistencyScore,
+      coherenceScore: s.coherenceScore,
+      costScore: s.costScore,
+      overallScore: s.overallScore,
+      metadata: JSON.parse(s.metadata),
+    })),
+    episodeCount: rows.length,
+  })
 }))
 
 // POST /system/recover —— 手动触发崩溃恢复（幂等；诊断用）
