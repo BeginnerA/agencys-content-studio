@@ -1,4 +1,4 @@
-// 第五期 · 交付包认证：只读认证 API（与 apps/server routes/exports.ts 的 GET /runs/:id/delivery-cert 对齐）。
+// 交付包认证：只读认证 API（与 apps/server routes/exports.ts 的 GET /runs/:id/delivery-cert 对齐）。
 // 仅触发后端对已生成 edit_exchange 交付包的纯解析 + 结构/时长/媒体/字幕一致性判定，零付费、零模型、零写入业务表。
 // 认证结论缓存回写于该导出资产 params.cert（零新列）；editor_import 恒列待人工实测，结构认证 ≠ 编辑器已验证通过。
 import { api } from './core'

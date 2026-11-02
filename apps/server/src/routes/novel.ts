@@ -1,5 +1,5 @@
 /**
- * 小说改编链路由（spec §3.7）
+ * 小说改编链路由
  * - GET /runs/:id/novel-board —— 聚合读（切分 manifest × 事件状态 × 图谱 × 规划 × 剧本），只读零副作用
  * - POST /projects/:id/novel/append —— 增量章节追加（multipart；幂等去重，不级联重跑）
  */

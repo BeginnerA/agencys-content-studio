@@ -170,7 +170,7 @@ export async function runContract(checker: Checker) {
     for (const [index, patch] of [[0, { submitted: true }], [0, { startedAt: 10 }], [1, { billing: 'not_submitted' }], [1, { output: pointer }], [2, { output: null }], [2, { submitted: null }], [2, { completedAt: 9 }], [3, { submitted: true }], [4, { submitted: false }], [4, { billing: 'not_submitted' }], [4, { output: pointer }]] as const) {
       assert.equal(c.UseDocSchema.safeParse({ ...base, ...states[index], ...patch }).success, false)
     }
-    // M70 任务5：用量服务旁路失败时 completed 不得宣称已结算 —— billing 'unknown' 是合法完成态。
+    // 任务5：用量服务旁路失败时 completed 不得宣称已结算 —— billing 'unknown' 是合法完成态。
     assert.ok(c.UseDocSchema.safeParse({ ...base, ...states[2], billing: 'unknown' }).success)
     for (const messages of [[{ role: 'bogus', content: 'x' }], [{ role: 'user', content: { arbitrary: 1 } }], [{ role: 'user', content: 'x', secret: 'not allowed' }]]) {
       assert.equal(c.UseDocSchema.safeParse({ ...base, ...states[0], messages }).success, false)

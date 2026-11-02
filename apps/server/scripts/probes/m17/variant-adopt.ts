@@ -1,4 +1,4 @@
-/** M17[variant-adopt]：纯函数快照（parseResolution/buildComposeArgs/extendTaskParams）+ variants 执行通道 + 变体采纳（断言体逐字搬自原 probe-m17.ts） */
+/** [variant-adopt]：纯函数快照（parseResolution/buildComposeArgs/extendTaskParams）+ variants 执行通道 + 变体采纳（断言体逐字搬自原 probe-m17.ts） */
 import type { M17Ctx } from './ctx'
 
 export async function run(ctx: M17Ctx): Promise<void> {

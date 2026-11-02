@@ -1,5 +1,5 @@
 /**
- * M69 探针（审片问题单与返修复检）——手动执行：
+ * 审片问题单与返修复检探针（审片问题单与返修复检）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m69.ts [--section=scope|diff|service|route]
  *
  * 隔离策略：isolatedEnv('m69') 一次性临时目录（独立 studio.db + workspace），
@@ -168,7 +168,7 @@ await runSections({
       const rOut = recheckScope({ category: 'visual', scopeKind: 'time', shotId: null, startMs: 2500, endMs: 5000, snapshot: timeSnap, timeline: mkTl({ totalSec: 3 }), audio: null, assetSha })
       check(rOut.state === 'unverifiable', '成片变短、时间窗越界 → unverifiable')
 
-      // —— time 范围媒体逐段比较（design §4.6 核心循环） ——
+      // —— time 范围媒体逐段比较（核心循环） ——
       const winSnap = buildBaseSnapshot({
         stepKey: 'compose', finalAssetId: 100, finalSha256: 'sha100', timeline: tl,
         scope: { kind: 'time', startMs: 1000, endMs: 4000 }, audio: null, assetSha,
@@ -222,7 +222,7 @@ await runSections({
       check(recheckScope({ category: 'other', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: paceBase, timeline: tl, audio: null, assetSha }).state === 'unverifiable', 'other 恒 unverifiable')
       check(recheckScope({ category: 'visual', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: paceBase, timeline: null, audio: null, assetSha }).state === 'unverifiable', 'timeline 缺失 → unverifiable')
 
-      // —— 无 timeline 基准：不得拿 0 基准当 changed（spec §4.4） ——
+      // —— 无 timeline 基准：不得拿 0 基准当 changed ——
       const noTlSnap = buildBaseSnapshot({ stepKey: 'compose', finalAssetId: 100, finalSha256: null, timeline: null, scope: { kind: 'global' }, audio: null, assetSha })
       check(noTlSnap.hasTimeline === false && noTlSnap.totalMs === 0 && noTlSnap.cues.length === 0, '无 timeline 快照标记 hasTimeline=false（0ms/0 cue 仅为占位）')
       const noTlPace = recheckScope({ category: 'pacing', scopeKind: 'global', shotId: null, startMs: null, endMs: null, snapshot: noTlSnap, timeline: mkTl({}), audio: null, assetSha })
@@ -405,7 +405,7 @@ await runSections({
       }).returning()
       check((await codeOf(() => svc.linkFinding(a.runId, fShot.id, { request_id: pendingReq[0]!.id }))) === 'request_not_applied', '未 applied 请求拒绝')
 
-      // —— 执行中仍可 link（apply 后立即关联）；recheck 仍拒绝（spec §4.5） ——
+      // —— 执行中仍可 link（apply 后立即关联）；recheck 仍拒绝 ——
       const fActive = await mkFinding(a.runId, { category: 'visual', severity: 'minor', note: '执行中关联', scope: { kind: 'global' } })
       const reqActive = (await db.insert(reworkRequests).values({
         id: `req-a-${seq}`, projectId: a.projectId, runId: a.runId, stepKey: 'compose', requestKey: `rk-a-${seq}`,

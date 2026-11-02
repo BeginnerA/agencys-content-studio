@@ -1,5 +1,5 @@
 /**
- * M65 附加探针（编排链启动事务与恢复边界，CodeReview P1#8）——手动执行：
+ * 附加探针（编排链启动事务与恢复边界，CodeReview #8）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m65-chain-start.ts [--section=gate-fail|launch-fault|reconcile-adopt|reconcile-release|reconcile-planning]
  *
  * 背景：旧 startChain 全程非事务（会话先 starting → 建链 → 起首段 → 最后回写关联），

@@ -1,4 +1,4 @@
-/** M19[intro-outro]：intro 槽合并/禁用语义 + 缺失文件宽容降级 + buildComposeArgs 片头尾拼接/配音位移/BGM totalAll + SRT 纯函数（countSrtCues/shiftSrtText）（断言体逐字搬自原 probe-m19.ts） */
+/** [intro-outro]：intro 槽合并/禁用语义 + 缺失文件宽容降级 + buildComposeArgs 片头尾拼接/配音位移/BGM totalAll + SRT 纯函数（countSrtCues/shiftSrtText）（断言体逐字搬自原 probe-m19.ts） */
 import type { M19Ctx } from './ctx'
 
 export async function run(ctx: M19Ctx): Promise<void> {
@@ -22,7 +22,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       .set({ value: JSON.stringify({ subtitle: { size_pct: 0.03 }, watermark: { file: 'wm-test.png', opacity: 0.5, position: 'tl' } }), updatedAt: T0 })
       .where(eq(settings.key, 'brand'))
 
-    // ---- [P3] buildComposeArgs：片头/片尾拼接 + 配音位移 + BGM/totalAll ----
+    // ---- buildComposeArgs：片头/片尾拼接 + 配音位移 + BGM/totalAll ----
     const rIo = buildComposeArgs(mkArgsInput({
       intro: { path: 'C:/intro.mp4', durSec: 6 },
       outro: { path: 'C:/outro.mp4', durSec: 4 },

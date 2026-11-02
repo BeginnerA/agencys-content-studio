@@ -1,4 +1,4 @@
-// M70 连续性 API：与 routes/continuity.ts 十条端点一一对应。类型见 lib/types/continuity.ts。
+// 连续性 API：与 routes/continuity.ts 十条端点一一对应。类型见 lib/types/continuity.ts。
 // extract 是唯一付费端点（幂等键回放不再计费），走 LONG_TIMEOUT_MS；
 // 其余为免费端点。错误统一抛 ApiError{code,message}。
 import { api, LONG_TIMEOUT_MS } from './core'

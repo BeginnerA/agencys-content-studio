@@ -1,8 +1,8 @@
 /**
- * M56 探针（轻松创作「毕业通道」：把已确认并开始的方案，在同一项目起一个专业链 queued run）——手动执行：
+ * 轻松创作毕业通道探针（轻松创作「毕业通道」：把已确认并开始的方案，在同一项目起一个专业链 queued run）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m56.ts [--section=schema|episode|series|guards|drift]
  *
- * 背景：立项时曾误编号 M48，与已交付里程碑 M48（统一取消/续跑/预算）冲突，故按最新 roadmap 复核改用 M56（现有探针最高 m55）。
+ * 背景：立项时曾误编号与已交付里程碑 （统一取消/续跑/预算）冲突，故按最新 roadmap 复核改用 （现有探针最高 m55）。
  *
  * 隔离策略：isolatedEnv('m56', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
  * 必须在任何 src 动态 import 前调用。零网络、零付费模型调用：graduate 全程为纯 DB + 模板装载，
@@ -11,7 +11,7 @@
  *   - 直插 active 项目 + started 会话（挂 easy run）+ 批准剧本资产（purpose=script, runId=会话 run），
  *     旁路 LLM 与真实媒体执行。
  *
- * 断言聚焦 M56 契约：批准剧本经既有 setting_docs（单集）/plan_doc（连载）锚定、毕业不新增模板步骤/不改结构（M60 后
+ * 断言聚焦本交付契约：批准剧本经既有 setting_docs（单集）/plan_doc（连载）锚定、毕业不新增模板步骤/不改结构（后
  * 出厂版本为 mengbao-episode v19 / series-setup v7（v19 跨集剧情连续性输入；v7 定妆照参考图升三态 auto/on/off + 智能复用），毕业链仍零改动），幂等复用未启动专业 run、未确认拒绝、prev_script 不被误用。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。

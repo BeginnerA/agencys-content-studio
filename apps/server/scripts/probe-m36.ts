@@ -1,5 +1,5 @@
 /**
- * M36 探针（运营配置自动化：G12.1 平台目录 + G12.2 合规内置基础词 + G12.3 建议采纳 + G12.4 排期节奏）——手动执行：
+ * 运营配置自动化探针（运营配置自动化：G12.1 平台目录 + G12.2 合规内置基础词 + G12.3 建议采纳 + G12.4 排期节奏）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m36.ts [--section=g12-catalog|g12-baserules|g12-suggest|g12-cadence]
  *
  * 隔离策略：isolatedEnv('m36', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

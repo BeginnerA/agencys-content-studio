@@ -1,8 +1,8 @@
 /**
- * M67 探针（API 契约失真两处）——手动执行：
+ * 平台数据导入回灌探针（API 契约失真两处）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m67-api-contract.ts [--section=gate-shape|extra-object]
  *
- * 对应审查发现（P2 契约一致性）：
+ * 对应审查发现（契约一致性）：
  *   ③ 审核接口返回类型失真：前端 runs.ts 把 POST /runs/:id/gate 声明为 `RunDetail`（含 steps），
  *      服务端实际只回 `{run}`（与 cancel/resume 同构）→ 调用方 `detail.value = res` 会抹掉步骤列表
  *      与会话反查字段。修复：类型改 `{run}`，调用方改走 detail() 重载；

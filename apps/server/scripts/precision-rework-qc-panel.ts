@@ -1,9 +1,9 @@
 /**
- * precision-rework 探针 · qc-panel 分节（第四期：统一 QC 面板·成片质量可验证/交付可信只读核验）——
+ * precision-rework 探针 · qc-panel 分节（统一 QC 面板·成片质量可验证/交付可信只读核验）——
  * 自 probe-precision-rework 拆出：m26 split-audit 红线单文件 ≤800 行。文件名不带 probe- 前缀：
  * 本模块是被主探针 import 的库，不是可独立执行的探针（run-probes 按 probe-*.ts 扫描）。
  * 隔离库 + 本地 FFmpeg lavfi 合成真实假 mp4（标 synthetic，不碰生产样片）：零模型、零付费、零供应商、零网络。
- * 覆盖规格 §8 九条核心断言：#1 合成假片客观值（file_readable/stream_spec/duration_vs_timeline）+ 造差 failed；
+ * 九条核心断言：#1 合成假片客观值（file_readable/stream_spec/duration_vs_timeline）+ 造差 failed；
  * #2 缺 params.timeline → timeline_source not_tested 不反推；#3 时长覆盖入轴 passed / 未入轴 failed；
  * #4 台账 applied 指纹漂移 failed / 一致 passed / 门禁不足 not_tested / 无台账 not_applicable；
  * #5 audio_peak 客观测量失真留人工 / delivery_flag 只读呈现；#6 verdict 三态；#7 缺测降级 not_tested 不判 failed；

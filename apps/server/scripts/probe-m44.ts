@@ -1,4 +1,4 @@
-/** M44 离线探针：按增量扩展；不读取正式库，不发送付费请求。 */
+/** 离线探针：按增量扩展；不读取正式库，不发送付费请求。 */
 import { isolatedEnv, makeChecker, runSections } from './probe-lib'
 
 const { cleanup } = isolatedEnv('m44', { bridge: ['templates', 'prompts'] })

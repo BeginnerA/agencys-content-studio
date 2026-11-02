@@ -1,20 +1,20 @@
 /**
- * M25 探针（输入源扩展：小说链 G1–G8 + 视频 G9/G10）——手动执行：
+ * 输入源扩展探针（输入源扩展：小说链 G1–G8 + 视频 G9/G10）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m25.ts [--section=docparse|content-write|graph-layout|audit|merge|append|fetch|analyze]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
  * （独立 studio.db + workspace），不触碰开发库（同 probe-m3~m24）。零网络、零计费：
  * 直测服务层纯函数与注册面，不触发引擎执行、真实生成与 LLM/ASR 调用（网络面走 e2e 实弹）。
  *
- * section（默认 all；P0 冒烟骨架，逐批填充全矩阵，spec §7）：
- *   docparse      [P1] docFormatByExt / findOpfPath / parseEpubSpine（P0 已直测）+ epubToText/parseDocBuffer 端到端（P1 补）
- *   content-write [P2] 白名单常量 / ContentEditError（P0 已直测）+ 原子覆写落库往返（P1 补）
- *   graph-layout  [P2] nodeRadius / computeGraphLayout 确定性矩阵（P0 已直测）
- *   audit         [P2] parseAuditVerdict 契约矩阵（P0 已直测）+ action 接线（P2 补）
- *   merge         [P2] per_source 逐 source 切分（已填：mock ctx 端到端 textSplit + 回归锚）
- *   append        [P2] 幂等去重 / 续编（已填：真实 run/step/manifest 基座 + 重放/混合/守卫矩阵）
- *   fetch         [P3] assertSafeUrl SSRF 矩阵 / extractReadableText / decodeEntities（P0 已直测）+ 网络抓取（P3 e2e）
- *   analyze       [P3] parseTimelineJson / 帧数常量（P0 已直测）+ ffprobe/ASR/多模态接线（P3 补）
+ * section（默认 all；冒烟骨架，逐批填充全矩阵）：
+ *   docparse      docFormatByExt / findOpfPath / parseEpubSpine（已直测）+ epubToText/parseDocBuffer 端到端（待补）
+ *   content-write 白名单常量 / ContentEditError（已直测）+ 原子覆写落库往返（待补）
+ *   graph-layout  nodeRadius / computeGraphLayout 确定性矩阵（已直测）
+ *   audit         parseAuditVerdict 契约矩阵（已直测）+ action 接线（待补）
+ *   merge         per_source 逐 source 切分（已填：mock ctx 端到端 textSplit + 回归锚）
+ *   append        幂等去重 / 续编（已填：真实 run/step/manifest 基座 + 重放/混合/守卫矩阵）
+ *   fetch         assertSafeUrl SSRF 矩阵 / extractReadableText / decodeEntities（已直测）+ 网络抓取（e2e）
+ *   analyze       parseTimelineJson / 帧数常量（已直测）+ ffprobe/ASR/多模态接线（待补）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       serr = e instanceof DocParseError && (e as { code?: string }).code === 'empty_spine'
     }
     check(serr, '空 spine → DocParseError(empty_spine)')
-    // ---- [P1] 端到端：zipSync 合成 epub → epubToText / parseDocBuffer ----
+    // ---- 端到端：zipSync 合成 epub → epubToText / parseDocBuffer ----
     const epubBytes = await buildEpubBytes()
     const text = epubToText(epubBytes)
     check(text.includes('第一章 初遇') && text.includes('第二章 离别'), 'epubToText 提取 h1 章题行（纯文本无 # 前缀，保 ^第X章 行首正则）')
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
     check(ferr, '非 docx/epub 入口调用 → DocParseError(bad_format)')
   }
 
-  // ================= content-write：G2 内容覆写常量与错误契约（落库往返 P1 补） =================
+  // ================= content-write：G2 内容覆写常量与错误契约（落库往返补） =================
   const sectionContentWrite = async (): Promise<void> => {
     const { EDITABLE_PURPOSES, MAX_CONTENT_CHARS, ContentEditError } = await import('../src/services/asset-content')
     for (const p of ['source', 'chapters', 'events', 'graph', 'plan', 'script', 'text', 'export', 'video_analysis']) {
@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     const e = new ContentEditError('bad_kind', 'x')
     check(e instanceof Error && e.code === 'bad_kind', 'ContentEditError 携带 code 供路由映射 4xx')
 
-    // ---- [P1] 落库往返（隔离库）：importFiles 转换 + 覆写原子性/留痕 + 守卫矩阵 ----
+    // ---- 落库往返（隔离库）：importFiles 转换 + 覆写原子性/留痕 + 守卫矩阵 ----
     const { db, pid } = await ensureProject()
     const { assets: assetsTbl } = await import('../src/db/schema')
     const { eq: deq } = await import('drizzle-orm')
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
     check(L1.nodes.every((n) => n.x >= 40 && n.y >= 40) && Math.abs(minEdgeX - 40) <= 1 && Math.abs(minEdgeY - 40) <= 1, `含半径包围盒左上平移至 (40,40)（edgeX=${minEdgeX} edgeY=${minEdgeY}）`)
     check(L1.width > 0 && L1.height > 0 && GRAPH_TICKS === 300, '画布尺寸正数 + tick 常量 300')
 
-    // ---- [P2·G3] graph-json 文档 → 节点/边推导（纯函数）----
+    // ---- graph-json 文档 → 节点/边推导（纯函数）----
     const doc = {
       overview: '梗概',
       characters: [{ name: '甲', role: '主' }, { name: '乙', role: '次' }, { name: '甲' }], // 甲重名去重
@@ -484,7 +484,7 @@ async function main(): Promise<void> {
     check(extractReadableText('<div><p>' + 'x'.repeat(300) + '</p></div>').includes('x'), '无 article 回退全 body')
   }
 
-  // ================= analyze：G9 时间轴契约 + 帧数常量 + [P3] 接线纯函数全矩阵 =================
+  // ================= analyze：G9 时间轴契约 + 帧数常量 + 接线纯函数全矩阵 =================
   const sectionAnalyze = async (): Promise<void> => {
     const { parseTimelineJson, VIDEO_FRAME_COUNT_RANGE, clampFrameCount, uniformVideoTimes, buildAudioExtractArgs, renderAnalysisReportMd, ANALYSIS_FRAME_WIDTH } = await import('../src/pipeline/actions/video-analyze')
     check(VIDEO_FRAME_COUNT_RANGE.min === 2 && VIDEO_FRAME_COUNT_RANGE.max === 24 && VIDEO_FRAME_COUNT_RANGE.default === 8, '帧数独立常量 2–24 默认 8（不动画布 2–9）')
@@ -497,12 +497,12 @@ async function main(): Promise<void> {
     check(parseTimelineJson('garbage') === null, '非 JSON → null（宽容降级）')
     check(parseTimelineJson('{"scenes":[{"t0":9,"t1":10,"visual":"late"},{"t0":1,"t2":2,"visual":"early"}]}')?.scenes[0]?.visual === 'early', 'scenes 按 t0 升序')
 
-    // —— [P3] clampFrameCount 边界矩阵（spec §2.9 params.frames 2–24）——
+    // —— clampFrameCount 边界矩阵（params.frames 2–24）——
     check(clampFrameCount(1) === 2 && clampFrameCount(100) === 24, 'clampFrameCount：1→2 / 100→24（越界 clamp）')
     check(clampFrameCount(undefined) === 8 && clampFrameCount('abc') === 8 && clampFrameCount(NaN) === 8, 'clampFrameCount：非法/缺失 → 默认 8')
     check(clampFrameCount(8.6) === 9, 'clampFrameCount：小数 round 8.6→9')
 
-    // —— [P3] uniformVideoTimes：公式/边界/降级（spec §4.8 真实 24 帧边界锚）——
+    // —— uniformVideoTimes：公式/边界/降级（真实 24 帧边界锚）——
     const times24 = uniformVideoTimes(24, 120)
     check(times24.length === 24 && times24[0] === 0.1 && times24[23] === 119.9, `n=24/dur=120：首 0.1 尾 dur−0.1=119.9（实得 ${times24[0]}/${times24[23]}）`)
     check(times24.every((t, i) => i === 0 || t >= times24[i - 1]!), '24 帧时刻单调不降')
@@ -518,25 +518,25 @@ async function main(): Promise<void> {
     check(utErr, 'dur 非法（0）→ 抛错（上层 StepError 接口）')
     check(uniformVideoTimes(100, 60).length === 24, 'count 越界先 clamp 再出时刻（n=100→24）')
 
-    // —— [P3] 抽音轨 argv（ASR 通用入参形态固定）——
+    // —— 抽音轨 argv（ASR 通用入参形态固定）——
     check(
       canon(buildAudioExtractArgs('src.mp4', 'out.mp3')) === canon(['-y', '-hide_banner', '-loglevel', 'error', '-i', 'src.mp4', '-vn', '-ac', '1', '-ar', '16000', '-b:a', '32k', 'out.mp3']),
       'buildAudioExtractArgs：16k 单声道 mp3 argv 逐字定形',
     )
 
-    // —— [P3] 人读报告渲染（时间轴表 + 转写段 + 降级文案）——
+    // —— 人读报告渲染（时间轴表 + 转写段 + 降级文案）——
     const report = renderAnalysisReportMd({ duration: 10, scenes: [{ t0: 0, t1: 5, visual: '画面A', shot_type: '近景' }], transcript: [{ t0: 0, t1: 4, text: '你好' }] }, { sourceName: 'demo.mp4', frames: 8, transcribed: true })
     check(report.includes('demo.mp4') && report.includes('近景') && report.includes('画面A') && report.includes('[0.0–4.0] 你好'), '报告含源名/景别/画面/转写段')
     const reportNo = renderAnalysisReportMd({ duration: 3, scenes: [], transcript: null }, { sourceName: 'x.mp4', frames: 2, transcribed: false })
     check(reportNo.includes('无（降级或无人声）') && reportNo.includes('未产出场景') && !reportNo.includes('## 音轨转写'), '无转写/无场景报告降级文案且不出转写节')
 
-    // —— [P3] frame.ts 缩宽注入 + 缺省回归锚（不动画布现行为）——
+    // —— frame.ts 缩宽注入 + 缺省回归锚（不动画布现行为）——
     const { buildFrameExtractArgs } = await import('../src/services/creation/gen/frame')
     check(!buildFrameExtractArgs('a.mp4', 'b.jpg', 3).includes('-vf'), '缺省不注入 -vf（画布抽帧现行为逐字不变回归锚）')
     const scaled = buildFrameExtractArgs('a.mp4', 'b.jpg', 3, ANALYSIS_FRAME_WIDTH)
     check(scaled.includes('-vf') && scaled[scaled.indexOf('-vf') + 1] === 'scale=768:-2' && scaled[scaled.length - 1] === 'b.jpg', `缩宽注入 -vf scale=${ANALYSIS_FRAME_WIDTH}:-2（-2 保持宽高比）`)
 
-    // —— [P3] ASR 纯函数面（判定/响应归一；网络面走实弹）——
+    // —— ASR 纯函数面（判定/响应归一；网络面走实弹）——
     const { isOpenAiCompatBase, parseAsrResponse, DEFAULT_ASR_MODEL } = await import('../src/services/asr')
     check(isOpenAiCompatBase('https://api.siliconflow.cn/v1') === true, 'SiliconFlow /v1 根 → 兼容')
     check(isOpenAiCompatBase('https://api.siliconflow.cn/v1/') === true, '尾斜杠归一仍兼容')
@@ -548,7 +548,7 @@ async function main(): Promise<void> {
     check(parseAsrResponse({ text: 'ok' })?.segments === null, '有 text 无 segments → segments=null（仍算成功）')
     check(DEFAULT_ASR_MODEL === 'FunAudioLLM/SenseVoiceSmall', '缺省模型 SenseVoiceSmall')
 
-    // —— [P3] G10 video-reverse 模板合法性（loader 同源校验，零落盘）——
+    // —— G10 video-reverse 模板合法性（loader 同源校验，零落盘）——
     const { readFileSync } = await import('node:fs')
     const { validateTemplateText } = await import('../src/pipeline/loader')
     const vText = readFileSync(resolve(REPO_ROOT, 'workspace', 'templates', 'video-reverse.yaml'), 'utf8')

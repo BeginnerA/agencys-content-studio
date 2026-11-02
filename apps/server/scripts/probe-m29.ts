@@ -1,5 +1,5 @@
 /**
- * M29·R02 探针（内容/参考版本 + 执行真实输入快照 + 下游影响 + 锁版）——手动执行：
+ * 探针（内容/参考版本 + 执行真实输入快照 + 下游影响 + 锁版）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m29.ts [--section=schema|version-capture|restore|concurrency|input-snapshot|impact|lock|gc-purge]
  *
  * 零网络零计费、零付费模型调用，隔离临时库（acs-probe-m29-*）。全程走服务层纯/近纯函数 + 直连 db，

@@ -87,7 +87,7 @@ export async function cleanupVersions(opts: { projectId: number; runId?: number;
 }
 
 /**
- * 字幕引用保护集（precision-rework 规格 §5.2-104：清理/删除纳入当前指针、历史成片与执行快照）：
+ * 字幕引用保护集（precision-rework：清理/删除纳入当前指针、历史成片与执行快照）：
  * ① 项目内所有 run 的 _subtitleEdits 指针 assetId（当前修订逻辑资产）；
  * ② 项目内所有成片（含已软删）params.timeline.subtitle 的 assetId 与 sourceRef.assetId
  *   （历史成片有效/源字幕仍被引用，文件不可物理消失）。
@@ -122,7 +122,7 @@ export async function subtitleReferenceIds(projectId: number): Promise<Set<numbe
 /**
  * 清空回收站（项目级，不可逆）：对回收站内未被字幕引用保护的条目执行批量「彻底删除」——
  * 物理删原文件 + 缩略图缓存并硬删数据行（与逐条 purgeAsset 同语义，条目从回收站消失）。
- * 仍被修订指针/历史成片字幕快照引用（含当前指针，规格 §5.2-104）的条目跳过：文件与记录保留，仍可还原。
+ * 仍被修订指针/历史成片字幕快照引用（含当前指针）的条目跳过：文件与记录保留，仍可还原。
  * 文件缺失/占用不阻塞其余条目；空回收站幂等（purged=0）。
  */
 export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
@@ -136,7 +136,7 @@ export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
   let freedBytes = 0
   let skipped = 0
   for (const a of rows) {
-    // M70 保留素材（continuity_*）属审阅历史，普通面清空回收站一律跳过（记录与文件保留）
+    // 保留素材（continuity_*）属审阅历史，普通面清空回收站一律跳过（记录与文件保留）
     if (isContinuityPurpose(a.purpose)) {
       skipped += 1
       continue

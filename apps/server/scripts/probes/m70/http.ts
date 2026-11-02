@@ -1,6 +1,6 @@
 /**
- * M70 Task 10 探针：专用 API 端点（http 节）
- * - createContinuityRoutes(io) 挂 /api/v1：设计 §11 十条端点逐条真实 HTTP 请求；
+ * 探针：专用 API 端点（http 节）
+ * - createContinuityRoutes(io) 挂十条端点逐条真实 HTTP 请求；
  * - 成功响应体形状（设计只定路径/用途，字段名为本任务决策，已在 task-10-report.md 登记）：
  *   ①GET .../episodes/:eid/continuity/sources → {items: SourceCandidate[]}
  *   ②POST .../sources/snapshot → {source: Source}
@@ -98,7 +98,7 @@ async function runHttpBody(checker: Checker) {
   })
   // 挂载路由注入的 fake IO：extract 的模型返回 = 第三集故事的逐句抽取稿（ModelDoc 形状）。
   const modelDoc = await storyDocument(f, 2)
-  // 第三集收束第二集的「红信封」线索：更新既有槽位必须精确指向当前前值（设计 §5.2），
+  // 第三集收束第二集的「红信封」线索：更新既有槽位必须精确指向当前前值，
   // 模型能看到 basis 文档里的条目 ID，因此抽取稿要带 previous 而不是凭空覆盖。
   const priorEntry = (await listEntries(f.projectId, f.episodes[1]!)).find(e => e.status === 'confirmed' && e.doc && e.document)
   const priorItem = priorEntry?.doc?.items.find(i => i.included && i.topicKey === 'envelope')
@@ -203,7 +203,7 @@ async function runHttpBody(checker: Checker) {
       basis: Array<{ entryId: number; unitOrdinal: number; hash: string }>; inputChars: number; warnings: string[] } }
     assert.match(body.extractionPreview.previewHash, /^[a-f0-9]{64}$/)
     assert.ok(body.extractionPreview.inputChars > 0)
-    // 基础依赖 = 同系列已确认的前集条目（设计 §5.3；与 entries 节的三集链一致）。
+    // 基础依赖 = 同系列已确认的前集条目（与 entries 节的三集链一致）。
     assert.deepEqual(body.extractionPreview.basis.map(ref => ref.unitOrdinal), [1, 2])
     assert.ok(body.extractionPreview.basis.every(ref => typeof ref.entryId === 'number' && /^[a-f0-9]{64}$/.test(ref.hash)))
     assert.equal(ef.calls(), callsBefore)
@@ -228,7 +228,7 @@ async function runHttpBody(checker: Checker) {
   })
 
   await t('10.④ POST extract：真实执行 {entry} 草稿；同 operationKey 幂等回放同 entry 零二次调用', async () => {
-    // previewHash 绑定端点/价格配置（设计 §11「配置指纹」）：客户端必须用与提取同一作用域取回的预览哈希，
+    // previewHash 绑定端点/价格配置（「配置指纹」）：客户端必须用与提取同一作用域取回的预览哈希，
     // 不能拿进程默认配置下的 previewExtraction 结果去核验注入 fake IO 的端点。
     const previewRes = await get(epUrl(f.episodes[2]!) + sourceQuery(f.sources[2]!))
     assert.equal(previewRes.status, 200)
@@ -258,7 +258,7 @@ async function runHttpBody(checker: Checker) {
 
   await t('10.⑥ PATCH continuity/:id：人工复核落稿；strictObject 多余键 → 400', async () => {
     assert.ok(extractView?.doc)
-    // 人工复核保留提取稿的 basis/previous（既有依赖不能无理由消失，设计 §5.3），只把结论来源改为人工。
+    // 人工复核保留提取稿的 basis/previous（既有依赖不能无理由消失），只把结论来源改为人工。
     const reviewed = structuredClone(extractView.doc) as unknown as EntryDoc
     for (const item of reviewed.items) { item.origin = 'manual'; item.editNote = '人工逐句复核合成原文' }
     const callsBefore = ef.calls()

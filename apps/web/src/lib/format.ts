@@ -232,7 +232,7 @@ export function parseAssetQuality(a: Asset): ImageQuality | null {
   }
 }
 
-// ===== 合规审核标记展示（spec §2.6 前端最小面：params.compliance → 状态徽章） =====
+// ===== 合规审核标记展示（前端最小面：params.compliance → 状态徽章） =====
 
 export interface AssetCompliance {
   status: 'pass' | 'warn' | 'block'

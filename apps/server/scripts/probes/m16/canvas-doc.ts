@@ -1,4 +1,4 @@
-/** M16① canvas-doc：画布/节点/边 CRUD 全链 + 派生读模型 + 宽容 + 级联（断言体逐字搬自原 probe-m16.ts） */
+/** canvas-doc：画布/节点/边 CRUD 全链 + 派生读模型 + 宽容 + 级联（断言体逐字搬自原 probe-m16.ts） */
 import type { M16Ctx } from './ctx'
 
 export async function run(ctx: M16Ctx): Promise<void> {
@@ -61,7 +61,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
   })
   check(n4r.status === 201, 'POST 编辑节点（inpaint）→ 201')
   const N4: number = n4r.body.node.id
-  // [M17] 无产物图像 gen 节点：作为「上游无产物」用例源（视频 gen 已不可作 reference 源）
+  // 无产物图像 gen 节点：作为「上游无产物」用例源（视频 gen 已不可作 reference 源）
   const n5r = await jreq('POST', `/api/v1/canvases/${C1}/nodes`, {
     kind: 'gen',
     spec: { genKind: 'image', prompt: '无产物源' },
@@ -191,7 +191,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
   check((await jreq('DELETE', '/api/v1/nodes/999999')).status === 404, 'DELETE 不存在节点 → 404')
   check((await jreq('DELETE', '/api/v1/edges/999999')).status === 404, 'DELETE 不存在边 → 404')
 
-  // [M18] 变更：DELETE 画布 → 软删（进回收站）；节点/边物理保留以支持恢复（原「物理级联清空」语义废弃）
+  // 变更：DELETE 画布 → 软删（进回收站）；节点/边物理保留以支持恢复（原「物理级联清空」语义废弃）
   const nodeBefore = Number((await db.select({ n: count() }).from(canvasNodes).where(eq(canvasNodes.canvasId, C1)))[0]?.n ?? -1)
   const edgeBefore = await edgeCount(C1)
   const c1Del = await jreq('DELETE', `/api/v1/canvases/${C1}`)

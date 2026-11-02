@@ -6,7 +6,7 @@ import { RefResolveError, isValidDateInput } from './types'
 import { isContinuityPurpose } from '../services/continuity/reserved'
 
 /**
- * 引用解析器（spec §5.2，engine 内置 ~100 行）。
+ * 引用解析器（engine 内置 ~100 行）。
  * 支持四种形态：
  *   input.<key>                        → run.input 对应键（原样透传）
  *   steps.<key>.asset(s)               → 上游 step 产物资产 id（.asset=首个 / .assets=全量；
@@ -136,7 +136,7 @@ export function interpolate(tpl: string, runInput: Record<string, unknown>): str
   })
 }
 
-// ---------- when 条件表达式（spec §3.3 最小集） ----------
+// ---------- when 条件表达式（最小集） ----------
 
 export type WhenOp =
   | { t: 'const'; v: boolean }
@@ -323,7 +323,7 @@ export async function assertProjectAssets(
   if (missing.length > 0) {
     throw new RefResolveError(what, `资产不存在或不属于本项目: ${missing.join(', ')}`)
   }
-  // M70：剧情连续性保留产物（entry/context/use）不得当普通素材引用（ai_text 注入闸之外的第二道闸）
+  // 剧情连续性保留产物（entry/context/use）不得当普通素材引用（ai_text 注入闸之外的第二道闸）
   for (const n of nums) {
     const purpose = found.get(n)
     if (purpose && isContinuityPurpose(purpose)) {

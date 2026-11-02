@@ -1,15 +1,15 @@
 <script setup lang="ts">
 /**
- * 创作画布渲染层（手绘零依赖；spec §2.5）
+ * 创作画布渲染层（手绘零依赖）
  * - 世界层 translate(pan) scale(zoom)；边 = SVG 三次贝塞尔；节点 = 绝对定位卡片（宽 220）
  * - 模式机：box（空白左键框选）/ pan（空格+左键 / 中键）/ node（多选整组拖拽）/ link（输出口→输入口）
  * - 键盘：Del 删除 · Ctrl+Z/Y 撤销重做 · Ctrl+D 复制 · Ctrl+A 全选 · 方向键微移 · 空格平移 · F 适应 · Esc 取消
  * - 落点：空白双击建生成节点；drop 文件由父级上传后建素材节点（本组件只报世界坐标与文件）
  * - 视口：useBoardViewport（初始 = 画布持久化；settled 后 emit，父级防抖 PATCH）
- * - 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（spec §2.4，README 明示）
+ * - 选择模型破坏性变更：空白左键拖 = 框选（全包含判定）；平移改空格/中键（README 明示）
  * - 选中联动：节点选中 → 出边流动紫（下游）/入边静态淡紫（上游）+ 上下游节点紫环；边选中 → 两端节点紫环
  * - 渲染虚拟化：renderNodes / edgePaths 按可见世界矩形裁剪（半屏外扩；尺寸未实测 → 全量兜底）；
- *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真，spec §2.2）
+ *   几何计算与交互仍用全量 props.nodes（框选 / Ctrl+A / 方向键保真）
  * - 缩放栏 / 操作指南悬浮件拆至 BoardHud.vue（行为零变更）
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -143,7 +143,7 @@ const hiddenNodeIds = computed<Set<number>>(() => {
 function isNodeHidden(n: CanvasDocNode): boolean {
   return hiddenNodeIds.value.has(n.id)
 }
-/** 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底，spec §2.2） */
+/** 虚拟化可见世界矩形（半屏外扩 VIEW_MARGIN；尺寸未实测 → null 全量兜底） */
 const VIEW_MARGIN = 0.5
 const visibleWorld = computed<{
   x1: number
@@ -314,7 +314,7 @@ const selLinks = computed(() => {
 // ---- 边路径（锚点：源右中 → 目标左中）----
 const edgePaths = computed<EdgePath[]>(() => {
   const out: EdgePath[] = []
-  // 虚拟化：任一端可见才渲染（两端均不可见 → 裁掉，spec §2.2）
+  // 虚拟化：任一端可见才渲染（两端均不可见 → 裁掉）
   const visIds = new Set(renderNodes.value.map((n) => n.id))
   for (const e of props.edges) {
     const a = nodeById.value.get(e.from)

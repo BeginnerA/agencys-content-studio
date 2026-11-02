@@ -1,4 +1,4 @@
-/** M16⑥ regression：probe:m15 子进程全绿（内含 m2a/m4/m14）+ 新列兼容抽样（断言体逐字搬自原 probe-m16.ts） */
+/** regression：probe:m15 子进程全绿（内含 m2a/m4/m14）+ 新列兼容抽样（断言体逐字搬自原 probe-m16.ts） */
 import { join } from 'node:path'
 import type { M16Ctx } from './ctx'
 
@@ -14,7 +14,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
   delete childEnv.CSTUDIO_ROOT
   delete childEnv.CSTUDIO_DATA
   delete childEnv.CSTUDIO_WORKSPACE
-  // 直接以 tsx 运行前序探针脚本（M26 runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
+  // 直接以 tsx 运行前序探针脚本（runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
   const script = join(REPO_ROOT, 'apps', 'server', 'scripts', 'probe-m15.ts')
   const r = spawnSync(process.execPath, ['--import', 'tsx', script], {
     cwd: join(REPO_ROOT, 'apps', 'server'),

@@ -64,7 +64,7 @@ export interface ComposeConfig {
   subtitleBurn?: boolean
   /** 多画幅原生渲染（合成内多路输出） */
   multi_aspect?: MultiAspectConfig
-  /** 镜头时长本地返修覆盖（切片2b）：shotId → 显示时长秒；仅经 compose-input 返修闸写入（草稿直写排除本键，Q1）。
+  /** 镜头时长本地返修覆盖：shotId → 显示时长秒；仅经 compose-input 返修闸写入（草稿直写排除本键，Q1）。
    *  有效段长仍受音频对齐下限约束（短于该镜对齐语音 Σ → 合成期 planVoiceAlignedSegments 回落 Σ，不音画脱节）。 */
   shot_durations?: Record<string, number>
 }
@@ -240,7 +240,7 @@ export function normalizeComposeConfigPatch(base: ComposeConfig, patch: Record<s
       continue
     }
     if (key === 'shot_durations') {
-      // 镜头时长覆盖（切片2b）：{ shotId: 秒 }；键非空 shotId、值逐项有限正数并封顶到 MAX。整键 null 走函数头统一清除。
+      // 镜头时长覆盖：{ shotId: 秒 }；键非空 shotId、值逐项有限正数并封顶到 MAX。整键 null 走函数头统一清除。
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new WorkbenchError('bad_field', 'shot_durations 需为 { shotId: 秒 } 对象')
       }
@@ -264,7 +264,7 @@ export function normalizeComposeConfigPatch(base: ComposeConfig, patch: Record<s
 /** 配置合并写（字段白名单 + 枚举 + clamp；只动 _compose 键） */
 export async function updateComposeConfig(runId: number, patch: Record<string, unknown>): Promise<ComposeConfig> {
   const run = await requireEditableRun(runId)
-  // 切片2b Q1：镜头时长覆盖只经受控返修闸（compose-input apply）写入，草稿直写口不放开本键。
+  // Q1：镜头时长覆盖只经受控返修闸（compose-input apply）写入，草稿直写口不放开本键。
   if ('shot_durations' in patch) {
     throw new WorkbenchError('bad_field', 'shot_durations 需经合成返修闸修改，不支持草稿直写')
   }

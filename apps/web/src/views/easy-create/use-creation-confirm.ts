@@ -41,7 +41,7 @@ export function createCreationConfirm(detailOf: () => CreationDetail | null) {
     confirmKey.key = hash ? newRequestKey('cfm') : ''
   }
 
-  // route 确认幂等键（M63）：以 decisionHash+planRevision 为闸，语义同 confirmKey（改动即作废旧确认，重试点击不新起 run）
+  // route 确认幂等键：以 decisionHash+planRevision 为闸，语义同 confirmKey（改动即作废旧确认，重试点击不新起 run）
   const decisionKey = reactive<{
     hash: string
     revision: number

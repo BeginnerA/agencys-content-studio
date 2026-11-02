@@ -9,7 +9,7 @@ type Dependencies = Pick<CanvasState, 'canvasId' | 'selectedIds' | 'toast'> &
 export function useCanvasGroups(deps: Dependencies) {
   const { canvasId, selectedIds, loadDoc, toast } = deps
 
-  // ===== 分组：成组 / 改组 / 解组（spec §2.6⑩）=====
+  // ===== 分组：成组 / 改组 / 解组（⑩）=====
   /** Ctrl+G / 批量条成组：把当前选中集（≥2）归入新组 */
   async function onGroupCreate(): Promise<void> {
     const cid = canvasId.value

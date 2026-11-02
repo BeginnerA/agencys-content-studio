@@ -1,4 +1,4 @@
-// M69 审片问题单 API（与 apps/server routes/review.ts 对齐）。
+// 审片问题单 API（与 apps/server routes/review.ts 对齐）。
 // 全部动作返回服务端投影；前端不做状态推断。
 import { api } from './core'
 import type {

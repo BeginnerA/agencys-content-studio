@@ -1,5 +1,5 @@
 /**
- * M45 探针（轻松创作第四批：成品品牌贯通——水印/片头尾/字幕样式）——手动执行：
+ * 探针（轻松创作第四批：成品品牌贯通——水印/片头尾/字幕样式）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m45.ts [--section=gate|preflight|confirm]
  *
  * 隔离策略：isolatedEnv('m45') 一次性临时目录（独立 studio.db + workspace），必须在任何 src import 前调用。
@@ -22,7 +22,7 @@ process.env.PROBE_M45_KEY = 'probe-offline-secret-key-45a1'
 
 const SECTIONS = ['gate', 'preflight', 'confirm'] as const
 
-/** 3 镜 × 10 秒 = 30 秒（与 M43 同夹具，最小化漂移） */
+/** 3 镜 × 10 秒 = 30 秒（与此前同夹具，最小化漂移） */
 function makePlan(mode: 'dynamic' | 'slideshow') {
   return {
     title: '咖啡冲煮三分钟', summary: '用三段讲清风味来源', genre: 'science' as const, duration: 30,
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
 
   const BRAND_SUBTITLE = JSON.stringify({ brand: { subtitle: { font: 'ProbeSerif', color: '#00FF00' } } })
 
-  /** 旁路 LLM 直建「待确认」会话（与 M43 同口径）；branded 时项目 settings 挂字幕样式品牌 */
+  /** 旁路 LLM 直建「待确认」会话（与此前同口径）；branded 时项目 settings 挂字幕样式品牌 */
   const makeReadySession = async (mode: 'dynamic' | 'slideshow', opts?: { branded?: boolean }) => {
     const { db } = await import('../src/db')
     const { creationSessions } = await import('../src/db/schema')

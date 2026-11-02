@@ -48,7 +48,7 @@ export async function strictTts(ctx: StepContext): Promise<StepResult> {
       const name = `${Date.now()}-voice-${line.id}.mp3`
       const relPath = relPathOf(ctx.run.projectId, 'voice', name)
       writeFileSync(absPathOf(relPath), data)
-      // M66：AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+      // AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
       const abs = absPathOf(relPath)
       const label = await labelGeneratedFile(abs, 'mp3')
       const labeledBuf = readFileSync(abs)

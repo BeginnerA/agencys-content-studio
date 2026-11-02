@@ -5,7 +5,7 @@ import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
 
 /**
- * character_sync：角色档案入库（E3 一致性链源头）。
+ * character_sync：角色档案入库（一致性链源头）。
  * 输入 characters：characters-json 资产（多资产逐个尝试，取第一个含非空 characters 数组的）；
  * states 变体随档案入库（normalizeSpec 保留，upsertEntity 非空覆盖）；
  * 输入 ref_images?：定妆照资产序列（按 asset.params.shotId = 角色名归属，未命中按资产名含角色名兜底）；

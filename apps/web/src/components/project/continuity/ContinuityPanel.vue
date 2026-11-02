@@ -5,7 +5,7 @@
  *   断连后按同 operationKey 重试/查询，不重复发送请求）。
  * - 编辑：EntryEditor 结构化编辑草稿；并发 409 保留用户编辑并提示重新载入；确认 CAS 绑定所见当前头。
  * - 影响：ImpactPanel 三区展示下游引用。
- * 浏览器端到端实测留 Task 13；本组件只保证真实 API 契约与状态纪律。
+ * 浏览器端到端实测留本组件只保证真实 API 契约与状态纪律。
  */
 import { computed, onMounted, ref } from 'vue'
 import { assetVersionApi } from '../../../lib/api/versions'
@@ -154,7 +154,7 @@ async function doExtract() {
   }
 }
 
-/** 零模型复核：克隆草稿并绑定「当前来源」（设计 §7：复核旧记录须绑当前版本，人工重核证据）。 */
+/** 零模型复核：克隆草稿并绑定「当前来源」（复核旧记录须绑当前版本，人工重核证据）。 */
 async function doReview(parent: EntryView) {
   if (!parent.doc || extracting.value) return
   const old = parent.doc.source

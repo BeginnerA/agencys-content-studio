@@ -1,4 +1,4 @@
-/** M16③ edit-cap：适配器编辑声明与请求构造快照（fetch 记录器拦截，零网络）（断言体逐字搬自原 probe-m16.ts） */
+/** edit-cap：适配器编辑声明与请求构造快照（fetch 记录器拦截，零网络）（断言体逐字搬自原 probe-m16.ts） */
 import type { M16Ctx } from './ctx'
 
 export async function run(ctx: M16Ctx): Promise<void> {

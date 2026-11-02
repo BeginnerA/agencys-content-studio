@@ -1,5 +1,5 @@
 /**
- * M15 探针（流水线画布工作台：依赖共享语义 / 运行画布读模型 / 模板画布 / 回归）——手动执行：
+ * 流水线画布工作台探针（流水线画布工作台：依赖共享语义 / 运行画布读模型 / 模板画布 / 回归）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m15.ts [--section=dag|canvas-run|canvas-template|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db +
@@ -506,7 +506,7 @@ async function main(): Promise<void> {
     delete childEnv.AGENT_LLM_API_KEY
     delete childEnv.AGENT_LLM_MODEL
     for (const p of probes) {
-      // 直接以 tsx 运行前序探针脚本（M26 runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
+      // 直接以 tsx 运行前序探针脚本（runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
       const script = join(REPO_ROOT, 'apps', 'server', 'scripts', `${p.replace('probe:', 'probe-')}.ts`)
       const r = spawnSync(process.execPath, ['--import', 'tsx', script], {
         cwd: join(REPO_ROOT, 'apps', 'server'),

@@ -50,9 +50,9 @@ export interface SubtitleStyleConfig {
   bold?: boolean
 }
 
-/** 合规标识配置（M66；三层同构；字段级浅合并） */
+/** 合规标识配置（三层同构；字段级浅合并） */
 export interface ComplianceConfig {
-  enabled?: boolean // 缺省 true（M66 决策：默认开）；仅显式 false 关闭
+  enabled?: boolean // 缺省 true（决策：默认开）；仅显式 false 关闭
   text?: string // 角标文案（缺省 'AI生成'；截断 24）
   position?: WatermarkPosition // 缺省 'br'
   margin_px?: number // clamp 0–200（缺省 24）
@@ -148,7 +148,7 @@ export function sanitizeWatermark(cfg: WatermarkConfig | undefined): ResolvedWat
 
 export const COMPLIANCE_TEXT_DEFAULT = 'AI生成'
 
-/** 合规配置清洗（M66）：enabled 缺省即开（仅显式 false 关）；文案/位置/边距/主体缺省值应用；纯函数探针直测 */
+/** 合规配置清洗：enabled 缺省即开（仅显式 false 关）；文案/位置/边距/主体缺省值应用；纯函数探针直测 */
 export function sanitizeCompliance(cfg: ComplianceConfig | undefined): ResolvedCompliance {
   return {
     enabled: !cfg || cfg.enabled !== false,
@@ -319,7 +319,7 @@ async function resolveMaterialPath(
 
 /**
  * 三层合并 + 清洗 + 来源解析（ffmpeg-merge 唯一入口）。
- * 平台 → 项目 → run 字段级覆盖；无任何新配置 → 返回 {}（M66 起 compliance 恒填——默认开是本里程碑声明的预期行为变更，见 spec §3.2）。
+ * 平台 → 项目 → run 字段级覆盖；无任何新配置 → 返回 {}（起 compliance 恒填——默认开是本里程碑声明的预期行为变更，见）。
  */
 export async function resolveBrandConfig(projectId: number, runInput: string | null): Promise<ResolvedBrandConfig> {
   const [platform, project] = await Promise.all([readPlatformBrand(), readProjectBrand(projectId)])

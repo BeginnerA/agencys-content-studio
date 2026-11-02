@@ -2,7 +2,7 @@
 /**
  * 画布学习实例 seed · HTTP 工具 + 领域操作 + 共享类型。
  *
- * 从 seed-learning-canvases.ts 拆分而来（M64·G4 行为零变更切分）：
+ * 从 seed-learning-canvases.ts 拆分而来（行为零变更切分）：
  * 纯 HTTP API 驱动（服务需已启动，默认 http://127.0.0.1:3001），
  * 供 seed 主流程与画布构建器（basic / drama）共同复用。
  */

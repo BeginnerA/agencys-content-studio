@@ -7,7 +7,7 @@ import { HttpError, h, idParam, notFound } from './helpers'
  * 流水线画布路由（纯读；所有写操作走既有 run/task 端点）：
  * - GET /runs/:id/canvas     运行画布（节点/边/操作可用性；模板取 run 快照）
  * - GET /templates/:key/canvas 模板设计态画布（节点/边；无运行字段）
- * - GET /canvas/overview 全景聚合（批次分组 + 独立 run + 项目统计；E1/E2）
+ * - GET /canvas/overview 全景聚合（批次分组 + 独立 run + 项目统计）
  */
 export const canvasRoutes = new Hono()
 

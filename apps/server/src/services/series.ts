@@ -115,7 +115,7 @@ export async function createSeries(p: {
     if (!a || a.projectId !== p.projectId || a.deletedAt) {
       throw new WorkbenchError('bad_asset', `content_asset_id #${p.contentAssetId} 不存在或不属于本项目`)
     }
-    // M70 保留素材（continuity_*）不得作为剧/集正文资产（普通面不可选）
+    // 保留素材（continuity_*）不得作为剧/集正文资产（普通面不可选）
     if (isContinuityPurpose(a.purpose)) {
       throw new WorkbenchError('reserved_purpose', `content_asset_id #${p.contentAssetId} 为 M70 保留素材，不可作为正文资产`)
     }

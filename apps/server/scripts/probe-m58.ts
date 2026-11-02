@@ -1,19 +1,19 @@
 /**
- * M58 探针（轻松创作「参考反推可检视交付」：2b 解析产物编进方案可检视 + 2a 反推分镜初稿）——手动执行：
+ * 轻松创作参考反推交付探针（轻松创作「参考反推可检视交付」：2b 解析产物编进方案可检视 + 2a 反推分镜初稿）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m58.ts [--section=schema|normalize|draft|gating|drift|images]
  *
  * 隔离策略：纯函数 + 契约级（normalizeRefsAnalysis/parseStoryboardDraft/wantsReverseIntent/schema），
  *   isolatedEnv('m58', bridge templates+prompts) 即可，零 DB、零网络、零模型调用
  *   （2a 初稿调用的接线在 planning.ts，探针只验其纯函数前置与契约承载；计费口径由同 llm 端点入账保证）。
  *
- * 断言聚焦 M58 契约：
+ * 断言聚焦本交付契约：
  *   - schema 加法兼容：老方案（无 refsAnalysis/source）逐字通过；条目 strict 拒越界键；上限收口；
  *   - normalize：scenes≤24 / transcript≤2000 超限截断 + 可见标记；缺失留占位不编造；desc 含景别注记；
  *   - draft：storyboard-json 宽松解析（剥围栏/无效拒收/无画面镜丢弃/≤12 镜）；渲染只列实际存在字段；
- *   - gating：反推措辞真源与 M57 同源（同一措辞两边一致触发）；提示词 video-storyboard.md 真源在位；
+ *   - gating：反推措辞真源与此前同源（同一措辞两边一致触发）；提示词 video-storyboard.md 真源在位；
  *   - drift：undefined 键 JSON 落库自动脱落（无视频参考老路径逐字零漂移）；解析产物进 plan → 进 planHash
- *     （改解析即改 hash → 旧确认作废重确认，与 M31 参考变化同律）；LLM 自报 source 键先剥后权威重写。
- *   - images（M58 补口·图片反推）：normalizeImageAnalysis 有界截断/可选键省略/palette≤8且单项≤16 字符；
+ *     （改解析即改 hash → 旧确认作废重确认，与此前参考变化同律）；LLM 自报 source 键先剥后权威重写。
+ *   - images（补口·图片反推）：normalizeImageAnalysis 有界截断/可选键省略/palette≤8且单项≤16 字符；
  *     imageAnalysisEntrySchema strict 拒越界键；plan.imageAnalysis 向后兼容 + 超上限拒绝 + 进 planHash；
  *     renderImageReverseBrief 只列实际字段；route-hint 图片反推信号（hasImageRef+vision+措辞→image-reverse，无 vision 不产）。
  *
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
       check(strip(llmPlan.shots).every((s) => !('source' in s)), 'LLM 自报 source 键可被剥净（服务端权威清/写，不采信模型自称反推）')
     },
 
-    // ================= images：M58 补口·图片反推（normalize 有界 + schema 收口 + 进 planHash + 路由信号） =================
+    // ================= images：补口·图片反推（normalize 有界 + schema 收口 + 进 planHash + 路由信号） =================
     images: async () => {
       const { creationPlanSchema, imageAnalysisEntrySchema, MAX_IMAGE_ANALYSIS, hashJson } = await import('../src/services/creation-chat/contract')
       // normalize：有界截断 + 可选键省略 + palette 收口
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
       const brief = renderImageReverseBrief([full, bare])
       check(brief.includes('参考图.jpg') && brief.includes('正向提示词：') && brief.includes('负向提示词：'), '简报逐图列出正向/负向提示词（有则列）')
       check(!brief.includes('undefined') && !brief.includes('（）'), '简报只列实际存在者——缺失字段不留空壳占位（不编造）')
-      // route-hint 图片反推信号（须同步 M57 同源约束：措辞真源一致）
+      // route-hint 图片反推信号（须同步此前同源约束：措辞真源一致）
       const imgHint = deriveRouteHint({ userText: '帮我反推这张图的提示词', plan: null, hasVideoContentRef: false, hasImageRef: true, hasVision: true })
       check(imgHint?.target === 'image-reverse' && imgHint.label.length > 0, '图片参考+vision+反推措辞 → 路由建议 image-reverse（模板真源回填 label）')
       const noVision = deriveRouteHint({ userText: '帮我反推这张图的提示词', plan: null, hasVideoContentRef: false, hasImageRef: true, hasVision: false })

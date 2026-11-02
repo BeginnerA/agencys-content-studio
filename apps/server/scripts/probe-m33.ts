@@ -1,5 +1,5 @@
 /**
- * M33 探针（AI 配置智能化：定价 Tier A 真源表 + 选中即生成建议端点）——手动执行：
+ * AI配置智能化探针（AI 配置智能化：定价 Tier A 真源表 + 选中即生成建议端点）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m33.ts [--section=registry|endpoint|cost-drift]
  *
  * 隔离策略：isolatedEnv('m33', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       check(resolveModelPricing('video', 'minimax_video', 'MiniMax-H3') === null, '视频未登记秒价 → null（首批仅 LLM+万相图，视频回落手填）')
     },
 
-    // ================= [M33.1] metadata：在线目录归一（仅 LLM 带价 / 不猜 / 单位守卫 / 兼容口 id-only） =================
+    // ================= metadata：在线目录归一（仅 LLM 带价 / 不猜 / 单位守卫 / 兼容口 id-only） =================
     metadata: async () => {
       const { normalizeModelList } = await import('../src/adapters/model-metadata')
       const ds = { output: { models: [
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
       check(rBad.status === 400, '非法 service_type → 400')
     },
 
-    // ================= [M33.1] fetch-endpoint：在线拉取端点（阿里原生带价 / 失败回退 preset / 兼容口仅 id） =================
+    // ================= fetch-endpoint：在线拉取端点（阿里原生带价 / 失败回退 preset / 兼容口仅 id） =================
     'fetch-endpoint': async () => {
       const real = globalThis.fetch
       try {
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
       await seedConfig({ serviceType: 'llm', providerKey: 'deepseek_llm', model: 'deepseek-flash', pricing: '{"tokens_in":5,"tokens_out":8}' })
       const viaInstance = await resolveUnitPrice({ kind: 'llm', provider: 'deepseek_llm', model: 'deepseek-flash', unit: 'tokens_in' })
       check(viaInstance === 5 / 1_000_000, '实例定价存在 → 计价值取实例（5/百万），与参考表口径独立（零漂移）')
-      // [M33.1] 即便在线目录归一出 live 价，只要未落进实例 pricing，事后计价仍不受影响（真源/元数据不注入计价链）
+      // 即便在线目录归一出 live 价，只要未落进实例 pricing，事后计价仍不受影响（真源/元数据不注入计价链）
       const { normalizeModelList } = await import('../src/adapters/model-metadata')
       const liveEntry = normalizeModelList('llm', 'aliyun_bailian_llm', { output: { models: [{ model: 'qwen3.8-max', prices: [{ range_name: 'Default', prices: [{ type: 'input_token', price: '12', price_unit: '每百万tokens' }, { type: 'output_token', price: '36', price_unit: '每百万tokens' }] }] }] } }).find((m) => m.id === 'qwen3.8-max')
       check(liveEntry?.pricing?.prices.tokens_in === 12, 'cost-drift: 在线目录归一 qwen3.8-max live 12（仅供预填）')

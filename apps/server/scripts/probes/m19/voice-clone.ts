@@ -1,4 +1,4 @@
-/** M19[voice-clone]：voice_clones 表模型 + 能力位矩阵 + parseCloneRef/validCloneRef + sanitizeClonePrefix + normalizeSampleMime/validateCloneSample + buildEnrollBody/parseEnrollResponse 协议快照 + createVoiceClone 全链/校验族/供应商错误族 + resolveVoiceChain/cloneEndpoint/synthWithClone + tts 真步集成 + deleteVoiceClone 降级（断言体逐字搬自原 probe-m19.ts） */
+/** [voice-clone]：voice_clones 表模型 + 能力位矩阵 + parseCloneRef/validCloneRef + sanitizeClonePrefix + normalizeSampleMime/validateCloneSample + buildEnrollBody/parseEnrollResponse 协议快照 + createVoiceClone 全链/校验族/供应商错误族 + resolveVoiceChain/cloneEndpoint/synthWithClone + tts 真步集成 + deleteVoiceClone 降级（断言体逐字搬自原 probe-m19.ts） */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { VoiceClone } from '../../../src/db/schema'
@@ -24,8 +24,8 @@ export async function run(ctx: M19Ctx): Promise<void> {
     )
     check(dupErr instanceof Error, 'voice_clones.name 唯一约束生效（重名不允许）')
 
-    // ---- [P8] 能力位矩阵（VOICE_CLONE_PROVIDERS = 唯一事实源；未登记 = 不支持） ----
-    await db.delete(voiceClones) // 清掉 P1 样板行，后续节在受控空库上跑
+    // ---- 能力位矩阵（VOICE_CLONE_PROVIDERS = 唯一事实源；未登记 = 不支持） ----
+    await db.delete(voiceClones) // 清掉样板行，后续节在受控空库上跑
     const tc = await import('../../../src/services/tts-clone')
     const {
       CLONE_SAMPLE_MAX_BYTES,
@@ -70,7 +70,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       `listCloneProviders 全量矩阵与能力位一致（${provs.length} 家 audio 供应商）`,
     )
 
-    // ---- [P8] parseCloneRef / validCloneRef：令牌解析与索引命中 ----
+    // ---- parseCloneRef / validCloneRef：令牌解析与索引命中 ----
     check(parseCloneRef('clone:12') === 12 && parseCloneRef('  clone:3 ') === 3, 'parseCloneRef 正整数令牌→id（含两侧空白）')
     check(
       parseCloneRef('clone:0') === null && parseCloneRef('clone:-2') === null && parseCloneRef('clone:1.5') === null && parseCloneRef('clone:x') === null && parseCloneRef('clone:') === null,
@@ -99,7 +99,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       'validCloneRef 索引未命中 / 非令牌 / 无索引 / 空值 → null（交由调用方降级）',
     )
 
-    // ---- [P8] sanitizeClonePrefix：协议字符集/长度/空回退 ----
+    // ---- sanitizeClonePrefix：协议字符集/长度/空回退 ----
     check(sanitizeClonePrefix('Cosy Voice 2') === 'CosyVoice2', '前缀清洗：剔除空格等非法字符（qwen 协议 [A-Za-z0-9_]）')
     check(sanitizeClonePrefix('萌宝-童声A') === 'A', '前缀清洗：中文与连字符均不在白名单 → 仅留 ASCII 字母')
     check(sanitizeClonePrefix('abcdefghijklmnopqrstuvwxyz') === 'abcdefghijklmnop', '前缀清洗：截断至协议上限 16')
@@ -110,7 +110,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       '前缀清洗按协议字符集：voice-enrollment 不收下划线（连同空格一并剔除）',
     )
 
-    // ---- [P8] normalizeSampleMime / validateCloneSample ----
+    // ---- normalizeSampleMime / validateCloneSample ----
     check(
       normalizeSampleMime('audio/wav') === 'audio/wav' && normalizeSampleMime('audio/X-WAV') === 'audio/wav' && normalizeSampleMime('audio/wave') === 'audio/wav',
       'MIME 归一：wav 别名族 → audio/wav',
@@ -138,7 +138,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const v6 = validateCloneSample({ sizeBytes: 1024, mime: 'audio/wav' })
     check(v6.ok && (v6.warnings[0]?.includes('未能探测') ?? false), '时长不可得（ffprobe 缺失/解析失败）→ 软警告引导自查样本')
 
-    // ---- [P8] buildEnrollBody / parseEnrollResponse：两套 DashScope 协议快照 ----
+    // ---- buildEnrollBody / parseEnrollResponse：两套 DashScope 协议快照 ----
     const bA = buildEnrollBody({ protocol: 'dashscope-qwen-enrollment', targetModel: 'qwen3-tts-vc-2026-01-22', prefix: 'probe', sampleRef: 'data:audio/mpeg;base64,AAA' })
     check(
       bA.model === 'qwen-voice-enrollment' && bA.input.action === 'create' && bA.input.preferred_name === 'probe' && JSON.stringify(bA.input.audio) === '{"data":"data:audio/mpeg;base64,AAA"}',
@@ -162,7 +162,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(pe.voiceId === 'qwen-vc-1' && pe.fallbackMode === true && pe.fallbackReason === 'noisy', '响应解析：qwen → output.voice（trim）+ fallback 留痕')
     check(parseEnrollResponse({}, 'dashscope-qwen-enrollment').voiceId === null && parseEnrollResponse(null, 'dashscope-enrollment').voiceId === null, '响应无音色字段/空体 → voiceId null（不静默落脏行）')
 
-    // ---- [P8] createVoiceClone 全链（fetch stub 零外发：凭证/端点/body/落行） ----
+    // ---- createVoiceClone 全链（fetch stub 零外发：凭证/端点/body/落行） ----
     const MP3_B64 = Buffer.from('FAKE-MP3-BYTES-FOR-PROBE-0123456789').toString('base64')
     const WAV_BYTES = new Uint8Array(Buffer.from('RIFF0000WAVEfmt 0000001000000100010044ac00006400000002001000data00000000', 'base64'))
     process.env.PROBE_M19_CLONE_KEY = 'probe-key-clone'
@@ -298,7 +298,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       check(cloneB.model === 'cosyvoice-v3.5-flash' && cloneB.voiceId === 'cosy-vc-2', `公网协议落行：model 取传入目标、voice_id 取 output.voice_id（${cloneB.model} / ${cloneB.voiceId}）`)
       check((await listVoiceClones()).length === 2 && (await loadCloneIndex()).size === 2, '音色库 2 行全部 ready → 声线链索引同步')
 
-      // ---- [P8] resolveVoiceChain：旧调用签名逐字不变（probe-m3 断言口径）+ clone 各级命中 / 无效引用降级留痕 ----
+      // ---- resolveVoiceChain：旧调用签名逐字不变（probe-m3 断言口径）+ clone 各级命中 / 无效引用降级留痕 ----
       const rv1 = resolveVoiceChain({ lineVoice: 'L', charVoice: 'C', paramVoice: 'P', settingsVoice: 'S', instanceVoice: 'I' })
       check(rv1.voice === 'L' && rv1.source === 'line' && rv1.clone === null && rv1.cloneSkipped.length === 0, '旧签名：六级链首选 line，clone 字段全空（新增返回值不破坏既有消费方）')
       const rv2 = resolveVoiceChain({ lineVoice: '成年女声、清爽亲和', charVoice: 'C', instanceVoice: 'I' })
@@ -320,7 +320,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       const rv7 = resolveVoiceChain({ lineVoice: 'clone:99999', cloneIndex: fakeIdx })
       check(rv7.voice === 'alloy' && rv7.source === 'default' && rv7.cloneSkipped.length === 1, '全链仅无效 clone 令牌 → alloy 兜底（不抛错，不中断整步配音）')
 
-      // ---- [P8] cloneEndpoint：provider 换端点 + 模型联动（克隆与合成必须同模型）----
+      // ---- cloneEndpoint：provider 换端点 + 模型联动（克隆与合成必须同模型）----
       const epCache = new Map<string, Awaited<ReturnType<typeof cloneEndpoint>>>()
       const epA = await cloneEndpoint(cloneA, epCache)
       check(epA.providerKey === 'aliyun_bailian_tts' && epA.baseUrl === 'http://probe-clone.local/api/v1', `cloneEndpoint 按克隆行换 provider 端点（${epA.baseUrl}）`)
@@ -330,7 +330,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       const epB = await cloneEndpoint(cloneB, epCache)
       check(epCache.size === 2 && epB.model === 'cosyvoice-v3.5-flash', '同 provider 不同目标模型 → 各自缓存条目（模型串味即失效）')
 
-      // ---- [P8] synthWithClone：试听文本上限 + 三元组下发 + 不落资产 ----
+      // ---- synthWithClone：试听文本上限 + 三元组下发 + 不落资产 ----
       const assetsBefore = (await db.select().from(assets)).length
       check((await codeOf(() => synthWithClone(cloneA, '   '))) === 'bad_text', '试听拦截：空白文本 → bad_text')
       check(
@@ -349,7 +349,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       )
       check((await db.select().from(assets)).length === assetsBefore, '试听不落资产（不污染素材库与用量）')
 
-      // ---- [P8] tts 真步集成：角色库 clone:{id} → 换端点/模型/voice + 溯源 + 日志（fetch stub 零外发）----
+      // ---- tts 真步集成：角色库 clone:{id} → 换端点/模型/voice + 溯源 + 日志（fetch stub 零外发）----
       const { createStepContext } = await import('../../../src/pipeline/context')
       const { writeTextAsset } = await import('../../../src/services/storage')
       const { RUN_LOGS_DIR } = await import('../../../src/env')
@@ -435,7 +435,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       check(logTxtC.includes('音色库 2 个克隆音色可引用 clone:{id}'), '步日志：音色库规模提示（仅 ready 行 ≥1 时输出，无克隆行时旧日志逐字不变）')
       check(logTxtC.includes('克隆音色引用未命中（line=clone:99999）'), '步日志：无效引用跳过留痕（spec §5 验收口径）')
 
-      // ---- [P8] deleteVoiceClone + 删除后存量引用自动降级 ----
+      // ---- deleteVoiceClone + 删除后存量引用自动降级 ----
       check((await codeOf(() => deleteVoiceClone(0))) === 'bad_id', '删除拦截：非正整数 id → bad_id')
       const eDel = (await errOf(() => deleteVoiceClone(99999))) as { code?: string; status?: number } | null
       check(eDel?.code === 'not_found' && eDel?.status === 404, '删除：查无此行 → not_found 404')

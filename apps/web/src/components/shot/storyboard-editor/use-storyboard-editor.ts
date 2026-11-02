@@ -1,5 +1,5 @@
 /**
- * 分镜可视化大编辑器（spec §4.2）
+ * 分镜可视化大编辑器
  * 挂载：ShotBoard 头条「编辑分镜」（Modal）
  * 形态：两栏——左=镜头列表（拖拽排序 / 选中 / 删除标记 / 新增），右=字段表单
  * 保存：本地草稿 diff → ops（add* → patch* → remove* → reorder）→ shotApi.mutate（不触发执行）

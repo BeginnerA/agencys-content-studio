@@ -1,5 +1,5 @@
 /**
- * M12 探针（旧版本清理与收藏 + 图像检测）——手动执行：
+ * 旧版本清理与图像检测探针（旧版本清理与收藏 + 图像检测）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m12.ts [--section=cleanup|imagecheck|gc|board|merge-guard|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -15,8 +15,8 @@
  *   trash      回收站服务层：restoreAsset（软删→还原 / bad_state / file_purged / not_found）+
  *              purgeAsset（物理删文件 + 硬删行 / freedBytes / not_found）
  *   board      toVersionView：source / isFavorite / quality 摘要（stats/checkedAt 不下发）+ 参数容错
- *   merge-guard computeShotSegments warnings：异常图警示文案矩阵 + 正常/缺失零警告 + clips 不检 + M7 不破
- *   regression M7/M11 关键纯函数交叉（三时长路径 / 双口径 / 对齐回退）
+ *   merge-guard computeShotSegments warnings：异常图警示文案矩阵 + 正常/缺失零警告 + clips 不检 + 语义不破
+ *   regression 关键纯函数交叉（三时长路径 / 双口径 / 对齐回退）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -583,7 +583,7 @@ async function main(): Promise<void> {
     const row = (id: number, kind: string, relPath: string | null, shotId: string | null, duration?: number): Asset =>
       ({ id, kind, relPath, duration: duration ?? null, params: shotId ? JSON.stringify({ shotId }) : null }) as unknown as Asset
 
-    // M7：均分 / explicit 覆盖 / clips duration 优先
+    // 均分 / explicit 覆盖 / clips duration 优先
     const r1 = computeShotSegments([row(501, 'image', rel1, 's01'), row(502, 'image', rel2, 's02')], 'images', new Map(), 4)
     check(r1.segments.length === 2 && r1.segments.every((s) => s.durSec === 4 && !s.explicit) && r1.warnings.length === 0, 'M7 均分（4s ×2 / 非 explicit / 零警告）')
     const r2 = computeShotSegments([row(503, 'image', rel1, 's01')], 'images', new Map([['s01', 6.5]]), 4)
@@ -591,13 +591,13 @@ async function main(): Promise<void> {
     const r3 = computeShotSegments([row(504, 'video', rel3, 's03', 5)], 'clips', new Map(), 4)
     check(r3.segments[0]!.durSec === 5 && !r3.segments[0]!.estimated, 'M7 clips：DB duration 优先（5s / 非估算）')
 
-    // M7：parseShotDurations 双口径 + 坏 JSON 抛错
+    // parseShotDurations 双口径 + 坏 JSON 抛错
     const pd = parseShotDurations(JSON.stringify({ shots: [{ id: 's01', duration: 3 }, { id: 's02', duration_sec: 2.5 }] }))
     check(pd.get('s01') === 3 && pd.get('s02') === 2.5, 'M7 时长双口径（duration / duration_sec 回退）')
     const ePd = await errOf(async () => parseShotDurations('not-json'))
     check(ePd instanceof SyntaxError, 'M7 坏 JSON 抛错（调用侧兜底）')
 
-    // M11：对齐一致映射 / 回退 / parseShotLines
+    // 对齐一致映射 / 回退 / parseShotLines
     const plan = planVoiceAlignedSegments(
       [
         { id: 's01', durationSec: 10, lineIds: ['L1', 'L2'] },

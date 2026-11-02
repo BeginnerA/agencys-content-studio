@@ -1,5 +1,5 @@
 /**
- * Agent 决策契约（M63 轻松创作 Agent 化：新一级契约，与现有 plan 并存）。
+ * Agent 决策契约（轻松创作 Agent 化：新一级契约，与现有 plan 并存）。
  * - mode=easy：LLM 回复仍走现 kind:'plan'（creationPlanSchema 逐字不变），AgentDecision 由服务端
  *   派生仅作展示层旁注（角色署名 / sideCards）；plan 列 / planHash / 确认链原样 → 零回归。
  * - mode=template/chain/synth：LLM 回复走新形 kind:'route'，服务端归一校验后落 decision 列，
@@ -25,7 +25,7 @@ export const inputSpecItemSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('asset'), assetId: z.number().int().positive(), source: z.string().trim().min(1).max(200) }).strict(),
   z.object({ kind: z.literal('assets'), assetIds: z.array(z.number().int().positive()).min(1).max(12), source: z.string().trim().min(1).max(200) }).strict(),
   z.object({ kind: z.literal('default') }).strict(),
-  // 链上游段产物引用（沿用 M27 workflow inputSpec 的 $prev.text: 语法真源）
+  // 链上游段产物引用（沿用 workflow inputSpec 的 $prev.text: 语法真源）
   z.object({ kind: z.literal('prev'), ref: z.string().trim().min(1).max(200) }).strict(),
 ])
 export type InputSpecItem = z.infer<typeof inputSpecItemSchema>

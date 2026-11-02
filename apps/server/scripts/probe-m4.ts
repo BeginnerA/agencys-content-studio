@@ -1,5 +1,5 @@
 /**
- * M4 探针（批次/用量/导出/统计）——手动执行：
+ * 探针（批次/用量/导出/统计）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m4.ts [--section=migrate|usage|batch|export|stats]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     const { projects, settings, usageRecords } = await import('../src/db/schema')
     const { priceOf, recordLlmUsage, recordUsage, unitBase, usageSummary } = await import('../src/services/usage')
 
-    // —— 定价四级匹配（含 §C 示例键 model-only 兜底）——
+    // —— 定价四级匹配（含示例键 model-only 兜底）——
     const pricing = {
       llm: { 'deepseek-chat': { tokens_in: 1, tokens_out: 2 } },
       image: { 'volcengine_image:doubao-seedream': { image: 0.2 }, probe_provider: { image: 0.3 } },
@@ -512,7 +512,7 @@ async function main(): Promise<void> {
     check(mPaths === zPaths, 'manifest.files 与包内内容文件逐一对应（M66 声明文件为包级附函，不入 files 清单）')
     check(manifest.files.some((f) => f.path === 'video/成片.mp4' && f.role === 'main_video'), 'manifest role 标注（成片 main_video）')
 
-    // [F05] 交付包不可变身份：登记 zip 自身 sha256；同名重复导出生成独立路径，历史包字节不被覆盖
+    // 交付包不可变身份：登记 zip 自身 sha256；同名重复导出生成独立路径，历史包字节不被覆盖
     check(!!pkg.sha256 && pkg.name === '探针发布包.zip', '导出资产登记 zip 自身 sha256 且显示名保持 .zip')
     const pkgSame = await buildRunExport({ runId: run.id, name: '探针发布包' })
     check(pkgSame.id !== pkg.id && pkgSame.relPath !== pkg.relPath && pkgSame.name === pkg.name, '同名重复导出 → 新资产独立存储路径但显示名不变（不覆盖历史包）')

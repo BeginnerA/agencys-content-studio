@@ -1,4 +1,4 @@
-/** M18[P4] llm-node：LLM 节点（端口矩阵 v3 + specProblems/parseNodeSpec + 未配置引导 + stub 执行链 + 产物文本下游装载）（断言体逐字搬自原 probe-m18.ts） */
+/** M18llm-node：LLM 节点（端口矩阵 v3 + specProblems/parseNodeSpec + 未配置引导 + stub 执行链 + 产物文本下游装载）（断言体逐字搬自原 probe-m18.ts） */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { M18Ctx } from './ctx'

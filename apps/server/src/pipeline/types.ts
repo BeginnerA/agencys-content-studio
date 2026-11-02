@@ -1,5 +1,5 @@
 /**
- * 流水线共享契约（对照设计规格 §5）。
+ * 流水线共享契约。
  * 模板 = YAML 外置文件；引擎 = 状态机；action = 注册表执行器。
  */
 
@@ -118,7 +118,7 @@ export interface StepResult {
 /** 步骤级错误：engine 捕获 → step failed + run failed */
 export class StepError extends Error {}
 
-/** 引用解析失败：错误含引用路径（spec §5.2） */
+/** 引用解析失败：错误含引用路径 */
 export class RefResolveError extends StepError {
   constructor(ref: string, reason: string) {
     super(`引用解析失败 [${ref}]：${reason}`)

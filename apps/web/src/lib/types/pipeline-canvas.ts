@@ -179,7 +179,7 @@ export interface CanvasBoardNode {
   batchField?: string | null
 }
 
-// ===== 全景聚合（GET /canvas/overview 契约；E1/E2） =====
+// ===== 全景聚合（GET /canvas/overview 契约） =====
 
 /** 全景 run 摘要（批次组内与独立组同构；cost 口径对齐 summarizeBatch） */
 export interface OverviewRunLite {
@@ -239,7 +239,7 @@ export interface CanvasOverview {
 
 // ===== 模板画布内编辑（本地草稿层；不参与网络契约） =====
 
-/** 单步骤覆盖（对齐 P3 template-edit edits.steps[]：{ key, title?, texts? }） */
+/** 单步骤覆盖（对齐 template-edit edits.steps[]：{ key,title?,texts? }） */
 export interface StepOverride {
   title?: string
   texts?: Record<string, string>

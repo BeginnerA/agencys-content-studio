@@ -2,7 +2,7 @@ import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-or
 export { contentContinuityRecords, type ContentContinuityRecord } from './continuity-schema'
 
 /**
- * agencys-content-studio schema —— 通用领域模型（对照设计规格 §4）
+ * agencys-content-studio schema —— 通用领域模型
  * 时间戳统一 integer unix ms；JSON 字段统一 text + 应用层校验。
  */
 
@@ -618,7 +618,7 @@ export type ContentVersion = typeof contentVersions.$inferSelect
 export type ExecSnapshot = typeof execSnapshots.$inferSelect
 export type ExecInput = typeof execInputs.$inferSelect
 
-// ---------- 精确返修操作台账（precision-rework 规格 §5.1；只记操作与幂等回执，不存媒体副本/时间轴） ----------
+// ---------- 精确返修操作台账（precision-rework；只记操作与幂等回执，不存媒体副本/时间轴） ----------
 
 /** 返修请求：同键同载荷回放、异载荷冲突；applied 为终态回执（resultJson 固定版本/产物关联） */
 export const reworkRequests = sqliteTable(
@@ -649,7 +649,7 @@ export const reworkRequests = sqliteTable(
 
 export type ReworkRequest = typeof reworkRequests.$inferSelect
 
-// ---------- M69 审片问题单（design §4.2；1 张新表，既有表 0 新列） ----------
+// ---------- 审片问题单（1 张新表，既有表 0 新列） ----------
 
 /** 审片问题：run + 基准成片 + 范围 + 类别 + 状态；复检证据只报变化，终判由人。 */
 export const reviewFindings = sqliteTable(
@@ -696,9 +696,9 @@ export const reviewFindings = sqliteTable(
 export type ReviewFinding = typeof reviewFindings.$inferSelect
 
 /** 创作控制态；生产状态始终由关联 run 投影。
- *  Agent 化（M63）纯加法列：agentMode NULL=legacy 会话（冻结 planHash 逐字走旧路径）；
+ *  Agent 化纯加法列：agentMode NULL=legacy 会话（冻结 planHash 逐字走旧路径）；
  *  decision/decisionHash 仅 template/chain/synth 新执行形态参与确认闸（easy 形态 decision 列只是展示旁注，确认链仍读 plan/planHash）；
- *  workflowId 为 chain 模式建立的 M27 编排链引用。 */
+ *  workflowId 为 chain 模式建立的编排链引用。 */
 export const creationSessions = sqliteTable('creation_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),

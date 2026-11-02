@@ -1,4 +1,4 @@
-// ===== M70 连续性域类型（镜像 apps/server/src/routes/continuity.ts 的 HTTP 契约，camelCase）=====
+// ===== 此前连续性域类型（镜像 apps/server/src/routes/continuity.ts 的 HTTP 契约，camelCase）=====
 // 只镜像前端必要面；不 import 服务端/DB。字段与 contract.ts 的 zod schema 一一对应。
 
 export interface ContinuityUnit {

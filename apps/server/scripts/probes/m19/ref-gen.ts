@@ -1,4 +1,4 @@
-/** M19[ref-gen]：gen_tasks 无 run 任务模型 + entity-refgen 纯函数（purpose/提示词/params 往返/裁剪/上限）+ 发起校验族零副作用 + 去重变体积量 + 列表认领域/置顶/截断 + 取消 + 启动恢复 + 执行器成功径（fetch stub 零外发：能力位/落盘/挂接/用量/事件/重试/取消弃存）（断言体逐字搬自原 probe-m19.ts） */
+/** [ref-gen]：gen_tasks 无 run 任务模型 + entity-refgen 纯函数（purpose/提示词/params 往返/裁剪/上限）+ 发起校验族零副作用 + 去重变体积量 + 列表认领域/置顶/截断 + 取消 + 启动恢复 + 执行器成功径（fetch stub 零外发：能力位/落盘/挂接/用量/事件/重试/取消弃存）（断言体逐字搬自原 probe-m19.ts） */
 import { existsSync } from 'node:fs'
 import type { M19Ctx } from './ctx'
 
@@ -24,7 +24,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     )[0]!
     check(t.runId === null && t.stepId === null && t.canvasNodeId === null, 'gen_tasks 无 run 任务模型（三归属列均 null 可插入）')
 
-    // ==================== [P6 增补] 批量生成参考图 ====================
+    // ==================== 批量生成参考图 ====================
     const refgen = await import('../../../src/services/entity-refgen')
     const {
       buildRefGenParams,
@@ -118,7 +118,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check((await codeOf(() => startEntityRefGen(pid, [cA], 5))) === 'bad_variants:400', 'variants=5 → bad_variants')
     check((await codeOf(() => startEntityRefGen(pid, [cA], 0))) === 'bad_variants:400', 'variants=0 → bad_variants')
     check((await codeOf(() => startEntityRefGen(pid, [999999]))) === 'bad_entity_ids:400', '素材不存在 → bad_entity_ids')
-    // [M52] 全局行单独发起已放开（宿主=请求项目）；与项目行混选仍整单拒（产物归属歧义）
+    // 全局行单独发起已放开（宿主=请求项目）；与项目行混选仍整单拒（产物归属歧义）
     const scopeErr = await errOf(() => startEntityRefGen(pid, [cA, cGlobal]))
     check(scopeErr instanceof WorkbenchError && scopeErr.code === 'bad_entity_scope', '全局与项目素材混选 → bad_entity_scope（整单拒）')
     check(scopeErr instanceof WorkbenchError && scopeErr.message.includes('全局角色'), 'bad_entity_scope 文案点名素材（前端直接展示）')
@@ -250,7 +250,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(untouched.length === 3 && untouched.every((r) => r.status === 'pending'), 'recover 不误伤画布/run/非本域任务（职责边界）')
     check((await recoverEntityRefTasks()).failed === 0, '二次 recover 幂等（无残留在途本域任务）')
 
-    // ---- [P6] 执行器成功径（fetch stub 零外发：能力位 / 落盘 / 挂接 / 用量 / 事件 / 重试 / 取消弃存） ----
+    // ---- 执行器成功径（fetch stub 零外发：能力位 / 落盘 / 挂接 / 用量 / 事件 / 重试 / 取消弃存） ----
     const { apiConfigs, assets: assetTbl, usageRecords } = await import('../../../src/db/schema')
     const { attachRefAssets } = await import('../../../src/services/character')
     const { absPathOf } = await import('../../../src/services/storage')
@@ -332,7 +332,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       const merged2 = JSON.parse(((await db.select().from(characters).where(eq(characters.id, cImg)))[0])!.refAssetIds) as number[]
       check(addedAgain === 0 && merged2.length === 3, '重复挂接幂等（并集去重，二次追加 0 条）')
 
-      // [M52] 全全局批次：宿主 = pidImg（出图配置/事件路由），产物落全局素材池并挂回全局行
+      // 全全局批次：宿主 = pidImg（出图配置/事件路由），产物落全局素材池并挂回全局行
       const cGlob = await mkChar('池出图全局角色', { projectId: null, appearance: '圆脸大眼，池出图' })
       const issuedG = await startEntityRefGen(pidImg, [cGlob], 1)
       const idG = issuedG.tasks[0]!.id

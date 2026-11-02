@@ -102,7 +102,7 @@ export function useAssetPreviewer(
     return KIND_TEXT[a.kind] ?? a.kind
   })
 
-  // 合规审核徽章（spec §2.6 前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
+  // 合规审核徽章（前端最小面：params.compliance → 状态 + 时间；无标记不渲染）
   const compliance = computed(() =>
     cur.value ? parseAssetCompliance(cur.value) : null,
   )

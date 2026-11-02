@@ -1,5 +1,5 @@
 /**
- * M13 探针（素材链补全六项）——手动执行：
+ * 素材链补全探针（素材链补全六项）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m13.ts [--section=style-multi|vision|video-refs|upload|polish|states|voice-desc|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -14,7 +14,7 @@
  *               （messages content 数组含 image_url data URI）+ 失败路径（空/超限/跨项目/非图）+ 用量 runId=NULL
  *   video-refs  collectSetRefAssetIds 矩阵（场景/别名/道具/无图跳过/双命中 ≤2/同图去重）+ planVideoRefs 四分支
  *   upload      POST /entities/:id/ref-images（app.request 内存 HTTP new FormData）：入库/挂接/sha256 复用/
- *               purpose=reference_kind/[M52] 全局实体入池上传/失败路径（非图/空文件/超限 413/404）
+ *               purpose=reference_kind/全局实体入池上传/失败路径（非图/空文件/超限 413/404）
  *   polish      parsePolishOutput 矩阵 + polishAppearance stub + POST /entities/polish 批量容错（失败收集不阻断/
  *               空白输出 failed/全局跳过用量/去重/边界 400）
  *   states      PRAGMA 迁移列（默认 '[]' NOT NULL + 幂等）+ upsertEntity 覆盖语义（非空覆盖/空数组不覆盖）+
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
 
   // ================= sections =================
 
-  /** ① ② 风格多预设：解析矩阵 + DB 顺序/停用跳过 + M8 单值注入等价 */
+  /** ① ② 风格多预设：解析矩阵 + DB 顺序/停用跳过 + 单值注入等价 */
   const sectionStyleMulti = async (): Promise<void> => {
     const { stylePresetIdsOf, combineStyleSnippets, resolveProjectStyleSnippets, resolveProjectStyleSnippet, stripStyleWrapper } =
       await import('../src/services/style-preset')
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
     const pidBad = await mkProject('M13 探针项目（坏 JSON）', 'not-json')
     check((await resolveProjectStyleSnippets(pidBad)).length === 0, 'settings 坏 JSON → 空')
 
-    // ---- injectStyleAnchor：单值行为与 M8 逐字等价 ----
+    // ---- injectStyleAnchor：单值行为与此前逐字等价 ----
     const shots = [{ id: 's1', image_prompt: ' 日出 ' }]
     const rWrap = injectStyleAnchor(shots, combineStyleSnippets(['（画风：日系动漫,anime style, cel shading）']))
     check(rWrap[0]!.image_prompt === '日出\n视觉风格：anime style, cel shading', '端到端：带壳预设经注入链→图像 prompt 不含「画风」/括号')
@@ -390,7 +390,7 @@ async function main(): Promise<void> {
     const up3 = await upload(eid, fd('ref-b.png', new TextEncoder().encode('upload-ref-2')))
     check(up3.status === 201 && up3.body?.entity?.refAssetIds?.length === 2, '并集追加第二张（长度 2）')
 
-    // [M52] 全局实体上传放开：文件入全局素材池（project_id=0）并按行 id 挂接
+    // 全局实体上传放开：文件入全局素材池（project_id=0）并按行 id 挂接
     const globalE = await upsertEntity({ projectId: null, kind: 'scene', name: '全局场景（入池上传）' })
     const upG = await upload(globalE.id, fd('g.png', new TextEncoder().encode('g1')))
     check(upG.status === 201 && upG.body?.entity?.refAssetIds?.length === 1, `全局实体上传 → 201 + 挂接（${upG.status}）`)
@@ -636,7 +636,7 @@ async function main(): Promise<void> {
     delete childEnv.AGENT_LLM_API_KEY
     delete childEnv.AGENT_LLM_MODEL
     for (const p of probes) {
-      // 直接以 tsx 运行前序探针脚本（M26 runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
+      // 直接以 tsx 运行前序探针脚本（runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
       const script = join(REPO_ROOT, 'apps', 'server', 'scripts', `${p.replace('probe:', 'probe-')}.ts`)
       const r = spawnSync(process.execPath, ['--import', 'tsx', script], {
         cwd: join(REPO_ROOT, 'apps', 'server'),

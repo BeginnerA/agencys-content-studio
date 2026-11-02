@@ -60,7 +60,7 @@ export async function saveGeneratedMedia(opts: {
   const fileName = `${Date.now()}-gen-${ext}.${ext}`
   const relPath = relPathOf(opts.projectId, opts.purpose, fileName)
   writeFileSync(absPathOf(relPath), data)
-  // M66 隐式标识：AI 生成媒体恒打标（不可关）；失败旁路 warn + tags 标记（不阻断登记）
+  // 隐式标识：AI 生成媒体恒打标（不可关）；失败旁路 warn + tags 标记（不阻断登记）
   const abs = absPathOf(relPath)
   const label = await labelGeneratedFile(abs, ext)
   const labeledBuf = readFileSync(abs)

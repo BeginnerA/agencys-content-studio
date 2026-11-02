@@ -1,4 +1,4 @@
-/** M18[P2] run-preview：成本预估（定价链 + 各 genKind 单位矩阵 + 响应结构 + preflight 回归）（断言体逐字搬自原 probe-m18.ts） */
+/** M18run-preview：成本预估（定价链 + 各 genKind 单位矩阵 + 响应结构 + preflight 回归）（断言体逐字搬自原 probe-m18.ts） */
 import type { M18Ctx } from './ctx'
 
 export async function run(ctx: M18Ctx): Promise<void> {

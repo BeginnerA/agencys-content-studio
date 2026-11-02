@@ -1,5 +1,5 @@
 /**
- * M42 探针（轻松创作第二批：中途审阅暂停 / 候选版本选择 / 自然语言局部返修）——手动执行：
+ * 探针（轻松创作第二批：中途审阅暂停 / 候选版本选择 / 自然语言局部返修）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m42.ts [--section=review-template|review-chain|review-api|candidates|rework|messages]
  *
  * 隔离策略：isolatedEnv('m42') 一次性临时目录（独立 studio.db + workspace），必须在任何 src import 前调用。
@@ -19,7 +19,7 @@ process.env.PROBE_M42_KEY = 'probe-offline-secret-key-42c7'
 
 const SECTIONS = ['review-template', 'review-chain', 'review-api', 'candidates', 'rework', 'messages'] as const
 
-/** 3 镜 × 10 秒 = 30 秒（与 M30 同夹具，最小化漂移） */
+/** 3 镜 × 10 秒 = 30 秒（与此前同夹具，最小化漂移） */
 function makePlan(mode: 'dynamic' | 'slideshow') {
   return {
     title: '咖啡冲煮三分钟', summary: '用三段讲清风味来源', genre: 'science' as const, duration: 30,
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
     })
   }
 
-  /** 旁路 LLM 直建「待确认」会话（与 M30 同口径） */
+  /** 旁路 LLM 直建「待确认」会话（与此前同口径） */
   const makeReadySession = async (mode: 'dynamic' | 'slideshow') => {
     const { db } = await import('../src/db')
     const { creationSessions } = await import('../src/db/schema')
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
         check(projA!.templateKey === 'talking-clip' && projA!.status === 'active', '项目专业默认模板（talking-clip）与 run 执行模板（easy-video-review）解耦；确认不会把 easy-* 写回项目默认字段')
         check(sA.planHash === hashJson({ plan: a.plan, execution: a.pf.execution }), '审阅勾选不入 planHash（确认沿用原方案哈希）')
 
-        // —— 不勾选 → 原模板零改动（与 M41 行为一致） ——
+        // —— 不勾选 → 原模板零改动（与此前行为一致） ——
         const b = await makeReadySession('dynamic')
         const sB = (await db.select().from(creationSessions).where(eq(creationSessions.id, b.sessionId)))[0]!
         const runB = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, (await confirmCreation(b.sessionId, { planRevision: sB.planRevision, planHash: sB.planHash, idempotencyKey: 'm42revB0001', acceptUnpriced: false })).runId)))[0]!
@@ -307,7 +307,7 @@ async function main(): Promise<void> {
       const rejected = await stepOf(run2.id, 'draft')
       check(rejected.status === 'pending' && !!rejected.output?.includes('reject'), '驳回 → 本步回到 pending，修改意见留在 output')
       // 驳回不是「放行旧产物」：本步必须重做并重新挂起等人确认（旧实现按 review 豁免 gate，
-      // 导致被拒产物复用且复审被跳过——M42 此段固定修正后的契约）
+      // 导致被拒产物复用且复审被跳过——本步固定修正后的契约）
       const rehung = await until(async () => {
         const s = await stepOf(run2.id, 'draft')
         return s.attempts === 2 && s.status === 'waiting_input'

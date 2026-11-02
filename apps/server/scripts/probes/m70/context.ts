@@ -402,8 +402,8 @@ async function runContextBody(checker: Checker) {
 
   await t('route targets resolve via会话定位 (M70 Task 8: missing session → 404); workflow targets resolve via定位 (M70 Task 7: unknown chain → 404)', async () => {
     const f = await seedStory()
-    // M70 Task 8 起 route 目标经 route-bridge 实际定位解析：会话不存在/跨项目 → continuity_source_invalid 404
-    // （原 Task 7 的「route 一律 unsupported」已被接线取代；会话 id 取现存最大值 +1 保证必然不存在，两种运行方式下都确定）。
+    // 起 route 目标经 route-bridge 实际定位解析：会话不存在/跨项目 → continuity_source_invalid 404
+    // （原有的「route 一律 unsupported」已被接线取代；会话 id 取现存最大值 +1 保证必然不存在，两种运行方式下都确定）。
     const { db } = await import('../../../src/db')
     const { creationSessions } = await import('../../../src/db/schema')
     const { max } = await import('drizzle-orm')
@@ -411,7 +411,7 @@ async function runContextBody(checker: Checker) {
     await assert.rejects(preview(f.projectId,
       { target: { kind: 'route', sessionId: missingSessionId, decisionRevision: 1, decisionHash: hash }, includePlans: false }),
       code(404, 'continuity_source_invalid'))
-    // Task 7 起 workflow 目标经 workflow-bridge 实际定位解析：链不存在/跨项目 → continuity_source_invalid 404。
+    // 起 workflow 目标经 workflow-bridge 实际定位解析：链不存在/跨项目 → continuity_source_invalid 404。
     await assert.rejects(preview(f.projectId,
       { target: { kind: 'workflow', workflowId: 1, nextSeq: 2, previousRunId: null }, includePlans: false }),
       code(404, 'continuity_source_invalid'))

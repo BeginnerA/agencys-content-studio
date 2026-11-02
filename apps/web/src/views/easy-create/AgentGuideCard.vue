@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 引导 / 规划中卡片（M63 切片 5）：服务端 sideCards 下发 key='guide'|'planning' 时渲染。
+ * 引导 / 规划中卡片：服务端 sideCards 下发 key='guide'|'planning' 时渲染。
  * 取代旧 detail.vue 里硬编码的 idle 静态块——显隐由后端裁决，组件只按当前会话态呈现：
  *   planning → 阶段式进度（复用 session.planning 的 phase/elapsedSec，与对话气泡同源）；
  *   其余（draft / 需求含糊）→ 引导文案，诚实告知「确认前不立项、不计费」。

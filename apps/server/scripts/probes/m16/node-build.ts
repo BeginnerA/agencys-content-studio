@@ -1,4 +1,4 @@
-/** M16② node-build：输入映射纯矩阵 + 参数快照 + 执行通道失败链（断言体逐字搬自原 probe-m16.ts） */
+/** node-build：输入映射纯矩阵 + 参数快照 + 执行通道失败链（断言体逐字搬自原 probe-m16.ts） */
 import type { InputPlan, NodeSpec } from '../../../src/services/creation'
 import type { M16Ctx } from './ctx'
 

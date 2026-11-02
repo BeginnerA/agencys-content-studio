@@ -1,9 +1,9 @@
 /**
- * 第五期 · 交付包认证：只读编排 / verdict / 缓存 / 新鲜度（规格 2026-09-28 §5/§6/§7）。
+ * 交付包认证：只读编排 / verdict / 缓存 / 新鲜度。
  *
  * **只读编排 + 零新列缓存**：定位已生成的 `edit_exchange` 交付包 → 本地解压 → 逐格式解析（analyze）→ 结构良构 /
  * 内部时长数学 / 跨格式一致 / 媒体可定位 / 时轴绑定 / 字幕交付绑定 → `editor_import` 恒人工缺项 → 保守 verdict + missing[]
- * → merge 进该 export 资产 `params.cert`（镜像第四期 `recordQuality`，保留其余键）。不 import 引擎、不写业务表、
+ * → merge 进该 export 资产 `params.cert`（镜像此前 `recordQuality`，保留其余键）。不 import 引擎、不写业务表、
  * 不改 `buildEditExchange`/格式化器/批准链，零付费/零模型/零新依赖/零 IO 副作用（除 params.cert 缓存）。
  * **不为认证自动生成新包**（无包 → verdict=needs_package）；门禁不足 → 诚实 not_tested，绝不伪造通过（尤其不代答编辑器）。
  */
@@ -27,7 +27,7 @@ import {
   type DeliveryCert,
 } from './types'
 
-/** 决定交付可信的客观自动项（editor_import 恒人工，不在此列，见规格 §0.4）。 */
+/** 决定交付可信的客观自动项（editor_import 恒人工，不在此列）。 */
 const OBJECTIVE_AUTO: CertCheck['key'][] = [
   'project_file_wellformed',
   'duration_math_consistent',
@@ -99,7 +99,7 @@ function openPackage(a: Asset): UnzippedPackage | null {
   return { manifest, projectText, analyzed, entryNames, sha256: createHash('sha256').update(bytes).digest('hex') }
 }
 
-/** 定位本 run 当前最新未删除成片（取 params.timeline 唯一真源做时轴绑定；镜像第四期 report.ts 单查询）。 */
+/** 定位本 run 当前最新未删除成片（取 params.timeline 唯一真源做时轴绑定；镜像此前 report.ts 单查询）。 */
 async function locateFinal(runId: number): Promise<Asset | null> {
   const rows = await db
     .select()
@@ -285,7 +285,7 @@ export async function runDeliveryCert(runId: number, opts: { format?: CertFormat
   return { outcome: 'ok', cert }
 }
 
-/** merge 进 export 资产 params.cert（零新列，保留其余键；镜像第四期 recordQuality）。 */
+/** merge 进 export 资产 params.cert（零新列，保留其余键；镜像此前 recordQuality）。 */
 async function writeCertCache(pkg: Asset, cert: DeliveryCert): Promise<void> {
   const params = jsonParams(pkg)
   params.cert = cert

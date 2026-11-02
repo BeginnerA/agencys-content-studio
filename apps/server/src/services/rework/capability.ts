@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 合成输入本地返修：能力判定与基准依赖指纹（compose-input 变体，切片2 规格 §4）。
+ * 精确返修 · 合成输入本地返修：能力判定与基准依赖指纹（compose-input 变体）。
  *
  * 与字幕返修同等级门禁，但**不要求字幕快照**（大量成片本就无字幕；配置/换绑/选片返修与字幕无关）。
  * - fail-closed 门禁与 baseline.assessSubtitleCapability 同语义（在途/取消、compose 未收敛、范围外
@@ -8,7 +8,7 @@
  *   当前 BGM 绑定 id/sha + 各镜 SFX 在用 map + 各步在用 output ids + brand + recipe。
  *   候选改选（选片）经 rebuildShotOutput 重写生成步 asset_ids → 已被 stepOutputs/assetHashes 捕获；
  *   BGM/SFX 资产行 stepId=null、不属任何步 output，故必须显式纳入 loadBgmAsset/loadSfxAssets。
- * - 本模块为「同语义独立实现」，不改 baseline.ts 行为（切片2 设计要点 1：加法优先、字幕路径逐字不变）。
+ * - 本模块为「同语义独立实现」，不改 baseline.ts 行为（设计要点 1：加法优先、字幕路径逐字不变）。
  * 纯读取：不写任何 run/step/task/asset 状态。
  */
 import { asc, eq, inArray } from 'drizzle-orm'
@@ -183,7 +183,7 @@ export async function assessComposeInputCapability(runId: number, stepKey = 'com
 }
 
 /**
- * 消费期依赖指纹复验（切片2 规格 §4「所有本地重合成入口执行前统一复验」，入口接线在 T5）：
+ * 消费期依赖指纹复验（「所有本地重合成入口执行前统一复验」，入口接线在 T5）：
  * 与 assess 的差异只在可在 run 在途/步骤非 succeeded 时计算——执行态本身不是过期因子，
  * 上游重跑由 output ids/资产 hash 暴露，配置/换绑/选片由 _compose/BGM·SFX 行暴露。
  * 一切不可复验（run/步/成片缺失）返回 null → 调用方按过期 fail closed。

@@ -21,7 +21,7 @@ export interface TimingLine {
 }
 
 /**
- * subtitle：对白/口播切句定时 → SRT 字幕资产（spec §5.3/§7.1）。
+ * subtitle：对白/口播切句定时 → SRT 字幕资产。
  * 三模式：
  *  - measured：提供 voices 输入（tts 配音资产序列，句序与台词一致）→ ffprobe 逐句实测时长，
  *    splitDisplayLines 切显示行 + planMeasuredSrt 比例分配 → 字幕与音频帧级对齐；
@@ -50,7 +50,7 @@ export async function subtitle(ctx: StepContext): Promise<StepResult> {
   if (strict && !recipe) throw new Error('严格字幕缺少批准方案')
   ctx.log(`字幕切句输入：${source.lines.length} 句台词（${source.text.length} 字符）`)
 
-  // mode 判定（spec §7.1）：params.mode=fixed → 定长零 LLM；提供 voices → measured 实测对齐；params.mode 可强制 estimated
+  // mode 判定：params.mode=fixed → 定长零 LLM；提供 voices → measured 实测对齐；params.mode 可强制 estimated
   const voiceIds = ctx.assetIdsOf('voices')
   const modeParam = typeof params['mode'] === 'string' ? params['mode'] : undefined
   let mode: 'measured' | 'estimated' | 'fixed' = voiceIds.length > 0 ? 'measured' : 'estimated'
@@ -423,7 +423,7 @@ function msToClock(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(milli).padStart(3, '0')}`
 }
 
-/** 解析自检：段数 > 0 且时间戳单调不减（spec §5.3 校验） */
+/** 解析自检：段数 > 0 且时间戳单调不减（校验） */
 function assertSrt(srt: string, timed: TimingLine[]): void {
   if (timed.length === 0) throw new Error('SRT 为空（无字幕段）')
   const blocks = srt.trim().split(/\r?\n\r?\n/)
@@ -443,7 +443,7 @@ function assertSrt(srt: string, timed: TimingLine[]): void {
   }
 }
 
-/** 显示行切分（spec §7.1-3）：先按「。！？；!?;」→ 仍超 maxChars 按「，、,」→ 仍超按 code point 硬切；trim + 去空段 */
+/** 显示行切分：先按「。！？；!?;」→ 仍超 maxChars 按「，、,」→ 仍超按 code point 硬切；trim + 去空段 */
 export function splitDisplayLines(text: string, maxChars: number): string[] {
   const max = Math.max(1, Math.floor(maxChars))
   const out: string[] = []
@@ -613,7 +613,7 @@ async function designStyleWithLlm(
   }
 }
 
-/** measured 时间轴（spec §7.1-4/5）：行时长按 code point 比例分配句时长（末行=余量）、句内短行合并、句间首尾相接 */
+/** measured 时间轴：行时长按 code point 比例分配句时长（末行=余量）、句内短行合并、句间首尾相接 */
 export function planMeasuredSrt(
   lines: Array<{ id: string; text: string }>,
   durationsMs: number[],

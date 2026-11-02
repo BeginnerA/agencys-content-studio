@@ -40,12 +40,12 @@ interface ShotSpec {
 
 const nowMs = (): number => Date.now()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-/** 单镜头视频任务轮询上限（spec §5.1） */
+/** 单镜头视频任务轮询上限 */
 const POLL_INTERVAL_MS = 5_000
 const POLL_TIMEOUT_MS = 10 * 60_000
 
 /**
- * ai_video：批量镜头视频生成（spec §5.1， 启用）。
+ * ai_video：批量镜头视频生成（启用）。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task（kind=video）：
  * 适配器两形态——轮询型（提交拿 task_id → query 5s/次，超时 10min）与同步型（长请求直收
  * 字节，如 Pollinations）→ 均落盘为 video 资产（purpose=shot_video，params 溯源含 {taskId, provider}）。
@@ -222,7 +222,7 @@ export async function aiVideo(ctx: StepContext): Promise<StepResult> {
           .set({
             prompt: promptText,
             params: paramsJson,
-            // [F03] 内容变更 → 旧第三方受理失效：无条件清空 task_id，令续跑/重跑重新提交（而非轮询变更前旧结果）
+            // 内容变更 → 旧第三方受理失效：无条件清空 task_id，令续跑/重跑重新提交（而非轮询变更前旧结果）
             taskId: null,
             ...(requeue ? { status: 'pending', attempts: 0, errorMsg: null } : {}),
             updatedAt: nowMs(),
@@ -388,7 +388,7 @@ async function acquireVideoSource(
     ...(native ? { extra: { ...native, referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] } }
       : setRefUris.length > 0 ? { extra: { referenceImageUrls: setRefUris } } : {}),
   })
-  // [F03] 续跑复用已受理第三方任务：存在 task_id → 只查询不重复提交。
+  // 续跑复用已受理第三方任务：存在 task_id → 只查询不重复提交。
   const gen = task.taskId ? { kind: 'poll' as const, taskId: task.taskId } : await adapter.generate(request)
   let videoUrl: string | null = gen.kind === 'url' ? gen.url : null
   let thirdPartyTaskId: string | null = gen.kind === 'poll' ? gen.taskId : null

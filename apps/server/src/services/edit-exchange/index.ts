@@ -1,9 +1,9 @@
 /**
  * 剪辑工程交换导出组装层：解析时间轴真源 → 选定格式化器渲染 → zip 打包为 archive 资产。
- * 交付物（§决策 4）：`{name}.{ext}`（工程）+ `manifest.json`（assetId↔媒体文件名↔原相对路径 + 降级声明）
+ * 交付物：`{name}.{ext}`（工程）+ `manifest.json`（assetId↔媒体文件名↔原相对路径 + 降级声明）
  *   + `media/`（include_media 时复制引用资产，store 不压缩）。下载复用 GET /assets/:id/file?download=1。
  * 单一真源：时间轴取自 params.timeline（stored）或 planBestEffortTimeline 兜底（recomputed），零重算漂移。
- * 字幕交付（precision-rework §8）：包内附版本固定 subtitles.srt 文本 sidecar（includeMedia=false 也在），
+ * 字幕交付：包内附版本固定 subtitles.srt 文本 sidecar（includeMedia=false 也在），
  *   摘要记录 finalAssetId/字幕版本/hash/来源/人工修订态；文件缺失或 hash 不符时不声称字幕交付一致。
  */
 import { createHash } from 'node:crypto'
@@ -94,7 +94,7 @@ function formatNotes(format: EditExchangeFormat, tl: EditTimeline): string[] {
     notes.push('FCPXML 1.10：V1 镜头 + 对白/BGM/SFX 独立 spine + 逐句 title 字幕；剪映支持随版本漂移，以实际版本实测。')
   }
   if (format === 'otio') notes.push('OTIO JSON：Video/Dialogue Audio/Music/Effects/Markdown 五轨，RationalTime 帧精度。')
-  // 字幕轨数据源如实声明（precision-rework §8）：FCPXML/OTIO 字幕取自有效字幕快照 cues，不用 lines 覆盖人工修订
+  // 字幕轨数据源如实声明：FCPXML/OTIO 字幕取自有效字幕快照 cues，不用 lines 覆盖人工修订
   const subRead = readSubtitleCues(tl)
   if (format !== 'edl') {
     if (subRead.source === 'subtitle') notes.push(`字幕轨由有效字幕快照 cues 构造（origin=${subRead.origin}），与人工修订同源；对白音轨不受影响。`)
@@ -127,7 +127,7 @@ interface SidecarResult {
   notes: string[]
 }
 
-/** 字幕 sidecar 解析（§8）：优先取快照声明的不可变有效文件并验 hash；缺失/不符时由 cues 重建但不声称一致 */
+/** 字幕 sidecar 解析：优先取快照声明的不可变有效文件并验 hash；缺失/不符时由 cues 重建但不声称一致 */
 function buildSubtitleSidecar(tl: EditTimeline): SidecarResult {
   const subRead = readSubtitleCues(tl)
   const notes: string[] = []
@@ -157,7 +157,7 @@ function buildSubtitleSidecar(tl: EditTimeline): SidecarResult {
   return { text: null, consistent: false, notes }
 }
 
-/** 生成剪辑工程交换包（zip 资产）；可选 finalAssetId 固定解析版本（§8，缺省取首版并回传） */
+/** 生成剪辑工程交换包（zip 资产）；可选 finalAssetId 固定解析版本（缺省取首版并回传） */
 export async function buildEditExchange(p: { runId: number; format: unknown; includeMedia?: boolean; finalAssetId?: number }): Promise<BuildResult> {
   if (!isEditExchangeFormat(p.format)) {
     throw new EditExchangeError('bad_format', `format 需为 ${FORMATS.join('/')} 之一`)
@@ -196,7 +196,7 @@ export async function buildEditExchange(p: { runId: number; format: unknown; inc
     transition: tl.transition,
     watermark: tl.watermark,
     subtitleRef: tl.subtitle?.relPath ?? null,
-    // 字幕版本绑定摘要（§8）：只记逻辑字段，不写秘密与机器敏感绝对路径
+    // 字幕版本绑定摘要：只记逻辑字段，不写秘密与机器敏感绝对路径
     subtitle: {
       finalAssetId: resolved.finalAssetId,
       versionId: tl.subtitle?.versionId ?? null,
@@ -228,7 +228,7 @@ export async function buildEditExchange(p: { runId: number; format: unknown; inc
     { path: projectFileName, data: encoder.encode(projectText) },
     { path: 'README.txt', data: encoder.encode(readme) },
   ]
-  // 版本固定字幕 sidecar：文本 entry，includeMedia=false 也包含（§8）
+  // 版本固定字幕 sidecar：文本 entry，includeMedia=false 也包含
   if (sidecar.text !== null) textEntries.push({ path: SIDECAR_FILE, data: encoder.encode(sidecar.text) })
   const fileEntries: Array<{ path: string; abs: string }> = includeMedia
     ? media.filter((m) => existsSync(absPathOf(m.relPath))).map((m) => ({ path: nameOf(m.relPath), abs: absPathOf(m.relPath) }))

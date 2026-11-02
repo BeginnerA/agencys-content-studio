@@ -1,9 +1,9 @@
 /**
- * precision-rework 探针 · shot-duration 分节（切片2b：镜头时长本地返修·轻档）——自 probe-precision-rework 拆出：
+ * precision-rework 探针 · shot-duration 分节（镜头时长本地返修·轻档）——自 probe-precision-rework 拆出：
  * m26 split-audit 红线单文件 ≤800 行。文件名不带 probe- 前缀：本模块是被主探针 import 的库，
  * 不是可独立执行的探针（run-probes 按 probe-*.ts 扫描）。
  * 隔离库 + 假时轴快照 + 模型桩：零网络、零付费、零供应商调用（src 模块经主探针 isolatedEnv 后动态加载）。
- * 覆盖规格 §8 八条核心断言：图镜自由拉长 / 音频镜 Σ-clamp+warn / motion 显式拒绝 / 有效段长 no_effect（含 clamp 落回原值）
+ * 八条核心断言：图镜自由拉长 / 音频镜 Σ-clamp+warn / motion 显式拒绝 / 有效段长 no_effect（含 clamp 落回原值）
  * / 空轴 fail closed / shot_durations 变更 stale + applied 后旧 gate 作废 / 幂等回放 / 冲突 + 非法 sec + 超 MAX clamp / 写侧真源 Q1 排除。
  */
 import { createFixtureTools, type CheckFn } from './precision-rework-sections'

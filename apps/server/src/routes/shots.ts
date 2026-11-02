@@ -1,5 +1,5 @@
 /**
- * 镜头级轻工作台路由（spec §3.2）
+ * 镜头级轻工作台路由
  * - 服务层只改 DB，engine.startRun 在此同步调用（对齐 tasks.ts retry 手法）
  * - WorkbenchError → HttpError（状态码透传）；不触发执行的端点（edit / select / mutate / upload）不启动引擎
  * +mutate（结构性编辑：reorder/add/remove/patch）/ +upload（上传替换：multipart）

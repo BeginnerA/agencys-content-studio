@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 结构化预览编译与请求状态查询（precision-rework 规格 §5/§6 预览侧）。
+ * 精确返修 · 结构化预览编译与请求状态查询（precision-rework 预览侧）。
  *
  * - 预览 = 基准 cues + 契约 apply 的纯推导（零模型调用、零执行态写入）：固定 previewHash、
  *   完整依赖指纹与影响说明后写入 rework_requests（ready 回执，apply 只接 previewHash 引用）。

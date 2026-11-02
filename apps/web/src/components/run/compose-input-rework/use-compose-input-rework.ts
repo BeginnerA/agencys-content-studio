@@ -1,6 +1,6 @@
-// 合成输入本地返修状态组合函数（切片2 §6 双模受控闸）：探测能力 → 加载基准配置/BGM/候选 →
+// 合成输入本地返修状态组合函数（双模受控闸）：探测能力 → 加载基准配置/BGM/候选 →
 // 表单本地收集变更（不预先直写草稿）→ 结构化预览（幂等 ticket）→ 原子确认（本地续跑、零付费）。
-// 费用/影响/过期判断全部以后端返回为准，前端不重新实现（规格 §4/§9）。仅编辑 ComposeConfig 真实字段，
+// 费用/影响/过期判断全部以后端返回为准，前端不重新实现。仅编辑 ComposeConfig 真实字段，
 // 不臆造键（转场/时长/音量/字幕烧录 + BGM 换绑/移除）；clamp/枚举由服务端真源裁决。
 import { computed, ref, type Ref } from 'vue'
 import { composeApi, projectApi } from '../../../lib/api'
@@ -29,7 +29,7 @@ export interface ComposeInputForm {
   bgmChoice: BgmChoice
   /** 逐镜音效换绑/移除（仅覆盖当前有音效的镜；键=shotId，值语义同 BgmChoice） */
   sfxChoices: Record<string, BgmChoice>
-  /** 逐镜显示时长覆盖（切片2b）：键=shotId，值=请求秒（null=保持当前）；仅图片镜可编，motion 镜不入表 */
+  /** 逐镜显示时长覆盖：键=shotId，值=请求秒（null=保持当前）；仅图片镜可编，motion 镜不入表 */
   durations: Record<string, number | null>
 }
 
@@ -89,7 +89,7 @@ export function buildComposeInputChanges(
     else if (typeof choice === 'number' && choice !== sfxByShot[shotId])
       changes.push({ kind: 'sfx', shotId, assetId: choice })
   }
-  // 镜头时长（切片2b）：仅对已渲染的可编镜（图片镜）且输入为有限正数、与当前段长不同才产出变更；
+  // 镜头时长：仅对已渲染的可编镜（图片镜）且输入为有限正数、与当前段长不同才产出变更；
   //   motion 视频镜 UI 不渲染输入（后端对其 fail-closed blocked），故不在此发变更。
   //   clamp 落回/无有效变化由服务端预览裁决（可能回传 no_effect），前端不重复实现 Σ 算法。
   const axisByShot = new Map(shotAxis.map((s) => [s.shotId, s]))

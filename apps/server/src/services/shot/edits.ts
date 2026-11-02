@@ -24,7 +24,7 @@ export interface ShotEditItem {
 }
 
 /**
- * 结构性编辑操作（spec §2.2）：按序应用、每条在应用时点校验；
+ * 结构性编辑操作：按序应用、每条在应用时点校验；
  * 前端建议序列 add* → patch* → remove* → reorder（reorder 含最终全部 id）。
  */
 export type ShotOp =

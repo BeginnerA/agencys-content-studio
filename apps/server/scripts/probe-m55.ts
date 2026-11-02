@@ -1,11 +1,11 @@
 /**
- * M55 探针（本地全类型模型接入：LocalAI + ComfyUI 双轨）——手动执行：
+ * 探针（本地全类型模型接入：LocalAI + ComfyUI 双轨）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m55.ts [--section=pure|live]
  *
  * 隔离：isolatedEnv('m55') 一次性临时目录（独立 studio.db），须先于任何 src 动态 import。
  * 全程零真实 HTTP：live 节以 globalThis.fetch 桩做全链路契约测试（本地服务无需真实 Key/付费）。
  *
- * 断言面（docs/records/local-model-integration-spec.md §5）：
+ * 断言面：
  *  - registry：initDb 后 5 新目录行已 seed；kit 注册表 ⊇ 宿主本地轨目录（image/video/music 派发命中 + provider 串）；video-caps 背书档位（localai 保守档 / comfyui fail-closed null）。
  *  - pure：buildLocalAIImageBody（txt2img 强制 b64_json / ref 带 ref_images）、parseLocalAIImageResponse（url|b64 双形态）、localAIVideoRootUrl（剥 /v1）、buildLocalAIVideoBody（duration→seconds/num_frames、start_image、WxH）、parseLocalAIVideoResponse、buildComfyUIWorkflow（占位符注入）、extractComfyUIOutputFiles（image/video + video 回落 images）、injectComfyUIInputNode（缺失节点 fail-closed）、localAIMusicUrl/buildLocalAIMusicBody。
  *  - live：LocalAI 图/视频请求出线（端点路径 + b64 解析 + 空 Key 不带 Authorization）、probe（/v1/models）、ComfyUI /prompt→/history→/view 三段链路 + 轮询 + probe（/system_stats）、LocalAI 音乐二进制直收。

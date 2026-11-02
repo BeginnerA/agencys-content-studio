@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 成果版本投影（precision-rework 规格 §5.2-103/§6.2-133/§7-161，P8）。
+ * 精确返修 · 成果版本投影。
  *
  * 读模型区分四种状态并一次性可查：
  * - 当前修订：_subtitleEdits 指针 + 版本历史（每条固定 versionId 与不可变文件下载引用）；
@@ -28,7 +28,7 @@ export interface SubtitleVersionView {
   parent_version_id: number | null
   request_id: string | null
   change_summary: string
-  /** 固定版本的不可变文件下载引用（§5.2-103：下载不只固定逻辑 assetId） */
+  /** 固定版本的不可变文件下载引用（下载不只固定逻辑 assetId） */
   download_url: string
   created_at: number
 }

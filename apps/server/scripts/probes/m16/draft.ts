@@ -1,4 +1,4 @@
-/** M16④ draft：模板草案纯夹具快照 + 与 validateTemplateText 同源一致性（断言体逐字搬自原 probe-m16.ts） */
+/** draft：模板草案纯夹具快照 + 与 validateTemplateText 同源一致性（断言体逐字搬自原 probe-m16.ts） */
 import type { CanvasDoc } from '../../../src/services/creation'
 import type { M16Ctx } from './ctx'
 
@@ -32,7 +32,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
         kind: 'asset',
         title: '素材甲',
         assetId: 5,
-        // [M22] 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
+        // 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
         asset: { id: 5, kind: 'image', purpose: null, name: '素材甲', mime: 'image/png', width: null, height: null, duration: null, prompt: null, urls: { file: 'f', thumb: null } },
       },
       { ...emptyNode, id: 2, title: '图片 #2', spec: { genKind: 'image', prompt: '镜头一' } },
@@ -45,7 +45,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
       { id: 3, from: 1, to: 4, port: 'source' },
     ],
   }
-  // [M18] draft v2：buildTemplateDraftYaml 返回 {yaml, lossy[]}；asset 节点 → inputs（非 `inputs: []`）；
+  // draft v2：buildTemplateDraftYaml 返回 {yaml,lossy[]}；asset 节点 → inputs（非 `inputs: []`）；
   // 编辑/参考/蒙版注释 → lossy 清单（不再写入 YAML 注释）
   const { yaml, lossy } = buildTemplateDraftYaml(doc, 'canvas-draft-77')
   check(

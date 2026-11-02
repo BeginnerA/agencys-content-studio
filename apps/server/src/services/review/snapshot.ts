@@ -1,5 +1,5 @@
 /**
- * M69 · 基准证据快照（design §4.2/§4.6）。
+ * · 基准证据快照。
  * 只存「创建问题时看到的证据」，只覆盖问题范围：shot → 该镜段 + 相交 cues；
  * time → 相交段 + 窗口 cues；global → 全片。cues 50 / segments 200 上限，超限只留摘要。
  * 纯函数：sha256 由调用方注入（服务层 join assets）。
@@ -34,7 +34,7 @@ export interface SnapshotAudio {
 
 export interface BaseSnapshot {
   v: 1
-  /** 基准是否有时间轴证据；false 时 totalMs/cues 均为空占位，复检必须 unverifiable（spec §4.4） */
+  /** 基准是否有时间轴证据；false 时 totalMs/cues 均为空占位，复检必须 unverifiable */
   hasTimeline: boolean
   stepKey: string
   finalAssetId: number

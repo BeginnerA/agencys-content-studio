@@ -236,7 +236,7 @@ const {
           <!-- 质量核验（只读）：成片客观测量 + 一致性 + 交付就绪判定；无成片时自动隐藏 -->
           <RunQcPanel :run-id="runId" />
 
-          <!-- 审片问题单（M69）：定位/派修/同项复检；无成片且无历史问题时自动隐藏 -->
+          <!-- 审片问题单：定位/派修/同项复检；无成片且无历史问题时自动隐藏 -->
           <RunFindingsPanel
             :run-id="runId"
             :project-id="run?.projectId ?? 0"

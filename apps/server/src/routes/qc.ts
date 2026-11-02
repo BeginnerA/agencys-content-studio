@@ -3,7 +3,7 @@ import { h, idParam } from './helpers'
 import { readQcCache, runQcCheck } from '../services/qc/report'
 
 /**
- * 第四期 · 统一 QC 面板 · 只读核验 API（规格 2026-09-28 §5/§6/§7）。
+ * 统一 QC 面板 · 只读核验 API。
  * 仅读取成片 + 本地 ffprobe/ffmpeg 测量 + 台账一致性 → 汇总报告；零付费、零模型、不写业务表
  * （除缓存进 assets.params.qc），不改 delivery_checked / 批准链。
  */

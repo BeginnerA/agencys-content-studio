@@ -1,5 +1,5 @@
 /**
- * precision-rework 探针 · compose-input 分节（切片2：合成输入本地返修）——自 probe-precision-rework.ts 拆出：
+ * precision-rework 探针 · compose-input 分节（合成输入本地返修）——自 probe-precision-rework.ts 拆出：
  * m26 split-audit 红线单文件 ≤800 行。文件名不带 probe- 前缀：本模块是被主探针 import 的库，
  * 不是可独立执行的探针（run-probes 按 probe-*.ts 扫描）。断言文案逐字保留，与拆出前完全一致。
  * 隔离库 + 假媒体字节：零网络、零付费、零供应商调用（src 模块经主探针 isolatedEnv 后动态加载）。
@@ -13,7 +13,7 @@ async function preview_getView(requestId: string): Promise<{ state: string }> {
 }
 
 export async function runComposeInputSection(check: CheckFn): Promise<void> {
-  // 切片2 T1：合成输入本地返修能力门禁 + 基准指纹核（capability.ts 纯新增）
+  // T1：合成输入本地返修能力门禁 + 基准指纹核（capability.ts 纯新增）
   const tools = await createFixtureTools(94)
   const { db, pipelineRuns, pipelineSteps, assets, genTasks, now, mkRun, mkFixture } = tools
   const { eq, and, isNull } = await import('drizzle-orm')

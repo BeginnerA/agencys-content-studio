@@ -1,10 +1,10 @@
 /**
- * 轻松创作 Agent 化编排层（M63 切片 2）。
+ * 轻松创作 Agent 化编排层。
  * 设计原则：easy 主路径逐字零回归——本模块只在会话 agentMode=1 时介入，且
  *  - clarify/plan 两形仍复用 planning.ts 既有下游（clamp/refs/projectMeta/preflightPlan/planHash），本模块只补「决策旁注 + 角色署名 + handoff 留痕」；
  *  - route 形（template/chain/synth）为新增执行形态，本模块负责归一（normalizeAgentReply）→ 决策校验（preflightDecision）→ 落库（decision/decisionHash/preflight + handoff + 助手 route 消息）。
  * 护栏：物化输入只引用会话可用素材；模板须命中目录 + 版本一致；synth YAML 全量过 validateTemplateText；一切失败「可见拒绝」（抛 CreationError → 外层回 draft 态透出），绝不静默执行、绝不绕开确认闸。
- * 本模块只做「规划期决策 + 校验落库」，不建 run / 不起 workflow / 不落盘临时模板（那些是切片 3 confirm 的执行分派）。
+ * 本模块只做「规划期决策 + 校验落库」，不建 run / 不起 workflow / 不落盘临时模板（那些是确认环节的执行分派）。
  */
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { db } from '../../db'
@@ -37,7 +37,7 @@ export function buildAgentSystemMessages(opts: { catalog: CatalogEntry[]; allowe
   ]
 }
 
-/** route 决策校验结果（切片 3 confirm 消费；与 easy 的 CreationPreflight 分列，不覆写其结构） */
+/** route 决策校验结果（confirm 消费；与 easy 的 CreationPreflight 分列，不覆写其结构） */
 export interface DecisionPreflight {
   ready: boolean
   issues: Array<{ code: string; message: string }>
@@ -73,7 +73,7 @@ function entryFresh(catalog: CatalogEntry[], key: string, version: number): Cata
  * - template：目标须命中目录且版本一致，物化输入过 prepareRunInput（loadTemplate+normalize+validate）；
  * - chain：逐段目标须命中目录且版本一致（段间 prev 运行期解析，此处不物化）；
  * - synth：临时 YAML 全量过 validateTemplateText（action 白名单天然由校验器把守）。
- * 成本预估与预算硬闸留待切片 3 confirm（物化真实输入 + 端点快照后才能准确计价），这里只做「能不能执行」的结构闸。
+ * 成本预估与预算硬闸留待确认环节（物化真实输入 + 端点快照后才能准确计价），这里只做「能不能执行」的结构闸。
  */
 export function preflightDecision(decision: AgentDecision, catalog: CatalogEntry[]): DecisionPreflight {
   const issues: Array<{ code: string; message: string }> = []
@@ -167,7 +167,7 @@ export async function persistRouteDecision(
       }),
       createdAt: Date.now(),
     })
-    // 智能立项建议值（route 也可带 project）：仅未转正 draft 行落 name/genre/brief，模板取真实执行目标；缺失则留待 confirm（切片 3）
+    // 智能立项建议值（route 也可带 project）：仅未转正 draft 行落 name/genre/brief，模板取真实执行目标；缺失则留待 confirm
     const tplKey = decision.mode === 'template' ? decision.templateRun?.templateKey : decision.mode === 'synth' ? decision.synth?.templateKey : undefined
     if (tplKey && project.status === 'draft') {
       await tx.update(projects).set({ templateKey: tplKey, updatedAt: Date.now() }).where(eq(projects.id, claimed.projectId))

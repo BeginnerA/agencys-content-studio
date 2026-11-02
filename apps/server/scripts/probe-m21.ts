@@ -1,18 +1,18 @@
 /**
- * M21 探针（工作台体验——检索·通知·键盘流）——手动执行：
+ * 工作台体验探针（工作台体验——检索·通知·键盘流）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m21.ts [--section=search|revisions|concurrency|hot-params|tags-sql|settings-kv]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
  * （独立 studio.db + workspace），不触碰开发库（同 probe-m3~m19）。零网络、零计费：
  * 直测服务层函数与纯函数，不触发引擎执行与真实生成。
  *
- * section（默认 all；P0 骨架就绪，各节断言随 P1~P3 增补）：
- *   search        [P1] 关键词九域 LIKE/转义/数字 id + 语义降级 + 首搜索引/reindex 幂等
- *   revisions     [P2] Gate 文本产物版本链（倒序 + current 标记 + 跨 step 隔离）
- *   concurrency   [P3] 全局闸门（active ≤ max / defer 归一 queued / pump 补位 / 幂等 / 批协同重试）
- *   hot-params    [P3] 热调（深合并 / 校验 / 状态门 / _params_log 留痕 / 生效路径）
- *   tags-sql      [P1] ?tag= SQL 过滤（分页不错位 + 引号精确匹配）
- *   settings-kv   [P1] notify / concurrency 两 key 读写与默认值
+ * section（默认 all；骨架就绪，各节断言随后续增补）：
+ *   search        关键词九域 LIKE/转义/数字 id + 语义降级 + 首搜索引/reindex 幂等
+ *   revisions     Gate 文本产物版本链（倒序 + current 标记 + 跨 step 隔离）
+ *   concurrency   全局闸门（active ≤ max / defer 归一 queued / pump 补位 / 幂等 / 批协同重试）
+ *   hot-params    热调（深合并 / 校验 / 状态门 / _params_log 留痕 / 生效路径）
+ *   tags-sql      ?tag= SQL 过滤（分页不错位 + 引号精确匹配）
+ *   settings-kv   notify / concurrency 两 key 读写与默认值
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   // ================= 1. search =================
 
   async function sectionSearch(): Promise<void> {
-    // ---- [P0] 基建：assets 语义索引两列到位（ensureSchemaColumns 兜底） ----
+    // ---- 基建：assets 语义索引两列到位（ensureSchemaColumns 兜底） ----
     const cols = await sqlite.execute("PRAGMA table_info('assets')")
     const names = new Set((cols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
     check(names.has('embedding') && names.has('embedding_model'), 'assets.embedding / embedding_model 两列已建（列级兜底生效）')
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
       'embedding/embedding_model 写入读回往返（JSON number[] + model tag）',
     )
 
-    // ---- [P1] 端点：关键词九域命中矩阵（种子数据） ----
+    // ---- 端点：关键词九域命中矩阵（种子数据） ----
     await mkProject('晨光计划剧组')
     await mkProject('50%OFF大促')
     await mkProject('50XOFF活动')
@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     const entItems = ((rE.body?.groups ?? []) as Array<{ domain: string; items: Array<{ title: string }> }>).find((g) => g.domain === 'entities')?.items ?? []
     check(entItems.length === 1 && entItems[0]!.title === '阿木', '实体域命中（characters.name）')
 
-    // ---- [P1] 端点：LIKE 转义（% / _ 不误配） ----
+    // ---- 端点：LIKE 转义（% / _ 不误配） ----
     const rPct = await jreq('GET', `/api/v1/search?q=${encodeURIComponent('50%')}`)
     const pctNames = ((rPct.body?.groups ?? []) as Array<{ domain: string; items: Array<{ title: string }> }>).find((g) => g.domain === 'projects')?.items.map((i) => i.title) ?? []
     check(pctNames.length === 1 && pctNames[0] === '50%OFF大促', '% 转义：仅命中字面 %（50XOFF 不误配）')
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
     const undNames = ((rUnd.body?.groups ?? []) as Array<{ domain: string; items: Array<{ title: string }> }>).find((g) => g.domain === 'projects')?.items.map((i) => i.title) ?? []
     check(undNames.length === 1 && undNames[0] === 'a_b命名', '_ 转义：仅命中字面 _（axb 不误配）')
 
-    // ---- [P1] 端点：数字 q / 空 q / 超长 / 不命中 ----
+    // ---- 端点：数字 q / 空 q / 超长 / 不命中 ----
     const rNum = await jreq('GET', `/api/v1/search?q=${srun}`)
     const runItems = ((rNum.body?.groups ?? []) as Array<{ domain: string; items: Array<{ title: string }> }>).find((g) => g.domain === 'runs')?.items ?? []
     check(runItems.some((i) => i.title === `运行 #${srun}`), '纯数字 q：runs 按 id 精确命中')
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     const rMiss = await jreq('GET', `/api/v1/search?q=${encodeURIComponent('不存在的词xyz')}`)
     check(rMiss.status === 200 && (rMiss.body?.groups ?? []).length === 0, '不命中 → groups 空数组（非报错）')
 
-    // ---- [P1] 语义降级 + reindex（无模型环境） ----
+    // ---- 语义降级 + reindex（无模型环境） ----
     check(
       r1.body?.semantic?.available === false && r1.body?.semantic?.degraded === true && r1.body?.semantic?.hits?.length === 0,
       '无模型环境语义段降级（available:false / degraded:true / hits 空，不抛错）',
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   // ================= 2. revisions =================
 
   async function sectionRevisions(): Promise<void> {
-    // ---- [P0] 基建：版本链数据源（runId+stepId+kind='text' 倒序）语义 ----
+    // ---- 基建：版本链数据源（runId+stepId+kind='text' 倒序）语义 ----
     const runId = await mkRun('waiting_input', '{}')
     const stepId = 101 // assets.stepId 无外键约束（列级关联，探针直接造数）
     const v1 = await mkAsset({ kind: 'text', name: '剧本-初版.md', runId, stepId, createdAt: T0 + 1000 })
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     const chain3 = await chainOf(runId, stepId)
     check(chain3.length === 2 && !chain3.some((a) => a.id === v1), '软删版本不出现（deletedAt IS NULL 过滤）')
 
-    // ---- [P2] 端点：revisions（倒序 + current 标记 + 空列表 + 404） ----
+    // ---- 端点：revisions（倒序 + current 标记 + 空列表 + 404） ----
     // 端点按 runId+stepKey 定位 pipeline_steps 行 → 需真实步骤行（上段链为裸 stepId 造数，此处补真库）
     const rRun = await mkRun('waiting_input', '{}')
     const [rStep] = await db
@@ -285,7 +285,7 @@ async function main(): Promise<void> {
   // ================= 3. concurrency =================
 
   async function sectionConcurrency(): Promise<void> {
-    // ---- [P0] 基建：settings 'concurrency' KV 切换（全局闸门配置存储基座） ----
+    // ---- 基建：settings 'concurrency' KV 切换（全局闸门配置存储基座） ----
     check((await getSetting('concurrency')) === undefined, '初始无 concurrency key（缺省 = 服务层默认 3 的读取前提）')
     await putSetting('concurrency', { max: 2 })
     const cv = (await getSetting('concurrency')) as { max?: number }
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
     const cv2 = (await getSetting('concurrency')) as { max?: number }
     check(cv2.max === 5, 'concurrency KV 二次写入覆盖（upsert 语义）')
 
-    // ---- [P3] 单元：resolveConcurrencyMax 读取链（settings → env → 默认 3）+ 1–6 clamp ----
+    // ---- 单元：resolveConcurrencyMax 读取链（settings → env → 默认 3）+ 1–6 clamp ----
     const { engine, onRunSettled, resolveConcurrencyMax, refreshGlobalConcurrency, currentGlobalMax } = await import('../src/pipeline/engine')
     await putSetting('concurrency', { max: 3 })
     check((await resolveConcurrencyMax()) === 3, 'settings {max:3} → 3（读取链命中）')
@@ -312,7 +312,7 @@ async function main(): Promise<void> {
     delete process.env.CSTUDIO_GLOBAL_MAX_CONCURRENT
     check((await resolveConcurrencyMax()) === 3, 'settings/env 均缺失 → 默认 3')
 
-    // ---- [P3] 集成：闸门 active ≤ max / defer 归一 queued / 幂等吸收 / pumpGlobal 补位 ----
+    // ---- 集成：闸门 active ≤ max / defer 归一 queued / 幂等吸收 / pumpGlobal 补位 ----
     await putSetting('concurrency', { max: 2 })
     check((await refreshGlobalConcurrency()) === 2 && currentGlobalMax() === 2, 'refresh 后缓存生效（startRun 同步闸门读取）')
 
@@ -373,7 +373,7 @@ async function main(): Promise<void> {
     check(allDone, 'pumpGlobal 补位：deferred run 全链推进至 completed（无滞留 queued）')
     check(engine.activeCount() === 0, '收敛后 active 归零')
 
-    // ---- [P3] 批协同：全局 run settle → 批 pump 重试（deferred 批 run 不滞留 queued；spec §2.4 两泵互补） ----
+    // ---- 批协同：全局 run settle → 批 pump 重试（deferred 批 run 不滞留 queued；两泵互补） ----
     // 镜像 index.ts 装配（settle → notifyRunSettled）——批 pump 的「重试」触发器由此就位
     const { notifyRunSettled } = await import('../src/services/batch')
     onRunSettled((id) => {
@@ -424,7 +424,7 @@ async function main(): Promise<void> {
     }
     check(bBatchDone, '批收敛：run 全终态 → batch completed（settle → 批 pump 终态判定）')
 
-    // ---- [P3 补] 批间救援：批 run settle 释放槽位 → 扫描救起其它停滞批（属批分支不阻断扫描） ----
+    // ---- 批间救援：批 run settle 释放槽位 → 扫描救起其它停滞批（属批分支不阻断扫描） ----
     // 场景：批 C 双 run 占满全局槽位；批 D 的 run defer 滞留 queued。
     // 缺口版（notifyRunSettled 属批分支 return）下：批 C settle 只 pump(C)，dRun1 无任何触发器 → 永久 queued → FAIL
     const [cRow] = await db
@@ -497,7 +497,7 @@ async function main(): Promise<void> {
   // ================= 4. hot-params =================
 
   async function sectionHotParams(): Promise<void> {
-    // ---- [P0] 基建：run.input JSON 读写往返（_params/_params_log 存储基座） ----
+    // ---- 基建：run.input JSON 读写往返（_params/_params_log 存储基座） ----
     const runId = await mkRun('running', JSON.stringify({ template: 'x', _params: { image: { model: 'm1', size: '1024x1024' } } }))
     const before = JSON.parse((await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)))[0]!.input) as {
       template: string
@@ -518,7 +518,7 @@ async function main(): Promise<void> {
     check(after._params_log!.length === 1 && after._params_log![0]!.changes[0]!.from === 'm1', '_params_log 追加（from/to 留痕）')
     check(after.template === 'x', 'input 其他键逐字保留')
 
-    // ---- [P3] 端点：PATCH /runs/:id/params（深合并 / 白名单 400 / 状态门 409 / 留痕 / 生效路径） ----
+    // ---- 端点：PATCH /runs/:id/params（深合并 / 白名单 400 / 状态门 409 / 留痕 / 生效路径） ----
     const { readRunParams } = await import('../src/services/run-params')
     const hRun = await mkRun('running', JSON.stringify({ template: 'x', _params: { image: { model: 'm1', size: '1024x1024' }, llm: { temperature: 0.7 } } }))
 
@@ -571,7 +571,7 @@ async function main(): Promise<void> {
   // ================= 5. tags-sql =================
 
   async function sectionTagsSql(): Promise<void> {
-    // ---- [P0] 基建：tags JSON 数组 + SQL 精确成员匹配（json_each；分页不错位基座） ----
+    // ---- 基建：tags JSON 数组 + SQL 精确成员匹配（json_each；分页不错位基座） ----
     const t1 = await mkAsset({ kind: 'image', name: '打标-1.png', tags: ['风景', '夜景'], createdAt: T0 + 100 })
     await mkAsset({ kind: 'image', name: '打标-2.png', tags: ['夜景'], createdAt: T0 + 200 })
     await mkAsset({ kind: 'image', name: '打标-3.png', tags: ['人像'], createdAt: T0 + 300 })
@@ -591,7 +591,7 @@ async function main(): Promise<void> {
     const q3 = await sqlite.execute({ sql: `SELECT id FROM assets WHERE ${JSON_EQ}`, args: ['夜'] })
     check((q3.rows as unknown as unknown[]).length === 0, '成员级匹配防子串误配（"夜" ≠ "夜景"）')
 
-    // ---- [P1] 端点：?tag= SQL 过滤与分页（独立项目；4 行 = 夜景×3 + 人像×1） ----
+    // ---- 端点：?tag= SQL 过滤与分页（独立项目；4 行 = 夜景×3 + 人像×1） ----
     const tp = await mkProject('M21 tags 项目')
     const mkTagAsset = async (name: string, tags: string[], at: number): Promise<number> =>
       (await db.insert(assets).values({ projectId: tp, kind: 'image', name, tags: JSON.stringify(tags), createdAt: at, updatedAt: at }).returning())[0]!.id
@@ -609,7 +609,7 @@ async function main(): Promise<void> {
     const rT4 = await jreq('GET', `/api/v1/projects/${tp}/assets?tag=${encodeURIComponent('不存在')}`)
     check(rT4.body.items.length === 0 && rT4.body.total === 0, '无匹配 tag → 空列表 + total=0')
 
-    // ---- [P1 补] json_each 精确成员匹配：LIKE 方案三类缺陷场景（含引号漏查/反斜杠漏查/跨元素拼接串误配） ----
+    // ---- json_each 精确成员匹配：LIKE 方案三类缺陷场景（含引号漏查/反斜杠漏查/跨元素拼接串误配） ----
     const tp2 = await mkProject('M21 tags 精确匹配项目')
     const mk2 = async (name: string, tags: string[], at: number): Promise<number> =>
       (await db.insert(assets).values({ projectId: tp2, kind: 'image', name, tags: JSON.stringify(tags), createdAt: at, updatedAt: at }).returning())[0]!.id
@@ -628,18 +628,18 @@ async function main(): Promise<void> {
   // ================= 6. settings-kv =================
 
   async function sectionSettingsKv(): Promise<void> {
-    // ---- [P0] 基建：notify key 读写往返（通知开关存储基座） ----
+    // ---- 基建：notify key 读写往返（通知开关存储基座） ----
     check((await getSetting('notify')) === undefined, '初始无 notify key（缺省 = 服务层默认全开的前提）')
     await putSetting('notify', { enabled: true, run_terminal: true, gate: true, batch: true })
     const nv = (await getSetting('notify')) as { enabled?: boolean; gate?: boolean }
     check(nv.enabled === true && nv.gate === true, 'notify KV 写入读回（四开关结构）')
 
-    // ---- [P1] 端点：GET /settings 可见探针写入（KV 表就绪） ----
+    // ---- 端点：GET /settings 可见探针写入（KV 表就绪） ----
     const rSet = await jreq('GET', '/api/v1/settings')
     const keys = ((rSet.body?.items ?? []) as Array<{ key: string }>).map((it) => it.key)
     check(rSet.status === 200 && keys.includes('notify') && keys.includes('concurrency'), 'GET /settings 含 notify / concurrency 两 key（PUT 端点先例可用）')
 
-    // ---- [P3 补] PUT /settings/:key 端点：concurrency 即改即生效（刷新引擎内存缓存；原先仅启动时载入） ----
+    // ---- PUT /settings/:key 端点：concurrency 即改即生效（刷新引擎内存缓存；原先仅启动时载入） ----
     const { currentGlobalMax } = await import('../src/pipeline/engine')
     const rPut = await jreq('PUT', '/api/v1/settings/concurrency', { max: 4 })
     check(rPut.status === 200 && currentGlobalMax() === 4, 'PUT concurrency → 引擎缓存即时刷新（无需重启）')

@@ -1,5 +1,5 @@
 /**
- * M51 离线探针：批次与运行删除（记录级清理）——手动执行：
+ * 离线探针：批次与运行删除（记录级清理）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m51.ts [--section=run|batch]
  *
  * 隔离策略：isolatedEnv('m51') 一次性临时目录（独立 studio.db + workspace），必须在任何 src 动态 import 前调用。

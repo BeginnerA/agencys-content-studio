@@ -1,5 +1,5 @@
 /**
- * M70 Task 8 探针：智能创作 route 接线与等待投影（route 节）
+ * 探针：智能创作 route 接线与等待投影（route 节）
  * - route/template、route/chain 确认经真实端点 /confirm、/advance-chain：显式批准 → createRunRow 绑定台账；
  * - 未批准 / LLM 决策塞包 / 过期 decision / 另一会话包 / 同 key 不同包 → 409 或既有 schema 错误；
  * - chain 下一段：无批准 blocked+paused 投影，携 workflow 包批准 advanced；旧 easy 分支零经过；

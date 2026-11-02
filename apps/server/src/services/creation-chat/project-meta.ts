@@ -112,7 +112,7 @@ export function sanitizeProjectMeta(
   plan: CreationPlan | null,
   base?: ProjectMeta,
 ): { meta: ProjectMeta; notes: string[] } {
-  // route 执行（M63）无 CreationPlan：调用方必传 base（草稿行现值投影）；base 缺位时才回落到按方案派生。
+  // route 执行无 CreationPlan：调用方必传 base（草稿行现值投影）；base 缺位时才回落到按方案派生。
   const fb = base ?? deriveProjectMeta(plan as CreationPlan)
   const notes: string[] = []
   const text = (v: unknown, fallback: string, max: number, label: string): string => {

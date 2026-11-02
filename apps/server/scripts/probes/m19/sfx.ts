@@ -1,4 +1,4 @@
-/** M19[sfx]：purposeSubDir 登记 + 服务层 CRUD（bindSfxFromUpload/Asset/去重/sha256 复用/校验族/状态门卫/列表移除）+ planSfxStarts 起点矩阵 + buildComposeArgs 混音链四组合/索引递推/零 diff + sfx_volume clamp（断言体逐字搬自原 probe-m19.ts） */
+/** [sfx]：purposeSubDir 登记 + 服务层 CRUD（bindSfxFromUpload/Asset/去重/sha256 复用/校验族/状态门卫/列表移除）+ planSfxStarts 起点矩阵 + buildComposeArgs 混音链四组合/索引递推/零 diff + sfx_volume clamp（断言体逐字搬自原 probe-m19.ts） */
 import { existsSync } from 'node:fs'
 import type { M19Ctx } from './ctx'
 
@@ -8,7 +8,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(purposeSubDir('sfx') === 'audio', "purposeSubDir('sfx') → audio 子目录")
     check(purposeSubDir('bgm') === 'source', 'purposeSubDir 未登记 purpose 回退 source（bgm 现状）')
 
-    // ---- [P4] 服务层 CRUD（真实落库/落盘；不触发执行） ----
+    // ---- 服务层 CRUD（真实落库/落盘；不触发执行） ----
     const {
       bindSfxFromUpload,
       bindSfxFromAsset,
@@ -98,7 +98,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     await removeSfx(runSfx.id, 'shot-none')
     check((await loadSfxAssets(runSfx.id)).size === 2, 'removeSfx 未知镜 → 幂等（无绑定不报错）')
 
-    // ---- [P4] planSfxStarts：起点矩阵（无转场/转场同口径/片头位移/缺失跳过） ----
+    // ---- planSfxStarts：起点矩阵（无转场/转场同口径/片头位移/缺失跳过） ----
     const { planSfxStarts, buildTransitionPlan } = await import('../../../src/pipeline/actions/ffmpeg-merge')
     const okA = (shotId: string, assetId: number): { shotId: string; assetId: number; relPath: string; fileOk: boolean } => ({
       shotId,
@@ -125,7 +125,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const m7 = planSfxStarts([0.1, 0.2, 0.3], ['s1', 's2', 's3'], [okA('s3', 13)], 0)
     check(m7.entries[0]!.startSec === 0.3, 'round3 防浮点尾数（0.1+0.2 累积 → 0.3；未收敛则为 0.30000000000000004）')
 
-    // ---- [P4] buildComposeArgs：混音链四组合 + 索引递推 + 零 diff ----
+    // ---- buildComposeArgs：混音链四组合 + 索引递推 + 零 diff ----
     const sfx2 = [{ path: 'C:/s1.mp3', startSec: 0 }, { path: 'C:/s2.mp3', startSec: 3 }]
     const c1 = buildComposeArgs(
       mkArgsInput({ voicePaths: ['C:/v1.m4a'], lineIds: ['l1'], bgmPath: 'C:/bgm.mp3', sfx: sfx2, sfxVolume: 0.8 }),
@@ -175,7 +175,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(JSON.stringify(buildComposeArgs(mkArgsInput({ sfx: [] })).args) === base0, '零 diff：sfx:[] === 无 sfx（args 逐字节一致）')
     check(JSON.stringify(buildComposeArgs(mkArgsInput({ sfxVolume: 0.5 })).args) === base0, '零 diff：仅 sfxVolume（无 SFX）不影响 args')
 
-    // ---- [P4] sfx_volume clamp（0–2；与 bgm_volume 0–1 独立） ----
+    // ---- sfx_volume clamp（0–2；与 bgm_volume 0–1 独立） ----
     const cfgS1 = await updateComposeConfig(runSfx.id, { sfx_volume: 5 })
     check(cfgS1.sfx_volume === 2, 'sfx_volume 上界 clamp（5 → 2）')
     const cfgS2 = await updateComposeConfig(runSfx.id, { sfx_volume: -1 })

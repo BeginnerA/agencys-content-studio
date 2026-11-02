@@ -46,7 +46,7 @@ export async function generateMusicAsset(ctx: StepContext, prompt: string): Prom
     const rel = relPathOf(ctx.run.projectId, 'audio', name)
     const abs = absPathOf(rel)
     writeFileSync(abs, Buffer.from(music.audio))
-    // M66：AI 生成音乐恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+    // AI 生成音乐恒打标（不可关；失败旁路 warn + tags，不阻断登记）
     const label = await labelGeneratedFile(abs, 'mp3')
     const labeledBuf = readFileSync(abs)
     const aigc = label.ok && label.produceId ? { produceId: label.produceId, produceAt: Date.now() } : null

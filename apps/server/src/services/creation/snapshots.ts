@@ -120,7 +120,7 @@ export async function deleteSnapshot(canvasId: number, snapshotId: number): Prom
 }
 
 /**
- * 快照恢复（保留 id 重放，spec §2.1）：
+ * 快照恢复（保留 id 重放）：
  * ①事务内先冲突预检（快照行 id 被他画布占用 → 回滚 + 409）→ ②自动备份「恢复前备份」→
  * ③清空现 nodes/edges/groups → ④按快照 doc 显式保留原 id 重插 → ⑤ emitCanvasChanged。
  * 画布/快照不存在 → null（路由 404）；行数极少场景下 id 占用仅可能来自显式建行，仍走事务回滚保护。
@@ -210,7 +210,7 @@ export async function restoreSnapshot(canvasId: number, snapshotId: number): Pro
   }
 }
 
-// ---------- 快照 diff / 分支（spec §2.5） ----------
+// ---------- 快照 diff / 分支 ----------
 
 /** 快照行读取（画布域限定；不存在/不属本画布 → null） */
 async function readSnapshotRow(canvasId: number, snapshotId: number): Promise<CanvasSnapshot | null> {

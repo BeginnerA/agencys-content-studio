@@ -22,7 +22,7 @@ export const WORKBENCH_ACTIONS = ['ai_image', 'ai_video']
  * 引擎执行段以 `task.taskId ? 续轮询 : 重新提交` 决定第三方任务去向（见 ai-video.ts）：
  * - regen=true（强制重新生成：单镜重生成 / 单步全量重跑 / 级联重做 / 局部返修）→ 清空外部 task_id，
  *   令其真正重新提交。保留旧 task_id 会让「重生成」直接轮回变更前的旧第三方成片（假重生成：
- *   用户以为重出，实际拿回旧片），与 resetShotsForRework、ai-video[F03]「内容变更即清 task_id」同规则。
+ *   用户以为重出，实际拿回旧片），与 resetShotsForRework、ai-video「内容变更即清 task_id」同规则。
  * - regen=false（失败重试 / 断点续跑：复用已受理任务）→ 保留 task_id，续轮询避免二次提交扣费
  *   （与 tasks/:id/retry、runs/:id/resume、崩溃恢复的语义一致）。
  * 图片 / TTS 为同步适配器不用 task_id 轮询，清空无副作用；统一下发以保持单一真源。

@@ -1,7 +1,7 @@
 // 字幕精确返修状态组合函数：加载读模型 → 行编辑 → diff 生成 changes →
 // 结构化预览（幂等 ticket）→ 原子确认。费用/影响/过期判断全部以后端返回为准，
-// 前端不重新实现（规格 §9）。msToClock/parseClock 为纯函数：字段整数毫秒，
-// 显示 HH:MM:SS.mmm，不经过浮点字符串反复舍入（规格 §3.1）。
+// 前端不重新实现。msToClock/parseClock 为纯函数：字段整数毫秒，
+// 显示 HH:MM:SS.mmm，不经过浮点字符串反复舍入。
 import { computed, ref, type Ref } from 'vue'
 import { subtitleReworkApi, ReworkApiError } from '../../../lib/api/rework'
 import { newRequestKey } from '../../../lib/api/creation-chat'
@@ -298,7 +298,7 @@ export function useSubtitleRework(
     }
   }
 
-  /** 未保存离开提示（规格 §3.1 验收项） */
+  /** 未保存离开提示（验收项） */
   async function guardClose(): Promise<boolean> {
     if (!dirty.value) return true
     return confirmDialog({

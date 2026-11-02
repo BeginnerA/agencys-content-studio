@@ -1,8 +1,8 @@
 /**
- * M37 探针（收尾与回归 · G13 自动值来源可追溯 — 自动化契约 source 字段一致性锁）——手动执行：
+ * 收尾与回归探针（收尾与回归 · G13 自动值来源可追溯 — 自动化契约 source 字段一致性锁）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m37.ts [--section=prefill|model-suggest|rules-catalog|suggest-nextsteps|cadence]
  *
- * 定位：M37 前端统一来源徽标（ProvenanceBadge）不改服务端契约；本探针**锁定各自动化端点已有的
+ * 定位：前端统一来源徽标（ProvenanceBadge）不改服务端契约；本探针**锁定各自动化端点已有的
  * source/tier 语义契约**——前端标注的可追溯性以这些字段为真源，任何漂移先在此变红。
  *
  * 隔离策略：isolatedEnv('m37', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

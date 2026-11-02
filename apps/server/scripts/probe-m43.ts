@@ -1,5 +1,5 @@
 /**
- * M43 探针（轻松创作第三批：画质选择 / 逐镜参考绑定 / 跨轮参考合并）——手动执行：
+ * 探针（轻松创作第三批：画质选择 / 逐镜参考绑定 / 跨轮参考合并）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m43.ts [--section=quality|binding|carry]
  *
  * 隔离策略：isolatedEnv('m43') 一次性临时目录（独立 studio.db + workspace），必须在任何 src import 前调用。
@@ -19,7 +19,7 @@ process.env.PROBE_M43_KEY = 'probe-offline-secret-key-43c7'
 
 const SECTIONS = ['quality', 'binding', 'carry'] as const
 
-/** 3 镜 × 10 秒 = 30 秒（与 M30/M42 同夹具，最小化漂移） */
+/** 3 镜 × 10 秒 = 30 秒（与此前同夹具，最小化漂移） */
 function makePlan(mode: 'dynamic' | 'slideshow') {
   return {
     title: '咖啡冲煮三分钟', summary: '用三段讲清风味来源', genre: 'science' as const, duration: 30,
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     void init
     return Response.json({ choices: [{ message: { content: llmReply }, finish_reason: 'stop' }], usage: { prompt_tokens: 20, completion_tokens: 30, total_tokens: 50 } })
   }
-  // engine.startRun 全程 stub：confirm 只落 run 行不真执行管线（M43 断言零引擎语义改动；文件头承诺）
+  // engine.startRun 全程 stub：confirm 只落 run 行不真执行管线（断言零引擎语义改动；文件头承诺）
   const { engine } = await import('../src/pipeline/engine')
   engine.startRun = ((runId: number) => { void runId; return 'started' }) as typeof engine.startRun
   const errOf = async (fn: () => Promise<unknown>): Promise<Error | null> => {
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     await insert({ name: 'video', serviceType: 'video', pricing: '{"second":0.1}', ...video })
   }
 
-  /** 旁路 LLM 直建「待确认」会话（与 M42 同口径） */
+  /** 旁路 LLM 直建「待确认」会话（与此前同口径） */
   const makeReadySession = async (mode: 'dynamic' | 'slideshow') => {
     const { db } = await import('../src/db')
     const { creationSessions } = await import('../src/db/schema')
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
       const slide = await makeReadySession('slideshow')
       check(slide.pf.resolutionOptions === null, 'slideshow 无视频步 → 无画质候选（不虚构档位）')
 
-      // —— 不传 resolution：行为与 M42 逐字一致（默认档 + 哈希/版本不动）——
+      // —— 不传 resolution：行为与此前逐字一致（默认档 + 哈希/版本不动）——
       const before = await sessRow(dyn.sessionId)
       const r0 = await confirmCreation(dyn.sessionId, { planRevision: before.planRevision, planHash: before.planHash, idempotencyKey: 'm43q-def001', acceptUnpriced: false })
       const run0 = (await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, r0.runId)))[0]!

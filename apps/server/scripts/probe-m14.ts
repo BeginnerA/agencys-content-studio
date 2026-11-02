@@ -1,10 +1,10 @@
 /**
- * M14 探针（平台层：集级参数覆盖 / 剧集实体 / Web 静态托管）——手动执行：
+ * 集级参数与剧集地图探针（平台层：集级参数覆盖 / 剧集实体 / Web 静态托管）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m14.ts [--section=params|series|static|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE / CSTUDIO_WEB_DIST 指向一次性临时目录
  * （独立 studio.db + workspace + webdist），不触碰开发库（同 probe-m3~m13）。LLM 假端点 + globalThis.fetch
- * stub 兜底（零网络、零计费）。M14 四节均不真跑流水线：HTTP POST /runs 前将 engine.startRun 置空
+ * stub 兜底（零网络、零计费）。四节均不真跑流水线：HTTP POST /runs 前将 engine.startRun 置空
  * （实例属性覆盖），只验创建链路、_params 快照与剧集联动回写。模板文件从仓库 workspace/templates
  * 复制进隔离目录（loadTemplate 读隔离 TEMPLATES_DIR）。
  *
@@ -71,7 +71,7 @@ writeFileSync(join(TMP, 'secret.txt'), SECRET)
 
 const SECTIONS = ['params', 'series', 'static', 'regression'] as const
 
-// ---- fetch stub：录制请求 + 可编程响应（M14 无真实 LLM 调用，作为兜底安全网）----
+// ---- fetch stub：录制请求 + 可编程响应（无真实 LLM 调用，作为兜底安全网）----
 let stubReply: () => { status: number; body: unknown } = () => ({ status: 200, body: {} })
 const stubFetch = (async (): Promise<Response> => {
   const r = stubReply()
@@ -507,7 +507,7 @@ async function main(): Promise<void> {
     delete childEnv.AGENT_LLM_API_KEY
     delete childEnv.AGENT_LLM_MODEL
     for (const p of probes) {
-      // 直接以 tsx 运行前序探针脚本（M26 runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
+      // 直接以 tsx 运行前序探针脚本（runner 收敛后无 probe:<id> 包脚本，经 process.execPath 与 run-probes 同款启动式）
       const script = join(REPO_ROOT, 'apps', 'server', 'scripts', `${p.replace('probe:', 'probe-')}.ts`)
       const r = spawnSync(process.execPath, ['--import', 'tsx', script], {
         cwd: join(REPO_ROOT, 'apps', 'server'),

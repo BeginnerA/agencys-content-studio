@@ -59,7 +59,7 @@ export interface EditTimeline {
 }
 
 /**
- * 字幕快照（precision-rework §6.1 增量扩展）：assetId/relPath 语义不变（源字幕资产）；
+ * 字幕快照（增量扩展）：assetId/relPath 语义不变（源字幕资产）；
  * 有效字幕快照字段全部可选——旧 v=1 快照可缺省，读取端按「损坏拒绝不回退」处理。
  * coordinate 恒 'final'（成片绝对轴，已含片头/平移位移），与内容轴 lines 区分。
  */
@@ -74,7 +74,7 @@ export interface EditTimelineSubtitle {
   /** 有效字幕文本 sha256 */
   sha256?: string
   coordinate?: 'final'
-  /** 实际生效 cue（§4 结构，标识锚定源基准 tag） */
+  /** 实际生效 cue（结构，标识锚定源基准 tag） */
   cues?: SubtitleCue[]
   origin?: 'source' | 'manual'
   sourceRef?: { assetId: number | null; sha256: string; timingSource: 'estimated' | 'measured' | 'unknown' }

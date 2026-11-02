@@ -1,4 +1,4 @@
-/** M19[aspect]：purposeSubDir 登记 + resolveAspectSize 尺寸派生/红线不放大 + 几何滤镜/同比例判定 + normalizeMultiAspect/readMultiAspect 校验清洗 + buildComposeArgs 多路渲染/asplit 分流/零 diff + A 路径服务校验族/幂等复用（断言体逐字搬自原 probe-m19.ts） */
+/** [aspect]：purposeSubDir 登记 + resolveAspectSize 尺寸派生/红线不放大 + 几何滤镜/同比例判定 + normalizeMultiAspect/readMultiAspect 校验清洗 + buildComposeArgs 多路渲染/asplit 分流/零 diff + A 路径服务校验族/幂等复用（断言体逐字搬自原 probe-m19.ts） */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { M19Ctx } from './ctx'
@@ -27,7 +27,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
         .returning()
     )[0]!
 
-    // ---- [P5] resolveAspectSize（竖屏主画幅 1080x1920）----
+    // ---- resolveAspectSize（竖屏主画幅 1080x1920）----
     const a916 = resolveAspectSize(1080, 1920, '9:16')
     check(a916.w === 1080 && a916.h === 1920, '同比例 9:16 → 原尺寸 {1080,1920}（不缩放）')
     const a11 = resolveAspectSize(1080, 1920, '1:1')
@@ -48,7 +48,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const badAspect = await errOf(async () => resolveAspectSize(1080, 1920, 'abc'))
     check(badAspect instanceof Error && /非法画幅/.test(String(badAspect)), '非法画幅串 → 抛错（服务层入口已先校验）')
 
-    // ---- [P5] 几何滤镜串与同比例判定 ----
+    // ---- 几何滤镜串与同比例判定 ----
     check(
       aspectGeometryFilter('crop', 1080, 1080) === 'crop=1080:1080:(iw-1080)/2:(ih-1080)/2,setsar=1',
       'crop：居中裁切表达式 + setsar=1',
@@ -61,7 +61,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(aspectGeometryFilter('weird', 640, 640).startsWith('crop='), '未知策略 → 回退 crop（readMultiAspect 已夹住，此处钉行为）')
     check(isSameAspect(1080, 1920, '9:16') && !isSameAspect(1080, 1920, '1:1'), 'isSameAspect：主画幅同比例判定（用于剔除重复编码）')
 
-    // ---- [P5] normalizeMultiAspect / readMultiAspect ----
+    // ---- normalizeMultiAspect / readMultiAspect ----
     check(normalizeMultiAspect({ enabled: true, aspects: ['1:1'] }).strategy === 'crop', 'strategy 缺省 → crop')
     check(
       JSON.stringify(normalizeMultiAspect({ enabled: true, aspects: ['1:1', '1:1', '16:9'] }).aspects) === JSON.stringify(['1:1', '16:9']),
@@ -94,7 +94,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     )
     check(readMultiAspect({ multi_aspect: { enabled: true, aspects: ['21:9'], strategy: 'crop' } }) === null, 'readMultiAspect：全非法 aspects → null')
 
-    // ---- [P5] buildComposeArgs 多路渲染 ----
+    // ---- buildComposeArgs 多路渲染 ----
     const baseArgs = JSON.stringify(buildComposeArgs(mkArgsInput({})).args)
     check(JSON.stringify(buildComposeArgs(mkArgsInput({ multiAspect: { strategy: 'crop', targets: [] } })).args) === baseArgs, '零 diff：targets 空 → args 逐字节一致')
     check(
@@ -118,7 +118,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       f2.includes('[b1]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[dv0]'),
       'pad 策略入派生路（策略开关生效）',
     )
-    // [M19 实测修正] 多路输出时同一音频 pad 不能被两个输出重复 -map（ffmpeg：Error opening output files: Invalid argument）
+    // 多路输出时同一音频 pad 不能被两个输出重复 -map（ffmpeg：Error opening output files: Invalid argument）
     check(
       f2.includes('[outa]asplit=2[amapMain][amapD0]'),
       '有音轨 + 单派生 → [outa]asplit=2 分流（修复：重复 -map 同一 pad 会导致 ffmpeg 退出码 -22）',
@@ -178,7 +178,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(/\[bm\]subtitles='ep\.srt':force_style='FontName=Legacy,FontSize=18'/.test(f3), '主路沿用上游定型的 style（仅派生路重算）')
     check(f3.includes('[dv0]subtitles=') && f3.includes('FontSize=19'), '派生路 1（1:1，h=1080）结构化重算字号 19')
     check(f3.includes('[dv1]subtitles=') && f3.includes('FontSize=16'), '派生路 2（16:9，h=608 → 10.9）最小字号兜底 16')
-    // [M19 修复] 水印多路分流：主 + 两派生共 3 个 overlay 消费者，必须 [wm]split=3 各取唯一标签。
+    // 水印多路分流：主 + 两派生共 3 个 overlay 消费者，必须 [wm]split=3 各取唯一标签。
     // 旧断言曾错误地断言两派生路都复用同一 [wm]（注释谎称“ffmpeg 允许一个滤镜输出作多路 overlay 输入，实测合法”）；
     // 实则 ffmpeg 一个 filter pad 仅可被消费一次，重复引用 → "Invalid stream specifier: wm" 整条合成命令失败（已实跑复现）。
     check(
@@ -200,7 +200,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const f4 = d4.args[d4.args.indexOf('-filter_complex') + 1]!
     check(f4.includes('[dv0]subtitles=') && /\[dv0\]subtitles='ep\.srt':force_style='FontName=Legacy,FontSize=18'/.test(f4), '整串模式（无 subtitleCfg）→ 派生路复用主串')
 
-    // ---- [P5] A 路径服务（零 ffmpeg：只测校验族与幂等命中）----
+    // ---- A 路径服务（零 ffmpeg：只测校验族与幂等命中）----
     const noRun = await errOf(async () => deriveAspect(999_999, '1:1'))
     check(noRun instanceof Error && /不存在/.test(String(noRun)), 'run 不存在 → not_found')
     const badA = await errOf(async () => deriveAspect(runA.id, '21:9'))

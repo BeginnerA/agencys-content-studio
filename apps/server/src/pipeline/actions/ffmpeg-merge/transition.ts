@@ -12,7 +12,7 @@ export interface TransitionPlan {
 }
 
 /**
- * 转场计划（§2.5 数学；纯函数，探针直测）：
+ * 转场计划（数学；纯函数，探针直测）：
  * - 禁用：n < 2 / transition = none / 非法值；
  * - T = clamp(durationSec, 0.1, min(2, min(d)))；前 n−1 镜段长 d+T（末镜 d）；
  * - offset o_k = V_k = Σ_{j≤k} d_j（k=1..n−1）；totalDur = Σd。

@@ -1,5 +1,5 @@
 /**
- * M64 探针（智能创作 Agent 收口遗留：G2 confirmRoute 三形态运行链 + G3 synth 生命周期与 GC）——手动执行：
+ * 智能创作Agent收口遗留探针（智能创作 Agent 收口遗留：G2 confirmRoute 三形态运行链 + G3 synth 生命周期与 GC）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m64.ts [--section=confirm-template|confirm-synth|confirm-chain|chain-await|guards|synth-gc|reverse-fallback]
  *
  * 与 probe-m63（纯函数契约）互补：本探针用 isolatedEnv('m64') 起真库（独立 studio.db），
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
       check(segRuns.length === 1 && segRuns[0]!.seq === 0 && segRuns[0]!.key === QUICK && started === before + 1, 'chain 仅起首段（seq0·quick-video），未级联后续段')
     },
 
-    // ================= chain-await：段间「对话内批准续跑」闭环（M64 G1） =================
+    // ================= chain-await：段间「对话内批准续跑」闭环（G1） =================
     'chain-await': async () => {
       // 建链起首段（同 confirm-chain）
       const proj = await seedProject('对话内批准续跑链')
@@ -233,7 +233,7 @@ async function main(): Promise<void> {
       check(!existsSync(synthFileOf('agent-s-manual-probe')), '手工仿制件可被删除（清理机制可用）')
     },
 
-    // ================= reverse-fallback：纯图片反推意图遇决策解析失败不判死（M63 契约缺口收口） =================
+    // ================= reverse-fallback：纯图片反推意图遇决策解析失败不判死（契约缺口收口） =================
     'reverse-fallback': async () => {
       const { shouldDeliverReverseFallback, persistReverseFallback } = await import('../src/services/creation-chat/planning')
       const { parseAgentReply } = await import('../src/services/creation-chat/agent/reply-schema')

@@ -40,7 +40,7 @@ import { applyCollageLayout } from './segments'
 import { resolveMergeBgm } from '../../../services/smart-bgm'
 
 /**
- * ffmpeg_merge：镜头序列 → 成片 + 封面（spec §5.4 三流合成）。
+ * ffmpeg_merge：镜头序列 → 成片 + 封面（三流合成）。
  * 镜头输入双字段互斥：images（静态图，-loop 1 -t duration_per_shot 定长）或
  * motion_clips（ai_video 产物，按实际时长 concat，不 -t/不 -loop）。
  * 可选 voices（audio 资产序列，逐句 concat 连续轨 → apad/atrim 对齐总时长，aac）；
@@ -112,7 +112,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // shots（分镜 JSON）→ per-shot 时长覆盖表（v6 存量 run 无此输入 → 空表 = 行为不变）
   const shotsIds = ctx.assetIdsOf('shots')
   const perShotDur = await loadPerShotDurations(ctx, shotsIds)
-  // [切片2b] 镜头时长本地返修：_compose.shot_durations 覆盖分镜 per-shot 显示时长（零重生媒体、零付费）。
+  // 镜头时长本地返修：_compose.shot_durations 覆盖分镜 per-shot 显示时长（零重生媒体、零付费）。
   // 两条互斥生效路径：① 无对白/未对齐→经此 perShotDur（仅 images 分支消费，motion clips 段长=clip 实测不受影响）；
   // ② 音频对齐→经下方 alignShots[].durationSec（plan 会在映射一致时回写 seg.durSec）。motion 已在预览 blocked，此处按模式防御性跳过。
   const shotDurOverride = readComposeConfig(ctx.run.input).shot_durations ?? {}
@@ -234,7 +234,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   } else {
     const planMode: 'images' | 'motion' = mode === 'images' ? 'images' : 'motion'
     const { shots: alignShots, hasLinesField } = await loadShotAlignShots(ctx, shotsIds)
-    // [切片2b] 音频对齐路径：用 shot_durations 覆盖分镜显式时长（仅 images；motion 预览已 blocked，按 planMode 防御性跳过）。
+    // 音频对齐路径：用 shot_durations 覆盖分镜显式时长（仅 images；motion 预览已 blocked，按 planMode 防御性跳过）。
     // 不改 planBestEffortTimeline 纯函数语义——覆盖仅作用于喂入的 durationSec，Σ-clamp（请求<句和→落句和）/字幕位置由既有算法同源重算。
     if (planMode === 'images') {
       for (const s of alignShots) {
@@ -473,7 +473,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   // 封面抽取点：有片头/字卡 → 跳过片头与卡帧取正片首帧；否则 0.2s（现行为）
   const coverAt = round3((introArg ? introArg.durSec : 0) + (m61CardOk ? m61CardDurSec : 0) + 0.2)
 
-  // 显示字幕规划（§6.2 接管至 manual-display：人工修订前置分支 + 原逐句/片头平移逻辑逐字节保持；
+  // 显示字幕规划（接管至 manual-display：人工修订前置分支 + 原逐句/片头平移逻辑逐字节保持；
   // 烧录开关 _compose.subtitleBurn=false → 不喂字幕滤镜，srtRelPath 仍供对白/严格校验与快照使用）
   const introShift = introArg ? round3(introArg.durSec) : 0
   const subtitleBurn = composeCfg.subtitleBurn !== false
@@ -536,7 +536,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
 
   // 组装 filter_complex 与编码参数（提炼 buildComposeArgs 纯函数；无水印/片头尾→ 与既有实现逐字节一致）
   const hasAudio = voicePaths.length > 0 || !!dialogueClips || (montageOn && params['keep_clip_audio'] === true)
-  // M66 合规标识：隐式元数据恒写（不可关）；显式角标默认开、enabled:false 逐级关闭；无 CJK 字体 → 跳过角标（warn）——实装 ./compliance.ts
+  // 合规标识：隐式元数据恒写（不可关）；显式角标默认开、enabled:false 逐级关闭；无 CJK 字体 → 跳过角标（warn）——实装 ./compliance.ts
   const { aigc, complianceArg, compose } = resolveMergeCompliance(brand, (msg) => ctx.log(msg))
   const { args, cwd, totalAll, derived } = buildComposeArgs({
     strictDelivery: strict,
@@ -577,7 +577,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
     )
   }
 
-  // 无烧录快速路径（§6.2 步骤 5）：仅改显示字幕 → 逐字节复制基准成片/派生画幅零编码；
+  // 无烧录快速路径（步骤 5）：仅改显示字幕 → 逐字节复制基准成片/派生画幅零编码；
   // 任一其他依赖不一致 → 返回 null 继续下方正常重合成（台词/音频位置不变红线由不进入编码路径保证）
   const fastIds = await tryNoBurnManualRecompose({
     ctx, manual, eligible: !strict && !!manual && !subtitleBurn && !dialogueClips && !montageOn,
@@ -610,7 +610,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
   }
   const size = statSync(outAbs).size
 
-  // 有效字幕快照（规格 §6.1）：记录实际生效文本/cue 与不可变文件（平移时源旁 display-<sha16>
+  // 有效字幕快照：记录实际生效文本/cue 与不可变文件（平移时源旁 display-<sha16>
   // 内容寻址落盘，幂等复用）；解析失败/读取异常仅记日志省略增量字段，绝不影响合成
   let subtitleSnapExt: Partial<EditTimelineSubtitle> = {}
   if (srtRelPath) {
@@ -686,7 +686,7 @@ export async function ffmpegMerge(ctx: StepContext): Promise<StepResult> {
         : { aligned: false, reason: alignReason, lines: 0, shots: 0, total_dur: null, mode: null, partial: false, warn_lines: 0 },
       transition: { enabled: xfadePlan.enabled, type: xfadePlan.enabled ? xfadePlan.type : null, dur_sec: xfadePlan.enabled ? xfadePlan.durSec : null },
       bgm: bgmPath && bgmAsset ? { asset_id: bgmAsset.id, volume: bgmVolume, fade: bgmFade, ...(bgmAutoSelected ? { auto_selected: true } : {}) } : null,
-      // 品牌溯源（无配置 → null；duration = 含片头尾总长）+ M66 合规溯源（produce_id 与内嵌元数据同源）——实装 ./compliance.ts
+      // 品牌溯源（无配置 → null；duration = 含片头尾总长）+ 合规溯源（produce_id 与内嵌元数据同源）——实装 ./compliance.ts
       ...mergeBrandProvenance(brand, { watermark: watermarkArg, intro: introArg, outro: outroArg, sfxCount: sfxList.length, sfxVolume }, complianceArg, aigc.produceId),
       // 标题智能编排溯源（仅实际启用追加键；off → 零增键逐字节不变）
       ...(smartCfg ? { title_style: { groups: (m61StylePlan?.styles ?? [smartCfg]).length, cue_mapped: m61StylePlan?.cue_style?.length ?? 0 } } : {}),

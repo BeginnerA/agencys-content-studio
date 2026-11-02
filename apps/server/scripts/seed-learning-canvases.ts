@@ -14,7 +14,7 @@
  * 运行：pnpm --filter @acs/server exec tsx scripts/seed-learning-canvases.ts
  * 可用环境变量 CSTUDIO_BASE_URL 覆盖服务地址。
  *
- * 结构（M64·G4 行为零变更切分，本文件为编排入口 + 01-06 基础画布构建器）：
+ * 结构（行为零变更切分，本文件为编排入口 + 01-06 基础画布构建器）：
  *   - seed-learning-api.ts：HTTP 工具 + 领域操作 + 共享类型 / 常量
  *   - seed-learning-media.ts：占位素材生成（PNG / WAV / SRT；零依赖）
  *   - seed-learning-canvases-drama.ts：07-09 短剧实战 / 全集 / 季级画布构建器

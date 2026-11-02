@@ -1,11 +1,11 @@
 /**
- * M52 离线探针：全局素材池（全局实体挂参考图放开）——手动执行：
+ * 离线探针：全局素材池（全局实体挂参考图放开）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m52.ts [--section=pool|channels|inject|sync]
  *
  * 隔离策略：isolatedEnv('m52') 一次性临时目录（独立 studio.db + workspace），必须在任何 src 动态 import 前调用。
  * 零网络：AGENT_LLM_* 指向假端点 + globalThis.fetch 常驻 stub（scheduleImageCheck 等后台任务落 stub 不外发）。
  *
- * 断言面（spec docs/milestones.md M52）：
+ * 断言面（spec docs/milestones.md）：
  *  - pool     GET/POST /global/assets（虚拟项目 #0）：入库 project_id=0 / purpose 白名单 / sha256 复用 /
  *             非图·非法 purpose·空表单 400 / 列表与 kind·purpose 过滤 / 项目资产列表不泄露池；
  *  - channels 五通道挂图守卫 assertRefAssetsForScope：POST/PUT entities 全局挂池 201·200、挂项目资产 400、

@@ -1,11 +1,11 @@
 /**
  * 创作画布视口组合式（pan / zoom / fit / 坐标换算； CanvasBoard 模式移植， 零改动）
- * - pan = 视口 pointer capture（组件模式机调用 begin/move）；缩放 = 滚轮光标锚定 [0.2, 2.5]（spec §2.5）
+ * - pan = 视口 pointer capture（组件模式机调用 begin/move）；缩放 = 滚轮光标锚定 [0.2,2.5]
  * - 坐标换算：screenToWorld（drop / 双击落点）；fit 按内容包围盒（自由摆放）
  * - 视口持久化：onSettled 500ms 防抖回调（调用方 PATCH /canvases/:id { viewport }；与基线相同跳过
  *   ——避免挂载 / 程序化应用时无谓写库）
  * - 视口尺寸跟踪（viewW / viewH）：ResizeObserver 监听；无实现环境退化为挂载时快照；
- *   渲染虚拟化依赖（spec §2.2；0 = 未实测 → 调用方全量渲染兜底）
+ *   渲染虚拟化依赖（0 = 未实测 → 调用方全量渲染兜底）
  */
 import { onBeforeUnmount, ref, watch } from 'vue'
 

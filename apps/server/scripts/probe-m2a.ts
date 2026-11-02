@@ -1,5 +1,5 @@
 /**
- * M2a 编排语义探针（spec §10 验收 1/2 引擎侧）——手动执行：
+ * M2a 编排语义探针（验收 1/2 引擎侧）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m2a.ts
  *
  * 隔离策略：CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db +

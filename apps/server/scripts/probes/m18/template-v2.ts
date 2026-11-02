@@ -1,4 +1,4 @@
-/** M18[P5] template-v2：模板 v2（draft 全节点型映射 + literal action + registry + template-try 全链）（断言体逐字搬自原 probe-m18.ts） */
+/** M18template-v2：模板 v2（draft 全节点型映射 + literal action + registry + template-try 全链）（断言体逐字搬自原 probe-m18.ts） */
 import type { M18Ctx } from './ctx'
 
 export async function run(ctx: M18Ctx): Promise<void> {
@@ -29,7 +29,7 @@ export async function run(ctx: M18Ctx): Promise<void> {
         id: 2,
         title: '参考图',
         assetId: 99,
-        // [M22] 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
+        // 补全 asset（kind=image）——供参考边映射判定（真画布由 buildCanvasDoc 填充）
         asset: { id: 99, kind: 'image', purpose: null, name: '参考图', mime: 'image/png', width: null, height: null, duration: null, prompt: null, urls: { file: 'f', thumb: null } },
       },
       { ...emptyNode, kind: 'entity', id: 3, title: '主角', spec: { entityKind: 'character', entityId: 1, name: '小萌' } as any },

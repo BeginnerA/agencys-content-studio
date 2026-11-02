@@ -1,7 +1,7 @@
 /**
- * 精确返修（precision-rework）前端契约类型：与 apps/server/src/services/rework/ 的
+ * 精确返修前端契约类型：与 apps/server/src/services/rework/ 的
  * 读模型投影（readmodel.ts）、结构化预览（preview.ts）、变更契约（contract.ts）、
- * 应用回执（apply.ts）逐字段对齐；前端不重新实现任何费用/影响/过期判断（规格 §4/§9）。
+ * 应用回执（apply.ts）逐字段对齐；前端不重新实现任何费用/影响/过期判断。
  */
 
 /** 可编辑字幕 cue（最终成片绝对轴，整数毫秒；与后端 SubtitleCue 同形） */
@@ -161,7 +161,7 @@ export interface ReworkRequestView {
   updatedAt: number
 }
 
-/* ===== 合成输入本地返修（切片2）：与 apps/server services/rework/compose-input* 逐字段对齐 ===== */
+/* ===== 合成输入本地返修：与 apps/server services/rework/compose-input* 逐字段对齐 ===== */
 
 /** 能力门禁判定（不支持时 code/message 即真实原因，UI 不伪造可返修态） */
 export interface ComposeInputCapabilityView {
@@ -182,7 +182,7 @@ export interface ComposeInputShotAxisView {
 export interface ComposeInputCapabilityResponse {
   capability: ComposeInputCapabilityView
   final_asset_id: number | null
-  /** 逐镜时轴基准（切片2b）：无时轴快照时为 []（时长返修不可用，前端仍展示不伪可编） */
+  /** 逐镜时轴基准：无时轴快照时为 []（时长返修不可用，前端仍展示不伪可编） */
   shot_axis: ComposeInputShotAxisView[]
 }
 

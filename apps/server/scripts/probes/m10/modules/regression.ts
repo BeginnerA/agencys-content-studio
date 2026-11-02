@@ -1,6 +1,6 @@
 /**
- * [M10·拆分] scripts/probe-m10.ts 的 regression 节（≤800 行红线拆分，断言逐字保留）。
- * M7 语义回归：applyStoryboardEdits 不变 + edit→mutate 链 + reset 不含上传 + board 聚合读兼容。
+ * scripts/probe-m10.ts 的 regression 节（≤800 行红线拆分，断言逐字保留）。
+ * 语义回归：applyStoryboardEdits 不变 + edit→mutate 链 + reset 不含上传 + board 聚合读兼容。
  * 运行期服务在本模块内动态 import（入口已建立隔离环境），与拆分前 main() 内 import 时序等价。
  */
 import type { M10Ctx } from '../ctx'
@@ -19,7 +19,7 @@ export async function sectionRegression(ctx: M10Ctx): Promise<void> {
 
   const s = await seedRun()
 
-  // ---- applyStoryboardEdits（M7）行为不变 ----
+  // ---- applyStoryboardEdits行为不变 ----
   const r1 = await applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's01', duration: 3.5, image_prompt: '夜景版' }])
   check(r1.edited === 1 && r1.assetIds[0] === r1.assetId, '编辑：新资产 + 保位替换')
   const na = await getAsset(r1.assetId)
@@ -34,7 +34,7 @@ export async function sectionRegression(ctx: M10Ctx): Promise<void> {
   const sbOut = JSON.parse((await getStep(s.sbStepId)).output ?? '{}') as { asset_ids?: number[] }
   check(sbOut.asset_ids?.[0] === r2.assetId, '保位替换链（编辑资产 → 结构性编辑资产）')
 
-  // ---- M7 错误码不回归 ----
+  // ---- 错误码不回归 ----
   const eSame = await errOf(() => applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's01', duration: 3.5, image_prompt: '夜景版' }]))
   check(eSame instanceof WorkbenchError && eSame.code === 'no_change', 'no_change 语义（同值提交）')
   const eBad = await errOf(() => applyStoryboardEdits(s.runId, 'gen_images', []))
@@ -46,7 +46,7 @@ export async function sectionRegression(ctx: M10Ctx): Promise<void> {
   const r3 = await applyShotSelection(s.runId, 'gen_images', { reset: true })
   check(JSON.stringify(r3.assetIds) === JSON.stringify([s.a2, s.a1v2]), `reset → 任务产物全量（上传被排除）（实际 [${r3.assetIds}]）`)
 
-  // ---- board 聚合读兼容（M7 字段仍在）----
+  // ---- board 聚合读兼容（字段仍在）----
   const board = await buildShotBoard(s.runId, 'gen_images')
   const sh1 = board.shots.find((x) => x.shotId === 's01')!
   check(sh1.duration === 3.5 && sh1.imagePrompt === '夜景版', '板面消费编辑后分镜（时长/提示词）')

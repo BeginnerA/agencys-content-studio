@@ -1,4 +1,4 @@
-/** M19[subtitle-style]：mergeBrand 三层合并 + sanitizeSubtitleStyle 清洗 clamp + buildSubtitleStyle 零漂移/颜色/字段覆盖 + _compose.brand 写入（断言体逐字搬自原 probe-m19.ts） */
+/** [subtitle-style]：mergeBrand 三层合并 + sanitizeSubtitleStyle 清洗 clamp + buildSubtitleStyle 零漂移/颜色/字段覆盖 + _compose.brand 写入（断言体逐字搬自原 probe-m19.ts） */
 import type { M19Ctx } from './ctx'
 
 export async function run(ctx: M19Ctx): Promise<void> {
@@ -25,19 +25,19 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const s4 = sanitizeSubtitleStyle({ font: '  Source Han Sans  ', alignment: 8 })
     check(s4?.font === 'Source Han Sans' && s4?.alignment === 8, 'sanitizeSubtitleStyle font trim + alignment 枚举保留')
 
-    // ---- [P2] buildSubtitleStyle 零漂移红线 ----
+    // ---- buildSubtitleStyle 零漂移红线 ----
     const { buildSubtitleStyle, defaultSubtitleStyle, toAssColor } = await import('../../../src/pipeline/actions/ffmpeg-merge')
     const drift = [360, 720, 1080, 1920].filter((h) => buildSubtitleStyle(h, {}) !== defaultSubtitleStyle(h))
     check(drift.length === 0, 'buildSubtitleStyle(H,{}) === defaultSubtitleStyle(H) 逐字相等（零漂移红线 H=360/720/1080/1920）')
 
-    // ---- [P2] ASS 颜色转换 ----
+    // ---- ASS 颜色转换 ----
     check(
       toAssColor('#FF0000') === '&H000000FF' && toAssColor('#00FF00') === '&H0000FF00' && toAssColor('#0000FF') === '&H00FF0000',
       'toAssColor #RRGGBB → &H00BBGGRR（红/绿/蓝）',
     )
     check(toAssColor('#ffffff') === '&H00FFFFFF', 'toAssColor 小写输入规范为大写')
 
-    // ---- [P2] 字段覆盖 ----
+    // ---- 字段覆盖 ----
     const custom = buildSubtitleStyle(1000, { color: '#FF0000' })
     check(
       custom.includes('PrimaryColour=&H000000FF') && custom.includes('FontSize=40') && custom.includes('FontName=Noto Sans CJK SC'),
@@ -53,7 +53,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
       '全字段快照（1920 重构；字段序与基线一致）',
     )
 
-    // ---- [P2] _compose.brand 写入（白名单 + clamp + 槽级清除） ----
+    // ---- _compose.brand 写入（白名单 + clamp + 槽级清除） ----
     const { updateComposeConfig } = await import('../../../src/services/compose-config')
     const runRow = (
       await db
@@ -74,7 +74,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
   }
 
   {
-    // ---- [M32] 字幕预换行 + SRT→ASS（内置 libass 不换 CJK → 防横向溢出）----
+    // ---- 字幕预换行 + SRT→ASS（内置 libass 不换 CJK → 防横向溢出）----
     const { estimateMaxCharsPerLine, wrapSingleLine, wrapSrtText, srtToAss } = await import('../../../src/pipeline/actions/ffmpeg-merge')
 
     // 预算（ASS PlayRes 语境：字号=真实像素）：竖屏 720×1280 / FontSize=23 → 单行字数预算，预算行必能装进可用宽（含 5% 边距）
@@ -114,7 +114,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     // CRLF 风格保持
     check(wrapSrtText(srt.replace(/\n/g, '\r\n'), 10).includes('\r\n'), 'wrapSrtText 保持原 CRLF 换行风格')
 
-    // ---- [M32] srtToAss：显式 PlayRes + Style 边距 + \\N 预换行 + 时间戳转换 ----
+    // ---- srtToAss：显式 PlayRes + Style 边距 + \\N 预换行 + 时间戳转换 ----
     const ass = srtToAss(srt, { width: 720, height: 1280 })
     check(ass.includes('[Script Info]') && ass.includes('PlayResX: 720') && ass.includes('PlayResY: 1280'), 'srtToAss 头部声明 PlayResX/Y = 输出尺寸（修复二次放大）')
     check(ass.includes('ScaledBorderAndShadow: yes') && ass.includes('WrapStyle: 0'), 'srtToAss 关键 Script Info（缩放边框阴影 / 换行样式）')

@@ -87,7 +87,7 @@ export async function resetShotForRegenerate(
 
   const now = Date.now()
   // 单镜重生成（用户点“重出该镜”）→ regen=true 清外部 task_id，令引擎重新提交而非续轮询旧成片（requeuePatch 单一真源，
-  // 与 resetStepForRerun / resetChainForRerun / [F03] 同规则）；失败重试/续跑保留 task_id 的语义在本入口不适用。
+  // 与 resetStepForRerun / resetChainForRerun / 同规则）；失败重试/续跑保留 task_id 的语义在本入口不适用。
   await db
     .update(genTasks)
     .set(requeuePatch(true, now))

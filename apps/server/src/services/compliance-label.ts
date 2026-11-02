@@ -1,5 +1,5 @@
 /**
- * AIGC 合规标识服务（M66）：
+ * AIGC 合规标识服务：
  * - 隐式标识国标六字段（GB 45438-2025 /《标识办法》第五条）：Label/ContentProducer/ProduceID/ReservedCode1/ContentPropagator/PropagateID
  * - 载体：PNG tEXt（纯 Node chunk 插入）、JPEG APP1（纯 Node 段插入）、视频/音频容器（ffmpeg -c copy 重封装）
  * - 红线：隐式标识不可关；失败旁路不阻断（返回 ok:false，调用方 warn + tags 标记）；

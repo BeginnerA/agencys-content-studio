@@ -40,7 +40,7 @@ export function useCanvasState() {
   const nodes = computed<CanvasDocNode[]>(() => doc.value?.nodes ?? [])
   const edges = computed<CanvasDocEdge[]>(() => doc.value?.edges ?? [])
   const groups = computed<CanvasGroup[]>(() => doc.value?.groups ?? [])
-  /** 单选详情（多选 → null；P5 批量浮动条浮出） */
+  /** 单选详情（多选 → null；批量浮动条浮出） */
   const selNode = computed<CanvasDocNode | null>(() => {
     const ids = selectedIds.value
     if (ids.length !== 1) return null

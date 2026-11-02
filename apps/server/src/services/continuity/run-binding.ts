@@ -1,5 +1,5 @@
 /**
- * 统一建 run 的连续性闸门（M70 Task6）：
+ * 统一建 run 的连续性闸门：
  *   - assertRawContinuityIntent：normalize 之前的原始两键闸（先判不支持，不许静默丢键当「关闭」）
  *   - verifyClaimTarget / findBoundRun / claimContext：批准句柄校验 → 幂等复用 → CAS 认领
  *   - bindTargetStep / loadTargetPack：两阶段绑定的第二步（run 级在 claim，步骤级在执行前）

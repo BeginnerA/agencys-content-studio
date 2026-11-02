@@ -1,4 +1,4 @@
-/** M22[P3] export-svg：布局图 SVG（纯函数矩阵 + 组框嵌套 + 存储归位）（断言体逐字搬自原 probe-m22.ts） */
+/** M22export-svg：布局图 SVG（纯函数矩阵 + 组框嵌套 + 存储归位）（断言体逐字搬自原 probe-m22.ts） */
 import { readFileSync } from 'node:fs'
 import type { CanvasDoc, CanvasDocGroup, CanvasDocNode } from '../../../src/services/creation/spec'
 import type { M22Ctx } from './ctx'

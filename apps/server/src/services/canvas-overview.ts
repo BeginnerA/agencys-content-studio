@@ -1,5 +1,5 @@
 /**
- * 全景聚合读模型（E1/E2，spec §2.4）：项目内全部 run 的跨批次/跨模板聚合
+ * 全景聚合读模型：项目内全部 run 的跨批次/跨模板聚合
  * - batches：批次头（toBatchView 同构）+ 组内 runs（batchSeq 升序；含 cost/快照版本）
  * - standaloneRuns：无批次归属 runs（createdAt 降序）
  * - stats：项目级 run 计数（按状态）+ 总成本（成本口径对齐 summarizeBatch：usage 按 run 聚合）

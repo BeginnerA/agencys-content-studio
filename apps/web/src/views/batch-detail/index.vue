@@ -75,7 +75,7 @@ async function load() {
   try {
     detail.value = await batchApi.detail(batchId)
     if (!projectJoined) {
-      // batch.updated / run.* 事件经 project room 投递（§F 桥接）
+      // batch.updated / run.* 事件经 project room 投递（桥接）
       getSocket().emit('join', `project:${detail.value.batch.projectId}`)
       projectJoined = true
     }

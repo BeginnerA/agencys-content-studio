@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Agent 调度决策确认卡（M63 切片 5）：服务端 sideCards 下发 key='decisionCard' 时渲染（route 形态待确认态）。
+ * Agent 调度决策确认卡：服务端 sideCards 下发 key='decisionCard' 时渲染（route 形态待确认态）。
  * 呈现「谁点的将 · 打算怎么做 · 为什么 · 具体执行体预览」，确认按钮走 s.confirmRoute（decisionHash+decisionRevision 闸）。
  * 与 easy 的 CreationPlanCard 分列：easy 有逐镜方案 + recipe 冻结，route 只读预览服务端归一后的权威决策，不臆造成本明细（金额在 confirm 时按物化输入最终核算）。
  * 角色名从服务端随消息下发的 agentRole→roleName 派生（后端注册表为真源，前端不硬编码角色名）。
@@ -101,7 +101,7 @@ const chainSegs = computed(() => decision.value?.chain ?? [])
 const synth = computed(() => decision.value?.synth ?? null)
 const synthSpecs = computed(() => specRows(decision.value?.synth?.inputSpec))
 
-// ===== M70 跨集剧情连续性（brief 12.3）：route 卡只在「模板声明承接 + 有合法剧集」时给开关 =====
+// ===== 此前跨集剧情连续性：route 卡只在「模板声明承接 + 有合法剧集」时给开关 =====
 const routeCx = props.s.routeContinuity
 const continuityOn = ref(false)
 const showContinuityPreview = ref(false)
@@ -156,7 +156,7 @@ watch(
   { immediate: true },
 )
 
-/** 决策修订/哈希变化 = 新目标：旧批准立即作废，面板需重新预览（brief 12.3「决定修订清批准」） */
+/** 决策修订/哈希变化 = 新目标：旧批准立即作废，面板需重新预览（「决定修订清批准」） */
 watch(
   () => [session.value?.decisionHash, session.value?.planRevision] as const,
   () => {
@@ -260,7 +260,7 @@ async function onConfirm(): Promise<void> {
       </p>
     </div>
 
-    <!-- M70 跨集剧情连续性：route 卡只在模板声明承接且剧集合法时给专用开关（默认关） -->
+    <!-- 跨集剧情连续性：route 卡只在模板声明承接且剧集合法时给专用开关（默认关） -->
     <div v-if="declaresContinuity" class="blk cont">
       <div class="blk-h">跨集剧情连续性</div>
       <label v-if="episodeReady" class="sw">
@@ -504,7 +504,7 @@ async function onConfirm(): Promise<void> {
   line-height: 1.6;
   margin: 0;
 }
-/* M70 跨集剧情连续性入口 */
+/* 跨集剧情连续性入口 */
 .cont {
   gap: 8px;
 }

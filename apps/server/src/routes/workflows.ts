@@ -1,8 +1,8 @@
 /**
- * 自动编排链 REST（挂 /api/v1，spec §2.3）
- * - CRUD：列表 / 详情 / 建 / 改 / 删 / 克隆（I2）
+ * 自动编排链 REST（挂 /api/v1）
+ * - CRUD：列表 / 详情 / 建 / 改 / 删 / 克隆
  * - 状态转移：start / pause / resume
- * P0 骨架：start 仅置 active（首段 run 创建 + 级联于 P1 实装）；改 segments 的 active 守卫在此层。
+ * 骨架：start 仅置 active（首段 run 创建 + 级联于后续实装）；改 segments 的 active 守卫在此层。
  */
 import { Hono } from 'hono'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -113,7 +113,7 @@ workflowsRoutes.delete('/workflows/:id', h(async (c) => {
   return c.json({ ok: true })
 }))
 
-// POST /workflows/:id/clone —— 克隆为 draft（I2 编排层引用复用）
+// POST /workflows/:id/clone —— 克隆为 draft（编排层引用复用）
 workflowsRoutes.post('/workflows/:id/clone', h(async (c) => {
   const id = idParam(c)
   const cur = await getWorkflow(id)
@@ -123,7 +123,7 @@ workflowsRoutes.post('/workflows/:id/clone', h(async (c) => {
 }))
 
 // POST /workflows/:id/start —— 显式创建并启动首段 run（draft|paused→active）
-// M70：body.continuity_approval（可选）= 已冻结承接包批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted。
+// body.continuity_approval（可选）= 已冻结承接包批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted。
 workflowsRoutes.post('/workflows/:id/start', h(async (c) => {
   const id = idParam(c)
   try {
@@ -148,7 +148,7 @@ workflowsRoutes.post('/workflows/:id/pause', h(async (c) => {
 }))
 
 // POST /workflows/:id/resume —— paused → active 并重新驱动推进（断点恢复）
-// M70：body.continuity_approval（可选）= 下一推进位置的批准句柄；缺包且启用段阻塞 → 回落 paused。
+// body.continuity_approval（可选）= 下一推进位置的批准句柄；缺包且启用段阻塞 → 回落 paused。
 workflowsRoutes.post('/workflows/:id/resume', h(async (c) => {
   const id = idParam(c)
   try {
@@ -189,7 +189,7 @@ async function readStartOptions(c: { req: { json: () => Promise<unknown> } }): P
   return { continuityApproval: parsed.data as Approval }
 }
 
-/** 解析并结构校验 segments（模板合法性校验 validateWorkflowChainDoc 于 P1 接入） */
+/** 解析并结构校验 segments（模板合法性校验 validateWorkflowChainDoc 于后续接入） */
 function readSegments(v: unknown): WorkflowSegment[] {
   if (!Array.isArray(v) || v.length === 0) {
     throw new HttpError(400, 'bad_segments', 'segments 需为非空数组')

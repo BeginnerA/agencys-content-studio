@@ -1,5 +1,5 @@
 /**
- * M66 合规角标纯函数：drawtext 滤镜构造 + ResolvedCompliance → ComposeArgsInput.compliance 解析。
+ * 合规角标纯函数：drawtext 滤镜构造 + ResolvedCompliance → ComposeArgsInput.compliance 解析。
  * 红线：resolveComplianceArg 返回 null（关闭/无字体）时 args 逐字节不变；字体缺失降级为跳过角标（warn 由调用方记）。
  */
 import { escapeDrawtext, escapeFilterPath, resolveCjkFont } from './title-card'
@@ -18,7 +18,7 @@ export function resolveComplianceArg(resolved: ResolvedCompliance | undefined, e
   return { text: resolved.text, position: resolved.position, margin_px: resolved.margin_px, fontAbs }
 }
 
-/** 合成产物溯源 params.compliance（M66 只增键；enabled = 角标实际产出（无字体降级 false）；produce_id 与内嵌元数据同源） */
+/** 合成产物溯源 params.compliance（只增键；enabled = 角标实际产出（无字体降级 false）；produce_id 与内嵌元数据同源） */
 export interface MergeComplianceMeta {
   enabled: boolean
   text: string | null
@@ -36,7 +36,7 @@ export interface MergeBrandProvenance {
   compliance: MergeComplianceMeta
 }
 
-/** 成片合成 M66 接线（index.ts 薄委托；≤800 行红线拆出，行为零变更）：
+/** 成片合成接线（index.ts 薄委托；≤800 行红线拆出，行为零变更）：
  *  隐式元数据恒产（不可关）；显式角标默认开、enabled:false 逐级关闭；无 CJK 字体 → 角标降级跳过并提示（隐式不受影响） */
 export function resolveMergeCompliance(
   brand: { compliance?: ResolvedCompliance | null },

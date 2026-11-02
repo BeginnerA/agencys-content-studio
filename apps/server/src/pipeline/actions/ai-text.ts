@@ -18,12 +18,12 @@ import { validateTextOutput } from './text-output'
 import { RunCancelledError } from '../types'
 
 /**
- * ai_text：LLM 文本生成（spec §5.3）。
+ * ai_text：LLM 文本生成。
  * params.prompt_tpl → 提示词模板；inputs 中资产内容/文本注入；
  * output_format=storyboard-json/lines-json/characters-json/set-json/event-json/graph-json/plan-json/monetization-json
  * 时走 validateTextOutput 契约校验；
  * def.batch 存在→ aiTextBatch（按 JSON 列表逐项生成）；params.max_input_chars → 超长注入截断。
- * M70 连续性闸门：启用 run（with_continuity=true）仅允许唯一目标步（continuity_role=episode_script）
+ * 连续性闸门：启用 run（with_continuity=true）仅允许唯一目标步（continuity_role=episode_script）
  * 经冻结承接包路径调用模型；batch 步一律拒绝；非目标步骤保持原 ctx.settings.llm 链不变。
  */
 export async function aiText(ctx: StepContext): Promise<StepResult> {
@@ -56,13 +56,13 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
   const execInputs: ExecInputSpec[] = []
   for (const [k, v] of Object.entries(ctx.input)) {
     if (k.startsWith('_')) continue // _review 等内部键不注入
-    if (k === 'continuity_context') continue // M70 槽位：普通路径永不注入（启用 run 的非目标步按原路且不携包）
+    if (k === 'continuity_context') continue // 槽位：普通路径永不注入（启用 run 的非目标步按原路且不携包）
     const ids = asAssetIds(v)
     if (ids && ids.length > 0) {
       const rows = await ctx.assetsOf(ids)
       for (const a of rows) {
         if (a.purpose && isContinuityPurpose(a.purpose)) {
-          // 保留产物不得伪装普通参考（M70 refs 通用归属检查同口径）
+          // 保留产物不得伪装普通参考（refs 通用归属检查同口径）
           throw new ContinuityError('continuity_unsupported', 400)
         }
         if (a.kind === 'text') {
@@ -175,11 +175,11 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
 }
 
 /**
- * 连续性目标路径（M70 Task6）：冻结承接包渲染注入一次（不裁剪、槽位跳过、保留 purpose 拒绝），
- * 完整 messages 交 executeContinuityText——调用证据/费用预检/产物与用量记录全部归 Task5 状态机。
+ * 连续性目标路径：冻结承接包渲染注入一次（不裁剪、槽位跳过、保留 purpose 拒绝），
+ * 完整 messages 交 executeContinuityText——调用证据/费用预检/产物与用量记录全部归状态机。
  * 口径（勿改）：本路径走 continuity llmOptions 链（targets.ts 兜底 temperature 0 / maxTokens 24000 /
  * timeoutMs 600000，模板 defaults.llm 可覆盖 temperature/max_tokens）；非目标步骤保持原 ctx.settings.llm
- * 链不变。两链不同源是 Task4 configHash 既定语义所迫——改用 ctx 链会令冻结包预览哈希全量 409。
+ * 链不变。两链不同源是 configHash 既定语义所迫——改用 ctx 链会令冻结包预览哈希全量 409。
  */
 async function continuityAiText(ctx: StepContext, runInput: Record<string, unknown>): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
@@ -233,7 +233,7 @@ async function continuityAiText(ctx: StepContext, runInput: Record<string, unkno
 }
 
 /**
- * 输出契约校验：实现原样抽至 ./text-output（M70 连续性调用复用同一入口），行为零变更；
+ * 输出契约校验：实现原样抽至 ./text-output（连续性调用复用同一入口），行为零变更；
  * 此处 re-export 保持既有引用路径（services/asset-content 与各探针）零改动。
  */
 export { validateTextOutput }
@@ -579,7 +579,7 @@ async function runOneTextTask(
   }
 }
 
-/** 静态 sections：照单调用规则，但跳过 field 键（其资产由数组 + 逐项机制替代）；M70 保留键/保留 purpose 同闸 */
+/** 静态 sections：照单调用规则，但跳过 field 键（其资产由数组 + 逐项机制替代）；保留键/保留 purpose 同闸 */
 async function buildStaticSections(ctx: StepContext, skipKey: string): Promise<string[]> {
   const sections: string[] = []
   for (const [k, v] of Object.entries(ctx.input)) {

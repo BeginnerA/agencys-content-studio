@@ -1,5 +1,5 @@
 /**
- * M3 模型就绪脚本——准备本地 embedding 模型（默认 bge-small-zh-v1.5，Xenova ONNX 导出）：
+ * 模型就绪脚本——准备本地 embedding 模型（默认 bge-small-zh-v1.5，Xenova ONNX 导出）：
  *   pnpm --filter @acs/server model:prepare                     # 检查就绪；未就绪打印获取指引（退出码 0/2）
  *   pnpm --filter @acs/server model:prepare -- --download       # 逐文件下载（hf-mirror 优先，官方回退；退出码 0/1）
  *   pnpm --filter @acs/server model:prepare -- --from-toonflow  # 兜底：复制 Toonflow 的 all-MiniLM-L6-v2 到 data/models/

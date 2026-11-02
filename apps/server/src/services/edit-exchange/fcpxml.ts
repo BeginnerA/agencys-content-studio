@@ -1,9 +1,9 @@
 /**
  * FCPXML 1.10 格式化器（剪映专业版 / Final Cut / DaVinci Resolve）——纯函数，探针可直测。
  * 结构：resources（format + 每媒体一 asset + 标题/转场声明）→ library/event/project/sequence → spines（多轨）。
- * 轨道映射（§决策 3）：V1=镜头段顺序（转场启用时段间 <transition> fade）；对白逐句 asset-clip；
+ * 轨道映射：V1=镜头段顺序（转场启用时段间 <transition> fade）；对白逐句 asset-clip；
  *   BGM 独立 spine；SFX 独立 spine；字幕逐句 <title> 挂 generator（文本纯净轴）。
- * 字幕轨数据源（precision-rework §8）：subtitle spine 取自有效字幕快照 cues（final 绝对轴，人工修订已体现），
+ * 字幕轨数据源：subtitle spine 取自有效字幕快照 cues（final 绝对轴，人工修订已体现），
  *   不再用 lines 覆盖；对白 spine 仍只读 lines。旧快照无 cues 时按兜底规则构造（见 subtitle-cues.ts）。
  * 时间值统一 rational seconds `帧/fps s`（帧精度，免浮点漂移）。
  */

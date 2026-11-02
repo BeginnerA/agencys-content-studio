@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 镜头级轻工作台（spec §3.5）
+ * 镜头级轻工作台
  * 挂载：RunDetailView 步骤卡内（actionKey ∈ {ai_image, ai_video}）
  * 交互约定（写死）：
  * - 时长编辑：change 即提交（单条 edit），刷新后输入框保留新值

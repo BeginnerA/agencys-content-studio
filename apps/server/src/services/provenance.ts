@@ -178,7 +178,7 @@ export async function listVersions(objKind: ObjKind, objId: number): Promise<Con
     .orderBy(desc(contentVersions.revision))
 }
 
-/** 版本下载文件引用（P8 投影：下载固定具体不可变版本文件；仅 file 载荷可下载） */
+/** 版本下载文件引用（投影：下载固定具体不可变版本文件；仅 file 载荷可下载） */
 export async function versionFileForDownload(versionId: number): Promise<{ version: ContentVersion; abs: string }> {
   const rows = await db.select().from(contentVersions).where(eq(contentVersions.id, versionId)).limit(1)
   const v = rows[0]
@@ -213,7 +213,7 @@ export async function restoreAssetTextVersion(assetId: number, versionId: number
   const a = rows[0]
   if (!a) throw new ProvenanceError('not_found', `资产 ${assetId} 不存在`)
   if (a.kind !== 'text' || !a.relPath) throw new ProvenanceError('bad_kind', '仅文本资产可还原版本')
-  // M70 保留素材（continuity_*）正文只由专用服务内部写，普通版本还原面拒绝
+  // 保留素材（continuity_*）正文只由专用服务内部写，普通版本还原面拒绝
   if (isContinuityPurpose(a.purpose)) throw new ProvenanceError('reserved_purpose', '该资产为 M70 保留素材，禁止普通版本还原')
   const content = await readVersionContent(versionId)
   if (content.kind !== 'text') throw new ProvenanceError('bad_version', '目标版本非文本内容版本')

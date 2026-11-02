@@ -1,4 +1,4 @@
-/** M18[P6] groups：画布分组（CRUD + 跨组拒绝 + 解组 + 读模型）（断言体逐字搬自原 probe-m18.ts） */
+/** M18groups：画布分组（CRUD + 跨组拒绝 + 解组 + 读模型）（断言体逐字搬自原 probe-m18.ts） */
 import type { M18Ctx } from './ctx'
 
 export async function run(ctx: M18Ctx): Promise<void> {

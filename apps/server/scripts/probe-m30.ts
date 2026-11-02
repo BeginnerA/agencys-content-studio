@@ -1,5 +1,5 @@
 /**
- * M30 探针（对话式「一句话成片」服务端 + 媒体闭环）——手动执行：
+ * 对话式一句话成片探针（对话式「一句话成片」服务端 + 媒体闭环）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m30.ts [--section=contract|preflight|confirm|media|recovery]
  *
  * 隔离策略：isolatedEnv('m30', bridge templates/prompts) 指向一次性临时目录（独立 studio.db + workspace），
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
       await seedEndpoints({ videoProvider: 'pollinations_video', videoModel: 'probe-v', videoCaps: { model: 'probe-v', verified: true, modes: ['i2v'], durations: [10], aspectRatios: ['9:16'], resolution: '720p' } }); check(await issue(dynPid, 'dynamic') === 'first_frame_unsupported', '适配器不支持首帧且未声明文生视频 → first_frame_unsupported')
       await seedEndpoints({ durations: [5, 10] }); check(await issue(dynPid, 'dynamic') === 'duration_unsupported', 'siliconflow 声明多档时长（不下发 duration）→ duration_unsupported')
       await seedEndpoints({ voice: 'clone:77' }); check(await issue(dynPid, 'dynamic') === 'missing_voice', '语音实例使用克隆音色 → 轻松创作拒绝 missing_voice')
-      // [M38 基线修正] voice 未配置已不再 missing_voice（Tier A 真源默认兜底）；断言改验默认生效
+      // voice 未配置已不再 missing_voice（Tier A 真源默认兜底）；断言改验默认生效
       await seedEndpoints({ voice: '' })
       const pfVoiceDefault = await preflightPlan(dynPid, creationPlanSchema.parse(makePlan('dynamic')))
       check(pfVoiceDefault.ready && pfVoiceDefault.execution?.voice === 'alloy', '语音实例未配音色 → 按供应商真源默认兜底（M38 Tier A）')
@@ -350,7 +350,7 @@ async function main(): Promise<void> {
         check(!legacy.args.join(' ').includes('trim=duration'), 'strict_delivery 关闭 → 旧合成不注入逐镜裁切（行为不变）')
         check(strictArgs.args.join(' ').includes('trim=duration') && strictArgs.args.join(' ').includes('tpad='), 'strict_delivery 开启 → 逐镜裁切归零 + 尾帧补齐上限生效')
 
-        // ---- [M31] ref-first-frame 零回归：refs 并入 recipe 后，旧无参考方案解析与首帧路径不受影响 ----
+        // ---- ref-first-frame 零回归：refs 并入 recipe 后，旧无参考方案解析与首帧路径不受影响 ----
         const { recipeSchema, recipeFirstFrameId } = await import('../src/services/creation-chat/recipe')
         const legacyRaw = JSON.parse(JSON.stringify(dyn.recipe)) as Record<string, unknown>
         delete legacyRaw.refs

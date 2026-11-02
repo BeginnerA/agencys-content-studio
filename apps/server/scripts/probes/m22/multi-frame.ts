@@ -1,4 +1,4 @@
-/** M22[P3] multi-frame：均匀多帧（纯函数矩阵 + 真实 ffmpeg 全链）（断言体逐字搬自原 probe-m22.ts） */
+/** M22multi-frame：均匀多帧（纯函数矩阵 + 真实 ffmpeg 全链）（断言体逐字搬自原 probe-m22.ts） */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { M22Ctx } from './ctx'

@@ -1,17 +1,17 @@
 /**
- * M24 探针（内容质量与国际化）——手动执行：
+ * 内容质量与国际化探针（内容质量与国际化）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m24.ts [--section=summary|eval|translate|bilingual|compliance]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
  * （独立 studio.db + workspace），不触碰开发库（同 probe-m3~m23）。零网络、零计费：
  * 直测服务层纯函数与注册面，不触发引擎执行、真实生成与 LLM 调用（LLM 通道走 e2e 实弹）。
  *
- * section（默认 all；P0 冒烟骨架，P1/P2/P3 逐批填充全矩阵，spec §7）：
- *   summary    [P1] name 四型 / 合并构造 / 截断护栏（P0 已直测）+ upsert 幂等保 id / recall types / 钩子开关（P1 补）
- *   eval       [P1] parseEvalScores / aggregateEvalMatrix / renderEvalReport（P0 已直测）+ 变体展开（P1 补）
- *   translate  [P2] target_lang 默认 zh 回归 / 命名规范纯函数 / params.lang（P2 填充）
- *   bilingual  [P2] buildBilingualSrt 矩阵 / 翻译契约解析 / resolveVoiceChain 七级（P2 填充）
- *   compliance [P3] 词库解析 / scanText 命中矩阵 / parseLlmVerdict / overallStatus（P0 已直测）+ 写回/视图（P3 补）
+ * section（默认 all；冒烟骨架，逐批填充全矩阵）：
+ *   summary    name 四型 / 合并构造 / 截断护栏（已直测）+ upsert 幂等保 id / recall types / 钩子开关（待补）
+ *   eval       parseEvalScores / aggregateEvalMatrix / renderEvalReport（已直测）+ 变体展开（待补）
+ *   translate  target_lang 默认 zh 回归 / 命名规范纯函数 / params.lang（待补）
+ *   bilingual  buildBilingualSrt 矩阵 / 翻译契约解析 / resolveVoiceChain 七级（待补）
+ *   compliance 词库解析 / scanText 命中矩阵 / parseLlmVerdict / overallStatus（已直测）+ 写回/视图（待补）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -38,7 +38,7 @@ process.env.CSTUDIO_DATA = join(TMP, 'data')
 process.env.CSTUDIO_WORKSPACE = join(TMP, 'workspace')
 mkdirSync(process.env.CSTUDIO_DATA, { recursive: true })
 mkdirSync(process.env.CSTUDIO_WORKSPACE, { recursive: true })
-// [P2] 模板/提示词桥接：junction（零拷贝）指向真实 workspace/templates・prompts（translate 节读结构断言；探针只读不写）
+// 模板/提示词桥接：junction（零拷贝）指向真实 workspace/templates・prompts（translate 节读结构断言；探针只读不写）
 const bridgeReadOnly = (sub: 'templates' | 'prompts'): void => {
   const real = join(REPO_ROOT, 'workspace', sub)
   const tmp = join(process.env.CSTUDIO_WORKSPACE!, sub)
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ================= summary：摘要纯函数面（P0 冒烟；DB/钩子面 P1 补） =================
+  // ================= summary：摘要纯函数面（冒烟；DB/钩子面补） =================
   const sectionSummary = async (): Promise<void> => {
     // name 四型约定
     check(summaryName('project', {}) === 'summary:project', 'summaryName project → summary:project')
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
       threw = true
     }
     check(threw, `guard 超限（${limit + 1}）抛错`)
-    // ---- [P1] DB 面：幂等 / recall types / 自动钩子门控（隔离库；embed 本地计算零网络计费，同 probe-m3 先例）----
+    // ---- DB 面：幂等 / recall types / 自动钩子门控（隔离库；embed 本地计算零网络计费，同 probe-m3 先例）----
     const { db, initDb } = await import('../src/db')
     const { eq: deq } = await import('drizzle-orm')
     const { episodes, pipelineRuns, pipelineSteps, projects, settings } = await import('../src/db/schema')
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
     check((await handleRunSettled(runId, { summarize: fake })) === 'skip', '开关复关 → skip')
   }
 
-  // ================= eval：评分纯函数三件套（P0 冒烟；变体展开 P1 补） =================
+  // ================= eval：评分纯函数三件套（冒烟；变体展开补） =================
   const sectionEval = async (): Promise<void> => {
     check(clampScore(8.54) === 8.5 && clampScore(-2) === 0 && clampScore(11) === 10, 'clampScore 钳制+一位小数')
     check(clampScore('8' as unknown) === null && clampScore(NaN) === null, 'clampScore 非数值 → null')
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
       [{ label: 'G', assetIds: [1] }],
     )
     check(mdNote.includes('"含,逗""号"'), 'CSV note 逗号/引号转义')
-    // ---- [P1] 端点校验矩阵（EvalParamError 在 LLM/DB 之前；不触发真实调用）----
+    // ---- 端点校验矩阵（EvalParamError 在 LLM/DB 之前；不触发真实调用）----
     const { runConsistencyEval, scoreConsistencyEval, EvalParamError } = await import('../src/services/eval-service')
     const paramErr = async (fn: () => Promise<unknown>): Promise<'param' | 'other' | 'none'> => {
       try {
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
     check((await paramErr(() => scoreConsistencyEval({ project_id: 1, groups: [{ label: 'A', asset_ids: [999999] }] }))) === 'other', 'score：不存在资产 → RefResolveError（兜底 400）')
   }
 
-  // ================= [P2] translate：platform-adapt v2 / translate-export / 命名规范（8 断言） =================
+  // ================= translate：platform-adapt v2 / translate-export / 命名规范（8 断言） =================
   const sectionTranslate = async (): Promise<void> => {
     const { loadTemplate } = await import('../src/pipeline/loader')
     const { interpolate } = await import('../src/pipeline/refs')
@@ -345,7 +345,7 @@ async function main(): Promise<void> {
     check(memStep?.action === 'memory_write' && memStep?.params?.['type'] === 'translation', 'T8b 经验沉淀 memory_write type=translation')
   }
 
-  // ================= [P2] bilingual：buildBilingualSrt / 翻译契约解析 / voice_map 七级（12 断言） =================
+  // ================= bilingual：buildBilingualSrt / 翻译契约解析 / voice_map 七级（12 断言） =================
   const sectionBilingual = async (): Promise<void> => {
     const { buildBilingualSrt, parseSrtCues } = await import('../src/services/creation/gen/subtitle')
     const { parseLineTranslations } = await import('../src/pipeline/actions/subtitle')
@@ -381,7 +381,7 @@ async function main(): Promise<void> {
     check(resolveVoiceChain({ langVoice: '成年女声、清爽亲和', paramVoice: 'alex' }).source === 'params', 'VM4 非 ASCII 短语 → 跳级降级')
   }
 
-  // ================= compliance：词库与判定纯函数（P0 冒烟；写回/视图 P3 补） =================
+  // ================= compliance：词库与判定纯函数（冒烟；写回/视图补） =================
   const sectionCompliance = async (): Promise<void> => {
     check(stripCodeFence('```json\n{"a":1}\n```') === '{"a":1}', 'stripCodeFence 剥围栏')
     check(normalizeText('ＣＵＥ　测') === 'cue 测', 'normalizeText 全角→半角 + 小写')
@@ -422,7 +422,7 @@ async function main(): Promise<void> {
     const keys = listActionKeys()
     check(keys.includes('memory_summary') && keys.includes('compliance_check'), 'action registry 已注册两新 action')
 
-    // ---- [P3] 标记写回 / rules 只读视图 / on_block 双语义（隔离库 + llm_review=false 零 LLM 零计费）----
+    // ---- 标记写回 / rules 只读视图 / on_block 双语义（隔离库 + llm_review=false 零 LLM 零计费）----
     const { readFileSync } = await import('node:fs')
     const { db, initDb } = await import('../src/db')
     await initDb()
@@ -451,7 +451,7 @@ async function main(): Promise<void> {
     check(view.total === 2 && view.byCategory['广告'] === 2 && view.source === 'file', `rulesView 聚合（${JSON.stringify(view)}）`)
     rmSync(join(COMPLIANCE_TMP, 'words.txt'))
     const viewMissing = rulesView()
-    // [M36·G12.2] 词库缺失不再返空静默：启用内置 BASE_RULES 兜底（source='builtin'），仍不 500
+    // 词库缺失不再返空静默：启用内置 BASE_RULES 兜底（source='builtin'），仍不 500
     check(viewMissing.source === 'builtin' && viewMissing.total === BASE_RULES.length, `rulesView 词库缺失 → builtin 兜底 ${viewMissing.total} 条（不 500/不返空）`)
     writeFileSync(join(COMPLIANCE_TMP, 'words.txt'), '广告|最好|block\n广告|行业领先|warn\n')
     // recordCompliance 写回结构（merge 保留既有键 / 二次覆盖 / 不存在 → null）

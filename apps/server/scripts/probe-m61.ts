@@ -1,12 +1,12 @@
 /**
- * M61 探针（混剪开场标题智能编排 + 标题字卡）——手动执行：
+ * 混剪标题智能编排探针（混剪开场标题智能编排 + 标题字卡）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m61.ts [--section=pure|ass|template|llm|ai|live]
  *
  * 隔离策略：isolatedEnv('m61', bridge templates+prompts) 一次性临时目录（独立 studio.db + workspace），
  * 必须先于任何 src 动态 import。live 零网络零付费：真 engine.startRun 走 photo-montage v3
  * 全链（style_mode=rule + title_card=local），素材本地 ffmpeg 生成，fetch 桩封死 + 用量表零行断言。
  *
- * 断言面（spec §六）：
+ * 断言面：
  *  - pure：planTitleStyle 规则真值表（短/长/多行/竖屏/混合）/ parseStylePlan 清洗与降级 /
  *    title-card 转义与 args 形状（色底默认 #101826、逐行 drawtext、字号下限；T6 AI 底图分支：
  *    图片输入 + scale/crop 满幅 + drawbox 压暗 + drawtext 叠字，空白串回落色底）/ resolveCjkFont 宽容；
@@ -115,7 +115,7 @@ await runSections({
       const fb = resolveCjkFont({ ACS_CJK_FONT_FILE: 'Z:/nope/nope.ttf', WINDIR: 'Z:/nope' } as never)
       check(fb === null || existsSync(fb), `候选兜底宽容：null 或真实存在文件（实际 ${fb}）`)
 
-      // —— parseM61SubtitleParams（[M61-split] 拆出纯函数直测）——
+      // —— parseM61SubtitleParams（拆出纯函数直测）——
       const mp0 = parseM61SubtitleParams('{"durationMs":12500}')
       check(mp0.endMs === 12500 && mp0.titleLines === 0 && mp0.msPerLine === 0 && mp0.leadInMs === 0 && mp0.stylePlan === null, '仅 durationMs → M61 键全零（存量语义）')
       const mp1 = parseM61SubtitleParams('{"title_lines":2.4,"ms_per_line":-100,"lead_in_ms":0,"style_plan":[1]}')
@@ -506,7 +506,7 @@ await runSections({
         let n = 0
         for (let y = 0; y < 240; y++) {
           for (let x = 0; x < 320; x++) {
-            // M66 默认合规角标（br：x=w-text_w-24 / y=h-text_h-24，fontsize 18 @240p）固定落右下角区；
+            // 默认合规角标（br：x=w-text_w-24 / y=h-text_h-24，fontsize 18 @240p）固定落右下角区；
             // excludeBrBadge 时跳过该角区，「残留标题」语义只看角标区外（残留标题居中，不会落进该角区）
             if (excludeBrBadge && x >= 200 && y >= 180) continue
             const i = (y * 320 + x) * 3
@@ -515,7 +515,7 @@ await runSections({
         }
         return n
       }
-      // M66 合规角标白像素（仅统计右下角区 x≥200/y≥180；照片为纯红/纯绿，角区白像素只能来自角标白字）
+      // 合规角标白像素（仅统计右下角区 x≥200/y≥180；照片为纯红/纯绿，角区白像素只能来自角标白字）
       const badgePixelsIn = async (abs: string, atSec: number): Promise<number> => {
         const r = spawnSync(ffmpeg, ['-v', 'error', '-ss', String(atSec), '-i', abs, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 60_000, windowsHide: true })
         const buf = r.stdout
@@ -589,7 +589,7 @@ await runSections({
         check(w2 >= 0 && w2 < 20, `正片照片帧无残留标题（9.5s 处角标区外白像素 ${w2} 个：全部标题 cue 已裁，双呈现防线）`)
         const wb66 = await badgePixelsIn(absA, 9.5)
         check(wb66 > 0, `M66 默认合规角标在场（9.5s 处右下角区白像素 ${wb66} 个：AI生成 白字烧录）`)
-        // 双呈现防线：成片内嵌 ASS 由 index 生成——断言字幕资产 SRT 本身不变（M29 只读），裁切仅在烧录 ASS
+        // 双呈现防线：成片内嵌 ASS 由 index 生成——断言字幕资产 SRT 本身不变（只读），裁切仅在烧录 ASS
         const srtText = await readTextAsset(srtRow.id)
         check(srtText.includes('囍事当前') && srtText.includes('00:00:00,500 --> 00:00:04,500'), 'SRT 资产只读不动（标题 cue 仍在源文件，裁切仅烧录 ASS 侧）')
         // 临时卡 PNG 已清理

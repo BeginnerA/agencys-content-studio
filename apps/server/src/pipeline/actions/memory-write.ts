@@ -5,7 +5,7 @@ import { interpolate } from '../refs'
 import { StepError, type StepResult } from '../types'
 
 /**
- * memory_write：把上游文本沉淀为长期记忆（spec §4.2）。
+ * memory_write：把上游文本沉淀为长期记忆。
  * 输入 content：text 资产（可多个 → 换行拼接）或 ctx.input.content 字面文本；
  * params：{ scope: project|global（默认 project）, type（默认 note）, name?（具名 = 同域同名 upsert 幂等） }。
  * 产物：记忆日志资产（purpose=memory_log，快照 JSON，name_tpl 默认 memory-log.md）；

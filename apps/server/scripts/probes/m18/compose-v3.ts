@@ -1,4 +1,4 @@
-/** M18[P2] compose-v3：buildComposeArgs 快照（旧形态零变化/转场/BGM/降级）+ 真实合成全链（断言体逐字搬自原 probe-m18.ts） */
+/** M18compose-v3：buildComposeArgs 快照（旧形态零变化/转场/BGM/降级）+ 真实合成全链（断言体逐字搬自原 probe-m18.ts） */
 import { existsSync, statSync } from 'node:fs'
 import type { M18Ctx } from './ctx'
 
@@ -36,7 +36,7 @@ export async function run(ctx: M18Ctx): Promise<void> {
   const x4 = buildComposeArgs({ videoPaths: ['a.mp4', 'b.mp4'], audioPaths: [], outPath: 'o.mp4', fps: 24, size: SZ, transition: 'fade' }).join(' ')
   check(x4.includes('concat=n=2') && !x4.includes('xfade'), 'durations 缺失 → 降级 concat')
 
-  // ---- M17 音频基线（-map [aout] 回归守卫） ----
+  // ---- 音频基线（-map [aout] 回归守卫） ----
   const x0 = buildComposeArgs({ videoPaths: ['a.mp4', 'b.mp4'], audioPaths: ['v.mp3'], outPath: 'o.mp4', fps: 24, size: SZ }).join(' ')
   check(
     x0.includes('[2:a]amix=inputs=1:duration=longest[aout]') && x0.includes('-map [aout]') && x0.includes('-c:a aac'),

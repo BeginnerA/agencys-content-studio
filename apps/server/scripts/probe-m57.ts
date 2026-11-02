@@ -1,13 +1,13 @@
 /**
- * M57 探针（轻松创作「意图驱动的智能载体路由」：方案产出时由服务端确定性派生一条专业链方向建议）——手动执行：
+ * 轻松创作智能载体路由探针（轻松创作「意图驱动的智能载体路由」：方案产出时由服务端确定性派生一条专业链方向建议）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m57.ts [--section=signals|gating|sanitize|priority|drift]
  *
  * 隔离策略：routeHint 是纯函数（读模板目录派生白名单/label），isolatedEnv('m57', bridge templates) 即可，
- *   零 DB、零网络、零模型调用（M57 不碰钱路径提示词、不改 planningReplySchema）。
+ *   零 DB、零网络、零模型调用（不碰钱路径提示词、不改 planningReplySchema）。
  *
- * 断言聚焦 M57 契约：
+ * 断言聚焦本交付契约：
  *   - 四类越界信号（连载/多角色短剧质感/视频反推/超总时长上限单条）各命中对应专业模板，无信号返 null；
- *   - vision 缺失时反推类建议不产出（沿用 M31 不降级）；
+ *   - vision 缺失时反推类建议不产出（沿用此前不降级）；
  *   - sanitize 白名单收口：越界/批准链/不存在模板/空理由一律丢弃，label 按真源回填，reason 截断 ≤80；
  *   - 优先级：连载信号高于质感信号；
  *   - 目标模板在位非批准链；routeHint 结构上不可能进 plan（strict 拒键）→ 不进 planHash（改建议不作废方案）。
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
       check(deriveRouteHint({ ...base, userText: '帮我反推这个视频的分镜，做同款视频', hasVideoContentRef: true, hasVision: true })?.target === 'video-reverse', '视频反推（有内容参考+vision）→ video-reverse')
       check(deriveRouteHint({ ...base, userText: '这条要 120 秒' })?.target === 'video-plan', '超总时长上限单条（120 秒）→ video-plan')
       check(deriveRouteHint({ ...base, userText: '做一个 3 分钟的长片' })?.target === 'video-plan', '超总时长上限单条（3 分钟）→ video-plan')
-      // M59 放宽后再验：旧上限 90s 已入轻创作能力区，不得再误路由（防 route-hint 阈值与契约上限漂移）
+      // 放宽后再验：旧上限 90s 已入轻创作能力区，不得再误路由（防 route-hint 阈值与契约上限漂移）
       check(deriveRouteHint({ ...base, userText: '这条要 90 秒' }) === null, '90 秒（= 新上限，未越界）→ null（M59 同步边界不误报）')
       check(deriveRouteHint({ ...base, userText: '把这张图配段旁白做成 30 秒短片' }) === null, '普通轻内容诉求 → null（不猜、不打扰）')
       check(deriveRouteHint({ ...base, userText: '一分钟以内的口播介绍新品' }) === null, '恰好 1 分钟（60s，未越界）→ null（边界不误报）')

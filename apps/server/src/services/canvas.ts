@@ -110,7 +110,7 @@ export interface TemplateCanvasNode {
   batch: { field: string; maxConcurrent?: number; retry?: number } | null
   output: { purpose: string } | null
   inputsRefs: RefEntry[]
-  /** inputs 顶层字段视图（编辑模式数据源；spec §2.5） */
+  /** inputs 顶层字段视图（编辑模式数据源） */
   inputFields: InputFieldView[]
 }
 

@@ -6,7 +6,7 @@ import { summarizeToMemory } from './memory-summary'
 import { createLogger } from '../logger'
 import { RESERVED_PURPOSES, isContinuityPurpose } from './continuity/reserved'
 
-// 自动摘要钩子（双形态拍板的「可选自动」侧，spec §2.2）：
+// 自动摘要钩子（双形态拍板的「可选自动」侧）：
 // settings key `memory.auto_summary`（JSON bool，缺省 false）→ onRunSettled listener：
 //   run completed + 该 run 是某集 latestRunId + 模板未含 memory_summary 步（防双份计费）
 //   → 集素材（contentAssetId 或 run 文本产物 top3）→ summarizeToMemory（与 action 共用核心）。
@@ -56,7 +56,7 @@ export async function gatherEpisodeContext(runId: number): Promise<EpisodeSummar
   }
   const parts: string[] = []
   if (ep.contentAssetId) {
-    // M70 保留素材（continuity_*）不是集正文：宁可漏摘要，也不把它当正文/退回 run 产物
+    // 保留素材（continuity_*）不是集正文：宁可漏摘要，也不把它当正文/退回 run 产物
     const [contentAsset] = await db.select({ purpose: assets.purpose }).from(assets)
       .where(eq(assets.id, ep.contentAssetId)).limit(1)
     if (isContinuityPurpose(contentAsset?.purpose ?? null)) {
@@ -76,7 +76,7 @@ export async function gatherEpisodeContext(runId: number): Promise<EpisodeSummar
       .from(assets)
       .where(and(
         eq(assets.runId, runId), eq(assets.kind, 'text'), isNull(assets.deletedAt),
-        notInArray(assets.purpose, [...RESERVED_PURPOSES]), // 显式排除 M70 保留素材
+        notInArray(assets.purpose, [...RESERVED_PURPOSES]), // 显式排除保留素材
       ))
       .orderBy(assets.id)
       .limit(3)

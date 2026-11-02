@@ -363,7 +363,7 @@ function computeDepths(nodes: ArrangeNodeInput[], edges: Array<{ from: number; t
 
 // ---------- 力导向（d3-force） ----------
 
-/** 力导向参数（spec §2.3）：固定 tick 数 + 固定初始坐标 + d3 固定 LCG = 同输入同输出（无随机源） */
+/** 力导向参数：固定 tick 数 + 固定初始坐标 + d3 固定 LCG = 同输入同输出（无随机源） */
 export const FORCE_TICKS = 300
 export const FORCE_LINK_DISTANCE = 320
 export const FORCE_CHARGE = -900
@@ -542,7 +542,7 @@ const NOT_READY_PREFIX = '节点未就绪：'
 
 /**
  * 批量执行：只入队就绪节点（逐节点串行 startCanvasNodeRun；未就绪/忙碌 → skipped 附 problems）。
- * variants（1-4）透传（每节点 ×N 建任务）；不做级联等待（下游等上游任务完成由用户手动再跑——防爆量计费，spec §8）。
+ * variants（1-4）透传（每节点 ×N 建任务）；不做级联等待（下游等上游任务完成由用户手动再跑——防爆量计费）。
  */
 export async function runCanvasNodes(
   canvas: Canvas,

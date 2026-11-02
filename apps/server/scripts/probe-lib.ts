@@ -1,5 +1,5 @@
 /**
- * 探针公共库（M26·H5）——被大探针拆分后的薄入口复用。
+ * 探针公共库——被大探针拆分后的薄入口复用。
  *
  * 提供三件套：
  *   - isolatedEnv(tag, opts)：临时目录隔离（必须在任何 src 模块加载前调用）
@@ -149,7 +149,7 @@ export function makeChecker(log: Logger): Checker {
 
 export interface RunSectionsConfig {
   log: Logger
-  /** 探针标题（汇总行前缀，如 'M19'） */
+  /** 探针标题（汇总行前缀，示例 'M19' 即为真实取值格式） pointer-ok 示例值本身就是数据 */
   title: string
   /** 贯穿 registry 与全部分节的唯一 checker（由入口 makeChecker 创建后传入） */
   checker: Checker

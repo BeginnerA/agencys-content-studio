@@ -1,11 +1,11 @@
 /**
- * 精确返修 · 能力判定与基准依赖指纹（precision-rework 规格 §5.1/§6.1/§6.2 读取侧）。
+ * 精确返修 · 能力判定与基准依赖指纹（precision-rework 读取侧）。
  *
  * - 能力 fail closed：运行在途/取消、compose 步未收敛、范围外失败、受理不确定任务、
  *   下游含付费/未知 action、缺成片/缺快照/快照损坏一律拒绝，不静默回退台词生成字幕。
- * - 完整依赖指纹覆盖全部使修订过期的因子（§6.2：选片、媒体重做、源字幕重建、
+ * - 完整依赖指纹覆盖全部使修订过期的因子（选片、媒体重做、源字幕重建、
  *   时长/品牌/合成配置改变）；预览与确认共用同一计算，前后不一致即 stale。
- * - cues 基准：无人工修订取成片 params.timeline.subtitle 快照（P2 落库）；
+ * - cues 基准：无人工修订取成片 params.timeline.subtitle 快照（落库）；
  *   已有人工修订读取其固定 content_versions 版本内容（源基准 tag 重挂标识，来源等级不升级）。
  * 纯读取：不写任何 run/step/task/asset 状态。
  */
@@ -79,7 +79,7 @@ function blockedResult(c: SubtitleCapability): SubtitleAssessment {
   return { capability: c, baseline: null }
 }
 
-/** timeline.subtitle 快照增量结构守卫（P2 落库形态；缺增量=旧产物，损坏=拒绝不回退） */
+/** timeline.subtitle 快照增量结构守卫（落库形态；缺增量=旧产物，损坏=拒绝不回退） */
 interface StoredSubtitleSnap {
   ok: boolean
   legacy?: boolean
@@ -200,7 +200,7 @@ export async function assessSubtitleCapability(runId: number, stepKey = 'compose
   }
 
   const currentEdit = parseSubtitleEdits(run.input)[stepKey] ?? null
-  // P2 快照 origin 字段已标源/人工；存在当前修订指针时基准必为人工版本内容
+  // 快照 origin 字段已标源/人工；存在当前修订指针时基准必为人工版本内容
   let cues = snap.cues!
   let origin: SubtitleBaseline['origin'] = snap.cues === undefined ? 'manual' : 'source'
   const snapOriginField = (tl.subtitle as Record<string, unknown> | undefined)?.origin
@@ -233,7 +233,7 @@ export async function assessSubtitleCapability(runId: number, stepKey = 'compose
 }
 
 /**
- * 合成消费期依赖指纹复验（规格 §6.2「后续所有重合成入口执行前再次检查」）：
+ * 合成消费期依赖指纹复验（「后续所有重合成入口执行前再次检查」）：
  * 任何入口（会话/通用 recompose、选片、单步/级联重跑、断点续跑携带指针的旧 run）最终都
  * 经 ffmpeg-merge 消费修订，本函数即统一执行前检查；与 assess 的差异只在可在 run 在途时计算。
  * - compose 步自身 status 归一为 succeeded：执行态不是过期因子；上游重跑由 output ids/资产 hash 暴露。

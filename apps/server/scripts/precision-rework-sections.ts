@@ -71,7 +71,7 @@ export function setApi(a: ApiShape): void {
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 
-/** 隔离库夹具工具：mkRun/mkFixture（健康成片：captions+compose 两步 succeeded + P2 快照）供 preview/apply/compose/stale 分节共用 */
+/** 隔离库夹具工具：mkRun/mkFixture（健康成片：captions+compose 两步 succeeded + 快照）供 preview/apply/compose/stale 分节共用 */
 export async function createFixtureTools(projectId = 92) {
   const { initDb, db } = await import('../src/db')
   await initDb() // 幂等；单独 --section 运行时自建库
@@ -84,7 +84,7 @@ export async function createFixtureTools(projectId = 92) {
     const rows = await db.insert(pipelineRuns).values({ projectId, templateKey: 'probe-rework', status, input: '{}', createdAt: now, updatedAt: now }).returning()
     return rows[0]!.id
   }
-  /** 健康夹具：captions(succeeded)+compose(succeeded, output=[成片])+成片带 P2 有效字幕快照+源字幕行 */
+  /** 健康夹具：captions(succeeded)+compose(succeeded,output=[成片])+成片带有效字幕快照+源字幕行 */
   const mkFixture = async (runId: number, opts: { stripTimeline?: boolean; corruptSnap?: boolean; burn?: boolean } = {}): Promise<{ composeId: number; finalId: number; srcId: number }> => {
     const srcRows = await db.insert(assets).values({
       projectId, kind: 'text', purpose: 'subtitle', name: 'src.srt', relPath: `${projectId}/texts/src.srt`, mime: 'application/x-subrip', ext: 'srt', sha256: srcSha, fileSize: sourceText.length, params: '{}', tags: '[]', runId, createdAt: now, updatedAt: now,
@@ -109,7 +109,7 @@ export async function createFixtureTools(projectId = 92) {
 }
 
 export async function runComposeSection(check: CheckFn): Promise<void> {
-  // §6.2 合成侧消费：人工修订显示输入接管（planDisplaySubtitle 各路零 diff）+ 无烧录快速路径
+  // 合成侧消费：人工修订显示输入接管（planDisplaySubtitle 各路零 diff）+ 无烧录快速路径
   // （假 ctx + 真隔离库 + 假媒体字节；零编码零网络零供应商，基准成片逐字节相同）
   const tools = await createFixtureTools(93)
   const { db, assets, genTasks, now, srcSha, sourceText, cues, mkRun, mkFixture } = tools
@@ -257,7 +257,7 @@ export async function runComposeSection(check: CheckFn): Promise<void> {
 }
 
 export async function runStaleSection(check: CheckFn): Promise<void> {
-  // P7（规格 §6.2/§5.2-104/§7）：重合成消费期依赖指纹复验（所有入口统一终检）、
+  // 重合成消费期依赖指纹复验（所有入口统一终检）、
   // 内部键白名单防绕过、断点续跑防盲拷指针、仍被引用字幕的清理保护
   const tools = await createFixtureTools(94)
   const { db, pipelineRuns, pipelineSteps, assets, now, sourceText, cues, mkRun, mkFixture } = tools
@@ -342,12 +342,12 @@ export async function runStaleSection(check: CheckFn): Promise<void> {
   check(whiteErr.includes('未知配置键'), '合成配置写通道：白名单拒内部键（受控指针不可伪造写入）')
   const afterWhite = await readInput()
   check(((afterWhite['_subtitleEdits'] as Record<string, { versionId: number }> | undefined)?.compose)?.versionId === v2.id, '拒绝不留痕：指针内容未被改写')
-  /* ── 断点续跑不盲拷指针（规格 §6.2） ── */
+  /* ── 断点续跑不盲拷指针 ── */
   const stripped = JSON.parse(rc.stripResumeSubtitleEdits(JSON.stringify({ topic: 'x', _subtitleEdits: { compose: { versionId: 5 } }, _compose: { transition: 'fade' } }))) as Record<string, unknown>
   check(stripped['_subtitleEdits'] === undefined && stripped['topic'] === 'x' && !!stripped['_compose'], 'generic resume 派生：剥字幕指针、其余键保留（新 run 需重新基准确认）')
   check(rc.stripResumeSubtitleEdits('{"topic":"x"}') === '{"topic":"x"}' && rc.stripResumeSubtitleEdits('坏JSON') === '坏JSON', '无指针/坏 JSON：原样返回（既有续跑语义不变）')
 
-  /* ── 仍被引用字幕不可清理（验收③，规格 §5.2-104） ── */
+  /* ── 仍被引用字幕不可清理（验收③） ── */
   const refs = await vc.subtitleReferenceIds(94)
   check(refs.has(disp.id) && refs.has(fix.srcId), '引用保护集：当前指针 + 历史成片快照源/显示字幕均命中')
   const oldImg = (await db.insert(assets).values({ projectId: 94, kind: 'image', purpose: 'shot', name: 'old.png', relPath: '94/image/old.png', mime: 'image/png', ext: 'png', sha256: 'o', fileSize: 1, taskId: 501, params: '{}', tags: '[]', runId, createdAt: now - 10, updatedAt: now - 10 }).returning())[0]!
@@ -375,7 +375,7 @@ export async function runStaleSection(check: CheckFn): Promise<void> {
   check((await db.select().from(assets).where(eq(assets.id, extra.id)).limit(1)).length === 0, '无引用资产彻底删除放行（保护仅针对字幕引用链，不过度拦截）')
 }
 
-/** P8 成果版本投影：运行级 API（§7）+ 读模型四态 + 下载固定不可变版本（验收：旧 gate 不认可新字幕；无新产物不把旧片伪装已更新） */
+/** 成果版本投影：运行级 API + 读模型四态 + 下载固定不可变版本（验收：旧 gate 不认可新字幕；无新产物不把旧片伪装已更新） */
 export async function runProjectionSection(check: CheckFn): Promise<void> {
   const tools = await createFixtureTools(95)
   const { db, assets, pipelineRuns, pipelineSteps, mkRun, mkFixture } = tools
@@ -484,7 +484,7 @@ export async function runProjectionSection(check: CheckFn): Promise<void> {
   check(cross.status === 403 || cross.status === 404, '跨资产携带 versionId 被拒（归属校验）')
 }
 
-/** P9：工程字幕与 sidecar——共享 cue 读取 + FCPXML/OTIO 接线（纯函数分节，零库零网络） */
+/** 工程字幕与 sidecar——共享 cue 读取 + FCPXML/OTIO 接线（纯函数分节，零库零网络） */
 export async function runExchangeSection(check: CheckFn): Promise<void> {
   const { readSubtitleCues } = await import('../src/services/edit-exchange/subtitle-cues')
   const { toFcpxml } = await import('../src/services/edit-exchange/fcpxml')

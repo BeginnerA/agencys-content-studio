@@ -24,14 +24,14 @@ import type {
 } from '../types'
 import type { Approval } from '../types/continuity'
 
-/** 启动 run 请求体（M70：可选承接批准句柄；启用 with_continuity 时必传） */
+/** 启动 run 请求体（可选承接批准句柄；启用 with_continuity 时必传） */
 export interface RunStartBody {
   template_key: string
   input: Record<string, unknown>
   continuity_approval?: Approval
 }
 
-/** 断点续跑请求体（M70）：批准句柄 + 未知费用精确同意三要素 */
+/** 断点续跑请求体：批准句柄 + 未知费用精确同意三要素 */
 export interface RunResumeBody extends Record<string, unknown> {
   continuity_approval?: Approval
   unknown_use_id?: number

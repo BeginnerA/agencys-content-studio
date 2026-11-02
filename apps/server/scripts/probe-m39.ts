@@ -1,5 +1,5 @@
 /**
- * M39 探针（扩展参数逐模型能力下沉：audio.voice / image.size profile + model 参数贯穿）——手动执行：
+ * 探针（扩展参数逐模型能力下沉：audio.voice / image.size profile + model 参数贯穿）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m39.ts [--section=registry|route|preflight]
  *
  * 隔离策略：isolatedEnv('m39', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
@@ -11,7 +11,7 @@
  *     openai 两代音色差异；siliconflow CosyVoice2 候选=合成后「模型:音色」完整串；pollinations qwen 枚举 /
  *     elevenlabs text 无假默认；image 命中族→select 档位或 text 核实约束、未命中→provider 级）；
  *     defaultVoice / defaultImageSize 回落链（profile→provider 级→空/'1024x1024'）；
- *   - route：extra-schema 带/不带 model 双形态（不带 = M38 现行为，旧调用兼容；缺参 400）；
+ *   - route：extra-schema 带/不带 model 双形态（不带 = 此前行为，旧调用兼容；缺参 400）；
  *   - preflight：音色兜底升级为模型级（siliconflow CosyVoice2 未配 voice → ready 且取模型级默认，
  *     provider 级无默认仍被逐模型事实补上）；未核实音色集（elevenlabs 实例）无默认 → 仍 missing_voice（不猜）；
  *     图像未配 size → 逐模型默认（qwen-image-max 不再注入非法 1024x1024）；[1-4]K 档位透传（wan2.7 系）。
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     }
     const oaiImg = { providerKey: 'openai_image', model: 'probe-img' }
 
-    // 逐模型音色兜底：provider 级无默认的 siliconflow，实例选中 CosyVoice2 → 模型级默认补上（M38 语义的合理演进）
+    // 逐模型音色兜底：provider 级无默认的 siliconflow，实例选中 CosyVoice2 → 模型级默认补上（语义的合理演进）
     const pfCosy = await run({ providerKey: 'siliconflow_audio', model: 'FunAudioLLM/CosyVoice2-0.5B' }, oaiImg, 'm39-pf-cosy')
     check(pfCosy.ready, `siliconflow+CosyVoice2 未配 voice：预检就绪（逐模型官方默认兜底）${pfCosy.issues.length ? ' 实际 issues=' + JSON.stringify(pfCosy.issues) : ''}`)
     check(pfCosy.execution?.voice === 'FunAudioLLM/CosyVoice2-0.5B:alex', '执行音色 = 模型级默认（含「模型:音色」前缀，适配器可直发）')
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
     const pfElv = await run({ providerKey: 'pollinations_audio', model: 'elevenlabs/eleven-flash-v2.5' }, oaiImg, 'm39-pf-elevenlabs')
     check(pfElv.issues.some((i) => i.code === 'missing_voice'), 'elevenlabs 实例无 voice 且音色集未核实 → 仍 missing_voice（不注入假默认）')
 
-    // provider 级回落不变：未注册 profile 模型沿用 M38 行为
+    // provider 级回落不变：未注册 profile 模型沿用此前行为
     const pfLegacy = await run({ providerKey: 'aliyun_bailian_tts', model: 'qwen-tts' }, oaiImg, 'm39-pf-legacy')
     check(pfLegacy.ready && pfLegacy.execution?.voice === 'Cherry', 'qwen-tts（无 profile）：回落 provider 级默认 Cherry')
     const pfExplicit = await run({ providerKey: 'aliyun_bailian_tts', model: 'qwen3-tts-flash', voice: 'Serena' }, oaiImg, 'm39-pf-explicit')
@@ -169,10 +169,10 @@ async function main(): Promise<void> {
     // 尺寸：未配置 → 逐模型默认（qwen-image-max 官方默认档，1024x1024 对其非法不再注入）
     const pfMax = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_bailian_image', model: 'qwen-image-max' }, 'm39-pf-imagemax')
     check(pfMax.ready && pfMax.execution?.imageSize === '1664x928', `qwen-image-max 未配 size：兜底官方默认 1664x928${pfMax.execution ? '（实际 ' + pfMax.execution.imageSize + '）' : ''}`)
-    // [1-4]K 档位合法透传（wan2.7 系，M38 正则不认致静默回落）
+    // [1-4]K 档位合法透传（wan2.7 系，正则不认致静默回落）
     const pfWan2k = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, { providerKey: 'aliyun_bailian_image', model: 'wan2.7-image', size: '2K' }, 'm39-pf-wan2k')
     check(pfWan2k.ready && pfWan2k.execution?.imageSize === '2K', 'wan2.7 显式 size=2K：官方档位合法透传（正则扩展 [1-4]K）')
-    // 未注册族兜底仍 1024x1024（行为不劣于 M38）
+    // 未注册族兜底仍 1024x1024（行为不劣于）
     const pfGeneric = await run({ providerKey: 'pollinations_audio', model: 'qwen/qwen3-tts-flash', voice: 'nova' }, oaiImg, 'm39-pf-generic')
     check(pfGeneric.ready && pfGeneric.execution?.imageSize === '1024x1024', '未注册尺寸族未配 size：通用兜底 1024x1024 不变')
   }

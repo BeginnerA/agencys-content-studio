@@ -1,12 +1,12 @@
 /**
- * 第五期 · 交付包认证：数据契约（规格 2026-09-28 §3/§4）。
+ * 交付包认证：数据契约。
  *
  * 本模块是**纯类型 + 常量**，不触 DB、不触执行、不 import 引擎、不 IO——delivery-cert 全链路只读、零付费、零模型、零新依赖。
- * 结果词表（status）与证据口径（evidenceType）与第一期 production-baseline §5.3、第四期 qc/types.ts 逐字对齐，避免两套口径漂移；
+ * 结果词表（status）与证据口径（evidenceType）与既有、qc/types.ts 逐字对齐，避免两套口径漂移；
  * source 按本期域特化（认证对象是**导出工程包**，非成片 mp4）；时间轴只读交叉核对成片 `params.timeline`（唯一真源），严禁反推重建第二套时轴。
  */
 
-/** 认证项目录（规格 §4）。外部项仅 `editor_import_certified` 一项，恒不自动 passed。 */
+/** 认证项目录。外部项仅 `editor_import_certified` 一项，恒不自动 passed。 */
 export type CertCheckKey =
   | 'package_present'
   | 'project_file_wellformed'
@@ -17,10 +17,10 @@ export type CertCheckKey =
   | 'subtitle_delivery_bound'
   | 'editor_import_certified'
 
-/** 单条结论状态：复用第一期/第四期 result 词表（passed/failed/not_tested/unsupported/not_applicable/stale）。 */
+/** 单条结论状态：复用既有 result 词表（passed/failed/not_tested/unsupported/not_applicable/stale）。 */
 export type CertStatus = 'passed' | 'failed' | 'not_tested' | 'unsupported' | 'not_applicable' | 'stale'
 
-/** 证据类型：复用第一期/第四期 evidenceType 词表（本期四类）。 */
+/** 证据类型：复用既有 evidenceType 词表（本期四类）。 */
 export type CertEvidenceType = 'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
 
 /** 认证/解析来源（诚实可追溯）：交付包 zip / 工程文件 / manifest / 唯一真源快照 / 包内媒体文件系统 / 人工。 */
@@ -59,7 +59,7 @@ export interface DeliveryCert {
   /** 交付包 zip 文件哈希；变化使旧报告 stale。缺失为 null。 */
   packageSha256: string | null
   verdict: CertVerdict
-  /** 未满足/待人工项的机读键（对齐第一期 manifest.missing[]）。 */
+  /** 未满足/待人工项的机读键（对齐此前 manifest.missing[]）。 */
   missing: string[]
   checks: CertCheck[]
   /** 端点 refresh=0 命中缓存时置 true；按需重算缺省 undefined。 */
@@ -69,7 +69,7 @@ export interface DeliveryCert {
 /** 时长/时码数学容差（帧）。有理秒与 NDF 时码取整会有 ±1 帧抖动，取保守带宽。 */
 export const CERT_DURATION_TOLERANCE_FRAMES = 1
 
-/** 门禁结果：run 不存在时不产报告（无包不阻断，产 needs_package 报告，见规格 §3/§7）。 */
+/** 门禁结果：run 不存在时不产报告（无包不阻断，产 needs_package 报告）。 */
 export type CertGateBlock = 'run_not_found'
 
 export type CertRunResult =

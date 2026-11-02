@@ -1,4 +1,4 @@
-/** M16⑤ linkage：ref-assets / 送入画布 / prefill 键安全（断言体逐字搬自原 probe-m16.ts） */
+/** linkage：ref-assets / 送入画布 / prefill 键安全（断言体逐字搬自原 probe-m16.ts） */
 import type { M16Ctx } from './ctx'
 
 export async function run(ctx: M16Ctx): Promise<void> {
@@ -23,7 +23,7 @@ export async function run(ctx: M16Ctx): Promise<void> {
       .returning()
   )[0]!
   check((await jreq('POST', `/api/v1/entities/${entG.id}/ref-assets`, { asset_ids: [A1] })).status === 400, 'ref-assets 全局实体挂非池资产 → 400（[M52] 仅放行全局池）')
-  // [M52] 全局实体挂池资产 → 200（项目资产不得越界入全局，池资产可）
+  // 全局实体挂池资产 → 200（项目资产不得越界入全局，池资产可）
   const A_POOL = await mkAsset(0, 'image', '池定妆照', 'reference_character')
   const rg = await jreq('POST', `/api/v1/entities/${entG.id}/ref-assets`, { asset_ids: [A_POOL] })
   const gRow = (await db.select().from(characters).where(eq(characters.id, entG.id)))[0]!

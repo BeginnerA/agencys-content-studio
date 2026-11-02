@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * 编排链构建器 Modal（spec §2.5 I3）
+ * 编排链构建器 Modal
  * 选模板 → 依上一段 template.next 建议排序 → 设 autoAdvance / budgetCap → 保存 / 保存并启动首段。
- * 段仅引用扁平模板 key（I2 编排层引用，无引擎递归）；运行时深度嵌套明确排除。
+ * 段仅引用扁平模板 key（编排层引用，无引擎递归）；运行时深度嵌套明确排除。
  */
 import { computed, ref, watch } from 'vue'
 import Modal from '../../common/Modal.vue'
@@ -28,7 +28,7 @@ const budgetCap = ref('')
 const pick = ref('')
 const busy = ref(false)
 const err = ref('')
-// M70 Task 12：「创建并启动」不得绕过共享当前段批准面；取消只保存草稿链、不启动
+// 「创建并启动」不得绕过共享当前段批准面；取消只保存草稿链、不启动
 const continuity = useCreationContinuity(computed(() => props.projectId))
 const showPreview = ref(false)
 const pending = ref<{

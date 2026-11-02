@@ -1,5 +1,5 @@
 /**
- * M8 探针（场景/道具参考资产库 + 风格预设库）——手动执行：
+ * 探针（场景/道具参考资产库 + 风格预设库）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m8.ts [--section=migrate|entity|inject|style|api|template]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -526,7 +526,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T2 series-setup v7：版本 7 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ M60 商业结构设计步 + v5 定妆照 16:9 多视角设定图 + v6 定妆照身份参考图接入 gen_refs + v7 参考图升三态 auto/on/off 与智能复用 ——
+    // —— T2 series-setup v7：版本 7 / 13 步 / 场景道具链（出图步挂人工审阅闸）+ 商业结构设计步 + v5 定妆照 16:9 多视角设定图 + v6 定妆照身份参考图接入 gen_refs + v7 参考图升三态 auto/on/off 与智能复用 ——
     if (copyTpl('series-setup')) {
       const t = tryLoad('series-setup')
       check(t !== null, 'series-setup 加载成功')
@@ -535,7 +535,7 @@ async function main(): Promise<void> {
         const stepOf = (k: string) => t.steps.find((s) => s.key === k)
         check(t.version === 7, `series-setup version=7（实际 ${t.version}）`)
         check(t.steps.length === 13, `series-setup steps=13（实际 ${t.steps.length}）`)
-        // [M60] 商业结构设计：开关输入 + monetize 步接线 + 必审可跳闸
+        // 商业结构设计：开关输入 + monetize 步接线 + 必审可跳闸
         const wm = t.inputs.find((i) => i.key === 'with_monetization')
         check(!!wm && wm.kind === 'bool' && wm.required === false && wm.default === true, 'inputs 含 with_monetization（bool 选填默认开）')
         const mz = stepOf('monetize')

@@ -1,5 +1,5 @@
 /**
- * 发布登记 REST（E4 内容面）：登记/列表+汇总/更新回填/删除
+ * 发布登记 REST（内容面）：登记/列表+汇总/更新回填/删除
  * 增强：批量导入 / 趋势视图 / A/B 分组对比 / title+ab_group 字段
  * - run_id/asset_id 可空：允许登记非流水线内容
  * - metrics 白名单归一（views/likes/comments/favorites/shares → 非负整数）
@@ -259,7 +259,7 @@ publicationsRoutes.get('/publications/ab-groups', h(async (c) => {
   return c.json({ items })
 }))
 
-// ---------- 平台数据文件导入（M67，spec §3.3） ----------
+// ---------- 平台数据文件导入 ----------
 
 const IMPORT_PRESETS_KEY = 'publication_import_presets'
 /** 预设名保留字（JSON 键名即用户输入，阻断 __proto__ 等回灌原型链）与长度上限 */
@@ -309,7 +309,7 @@ function mappingOf(raw: string): ImportMapping {
   }
 }
 
-/** POST /publications/import?project_id=&dry_run= —— multipart: file + platform + mapping[可选] + preset[可选]（无状态两阶段，spec §3.3） */
+/** POST /publications/import?project_id=&dry_run= —— multipart: file + platform + mapping[可选] + preset[可选]（无状态两阶段） */
 publicationsRoutes.post('/publications/import', h(async (c) => {
   const projectId = Number(c.req.query('project_id'))
   if (!Number.isInteger(projectId) || projectId <= 0) throw new HttpError(400, 'bad_input', 'project_id 必填')

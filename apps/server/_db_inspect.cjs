@@ -1,4 +1,4 @@
-// 一次性取证脚本（M1 re-baseline 验证用，验证后删除）
+// 一次性取证脚本（re-baseline 验证用，验证后删除）
 // 用法: node _db_inspect.cjs <path-to-studio.db>
 const { createClient } = require('@libsql/client');
 const fs = require('node:fs');

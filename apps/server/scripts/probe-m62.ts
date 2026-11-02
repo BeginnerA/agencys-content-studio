@@ -1,11 +1,11 @@
 /**
- * M62 探针（轻松创作「路由信号扩展」：小说改编 → novel-adapt；素材拼片/相册 → photo-montage）——手动执行：
+ * 轻松创作路由信号扩展探针（轻松创作「路由信号扩展」：小说改编 → novel-adapt；素材拼片/相册 → photo-montage）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m62.ts [--section=signals|priority|gating|sanitize|drift]
  *
  * 隔离策略：route-hint 是纯函数（读模板目录派生白名单/label），isolatedEnv('m62', bridge templates) 即可，
- *   零 DB、零网络、零模型调用（M62 只扩信号集，不碰钱路径提示词、不改 planningReplySchema）。
+ *   零 DB、零网络、零模型调用（只扩信号集，不碰钱路径提示词、不改 planningReplySchema）。
  *
- * 断言聚焦 M62 契约：
+ * 断言聚焦本交付契约：
  *   - 小说改编复合判定：小说/原著/网文 + 改编动作命中 novel-adapt；片段/梗概/选段/简介排除词守卫；
  *     仅「小说风格」无改编动作不误报；
  *   - 素材拼片：强混剪词无须前置；弱词（合成/拼成…句式）双前置（hasImageRef + 图/照片/素材）才命中；

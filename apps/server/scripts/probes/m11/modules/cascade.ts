@@ -1,5 +1,5 @@
 /**
- * [M11·拆分] scripts/probe-m11.ts 的 rerun / cascade 两节（≤800 行红线拆分，断言逐字保留）。
+ * scripts/probe-m11.ts 的 rerun / cascade 两节（≤800 行红线拆分，断言逐字保留）。
  * 运行期服务在本模块内动态 import（入口已建立隔离环境），与拆分前 main() 内 import 时序等价。
  */
 import { and, eq } from 'drizzle-orm'
@@ -82,7 +82,7 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   const { pipelineRuns, pipelineSteps, genTasks } = await import('../../../../src/db/schema')
   const { db, pid, T0, check, errOf, getStep, getRun, getTask, setStepStatus, setRunStatus, mkStep } = ctx
 
-  // [隔离环境种子] E2b/E3 断言依赖 isCreationTemplate('easy-video')——其真源是 easy-video.yaml 顶层
+  // [隔离环境种子] E2b/断言依赖 isCreationTemplate('easy-video')——其真源是 easy-video.yaml 顶层
   // `visibility: conversation`（经 loader.templateFlags 读文件派生，非中心键集）。本探针在隔离的空
   // TEMPLATES_DIR 运行，须先把该 YAML 拷入令 templateFileOf 命中，否则 conversationOnly 保守为 false、
   // 创建守卫不触发。与 sectionTemplate 拷 mengbao-episode.yaml 同构（各节自带其所需模板种子）。
@@ -210,7 +210,7 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   await setRunStatus(eRun.runId, 'cancelled')
   const eE = await errOf(() => describeChainRerun(eRun.runId, 'gen_images', {}))
   check(eE instanceof WorkbenchError && eE.code === 'run_cancelled', 'E cancelled run → run_cancelled（引导续跑）')
-  // E2：easy-video + failed 且失败任务属「在途（已拿到外部 task_id）」→ 守卫放行（合法救援：续轮询不重复提交），级联集合正常解析
+  // easy-video + failed 且失败任务属「在途（已拿到外部 task_id）」→ 守卫放行（合法救援：续轮询不重复提交），级联集合正常解析
   const evRun = await seedChainRun({ templateKey: 'easy-video' })
   // 歧义判定要求「无 taskId 且无产物」；补外部 task_id → 失败任务转为在途（引擎续轮询安全），不触发方案C 级联拦截
   await db.update(genTasks).set({ taskId: 'EXT-INV-FLIGHT' }).where(and(eq(genTasks.runId, evRun.runId), eq(genTasks.status, 'failed')))
@@ -220,7 +220,7 @@ export async function sectionCascade(ctx: M11Ctx): Promise<void> {
   const evAmbRun = await seedChainRun({ templateKey: 'easy-video' })
   const eE2b = await errOf(() => describeChainRerun(evAmbRun.runId, 'gen_images', { resetTasks: true }))
   check(eE2b instanceof WorkbenchError && eE2b.code === 'creation_confirmation_required', 'E2b easy-video+failed(含受理状态不明任务) → creation_confirmation_required（级联与 resume 同源拦截）')
-  // E3：easy-video + completed → 额外生成，creation_confirmation_required 拦截
+  // easy-video + completed → 额外生成，creation_confirmation_required 拦截
   const evcRun = await seedChainRun({ templateKey: 'easy-video', status: 'completed' })
   const eE3 = await errOf(() => describeChainRerun(evcRun.runId, 'gen_images', {}))
   check(eE3 instanceof WorkbenchError && eE3.code === 'creation_confirmation_required', 'E3 easy-video+completed → creation_confirmation_required（额外生成需重新确认）')

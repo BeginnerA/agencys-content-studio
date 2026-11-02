@@ -1,4 +1,4 @@
-/** M17[llm-assist]：prompt-expand（未配置 400 / env 注入成功径 / instruction / 不落库 / 用量）+ extract 双径（断言体逐字搬自原 probe-m17.ts） */
+/** [llm-assist]：prompt-expand（未配置 400 / env 注入成功径 / instruction / 不落库 / 用量）+ extract 双径（断言体逐字搬自原 probe-m17.ts） */
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { M17Ctx } from './ctx'

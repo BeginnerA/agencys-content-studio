@@ -2,7 +2,7 @@
  * run 创建共享链路（runs.ts 单发与 batch.ts 批量共用）
  * - 归一化/校验口径与 runs.ts 完全一致（normalizeInput 逐字迁入）
  * - 错误类型与 HttpError 解耦：路由层转 400（services 不依赖路由层）
- * - M70 连续性闸门：原始两键先判不支持 → 归一化 → 批准/槽位一致性 →
+ * - 连续性闸门：原始两键先判不支持 → 归一化 → 批准/槽位一致性 →
  *   批准句柄校验 + 目标比对 → 幂等复用 → 插 queued + CAS 认领（同一事务，失败整体回滚）
  */
 import { desc, eq } from 'drizzle-orm'
@@ -73,7 +73,7 @@ export interface CreateRunParams {
   creationSessionId?: number
   /** 运行链种类显式标记：'easy'=轻松创作批准链，'route'=对话调度执行；缺省 NULL（非对话来源，执行层回退旧的可见性判定）。 */
   chainKind?: 'easy' | 'route' | null
-  /** 已冻结承接包批准（M70）：启用跨集剧情连续性时必传，且与 input 槽位严格一致。 */
+  /** 已冻结承接包批准：启用跨集剧情连续性时必传，且与 input 槽位严格一致。 */
   continuityApproval?: Approval
 }
 
@@ -111,7 +111,7 @@ export async function createRunRow(p: CreateRunParams, executor: Executor = db):
 }
 
 /**
- * 连续性建 run 主体（brief 6.3 skeleton）：全部读取/写入使用同一 ex；
+ * 连续性建 run 主体（skeleton）：全部读取/写入使用同一 ex；
  * 已绑定结果按目标与入口归属逐项比较后复用或拒绝，绝不偷复用另一入口的 run。
  */
 async function createContinuityRun(ex: Executor, p: CreateRunParams, template: Template,
@@ -181,7 +181,7 @@ async function insertRun(ex: Executor, p: CreateRunParams, template: Template, n
 }
 
 /**
- * 断点续跑派生新 run 时剥除字幕修订指针（precision-rework 规格 §6.2：不得盲目跨 run 复制
+ * 断点续跑派生新 run 时剥除字幕修订指针（precision-rework：不得盲目跨 run 复制
  * _subtitleEdits；新 run 无成片基准，需重新基准确认）。源 run 指针保留为历史，不删除。
  * 解析失败/无该键 → 原样返回（不改变既有续跑语义）。retryCreation 无需此函数：
  * 其经 createRunRow→prepareRunInput→normalizeInput 只保留模板声明键与 _params，内部指针键天然不随行（_compose 在建好后显式克隆）。

@@ -1,4 +1,4 @@
-/** M18[P1] p1-schema：迁移与兜底（列/表/索引 + schema 读写冒烟 + initDb 幂等）（断言体逐字搬自原 probe-m18.ts） */
+/** M18p1-schema：迁移与兜底（列/表/索引 + schema 读写冒烟 + initDb 幂等）（断言体逐字搬自原 probe-m18.ts） */
 import type { M18Ctx } from './ctx'
 
 export async function run(ctx: M18Ctx): Promise<void> {

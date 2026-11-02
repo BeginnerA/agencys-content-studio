@@ -1,4 +1,4 @@
-/** M22[P2] snapshot-diff：diff 纯函数 + branch 重放映射（断言体逐字搬自原 probe-m22.ts） */
+/** M22snapshot-diff：diff 纯函数 + branch 重放映射（断言体逐字搬自原 probe-m22.ts） */
 import type { CanvasSnapshotDoc } from '../../../src/services/creation/snapshots'
 import type { M22Ctx } from './ctx'
 

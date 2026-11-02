@@ -1,5 +1,5 @@
 /**
- * BGM 情绪聚合（阶段二）：把本 run 台词/分镜情绪汇成「单条情绪文本 + embedding 向量」，供 pickBgm 消费。
+ * BGM 情绪聚合：把本 run 台词/分镜情绪汇成「单条情绪文本 + embedding 向量」，供 pickBgm 消费。
  * - 真源：run 内音频资产 params.emotionHint（strict-tts/tts 已落位，形态 `基调词——六维细节`）。
  * - 单一真源词表在 bgm-library（canonicalizeMood 归一）；本模块只做「频次聚合 + 向量编码」。
  * - 红线：无情绪数据 / embedding 不可用 → vec=null，选曲退化纯时长，绝不断链（不抛错）。

@@ -1,5 +1,5 @@
 /**
- * M67 探针（平台数据导入回灌）——手动执行：
+ * 平台数据导入回灌探针（平台数据导入回灌）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m67.ts [--section=parse|match|route]
  *
  * 隔离策略：isolatedEnv('m67') 一次性临时目录（独立 studio.db + workspace），

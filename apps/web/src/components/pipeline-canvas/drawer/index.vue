@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 节点抽屉（spec §2.4）
+ * 节点抽屉
  * - run 态：操作（闸门三决策 / 单步重跑 RerunModal / 重新合成 / 任务行内 retry·cancel）+ 输入 + 产物 + 日志
  * - template 态：设计态信息（gate / 依赖 / 条件 / 批量 / 产物用途 / 引用清单；无运行字段与操作）
  * - template 态 + 编辑模式：画布内编辑区（标题 / 输入字段；本地草稿，patch 经 emit('edit') 回流）
@@ -43,7 +43,7 @@ const emit = defineEmits<{
   close: []
   refresh: []
   'open-canvas': [canvasId: number]
-  /** 编辑草稿转交（patch 结构对齐 P3 edits.steps[]） */
+  /** 编辑草稿转交（patch 结构对齐 edits.steps[]） */
   edit: [key: string, patch: StepOverride]
 }>()
 
@@ -267,7 +267,7 @@ const {
       <div v-if="taskErr" class="err-text">{{ taskErr }}</div>
     </section>
 
-    <!-- ===== template 态：画布内编辑（本地草稿；E3； -split 拆至 EditSection） ===== -->
+    <!-- ===== template 态：画布内编辑（本地草稿；-split 拆至 EditSection） ===== -->
     <EditSection
       v-if="editNode"
       :edit-node="editNode"

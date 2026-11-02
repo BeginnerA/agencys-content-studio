@@ -4,7 +4,7 @@
  * - recomputed：无 timeline 的存量成片，用分镜 + 配音资产就地经 planBestEffortTimeline 重算段/句位置，
  *   再复用 buildEditTimeline 组装（媒体路径/BGM/转场/字幕等非位置字段取自成片既有 params）——同源算法，不造第三条时间轴逻辑；
  * - 双失败（native_dialogue / strict / 无 lines 字段 / 映射不一致 / 无镜头输入）→ 抛 no_timeline。
- * 版本固定（precision-rework §8）：可选 finalAssetId 指定解析哪一版成片（旧调用缺省取首版并回传实际 id），
+ * 版本固定：可选 finalAssetId 指定解析哪一版成片（旧调用缺省取首版并回传实际 id），
  *   指定资产必须属于该 run 的 final_video，拒绝跨 run/跨用途携带。
  */
 import { readFileSync } from 'node:fs'

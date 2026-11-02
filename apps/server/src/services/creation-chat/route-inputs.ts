@@ -1,5 +1,5 @@
 /**
- * route 输入物化（M70 Task 8）：InputSpecItem → 具体值。
+ * route 输入物化：InputSpecItem → 具体值。
  * 原 route-execution 私有 materialize 原样抽出（逐字迁出，无行为变化）：
  * 确认侧（route-execution）与连续性目标定位侧（continuity/route-bridge）必须同源物化，
  * 否则批准包 inputHash 与确认物化输入将失配。default/prev 不参与单模板物化——

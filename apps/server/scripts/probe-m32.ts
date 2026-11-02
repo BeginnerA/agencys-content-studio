@@ -1,5 +1,5 @@
 /**
- * M32 探针（视频能力/默认单一真源表 + Tier A 智能默认引擎）——手动执行：
+ * 智能默认引擎基建探针（视频能力/默认单一真源表 + Tier A 智能默认引擎）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m32.ts [--section=registry|preflight|equivalence|degrade|normalize]
  *
  * 隔离策略：isolatedEnv('m32', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

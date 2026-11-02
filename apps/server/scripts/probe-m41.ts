@@ -1,4 +1,4 @@
-/** M41：隔离数据库与素材目录；所有网络默认阻断，不运行收费生成。 */
+/** 隔离数据库与素材目录；所有网络默认阻断，不运行收费生成。 */
 import { isolatedEnv, makeChecker, runSections } from './probe-lib'
 
 const env = isolatedEnv('m41', { bridge: ['templates', 'prompts'] })

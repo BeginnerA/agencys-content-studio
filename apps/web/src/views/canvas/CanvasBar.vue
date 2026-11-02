@@ -223,7 +223,7 @@ const showCreationRecover = computed(
         >
           <Icon name="undo" :size="12" /> 重置修改
         </button>
-        <!-- E4 落盘通道：草案预览（不落盘）/ 保存为新模板（原文件零触碰） -->
+        <!-- 落盘通道：草案预览（不落盘）/ 保存为新模板（原文件零触碰） -->
         <button
           v-if="editDirty"
           type="button"

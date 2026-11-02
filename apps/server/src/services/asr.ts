@@ -1,5 +1,5 @@
 /**
- * ASR 音轨转写通道（spec §2.9，用户拍板「全链含音频转写」）。
+ * ASR 音轨转写通道（用户拍板「全链含音频转写」）。
  * 复用 api_configs serviceType='audio' 实例（不新增 service_type 枚举）：
  * baseUrl 显式配置且形如 OpenAI 兼容根（/v1 结尾）的实例才参与——
  * SiliconFlow（https://api.siliconflow.cn/v1）实测形态；volcengine/aliyun TTS 端点

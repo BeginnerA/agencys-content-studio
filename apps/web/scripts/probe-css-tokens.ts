@@ -14,7 +14,7 @@
  *     变量被别的组件引用」抓不到，这类问题由渲染面负责。
  *
  * 离线：只读源码，不起服务、不联网、不写盘、不碰真实配置与数据。
- * 用法：node .superpowers/sdd/M70-计划/safe-run.mjs script ../web/scripts/probe-css-tokens.ts
+ * 用法：node .superpowers/sdd/-计划/safe-run.mjs script ../web/scripts/probe-css-tokens.ts
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'

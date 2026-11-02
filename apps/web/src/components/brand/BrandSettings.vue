@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 品牌设置（spec §4；三处复用同一表单）
+ * 品牌设置（三处复用同一表单）
  * - scope='platform'：平台品牌（settings.brand）——字幕样式 + 水印/片头/片尾上传/预览/参数/清除
  * - scope='project'：项目品牌（projects.settings.brand）——字幕样式 + 水印/片头尾从项目资产选择/上传
  * - scope='run'：run 级覆盖（_compose.brand）——水印/片头尾三态（继承/禁用/自定义）+ 显示继承值与来源

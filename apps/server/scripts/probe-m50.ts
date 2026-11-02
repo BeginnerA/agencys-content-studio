@@ -1,16 +1,16 @@
 /**
- * M50 探针（剪辑工程交换导出）——手动执行：
+ * 探针（剪辑工程交换导出）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m50.ts [--section=timecode|formatters|snapshot|sources|bundle|redline|certify]
  *
  * 隔离：CSTUDIO_ROOT/DATA/WORKSPACE 指一次性临时目录（独立 studio.db + workspace，零网络零计费）。
- * 断言面（规格 §探针）：
+ * 断言面：
  *   timecode      sec↔帧↔时码对拍（fps=25 整帧 / 非整帧舍入 / NDF 10800s 边界）
  *   formatters    OTIO 可 JSON.parse 且五轨命名；FCPXML 含 format/sequence/title/transition；EDL 时码升序 + Dissolve
  *   snapshot      buildEditTimeline 坐标口径（内容轴 + intro 位移 / sfx 绝对轴 / 文本截断）
  *   sources       params.timeline stored 直通 / 旧产物 recomputed 兜底 / 双失败 no_timeline / 无成片 no_final_video
  *   bundle        buildEditExchange 落 archive 资产 + zip 内 manifest↔media 引用一致 + bad_format
  *   redline       ffmpeg-merge/index.ts ≤800 / edit-exchange 各文件 <400 行数自查
- *   certify       第五期交付包认证（delivery-cert）：正常包 needs_attention / 破损 / 时长差 / 媒体悬空 / 跨格式 / editor_import 恒人工红线 / 缓存 stale / 零写守卫
+ *   certify       交付包认证（delivery-cert）：正常包 needs_attention / 破损 / 时长差 / 媒体悬空 / 跨格式 / editor_import 恒人工红线 / 缓存 stale / 零写守卫
  * 退出码：0 = 全通过；1 = 有 FAIL。
  */
 import { writeFileSync, readFileSync, statSync } from 'node:fs'
@@ -290,7 +290,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ---- section: certify（第五期 交付包认证，规格 §8 九断言；本地假包零付费零模型零新依赖）----
+  // ---- section: certify（交付包认证，九断言；本地假包零付费零模型零新依赖）----
   const certify = async (): Promise<void> => {
     const { createHash } = await import('node:crypto')
     const { zipSync } = await import('fflate')

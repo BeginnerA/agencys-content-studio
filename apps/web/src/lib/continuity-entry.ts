@@ -1,6 +1,6 @@
 /**
- * M70 Task 12：各入口「承接批准」adapter（纯函数，探针可直接以 fake api 调用；组件只转发）。
- * 语义（brief 12.1–12.4）：
+ * 各入口「承接批准」adapter（纯函数，探针可直接以 fake api 调用；组件只转发）。
+ * 语义（–12.4）：
  *   - 未批准 / 未对确切 unknownUseId 再次费用同意 → 返回 {sent:false} 且绝不发请求；
  *   - 批准后恰 1 条请求，body 顶层携 continuityApproval / continuity_approval 与 approvalHash；
  *   - 目标变化后旧包失效由调用方（useCreationContinuity 的 target 签名）保证，adapter 只读传入值；

@@ -1,5 +1,5 @@
 /**
- * M70 连续性生命周期守卫（Task 10 · 设计 §12 删除、清理与完整性）。
+ * 连续性生命周期守卫（· 删除、清理与完整性）。
  *
  * 三个守卫共用一条纪律：调用方必须把「当前执行器」显式传进来——认领、回写、删库
  * 都在同一个写事务里复查，避免 check-then-act 之间被并发操作穿透。
@@ -14,7 +14,7 @@
  *   含 draft / failed / superseded 与 prepared / completed 承接）→ 409 continuity_entry_referenced。
  *   草稿没有删除入口，即便 latestRunId / contentAssetId 已清也不能把台账归属删成悬空。
  *
- * 保留 purpose 名单的唯一真源是 reserved.ts（Task1），本文件只做再导出，不维护第二份名单。
+ * 保留 purpose 名单的唯一真源是 reserved.ts，本文件只做再导出，不维护第二份名单。
  */
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { contentContinuityRecords as records, projects } from '../../db/schema'
@@ -43,7 +43,7 @@ export async function assertContinuityPurgeAllowed(ex: Executor, projectId: numb
 }
 
 /** 剧集缩容 / 删剧 / 删集前置检查：目标单元仍有任一连续性登记时拒绝，避免悬空归属。
- * 判据按设计 §12 字面「仍有 continuity 登记或被引用」——不区分 rowType / status（draft 亦拦）。 */
+ * 按字面「仍有 continuity 登记或被引用」——不区分 rowType / status（draft 亦拦）。 */
 export async function assertUnitsUnreferenced(ex: Executor, projectId: number, episodeIds: number[]): Promise<void> {
   const ids = [...new Set(episodeIds.filter(id => Number.isSafeInteger(id) && id > 0))]
   if (ids.length === 0) return

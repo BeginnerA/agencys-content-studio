@@ -4,7 +4,7 @@ import { advanceChain as advanceChainEntry } from '../../lib/continuity-entry'
 import type { CreationDetail } from '../../lib/types/creation-chat'
 import type { Approval } from '../../lib/types/continuity'
 
-// ===== chain 段间「对话内批准续跑」独立 composable（M64 G1）=====
+// ===== chain 段间「对话内批准续跑」独立 composable（G1）=====
 // 不塞进 use-creation-chat.ts（其已近 800 行工程红线），与返修/附件同范式抽离；仅经 s.advanceChain 转发。
 
 interface Host {
@@ -51,7 +51,7 @@ export function createChainAdvance(
     state.busy = true
     host.error = ''
     try {
-      // M70：requestKey 由 adapter 再叠加 approvalHash（换包绝不沿用旧键）；
+      // requestKey 由 adapter 再叠加 approvalHash（换包绝不沿用旧键）；
       // requiresApproval（当前段声明承接）但未冻结批准 → adapter 直接返回 sent:false，零请求。
       const outcome = await advanceChainEntry(
         { chat: { advanceChain: api.advanceChain } },

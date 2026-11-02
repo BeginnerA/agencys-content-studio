@@ -1,5 +1,5 @@
 /**
- * 精确返修（precision-rework）· 有效字幕快照纯函数（规格 §6.1）。
+ * 精确返修· 有效字幕快照纯函数。
  *
  * 合成期实际生效的字幕（未平移=源文本；逐句对齐/片头平移后=shiftSrtText 结果；
  * 严格路径=源文本原样，不静默修正历史时码）解析为带稳定标识的 cue 列表并计算
@@ -24,11 +24,11 @@ import {
 import { planSrtShifts, countSrtCues, shiftSrtText, type AlignPlan } from './align'
 import { round3 } from './util'
 
-/** 时间来源标记（规格 §6.1）：人工修订不得升级来源等级 */
+/** 时间来源标记：人工修订不得升级来源等级 */
 export type SubtitleTimingSource = 'estimated' | 'measured' | 'unknown'
 
 export interface EffectiveSubtitleSnapshot {
-  /** 人工修订版本的 content_versions id；无人工修订时为 null（§6.1 允许为空） */
+  /** 人工修订版本的 content_versions id；无人工修订时为 null（允许为空） */
   versionId: number | null
   /** 有效字幕文本（非源文本）的 UTF-8 sha256 hex */
   sha256: string
@@ -55,7 +55,7 @@ export function buildEffectiveSubtitleSnapshot(args: {
   shiftedText: string | null
   sourceAssetId: number | null
   timingSource: SubtitleTimingSource
-  /** P3 人工修订版本供给时传 'manual' + versionId；P2 恒默认 source */
+  /** 人工修订版本供给时传 'manual' + versionId；恒默认 source */
   origin?: 'source' | 'manual'
   versionId?: number | null
 }): EffectiveSubtitleSnapshot | null {
@@ -141,7 +141,7 @@ export function planEffectiveSubtitle(args: {
   sourceRelPath: string
   sourceAssetId: number | null
   timingSource: SubtitleTimingSource
-  /** P6 人工修订消费时传 'manual' + versionId；无人工修订省略（默认 source） */
+  /** 人工修订消费时传 'manual' + versionId；无人工修订省略（默认 source） */
   origin?: 'source' | 'manual'
   versionId?: number | null
 }): EffectiveSubtitlePlan | null {

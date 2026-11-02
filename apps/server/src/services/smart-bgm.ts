@@ -41,7 +41,7 @@ async function bindAsRunBgm(projectId: number, runId: number, picked: Asset): Pr
   return (await db.select().from(assets).where(eq(assets.id, picked.id)))[0]!
 }
 
-/** 情绪向量落位（阶段一）：有 mood 文本且本地 embedding 就绪才编码；否则 null（退化纯时长候选，不断链） */
+/** 情绪向量落位：有 mood 文本且本地 embedding 就绪才编码；否则 null（退化纯时长候选，不断链） */
 async function computeMoodEmbedding(meta: BgmMeta | null): Promise<{ vec: number[] | null; model: string | null }> {
   const moodText = buildTrackMoodText(meta)
   if (!moodText) return { vec: null, model: null }

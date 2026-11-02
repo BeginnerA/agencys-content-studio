@@ -110,7 +110,7 @@ export function useBoardInteractions(
 
   function onViewportPointerDown(ev: PointerEvent): void {
     if (ev.button === 1 || (ev.button === 0 && spaceDown.value)) {
-      // 平移：中键 / 空格+左键（spec §2.4）
+      // 平移：中键 / 空格+左键
       ev.preventDefault()
       mode.value = 'pan'
       panMoved = false

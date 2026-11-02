@@ -10,7 +10,7 @@ import { temporaryRoot } from './bootstrap'
 
 /** Only the network/config boundary is fake; usage writes the isolated real SQLite DB. */
 export function fakeIO(result: LlmResult): { io: ContinuityIO; calls: () => number; messages: ChatMessage[][]; optionsLog: Array<unknown> } {
-  // bootstrap copies tracked prompts only; Task3's explicitly authorized prompt is uncommitted.
+  // bootstrap copies tracked prompts only; the continuity-extract prompt is still uncommitted, so it is copied here explicitly.
   const prompt = join(REPO_ROOT, 'workspace/prompts/continuity-extract.md')
   if (existsSync(prompt)) copyFileSync(prompt, join(temporaryRoot, 'workspace/prompts/continuity-extract.md'))
   let count = 0
@@ -40,7 +40,7 @@ export function confirmation(v: EntryView, key: string): ConfirmRequest {
     approvalKey: key }
 }
 
-/** Task4/5 target templates: written ONLY into the temporary WORKSPACE, never the real one.
+/** Resume-target fixture templates: written ONLY into the temporary WORKSPACE, never the real one.
  * The step carries inputs:{} because the loader requires the field; prompt_inline avoids prompt files. */
 const FIXTURE_TEMPLATES: Record<string, string> = {
   'm70-fixture-episode': `key: m70-fixture-episode
@@ -190,7 +190,7 @@ export function installTargetFixture(): void {
   }
 }
 
-/** Composes Task3 public services only: extract → human review → confirm. */
+/** Composes the public continuity services only: extract → human review → confirm. */
 export async function confirmEpisode(f: Awaited<ReturnType<typeof seedStory>>, index: number, io: ContinuityIO): Promise<EntryView> {
   const { confirmEntry } = await import('../../../src/services/continuity/entries')
   const { withContinuityIO } = await import('../../../src/services/continuity/runtime')
@@ -297,7 +297,7 @@ export async function seedSource(story: Awaited<ReturnType<typeof seedStory>>, n
   return { pick: { runId: run!.id, stepId: step!.id, assetId: asset.id, versionId: version.id }, episodeId: episode!.id }
 }
 
-/** A prior run whose template snapshot is the Task4 fixture template, for resume-target probes.
+/** A prior run whose template snapshot is the resume-target fixture template, for resume-target probes.
  * opts.template picks another installed fixture snapshot (e.g. m70-fixture-batchrole = no valid target step). */
 export async function seedResumeRun(story: Awaited<ReturnType<typeof seedStory>>, number: number, input: Record<string, unknown>,
   opts: { snapshot?: boolean; template?: string } = {}): Promise<number> {
@@ -311,7 +311,7 @@ export async function seedResumeRun(story: Awaited<ReturnType<typeof seedStory>>
   return run!.id
 }
 
-/** Test-only undecided consumption call (Task5 owns the real service): exact unknown row a resume must consent to. */
+/** Test-only undecided consumption call (the real service owns this state transition): exact unknown row a resume must consent to. */
 export async function seedUnknownUse(story: Awaited<ReturnType<typeof seedStory>>, runId: number, episodeId: number): Promise<number> {
   const { db } = await import('../../../src/db')
   const { contentContinuityRecords } = await import('../../../src/db/schema')
@@ -328,7 +328,7 @@ export async function seedUnknownUse(story: Awaited<ReturnType<typeof seedStory>
 }
 
 /** Binds a frozen approval to a fresh pipeline run/step (server-owned ledger binding) and builds the StepContext.
- * Task6 gate 义务：run 行一律经公开 createRunRow（统一建 run + 批准认领 CAS）构造，不再手工插入；
+ * gate 义务：run 行一律经公开 createRunRow（统一建 run + 批准认领 CAS）构造，不再手工插入；
  * 引擎惰性建步，探针补目标步行并用与 ai_text 接线同一公开入口绑定 stepId。
  * Idempotent: a context already bound to a run reuses that run (and its bound step) verbatim. */
 export async function makeStepContext(story: Awaited<ReturnType<typeof seedStory>>,
@@ -418,7 +418,7 @@ export const chainDecision = (brief1: string, brief2: string) => ({
   ],
 })
 
-/** 最小台账行（生命周期守卫的探针直插面；列对齐 Task1 schema，文档字段按需省略）。
+/** 最小台账行（生命周期守卫的探针直插面；列对齐 schema，文档字段按需省略）。
  * ck_continuity_document 要求文档三字段全空仅限 entry 的 extracting/failed/unknown——其余状态补齐文档三件套。 */
 export async function insertLedgerRow(projectId: number, o: { rowType: string; status: string; unitId?: number; runId?: number }): Promise<number> {
   const { db } = await import('../../../src/db')
@@ -438,7 +438,7 @@ export async function insertLedgerRow(projectId: number, o: { rowType: string; s
   return row!.id
 }
 
-/** Test-only persistence, not a substitute for the Task3 confirmation service. */
+/** Test-only persistence, not a substitute for the continuity confirmation service. */
 export async function persistEntry(doc: EntryDoc, status: 'draft' | 'confirmed' = 'confirmed'): Promise<EntryRef> {
   const { db } = await import('../../../src/db')
   const { contentContinuityRecords } = await import('../../../src/db/schema')

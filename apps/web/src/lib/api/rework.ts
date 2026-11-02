@@ -120,7 +120,7 @@ export const subtitleReworkApi = {
     ),
 }
 
-// 合成输入本地返修 API（切片2）：与 routes/rework.ts compose-input 端点对齐；复用同款带
+// 合成输入本地返修 API：与 routes/rework.ts compose-input 端点对齐；复用同款带
 // 领域错误明细的 reworkRequest 封装（blocked/冲突携 errors[]/request_id）。
 export const composeInputReworkApi = {
   /** 能力探测（双模判据：supported→展示受控返修入口；否则仅草稿直写） */

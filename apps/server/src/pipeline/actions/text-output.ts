@@ -1,6 +1,6 @@
 /**
  * 输出契约校验（从 ai-text.ts 原样抽出，行为零变更；ai-text.ts 仅 re-export 保持既有引用路径）。
- * M70 连续性调用复用同一校验入口（services/continuity/invocation）。
+ * 连续性调用复用同一校验入口（services/continuity/invocation）。
  */
 
 /**

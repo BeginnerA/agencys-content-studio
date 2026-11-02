@@ -1,10 +1,10 @@
 /**
- * 精确返修 · 合成输入本地返修：单一变更契约（切片2 规格 §3，纯函数段）。
+ * 精确返修 · 合成输入本地返修：单一变更契约（纯函数段）。
  *
  * 与字幕 SubtitleChange 并列、不并入字幕 schema。五类变更均收敛到「本地重合成、零付费生成」：
  *   compose-config（字段级补丁，值=null 清除回落缺省）/ bgm（换绑 assetId 或 null 移除）/
  *   sfx（逐镜换绑/null 移除）/ shot-select（某镜在用资产换成同类另一 assetId）/
- *   shot-duration（某镜显示时长覆盖，切片2b 轻档；compile 期折进 _compose.shot_durations，apply 复用配置写路径）。
+ *   shot-duration（某镜显示时长覆盖，轻档；compile 期折进 _compose.shot_durations，apply 复用配置写路径）。
  * 本段只做**纯语义**：schema 判别 + 冲突检测 + 配置规范化（委托 compose-config 真源，不重抄 clamp/枚举）
  * + 逐处 原值→新值 diff + no_effect 整体拒绝。资产存在性/kind/项目归属/「同一生成步骤 output 同类候选」
  * 属**需查库**的校验，置于 preview（T3）；本模块不触 DB、不触执行。
@@ -17,10 +17,10 @@ export type ComposeInputChange =
   | { kind: 'bgm'; assetId: number | null }
   | { kind: 'sfx'; shotId: string; assetId: number | null }
   | { kind: 'shot-select'; shotId: string; assetId: number }
-  // 镜头时长覆盖（切片2b）：把某镜(shotId)显示时长设为 sec 秒；compile 期折进 _compose.shot_durations。
+  // 镜头时长覆盖：把某镜(shotId)显示时长设为 sec 秒；compile 期折进 _compose.shot_durations。
   | { kind: 'shot-duration'; shotId: string; sec: number }
 
-/** 单请求变更数上限（切片2 规格 §3） */
+/** 单请求变更数上限 */
 export const MAX_COMPOSE_INPUT_CHANGES = 500
 
 export interface ComposeInputError {
@@ -79,7 +79,7 @@ export interface ComposeInputDiffEntry {
   field: string
   before: unknown
   after: unknown
-  /** 镜头时长返修（切片2b）：请求短于该镜对齐语音时长 Σ 时，实际将落到该值（音画不脱节强制延长；未触发则不出现） */
+  /** 镜头时长返修：请求短于该镜对齐语音时长 Σ 时，实际将落到该值（音画不脱节强制延长；未触发则不出现） */
   willClampToSec?: number
   /** 镜头时长返修：请求短于 Σ 触发自动延长告警（true 时 willClampToSec 必存在） */
   warn?: boolean
@@ -122,7 +122,7 @@ export function compileComposeInputChanges(args: {
   }
 
   // 3) compose-config：合并多个补丁；同键异值冲突；委托真源逐键规范化（clamp/枚举/白名单/brand/multi_aspect）
-  //    镜头时长（shot-duration，切片2b）折进同一 shot_durations 键，共用 nextConfig/apply 配置写路径（零新增 apply 分支）。
+  //    镜头时长（shot-duration）折进同一 shot_durations 键，共用 nextConfig/apply 配置写路径（零新增 apply 分支）。
   const configChanges = changes.filter((c) => c.kind === 'compose-config') as Array<Extract<ComposeInputChange, { kind: 'compose-config' }>>
   const durationChanges = changes.filter((c) => c.kind === 'shot-duration') as Array<Extract<ComposeInputChange, { kind: 'shot-duration' }>>
   // 时长同镜唯一

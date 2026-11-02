@@ -63,7 +63,7 @@ export class PrefillError extends Error {
 /** run-params video.resolution 输入白名单域（与 services/run-params RULES 对齐） */
 const RESOLUTION_WHITELIST = ['480p', '720p', '1080p']
 
-/** M70 连续性保留键：预填永不复用（with_continuity 一律重置 false；continuity_context 为 files 已被媒体排除，双保险） */
+/** 连续性保留键：预填永不复用（with_continuity 一律重置 false；continuity_context 为 files 已被媒体排除，双保险） */
 const CONTINUITY_KEYS = ['with_continuity', 'continuity_context'] as const
 
 /** brief 放置白名单：key 或 label 命中其一（大小写不敏感）方视为「可承接项目简介」的文本输入 */
@@ -194,7 +194,7 @@ export async function resolveRunPrefill(projectId: number, templateKey: string):
     if (!parsed) continue
     lastRunId = r.id
     for (const inp of template.inputs) {
-      // 媒体类 / 连续性保留键不复用（M70：默认/last_run/客户端 prefill 均不可带回连续性批准）
+      // 媒体类 / 连续性保留键不复用（默认/last_run/客户端 prefill 均不可带回连续性批准）
       if (isMediaInput(inp) || (CONTINUITY_KEYS as readonly string[]).includes(inp.key)) continue
       const v = parsed[inp.key]
       if (!usableScalar(v)) continue

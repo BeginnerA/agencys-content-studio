@@ -1,4 +1,4 @@
-/** M18[P2] frame-extract：抽帧矩阵 + 端点全链（真实 ffmpeg）（断言体逐字搬自原 probe-m18.ts） */
+/** M18frame-extract：抽帧矩阵 + 端点全链（真实 ffmpeg）（断言体逐字搬自原 probe-m18.ts） */
 import { existsSync, readFileSync } from 'node:fs'
 import type { M18Ctx } from './ctx'
 

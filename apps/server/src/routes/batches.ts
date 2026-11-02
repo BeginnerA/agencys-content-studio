@@ -1,5 +1,5 @@
 /**
- * 批次 REST（E1）：创建/列表/详情/取消/删除
+ * 批次 REST：创建/列表/详情/取消/删除
  * - POST /projects/:id/batches：校验 → 落批 + N run → 首轮 pump
  */
 import { Hono } from 'hono'
@@ -40,7 +40,7 @@ batchesRoutes.post('/projects/:id/batches', h(async (c) => {
       throw new HttpError(400, 'bad_schedule', 'schedule.max_concurrent 需为 1–3 的整数')
     }
   }
-  // M70：可选 continuity_approvals（与 inputs 等长按索引对应；null = 该行关闭连续性）
+  // 可选 continuity_approvals（与 inputs 等长按索引对应；null = 该行关闭连续性）
   const approvalsRaw = body['continuity_approvals']
   let continuityApprovals: Array<Approval | null> | undefined
   if (approvalsRaw !== undefined) {

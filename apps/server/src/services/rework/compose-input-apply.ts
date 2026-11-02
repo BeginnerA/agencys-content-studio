@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 合成输入本地返修：原子确认与本地续跑（切片2 规格 §5/§10）。
+ * 精确返修 · 合成输入本地返修：原子确认与本地续跑。
  *
  * 镜像字幕 applySubtitleRework 的「重验优先 + 条件领用 + 提交后启动」范式，但合成输入四类变更
  * 需在 run 仍 completed 时落真源（BGM/SFX helper 内含 requireEditableRun + 非 tx-aware 全局写、
@@ -9,7 +9,7 @@
  *   → Phase-2 末事务（原子领用 request ready→applied、_compose 并入 nextConfig、run→queued、
  *      compose step succeeded→pending 并作废旧 gate、resultJson 回执——条件更新任一落空整体回滚）
  *   → Phase-3 事务提交后 engine.startRun（不改引擎；queued 恢复路径兜底进程中断）。
- * 验收红线（规格 §10）：未确认不改任何状态（预飞行不过→零 mutate）；过期即 stale_preview 拒绝；
+ * 验收红线：未确认不改任何状态（预飞行不过→零 mutate）；过期即 stale_preview 拒绝；
  * applied 回执顶层短路保重发幂等不二次入队；仅重置本地合成步、零 gen_task 新增/重置、零供应商调用。
  *
  * 并发诚实取舍：Phase-1 非幂等（换绑每次 insert+softDelete）且必须先于 run 翻 queued，故置于事务外。
@@ -43,7 +43,7 @@ export interface ComposeInputApplyReceipt {
   bgmTo: number | null
   /** 候选改选明细（在用旧值→新候选） */
   selections: Array<{ shotId: string; fromAssetId: number; toAssetId: number }>
-  /** 镜头时长返修明细（切片2b）：shotId → 旧覆盖秒（null=无覆盖）→ 新覆盖秒；已增量合并进 _compose.shot_durations */
+  /** 镜头时长返修明细：shotId → 旧覆盖秒（null=无覆盖）→ 新覆盖秒；已增量合并进 _compose.shot_durations */
   durations: Array<{ shotId: string; fromSec: number | null; toSec: number }>
   /** 已入队标记（回执固定；真实执行由既有引擎/恢复路径推进） */
   enqueued: true

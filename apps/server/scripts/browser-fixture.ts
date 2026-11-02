@@ -1,5 +1,5 @@
 /**
- * M70 隔离浏览器夹具（手动运行，不由 run-probes 启动）。
+ * 隔离浏览器夹具（手动运行，不由 run-probes 启动）。
  *
  * 启动后返回仅回环的三个地址与临时目录：
  * - server：隔离 checkout 的 Hono 服务（临时 ROOT/DATA/WORKSPACE，绝不读写真实 .env / data）

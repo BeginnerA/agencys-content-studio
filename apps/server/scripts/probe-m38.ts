@@ -1,5 +1,5 @@
 /**
- * M38 探针（扩展参数单一真源注册表 + 音色 Tier A 默认兜底）——手动执行：
+ * 探针（扩展参数单一真源注册表 + 音色 Tier A 默认兜底）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m38.ts [--section=registry|preflight]
  *
  * 隔离策略：isolatedEnv('m38', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

@@ -1,5 +1,5 @@
 /**
- * 探针统一 runner（M26·H5a）——手动执行：
+ * 探针统一 runner——手动执行：
  *   cd apps/server && npx tsx scripts/run-probes.ts [--jobs=N] [--fail-fast] [--only=m19,m25]
  *
  * 功能：发现全部 scripts/probe-*.ts → 按里程碑自然序排列 → 并行子进程执行

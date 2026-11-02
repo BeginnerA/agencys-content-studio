@@ -1,4 +1,4 @@
-// M70 共用承接预览/冻结状态（brief 11.4）：preview 默认不含 plans；target/输入/参数/includePlans
+// 共用承接预览/冻结状态：preview 默认不含 plans；target/输入/参数/includePlans
 // 任一变化使 epoch 递增并清 approval；异步响应只有当前 ticket 可落地；卸载/切项目不写旧结果。
 // 冻结幂等：operationKey 只在目标签名变化时换新；重复冻结按钮可禁但后端仍幂等。
 import { computed, ref, watch, type Ref } from 'vue'
@@ -115,7 +115,7 @@ export function useContinuityApproval(
     }
   }
 
-  // 目标变化（含深度字段）或 includePlans 变化：旧响应作废、批准清空（brief 11.4 epoch 协议）。
+  // 目标变化（含深度字段）或 includePlans 变化：旧响应作废、批准清空（epoch 协议）。
   watch(
     target,
     () => {

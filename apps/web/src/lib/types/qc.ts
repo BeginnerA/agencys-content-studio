@@ -1,7 +1,7 @@
-// 第四期 · 统一 QC 面板：只读核验报告的视图类型（与后端 services/qc/types.ts 逐字段对齐，camelCase）。
-// 面板仅渲染后端返回的客观事实 / 一致性结论 / 缺项清单——不在前端推算 Σ、clamp 或 verdict（规格 §6）。
+// 统一 QC 面板：只读核验报告的视图类型（与后端 services/qc/types.ts 逐字段对齐，camelCase）。
+// 面板仅渲染后端返回的客观事实 / 一致性结论 / 缺项清单——不在前端推算 Σ、clamp 或 verdict。
 
-/** 检查项目录（规格 §4）。 */
+/** 检查项目录。 */
 export type QcCheckKey =
   | 'file_readable'
   | 'stream_spec'
@@ -14,7 +14,7 @@ export type QcCheckKey =
   | 'delivery_flag'
   | 'manual_quality_review'
 
-/** 单条结论状态（复用第一期 result 词表）。 */
+/** 单条结论状态（复用既有 result 词表）。 */
 export type QcStatus =
   | 'passed'
   | 'failed'
@@ -23,7 +23,7 @@ export type QcStatus =
   | 'not_applicable'
   | 'stale'
 
-/** 证据类型（复用第一期 evidenceType 词表）。 */
+/** 证据类型（复用既有 evidenceType 词表）。 */
 export type QcEvidenceType =
   'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
 

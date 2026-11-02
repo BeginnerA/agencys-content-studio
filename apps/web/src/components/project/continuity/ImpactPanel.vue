@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * M70 影响面板（brief 11.3）：直接 / 间接 / 缺证三区，链接真实 run 与版本；
+ * 影响面板：直接 / 间接 / 缺证三区，链接真实 run 与版本；
  * prepared / 完成 / 未知 / 历史缺证以文字+徽章区分，不只靠颜色。
  */
 import { onMounted, ref } from 'vue'

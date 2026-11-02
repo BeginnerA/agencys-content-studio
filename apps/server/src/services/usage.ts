@@ -1,5 +1,5 @@
 /**
- * 用量记录与定价服务（spec §4.3）
+ * 用量记录与定价服务
  * - 定价口径：settings.pricing JSON；四级查找 {provider}:{model} → {provider}:* → {provider} → {model}；
  *   基数 tokens=1e6、char=1e3、image/second=1。
  * - 快照语义：写入时定价并落列，后续改价只影响新记录。

@@ -85,9 +85,9 @@ const first = createFirstInput(state, {
 })
 // 局部返修独立成 composable（不继续膨胀本文件）：解析预览 / 确认闸 / 幂等键全在其内，切会话与离开时 reset
 const rework = createRework(state, { commit, polling: ensurePolling })
-// chain 段间批准续跑独立成 composable（M64 G1，同样为守住本文件工程红线而外抽）
+// chain 段间批准续跑独立成 composable（G1，同样为守住本文件工程红线而外抽）
 const chain = createChainAdvance(state, { commit, polling: ensurePolling })
-// M70 Task 12：route 确认的承接 target/approval 状态外抽；本文件仅薄委托（决策修订即作废旧批准）
+// route 确认的承接 target/approval 状态外抽；本文件仅薄委托（决策修订即作废旧批准）
 const route = useRouteContinuity(computed(() => state.detail))
 const routeContinuity = route.cx
 const attachments = createAttachments(state, {
@@ -357,7 +357,7 @@ const isRoute = computed(() => {
 /**
  * route 确认（template/chain/synth）：携 decisionHash+decisionRevision 走服务端 confirmRoute 分派。
  * 与 easy confirm 彻底分道：不携 easy 专属字段（reviewGate/resolution/brandApply/subtitleBurn，服务端 strict 会拒），零回归。
- * M70：withContinuity=true 时必须已有当前决策目标的批准（由 AgentDecisionCard 打开共享预览冻结），否则零请求。
+ * withContinuity=true 时必须已有当前决策目标的批准（由 AgentDecisionCard 打开共享预览冻结），否则零请求。
  */
 async function confirmRoute(
   acceptUnpriced = false,

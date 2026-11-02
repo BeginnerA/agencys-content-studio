@@ -1,5 +1,5 @@
 /**
- * Agent 三形回复契约（M63）。单独成文件是为打断 contract.ts ↔ decision-schema.ts 的循环依赖
+ * Agent 三形回复契约。单独成文件是为打断 contract.ts ↔ decision-schema.ts 的循环依赖
  * （decision-schema 需要 contract 的 creationPlanSchema，若 contract 反向引用 decision-schema，
  *  ESM 顶层 zod schema 求值会命中 TDZ）。故三形联合放在这一层：它同时依赖两者，处于依赖图末端。
  * - 老契约 planningReplySchema 逐字不动（存量探针依赖）。

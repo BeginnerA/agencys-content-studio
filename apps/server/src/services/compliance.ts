@@ -10,7 +10,7 @@ import { createLogger } from '../logger'
 // + 产物标记写回（assets.params.compliance，对齐 image-check params.quality 零新列先例）。
 // 纯函数面（parseRules/scanText/parseLlmVerdict/overallStatus/renderComplianceReport）探针直测；
 // LLM 复审调用在 compliance_check action 编排（探针不真实调用）。
-// 注意：内置词库为小型基准词表，误放/误杀均可能——产物 = 标记与拦截语义，非法务意见（spec §8）。
+// 注意：内置词库为小型基准词表，误放/误杀均可能——产物 = 标记与拦截语义，非法务意见。
 
 const log = createLogger('compliance')
 
@@ -25,7 +25,7 @@ export interface ComplianceRule {
  * 内置《广告法》极限词高频基准地板：仅在 words.txt 文件缺失/读取异常时兜底启用，
  * 修复「词库缺失 → 合规扫描静默空转、产物误导为 pass」这一真实降级隐患（违「不静默降级」）。
  * 用户词库文件在位时**绝不并入**（现网命中集逐字零变化，probe-m24 文件路径零回归）。
- * 这是标记/拦截语义的地板，非完整法务词库，不构成法务意见（沿用 spec §8 免责）。
+ * 这是标记/拦截语义的地板，非完整法务词库，不构成法务意见（沿用此前免责）。
  */
 export const BASE_RULES: ComplianceRule[] = [
   { category: '广告', word: '最便宜', level: 'block' },

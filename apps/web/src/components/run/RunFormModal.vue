@@ -43,7 +43,7 @@ const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
 /** 自动预填来源映射（key → last_run/brief；用户编辑即剔除，驱动字段 chip） */
 const sourceMap = ref<Record<string, PrefillSource>>({})
-// ===== M70 跨集剧情连续性（brief 12.3）：专用开关默认关；保留槽位隐藏；批准随输入/集号失效 =====
+// ===== 此前跨集剧情连续性：专用开关默认关；保留槽位隐藏；批准随输入/集号失效 =====
 const RESERVED_INPUTS = ['with_continuity', 'continuity_context']
 const episodes = ref<Episode[]>([])
 const continuity = useCreationContinuity(computed(() => props.projectId))
@@ -455,7 +455,7 @@ init()
             @assets-appended="onAssetsAppended"
             @notice="notice = $event"
           />
-          <!-- M70 跨集剧情连续性：专用开关（默认关）+ 共享承接预览/冻结；保留槽位不呈现为普通字段 -->
+          <!-- 跨集剧情连续性：专用开关（默认关）+ 共享承接预览/冻结；保留槽位不呈现为普通字段 -->
           <div v-if="supportsContinuity" class="cont">
             <label class="cont-sw">
               <input

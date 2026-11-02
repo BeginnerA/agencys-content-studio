@@ -1,4 +1,4 @@
-/** M22[P2] group-nest：组嵌套（服务语义 + 快照兼容）（断言体逐字搬自原 probe-m22.ts） */
+/** M22group-nest：组嵌套（服务语义 + 快照兼容）（断言体逐字搬自原 probe-m22.ts） */
 import type { M22Ctx } from './ctx'
 
 export async function run(ctx: M22Ctx): Promise<void> {
@@ -61,7 +61,7 @@ export async function run(ctx: M22Ctx): Promise<void> {
   const [n4After] = await db.select().from(canvasNodes).where(eq(canvasNodes.id, n4.id))
   check(gD2 != null && gD2.parentId === gA.id && gA4 != null && gA4.parentId === null, '快照恢复往返：嵌套关系（parentId）完整')
   check(n4After!.groupId === gD.id, '快照恢复：节点 groupId 归属恢复')
-  // [M22 实弹补盲] buildCanvasDoc 输出 parentId（前端嵌套渲染读模型，doc.ts 投影曾漏列）
+  // buildCanvasDoc 输出 parentId（前端嵌套渲染读模型，doc.ts 投影曾漏列）
   const nestDoc = await buildCanvasDoc(cv!.id)
   const docGA = nestDoc?.groups.find((g) => g.id === gA.id)
   const docGD = nestDoc?.groups.find((g) => g.id === gD.id)

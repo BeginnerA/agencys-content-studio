@@ -1,11 +1,11 @@
 /**
- * M31 探针（对话式参考输入：图 / 视频 / 角色 / BGM）——手动执行：
+ * 对话式参考输入探针（对话式参考输入：图 / 视频 / 角色 / BGM）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m31.ts [--section=attachment|fromasset|hashguard|capability|bgm|firstframe]
  *
  * 隔离策略：isolatedEnv('m31', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
  * 必须先于任何 src 动态 import。零网络、零付费模型调用、零计费：
  *   - attachment：直调 addAttachment/resolveAttachmentRefs（真实本地文件落盘、sha256 去重、跨项目拒绝）；
- *   - fromasset：[M31+] 直调 addAttachmentFromAsset（存量资产选取：同项目直登、跨项目复制+去重、拒绝面全覆盖）；
+ *   - fromasset：直调 addAttachmentFromAsset（存量资产选取：同项目直登、跨项目复制+去重、拒绝面全覆盖）；
  *   - hashguard：refs 进 planHash + 确认冻结链 → 编辑/软删/迁移项目一律停机（不静默消费）；无参考零回归；
  *   - capability：视觉不可用不假称理解、无 i2v 拒绝降级、无图像端点拒绝图片参考、成本可见（预检纯函数）；
  *   - bgm：严格合成 BGM 窄口径 opt-in（有 role:'bgm' 才混音、无则 params.bgm=null）；
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       check(await codeOf(() => resolveAttachmentRefs(sid, pid, Array.from({ length: 13 }, (_, i) => i + 1))) === 'too_many_refs', '参考数量超过 12 上限被拒')
     },
 
-    // ============ fromasset：[M31+] 从素材选取（同项目直登 / 跨项目复制去重 / 拒绝面） ============
+    // ============ fromasset：从素材选取（同项目直登 / 跨项目复制去重 / 拒绝面） ============
     fromasset: async () => {
       const { addAttachmentFromAsset, resolveAttachmentRefs } = await import('../src/services/creation-chat/attachments')
       const { importFiles, absPathOf } = await import('../src/services/storage')

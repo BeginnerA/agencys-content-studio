@@ -1,4 +1,4 @@
-/** M22[P0] trash：策略解析 + 过期边界（断言体逐字搬自原 probe-m22.ts） */
+/** M22trash：策略解析 + 过期边界（断言体逐字搬自原 probe-m22.ts） */
 import type { M22Ctx } from './ctx'
 
 export async function run(ctx: M22Ctx): Promise<void> {

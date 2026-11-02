@@ -1,5 +1,5 @@
 /**
- * BGM 情绪选曲探针（阶段二：bgm-mood 聚合 + montage.pickBgm 情绪层，含零 diff 显式断言）——手动执行：
+ * BGM 情绪选曲探针（bgm-mood 聚合 + montage.pickBgm 情绪层，含零 diff 显式断言）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-bgm-mood.ts [--section=pure|live]
  *
  * 隔离策略：isolatedEnv('bgmmood') 一次性临时目录（独立 studio.db + workspace），必须先于任何 src 动态 import。

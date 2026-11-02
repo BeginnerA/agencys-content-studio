@@ -1,4 +1,4 @@
-/** M18[P3] trash-snapshot：回收站与快照（软删/在途取消/列表/restore/purge + 保留 id 重放/自动备份/上限/冲突 409）（断言体逐字搬自原 probe-m18.ts） */
+/** M18trash-snapshot：回收站与快照（软删/在途取消/列表/restore/purge + 保留 id 重放/自动备份/上限/冲突 409）（断言体逐字搬自原 probe-m18.ts） */
 import type { M18Ctx } from './ctx'
 
 export async function run(ctx: M18Ctx): Promise<void> {

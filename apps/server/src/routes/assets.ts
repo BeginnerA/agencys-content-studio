@@ -33,7 +33,7 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const offset = Number.isFinite(offsetNum) && offsetNum > 0 ? Math.floor(offsetNum) : 0
   // ?trash=1 → 回收站视图（仅已软删行）；默认列表仅未删行
   const trash = c.req.query('trash') === '1'
-  // M70 保留素材（continuity_*）对普通素材面不可见：列表与 total 统一 NOT IN 保留 purpose（真源 reserved.ts）
+  // 保留素材（continuity_*）对普通素材面不可见：列表与 total 统一 NOT IN 保留 purpose（真源 reserved.ts）
   const conds = [
     eq(assets.projectId, projectId),
     trash ? isNotNull(assets.deletedAt) : isNull(assets.deletedAt),
@@ -60,7 +60,7 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })
   const purpose = typeof form.get('purpose') === 'string' ? String(form.get('purpose')) : 'source'
   if (!/^[\w-]+$/.test(purpose)) throw new HttpError(400, 'bad_purpose', `purpose 非法: ${purpose}`)
-  // 保留 purpose 只能由 M70 专用服务内部登记，普通导入拒绝（零落库）
+  // 保留 purpose 只能由专用服务内部登记，普通导入拒绝（零落库）
   if (isContinuityPurpose(purpose)) throw new HttpError(400, 'reserved_purpose', `purpose=${purpose} 为保留素材，禁止通过普通导入创建`)
   const files: Array<{ name: string; data: Uint8Array }> = []
   let total = 0
@@ -81,7 +81,7 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   return c.json({ items: created.map(toAssetView), duplicated: created.length < files.length }, 201)
 }))
 
-// POST /projects/:id/fetch-source —— URL 抓正文→ source 资产（spec §2.8：SSRF 守卫 + 限额；400 守卫/过短，502 抓取失败）
+// POST /projects/:id/fetch-source —— URL 抓正文→ source 资产（SSRF 守卫 + 限额；400 守卫/过短，502 抓取失败）
 assetsRoutes.post('/projects/:id/fetch-source', h(async (c) => {
   const projectId = idParam(c)
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })

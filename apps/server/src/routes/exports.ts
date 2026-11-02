@@ -1,5 +1,5 @@
 /**
- * 导出 REST（E3）：生成/列表/run 产物/批量导出
+ * 导出 REST：生成/列表/run 产物/批量导出
  * B8：平台导出预设管理（CRUD + 默认预设）
  * - 下载复用 GET /assets/:id/file?download=1（Range 已支持，不改动）
  */
@@ -84,7 +84,7 @@ exportsRoutes.post('/runs/:id/edit-exchange', h(async (c) => {
   }
 }))
 
-// GET /runs/:id/delivery-cert?format=&refresh= —— 交付包**只读**认证（第五期）：默认按需重算并回写该导出资产 params.cert（零新列）；
+// GET /runs/:id/delivery-cert?format=&refresh= —— 交付包**只读**认证：默认按需重算并回写该导出资产 params.cert（零新列）；
 // refresh=0 优先命中缓存（标 fromCache），无缓存则回退重算。无已生成包 → verdict=needs_package（不为认证造包）。全程零写业务表/零付费。
 const CERT_FORMATS: CertFormat[] = ['fcpxml', 'edl', 'otio']
 exportsRoutes.get('/runs/:id/delivery-cert', h(async (c) => {

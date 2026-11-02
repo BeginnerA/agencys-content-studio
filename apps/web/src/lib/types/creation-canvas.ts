@@ -56,7 +56,7 @@ export interface CreationNodeSpec {
   subtitleAssetId?: number
   /** 烧录字幕（仅 compose，缺省 false——缺省仅生成 SRT 资产） */
   burnSubtitles?: boolean
-  /** 对齐画面适配（仅 compose，缺省 pad；P2 生效） */
+  /** 对齐画面适配（仅 compose，缺省 pad；生效） */
   fit?: ComposeFit
   /** LLM 采样温度（仅 llm，0-2，缺省 0.7） */
   temperature?: number

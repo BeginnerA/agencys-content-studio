@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 小说改编看板（spec §3.8）
+ * 小说改编看板
  * 挂载：RunDetailView 步骤卡内（actionKey === 'text_split'）
  * 只读看板四段：① 章节表 ② 事件图谱 ③ 分集规划 ④ 改编剧本
  * 刷新约定：挂载拉取 + task.updated 防抖合并 + step 非终态 3s 轮询（终态即停）→ watch(step.status) 兜底

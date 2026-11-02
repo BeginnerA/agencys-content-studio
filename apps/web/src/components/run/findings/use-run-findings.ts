@@ -1,5 +1,5 @@
 /**
- * M69 审片面板状态：加载、动作、当前播放时间与镜头定位。
+ * 审片面板状态：加载、动作、当前播放时间与镜头定位。
  * 服务端投影为准；本 composable 只做 UI 态（loading/acting/notice）与半开区间当前镜头。
  */
 import { computed, ref, type Ref } from 'vue'

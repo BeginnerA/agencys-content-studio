@@ -1,25 +1,25 @@
 /**
- * M18 探针（创作画布四批能力全量补齐：快赢 / 安全 / 深度 / 规模）——手动执行：
+ * 画布四批能力补齐探针（创作画布四批能力全量补齐：快赢 / 安全 / 深度 / 规模）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m18.ts [--section=p1-schema|frame-extract|compose-v3|run-preview|trash-snapshot|llm-node|template-v2|groups|scale-zip]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db + workspace），
  * 不触碰开发库（同 probe-m2a~m17）。globalThis.fetch stub 兜底（零网络、零计费）。画布 HTTP 全链经 app.request 内存执行。
  *
  * section（默认 all）：
- *   p1-schema      [P1] 迁移与兜底：deleted_at / group_id 列 + canvas_groups / canvas_snapshots 表与索引 +
+ *   p1-schema      迁移与兜底：deleted_at / group_id 列 + canvas_groups / canvas_snapshots 表与索引 +
  *                  schema 读写冒烟 + initDb 幂等
- *   frame-extract  [P2] 抽帧：frameTimeOf 全模式矩阵 + buildFrameExtractArgs 快照 + 端点全链（真实 ffmpeg）
- *   compose-v3     [P2] 合成 v3：buildComposeArgs 快照（旧形态不变 / 转场 / BGM / 降级）+ 真实合成冒烟
- *   run-preview    [P2] 成本预估：preflight + 定价链 + 各 genKind 单位矩阵 + 响应结构
- *   trash-snapshot [P3] 回收站与快照：软删/在途取消/trash 列表/restore/purge + 保留 id 重放（任务历史认领）
- *   llm-node       [P4] LLM 节点：端口 v3 全组合 + specProblems + 执行链 + 产物文本下游装载
- *   template-v2    [P5] 模板 v2：literal action + ai_text prompt_inline + draft v2 映射 + template-try 全链
- *   groups         [P6] 画布分组：CRUD + 跨组拒绝 + 解组 + 读模型
- *   scale-zip      [P6] 封面派生矩阵 + 流式 zip 对拍（名称/数量/内容等价 + 大文件路径）
+ *   frame-extract  抽帧：frameTimeOf 全模式矩阵 + buildFrameExtractArgs 快照 + 端点全链（真实 ffmpeg）
+ *   compose-v3     合成 v3：buildComposeArgs 快照（旧形态不变 / 转场 / BGM / 降级）+ 真实合成冒烟
+ *   run-preview    成本预估：preflight + 定价链 + 各 genKind 单位矩阵 + 响应结构
+ *   trash-snapshot 回收站与快照：软删/在途取消/trash 列表/restore/purge + 保留 id 重放（任务历史认领）
+ *   llm-node       LLM 节点：端口 v3 全组合 + specProblems + 执行链 + 产物文本下游装载
+ *   template-v2    模板 v2：literal action + ai_text prompt_inline + draft v2 映射 + template-try 全链
+ *   groups         画布分组：CRUD + 跨组拒绝 + 解组 + 读模型
+ *   scale-zip      封面派生矩阵 + 流式 zip 对拍（名称/数量/内容等价 + 大文件路径）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  *
- * [M26·H5b] 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
+ * 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
  * 九节断言体逐字搬入 probes/m18/*.ts（断言文案/顺序/计数零变更）；各节保留自持的服务纯函数动态导入。
  */
 import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib'

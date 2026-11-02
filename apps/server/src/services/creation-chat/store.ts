@@ -76,7 +76,7 @@ export async function creationDetail(id: number) {
       const maxDone = doneSeqs.length ? Math.max(...doneSeqs) : -1
       chainAwaiting = maxDone >= 0 && maxDone + 1 < total && !startedSeqs.has(maxDone + 1)
     } else if (wf && wf.status === 'paused') {
-      // M70：链曾因输入/预算阻塞过 → paused；仅当「最新落定段已完成 + 未熔断 + 只读定位确有 continuity 阻塞」
+      // 链曾因输入/预算阻塞过 → paused；仅当「最新落定段已完成 + 未熔断 + 只读定位确有 continuity 阻塞」
       // 才视为等待批准。段失败/取消（不自动重试语义）与预算熔断都不得伪装成「待你批准续跑」。
       const settled = [...wfRuns].filter((r) => ['completed', 'failed', 'cancelled'].includes(r.status))
         .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0]
@@ -185,7 +185,7 @@ async function notifyChainSegmentAwaiting(runId: number): Promise<void> {
 /**
  * 启动时对账控制态；从不重新发起规划、建 run 或拉起媒体执行（零计费、零网络）。
  * planning → draft：规划被打断，原语义逐字不变。
- * starting → 依持久关联核对（CodeReview P1#8 的兜底面）：route chain 现已把「建链 + 建首段 queued run +
+ * starting → 依持久关联核对（CodeReview #8 的兜底面）：route chain 现已把「建链 + 建首段 queued run +
  * 绑会话 workflowId/runId」压进同一事务，正常不会再漏出 starting；这里覆盖旧版遗留与任何未预期残留，
  * 并且只核对、不重跑：
  *   ① 关联里有 run → 认领（started + runId + 对话留痕）：已提交的立项不该被重启推翻，更不该二次建链二次计费；

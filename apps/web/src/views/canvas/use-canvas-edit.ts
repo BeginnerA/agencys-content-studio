@@ -1,6 +1,6 @@
 /**
- * 画布内编辑（spec §2.5；E3/E4）——模板态的本地草稿层
- * - overrides：Record<stepKey, { title?, texts? }>，结构对齐 P3 template-edit 的 edits.steps[]
+ * 画布内编辑——模板态的本地草稿层
+ * - overrides：Record<stepKey, { title?,texts? }>，结构对齐 template-edit 的 edits.steps[]
  * - edgeOps：Record<toKey, { added, removed }>（added/removed 互斥——撤销即抵消，buildEdits 最小化）
  * - 边语义镜像服务端单一真源：基础 after = 显式 / 缺省前一步（materializeAfter）；when 表达式隐含
  *   引用恒存在（不可删；连已存在边静默忽略）——与 dag.stepDepEdges 首见来源优先一致

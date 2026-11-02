@@ -379,7 +379,7 @@ async function executeAudioOnce(taskId: number, canvas: Canvas, node: CanvasNode
   const relPath = relPathOf(canvas.projectId, 'creation_audio', fileName)
   ensureProjectDirs(canvas.projectId)
   writeFileSync(absPathOf(relPath), data)
-  // M66：AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+  // AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
   const abs = absPathOf(relPath)
   const label = await labelGeneratedFile(abs, 'mp3')
   const labeledBuf = readFileSync(abs)

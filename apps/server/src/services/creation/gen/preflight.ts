@@ -144,7 +144,7 @@ export async function estimateNodeUnits(spec: NodeSpec, plan: InputPlan): Promis
     } catch { /* 音频端点未配置 → 退回 spec 声明（未命中即 unpriced） */ }
     await pushUnit('tts', 'char', text.length, provider, model)
   } else if ((spec.genKind as string) === 'llm') {
-    unpriced = true // [P4] tokens 不可预知（按量计费）
+    unpriced = true // tokens 不可预知（按量计费）
   }
   // compose：本地零成本（units 空 → total=0）
   let total: number | null = null

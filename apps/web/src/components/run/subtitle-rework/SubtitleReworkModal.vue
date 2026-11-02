@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 字幕精确返修弹窗：结构化 cue 列表（原文只读 + 新文字 + 起止 HH:MM:SS.mmm）、
 // 勾选批量平移（逐行改数值）、服务端预览确认两步流。能力不支持时显示真实原因，
-// 不伪造可编辑态；预览/影响/风险全部展示后端返回值，前端零推算（规格 §3.1/§9）。
+// 不伪造可编辑态；预览/影响/风险全部展示后端返回值，前端零推算。
 // 四入口共用本组件与 use-subtitle-rework（P11 接线），此处不接入任何入口。
 import { computed, ref, toRef } from 'vue'
 import Modal from '../../common/Modal.vue'
@@ -574,7 +574,7 @@ load()
   font-weight: 600;
 }
 
-/* 移动端：表格行卡片化，控件保持可点（规格 §3.1 验收项） */
+/* 移动端：表格行卡片化，控件保持可点（验收项） */
 @media (max-width: 720px) {
   .rw-row {
     grid-template-columns: 28px 1fr;

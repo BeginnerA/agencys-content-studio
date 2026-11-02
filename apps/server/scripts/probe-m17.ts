@@ -1,5 +1,5 @@
 /**
- * M17 探针（创作工作台：全型节点 / 端口矩阵 v2 / 输入计划 v2 / 变体采纳 / 批量操控 / 运行节点 / 导出 / AI 辅助 / 回归）——手动执行：
+ * 创作工作台探针（创作工作台：全型节点 / 端口矩阵 v2 / 输入计划 v2 / 变体采纳 / 批量操控 / 运行节点 / 导出 / AI 辅助 / 回归）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m17.ts [--section=node-kinds|port-v2|input-v2|batch-ops|variant-adopt|run-node|export|llm-assist]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db +
@@ -26,7 +26,7 @@
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  *
- * [M26·H5b] 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
+ * 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
  * 八节断言体逐字搬入 probes/m17/*.ts（断言文案/顺序/计数零变更）。
  */
 import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib'

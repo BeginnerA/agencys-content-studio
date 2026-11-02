@@ -2,7 +2,7 @@
 /**
  * 画布学习实例 seed · 短剧实战画布构建器（07 两级合成 / 08 三级合成全集 / 09 季级四级合成）。
  *
- * 从 seed-learning-canvases.ts 拆分而来（M64·G4 行为零变更切分）：
+ * 从 seed-learning-canvases.ts 拆分而来（行为零变更切分）：
  * 复用 seed-learning-api 的 HTTP 工具与领域操作，逐字迁出 07-09 三个大规模画布构建流程。
  */
 import {

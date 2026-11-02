@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 合成输入本地返修：结构化预览编译（切片2 规格 §3/§4，零执行）。
+ * 精确返修 · 合成输入本地返修：结构化预览编译（零执行）。
  *
  * 镜像字幕 buildSubtitlePreview 的唯一编译器范式，但覆盖合成输入四类变更：
  *   能力与基准（capability.assessComposeInputCapability，去字幕快照门禁）→ schema 校验（compose-input 契约）
@@ -7,7 +7,7 @@
  *     shot-select 目标须属某生成步骤 output 集合、与在用资产同 kind、同 shotId，即「不越步骤/不跨 kind 的同类候选」）
  *   → 语义编译（compileComposeInputChanges：冲突/clamp 委托真源/diff/no_effect/canonical 序）
  *   → 固定 previewHash + 影响声明（本地重编码、仅重置合成步、保留清单）→ 台账 ready/blocked 回执。
- * 验收红线（规格 §1/§5）：本模块纯读取——不重置任务、不改 step/run 状态、不创建/软删资产、零供应商调用；
+ * 验收红线：本模块纯读取——不重置任务、不改 step/run 状态、不创建/软删资产、零供应商调用；
  * 一切落库写入只发生在 rework_requests 台账（预览回执），实际生效由 apply（T4）原子领用。
  */
 import { eq, inArray } from 'drizzle-orm'
@@ -105,7 +105,7 @@ export interface ComposeInputSelection {
 }
 
 /**
- * 需查库的资产校验（规格 §67）：bgm/sfx 目标 kind=audio·未删·属本项目；
+ * 需查库的资产校验：bgm/sfx 目标 kind=audio·未删·属本项目；
  * shot-select 目标须属某生成步骤 output、与在用资产同 kind·同 shotId（不越步骤、不跨 kind）。
  * 任一不满足收集为 ComposeInputError；同时把 shot-select 的「在用旧值」填进 current.selectedByShot 供 diff，
  * 并产出 selections（含产出步 stepId/stepKey + 新旧 assetId），供 apply 事务外重建生成步 output。
@@ -205,7 +205,7 @@ export async function buildComposeInputPreview(p: {
     return { outcome: 'blocked', requestId, code: assetErrors[0]?.code ?? 'bad_asset', message: assetErrors[0]?.message ?? '资产校验失败', errors: assetErrors }
   }
 
-  // 镜头时长返修校验（切片2b 规格 §4）：从 baseline.shotAxis（params.timeline 只读派生）判定有效边界，fail closed。
+  // 镜头时长返修校验：从 baseline.shotAxis（params.timeline 只读派生）判定有效边界，fail closed。
   //   无时轴快照 → 整体拒绝（不可判定 Σ）；shotId 不在段内 → bad_shot；命中视频镜（motion）→ unsupported_motion（Q2 显式拒绝，不静默 no-op）。
   const durationChanges = parsed.changes.filter(
     (c): c is Extract<ComposeInputChange, { kind: 'shot-duration' }> => c.kind === 'shot-duration',
@@ -235,7 +235,7 @@ export async function buildComposeInputPreview(p: {
   }
   const { normalized } = compiled
   // 时长 diff 附有效边界（Σ = durSec - silenceSec = 该镜对齐语音时长；请求短于 Σ → 合成期强制落 Σ 并告警，音画不脱节）。
-  // 同时检测「有效段长无变化」（含 clamp 落回原值）：若唯一变更均不改变入轴段长 → 整体 no_effect（规格 §3/§8#4）。
+  // 同时检测「有效段长无变化」（含 clamp 落回原值）：若唯一变更均不改变入轴段长 → 整体 no_effect（#4）。
   let durationEffectiveChanged = false
   for (const d of normalized.diffs) {
     if (d.kind !== 'shot-duration') continue

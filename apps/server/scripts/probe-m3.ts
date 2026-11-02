@@ -1,5 +1,5 @@
 /**
- * M3 探针（记忆/角色/契约/情绪/对齐/模板）——手动执行：
+ * 探针（记忆/角色/契约/情绪/对齐/模板）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m3.ts [--section=migrate|memory|...]
  *
  * 隔离策略：CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db + workspace），
@@ -667,7 +667,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // —— T3 mengbao-episode v19：版本 19 / 21 步 / 角色链 + 场景道具链与注入前置 / M11 对齐输入 / v12 集间承接 / v13 智能 BGM / v14 视频兜底改真厂商 / v15 商业结构承接（setting_docs 接受 json）/ v16 定妆照 16:9 多视角设定图 / v17 定妆照身份参考图接入 gen_refs / v18 定妆照参考图升三态 auto/on/off + 智能复用 / v19 跨集剧情连续性（with_continuity + continuity_context 输入、write_script continuity_role） ——
+    // —— T3 mengbao-episode v19：版本 19 / 21 步 / 角色链 + 场景道具链与注入前置 / 对齐输入 / v12 集间承接 / v13 智能 BGM / v14 视频兜底改真厂商 / v15 商业结构承接（setting_docs 接受 json）/ v16 定妆照 16:9 多视角设定图 / v17 定妆照身份参考图接入 gen_refs / v18 定妆照参考图升三态 auto/on/off + 智能复用 / v19 跨集剧情连续性（with_continuity + continuity_context 输入、write_script continuity_role） ——
     if (copyTpl('mengbao-episode')) {
       const t3 = tryLoad('mengbao-episode')
       check(t3 !== null, 'mengbao-episode 加载成功')
@@ -699,7 +699,7 @@ async function main(): Promise<void> {
           !Object.keys(stepOf('gen_images')?.inputs ?? {}).includes('characters'),
           'gen_images.inputs 不含 characters（M1 留档输入已移除）',
         )
-        // [M11] 音字对齐输入链：分镜依赖台词表 + lines 输入 + compose 增强参数兜底
+        // 音字对齐输入链：分镜依赖台词表 + lines 输入 + compose 增强参数兜底
         check(
           (stepOf('make_storyboard')?.after ?? []).includes('cast_lines'),
           'make_storyboard.after 含 cast_lines（M11）',

@@ -1,4 +1,4 @@
-/** M18[P6] scale-zip：封面派生矩阵 + 流式 zip 对拍（名称/数量/内容等价 + 大文件路径）（断言体逐字搬自原 probe-m18.ts） */
+/** M18scale-zip：封面派生矩阵 + 流式 zip 对拍（名称/数量/内容等价 + 大文件路径）（断言体逐字搬自原 probe-m18.ts） */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { M18Ctx } from './ctx'

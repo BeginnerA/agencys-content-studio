@@ -1,4 +1,4 @@
-/** M22[P1] refs：参考保真（直通字段 + draft 映射）（断言体逐字搬自原 probe-m22.ts） */
+/** M22refs：参考保真（直通字段 + draft 映射）（断言体逐字搬自原 probe-m22.ts） */
 import type { CanvasDoc, CanvasDocNode } from '../../../src/services/creation/spec'
 import type { M22Ctx } from './ctx'
 

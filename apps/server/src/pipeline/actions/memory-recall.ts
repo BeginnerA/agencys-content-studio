@@ -5,7 +5,7 @@ import { interpolate } from '../refs'
 import { StepError, type StepResult } from '../types'
 
 /**
- * memory_recall：按语义相似度召回记忆（spec §4.2）。
+ * memory_recall：按语义相似度召回记忆。
  * 输入 query：ctx.input.query 字面文本或 text 资产（可多个 → 换行拼接）；
  * params：{ limit=3, min_score=0.25, scope='both', types?（ 字符串数组如 ['summary']，按 type 过滤召回） }。
  * 产物：召回结果 markdown 资产（purpose=memory，name_tpl 默认 recall.md）；

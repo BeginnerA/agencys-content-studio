@@ -38,7 +38,7 @@ const batchText = ref('')
 const batchResult = ref('')
 const importing = ref(false)
 
-// —— M67 平台数据文件导入（状态与逻辑拆至 use-publication-import.ts，≤800 行红线）——
+// —— 平台数据文件导入（状态与逻辑拆至 use-publication-import.ts，≤800 行红线）——
 const {
   MAPPING_FIELDS,
   showImport,
@@ -262,7 +262,7 @@ function projName(id: number) {
       </div>
     </div>
 
-    <!-- M67 平台数据文件导入 -->
+    <!-- 平台数据文件导入 -->
     <div v-if="showImport && subTab === 'list'" class="batch-import panel">
       <h4>导入平台数据文件</h4>
       <p class="muted sm">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 创作画布检查器（spec §2.6；交互体例对齐 CanvasDrawer）
+ * 创作画布检查器（交互体例对齐 CanvasDrawer）
  * - gen 节点：spec 表单（genKind/prompt/尺寸/端点覆盖/编辑模式）+ 执行（表单先自动保存）· 取消
  *   + 就绪度问题 / 编辑能力提示 / 任务历史（≤5）/ 结果预览 / 入边出边管理
  * - asset 节点：预览 / 改名 / 删除

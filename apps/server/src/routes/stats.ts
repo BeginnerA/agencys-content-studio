@@ -1,5 +1,5 @@
 /**
- * 统计 REST（E4）：/stats/usage 用量聚合 + /stats/overview 看板概览
+ * 统计 REST：/stats/usage 用量聚合 + /stats/overview 看板概览
  * 增强：/stats/cost-breakdown 跨项目成本分解
  * B7：CSV 导出（runs/publications/usage）+ 趋势对比基线
  * - 薄壳：查询参数解析 → services 直通（探针可直接断言服务层）

@@ -31,7 +31,7 @@ function route(fn: (c: Context) => Promise<Response>) {
     try { return await fn(c) }
     catch (error) {
       if (error instanceof CreationError) return c.json({ error: { code: error.code, message: error.message } }, error.status)
-      // M70：连续性错误在 CreationError 边界原样保留 404/409/413 与 operationId（绝不落默认 503）
+      // 连续性错误在 CreationError 边界原样保留 404/409/413 与 operationId（绝不落默认 503）
       if (error instanceof ContinuityError) {
         return c.json({ error: { code: error.code, message: error.message,
           ...(error.operationId !== undefined ? { operationId: error.operationId } : {}) } }, error.status)
@@ -71,7 +71,7 @@ creationChatRoutes.patch(`${path}/:id/attachments/:assetId/ref`, route(async (c)
 creationChatRoutes.post(`${path}/:id/messages`, route(async (c) => c.json(await sendCreationMessage(id(c), await body(c)))))
 creationChatRoutes.post(`${path}/:id/preflight`, route(async (c) => c.json(await refreshPreflight(id(c)))))
 creationChatRoutes.post(`${path}/:id/confirm`, route(async (c) => c.json(await confirmCreation(id(c), await body(c)), 202)))
-// chain 段间批准续跑（M64 G1）：对话内「继续下一段」→ 编排器单段推进（预算/输入/幂等同源）→ 回读最新快照（chainAwaiting 自然回落）。
+// chain 段间批准续跑（G1）：对话内「继续下一段」→ 编排器单段推进（预算/输入/幂等同源）→ 回读最新快照（chainAwaiting 自然回落）。
 creationChatRoutes.post(`${path}/:id/advance-chain`, route(async (c) => { const r = await advanceChainSegment(id(c), await body(c)); return c.json({ ...(await creationDetail(id(c))), advance: r }, 202) }))
 creationChatRoutes.post(`${path}/:id/cancel`, route(async (c) => { await cancelCreation(id(c)); return c.json(await creationDetail(id(c))) }))
 creationChatRoutes.post(`${path}/:id/retry`, route(async (c) => c.json(await retryCreation(id(c), await body(c)), 202)))

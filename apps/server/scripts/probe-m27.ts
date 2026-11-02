@@ -1,12 +1,12 @@
 /**
- * M27 探针（自动编排 / 真 orchestrator）——手动执行：
+ * 自动编排orchestrator探针（自动编排 / 真 orchestrator）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m27.ts [--section=schema|workflow-crud|segment-input|auto-advance|budget-gate|breakpoint-pause|recovery-guard|nesting-clone|overview-workflows]
  *
  * 零网络零计费，隔离临时库（acs-probe-m27-*）。探针模板走 manual_ingest（离线无 LLM）。
- *   P0：schema / workflow-crud
- *   P1：segment-input / auto-advance / budget-gate / breakpoint-pause / nesting-clone
- *   P2 追加：overview-workflows
- *   P3 追加：recovery-guard（CodeReview #1/#2/#3 修复回归）
+ *   基础层：schema / workflow-crud
+ *   主链路：segment-input / auto-advance / budget-gate / breakpoint-pause / nesting-clone
+ *   追加：overview-workflows
+ *   追加：recovery-guard（CodeReview #1/#2/#3 修复回归）
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */

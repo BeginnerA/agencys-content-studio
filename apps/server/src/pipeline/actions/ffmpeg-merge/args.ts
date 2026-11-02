@@ -72,9 +72,9 @@ export interface ComposeArgsInput {
   /** 混剪原声保留（keep_clip_audio）：per-seg [i:a] 拼连续现场轨入 [outa] 槽（voices 并存时 amix 叠加）；
    *  仅 montage=true 生效；false → 现场轨丢弃（行为同 legacy clips 态）。 */
   clipAudio?: boolean
-  /** M66 合规角标（null/缺省 = 关闭 → args 逐字节不变） */
+  /** 合规角标（null/缺省 = 关闭 → args 逐字节不变） */
   compliance?: { text: string; position: WatermarkPosition; margin_px: number; fontAbs: string } | null
-  /** M66 隐式标识元数据 JSON（非空 → 每输出组追加 -metadata AIGC=<json>；null/缺省 → 逐字节不变） */
+  /** 隐式标识元数据 JSON（非空 → 每输出组追加 -metadata AIGC=<json>；null/缺省 → 逐字节不变） */
   metadataJson?: string | null
   outAbs: string
 }
@@ -332,7 +332,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
     const wmIn = srtAbs && subOut ? subOut : mainBase
     fcParts.push(`[${wmIn}][${wmPad(0)}]overlay=${watermarkOverlayXY(watermark.position, watermark.margin_px)}[outv]`)
   }
-  // M66 合规角标（最顶层；水印/字幕之后）：null → 链与 videoOut 逐字节不变
+  // 合规角标（最顶层；水印/字幕之后）：null → 链与 videoOut 逐字节不变
   let videoOut = watermark || srtAbs ? 'outv' : mainBase
   if (complianceArg) {
     const cmIn = videoOut
@@ -389,7 +389,7 @@ export function buildComposeArgs(input: ComposeArgsInput): ComposeArgsResult {
   const encVideo = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-r', String(fps)]
   // 多输出：每路独立 -map 组 + 同编码参数（音频按路分流）；无派生 → token 序与单输出逐字节一致
   const am = (label: string | undefined): string[] => (label ? ['-map', label] : [])
-  // M66 隐式标识元数据：非空 → 每输出组 -movflags 之前注入 -metadata AIGC=<json>；空数组 spread 不改 token 序（逐字节红线）
+  // 隐式标识元数据：非空 → 每输出组 -movflags 之前注入 -metadata AIGC=<json>；空数组 spread 不改 token 序（逐字节红线）
   const metaArgs = metadataJson ? ['-metadata', `${AIGC_META_KEY}=${metadataJson}`] : []
   const outGroups = ['-map', `[${videoOut}]`, ...am(aMaps[0]), ...encVideo, ...encAudio, ...metaArgs, '-movflags', '+faststart', outAbs]
   derived.forEach((d, k) => {

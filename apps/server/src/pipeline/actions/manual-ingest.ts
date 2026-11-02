@@ -3,7 +3,7 @@ import type { StepContext } from '../context'
 import type { StepResult } from '../types'
 
 /**
- * manual_ingest：素材入库（spec §5.3）。
+ * manual_ingest：素材入库。
  * docs 引用项目内已有资产（imports 上传登记）；brief 落盘为文本摘要资产。
  * 同步完成，产物 = [brief 资产, ...docs 资产]。
  */

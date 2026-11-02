@@ -206,7 +206,7 @@ export async function listSources(projectId: number, episodeId: number): Promise
           if (!rows.length) candidate.reasons.push('version_uncaptured')
           else {
             await assertCurrentSource(makeSource(located, rows[0]!.id, candidate.currentHash), db)
-            // 设计 §6.1：只有模板声明 continuity_role 的步骤算剧本角色；历史模板无快照时允许人工显式指定（仍标 undeclared_role），
+            // 只有模板声明 continuity_role 的步骤算剧本角色；历史模板无快照时允许人工显式指定（仍标 undeclared_role），
             // 已知模板里的审查报告等未声明步骤不得被当作可确认来源。
             candidate.confirmable = located.declaredRole || located.history === 'history_unavailable'
           }

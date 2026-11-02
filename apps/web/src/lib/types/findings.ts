@@ -1,4 +1,4 @@
-// M69 审片问题单：与 apps/server/src/services/review/service.ts 的视图逐字段对齐。
+// 审片问题单：与 apps/server/src/services/review/service.ts 的视图逐字段对齐。
 // 前端不推算状态/证据/能力，全部以后端投影为准。
 
 export type ReviewScopeKind = 'shot' | 'time' | 'global'

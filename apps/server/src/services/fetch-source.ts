@@ -1,8 +1,8 @@
 /**
- * 轻量通用抓取（spec §2.8）：任意 URL → 正文文本 → source 资产。
+ * 轻量通用抓取：任意 URL → 正文文本 → source 资产。
  * - assertSafeUrl：SSRF 硬守卫（仅 http/https、仅 80/443、拒回环/RFC1918/链路本地/ULA/管理域；
- *   已知局限：DNS 解析后指向内网不可拦——本机 hosts 自伤场景，登记 spec §5）。
- * - extractReadableText：确定性零依赖正文提取（与 epub XHTML 提取共用，spec §2.8/§2.2）。
+ *   已知局限：DNS 解析后指向内网不可拦——本机 hosts 自伤场景）。
+ * - extractReadableText：确定性零依赖正文提取（与 epub XHTML 提取共用）。
  * - fetchSourceText：原生 fetch（timeout 15s / ≤5MB / 重定向 ≤3 跳逐跳复查守卫）。
  * 无站点适配、无批量爬取、手动触发（用户拍板 2026-09-17）。
  */
@@ -89,7 +89,7 @@ export function assertSafeUrl(raw: string): URL {
     if (/^\d+$/.test(host)) throw new FetchGuardError('private_host', `拒绝裸数字主机：${host}`) // 十进制单标签 IPv4 形态
     if (isPrivateIpv4(host)) throw new FetchGuardError('private_host', `拒绝 IPv4 私有/保留地址：${host}`)
   }
-  // [F08-fix] 端口限制对 IPv4/IPv6 统一施加（旧代码 IPv6 分支提前 return 会跳过此检查）
+  // 端口限制对 IPv4/IPv6 统一施加（旧代码 IPv6 分支提前 return 会跳过此检查）
   if (u.port && u.port !== '80' && u.port !== '443') {
     throw new FetchGuardError('bad_port', `仅允许 80/443 端口：${u.port}`)
   }
@@ -145,7 +145,7 @@ export function extractReadableText(html: string): string {
   return text.replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/** 反爬/空页判定阈值：提取正文 < 200 字符视为失败（spec §2.8） */
+/** 反爬/空页判定阈值：提取正文 < 200 字符视为失败 */
 export const FETCH_MIN_CHARS = 200
 
 /** 抓取主函数（网络；实弹专用，探针只直测上方纯函数） */

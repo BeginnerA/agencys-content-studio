@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * M70 共用承接预览/冻结面（brief 11.4）：只读 preview 展示 + 逐项缺口填写理由 + 显式费用同意。
+ * 共用承接预览/冻结面：只读 preview 展示 + 逐项缺口填写理由 + 显式费用同意。
  * 超限（canFreeze=false）必须阻断冻结；「关闭连续性」是显式选择（emit skip，由入口决定语义）。
- * 冻结成功 emit frozen(approval)；调用方（本面板 / Task 12 各入口）持有 useContinuityApproval 状态。
+ * 冻结成功 emit frozen(approval)；调用方（本面板 / 各入口）持有 useContinuityApproval 状态。
  */
 import { computed, ref, watch } from 'vue'
 import type {

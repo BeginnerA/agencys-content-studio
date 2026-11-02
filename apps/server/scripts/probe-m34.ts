@@ -1,5 +1,5 @@
 /**
- * M34 探针（模板与运行入参自动化：G6 输入预填 + G8 视频合法档位）——手动执行：
+ * 模板与运行入参自动化探针（模板与运行入参自动化：G6 输入预填 + G8 视频合法档位）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m34.ts [--section=g6-inputs|g8-caps|guards]
  *
  * 隔离策略：isolatedEnv('m34', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

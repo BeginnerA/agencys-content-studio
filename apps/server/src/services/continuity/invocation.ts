@@ -23,7 +23,7 @@ import { documentTransaction, writeDocument } from './store'
 import { llmOptions, materializeTarget } from './targets'
 import { evaluateEntry } from './validity'
 
-/** Task5 §5.1–5.4: 调用证据状态机。一次逻辑调用一次 chat；prepared→dispatching→completed 同事务发布，
+/** 调用证据状态机。一次逻辑调用一次 chat；prepared→dispatching→completed 同事务发布，
  * 任一步失败不得再次 chat。重入只认持久证据（登记行 + UseDoc），绝不仅凭步骤状态决定重发。 */
 
 const USE_LIMITS = { messages: 160_000 } as const
@@ -86,7 +86,7 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
   const active = continuityIO()
   const projectId = ctx.run.projectId, runId = ctx.run.id, stepId = ctx.step.id
 
-  // (1) 完整消息即真实界：160000 按 JSON.stringify(messages).length 精确执行（Task4 遗留 1 的收口）。
+  // (1) 完整消息即真实界：160000 按 JSON.stringify(messages).length 精确执行（遗留 1 的收口）。
   const parsed = z.array(ChatMessageSchema).safeParse(messages)
   if (!parsed.success) throw new ContinuityError('continuity_evidence_invalid', 400)
   const preparedMessages = parsed.data as ChatMessage[]

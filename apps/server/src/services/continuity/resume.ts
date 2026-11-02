@@ -1,9 +1,9 @@
 /**
- * 普通断点续跑的连续性决策与绑定（M70 Task9）：
+ * 普通断点续跑的连续性决策与绑定：
  *   - prepareContinuityResume：源 run 事务内重读 → 决策 off / inherit / rerun（只读，不落库）
  *   - bindContinuityResume：派生 run 复制完成后的同事务绑定（rerun CAS 认领 / inherit 证据权威回写）
  *
- * 语义红线（设计 §9.1–9.2）：
+ * 语义红线：
  *   - 启用与否只认源 run 的模板快照，绝不加载最新模板；快照缺失/非法 → 阻断 400，不许静默降级为普通续跑；
  *   - inherit 只认持久消费证据（completed 消费行 / continuity_inherit 元数据链），验证输出版本可读且产物
  *     归属实际产生的原 run/step；绝不把旧 context 绑定挪给新 run，绝不重新执行目标步；
@@ -13,7 +13,7 @@
  *   - 未知费用闸：run 级 undecided（unknown/dispatching）消费遗留必须精确同意——
  *     accept_possible_duplicate_cost=true + exact unknown_use_id + 包内 duplicateCostAcceptance 三者齐备，
  *     bool=true 不得一次性放行全部未知；
- *   - 携带的批准绝不静默忽略（Task7 Minor⑤）：off/inherit 决策遇批准 → 409 continuity_conflict。
+ *   - 携带的批准绝不静默忽略：off/inherit 决策遇批准 → 409 continuity_conflict。
  *
  * llm 双链分工不在本模块（调用链在 ai_text/invocation：目标步 llmOptions 0/24000，非目标步 ctx.settings.llm
  * 0.8/12000）；本模块只决定派生 run 的输入槽位与台账绑定，rerun 后的目标步执行仍走既有连续性调用链。
@@ -66,7 +66,7 @@ async function decideResumeCore(ex: Executor, src: PipelineRun): Promise<ResumeC
   const raw = parseObject(src.input)
   if (raw === null) return { kind: 'off' }
   if (!rawEnabled(raw)) return { kind: 'off' }
-  // 启用与否只认源 run 快照（设计 §9.2）：缺失/非法/key 不符 → 阻断，绝不静默换最新模板。
+  // 启用与否只认源 run 快照：缺失/非法/key 不符 → 阻断，绝不静默换最新模板。
   const template = resumeSnapshotTemplate(src)
   // 与建 run 创建闸同口径：先判不支持（目标步形态/必备声明/开关与槽位声明），不许静默降级。
   assertRawContinuityIntent(template, raw)
@@ -154,7 +154,7 @@ async function usableInherit(ex: Executor, projectId: number, useRow: typeof rec
 }
 
 /**
- * inherit 证据定位（持久优先，设计 §6.1「输出已持久但步骤状态尚未更新时也优先复用」）：
+ * inherit 证据定位（持久优先，「输出已持久但步骤状态尚未更新时也优先复用」）：
  *   ① 源步本身是续跑继承产物 → continuity_inherit 元数据逐代传递（定位实际产生的原 run/step 的消费行）；
  *      元数据失效（行被删/归属漂移）→ 不继承：机制上安全保留（不认领不重跑不记账）。
  *   ② 常规证据：本 run/step 最新 completed 消费行，UseDoc completed + 输出可读 + 产物归属本 run/step。
@@ -231,7 +231,7 @@ export async function prepareContinuityResume(ex: Executor, sourceRunId: number,
   const decision: ResumeDecision = core.kind === 'rerun'
     ? await rerunDecision(ex, src, core.template, core.stepKey, core.raw, request)
     : core
-  // Task7 Minor⑤：携带的批准绝不静默忽略——off/inherit 决策与批准互斥，显式冲突 fail-closed。
+  // 携带的批准绝不静默忽略——off/inherit 决策与批准互斥，显式冲突 fail-closed。
   if (decision.kind !== 'rerun' && request.continuityApproval) {
     throw new ContinuityError('continuity_conflict', 409)
   }

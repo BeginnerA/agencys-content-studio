@@ -1,5 +1,5 @@
 ﻿/**
- * M11 探针（引擎级单步重跑 + 镜头级音字对齐 + BGM·转场）——手动执行：
+ * 合成与声音增强探针（引擎级单步重跑 + 镜头级音字对齐 + BGM·转场）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m11.ts [--section=rerun|align|bgm|transition|template|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -17,7 +17,7 @@
  *              updateComposeConfig（白名单/枚举/clamp/合并写）+ readComposeConfig 容错
  *   transition buildTransitionPlan：videoLens/offsets/totalDur 数学 + clamp + 禁用矩阵 + round3
  *   template   模板 v10：make_storyboard after+inputs.lines / compose 四键默认值 / v8 快照优先兼容
- *   regression M7 零回归：computeShotSegments（均分/显式/估算）+ parseShotDurations 双口径 +
+ *   regression 零回归：computeShotSegments（均分/显式/估算）+ parseShotDurations 双口径 +
  *              对齐回退形态正交
  *
  * [红线拆分 2026-09] rerun/cascade → scripts/probes/m11/modules/cascade.ts、
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   const { assets, genTasks, pipelineRuns, pipelineSteps, projects } = await import('../src/db/schema')
   const { eq } = await import('drizzle-orm')
   const { absPathOf, ensureProjectDirs, registerAsset, relPathOf } = await import('../src/services/storage')
-  const { WorkbenchError } = await import('../src/services/shot') // [M11 split] rerun/cascade/bgm/regression live in probes/m11/modules/* (dynamic-import their own services)
+  const { WorkbenchError } = await import('../src/services/shot') // rerun/cascade/bgm/regression 四节在 probes/m11/modules/*，各自动态导入所需服务
 
   const log = createLogger('probe-m11')
   let failed = 0
@@ -529,7 +529,7 @@ async function main(): Promise<void> {
 
     const tpl = loadTemplate('mengbao-episode', true)
     // v18：v17 基础上定妆照/场景道具参考图升三态 select（auto/on/off）+ 引擎智能复用（reuse_existing_refs + ref_mode）；步骤数/其余结构不变
-    // v19：M70 跨集剧情连续性（with_continuity/continuity_context 输入 + write_script continuity_role）；步骤数不变
+    // v19：跨集剧情连续性（with_continuity/continuity_context 输入 + write_script continuity_role）；步骤数不变
     check(tpl.version === 19, `version=19（实际 ${tpl.version}）`)
     check(tpl.steps.find((s) => s.key === 'write_script')?.inputs['prev_script'] === 'input.prev_script', 'v12 write_script 接 prev_script（上集剧本承接输入）')
     const gm = tpl.steps.find((s) => s.key === 'gen_motion')
@@ -583,7 +583,7 @@ async function main(): Promise<void> {
 
   // ================= 分发 =================
 
-  // [M11 split] 行级 helpers 经 ctx 注入拆出的四节（probes/m11/modules/*，断言逐字保留）
+  // 行级 helpers 经 ctx 注入拆出的四节（probes/m11/modules/*，断言逐字保留）
   const m11Ctx = {
     db, pid, T0, REPO_ROOT, check, errOf,
     getRun, getStep, getAsset, getTask,

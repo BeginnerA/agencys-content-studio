@@ -101,7 +101,7 @@ export function snapshotHashOf(template: Template): string {
   return canonicalHash(normalized)
 }
 
-/** 续跑目标模板只认源 run 快照（设计 §9.2）：缺失/非法/key 不符一律 unsupported，
+/** 续跑目标模板只认源 run 快照：缺失/非法/key 不符一律 unsupported，
  * 绝不静默换成最新版模板或自动关闭 with_continuity。 */
 export function resumeSnapshotTemplate(run: { templateKey: string; templateSnapshot: string | null }): Template {
   if (!run.templateSnapshot) return unsupported()

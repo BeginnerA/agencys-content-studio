@@ -1,5 +1,5 @@
 /**
- * 第四期 · 统一 QC 面板：本地媒体测量层（规格 2026-09-28 §4/§5）。
+ * 统一 QC 面板：本地媒体测量层。
  *
  * 全部为**本地只读测量**：ffprobe 取容器/流/分辨率/帧率/实测时长，ffmpeg ebur128 取真峰值与积分响度。
  * 零模型、零付费、零写入、不 import 引擎。工具缺失或超时 → 返回 null（宽容，不判 failed），
@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { resolveFfmpeg, resolveFfprobe } from '../ffmpeg'
 
-/** ffprobe 一次读取的成片物理规格（第一期 §7.2 媒体基线字段口径）。 */
+/** ffprobe 一次读取的成片物理规格（媒体基线字段口径）。 */
 export interface MediaSpec {
   /** 容器名（ffprobe format.format_name，如 mp4） */
   container: string | null

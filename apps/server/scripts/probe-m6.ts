@@ -1,5 +1,5 @@
 /**
- * M6 探针（参考图驱动：asset-ref / 能力声明 / 首帧匹配 / 降级路径 / 契约参数位）——手动执行：
+ * 探针（参考图驱动：asset-ref / 能力声明 / 首帧匹配 / 降级路径 / 契约参数位）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m6.ts [--section=asset-ref|capability|match|degrade|contract]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录

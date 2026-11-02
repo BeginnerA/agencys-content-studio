@@ -89,7 +89,7 @@ async function load() {
     const pid = projectId.value === '' ? undefined : projectId.value
     const [o, u] = await Promise.all([
       statsApi.overview(qs({ project_id: pid, days: days.value })),
-      // usage 端点无 days 参数（§B）：窗口用 from 换算
+      // usage 端点无 days 参数：窗口用 from 换算
       statsApi.usage(
         qs({
           group_by: usageGroup.value,

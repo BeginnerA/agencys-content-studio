@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 全景「编排链」区（spec §2.5 I3）
+ * 全景「编排链」区
  * 横向节点序列（模板名 + 段间箭头）+ 段 run 状态/成本徽章 + 链级 autoAdvance 开关 + 启动/暂停/续跑/克隆/删除。
  * 交互直调 workflowApi，成功后 emit('changed') 由父级刷新 overview；段卡点击 emit('open-run') 导航。
  * 纯展示数据来自 overview.workflows（buildCanvasOverview 派生），本组件不自持链数据副本。
@@ -37,7 +37,7 @@ const showBuilder = ref(false)
 const busy = ref<Record<number, boolean>>({})
 const err = ref('')
 
-// ===== M70 Task 12：start/resume 先打开共享当前段批准面（未批准不发请求，取消零请求） =====
+// ===== 此前 ：start/resume 先打开共享当前段批准面（未批准不发请求，取消零请求） =====
 const continuity = useCreationContinuity(computed(() => props.projectId))
 const showPreview = ref(false)
 const pending = ref<{

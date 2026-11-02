@@ -1,5 +1,5 @@
 /**
- * 批次服务（E1）：串行默认调度 + 崩溃恢复对齐（spec §3.5 / §D 伪代码）
+ * 批次服务：串行默认调度 + 崩溃恢复对齐（伪代码）
  * - 通用表（batches 无体裁逻辑）；调度逻辑零改动（复用 engine.startRun/cancelRun）
  * - pump 幂等：每轮从 DB 重算计数与槽位；批内互斥防 settle 风暴并发重入
  */
@@ -128,7 +128,7 @@ export async function pumpStalledBatches(): Promise<void> {
   }
 }
 
-/** 单批推进（§D）：每轮从 DB 重算（幂等）；批内互斥 */
+/** 单批推进：每轮从 DB 重算（幂等）；批内互斥 */
 async function pump(batchId: number): Promise<void> {
   if (pumps.has(batchId)) return
   pumps.add(batchId)

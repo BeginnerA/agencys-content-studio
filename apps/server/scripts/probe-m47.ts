@@ -1,5 +1,5 @@
 /**
- * M47 离线探针：免 ASR 核验对白执行链（路 B，huobao 式原生出声 + 估算字幕）——手动执行：
+ * 离线探针：免 ASR 核验对白执行链（路 B，huobao 式原生出声 + 估算字幕）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m47.ts [--section=recipe|preflight|execution|srt|action|merge|plan]
  *
  * 隔离策略：isolatedEnv('m47', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），
@@ -30,7 +30,7 @@ process.env.PROBE_M47_KEY = 'offline-m47'
 const SECTIONS = ['recipe', 'preflight', 'execution', 'srt', 'action', 'motion', 'merge', 'plan'] as const
 
 const { createLogger } = await import('../src/logger')
-/** 多角色对白 fixture（与 M44 探针同一份现场数据，零回归对照）。 */
+/** 多角色对白 fixture（与此前探针同一份现场数据，零回归对照）。 */
 function dialogueFixture() {
   const texts = ['信怎么不见了？', '我把信放在抽屉里了。', '可是抽屉里没有啊。', '别着急，我陪你一起找。']
   return {

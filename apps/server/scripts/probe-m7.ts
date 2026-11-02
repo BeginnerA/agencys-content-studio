@@ -1,5 +1,5 @@
 /**
- * M7 探针（镜头级轻工作台 + 选镜拼接）——手动执行：
+ * 探针（镜头级轻工作台 + 选镜拼接）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m7.ts [--section=board|edit|regenerate|select|recompose|merge-plan]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -240,7 +240,7 @@ async function main(): Promise<void> {
     check(sbOut.asset_ids?.length === 1 && sbOut.asset_ids[0] === r.assetId, '产出步骤 output 保位替换')
     check(JSON.stringify(sbOut.gate) === JSON.stringify({ status: 'keep-me' }), 'output 其他字段（gate）保留')
 
-    // F1：编辑后无需引擎回写——板面即时读产出步骤当前输出中的最新分镜（input 快照滞后不影响）
+    // 编辑后无需引擎回写——板面即时读产出步骤当前输出中的最新分镜（input 快照滞后不影响）
     const boardNow = await buildShotBoard(s.runId, 'gen_images')
     check(boardNow.shots[0]!.duration === 3.5 && boardNow.shots[0]!.imagePrompt === '晨光中的小镇（夜景版）', '编辑后板面即时读取新分镜（无需引擎回写）')
     check(boardNow.shots[1]!.duration === 2.5, '板面同读 duration_sec 回退（s02=2.5）')
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
       )
     }
 
-    // ---- F2：LLM 口径 duration_sec 的编辑同步 + 同值比较 ----
+    // ---- LLM 口径 duration_sec 的编辑同步 + 同值比较 ----
     const r2 = await applyStoryboardEdits(s.runId, 'gen_images', [{ shot_id: 's02', duration: 3 }])
     const ed2 = JSON.parse(await readTextAsset(r2.assetId)) as {
       shots: Array<{ id: string; duration?: number; duration_sec?: number; image_prompt?: string }>
@@ -570,7 +570,7 @@ async function main(): Promise<void> {
       { label: '已删除资产', picks: [{ shot_id: 's01', asset_id: delAsset }], want: 'bad_asset', msg: '已删除' },
       { label: '类型不符', picks: [{ shot_id: 's01', asset_id: s.sbId }], want: 'bad_asset', msg: '类型不符' },
       { label: '镜头不匹配', picks: [{ shot_id: 's01', asset_id: s.a2 }], want: 'bad_asset', msg: '不匹配' },
-      // [M10 适配] taskId=null 资产的拒绝文案随选片放宽细化为「不属于该步骤上传资产」；拒绝语义不变
+      // taskId=null 资产的拒绝文案随选片放宽细化为「不属于该步骤上传资产」；拒绝语义不变
       { label: '非任务集资产', picks: [{ shot_id: 's01', asset_id: orphanAsset }], want: 'bad_asset', msg: '不属于该步骤' },
     ]
     for (const c of cases) {

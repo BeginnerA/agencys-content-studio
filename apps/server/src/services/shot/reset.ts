@@ -12,7 +12,7 @@ const REWORK_ACTIONS = ['ai_image', 'ai_video', 'ffmpeg_merge']
 // ---------- 重新合成 ----------
 
 /**
- * 本地重合成入口统一作废旧终审批 gate（切片2 T5「旧批准不自动沿用」不变量）：
+ * 本地重合成入口统一作废旧终审批 gate（T5「旧批准不自动沿用」不变量）：
  * 合成步（ffmpeg_merge）重置为 pending 时剥离 output.gate，新成片必复审；历史 asset_ids 原样保留。
  * 非合成步不受本不变量约束（其 gate 由各自批准链管理）→ 返回空补丁，不触碰 output。
  * 一处收口：通用 recompose（resetStepForRecompose）、轻松创作 recomposeCreation、单步重跑（resetStepForRerun）
@@ -156,7 +156,7 @@ export async function resetShotsForRework(
         await executor.delete(genTasks).where(eq(genTasks.id, t.id))
       } else {
         // 归零重排队：提示词已变 → regen=true 清空外部任务号，令引擎重新提交（requeuePatch 单一真源，
-        // 与 resetShotForRegenerate / resetStepForRerun / [F03] 同规则），绝不轮询旧第三方任务返回旧成片；
+        // 与 resetShotForRegenerate / resetStepForRerun / 同规则），绝不轮询旧第三方任务返回旧成片；
         // prompt 同步为重新批准后的提示词（ai_image/ai_video「已批准任务参数变化」守卫比对任务快照，不同步则返修一执行即失败）
         await executor.update(genTasks).set({ ...requeuePatch(true, now), prompt: t.prompt }).where(eq(genTasks.id, t.id))
       }

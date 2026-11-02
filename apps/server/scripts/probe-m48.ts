@@ -1,5 +1,5 @@
 /**
- * M48 离线探针：阶段二「统一取消 / 续跑 / 预算」执行保障（审计 F02 / F03-TTS / F06）——手动执行：
+ * 离线探针：「统一取消 / 续跑 / 预算」执行保障——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m48.ts [--section=cancel|resume|budget]
  *
  * 隔离策略：isolatedEnv('m48') 一次性临时目录（独立 studio.db + workspace），必须在任何 src 动态 import 前调用。
@@ -7,11 +7,11 @@
  * 「向第三方提交一次合成请求」的计费替身，据此断言取消停提交 / 续跑不重复计费。
  *
  * 断言面：
- *  - cancel（F02）：run 在首句合成期间被置 cancelled → tts cooperative 退出抛 RunCancelledError，
+ *  - cancel：run 在首句合成期间被置 cancelled → tts cooperative 退出抛 RunCancelledError，
  *    第二句不再提交（audioCount 恒为 1），任务终态 1 succeeded + 1 cancelled（不重复计费）；
- *  - resume（F03-TTS）：3 句首跑各提交一次；同 run/step 再执行 → 全 succeeded 复用既有音频资产，
+ *  - resume：3 句首跑各提交一次；同 run/step 再执行 → 全 succeeded 复用既有音频资产，
  *    audioCount 不增、返回资产序列逐字一致、tts 用量行仍 3（续跑不二次计费）；
- *  - budget（F06）：未配置放行 → 月费超限 project → budget_monthly_exceeded → 高阈值放行 → 全局超限 budget_global_monthly_exceeded。
+ *  - budget：未配置放行 → 月费超限 project → budget_monthly_exceeded → 高阈值放行 → 全局超限 budget_global_monthly_exceeded。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。
  */
@@ -104,7 +104,7 @@ await runSections({ log, title: 'M48', checker, cleanup, sections: SECTIONS, reg
   await initDb()
   check(true, '初始化隔离库完成')
 }, runners: {
-  // ============ F02：取消协作停提交 ============
+  // ============ ：取消协作停提交 ============
   cancel: async () => {
     const { tts } = await import('../src/pipeline/actions/tts')
     const { RunCancelledError } = await import('../src/pipeline/types')
@@ -126,7 +126,7 @@ await runSections({ log, title: 'M48', checker, cleanup, sections: SECTIONS, reg
       `F02 取消：任务终态 1 succeeded + 1 cancelled + 1 pending（实际 ${succeeded}/${cancelled}/${tasks.length}）`)
   },
 
-  // ============ F03-TTS：续跑复用不重复计费 ============
+  // ============ ：续跑复用不重复计费 ============
   resume: async () => {
     const { tts } = await import('../src/pipeline/actions/tts')
     const { usageRecords } = await import('../src/db/schema')
@@ -146,7 +146,7 @@ await runSections({ log, title: 'M48', checker, cleanup, sections: SECTIONS, reg
     check(ttsUsage.length === 3, `F03-TTS 续跑：tts 用量行仍 3（续跑不重复计费，实际 ${ttsUsage.length}）`)
   },
 
-  // ============ F06：预算闸门（run 创建 / workflow 首段同源） ============
+  // ============ ：预算闸门（run 创建 / workflow 首段同源） ============
   budget: async () => {
     const { db } = await import('../src/db')
     const { projects, usageRecords, settings } = await import('../src/db/schema')

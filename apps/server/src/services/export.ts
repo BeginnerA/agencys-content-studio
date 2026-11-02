@@ -1,8 +1,8 @@
 /**
- * 导出分发服务（E3；spec §5 + §E）
+ * 导出分发服务
  * - 发布包 zip（store 不压缩）+ manifest.json 首 entry（包内路径为准）
  * - 任何状态的 run 均可导出已有产物；串行流式写，失败清理临时文件
- * - M66 合规打标：开启态发布包内音视频/图像为打标副本（非破坏性，工作区原件不动）+ AI生成内容说明.txt
+ * - 合规打标：开启态发布包内音视频/图像为打标副本（非破坏性，工作区原件不动）+ AI生成内容说明.txt
  */
 import { createReadStream, createWriteStream, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
@@ -23,7 +23,7 @@ import { resolveCjkFont } from '../pipeline/actions/ffmpeg-merge/title-card'
 
 const log = createLogger('export')
 
-/** M66 声明文件包内路径（开启态才入包） */
+/** 声明文件包内路径（开启态才入包） */
 const DECLARATION_NAME = 'AI生成内容说明.txt'
 
 export class ExportError extends Error {
@@ -33,7 +33,7 @@ export class ExportError extends Error {
   }
 }
 
-/** role 映射（spec §5.1；按序首配）：final_video→video/main_video；thumbnail→cover/cover；
+/** role 映射（按序首配）：final_video→video/main_video；thumbnail→cover/cover；
  *  kind=text→text/copy（含 subtitle）；kind=video→video/other；其余→other/other */
 export function roleOfAsset(a: { kind: string; purpose: string | null }): {
   role: 'main_video' | 'cover' | 'copy' | 'other'
@@ -114,7 +114,7 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
   const fallback = `${project?.name ?? `project${run.projectId}`}_${run.templateKey}_run${run.id}`
   const pkgName = (p.name ?? '').trim() || fallback
   const zipName = `${pkgName}.zip`
-  // [F05] 交付包唯一不可变身份：存储路径带 run id + 时间戳 + 去重后缀，绝不覆盖历史包；
+  // 交付包唯一不可变身份：存储路径带 run id + 时间戳 + 去重后缀，绝不覆盖历史包；
   // 显示名仍为 zipName（下载文件名不变），每条 archive 资产指向各自独立、字节稳定的文件
   const dirRel = join(String(run.projectId), 'exports')
   const base = sanitizeName(pkgName)
@@ -125,7 +125,7 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
   }
   const absFinal = absPathOf(relPath)
   const absTmp = `${absFinal}.tmp-${stamp}-${process.pid}`
-  // M66 发布包合规打标：图像 drawtext 打标副本（重编码单帧）+ 音视频 -c copy 重封装（含 PropagateID）。
+  // 发布包合规打标：图像 drawtext 打标副本（重编码单帧）+ 音视频 -c copy 重封装（含 PropagateID）。
   // 非破坏性：打标产物写独立临时目录，绝不覆盖工作区原件；关闭/不支持/失败回落原文件 + warn
   const brand = await resolveBrandConfig(run.projectId, run.input)
   const compliance = brand.compliance ?? null
@@ -188,9 +188,9 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
         } catch { /* 打标失败 → 回落原文件 */ }
         if (labeledAbs) labeledTemps.push(labeledAbs)
         else if (labelable) log.warn(`发布包打标失败，回落原文件: 资产 #${a.id}（${path}）`)
-        // ProduceID 一致性：打标成功 → 声明清单与内嵌元数据同源（生成期透传；M66 前旧资产 → 本次打标新 UUID）；
+        // ProduceID 一致性：打标成功 → 声明清单与内嵌元数据同源（生成期透传；前旧资产 → 本次打标新 UUID）；
         // 打标失败/未打标（文本等）→ 保留生成期记录可读，否则「未登记」。
-        // M66：非媒体条目（text/archive 等）无载体可嵌 → 不入逐文件 aigc 键与声明清单行（container 级 compliance 记录与文件头行不受影响）
+        // 非媒体条目（text/archive 等）无载体可嵌 → 不入逐文件 aigc 键与声明清单行（container 级 compliance 记录与文件头行不受影响）
         const produceId = labelProduceId ?? genProduceId
         if (labelable) {
           exportMeta.set(a.id, { produceId, propagateId, labeled: labeledAbs !== null })
@@ -199,7 +199,7 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
       }
       declaration = lines.join('\n')
     }
-    // M66：打标条目指纹预取（流式哈希副本最终字节，不整读入内存；读取失败回落原件指纹）
+    // 打标条目指纹预取（流式哈希副本最终字节，不整读入内存；读取失败回落原件指纹）
     const copyFingerprints = new Map<number, { size: number; sha256: string }>()
     for (const { a, path, srcAbs } of entries) {
       if (exportMeta.get(a.id)?.labeled === true && srcAbs) {
@@ -218,11 +218,11 @@ export async function buildRunExport(p: { runId: number; name?: string; assetIds
         id: run.id, templateKey: run.templateKey, batchId: run.batchId, batchSeq: run.batchSeq,
         input: safeParse(run.input) ?? {}, status: run.status,
       },
-      // M66 只增键（向后兼容）：开启态记录 compliance + 逐文件 aigc；关闭态 = null / 无 aigc 键
+      // 只增键（向后兼容）：开启态记录 compliance + 逐文件 aigc；关闭态 = null / 无 aigc 键
       compliance: compliance?.enabled ? { enabled: true, producer: compliance.producer } : null,
       files: entries.map(({ a, path }) => {
         const meta = exportMeta.get(a.id)
-        // M66：打标条目包内字节为打标副本 → size/sha256 取副本最终字节（流式哈希，副本不整读入内存），
+        // 打标条目包内字节为打标副本 → size/sha256 取副本最终字节（流式哈希，副本不整读入内存），
         // 与 zip 实际内容一致（包完整性消费方不失配）；未打标条目仍为工作区原件指纹
         const copyFp = copyFingerprints.get(a.id)
         const size = copyFp ? copyFp.size : a.fileSize
@@ -273,7 +273,7 @@ function sha256File(absPath: string): Promise<string> {
   })
 }
 
-/** fflate 流式 zip（store 不压缩；manifest 首 entry，M66 开启态声明文件紧随其后；64KB 分块；失败清理临时文件） */
+/** fflate 流式 zip（store 不压缩；manifest 首 entry，开启态声明文件紧随其后；64KB 分块；失败清理临时文件） */
 function writeZip(
   absPath: string,
   manifest: object,
@@ -338,7 +338,7 @@ function safeParse(s: string | null): unknown {
   }
 }
 
-/** 从资产 params.aigc 读生成期 ProduceID（M66 前旧资产/缺失/损坏/空白串 → null） */
+/** 从资产 params.aigc 读生成期 ProduceID（前旧资产/缺失/损坏/空白串 → null） */
 function readAigcProduceId(a: Asset): string | null {
   try {
     const p = JSON.parse(a.params ?? '{}') as { aigc?: { produceId?: string } }

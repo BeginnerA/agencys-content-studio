@@ -1,5 +1,5 @@
 /**
- * M19 探针（成片品质与品牌化）——手动执行：
+ * 成片品质与品牌化探针（成片品质与品牌化）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m19.ts [--section=subtitle-style|brand-watermark|intro-outro|sfx|aspect|ref-gen|states|voice-clone]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -7,19 +7,19 @@
  * 直测服务层函数与纯函数，不触发引擎执行与真实生成。ref-gen/states/voice-clone 三节各自
  * 持局部 fetch stub（try/finally 还原），故入口不设全局 fetch 屏蔽、不屏蔽 LLM 环境变量。
  *
- * section（默认 all；P1 骨架，各节随 P2~P8 增补）：
- *   subtitle-style  [P2] buildSubtitleStyle 零漂移/字段覆盖/颜色转换 + [P1] 合并/清洗前置断言
- *   brand-watermark [P3] 水印滤镜链 + [P1] 三层合并/来源解析/清洗 clamp
- *   intro-outro     [P3] 片头尾拼接/SRT 平移 + [P1] 槽禁用/缺失宽容
- *   sfx             [P4] SFX 绑定/混音链 + [P1] purpose 登记
- *   aspect          [P5] resolveAspectSize/派生/多路 + [P1] purpose 登记
- *   ref-gen         [P6] 提示词组装/执行器 + [P1] gen_tasks 无 run 任务模型
- *   states          [P7] 三级匹配/注入格式/ai-image 集成 + [P1] states 列 JSON 往返
- *   voice-clone     [P8] 音色库服务/派发 + [P1] voice_clones 表模型
+ * section（默认 all；骨架，各节随后续增补）：
+ *   subtitle-style  buildSubtitleStyle 零漂移/字段覆盖/颜色转换 + 合并/清洗前置断言
+ *   brand-watermark 水印滤镜链 + 三层合并/来源解析/清洗 clamp
+ *   intro-outro     片头尾拼接/SRT 平移 + 槽禁用/缺失宽容
+ *   sfx             SFX 绑定/混音链 + purpose 登记
+ *   aspect          resolveAspectSize/派生/多路 + purpose 登记
+ *   ref-gen         提示词组装/执行器 + gen_tasks 无 run 任务模型
+ *   states          三级匹配/注入格式/ai-image 集成 + states 列 JSON 往返
+ *   voice-clone     音色库服务/派发 + voice_clones 表模型
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  *
- * [M26·H5b] 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
+ * 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
  * 八节断言体逐字搬入 probes/m19/*.ts（断言文案/顺序/计数零变更）；各节保留自持的服务纯函数动态导入。
  */
 import { isolatedEnv, makeChecker, runSections, type Checker } from './probe-lib'

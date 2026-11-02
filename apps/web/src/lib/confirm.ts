@@ -86,7 +86,7 @@ export async function confirmRunResume(
     )
   }
   const needVerify = detail.resumeNeedsVerification === true
-  // M70：目标判定只认服务端预检（off=旧语义；inherit=免费复用；rerun=先冻新包）。
+  // 目标判定只认服务端预检（off=旧语义；inherit=免费复用；rerun=先冻新包）。
   const plan = resumePlanOf(detail)
   if (plan.kind === 'blocked') throw new Error(plan.reason)
   const kind = plan.kind

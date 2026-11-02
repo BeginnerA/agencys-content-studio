@@ -10,7 +10,7 @@ export const ContinuityCodeSchema = z.enum([
   'continuity_evidence_invalid', 'continuity_dependency_invalid', 'continuity_gaps_unaccepted',
   'continuity_context_too_large', 'continuity_context_changed', 'continuity_context_claimed',
   'continuity_unsupported', 'continuity_outcome_unknown',
-  // Task10 生命周期面（设计 §12）：在途台账拒绝删项目 / 已确认登记拒绝删集
+  // 生命周期面：在途台账拒绝删项目 / 已确认登记拒绝删集
   'continuity_in_flight', 'continuity_entry_referenced',
 ])
 export class ContinuityError extends Error {

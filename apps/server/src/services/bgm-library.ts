@@ -3,7 +3,7 @@
  *
  * 设计红线：
  * - 模块零依赖 DB / embedding / HTTP——只做「文件名 → 结构化元数据」的纯解析；
- *   情绪向量（embedding）由 smart-bgm.importLibraryTrack 落 params.moodEmbedding（阶段二 pickBgm 消费）。
+ *   情绪向量（embedding）由 smart-bgm.importLibraryTrack 落 params.moodEmbedding（pickBgm 消费）。
  * - 向后兼容：侧车缺失 → 返回 null（调用方按「无情绪标签的纯时长候选」入库，逐字节 = 现行为）。
  * - 授权溯源（license）缺失仅告警不阻断（合规可见，不改变可播性）。
  */

@@ -11,7 +11,7 @@ import { WorkbenchError } from './shot'
 import { resolveAudioEndpoint, synthSpeech, type AudioEndpoint } from './tts'
 
 /**
- * 声音克隆（spec §2.2 ⑧）：能力位唯一事实源 + DashScope 复刻协议 + 平台音色库 + 声线链引用。
+ * 声音克隆（⑧）：能力位唯一事实源 + DashScope 复刻协议 + 平台音色库 + 声线链引用。
  *
  * 供应商协议（阿里云百炼「声音复刻」HTTP API，同一 customization 端点下两套 enrollment 模型）：
  * - dashscope-enrollment（Qwen-Audio-TTS / CosyVoice）：input.url 只接受**公网可访问**音频地址；
@@ -31,7 +31,7 @@ export const CLONE_SAMPLE_MAX_BYTES = 10 * 1024 * 1024
 /** 供应商建议时长区间（超出仅告警，不拒绝） */
 export const CLONE_SAMPLE_MIN_SEC = 10
 export const CLONE_SAMPLE_MAX_SEC = 60
-/** 试听文本上限（spec §2.2 ⑧） */
+/** 试听文本上限（⑧） */
 export const CLONE_TEST_MAX_CHARS = 200
 const DEFAULT_TIMEOUT_MS = 120_000
 
@@ -365,7 +365,7 @@ export async function loadCloneIndex(): Promise<Map<number, VoiceClone>> {
   return new Map(rows.map((r) => [r.id, r]))
 }
 
-/** 删除音色行（v1 仅删本地登记，不回调供应商删除接口——见 spec §2.2 ⑧ 范围） */
+/** 删除音色行（v1 仅删本地登记，不回调供应商删除接口——见 ⑧ 范围） */
 export async function deleteVoiceClone(id: number): Promise<{ ok: true; name: string }> {
   if (!Number.isInteger(id) || id <= 0) throw new WorkbenchError('bad_id', 'id 需为正整数')
   const row = await getVoiceClone(id)

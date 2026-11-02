@@ -58,7 +58,7 @@ function sanitizeInputSpec(raw: Record<string, unknown> | undefined, ctx: Normal
   return out
 }
 
-/** InputSpecItem → M27 workflow inputSpec token 文法（$prev.* 产物 / 字面量字符串，int/bool 由下游 normalizeInput 转型） */
+/** InputSpecItem → workflow inputSpec token 文法（$prev.* 产物 / 字面量字符串，int/bool 由下游 normalizeInput 转型） */
 export function toWorkflowToken(item: InputSpecItem): string | undefined {
   switch (item.kind) {
     case 'text': return item.value

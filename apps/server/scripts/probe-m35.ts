@@ -1,5 +1,5 @@
 /**
- * M35 探针（创作流程自动化：G9 settings 闸门 + G7 模板推荐 + G10 clamp + G11 下一步建议）——手动执行：
+ * 创作流程自动化探针（创作流程自动化：G9 settings 闸门 + G7 模板推荐 + G10 clamp + G11 下一步建议）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m35.ts [--section=g9-settings|g7-recommend|g10-clamp|g11-next-steps|guards]
  *
  * 隔离策略：isolatedEnv('m35', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

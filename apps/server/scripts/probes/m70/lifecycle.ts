@@ -1,6 +1,6 @@
 /**
- * M70 Task 10 探针（lifecycle 节）：普通资产隔离、保留素材生命周期与删除竞态。
- * - 普通资产隔离（设计 §12）：保留素材（continuity_entry / continuity_use / continuity_context）对
+ * 探针（lifecycle 节）：普通资产隔离、保留素材生命周期与删除竞态。
+ * - 普通资产隔离：保留素材（continuity_entry / continuity_use / continuity_context）对
  *   资产列表 / 导入 / 内容覆写 / 版本还原 / 软删 / 彻底删 / 回收站清空 / 剧与集内容资产 /
  *   自动摘要素材 / 版本组清理 / 段间 refs purpose 选择器 全量不可见、不可动；
  * - lifecycle 服务三守卫直测（项目可写 / purge 放行 / 集未被台账引用）+ 错误面（404 / 409）；
@@ -204,7 +204,7 @@ async function runLifecycleBody(checker: Checker) {
       acceptedGaps: p.doc.gaps.map(g => ({ key: g.key, fingerprint: g.fingerprint, reason: '已核对' })),
       operationKey: randomUUID() }))
   }
-  /** resume 批准包冻结（设计 §9.2），可选携精确未知费用同意。 */
+  /** resume 批准包冻结，可选携精确未知费用同意。 */
   const freezeResumePack = async (story: Story, ef: ReturnType<typeof fakeIO>, srcRunId: number,
     opts: { consentUseId?: number } = {}): Promise<Approval> => {
     const target: TargetRequest = { kind: 'resume', runId: srcRunId }

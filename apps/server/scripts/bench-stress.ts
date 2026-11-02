@@ -1,12 +1,12 @@
 /**
- * M26·H3 规模化压测与性能基准（scripts/bench-stress.ts）——手动执行：
+ * 规模化压测与性能基准（scripts/bench-stress.ts）——手动执行：
  *   cd apps/server && npx tsx scripts/bench-stress.ts [--projects=1000 --assets-per-project=10 --chain-length=20 --canvas-nodes=1000 --reps=11 --out=<path>]
  *
  * 隔离临时库（acs-probe-bench-*）批量种合成数据（无真实生成、零网络、零计费）→ 量测关键列表/聚合查询
  * （项目分页 / 资产面板聚合 / run 长链批次聚合 / canvas overview 批次聚合）+ buildCanvasDoc 大图读模型
  * 耗时 + 内存 RSS 峰值 → 结构化基准报告（各量测 p50/p95/max + 数据规模）落 review 文。
  *
- * 非 CI 阻断：仅产出一次性基准供方法库沉淀（回补纲领 §一 D10 = M23 规模化性能基准）；临时库自动清理。
+ * 非 CI 阻断：仅产出一次性基准供方法库沉淀（此前规模化性能基准）；临时库自动清理。
  * 纯函数 seedDataset / percentile 由 probe-m26 `stress` 节小样本背书——本文件顶层仅 `typeof import` 类型
  * 查询（编译期擦除，零运行时 src 依赖），main() 仅在直接运行时经守卫执行，被 import 不触发副作用。
  */

@@ -1,4 +1,4 @@
-/** M17[node-kinds]：text/entity/run 建/改/删全链 + 派生读模型 + 错误族（断言体逐字搬自原 probe-m17.ts） */
+/** [node-kinds]：text/entity/run 建/改/删全链 + 派生读模型 + 错误族（断言体逐字搬自原 probe-m17.ts） */
 import type { M17Ctx } from './ctx'
 
 export async function run(ctx: M17Ctx): Promise<void> {

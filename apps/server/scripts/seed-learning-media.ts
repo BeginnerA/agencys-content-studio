@@ -2,7 +2,7 @@
 /**
  * 画布学习实例 seed · 占位素材生成（PNG / WAV / SRT；零依赖）。
  *
- * 从 seed-learning-canvases.ts 拆分而来（M64·G4 行为零变更切分，纯函数区，无 HTTP / 领域依赖）：
+ * 从 seed-learning-canvases.ts 拆分而来（行为零变更切分，纯函数区，无 HTTP / 领域依赖）：
  * 由全新构造的真实可解码 PNG / 静音 WAV / 示例 SRT 字节，供 seed 主流程上传进项目资产库。
  */
 import { deflateSync } from 'node:zlib'

@@ -1,5 +1,5 @@
 /**
- * 编排链 → 连续性目标解析桥（M70 Task 7）
+ * 编排链 → 连续性目标解析桥
  * - resolveWorkflowContinuityTarget：纯定位解析（unit/模板/输入），不建 run、不改链状态、零副作用；
  *   TargetRequest 的 workflowId/nextSeq/previousRunId 只是定位线索而非可信输入——一律从实际链状态
  *   （最近落定 run + 段定义）重导出，与请求不符即 continuity_conflict，旧包/漂移包不得命中当前段。

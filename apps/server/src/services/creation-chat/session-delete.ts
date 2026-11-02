@@ -42,7 +42,7 @@ function parseJsonSafe(raw: string | null): unknown {
  *
  * 在途保护：planning/starting 控制态、或关联 run 仍在跑时一律拒绝，避免删掉正在进行
  * 制作的唯一控制记录（run 行本身不存 sessionId，删会话不影响制作执行，但会丢掉进度入口）。
- * 连续性台账保护（M70 §12）：影子项目删除同事务复查在途提取/派发并拒绝；随影子项目清掉的
+ * 连续性台账保护：影子项目删除同事务复查在途提取/派发并拒绝；随影子项目清掉的
  * 登记在同一事务内先于资产/版本/追溯三表清理（与项目彻底删除同序），已立项会话则原样不动台账。
  */
 export interface DeleteCreationResult {
@@ -125,7 +125,7 @@ export async function deleteCreationSession(id: number): Promise<DeleteCreationR
       log.warn(`影子项目 ${result.projectId} 磁盘目录清理失败：${(err as Error).message}`)
     }
   }
-  // synth 临时模板回收（M63）：仿制 key（agent-s{本会话id}- 前缀，天然会话隔离）随会话删除，不污染模板目录/专业选择器
+  // synth 临时模板回收：仿制 key（agent-s{本会话id}- 前缀，天然会话隔离）随会话删除，不污染模板目录/专业选择器
   if (s.decision) {
     const d = agentDecisionSchema.safeParse(parseJsonSafe(s.decision))
     if (d.success && d.data.mode === 'synth' && d.data.synth) {

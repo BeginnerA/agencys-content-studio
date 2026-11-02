@@ -1,5 +1,5 @@
 /**
- * M9 探针（小说改编链：章节切分 → 事件图谱 → 改编剧本）——手动执行：
+ * 探针（小说改编链：章节切分 → 事件图谱 → 改编剧本）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m9.ts [--section=split|batch|contracts|api|template]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -10,7 +10,7 @@
  *   batch     ai_text batch 纯函数：extractBatchItems / batchItemId / buildItemPrompt
  *   contracts validateTextOutput 三新契约：event-json / graph-json / plan-json（正例 + 负例消息）
  *   api       buildNovelBoard 聚合读 + GET /runs/:id/novel-board（app.request 内存 HTTP，零网络）
- *   template  novel-adapt 契约（version=2：M25·G1 扩 accept docx/epub 升版，余面逐字不变）+ 5 提示词存在性 + validateTemplateText 正反例
+ *   template  novel-adapt 契约（version=2：扩 accept docx/epub 升版，余面逐字不变）+ 5 提示词存在性 + validateTemplateText 正反例
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     await db.update(pipelineSteps).set({ output: JSON.stringify({ asset_ids: assetIds }) }).where(eq(pipelineSteps.id, stepId))
   }
 
-  /** 建一条 gen_task 行（M9 文本任务） */
+  /** 建一条 gen_task 行（文本任务） */
   const insertTask = async (
     pid: number,
     runId: number,
@@ -421,7 +421,7 @@ async function main(): Promise<void> {
     )
     check(pBad4 !== null && pBad4.message.includes('chapter_index'), 'chapter_events 内 chapter_index 非整数抛错')
 
-    // —— 非 M9 格式回归 ——
+    // —— 非格式回归 ——
     check(validateTextOutput('普通文本', 'script') === 0, '未校验格式 → 0（回归）')
   }
 
@@ -544,7 +544,7 @@ async function main(): Promise<void> {
 
     // —— 3. 完整 loader 路径（隔离目录，模板已在位） ——
     const t = loadTemplate('novel-adapt', true)
-    check(t.version === 2, `version=2（实际 ${t.version}；M25·G1 扩 accept docx/epub 升版，步骤/输入面逐字不变）`) // [M25·P4 同步]
+    check(t.version === 2, `version=2（实际 ${t.version}；扩 accept docx/epub 升版，步骤/输入面逐字不变）`)
     check(t.steps.length === 7, `steps=7（实际 ${t.steps.length}）`)
     check(t.inputs.length === 8, `inputs=8（实际 ${t.inputs.length}）`)
     check(missingPromptsOf(t).length === 0, `5 个 prompt_tpl 文件齐备（缺：${missingPromptsOf(t).join(',') || '无'}）`)

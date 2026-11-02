@@ -1,5 +1,5 @@
 /**
- * 第四期 · 统一 QC 面板：一致性核验（规格 2026-09-28 §4）。
+ * 统一 QC 面板：一致性核验。
  *
  * **纯函数**：入参为已加载的成片 `params.timeline` 快照、实测时长、run 级 `_compose.shot_durations`、
  * 台账最近 applied 指纹与当前基准指纹；输出对应 QcCheck[]。不查库、不调 capability、不触执行——

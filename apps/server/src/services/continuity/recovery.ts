@@ -5,7 +5,7 @@ import { UseDocSchema, type Executor, type Unit, type UseDoc } from './contract'
 import { readContinuityVersion } from './sources'
 import { documentTransaction, writeDocument } from './store'
 
-/** Task5 §5.4: 启动恢复。把上次进程遗留的 extracting 条目与 dispatching 消费标记为 unknown
+/** 启动恢复。把上次进程遗留的 extracting 条目与 dispatching 消费标记为 unknown
  * （prepared 是从未派发的意图，刻意不动、可继续），并把 dispatching 的 UseDoc 对齐为 unknown 状态。
  * 全程零模型调用；重复执行幂等；任何单行文档修复失败只保留状态级标记，绝不阻塞启动。 */
 export async function recoverContinuityOperations(): Promise<{ entries: number; consumptions: number }> {

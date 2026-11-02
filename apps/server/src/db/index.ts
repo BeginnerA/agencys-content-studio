@@ -573,7 +573,7 @@ async function ensureSchemaColumns(): Promise<void> {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
 
-  // 精确返修台账建表兜底（precision-rework 规格 §5.1；migrate 体系外旧库；幂等。缺表时 ledger 查询报错 fail closed，不静默降级）
+  // 精确返修台账建表兜底（precision-rework；migrate 体系外旧库；幂等。缺表时 ledger 查询报错 fail closed，不静默降级）
   try {
     await sqlite.execute(
       `CREATE TABLE IF NOT EXISTS rework_requests (
@@ -601,7 +601,7 @@ async function ensureSchemaColumns(): Promise<void> {
   }
 
   // 两张通用会话表；失败阻止启动，不能在缺少幂等约束时接受制作请求。
-  // Agent 化（M63）新列直接入建表语句（新库）；存量库由下方 ensureColumn 幂等补齐。
+  // Agent 化新列直接入建表语句（新库）；存量库由下方 ensureColumn 幂等补齐。
   await sqlite.execute(`CREATE TABLE IF NOT EXISTS creation_sessions (
     id integer PRIMARY KEY AUTOINCREMENT, project_id integer NOT NULL,
     request_key text NOT NULL, status text DEFAULT 'draft' NOT NULL,
@@ -622,7 +622,7 @@ async function ensureSchemaColumns(): Promise<void> {
   await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_creation_messages_session ON creation_messages (session_id)')
   await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_creation_message_request ON creation_messages (session_id, request_key)')
 
-  // Agent 化（M63）存量库加列兜底（纯加法、可空、零迁移；与上方 pipeline_runs.template_snapshot 同先例）
+  // Agent 化存量库加列兜底（纯加法、可空、零迁移；与上方 pipeline_runs.template_snapshot 同先例）
   const csCols = await sqlite.execute("PRAGMA table_info('creation_sessions')")
   const csHas = new Set((csCols.rows as unknown as Array<{ name: string }>).map((r) => r.name))
   for (const [col, decl] of [['agent_mode', 'integer'], ['decision', 'text'], ['decision_hash', 'text'], ['workflow_id', 'integer']] as const) {

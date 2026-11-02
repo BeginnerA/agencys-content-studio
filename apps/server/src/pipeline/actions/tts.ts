@@ -48,7 +48,7 @@ interface LineItem {
 }
 
 /**
- * tts：对白/口播配音（spec §5.2，OpenAI 兼容 /audio/speech）。
+ * tts：对白/口播配音（OpenAI 兼容 /audio/speech）。
  * 输入 lines 两种形态：
  *  - 单个 JSON 资产：{ lines: [{id?, speaker?, voice_hint?, emotion_hint?, text}], ... } 或纯数组；
  *  - 多个资产：每资产全文 = 一句台词。
@@ -56,7 +56,7 @@ interface LineItem {
  * 按台词顺序聚合为 asset_ids；多轨拼接对齐由下游 ffmpeg_merge 统一 concat/adelay。
  * 抗抖重试（params.retry，默认 1 → 共 2 次尝试）：短剧长链（数十句）单句瞬时网络抖动不应拖垮整步，
  * 单句失败 1.5s 退避后再试（与 ai_image 同模式）；末次仍失败即抛（measured 字幕要求句数严格一致，快速失败便于修正后 resume）。
- * 声线七级链（spec §6.2 + voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
+ * 声线七级链（+ voice_map）：line.voice_hint → 角色库 voice → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → alloy；
  * 情绪：emotion_hint → 实例声明 emotion_param 时透传（基调词命中 emotion_map → 枚举值；否则透传完整 emotion_hint 含六维细节）。
  * 任一级写 `clone:{id}` → 命中平台音色库：换 provider 端点 + 克隆绑定模型合成（溯源 voiceSource='clone'）。
  */
@@ -69,10 +69,10 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
   const speed = typeof speedRaw === 'number' ? speedRaw : undefined
   const paramVoice = typeof params['voice'] === 'string' && params['voice'] ? params['voice'] : undefined
   const settingsVoice = typeof audCfg['voice'] === 'string' && audCfg['voice'] ? audCfg['voice'] : undefined
-  // voice_map：语言→音色映射（params.voice_map { "en": "voice-x" }，当前语言 = run input.lang，spec §2.5 契约）；
+  // voice_map：语言→音色映射（params.voice_map { "en": "voice-x" }，当前语言 = run input.lang，契约）；
   // lang 缺失/map 未配 → langVoice undefined → 该级整级跳过，原行为逐字不变。
   // lang 取数：ctx.input 是步骤 inputs 映射解析结果（模板显式接线 input.lang 时即有值），
-  // 未接线时回落 run.input.lang（契约本源，P2 实弹发现两处不一致后修正）
+  // 未接线时回落 run.input.lang（契约本源，实弹发现两处不一致后修正）
   const voiceMap = (params['voice_map'] && typeof params['voice_map'] === 'object' && !Array.isArray(params['voice_map']))
     ? (params['voice_map'] as Record<string, unknown>)
     : null
@@ -105,9 +105,9 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
     }）`,
   )
 
-  // [F02+F03] 逐句纳入 gen_tasks 生命周期（与 ai_text / ai_image / ai_video 同源，修复 tts 唯一未接入的缺口）：
-  //  - 取消协作：每句合成前 + 每次重试前查 runCancelled → 抛 RunCancelledError，引擎据此停后续句计费（F02）
-  //  - 续跑幂等：已 succeeded 句复用既有音频资产（resultAssetId）不再二次合成；内容指纹变更 → 归零重排队（F03-TTS）
+  // 逐句纳入 gen_tasks 生命周期（与 ai_text / ai_image / ai_video 同源，修复 tts 唯一未接入的缺口）：
+  //  - 取消协作：每句合成前 + 每次重试前查 runCancelled → 抛 RunCancelledError，引擎据此停后续句计费
+  //  - 续跑幂等：已 succeeded 句复用既有音频资产（resultAssetId）不再二次合成；内容指纹变更 → 归零重排队
   const cloneSkipped = new Set<string>()
   const retryRaw = typeof params['retry'] === 'number' ? params['retry'] : 1
   const maxAttempts = Math.max(0, Math.floor(retryRaw)) + 1
@@ -190,7 +190,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       reused += 1
       continue
     }
-    // [F02] 提交前取消检查
+    // 提交前取消检查
     if (await runCancelled(ctx.run.id)) {
       await db
         .update(genTasks)
@@ -226,7 +226,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         .set({ status: 'processing', attempts: task.attempts + 1, errorMsg: null, updatedAt: nowMs() })
         .where(eq(genTasks.id, task.id))
       task.attempts += 1
-      // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出；每次重试前复查取消（F02）
+      // 抗抖重试：瞬时网络错误（fetch failed 等）退避重试，末次失败原样抛出；每次重试前复查取消
       let data: Uint8Array
       for (let attempt = 1; ; attempt++) {
         try {
@@ -249,7 +249,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
       const relPath = relPathOf(ctx.run.projectId, 'voice', fileName)
       ensureProjectDirs(ctx.run.projectId)
       writeFileSync(absPathOf(relPath), data)
-      // M66：AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
+      // AI 生成语音恒打标（不可关；失败旁路 warn + tags，不阻断登记）
       const abs = absPathOf(relPath)
       const label = await labelGeneratedFile(abs, 'mp3')
       const labeledBuf = readFileSync(abs)
@@ -307,7 +307,7 @@ export async function tts(ctx: StepContext): Promise<StepResult> {
         model: lineEp.model,
       })
       assetIds.push(asset.id)
-      // M66：日志与 DB fileSize 同源（打标后字节数），避免台账与库内口径不一致
+      // 日志与 DB fileSize 同源（打标后字节数），避免台账与库内口径不一致
       ctx.log(`句 ${idx} (${line.id}) 配音完成 → asset#${asset.id}（${labeledBuf.byteLength} 字节）`)
     } catch (err) {
       if (err instanceof RunCancelledError) throw err
@@ -371,7 +371,7 @@ function toLines(list: unknown[]): LineItem[] {
 }
 
 /**
- * 声线七级链（spec §6.2 + voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
+ * 声线七级链（+ voice_map 级）：line.voice_hint → 角色库 → voice_map[lang] → params.voice → settings.audio.voice → 实例 extra.voice → 'alloy'。
  * 各级仅接受「供应商 voice 令牌」（全 ASCII，如 Cherry / FunAudioLLM/CosyVoice2-0.5B:alex）；
  * [B③] 自然语言声线描述（如「成年女声、清爽亲和」）自角色库拆出后落 characters.voice_desc，不再进本链；
  * 本链「character」级只读 voice=机器音色令牌。旧行/误将 NL 写入 voice 时，isProviderVoice 作防御性合法性守卫跳过并继续降级（与拆列前逐字节一致，零音频变更）；
@@ -422,7 +422,7 @@ export function isProviderVoice(v?: string): boolean {
   return !!v && /^[\x20-\x7e]+$/.test(v)
 }
 
-/** 情绪基调词（spec §6.2）：emotion_hint 首个「——」前段；无分隔符取前 6 字符；空 → '' */
+/** 情绪基调词：emotion_hint 首个「——」前段；无分隔符取前 6 字符；空 → '' */
 export function parseEmotionKey(hint: string): string {
   const idx = hint.indexOf('——')
   if (idx >= 0) return hint.slice(0, idx).trim()

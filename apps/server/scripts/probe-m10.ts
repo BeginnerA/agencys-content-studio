@@ -1,5 +1,5 @@
 /**
- * M10 探针（分镜编辑器：结构性编辑 ops + 上传替换）——手动执行：
+ * 分镜编辑器探针（分镜编辑器：结构性编辑 ops + 上传替换）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m10.ts [--section=ops|output|upload|board|select|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
@@ -12,7 +12,7 @@
  *   upload     importShotAsset：落盘/复制行/kind 校验 + uploadAndBindShotAsset 组合 + 绑定矩阵
  *   board      buildShotBoard：upload 版本组（source）/ raw 字段 / selectedAssetId
  *   select     applyShotSelection 放宽：上传资产可选 + 非本步骤/跨镜拒绝
- *   regression M7 语义回归：applyStoryboardEdits 不变 + edit→mutate 链 + reset 不含上传
+ *   regression 语义回归：applyStoryboardEdits 不变 + edit→mutate 链 + reset 不含上传
  *
  * [≤800 行红线拆分 2026-09] regression → scripts/probes/m10/modules/regression.ts
  * （断言逐字保留，行为零变更）；本入口保留隔离环境/setup/行级 helpers 与 ops/output/upload/board/select 五节，经 ctx 注入共享。
@@ -638,7 +638,7 @@ async function main(): Promise<void> {
     check(sh2.selectedAssetId === s.a2, '未绑定不改变选中')
     check(sh2.versions[0]!.source === 'task' && sh2.versions[1]!.source === 'upload', '合并序（任务版在前 / 上传在后）')
 
-    // ---- [M10] stale 兜底：shots_source=null 存量快照下分镜编辑仍可感知 ----
+    // ---- stale 兜底：shots_source=null 存量快照下分镜编辑仍可感知 ----
     const s2 = await seedRun()
     const c0 = (await buildShotBoard(s2.runId, 'gen_images')).compose
     check(c0?.stale === false, `基线 stale=false（成片晚于分镜；实际 ${JSON.stringify(c0)}）`)
@@ -710,7 +710,7 @@ async function main(): Promise<void> {
     const eNoRun = await errOf(() => applyShotSelection(s.runId, 'gen_images', { picks: [{ shot_id: 's01', asset_id: noRunUp }] }))
     check(eNoRun instanceof WorkbenchError && eNoRun.code === 'bad_asset', 'runId 不匹配的上传资产拒绝')
 
-    // ---- 跨镜 pick 仍拒绝（M7 防呆）----
+    // ---- 跨镜 pick 仍拒绝（防呆）----
     const eCross = await errOf(() => applyShotSelection(s.runId, 'gen_images', { picks: [{ shot_id: 's02', asset_id: up.id }] }))
     check(eCross instanceof WorkbenchError && eCross.code === 'bad_asset' && eCross.message.includes('不匹配'), '上传资产跨镜 pick 仍拒绝')
     const eTaskCross = await errOf(() => applyShotSelection(s.runId, 'gen_images', { picks: [{ shot_id: 's01', asset_id: s.a2 }] }))
@@ -723,7 +723,7 @@ async function main(): Promise<void> {
 
   // ================= 分发 =================
 
-  // [M10 split] regression 节因 ≤800 行红线拆至 probes/m10/modules/regression.ts（断言逐字保留），
+  // regression 节因 ≤800 行红线拆至 probes/m10/modules/regression.ts（断言逐字保留），
   // 经下方 m10Ctx 注入共享行级 helpers；ops/output/upload/board/select 留在本文件。
   const m10Ctx = { check, errOf, seedRun, getStep, getAsset, PNG_A }
   const runners: Record<string, () => Promise<void>> = {

@@ -1,5 +1,5 @@
 /**
- * M70 Task 7 探针：专业工作流逐段批准（workflow 节）
+ * 探针：专业工作流逐段批准（workflow 节）
  * - 建链两段独立；首段启用；无包 start 拒绝；携批准 start 绑定；
  * - autoAdvance 级联遇启用段 → paused/input，须当前段 re-preview + re-approve；
  * - nextSeq/previousRunId 漂移 → 旧包 409；并发 next 只加一个 run；
@@ -38,7 +38,7 @@ async function runWorkflowBody(checker: Checker) {
   const { RUN_LOGS_DIR } = await import('../../../src/env')
   const { Hono } = await import('hono')
   const { workflowsRoutes } = await import('../../../src/routes/workflows')
-  // Task 7 服务：缺失即真实 RED（逐测试失败，不让整节崩溃）。
+  // 服务：缺失即真实 RED（逐测试失败，不让整节崩溃）。
   const bridge = () => import('../../../src/services/continuity/workflow-bridge')
 
   mkdirSync(RUN_LOGS_DIR, { recursive: true })

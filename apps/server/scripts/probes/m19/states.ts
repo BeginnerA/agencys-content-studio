@@ -1,4 +1,4 @@
-/** M19[states]：characters.states 列 JSON 往返 + parseStateEntry 分隔符矩阵 + matchStateEntry 场/集/文本三级匹配（中文数字）+ injectStateAnchors 注入格式/多条取最后/零 diff + ai-image 集成真步执行（fetch stub 零外发：prompt 快照/注入顺序/日志）（断言体逐字搬自原 probe-m19.ts） */
+/** [states]：characters.states 列 JSON 往返 + parseStateEntry 分隔符矩阵 + matchStateEntry 场/集/文本三级匹配（中文数字）+ injectStateAnchors 注入格式/多条取最后/零 diff + ai-image 集成真步执行（fetch stub 零外发：prompt 快照/注入顺序/日志）（断言体逐字搬自原 probe-m19.ts） */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { M19Ctx } from './ctx'
@@ -12,7 +12,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const { apiConfigs, pipelineSteps, stylePresets } = await import('../../../src/db/schema')
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-    // ---- [P1] characters.states 列 JSON 往返 ----
+    // ---- characters.states 列 JSON 往返 ----
     const spS = (await db.insert(stylePresets).values({ name: '探针状态画风', snippet: 'ink wash', createdAt: T0, updatedAt: T0 }).returning())[0]!.id
     const pidS = await mkProject('M19 状态注入', JSON.stringify({ style_preset_ids: [spS] }))
     const c = (
@@ -33,7 +33,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const parsed = JSON.parse(c.states) as string[]
     check(parsed.length === 1 && parsed[0] === '第5场受伤：额头绷带', 'characters.states JSON 往返（{剧情节点}：{状态短语} 格式）')
 
-    // ---- [P7] parseStateEntry：分隔符矩阵 ----
+    // ---- parseStateEntry：分隔符矩阵 ----
     const pe1 = parseStateEntry('第5场受伤：额头绷带')
     check(pe1.node === '第5场受伤' && pe1.phrase === '额头绷带', 'parseStateEntry 全角冒号分割 node/phrase')
     const pe2 = parseStateEntry('第3集落水: 湿透校服')
@@ -45,7 +45,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const pe5 = parseStateEntry(undefined)
     check(pe5.node === '' && pe5.phrase === '', 'parseStateEntry 非字符串 → 空条目（不抛）')
 
-    // ---- [P7] matchStateEntry：场 / 集 / 文本三级匹配矩阵 ----
+    // ---- matchStateEntry：场 / 集 / 文本三级匹配矩阵 ----
     const m1 = matchStateEntry('第5场受伤：额头绷带', { scene: 5, episode: 1, text: 's05 巷口' })
     check(m1.hit && m1.mode === 'scene', '场次定位词与 shot.scene 数值相等命中')
     const m2 = matchStateEntry('第5场受伤：额头绷带', { scene: 4, episode: 5, text: '第5场受伤 s05 巷口' })
@@ -69,7 +69,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(!matchStateEntry('淋雨：全身湿透', { text: 's07 教室' }).hit, '无定位词且文本不含节点 → 不命中')
     check(!matchStateEntry('：只有短语', { text: '任意文本' }).hit, '空节点（仅短语）→ 不命中（避免空串恒包含）')
 
-    // ---- [P7] injectStateAnchors：注入格式 / 多条取最后 / 零 diff ----
+    // ---- injectStateAnchors：注入格式 / 多条取最后 / 零 diff ----
     await db.delete(characters).where(eq(characters.id, c.id)) // 避免旧样板行干扰索引断言
     await upsertEntity({ projectId: pidS, kind: 'character', name: '状态角色', appearance: '圆脸大眼，虎头帽红袄', states: ['第5场受伤：额头绷带', '第5场复发：绷带与拐杖'] })
     await upsertEntity({ projectId: pidS, kind: 'character', name: '集数角色', appearance: '少年，蓝校服', states: ['第3集落水：湿透校服'] })
@@ -101,7 +101,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const zero = injectStateAnchors(shotsNoState, idxS, 3)
     check(zero.shots === shotsNoState && zero.injected === 0 && zero.details.length === 0, '无 states → 零 diff（返回入参数组引用，不造新对象）')
 
-    // ---- [P7] ai-image 集成：真实 step 执行（fetch stub 零外发）→ 任务 prompt 快照含状态锚定 + 注入顺序 + 日志 ----
+    // ---- ai-image 集成：真实 step 执行（fetch stub 零外发）→ 任务 prompt 快照含状态锚定 + 注入顺序 + 日志 ----
     const { createStepContext } = await import('../../../src/pipeline/context')
     const { writeTextAsset } = await import('../../../src/services/storage')
     const { RUN_LOGS_DIR } = await import('../../../src/env')

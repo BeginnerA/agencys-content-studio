@@ -70,7 +70,7 @@ export async function loadShotAlignShots(
 }
 
 /**
- * 音字对齐计划（§2.3 条件与决策表；纯函数，探针直测）：
+ * 音字对齐计划（条件与决策表；纯函数，探针直测）：
  * - 校验：lines 字段存在 → 并集 == voiceDur 键集（无重复/幽灵/孤儿）；否则 reason 回退；
  * - 时长：带台词镜 Σ句和（explicit > Σ → explicit + 镜尾静音；explicit < Σ → Σ + warnShots）；
  *        空镜 explicit ?? fallbackDur；

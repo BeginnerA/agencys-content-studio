@@ -1,4 +1,4 @@
-// 第四期 · 统一 QC 面板：只读核验 API（与 apps/server routes/qc.ts 对齐）。
+// 统一 QC 面板：只读核验 API（与 apps/server routes/qc.ts 对齐）。
 // 仅触发后端本地 ffprobe/ffmpeg 测量 + 台账一致性汇总，零付费、零模型；不改 delivery_checked / 批准链。
 import { api } from './core'
 import type { QcReportView } from '../types/qc'

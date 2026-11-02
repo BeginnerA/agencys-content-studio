@@ -23,7 +23,7 @@ interface ShotSpec {
   id: string
   image_prompt: string
   duration?: number
-  /** 角色名（含别名）列表：命中角色库 → 自动注入 appearance/negative 锚定（E3） */
+  /** 角色名（含别名）列表：命中角色库 → 自动注入 appearance/negative 锚定 */
   characters?: string[]
   /** 场景名（与场景库对齐）：命中 → 注入场景锚定 + 参考图 */
   location?: string
@@ -60,7 +60,7 @@ function mergeRefIds(primary: number[], secondary: number[]): number[] {
 }
 
 /**
- * ai_image：批量镜头出图（spec §5.3）。
+ * ai_image：批量镜头出图。
  * 输入 batch.field（默认 shots）→ 分镜 JSON 资产 → 每镜头一条 gen_task；
  * 逐镜锚定注入（注入全文进 prompt 快照）：角色（shot.characters）→ 状态（ 角色 states 命中）→ 场景/道具（shot.location/props）→ 风格（项目绑定预设）；
  * 参考图（角色定妆照 + 场景/道具参考图）在供应商能力支持时转 data URI 注入（params.refUsed 记计划注入数）；

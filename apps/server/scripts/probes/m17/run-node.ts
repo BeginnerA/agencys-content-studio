@@ -1,4 +1,4 @@
-/** M17[run-node]：多 run 节点批查独立派生 + 行删除宽容降级 + title/seq/坐标 + batch 移动 + copy 深拷（断言体逐字搬自原 probe-m17.ts） */
+/** [run-node]：多 run 节点批查独立派生 + 行删除宽容降级 + title/seq/坐标 + batch 移动 + copy 深拷（断言体逐字搬自原 probe-m17.ts） */
 import type { M17Ctx } from './ctx'
 
 export async function run(ctx: M17Ctx): Promise<void> {

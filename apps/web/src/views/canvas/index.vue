@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 流水线画布页（spec §2.4）
+ * 流水线画布页
  * - 模式：运行画布（?run=）/ 模板画布（?template=）/ 全景（?overview=1）；三 query 互斥 run > template > overview；均无 → 空态引导
  * - 数据：canvasApi.run / canvasApi.template / canvasApi.overview（项目级聚合）；socket 手动 join/leave run room（runId 可切换，不用 useStudio 单例）
  * - 实时：run.step / run.gate / run.completed / run.failed / task.updated / batch.updated → 350ms 防抖全量对账（按当前 tab 分派）
@@ -56,7 +56,7 @@ const overviewLoading = ref(false)
 const loading = ref(false)
 const err = ref('')
 
-// ===== 画布内编辑（模板态本地草稿层；E3）=====
+// ===== 画布内编辑（模板态本地草稿层）=====
 const edit = useCanvasEdit(tplCanvas)
 const { editMode, dirty: editDirty, overriddenCount: editCount } = edit
 
@@ -277,7 +277,7 @@ const drawerSel = computed(() =>
       : null,
 )
 
-// ===== 编辑装配（编辑区视图 + patch 回流；E3）=====
+// ===== 编辑装配（编辑区视图 + patch 回流）=====
 const editNode = computed<EditNodeState | null>(() => {
   if (tab.value !== 'template' || !editMode.value || !selTplNode.value)
     return null

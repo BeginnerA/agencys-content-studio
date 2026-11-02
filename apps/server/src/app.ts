@@ -81,7 +81,7 @@ api.route('/', searchRoutes)
 api.route('/', evalRoutes)
 api.route('/', complianceRoutes)
 api.route('/', versionsRoutes)
-/** M70 连续性端点（设计 §11）：独立路由组，仍挂同一 /api/v1 前缀。 */
+/** 连续性端点：独立路由组，仍挂同一 /api/v1 前缀。 */
 api.route('/', continuityRoutes)
 
 app.route('/api/v1', api)

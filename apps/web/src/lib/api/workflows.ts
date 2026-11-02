@@ -1,5 +1,5 @@
 /**
- * 自动编排链 REST 客户端（spec §2.3）
+ * 自动编排链 REST 客户端
  * 后端 toWorkflowView 返回 camelCase（autoAdvance/budgetCap/segments[]）；
  * 建/改请求体沿用后端读取的 snake_case 键（auto_advance/budget_cap）。
  */
@@ -7,7 +7,7 @@ import { api, type Items } from './core'
 import type { Workflow, WorkflowSegment } from '../types'
 import type { Approval } from '../types/continuity'
 
-/** start/resume 请求体（M70）：可选承接批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted */
+/** start/resume 请求体：可选承接批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted */
 export interface WorkflowStartBody {
   continuity_approval?: Approval
 }
@@ -55,7 +55,7 @@ export const workflowApi = {
   update: (id: number, body: WorkflowPatchBody) =>
     api.patch<{ workflow: Workflow }>(`/api/v1/workflows/${id}`, toWire(body)),
   remove: (id: number) => api.del<{ ok: boolean }>(`/api/v1/workflows/${id}`),
-  /** 克隆为 draft（I2 编排层引用复用） */
+  /** 克隆为 draft（编排层引用复用） */
   clone: (id: number) =>
     api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/clone`),
   /** 显式启动首段 run（draft|paused→active；首段 autoAdvance 决定是否级联） */

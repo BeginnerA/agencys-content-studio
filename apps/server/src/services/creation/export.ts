@@ -1,5 +1,5 @@
 /**
- * 创作画布打包导出（ zip 流式化：内存 O(64KB)；零新依赖，fflate，spec §2.6⑫）：
+ * 创作画布打包导出（zip 流式化：内存 O(64KB)；零新依赖，fflate，⑫）：
  * - 打包对象：asset 节点（其资产）/ gen 节点（displayTask 产物——采纳优先）/ text 节点（.txt）；
  * - entity / run 不参与打包（manifest.skipped 记账）；软删/缺文件/无产物 → skipped 不炸；
  * - 条目命名 <seq?>-<title|node-<id>>[-<assetId>].<ext>（重名 -1/-2 递增）；manifest.json 为首条目；

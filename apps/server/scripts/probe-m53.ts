@@ -1,12 +1,12 @@
 /**
- * M53 探针（photo-montage 素材混剪成片）——手动执行：
+ * 探针（photo-montage 素材混剪成片）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m53.ts [--section=pure|args|template|live]
  *
  * 隔离策略：isolatedEnv('m53', bridge templates) 一次性临时目录（独立 studio.db + workspace），
  * 必须先于任何 src 动态 import。零网络、零付费：live 节真 engine.startRun 走 photo-montage
  * 全链，素材由本地 ffmpeg 生成（color/testsrc + sine），全程 fetch 桩封死 + 用量表零行断言。
  *
- * 断言面（spec §5）：
+ * 断言面：
  *  - pure：montageEnabled 真值表 / kbDirectionFor / normalizeSizes / planFixedSrt 定时与逐行收敛 /
  *    computeShotSegments mixed 按 kind 分流与 skip；
  *  - args：legacy 零 diff（无 montage 键 args 逐字节 = montage:false 基线）；montage phase-2 形态
@@ -51,7 +51,7 @@ await runSections({
       const { db } = await import('../src/db')
       const { projects } = await import('../src/db/schema')
 
-      // —— montageEnabled 真值表（spec §2.1）——
+      // —— montageEnabled 真值表——
       const off = { hasMixed: false, hasVideoSeg: false, strict: false }
       check(montageEnabled({}, off) === false, '无触发键 → legacy 单段链（montageEnabled=false）')
       check(montageEnabled({}, { ...off, strict: true }) === false, 'strict_delivery 恒 false（批准链逐字节红线）')
@@ -124,7 +124,7 @@ await runSections({
       }) as never
       const j = (r: { args: string[] }): string => r.args.join(' ')
 
-      // —— legacy 零 diff（spec §4）：montage 未传 = 基线逐字节 ——
+      // —— legacy 零 diff：montage 未传 = 基线逐字节 ——
       const legacyA = j(buildComposeArgs(base({})))
       const legacyB = j(buildComposeArgs(base({ montage: undefined, clipAudio: undefined })))
       const legacyC = j(buildComposeArgs(base({ montage: false, clipAudio: false })))

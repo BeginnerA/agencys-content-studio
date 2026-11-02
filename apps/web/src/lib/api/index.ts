@@ -55,6 +55,6 @@ export { assetVersionApi, entityVersionApi, canvasLockApi } from './versions'
 export { subtitleReworkApi, ReworkApiError } from './rework'
 export { qcApi } from './qc'
 
-// M70 连续性（brief 11）
+// 连续性
 export { continuityApi, freezeBody } from './continuity'
 export type { FreezeRequestBody } from './continuity'

@@ -1,4 +1,4 @@
-/** M19[brand-watermark]：sanitizeWatermark 清洗 + 三层读取容错 + 来源解析（file/asset）+ 品牌资产服务 upload/预览/清除 + buildComposeArgs 水印链（零 diff + 九宫格 + 字幕序）（断言体逐字搬自原 probe-m19.ts） */
+/** [brand-watermark]：sanitizeWatermark 清洗 + 三层读取容错 + 来源解析（file/asset）+ 品牌资产服务 upload/预览/清除 + buildComposeArgs 水印链（零 diff + 九宫格 + 字幕序）（断言体逐字搬自原 probe-m19.ts） */
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { M19Ctx } from './ctx'
@@ -19,7 +19,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(Object.keys(await readProjectBrand(pid)).length === 0, 'readProjectBrand 缺省 → {}')
     check(Object.keys(readComposeBrand('not-json')).length === 0 && Object.keys(readComposeBrand(null)).length === 0, 'readComposeBrand 坏输入/空输入 → {}')
 
-    // ---- 三层皆空 → 仅 compliance 槽（M66 隐式合规默认恒开；水印/字幕槽零增键现状；须在写入平台品牌层前断言——平台层不区分项目全域生效） ----
+    // ---- 三层皆空 → 仅 compliance 槽（隐式合规默认恒开；水印/字幕槽零增键现状；须在写入平台品牌层前断言——平台层不区分项目全域生效） ----
     const rEmpty = await resolveBrandConfig(pid, null)
     check(
       Object.keys(rEmpty).length === 1 && rEmpty.compliance?.enabled === true && rEmpty.compliance.text === 'AI生成' && rEmpty.compliance.position === 'br' && rEmpty.compliance.margin_px === 24 && rEmpty.watermark === undefined && rEmpty.subtitle === undefined,
@@ -70,7 +70,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     const r5 = await resolveBrandConfig(pid2, JSON.stringify({ _compose: { brand: { watermark: { asset_id: wmAsset.id } } } }))
     check(r5.watermark === undefined, '资产不属本项目 → 宽容降级（不出现）')
 
-    // ---- [P3] 品牌资产服务（upload/预览/清除；真实落 BRAND_DIR） ----
+    // ---- 品牌资产服务（upload/预览/清除；真实落 BRAND_DIR） ----
     const { uploadBrandAsset, getBrandAssetInfo, clearBrandAsset, isBrandSlot } = await import('../../../src/services/brand-assets')
     check(isBrandSlot('watermark') && isBrandSlot('intro') && isBrandSlot('outro') && !isBrandSlot('bogus'), 'isBrandSlot 白名单（watermark/intro/outro；bogus 拒绝）')
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -88,7 +88,7 @@ export async function run(ctx: M19Ctx): Promise<void> {
     check(cleared.watermark?.file === undefined && cleared.watermark?.opacity === 0.5, 'clearBrandAsset 仅删 file 键（槽内参数保留）')
     check((await getBrandAssetInfo('watermark')) === null, '清除引用后预览 → null（路由 404 语义）')
 
-    // ---- [P3] buildComposeArgs：零 diff 快照 + 水印链 ----
+    // ---- buildComposeArgs：零 diff 快照 + 水印链 ----
     const segNorm = (i: number): string =>
       `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=25,format=yuv420p[v${i}]`
     const r0 = buildComposeArgs(mkArgsInput({}))

@@ -26,7 +26,7 @@ import { setWorkflowStatus } from '../workflow'
  */
 
 /**
- * 确认入口分发（M63 切片 3）：按会话当前决策形态路由——
+ * 确认入口分发：按会话当前决策形态路由——
  *  - route 会话（agentMode=1 且 decision.mode≠easy）→ confirmRoute（template/chain/synth，route-execution.ts）；
  *  - easy 会话（含 agent 模式 plan 旁注、legacy 无 decision）→ confirmEasy（下列主体逐字原样，零回归）。
  */

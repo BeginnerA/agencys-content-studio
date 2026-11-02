@@ -5,7 +5,7 @@ import { apiProviders } from '../db/schema'
 import { synthAliyunQwenSpeech, synthGeminiSpeech, synthMiniMaxSpeech, synthVolcengineSpeech } from '@agencys/ai-provider-kit'
 
 /**
- * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech，spec §5.2）。
+ * TTS 语音合成服务（默认 OpenAI 兼容 /audio/speech）。
  * 端点取 service_type=audio 的 api_configs（Settings → 语音合成 tab）；
  * 模型默认取供应商目录预设首项（如 aliyun_bailian_tts → qwen-tts），无目录时 OpenAI 系回退 tts-1；
  * aliyun_bailian_tts 为 DashScope 私有协议（kit protocols/speech/aliyun）；
@@ -21,7 +21,7 @@ export interface AudioEndpoint {
   model: string
   /** 实例级默认音色（config.extra.voice；如 SiliconFlow 需 "模型:音色" 格式） */
   voice?: string
-  /** 实例级情绪透传声明（config.extra.emotion_param / emotion_map，E4） */
+  /** 实例级情绪透传声明（config.extra.emotion_param / emotion_map） */
   emotion?: { param: string; map?: Record<string, string> }
   /** 实例原始扩展参数（api_configs.extra 解析产物；私有协议供应商自取，如火山 TTS 的 resource_id） */
   extra: Record<string, unknown>
@@ -74,7 +74,7 @@ function parseEmotionDecl(extra: Record<string, unknown>): { param: string; map?
 }
 
 /**
- * 情绪透传载荷（E4）：实例 extra 声明 emotion_param 才透传（未声明 → null，兼容任意网关）。
+ * 情绪透传载荷：实例 extra 声明 emotion_param 才透传（未声明 → null，兼容任意网关）。
  * 入参为**完整 emotion_hint**（形如 `基调词——六维细节`）：
  * - 「——」前的基调词命中 emotion_map → 下发映射后的网关枚举值（供只认枚举值的网关）；
  * - 无 map / 未命中 → 透传完整 emotion_hint（含六维细节，供吃自然语言情绪/风格描述的模型，不再截断）。
@@ -95,7 +95,7 @@ export interface SynthSpeechOptions {
   voice?: string
   speed?: number
   timeoutMs?: number
-  /** 情绪透传（E4）：resolveEmotionPayload 产物；实例未声明时不下发（兼容任意网关） */
+  /** 情绪透传：resolveEmotionPayload 产物；实例未声明时不下发（兼容任意网关） */
   emotion?: { param: string; value: string }
 }
 

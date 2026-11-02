@@ -11,14 +11,14 @@ import { recordLlmUsage } from '../../services/usage'
 import type { StepContext } from '../context'
 import { StepError, type StepResult } from '../types'
 
-// video_analyze 视频解析 action（spec §2.9，批 3 全接线；用户拍板「全链含音频转写」）。
+// video_analyze 视频解析 action（批 3 全接线；用户拍板「全链含音频转写」）。
 // 流程：ffprobe 时长 → 均匀抽帧（临时目录，帧不落资产）→ ffmpeg 抽音轨 → ASR（宽容降级 null）
 //       → 多模态 LLM 时间轴 → parseTimelineJson 契约 → 落 video_analysis json + md 报告。
 // 独立帧数常量：不动画布 UNIFORM_FRAME_COUNT_RANGE（2–9），视频解析上限更宽（2–24）。
 
 export const VIDEO_FRAME_COUNT_RANGE = { min: 2, max: 24, default: 8 } as const
 
-/** 分析帧缩宽（spec §5：768 缩宽再编码，控多模态请求体；对齐抽帧 scale 参数化） */
+/** 分析帧缩宽（768 缩宽再编码，控多模态请求体；对齐抽帧 scale 参数化） */
 export const ANALYSIS_FRAME_WIDTH = 768
 
 export interface TimelineScene {
@@ -300,7 +300,7 @@ export function renderVideoReferenceSummary(out: VideoAnalysisOutcome, sourceNam
 
 export async function videoAnalyze(ctx: StepContext): Promise<StepResult> {
   const params = (ctx.def.params ?? {}) as Record<string, unknown>
-  // —— 1. 视频源资产（首个存在本地文件的视频；spec §2.9 输入契约） ——
+  // —— 1. 视频源资产（首个存在本地文件的视频；输入契约） ——
   const videoIds = ctx.assetIdsOf('video')
   if (videoIds.length === 0) throw new StepError('video_analyze：inputs.video 无视频资产')
   const rows = await ctx.assetsOf(videoIds)

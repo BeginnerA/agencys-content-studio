@@ -1,5 +1,5 @@
 /**
- * M66 探针（AIGC 合规标识）——手动执行：
+ * AIGC合规标识探针（AIGC 合规标识）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m66.ts [--section=pure|remux|brand|compose-args|wiring|implicit|export]
  *
  * 隔离策略：isolatedEnv('m66') 一次性临时目录（独立 studio.db + workspace），
@@ -165,7 +165,7 @@ await runSections({
     brand: async () => {
       const bc = await import('../src/services/brand-config')
 
-      // 缺省即开（M66 用户决策）
+      // 缺省即开（用户决策）
       const d = bc.sanitizeCompliance(undefined)
       check(d.enabled === true, 'compliance 缺省 enabled=true')
       check(d.text === 'AI生成', '角标文案缺省「AI生成」')
@@ -286,7 +286,7 @@ await runSections({
       // 角标在链上位于字幕/水印之后（最顶层）：cmv 的来源标签为 outv
       check(/\[outv\]drawtext=/.test(fc) || /\[basev\]drawtext=/.test(fc), '角标叠加于字幕/水印之后')
 
-      // 多画幅派生路同样注入合规（M66）：filter 链含 [dcm 标签 + 派生输出组携带 -metadata AIGC
+      // 多画幅派生路同样注入合规：filter 链含 [dcm 标签 + 派生输出组携带 -metadata AIGC
       const rMa = buildComposeArgs({
         ...base,
         compliance: cArg,
@@ -424,7 +424,7 @@ await runSections({
         mkdirSync(dirname(absPathOf(imgRel)), { recursive: true })
         copyFileSync(pngSrc, absPathOf(imgRel))
         copyFileSync(mp4Src, absPathOf(vidRel))
-        // 生成期 ProduceID 留痕（模拟 M66 生成链路 params.aigc 落库）：发布包声明与内嵌元数据须与其一致
+        // 生成期 ProduceID 留痕（模拟生成链路 params.aigc 落库）：发布包声明与内嵌元数据须与其一致
         const imgGenId = randomUUID()
         const vidGenId = randomUUID()
         const imgAsset = await registerAsset(projectId, {

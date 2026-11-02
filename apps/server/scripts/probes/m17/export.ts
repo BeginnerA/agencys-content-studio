@@ -1,4 +1,4 @@
-/** M17[export]：真实文件 zip（条目命名/重名递增/seq 序 + manifest + skipped + 采纳优先 + 错误族 + 下载）（断言体逐字搬自原 probe-m17.ts） */
+/** [export]：真实文件 zip（条目命名/重名递增/seq 序 + manifest + skipped + 采纳优先 + 错误族 + 下载）（断言体逐字搬自原 probe-m17.ts） */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'

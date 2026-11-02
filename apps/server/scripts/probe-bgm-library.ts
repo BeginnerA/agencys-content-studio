@@ -1,5 +1,5 @@
 /**
- * 正版曲库入库规范探针（阶段一：bgm-library 侧车解析 + smart-bgm.importLibraryTrack 落 tags/params）——手动执行：
+ * 正版曲库入库规范探针（bgm-library 侧车解析 + smart-bgm.importLibraryTrack 落 tags/params）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-bgm-library.ts [--section=pure|live]
  *
  * 隔离策略：isolatedEnv('bgmlib') 一次性临时目录（独立 studio.db + workspace），必须先于任何 src 动态 import。

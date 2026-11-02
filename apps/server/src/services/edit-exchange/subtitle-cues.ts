@@ -1,5 +1,5 @@
 /**
- * 共享字幕 cue 读取（precision-rework §8）：剪辑工程字幕轨必须由 timeline.subtitle.cues
+ * 共享字幕 cue 读取：剪辑工程字幕轨必须由 timeline.subtitle.cues
  * （合成期有效字幕快照，coordinate='final' 绝对轴，已含片头位移与人工修订平移）构造，
  * 不再拿 timeline.lines 的对白文本/时码覆盖人工修订；对白音轨仍只读 lines（双轨分离）。
  * 旧 v=1 快照无 cues 时按兜底旧规则（lines 文本 + 内容轴 +intro）构造并如实标注来源，

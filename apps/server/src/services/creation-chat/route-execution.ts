@@ -1,8 +1,8 @@
 /**
- * route 执行分派（M63 切片 3）：template / chain / synth 三种新执行形态的「确认才立项 → 起执行」。
+ * route 执行分派：template / chain / synth 三种新执行形态的「确认才立项 → 起执行」。
  * 与 easy 批准链彻底分道——easy 的 recipe 冻结 / planHash / 逐镜续跑逻辑逐字不触碰（execution.ts confirmEasy）。
  * 计费安全三闸在此同样成立：① preflightDecision 结构闸（模板漂移/输入非法/synth YAML 不过 → 拒）；② checkBudget 项目级硬闸；
- * ③ M40「确认才立项」：status ready→starting 条件更新（decisionHash + decisionRevision 乐观锁）作幂等与防 TOCTOU。
+ * ③ 「确认才立项」：status ready→starting 条件更新（decisionHash + decisionRevision 乐观锁）作幂等与防 TOCTOU。
  * 物化输入只引用会话可用素材（归一层已剔幽灵 id）；synth 临时模板仿制 key 落盘、visibility:conversation 不进专业选择器、随会话删除回收。
  */
 import { z } from 'zod'
@@ -35,7 +35,7 @@ const routeConfirmationSchema = z.object({
   idempotencyKey: z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   acceptUnpriced: z.boolean().default(false),
   project: projectMetaInputSchema.optional(),
-  // M70：已冻结承接包批准（仅用户请求 schema 接入；LLM 决策契约 strict 不收此键）
+  // 已冻结承接包批准（仅用户请求 schema 接入；LLM 决策契约 strict 不收此键）
   continuityApproval: ApprovalSchema.optional(),
 }).strict()
 
@@ -90,7 +90,7 @@ export async function confirmRoute(id: number, raw: unknown): Promise<{ runId: n
   const s0 = await sessionRow(id)
   const decision = routeDecisionOf(s0)
   if (!decision) throw new CreationError('not_ready', '当前没有可确认的调度计划，请先完成对话规划', 409)
-  // M70：批准包必须恰指本会话当前决策位置（kind=route + sessionId/decisionRevision/decisionHash 全匹配），
+  // 批准包必须恰指本会话当前决策位置（kind=route + sessionId/decisionRevision/decisionHash 全匹配），
   // 否则 409 continuity_context_changed。置于幂等早退之前：过期 decision / 另一会话 / 异种包在回放路径同样被拒。
   if (request.continuityApproval) {
     const doc = await readContext(s0.projectId, request.continuityApproval, db)
@@ -168,7 +168,7 @@ async function startSynth(id: number, s: CreationSession, decision: AgentDecisio
 /**
  * chain：一个事务内完成「项目转正 + ready→starting 认领 + 建链 + 建首段 queued run + 链置 active + 会话绑定 + 留痕」，
  * 提交后才拉起执行（与 confirmEasy / rework apply 的「事务内立项、提交后起跑」同律）。
- * 为什么必须同事务（CodeReview P1#8）：旧版先置 starting 再建链再起跑、workflowId 起完段才回写，
+ * 为什么必须同事务（CodeReview #8）：旧版先置 starting 再建链再起跑、workflowId 起完段才回写，
  * 建链异常会遗留永久锁死会话的 starting，起跑后崩溃会留下「链与 run 已在库、会话无关联」的孤儿运行——
  * 用户再确认即二次建链二次计费。同事务后：任一环节失败整体回滚（零孤儿、零计费）；提交成功则关联与 run
  * 已持久，崩溃窗口交由既有 queued 恢复 + 30s 全局泵兜底，启动对账据关联认领而不重跑立项。
@@ -181,7 +181,7 @@ async function startChain(id: number, s: CreationSession, decision: AgentDecisio
     return { templateKey: seg.templateKey, inputSpec: Object.keys(spec).length ? spec : undefined }
   })
   // 事务外先过只读段闸（模板可载 / 必填输入 / 预算熔断 + 批准槽位注入）：不过则连链都不建。
-  // M70：批准透传给 prepareFirstSegment（与专业链首段同源）——声明启用而无批准 409；带批准由服务端追加槽位。
+  // 批准透传给 prepareFirstSegment（与专业链首段同源）——声明启用而无批准 409；带批准由服务端追加槽位。
   const gate = await prepareFirstSegment({ projectId: s.projectId, segments: JSON.stringify(segments) },
     { continuityApproval: request.continuityApproval }).catch((err) => { throw asCreationError(err) })
   const committed = await creationWrite(() => db.transaction(async (tx) => {

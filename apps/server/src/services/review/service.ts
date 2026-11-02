@@ -1,5 +1,5 @@
 /**
- * M69 审片问题单服务（design §4.5/§4.7）。
+ * 审片问题单服务。
  * - 状态机唯一实现：open → in_rework → pending_recheck → verified，旁路 dismissed / reopened。
  * - 复检只调用 recheckScope 记录证据；verify 必须人工且三重匹配（携带成片 = 复检成片 = 当前成片）。
  * - 视图投影（can / needsRecheck / staleRecheck / currentLocation）由服务端计算，前端零推断。
@@ -291,7 +291,7 @@ function locationOf(row: ReviewFinding, ctx: ReviewContext): FindingLocation | n
 }
 
 function canOf(row: ReviewFinding, ctx: ReviewContext): FindingCan {
-  // spec §4.5：cancelled 只能只读 + patch；run_active 只拦 create/recheck（apply 后要能立即 link），
+  //cancelled 只能只读 + patch；run_active 只拦 create/recheck（apply 后要能立即 link），
   // 其余推进动作不因执行中而锁死。
   const cancelled = ctx.code === 'run_cancelled'
   const active = ctx.code === 'run_active'

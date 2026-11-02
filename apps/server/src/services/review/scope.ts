@@ -1,5 +1,5 @@
 /**
- * M69 审片问题单 · 时间轴定位纯函数（design §4.3）。
+ * 审片问题单 · 时间轴定位纯函数。
  * 唯一真源 = 成片 params.timeline：segments.startSec 为内容轴（片头后 0 起算），
  * cues.coordinate='final' 已是最终绝对轴。本模块不查库、不读文件、不触执行。
  */

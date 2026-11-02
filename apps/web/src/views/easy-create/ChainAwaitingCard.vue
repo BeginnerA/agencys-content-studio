@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * 段间批准卡（M64 G1；M70 Task 12 接线）：服务端 sideCards 下发 key='chainAwaiting' 时渲染。
+ * 段间批准卡（G1；接线）：服务端 sideCards 下发 key='chainAwaiting' 时渲染。
  * 「本段已完成·待你批准继续下一段」的段序/总数取自服务端落的 chain-await 消息 payload（后端为真源，前端不臆造）。
- * M70：当前段声明跨集承接（session.chainContinuityBlock，paused/continuity 阻塞也可见）时，
+ * 当前段声明跨集承接（session.chainContinuityBlock，paused/continuity 阻塞也可见）时，
  * 先打开共享承接预览并冻结批准，再经 s.advanceChain 携包推进；advance 目标绑定 workflow/seq/previousRun。
  * 取消预览 → 不提交（零请求）；切会话/离开由 use-creation-chain 的 epoch 防旧响应写回。
  */
@@ -42,7 +42,7 @@ const awaiting = computed(() => {
   }
   return null
 })
-/** M70：paused 且 continuity 阻塞时服务端给目标签名（无 chain-await 消息也要可预览推进） */
+/** paused 且 continuity 阻塞时服务端给目标签名（无 chain-await 消息也要可预览推进） */
 const block = computed(() => detail.value?.session.chainContinuityBlock ?? null)
 const summary = computed(
   () =>

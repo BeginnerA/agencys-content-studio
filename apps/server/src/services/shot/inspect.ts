@@ -18,7 +18,7 @@ export interface StoryboardSource {
 // ---------- 公共校验 ----------
 
 /**
- * 返修通用校验（spec §3.6 决策表）：
+ * 返修通用校验（决策表）：
  * run ∈ {completed, failed}（活跃 400 / cancelled 提示续跑）；目标步骤 ∈ {succeeded, failed}；
  * 该 run 内除目标步骤外无 failed（失败收敛先于执行，否则重跑必失败）。
  *

@@ -1,4 +1,4 @@
-/** M17[batch-ops]：批量操控（batch/delete/copy/chain/arrange/canvases-run）+ computeArrange/chainPortCandidates 纯矩阵（断言体逐字搬自原 probe-m17.ts） */
+/** [batch-ops]：批量操控（batch/delete/copy/chain/arrange/canvases-run）+ computeArrange/chainPortCandidates 纯矩阵（断言体逐字搬自原 probe-m17.ts） */
 import type { M17Ctx } from './ctx'
 
 export async function run(ctx: M17Ctx): Promise<void> {
@@ -304,7 +304,7 @@ export async function run(ctx: M17Ctx): Promise<void> {
     const ch18 = await jreq('POST', `/api/v1/canvases/${CB3}/nodes/chain`, { ids: [NT1, NGImg, NGVid] })
     check(ch18.body?.created?.length === 0 && ch18.body?.skipped?.length === 2, 'chain：多对串联逐对记账（失败不中断）')
 
-    // ---- 端点：canvases/run（批量执行：started/skipped + P2 守卫 + 收敛等待） ----
+    // ---- 端点：canvases/run（批量执行：started/skipped + 守卫 + 收敛等待） ----
     const cB4 = await jreq('POST', `/api/v1/projects/${PID}/canvases`, { name: '批量执行' })
     const CB4: number = cB4.body.canvas.id
     const mkNodeB4 = async (body: unknown): Promise<number> => (await jreq('POST', `/api/v1/canvases/${CB4}/nodes`, body)).body.node.id

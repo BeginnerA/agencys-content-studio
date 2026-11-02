@@ -7,14 +7,14 @@ import { upsertMemory } from './memory'
 import { createLogger } from '../logger'
 
 // 三层记忆 / 摘要压缩：项目/剧/集（+自定义）级摘要，LLM 增量合并压缩沉淀。
-// 承载 = memories 表开放字段（type='summary' + 具名 upsert 幂等，零新表零新列，spec §2.2）：
+// 承载 = memories 表开放字段（type='summary' + 具名 upsert 幂等，零新表零新列）：
 //   summary:project / summary:series:{id} / summary:episode:{id} / summary:custom:{name}
 // 纯函数面（summaryName/buildMergeInput/guardSummaryLen）探针直测；
 // summarizeToMemory = action 与自动钩子共用的 LLM 编排核心（真实调用走 e2e 实弹）。
 
 const log = createLogger('memory-summary')
 
-/** 摘要级（spec §2.2 四型；纲领「项目/剧/章」的「章」= 剧的章节单元 episode；小说卷章用 custom） */
+/** 摘要级（四型；纲领「项目/剧/章」的「章」= 剧的章节单元 episode；小说卷章用 custom） */
 export type SummaryLevel = 'project' | 'series' | 'episode' | 'custom'
 
 export const SUMMARY_LEVELS: readonly SummaryLevel[] = ['project', 'series', 'episode', 'custom']

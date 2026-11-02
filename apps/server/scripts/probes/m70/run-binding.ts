@@ -39,7 +39,7 @@ async function runRunBindingBody(checker: Checker) {
   const { Hono } = await import('hono')
   const { runsRoutes } = await import('../../../src/routes/runs')
   const { batchesRoutes } = await import('../../../src/routes/batches')
-  // Task6 服务：缺失即真实 RED（逐测试失败，不让整节崩溃）。
+  // 服务：缺失即真实 RED（逐测试失败，不让整节崩溃）。
   const binding = () => import('../../../src/services/continuity/run-binding')
   const templateErrors = () => import('../../validate-templates')
 

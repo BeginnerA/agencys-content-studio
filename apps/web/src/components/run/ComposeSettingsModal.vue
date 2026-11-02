@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 合成设置弹窗（spec §4；由既有 BgmModal 升级扩展）
+ * 合成设置弹窗（由既有 BgmModal 升级扩展）
  * - 配乐（BGM）：绑定/移除/音量/上传（原功能逐字保留）
  * - 字幕样式：run 级 brand.subtitle 覆盖（开关 + 9 字段表单）
  *   · 百分比字段显示 ×100（size_pct 0.018 → 1.8%），保存 ÷100

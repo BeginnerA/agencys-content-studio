@@ -6,7 +6,7 @@ const AUDIENCE_KEY = 'audience'
 const HEADER = '【剧情连续性台账 v1】以下各区间彼此隔离；简报/设定等其他参考资料不构成本台账认证的事实。'
 const EPISTEMIC: Record<KnowledgeItem['epistemic'], string> = { knows: '知道', believes: '以为', unaware: '不知', unknown: '认知不明' }
 
-/** Minor 1 (Task4 gate): item values and knower labels cannot forge 台账 sections — fullwidth brackets
+/** Minor 1 (gate): item values and knower labels cannot forge 台账 sections — fullwidth brackets
  * are neutralized and CR/LF flattened so a rendered line can never start a new section or line item. */
 function neutral(text: string): string {
   return text.replaceAll('【', '〖').replaceAll('】', '〗').replace(/[\r\n]+/g, ' ')

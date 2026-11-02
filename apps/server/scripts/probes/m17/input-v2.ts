@@ -1,4 +1,4 @@
-/** M17[input-v2]：planNodeInputs v2 / specProblems / pickDisplayTask 纯矩阵 + 读模型与执行侧集成（断言体逐字搬自原 probe-m17.ts） */
+/** [input-v2]：planNodeInputs v2 / specProblems / pickDisplayTask 纯矩阵 + 读模型与执行侧集成（断言体逐字搬自原 probe-m17.ts） */
 import type { NodeSpec } from '../../../src/services/creation'
 import type { M17Ctx } from './ctx'
 

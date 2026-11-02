@@ -1,5 +1,5 @@
 /**
- * M46 探针（轻松创作第五批：角色 / 风格预设软提示注入）——手动执行：
+ * 探针（轻松创作第五批：角色 / 风格预设软提示注入）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m46.ts [--section=unit|inject|contract]
  *
  * 隔离策略：isolatedEnv('m46') 一次性临时目录（独立 studio.db + workspace），必须在任何 src import 前调用。
@@ -26,7 +26,7 @@ process.env.PROBE_M46_KEY = 'probe-offline-secret-key-46a1'
 
 const SECTIONS = ['unit', 'inject', 'contract'] as const
 
-/** 3 镜 × 10 秒 = 30 秒（与 M45 同夹具） */
+/** 3 镜 × 10 秒 = 30 秒（与此前同夹具） */
 function makePlan(mode: 'dynamic' | 'slideshow') {
   return {
     title: '咖啡冲煮三分钟', summary: '用三段讲清风味来源', genre: 'science' as const, duration: 30,

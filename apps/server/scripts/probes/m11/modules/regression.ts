@@ -1,5 +1,5 @@
 /**
- * [M11·拆分] scripts/probe-m11.ts 的 regression 节（≤800 行红线拆分，断言逐字保留）。
+ * scripts/probe-m11.ts 的 regression 节（≤800 行红线拆分，断言逐字保留）。
  */
 import { writeFileSync } from 'node:fs'
 import type { Asset } from '../../../../src/db/schema'

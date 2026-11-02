@@ -1,5 +1,5 @@
 /**
- * 成片多画幅派生（spec §2.3 ⑤ A 路径：对已合成成片做单路 ffmpeg 重编码）。
+ * 成片多画幅派生（⑤ A 路径：对已合成成片做单路 ffmpeg 重编码）。
  * - 源 = 该 run 最新有效 final_video（无 / 文件缺失 → no_final「尚未合成成片」）
  * - 尺寸与几何与 B 路径（合成内多路）同源：resolveAspectSize / aspectGeometryFilter
  * - 幂等复用：同 run + aspect + strategy + source_asset_id 且文件仍在 → { reused: true }（不发 ffmpeg）

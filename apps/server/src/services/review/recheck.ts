@@ -1,5 +1,5 @@
 /**
- * M69 · 复检（design §4.6）：只报证据变化，永不判过。
+ * · 复检：只报证据变化，永不判过。
  * 比较基准快照与当前 step_key 成片时间轴；任何结果都由人确认后才 verified。
  */
 import { shotRange, type FinalTimeline, type ReviewCategory, type ReviewScopeKind } from './scope'
@@ -42,7 +42,7 @@ function windowOf(p: RecheckInput): Window | null {
   return { startMs: 0, endMs: p.timeline.totalMs }
 }
 
-/** time 范围在新成片已越界（成片变短）→ 不做时间重映射，按 unverifiable 诚实降级（spec §4.6） */
+/** time 范围在新成片已越界（成片变短）→ 不做时间重映射，按 unverifiable 诚实降级 */
 function windowOutOfRange(p: RecheckInput): boolean {
   return (
     p.scopeKind === 'time' &&

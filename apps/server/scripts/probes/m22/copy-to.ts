@@ -1,4 +1,4 @@
-/** M22[P3] copy-to：跨画布复制（同项目直引 / 跨项目级联拷贝）（断言体逐字搬自原 probe-m22.ts） */
+/** M22copy-to：跨画布复制（同项目直引 / 跨项目级联拷贝）（断言体逐字搬自原 probe-m22.ts） */
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { M22Ctx } from './ctx'
 

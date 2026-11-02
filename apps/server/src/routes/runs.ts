@@ -54,10 +54,10 @@ runsRoutes.post('/projects/:id/runs', h(async (c) => {
     throw new HttpError(400, 'bad_input', 'input 需为对象（brief 文本 / setting_docs 资产 id 数组 / episode_number 整数）')
   }
   let run
-  // [F06] 预算闸门：与 creation-chat / workflow advance 同源，超阈即拦截（避免普通运行入口绕过熔断）
+  // 预算闸门：与 creation-chat / workflow advance 同源，超阈即拦截（避免普通运行入口绕过熔断）
   const budgetHit = await checkBudget({ projectId })
   if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
-  // M70：可选 continuity_approval（已冻结承接包批准句柄；启用 with_continuity 时必传）
+  // 可选 continuity_approval（已冻结承接包批准句柄；启用 with_continuity 时必传）
   const approvalRaw = body['continuity_approval']
   try {
     run = await createRunRow({ projectId, templateKey, input: input as Record<string, unknown>,
@@ -105,7 +105,7 @@ runsRoutes.get('/runs/:id', h(async (c) => {
   const resumeNeedsVerification = ambiguousTaskIds.length > 0
   // 配置漂移就地续跑：已批准端点相对当前配置漂移（改模型/改价/删实例）→ 续跑需 accept_config_drift 确认改用当前配置。
   const resumeConfigDrift = await describeRunConfigDrift(run)
-  // M70 续跑目标预检：与 POST /runs/:id/resume 同一决策函数（只读）；前端不再自行推断 off/inherit/rerun。
+  // 续跑目标预检：与 POST /runs/:id/resume 同一决策函数（只读）；前端不再自行推断 off/inherit/rerun。
   let continuityResume: ResumePreflight | { kind: 'blocked'; code: string } | undefined
   if (['failed', 'cancelled'].includes(run.status)) {
     try {
@@ -291,7 +291,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   // [审计G3] 预算闸门：resume 创建新 run 并重新提交失败步骤 = 新付费承诺，与 POST /projects/:id/runs 同源拦截
   const budgetHit = await checkBudget({ projectId: src.projectId })
   if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
-  // [M70 Task9] 连续性续跑决策：off/inherit/rerun 由源 run 模板快照与持久消费证据裁决（先于任何落库）；
+  // 连续性续跑决策：off/inherit/rerun 由源 run 模板快照与持久消费证据裁决（先于任何落库）；
   // 随后派生复制（原字段/字幕剥离/genTasks 迁移逐字保留）→ 绑定（rerun 同事务 CAS 认领 /
   // inherit 持久证据权威回写）。单事务原子：任一步失败整体回滚，不留孤儿 run 或半绑定台账。
   const request = parseResumeContinuityRequest(rawBody)
@@ -313,12 +313,12 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   return c.json({ run: toRunView(newRun) }, 202)
 }))
 
-/** 派生 run 复制（Task9 自普通续跑事务逐字提取）：run 行 + 步骤复制 + gen_tasks 迁移。
- * 原字段、字幕剥离（precision-rework §6.2）与 genTasks 迁移口径逐字保留；仅 rerun 决策把
+/** 派生 run 复制（自普通续跑事务逐字提取）：run 行 + 步骤复制 + gen_tasks 迁移。
+ * 原字段、字幕剥离与 genTasks 迁移口径逐字保留；仅 rerun 决策把
  * 输入换挂本次冻结批准的包资产（continuityRerunInput）。 */
 async function insertResumedRunAndSteps(ex: Executor, src: PipelineRun, decision: ResumeDecision): Promise<PipelineRun> {
   const t = Date.now()
-  // 字幕修订指针不盲目跨 run 复制（规格 §6.2）：新 run 不带 _subtitleEdits，需重新基准确认；源 run 指针保留为历史
+  // 字幕修订指针不盲目跨 run 复制：新 run 不带 _subtitleEdits，需重新基准确认；源 run 指针保留为历史
   const resumeInput = decision.kind === 'rerun'
     ? stripResumeSubtitleEdits(JSON.stringify(continuityRerunInput(JSON.parse(src.input) as Record<string, unknown>, decision.approval)))
     : stripResumeSubtitleEdits(src.input)
@@ -382,7 +382,7 @@ async function insertResumedRunAndSteps(ex: Executor, src: PipelineRun, decision
   return run
 }
 
-/** 解析普通续跑的连续性请求字段（Task9）。body 解析失败与 easy 分支同口径视为「未携带」
+/** 解析普通续跑的连续性请求字段。body 解析失败与 easy 分支同口径视为「未携带」
  * （fail-closed：需要批准的决策以 409 呈现，绝不静默降级）；字段类型非法则显式 400。
  * 批准句柄原样透传，归属/状态/哈希/文档全字段校验交由 readContext。 */
 function parseResumeContinuityRequest(raw: string): ResumeContinuityRequest {

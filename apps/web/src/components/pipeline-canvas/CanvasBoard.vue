@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 画布渲染层（手绘零依赖；spec §2.4）
+ * 画布渲染层（手绘零依赖）
  * - 世界层单容器 transform: translate(pan) scale(zoom)；节点 = 绝对定位 HTML 卡；边 = SVG 三次贝塞尔
  * - 布局：层号 = sched 边拓扑最长路径松弛（防环最多 n 轮）；层内按 seq 垂直堆叠居中
  * - pan = 视口 pointer capture（节点卡 @pointerdown.stop）；缩放 = 滚轮光标锚定 [0.3, 2.5]；键盘 +/-/0

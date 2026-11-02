@@ -1,16 +1,16 @@
 /**
- * M54 探针（智能混剪增强：kb:auto / 构图锚点 / collage 拼贴 / 智能 BGM）——手动执行：
+ * 探针（智能混剪增强：kb:auto / 构图锚点 / collage 拼贴 / 智能 BGM）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m54.ts [--section=pure|args|template|live]
  *
  * 隔离策略：isolatedEnv('m54', bridge templates) 一次性临时目录（独立 studio.db + workspace），
  * 必须先于任何 src 动态 import。live 节素材本地 ffmpeg 生成（color/sine）；music_gen 走
  * globalThis.fetch 桩契约测试（零真实付费），并断言失败降级库内 auto 与 usage kind='music' 口径。
  *
- * 断言面（docs/records/montage-ai-spec.md §7）：
+ * 断言面：
  *  - pure：kbDirectionFor auto 三态 + 既有模式零 diff / classifyAnchor / kbAnchorFor / voteSubject /
  *    montageEnabled 对 auto 触发 / planCollageSegments 四种 layout / pickBgm 规则 / scanBgmLibrary；
  *  - args：buildNormalizeArgs collage 分支（duo vstack、grid xstack、tile 后 zoompan/定帧）、
- *    anchor 偏置表达式、无 paths/无 anchor 段逐字节 = M53 形态；
+ *    anchor 偏置表达式、无 paths/无 anchor 段逐字节 = 此前形态；
  *  - template：photo-montage v2 新输入面 / ken_burns auto / analyze 步 when 门控 / 桥 11 键映射；
  *  - live：4 图 duo + kb:auto 实弹成片（段数/时长/尺寸/溯源）；bgm_mode=auto 库内两曲自动选曲
  *    （params.bgm.auto_selected + 非静音 + 零用量）；music_gen fetch 桩成功（资产+usage 口径+请求契约）
@@ -131,7 +131,7 @@ await runSections({
       const imgSeg = { id: 1, path: 'in/a.png', kind: 'image', durSec: 4 } as never
       const j = (r: string[]): string => r.join(' ')
 
-      // —— 零 diff：anchor 缺省/null = M53 居中公式逐字节 ——
+      // —— 零 diff：anchor 缺省/null = 此前居中公式逐字节 ——
       const baseKb = j(buildNormalizeArgs(imgSeg, nb({ kb: 'in' })))
       const nullAnchor = j(buildNormalizeArgs(imgSeg, nb({ kb: 'in', anchor: null })))
       check(baseKb === nullAnchor, 'anchor 缺省 vs 显式 null → args 逐字节一致（M53 基线）')
@@ -161,7 +161,7 @@ await runSections({
       check(duoKb.includes("[tile]scale=640:480:force_original_aspect_ratio=increase,crop=640:480,zoompan=z='min(1+0.005*on,1.25)'") && !duoKb.includes('-frames:v 1'), 'collage+kb=in：tile 底 ×2 超采样 zoompan（无定帧限制）')
       const trio = j(buildNormalizeArgs({ id: 1, path: 'a', paths: ['a', 'b', 'c'], kind: 'image', durSec: 4 } as never, nb({})))
       check(trio.includes('vstack=inputs=3[tile]'), '三拼（grid/auto 降级形态）→ vstack 三行')
-      // 无 paths 单图段与 M53 形状逐字节 = pure 图链（-i 单输入、无 xstack/vstack）
+      // 无 paths 单图段与此前形状逐字节 = pure 图链（-i 单输入、无 xstack/vstack）
       check(!baseKb.includes('tile') && !baseKb.includes('vstack') && !baseKb.includes('xstack'), '单图段零 diff：不引入 tile 链任何痕迹')
     },
 
@@ -293,7 +293,7 @@ await runSections({
         check(Number.isFinite(mean) && mean > -90, `自动配乐后非数字静音（mean_volume=${mean}dB）`)
         check((await usageOf(runB)).length === 0, '库内选曲零计费（usage_records 0 行）')
 
-        // —— run E（M54-B）：非混剪态智能选曲（短剧 compose_video 形态：纯 images 输入 + bgm_mode 映射，无 montage）——
+        // —— run E（-B）：非混剪态智能选曲（短剧 compose_video 形态：纯 images 输入 + bgm_mode 映射，无 montage）——
         const tplSnap = JSON.parse(JSON.stringify(loadTemplate('photo-montage'))) as { steps: Array<Record<string, any>> }
         tplSnap.steps = tplSnap.steps.filter((s) => s.key === 'compose')
         const cstep = tplSnap.steps[0]!

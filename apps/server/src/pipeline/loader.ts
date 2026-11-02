@@ -276,7 +276,7 @@ function isExprList(v: unknown): v is string | string[] {
 
 /**
  * batch 归一化：YAML 惯用 snake_case（max_concurrent）→ 类型层 camelCase（maxConcurrent）。
- * 此前未归一化导致模板写的 max_concurrent 从未生效（恒走默认 2）——模板写法保持 spec §3.1 不变。
+ * 此前未归一化导致模板写的 max_concurrent 从未生效（恒走默认 2）——模板写法保持不变。
  */
 function normalizeBatch(v: unknown): TemplateStepDef['batch'] {
   if (!v || typeof v !== 'object') return undefined
@@ -486,7 +486,7 @@ export interface RunTemplateSource {
 }
 
 /**
- * run 的模板来源（spec §3.5）：优先 template_snapshot（run 创建时固化），
+ * run 的模板来源：优先 template_snapshot（run 创建时固化），
  * 缺失/损坏 → 回退 loadTemplate 并告警（存量 run 兼容）。
  */
 export function templateForRun(run: RunTemplateSource): Template {

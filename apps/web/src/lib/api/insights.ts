@@ -97,7 +97,7 @@ export const editExchangeApi = {
     `/api/v1/assets/${assetId}/file${download ? '?download=1' : ''}`,
 }
 
-// M67 导入端点基址（core 未导出 BASE；模块级本地常量，参照 creation-chat.ts 先例）
+// 导入端点基址（core 未导出 BASE；模块级本地常量，参照 creation-chat.ts 先例）
 const BASE = '/api/v1'
 
 export const publicationApi = {
@@ -126,7 +126,7 @@ export const publicationApi = {
     api.get<{ items: import('../types').AbGroupItem[] }>(
       `/api/v1/publications/ab-groups${params}`,
     ),
-  // M67 平台数据文件导入（multipart 直传，不走 JSON 封装）
+  // 平台数据文件导入（multipart 直传，不走 JSON 封装）
   importFile: async (
     file: File,
     payload: {

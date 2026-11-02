@@ -1,5 +1,5 @@
 /**
- * M65 离线回归探针：执行链状态与计费安全。
+ * 离线回归探针：执行链状态与计费安全。
  * 不读取正式库，不访问网络；供应商适配器由本探针注册为内存假实现。
  */
 import { isolatedEnv, makeChecker, runSections } from './probe-lib'

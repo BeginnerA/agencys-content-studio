@@ -1,5 +1,5 @@
 /**
- * chain 段间「对话内批准续跑」（M64 G1）：用户在 chain-await 批准卡点「继续下一段」→ 校验会话链态 →
+ * chain 段间「对话内批准续跑」（G1）：用户在 chain-await 批准卡点「继续下一段」→ 校验会话链态 →
  * 调编排器 requestNextSegment 单段推进（预算/输入/幂等与自动级联同源）→ 回写对话留痕（可见不静默）。
  * 红线：不新造编排算法、不触碰 easy 批准链；批准动作同受会话态闸（started + workflowId + chain 决策）与编排器下游存在性幂等守卫约束，零新付费面。
  */
@@ -15,7 +15,7 @@ import { creationWrite, sessionRow } from './store'
 
 const advanceSchema = z.object({
   idempotencyKey: z.string().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
-  // M70：下一推进位置的已冻结承接包批准（仅用户请求 schema 接入；批准定位校验在编排器 requestNextSegment 内）
+  // 下一推进位置的已冻结承接包批准（仅用户请求 schema 接入；批准定位校验在编排器 requestNextSegment 内）
   continuityApproval: ApprovalSchema.optional(),
 }).strict()
 
@@ -34,7 +34,7 @@ export async function advanceChainSegment(id: number, raw: unknown): Promise<{ o
 
   let outcome: AdvanceOutcome
   try {
-    // M70：批准透传给编排器——批准哈希在 requestNextSegment 内绑定 session/workflow/nextSeq/previousRun
+    // 批准透传给编排器——批准哈希在 requestNextSegment 内绑定 session/workflow/nextSeq/previousRun
     // 定位（assertApprovalMatchesTransition），旧 key 幂等语义不变（同 seq 存在性守卫兜底并发/连点）。
     outcome = await requestNextSegment(s0.workflowId, { continuityApproval: request.continuityApproval })
   } catch (err) {

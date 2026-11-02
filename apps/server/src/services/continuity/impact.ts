@@ -5,7 +5,7 @@ import { ContinuityError, EntryDocSchema, ImpactViewSchema, UseDocSchema,
   type ImpactRow, type ImpactView } from './contract'
 import { readContinuityVersion } from './sources'
 
-/** Task5 §5.5: 影响面三区划分。direct=直接消费承接包的行；indirect=沿真实 basis/consumption 边传播的行；
+/** 影响面三区划分。direct=直接消费承接包的行；indirect=沿真实 basis/consumption 边传播的行；
  * unknown=缺证行（读不回文档或结果未决）——缺证绝不当作零影响空数组。传播只沿真实消费图展开，
  * 不把所有后集笼统算作引用。 */
 

@@ -1,5 +1,5 @@
 /**
- * 精确返修 · 操作台账与字幕版本持久化（precision-rework 规格 §5.1/§5.2）。
+ * 精确返修 · 操作台账与字幕版本持久化。
  *
  * - rework_requests：只记操作与幂等回执——同键同载荷回放已有状态/结果，异载荷返回
  *   idempotency_conflict（routes 层映射 409）；applied 为终态，回执不可改写。
@@ -9,7 +9,7 @@
  *   人工版本不冒充机器验证。
  * - run.input._subtitleEdits：受控内部键，仅本模块写入（通用 compose/config 白名单不可写；
  *   与 _compose 同法直写 input JSON，不经 prepareRunInput 过滤通道）。
- * 无任何供应商调用、不改引擎、不依赖路由层（领域错误由 P4/P5 映射 HTTP）。
+ * 无任何供应商调用、不改引擎、不依赖路由层（领域错误由路由层映射 HTTP）。
  */
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
@@ -36,7 +36,7 @@ export class ReworkLedgerError extends Error {
   }
 }
 
-// ---------- 返修请求台账（§5.1） ----------
+// ---------- 返修请求台账 ----------
 
 export interface UpsertReworkInput {
   projectId: number
@@ -138,7 +138,7 @@ export async function advanceReworkRequestState(
   return rows[0]!
 }
 
-// ---------- 显示字幕版本持久化（§5.2） ----------
+// ---------- 显示字幕版本持久化 ----------
 
 /** 人工修订显示字幕逻辑资产 purpose（源 purpose=subtitle 永不改写） */
 export const SUBTITLE_DISPLAY_PURPOSE = 'subtitle_display'
@@ -183,7 +183,7 @@ export async function ensureSubtitleDisplayAsset(p: {
   })
 }
 
-/** 版本 meta 白名单字段（§5.2 全清单）；sanitize 丢弃一切未声明键——validationHash 从此处被挡住 */
+/** 版本 meta 白名单字段（全清单）；sanitize 丢弃一切未声明键——validationHash 从此处被挡住 */
 export interface SubtitleVersionMeta {
   sourceSubtitleId: number | null
   sourceSha256: string | null

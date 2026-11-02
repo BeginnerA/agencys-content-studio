@@ -1,18 +1,18 @@
 /**
- * M23 探针（画布规模化与智能编排）——手动执行：
+ * 画布规模化与智能编排探针（画布规模化与智能编排）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m23.ts [--section=force|serialize|edit|overview|advice|bench]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录
  * （独立 studio.db + workspace），不触碰开发库（同 probe-m3~m22）。零网络、零计费：
  * 直测服务层纯函数与聚合函数，不触发引擎执行、真实生成与 LLM 调用（LLM 通道走 e2e 实弹）。
  *
- * section（默认 all；P0 骨架，P1/P2/P3 逐批填充全矩阵；三批已全量实装）：
- *   force     [P1] 力导向全矩阵：确定性 / round 取整 / 分离度 / 锚定双例 / 单节点 / 空集 / 两点无边 / 幽灵边过滤 / layered·grid 零漂移
- *   serialize [P3] 模板序列化：parse ∘ stringify 往返（全字段/最小模板/转义）/ snake_case / 键序 / key 覆盖
- *   edit      [P3] 编辑矩阵：物化三态 / 加边去重 / 删边 / after null 回落 / 非前置·未知引用·白名单拒绝 / key 避让
- *   overview  [P2] 全景聚合：批次分组 / 独立 run / cost 映射 / 空项目
- *   advice    [P3] 建议解析：buildCanvasSummary 确定性 + parseAdviceOutput 归一降级矩阵
- *   bench     [P1] 基准报告：300/600/1000 节点 buildCanvasDoc 耗时（隔离库种子：60% gen / 30% text / 10% asset + 链式边）
+ * section（默认 all；骨架，逐批填充全矩阵；三批已全量实装）：
+ *   force     力导向全矩阵：确定性 / round 取整 / 分离度 / 锚定双例 / 单节点 / 空集 / 两点无边 / 幽灵边过滤 / layered·grid 零漂移
+ *   serialize 模板序列化：parse ∘ stringify 往返（全字段/最小模板/转义）/ snake_case / 键序 / key 覆盖
+ *   edit      编辑矩阵：物化三态 / 加边去重 / 删边 / after null 回落 / 非前置·未知引用·白名单拒绝 / key 避让
+ *   overview  全景聚合：批次分组 / 独立 run / cost 映射 / 空项目
+ *   advice    建议解析：buildCanvasSummary 确定性 + parseAdviceOutput 归一降级矩阵
+ *   bench     基准报告：300/600/1000 节点 buildCanvasDoc 耗时（隔离库种子：60% gen / 30% text / 10% asset + 链式边）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  */
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ================= [P1] force：力导向布局全矩阵（13 断言） =================
+  // ================= force：力导向布局全矩阵（13 断言） =================
   const sectionForce = async (): Promise<void> => {
     const nodes = [
       { id: 1, x: 0, y: 0, seq: null },
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     )
   }
 
-  // ================= [P3] serialize：模板序列化往返（13 断言：全字段/最小模板/转义/键序/key 覆盖） =================
+  // ================= serialize：模板序列化往返（13 断言：全字段/最小模板/转义/键序/key 覆盖） =================
   const sectionSerialize = async (): Promise<void> => {
     const r1 = validateTemplateText(FIXTURE_YAML)
     check(r1.ok && r1.template != null, `夹具 YAML 校验通过（${r1.ok ? 'ok' : r1.errors.join('；')}）`)
@@ -274,7 +274,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ================= [P3] edit：edits 应用与边操作（物化三态/加边/删边/白名单拒绝/key 避让 27 断言） =================
+  // ================= edit：edits 应用与边操作（物化三态/加边/删边/白名单拒绝/key 避让 27 断言） =================
   const sectionEdit = async (): Promise<void> => {
     const r1 = validateTemplateText(FIXTURE_YAML)
     if (!r1.ok || !r1.template) {
@@ -357,7 +357,7 @@ async function main(): Promise<void> {
     check(avoidTemplateKeyConflict('m23-free') === 'm23-free', 'key 避让：未占用 → 原样')
   }
 
-  // ================= [P2] overview：全景聚合（批次分组 / 独立 run / cost 映射 / 空项目 / 404 语义） =================
+  // ================= overview：全景聚合（批次分组 / 独立 run / cost 映射 / 空项目 / 404 语义） =================
   const sectionOverview = async (): Promise<void> => {
     const { db, initDb } = await import('../src/db')
     const { batches, pipelineRuns, projects, usageRecords } = await import('../src/db/schema')
@@ -451,7 +451,7 @@ async function main(): Promise<void> {
     )
     check((await buildCanvasOverview(999_999)) === null, '项目不存在 → null（路由层 404）')
 
-    // [P2] 编辑模式数据源：buildTemplateCanvas.inputFields（string 可编辑 / 非 string 只读预览）
+    // 编辑模式数据源：buildTemplateCanvas.inputFields（string 可编辑 / 非 string 只读预览）
     writeFileSync(join(process.env.CSTUDIO_WORKSPACE!, 'templates', 'm23-fixture.yaml'), FIXTURE_YAML)
     const { buildTemplateCanvas } = await import('../src/services/canvas')
     const tc = await buildTemplateCanvas('m23-fixture')
@@ -467,7 +467,7 @@ async function main(): Promise<void> {
     )
   }
 
-  // ================= [P3] advice：摘要确定性 + 解析归一（18 断言） =================
+  // ================= advice：摘要确定性 + 解析归一（18 断言） =================
   const sectionAdvice = async (): Promise<void> => {
     const { buildCanvasSummary, parseAdviceOutput } = await import('../src/services/creation/advice')
     const mkNode = (over: Partial<CanvasDocNode> & Pick<CanvasDocNode, 'id' | 'kind'>): CanvasDocNode =>
@@ -589,7 +589,7 @@ async function main(): Promise<void> {
     check(objOut.mode === 'raw' && objOut.advice.length === 1, 'parse：非数组 JSON（对象）→ raw 降级（宽容不炸）')
   }
 
-  // ================= [P1] bench：规模化基准（300/600/1000 节点 buildCanvasDoc 耗时） =================
+  // ================= bench：规模化基准（300/600/1000 节点 buildCanvasDoc 耗时） =================
   const sectionBench = async (): Promise<void> => {
     const { db, initDb } = await import('../src/db')
     const { canvasEdges, canvasNodes, canvases, projects } = await import('../src/db/schema')

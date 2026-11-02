@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * M69 审片问题单面板（运行详情右栏，RunQcPanel 同级之后）。
+ * 审片问题单面板（运行详情右栏，RunQcPanel 同级之后）。
  * - 只读播放器 + 镜头条定位；问题创建/关联返修/复检/人工终判。
  * - 一切状态、能力、证据文案来自服务端投影；复检 changed/unchanged 都不自动判过。
  * - 无成片且无历史问题单时整体隐藏；cancelled 只读（仍可改描述）。
@@ -65,7 +65,7 @@ const srcUrl = computed(() => {
 const pendingSeekMs = ref<number | null>(null)
 
 function compareTo(f: FindingView): void {
-  // 切到基准成片，并落到该问题的位置（spec §4.8-6：切源并 seek 到问题时间）
+  // 切到基准成片，并落到该问题的位置（切源并 seek 到问题时间）
   const at = f.currentLocation?.startMs ?? f.startMs ?? 0
   compareId.value = f.baseFinalAssetId
   pendingSeekMs.value = at

@@ -1,5 +1,5 @@
 /**
- * 发布数据导入装配与匹配（M67，spec §3.2）：纯函数，零 IO、零 db。
+ * 发布数据导入装配与匹配：纯函数，零 IO、零 db。
  * 更新保护靠「patch 白名单」构造性成立：patch 只含 metrics/url/publishedAt/title 四键，
  * runId/assetId/abGroup/note 永不出现在更新集——路由只 set patch，保护无需额外判断。
  */

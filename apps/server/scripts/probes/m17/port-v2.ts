@@ -1,4 +1,4 @@
-/** M17[port-v2]：端口矩阵 v2 全组合 + run 拒连 + 环/自环/跨画布/重复边回归（断言体逐字搬自原 probe-m17.ts） */
+/** [port-v2]：端口矩阵 v2 全组合 + run 拒连 + 环/自环/跨画布/重复边回归（断言体逐字搬自原 probe-m17.ts） */
 import type { M17Ctx } from './ctx'
 
 export async function run(ctx: M17Ctx): Promise<void> {

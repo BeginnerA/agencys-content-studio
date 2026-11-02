@@ -1,5 +1,5 @@
 /**
- * M49 离线探针：「计费与幂等深化」审计修复 G1–G4——手动执行：
+ * 离线探针：「计费与幂等深化」审计修复 G1–G4——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m49.ts [--section=claim|resume|budget]
  *
  * 隔离策略：isolatedEnv('m49') 一次性临时目录（独立 studio.db + workspace），必须在任何 src 动态 import 前调用。

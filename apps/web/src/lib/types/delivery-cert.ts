@@ -1,8 +1,8 @@
-// 第五期 · 交付包认证：只读认证报告的视图类型（与后端 services/delivery-cert/types.ts 逐字段对齐，camelCase）。
+// 交付包认证：只读认证报告的视图类型（与后端 services/delivery-cert/types.ts 逐字段对齐，camelCase）。
 // 面板仅渲染后端返回的结构良构 / 时长数学 / 跨格式一致 / 媒体可定位 / 时轴绑定 / 字幕交付 客观结论 + 缺项清单
-// ——不在前端推算帧 / 时长 / verdict（规格 §3/§6）。editor_import 恒列待人工实测，结构认证 ≠ 编辑器通过。
+// ——不在前端推算帧 / 时长 / verdict。editor_import 恒列待人工实测，结构认证 ≠ 编辑器通过。
 
-/** 认证项目录（规格 §4）。外部项仅 editor_import_certified，恒不自动 passed。 */
+/** 认证项目录。外部项仅 editor_import_certified，恒不自动 passed。 */
 export type CertCheckKey =
   | 'package_present'
   | 'project_file_wellformed'
@@ -13,7 +13,7 @@ export type CertCheckKey =
   | 'subtitle_delivery_bound'
   | 'editor_import_certified'
 
-/** 单条结论状态（复用第一期 result 词表）。 */
+/** 单条结论状态（复用既有 result 词表）。 */
 export type CertStatus =
   | 'passed'
   | 'failed'
@@ -22,7 +22,7 @@ export type CertStatus =
   | 'not_applicable'
   | 'stale'
 
-/** 证据类型（复用第一期 evidenceType 词表）。 */
+/** 证据类型（复用既有 evidenceType 词表）。 */
 export type CertEvidenceType =
   'metadata' | 'local_measurement' | 'offline_probe' | 'manual_review'
 
@@ -38,7 +38,7 @@ export type CertSource =
 /** 三种工程交换格式（与 edit-exchange 同源）。 */
 export type CertFormat = 'fcpxml' | 'edl' | 'otio'
 
-/** 交付可信四态（规格 §3：verdict 天花板 = 至多 needs_attention，editor_import 恒缺项）。 */
+/** 交付可信四态（verdict 天花板 = 至多 needs_attention，editor_import 恒缺项）。 */
 export type CertVerdict =
   'package_sound' | 'needs_attention' | 'package_broken' | 'needs_package'
 

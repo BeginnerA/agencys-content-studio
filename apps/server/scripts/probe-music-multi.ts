@@ -50,7 +50,7 @@ await runSections({
     const { apiProviders } = await import('../src/db/schema')
     const rows = await db.select().from(apiProviders)
     const music = rows.filter((r) => r.serviceType === 'music').map((r) => r.key).sort()
-    // minimax_music 已退役不再预种（MiniMax 付费音乐接口 2026-08-20 起不再面向新用户，新用户无从开通）；新增 mureka_music/yinchao_music 目录行；M55 本地轨新增 localai_music
+    // minimax_music 已退役不再预种（MiniMax 付费音乐接口 2026-08-20 起不再面向新用户，新用户无从开通）；新增 mureka_music/yinchao_music 目录行；本地轨新增 localai_music
     check(
       JSON.stringify(music) === JSON.stringify(['aliyun_bailian_music', 'localai_music', 'mureka_music', 'volcengine_music', 'yinchao_music']),
       `音乐目录行已 seed（含本地轨 localai_music；实际 ${JSON.stringify(music)}）`,

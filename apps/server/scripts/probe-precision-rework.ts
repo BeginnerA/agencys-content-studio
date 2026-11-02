@@ -3,19 +3,19 @@
  *   cd apps/server && npx tsx scripts/probe-precision-rework.ts [--section=contract]
  *   或统一入口：npx tsx scripts/run-probes.ts --only=precision-rework --jobs=1
  *
- * 隔离策略：isolatedEnv('precision-rework') 一次性临时目录；P1/P2 契约与快照层为纯函数，
+ * 隔离策略：isolatedEnv('precision-rework') 一次性临时目录；契约与快照层为纯函数，
  * 零网络、零 DB、零付费、零文件系统写入（fetch 全程阻断兜底）。
- * 覆盖规格 §11 验收 1（单 cue 文字/200ms 平移/多 cue 同移/其他 cue 不动）、
- * §4 输入限制、整体拒绝语义（无部分生效）、稳定标识与规范化序，
- * §6.1 有效字幕快照（普通平移/严格路径/一句多 cue/片头/关闭烧录证据），
- * §5.1/§5.2 台账与字幕版本持久化（隔离库 initDb：幂等回放/冲突/终态回执/不可变版本链/受控键），
- * 以及 §5/§6 能力判定与结构化预览（跨项目/在途/缺快照/快照损坏/下游付费均拦断；预览零执行态写入），
- * 以及 §5.3 原子确认（同事务领用版本/指针/重置合成步与回执；并发只应用一次、响应丢失可回放、指纹漂移拒绝），
- * 以及 §6.2 合成消费（人工修订显示输入接管 fail closed / 无烧录快速路径逐字节复制与任一依赖漂移拒绝），
- * 以及 §6.2/§5.2-104/§7 重合成过期复验（依赖指纹消费前终检、内部键不绕白名单、续跑不盲拷指针、被引用字幕不可清理），
- * 以及 §7/P8 成果版本投影（运行级 API 幂等面、当前修订/待审/待重合成四态区分、下载固定不可变版本、旧成片不伪装已更新），
- * 以及 §8/P9 工程字幕与 sidecar（共享 cue 读取、FCPXML/OTIO 字幕轨取有效快照不覆盖人工修订、对白轨不动、EDL 不伪装字幕）。
- * compose-input 分节（切片2）拆至 ./precision-rework-compose-input（m26 split-audit 红线单文件 ≤800 行）。
+ * 验收 1（单 cue 文字/200ms 平移/多 cue 同移/其他 cue 不动）、
+ * 输入限制、整体拒绝语义（无部分生效）、稳定标识与规范化序，
+ * 有效字幕快照（普通平移/严格路径/一句多 cue/片头/关闭烧录证据），
+ * 台账与字幕版本持久化（隔离库 initDb：幂等回放/冲突/终态回执/不可变版本链/受控键），
+ * 能力判定与结构化预览（跨项目/在途/缺快照/快照损坏/下游付费均拦断；预览零执行态写入），
+ * 原子确认（同事务领用版本/指针/重置合成步与回执；并发只应用一次、响应丢失可回放、指纹漂移拒绝），
+ * 合成消费（人工修订显示输入接管 fail closed / 无烧录快速路径逐字节复制与任一依赖漂移拒绝），
+ * 重合成过期复验（依赖指纹消费前终检、内部键不绕白名单、续跑不盲拷指针、被引用字幕不可清理），
+ * 成果版本投影（运行级 API 幂等面、当前修订/待审/待重合成四态区分、下载固定不可变版本、旧成片不伪装已更新），
+ * 工程字幕与 sidecar（共享 cue 读取、FCPXML/OTIO 字幕轨取有效快照不覆盖人工修订、对白轨不动、EDL 不伪装字幕）。
+ * compose-input 分节拆至 ./precision-rework-compose-input（m26 split-audit 红线单文件 ≤800 行）。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元。
  */
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     check(api.buildEffectiveSubtitleSnapshot({ sourceText: '不是字幕', shiftedText: null, sourceAssetId: 1, timingSource: 'unknown' }) === null, '不可解析源 → null（调用方省略增量字段）')
     check(api.buildEffectiveSubtitleSnapshot({ sourceText, shiftedText: '1\n垃圾时间戳\n甲', sourceAssetId: 1, timingSource: 'unknown' }) === null, '有效文本损坏 → null，不回退源文本')
 
-    /* ── 人工修订接口预位（P3 接线点）：来源等级不升级 ── */
+    /* ── 人工修订接口预位（接线点）：来源等级不升级 ── */
     const snapManual = api.buildEffectiveSubtitleSnapshot({ sourceText, shiftedText: null, sourceAssetId: 42, timingSource: 'measured', origin: 'manual', versionId: 77 })
     check(!!snapManual && snapManual.origin === 'manual' && snapManual.versionId === 77 && snapManual.sourceRef.timingSource === 'measured', '人工版本 origin/versionId 升级但 sourceRef 来源不升级')
 
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
       .returning()
     const run = runRows[0]!
 
-    /* ── 幂等台账（§5.1）：同键同载荷回放、异载荷冲突 ── */
+    /* ── 幂等台账：同键同载荷回放、异载荷冲突 ── */
     const base = { projectId: 91, runId: run.id, stepKey: 'compose', requestKey: 'req-1', requestHash: 'hash-a', baseFingerprint: 'fp-base' }
     const c1 = await ledger.upsertReworkRequest(base)
     check(c1.outcome === 'created' && c1.row.state === 'parsing' && c1.row.resultJson === '{}' && c1.row.sessionId === null, '首次请求登记 created/parsing，回执缺省空')
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
     }
     check(terminalCode === 'terminal_state', '离开 applied 终态拒绝')
 
-    /* ── 显示字幕版本链（§5.2）：源不动、不可变文件、meta 消毒 ── */
+    /* ── 显示字幕版本链：源不动、不可变文件、meta 消毒 ── */
     const v1 = await ledger.recordSubtitleDisplayVersion({
       projectId: 91,
       runId: run.id,

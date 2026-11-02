@@ -14,7 +14,7 @@ import { getReworkRequest, ReworkLedgerError } from '../services/rework/ledger'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 /**
- * 精确返修 · 统一运行级 API（precision-rework 规格 §7；P8 成果版本投影）。
+ * 精确返修 · 统一运行级 API（precision-rework；成果版本投影）。
  * 四入口（轻松创作/运行详情/ComposeBar/画布抽屉）都汇聚到这里，
  * 前端与会话层不得各自计算依赖、费用或过期——预览/确认/回放只转发服务层唯一实现。
  */
@@ -73,10 +73,10 @@ reworkRoutes.post('/runs/:id/rework/preview', h(async (c) => {
   return c.json({ outcome: res.outcome, request_id: res.requestId, preview: res.preview })
 }))
 
-// GET /runs/:id/rework/compose-input/capability —— 合成输入返修能力探测（切片2 §6 双模）：
+// GET /runs/:id/rework/compose-input/capability —— 合成输入返修能力探测（双模）：
 // 有可返修成片（supported）→ 前端展示受控返修入口（preview/apply）；无成片→沿用 compose 草稿直写。
 // 纯转发 assessComposeInputCapability（其门禁/指纹已在 precision-rework 探针 compose-input 分节覆盖），零写入。
-// shot_axis（切片2b）：透传 baseline.shotAxis（params.timeline 唯一真源只读派生），供前端逐镜时长输入行渲染当前段长/镜型，不另起第二时轴来源。
+// shot_axis：透传 baseline.shotAxis（params.timeline 唯一真源只读派生），供前端逐镜时长输入行渲染当前段长/镜型，不另起第二时轴来源。
 reworkRoutes.get('/runs/:id/rework/compose-input/capability', h(async (c) => {
   const runId = idParam(c)
   if (!(await findRun(runId))) return notFound(c, `run ${runId}`)
@@ -85,7 +85,7 @@ reworkRoutes.get('/runs/:id/rework/compose-input/capability', h(async (c) => {
   return c.json({ capability, final_asset_id: baseline?.finalAssetId ?? null, shot_axis: baseline?.shotAxis ?? [] })
 }))
 
-// POST /runs/:id/rework/compose-input/preview —— 合成输入本地返修结构化预览（切片2 §3/§4，零执行）
+// POST /runs/:id/rework/compose-input/preview —— 合成输入本地返修结构化预览（零执行）
 // 幂等：request_key 必填；同键同载荷回放，同键异载荷 409。四类变更（配置/BGM·SFX 换绑/候选改选）均本地重编码、零付费。
 reworkRoutes.post('/runs/:id/rework/compose-input/preview', h(async (c) => {
   const runId = idParam(c)
@@ -107,7 +107,7 @@ reworkRoutes.post('/runs/:id/rework/compose-input/preview', h(async (c) => {
   return c.json({ outcome: res.outcome, request_id: res.requestId, preview: res.preview })
 }))
 
-// POST /runs/:id/rework/parse —— 显式字幕自然语言解析（规格 §3.1/§4/§7）：一次文本模型调用产出同构
+// POST /runs/:id/rework/parse —— 显式字幕自然语言解析：一次文本模型调用产出同构
 // changes → 转同一预览编译器；parse-once 领用（同键仅一次、超时/未知不重发）、未知价须先确认、歧义/混合整单阻断。
 reworkRoutes.post('/runs/:id/rework/parse', h(async (c) => {
   const runId = idParam(c)
@@ -181,7 +181,7 @@ reworkRoutes.post('/runs/:id/rework/:requestId/apply', h(async (c) => {
   return c.json({ outcome: res.outcome, request_id: res.requestId, result: res.result })
 }))
 
-// POST /runs/:id/rework/compose-input/:requestId/apply —— 合成输入返修确认应用（切片2 §5/§10）：
+// POST /runs/:id/rework/compose-input/:requestId/apply —— 合成输入返修确认应用：
 // 只接 preview_hash（不接任意新 changes）；预飞行重验通过→Phase-1 资产/选片落真源→Phase-2 末事务原子领用+入队→Phase-3 启动引擎。
 // rejected 携 requestId 跨 run 时按不存在处理（防携带他 run requestId）；成功即本地续跑（零付费）。
 reworkRoutes.post('/runs/:id/rework/compose-input/:requestId/apply', h(async (c) => {

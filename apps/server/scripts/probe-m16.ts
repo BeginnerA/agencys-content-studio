@@ -1,5 +1,5 @@
 /**
- * M16 探针（创作画布：文档层 / 执行通道 / 编辑能力 / 模板草案 / 联动 / 回归）——手动执行：
+ * 创作画布探针（创作画布：文档层 / 执行通道 / 编辑能力 / 模板草案 / 联动 / 回归）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m16.ts [--section=canvas-doc|node-build|edit-cap|draft|linkage|regression]
  *
  * 隔离策略：CSTUDIO_ROOT / CSTUDIO_DATA / CSTUDIO_WORKSPACE 指向一次性临时目录（独立 studio.db +
@@ -17,13 +17,13 @@
  *                映射与 erase 默认词）+ editCapabilityOf 无端点 → 全 false + 未声明适配器 → undefined
  *   draft        buildTemplateDraftYaml 纯夹具快照（拓扑序·after·注释）+ buildTemplateDraft 与
  *                validateTemplateText 同源一致性
- *   linkage      ref-assets 并集挂接（去重·[M52] 全局仅池资产·项目域）/ 送入画布建素材节点 /
+ *   linkage      ref-assets 并集挂接（去重·全局仅池资产·项目域）/ 送入画布建素材节点 /
  *                prepareRunInput prefill 键安全性（未声明键静默丢弃）
  *   regression   probe:m15 子进程全绿（内含 m2a/m4/m14：引擎调度语义零漂移 + 新列兼容抽样）
  *
  * 退出码：0 = 全部断言通过；1 = 有 FAIL。
  *
- * [M26·H5b] 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
+ * 拆分：入口薄化（probe-lib isolatedEnv/makeChecker/runSections + 组装 ctx），
  * 六节断言体逐字搬入 probes/m16/*.ts（断言文案/顺序/计数零变更）。
  */
 import { cpSync, mkdirSync, readdirSync } from 'node:fs'

@@ -1,8 +1,8 @@
 /**
- * 表格解析（M67 平台数据导入回灌，spec §3.1）：xlsx / csv → 二维字符串表，纯函数零 IO。
+ * 表格解析（平台数据导入回灌）：xlsx / csv → 二维字符串表，纯函数零 IO。
  * 0 新依赖：xlsx 走 fflate 解包 + 最小 sheet XML 读取器（与 doc-parse.ts 同风格）；
  * CSV 手写 RFC4180；GBK 编码走 Node 内置 ICU TextDecoder('gb18030') 兜底。
- * 边界（spec §五）：合并单元格不展开、多 sheet 只读第一张、BIFF 二进制 xls 不支持。
+ * 边界：合并单元格不展开、多 sheet 只读第一张、BIFF 二进制 xls 不支持。
  */
 import { unzipSync, strFromU8 } from 'fflate'
 

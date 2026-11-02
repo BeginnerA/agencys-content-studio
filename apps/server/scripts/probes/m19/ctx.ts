@@ -1,5 +1,5 @@
 /**
- * M19 探针共享上下文类型（M26·H5b 拆分产物）。
+ * 成片品质与品牌化探针共享上下文类型（拆分产物）。
  *
  * 拆分纪律：原 probe-m19.ts 入口 main 作用域的动态导入符号（跨多节共享的 brand-config 全套 +
  * ffmpeg-merge 组装四函数 + storage/env + schema 表 + drizzle 操作符）与 setup 产物

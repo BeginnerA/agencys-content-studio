@@ -91,7 +91,7 @@ versionsRoutes.get('/assets/:id/versions/:versionId/content', h(async (c) => {
 }))
 
 // GET /assets/:id/versions/:versionId/download —— 不可变版本文件附件下载
-// （precision-rework P8：下载指向具体不可变字幕版本；历史版本内容永不随当前指针变，故可 long cache）
+// （precision-rework ：下载指向具体不可变字幕版本；历史版本内容永不随当前指针变，故可 long cache）
 versionsRoutes.get('/assets/:id/versions/:versionId/download', h(async (c) => {
   const id = idParam(c)
   const versionId = Number(c.req.param('versionId'))

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 执行链进度卡（M63 切片 5）：服务端 sideCards 下发 key='chainProgress' 时渲染（chain 制作中）。
+ * 执行链进度卡：服务端 sideCards 下发 key='chainProgress' 时渲染（chain 制作中）。
  * 段序列取自服务端落的 chain-start 消息 payload.segments（模板 key 列表）——不新造 workflow 详情接口，
  * 逐段状态由下方「制作进度卡」按当前 run 呈现；段间批准在左侧对话流完成（安全默认：不自动级联计费）。
  */

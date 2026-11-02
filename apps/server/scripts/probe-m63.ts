@@ -1,12 +1,12 @@
 /**
- * M63 探针（轻松创作 Agent 化：四模式决策契约 + 归一 + 结构确认闸 + 动态面板 + 角色注册表）——手动执行：
+ * 轻松创作Agent化探针（轻松创作 Agent 化：四模式决策契约 + 归一 + 结构确认闸 + 动态面板 + 角色注册表）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m63.ts [--section=route|confirm|side-cards|legacy|roles]
  *
  * 隔离策略：isolatedEnv('m63', bridge templates+prompts) 即可——本探针只断言「纯函数契约」：
  *   决策 schema / 归一 / preflightDecision 结构闸 / computeSideCards 投影 / roles 注册表。
- *   零 DB、零网络、零模型调用、零 run/workflow（确认执行链由切片 3 落地，其可测部分收敛到 routeDecisionOf 分派 + preflightDecision）。
+ *   零 DB、零网络、零模型调用、零 run/workflow（确认执行链由确认环节落地，其可测部分收敛到 routeDecisionOf 分派 + preflightDecision）。
  *
- * 断言聚焦 M63 契约（护栏「可见不静默」逐条锚定）：
+ * 断言聚焦本交付契约（护栏「可见不静默」逐条锚定）：
  *   - route：agentRouteReplySchema/agentReplySchema strict；buildTemplateCatalog 非空且排除 easy-*（conversationOnly）；
  *     normalizeAgentReply 四形归一（clarify→null / plan→easy 旁注 / template / chain / synth）；route 承载 easy 抛错；
  *     未注册 roleKey / 能力越界回落 planner 并留痕；幽灵 asset 剔除；synth 高危 action / 步数上限拒绝；decisionHash 确定性。
@@ -24,7 +24,7 @@ const { cleanup: envCleanup } = isolatedEnv('m63', { bridge: ['templates', 'prom
 
 const SECTIONS = ['route', 'confirm', 'side-cards', 'legacy', 'roles'] as const
 
-/** 最小合法轻方案（3 镜×10 秒=30 秒，narration；plan 形内嵌 creationPlanSchema，同 M62 逐字复用） */
+/** 最小合法轻方案（3 镜×10 秒=30 秒，narration；plan 形内嵌 creationPlanSchema，同此前逐字复用） */
 function makePlan() {
   return {
     title: '小镖客', summary: '一次护送', genre: 'story' as const, duration: 30,

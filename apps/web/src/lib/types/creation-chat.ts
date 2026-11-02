@@ -343,7 +343,7 @@ export const CREATION_ROLE_LABELS: Record<CreationChatRole, string> = {
   system: '审阅记录',
 }
 
-/** Agent 化角色署名（M63）：消息带 roleName（服务端注册表投影的中文名）时用之，否则回落默认标签；system 留痕仍按类型标签。 */
+/** Agent 化角色署名：消息带 roleName（服务端注册表投影的中文名）时用之，否则回落默认标签；system 留痕仍按类型标签。 */
 export function creationRoleLabel(m: {
   role: CreationChatRole
   roleName?: string | null
@@ -637,11 +637,11 @@ export interface CreationRouteConfirmBody {
   acceptUnpriced: boolean
   /** 立项覆盖值：只带用户改过的字段（不入 decisionHash） */
   project?: Partial<CreationProjectMeta>
-  /** M70 承接批准句柄（route 冻结包即连续性包） */
+  /** 承接批准句柄（route 冻结包即连续性包） */
   continuityApproval?: Approval
 }
 
-/** chain 段间批准推进请求（M70）：幂等键纳入 approvalHash，换包不得沿用旧 request key */
+/** chain 段间批准推进请求：幂等键纳入 approvalHash，换包不得沿用旧 request key */
 export interface CreationChainAdvanceBody {
   idempotencyKey: string
   continuityApproval?: Approval

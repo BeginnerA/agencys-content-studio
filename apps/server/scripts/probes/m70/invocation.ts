@@ -313,7 +313,7 @@ async function runInvocationBody(checker: Checker) {
     const fake = fakeIO(script)
     await execute(ctx, fake)
     const target = await useRow(f.projectId, ctx.run.id, ctx.step.id)
-    // Built on the pack: E3 ← pack entry 2, E4 ← E3, draft E5 ← E4, and a use of E4.
+    // Built on the pack: entry 3 ← pack entry 2, entry 4 ← entry 3, draft entry 5 ← entry 4, plus a consumption of entry 4.
     const impactItem = (id: string, topicKey: string, value: string): Item =>
       ({ id, topicKey, channel: 'fact', type: 'state', operation: 'set', subjects: ['a'], value, previous: null,
         evidence: [], origin: 'manual', editNote: '探针构造', included: true })

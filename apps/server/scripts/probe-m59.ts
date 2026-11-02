@@ -1,16 +1,16 @@
 /**
- * M59 探针（轻松创作单条时长/镜头上限「有节制放宽」：60→90s、12→16 镜、36→48 句，单镜 1–15s 不动）——手动执行：
+ * 轻松创作时长上限放宽探针（轻松创作单条时长/镜头上限「有节制放宽」：60→90s、12→16 镜、36→48 句，单镜 1–15s 不动）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m59.ts [--section=schema|clamp|drift]
  *
  * 隔离策略：纯函数 + 契约级（schema/clampPlanToCaps/buildCapsConstraintMessage/deriveRouteHint/提示词真源），
  *   isolatedEnv('m59', bridge templates+prompts) 即可，零 DB、零网络、零模型调用。
  *
- * 断言聚焦 M59 收口契约（spec §三 一处不落）：
+ * 断言聚焦收口契约（一处不落）：
  *   - schema：新边界 90/16/48 合法，91/17/49 拒绝；单镜 16s 仍拒（caps 档位硬约束未放开）；
  *     旧边界 60/12/36 逐字合法（向后兼容）；superRefine「镜头和=duration」在新范围仍成立；
  *   - clamp：总时长重算不再把 61–90 钳回 60（spec 最大风险点专项）；>90 钳到 90、<30 钳回 30；
  *   - drift：五处写死点全部收敛到真源常数——caps 注入文案、提示词真源、route-hint 阈值、
- *     dialogue 容量文案、65000 截断闸「显式未放宽」（spec §3.4 取断言路径：maxTokens=64000 才是有效闸）；
+ *     dialogue 容量文案、65000 截断闸「显式未放宽」（取断言路径：maxTokens=64000 才是有效闸）；
  *     旧 plan（≤60s）序列化逐字不变 → planHash 零漂移 → 历史已确认方案不作废。
  *
  * 退出码：0 = 全部通过；1 = 有 FAIL。断言文案内不嵌 PASS/FAIL 词元（保 parseProbeOutput 精确）。
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
       let dlgMsg = ''
       try { assertDialogueCapacity(dlgPlan as never) } catch (e) { dlgMsg = e instanceof Error ? e.message : '' }
       check(dlgMsg.includes('30–90 秒') && !dlgMsg.includes('30–60'), 'dialogue 容量报错文案区间同步 30–90（不再指老上限）')
-      // ⑤ 截断闸 65000 显式未放宽（spec §3.4 取断言路径：maxTokens=64000 才是有效输出闸，
+      // ⑤ 截断闸 65000 显式未放宽（取断言路径：maxTokens=64000 才是有效输出闸，
       //    典型 90s/16 镜 plan ≈ 4–6 万字符仍在其内；放宽此防御闸只会放大异常输出面）
       const typical = JSON.stringify({ kind: 'plan', message: 'ok', plan: makePlan(16, 5) })
       check(typical.length < 65000 && typical.length > 100, `典型 90s/16 镜 plan 体积（${typical.length} 字符）远离 65000 截断闸`)

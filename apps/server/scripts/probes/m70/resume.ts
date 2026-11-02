@@ -1,5 +1,5 @@
 /**
- * M70 Task 9 探针：普通断点续跑与未知费用闸（resume 节）
+ * 探针：普通断点续跑与未知费用闸（resume 节）
  * - 真实端点 POST /runs/:id/resume 全程必测（helper 不替代端点旁路），9.1 五场景各自独立 fixture；
  * - inherit：源目标步已成功 / 崩溃（输出已持久、步骤未提交）→ 保留终态 + 消费证据继承 + 零模型调用
  *   + 旧 context 绑定不挪给新 run + continuity_inherit 元数据可跨代传递；
@@ -9,7 +9,7 @@
  *   duplicateCostAcceptance + accept_possible_duplicate_cost），缺任一 → 409 continuity_outcome_unknown；
  * - 9.2 故障注入：bind 阶段 before_publish fault 与 claim CAS 输家 → 事务回滚，新 run/绑定均不残留；
  * - off：未启用源 run 语义原样（genTasks 迁移 + 字幕剥离 + 快照继承）；null 快照启用 run 阻断 400；
- * - Task7 Minor⑤：off/inherit 决策携带批准 → 409 continuity_conflict 显式拒绝，绝不静默忽略。
+ * - ：off/inherit 决策携带批准 → 409 continuity_conflict 显式拒绝，绝不静默忽略。
  * 隔离：临时 SQLite（bootstrap 每次新建），fixtures 模板仅写临时目录；fetch 全程桩死；不启动媒体生成；
  * 节级 engine.startRun 桩（不真实执行任何 run）。canary 自愈沿用 route 节同款探针基建（仅探针侧）。
  */
@@ -82,7 +82,7 @@ async function runResumeBody(checker: Checker) {
   const { RUN_LOGS_DIR } = await import('../../../src/env')
   const { Hono } = await import('hono')
   const { runsRoutes } = await import('../../../src/routes/runs')
-  // Task9 服务：缺失即真实 RED（动态导入失败逐测试记录，不让整节崩溃）。
+  // 服务：缺失即真实 RED（动态导入失败逐测试记录，不让整节崩溃）。
   const resumeService = () => import('../../../src/services/continuity/resume')
 
   mkdirSync(RUN_LOGS_DIR, { recursive: true })

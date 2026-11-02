@@ -1,5 +1,5 @@
 /**
- * M40 探针（轻松创作「确认才立项 + 立项信息智能填写」）——手动执行：
+ * 轻松创作确认才立项探针（轻松创作「确认才立项 + 立项信息智能填写」）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m40.ts [--section=meta|contract|draft|plan|confirm|delete]
  *
  * 隔离策略：isolatedEnv('m40', bridge templates/prompts) 一次性临时目录（独立 studio.db + workspace），

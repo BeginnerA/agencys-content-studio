@@ -99,7 +99,7 @@ interface StepOutputDoc {
 }
 
 /**
- * 流水线引擎（spec §3.2 DAG 调度语义）：
+ * 流水线引擎（DAG 调度语义）：
  *   run:  queued → running → { waiting_input | completed | failed | cancelled }
  *   step: pending → running → waiting_input | succeeded | skipped | failed | cancelled
  * 执行链为「单飞 + 就绪集并发（≤2）」：步骤默认依赖前一步（after 可改）；
@@ -343,7 +343,7 @@ class PipelineEngine {
   // ---------- 内部执行链 ----------
 
   /**
-   * DAG 调度主循环（spec §3.2）：
+   * DAG 调度主循环：
    * 每轮：补齐步骤行 → 依赖跳过传播 → 失败收敛 → 就绪集（≤2 并发）→ 批收敛后重算。
    * gate 挂起 = run 级暂停：不启动新就绪步，已启动并行步自然收敛。
    */
@@ -776,7 +776,7 @@ export async function settleDanglingSteps(runId?: number): Promise<number> {
 }
 
 /**
- * 崩溃恢复（启动时调用一次，spec §5.4）：
+ * 崩溃恢复（启动时调用一次）：
  * - pending/processing 的 gen_tasks → failed（可手动 retry）
  * - running 的 run → failed(interrupted)，UI 以「从断点续跑」重建
  * - waiting_input 保留（人工闸是持久状态）；queued 的 run 返回待重新执行

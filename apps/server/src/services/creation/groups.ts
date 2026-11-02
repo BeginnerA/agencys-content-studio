@@ -1,5 +1,5 @@
 /**
- * 画布节点分组服务（spec §2.6⑩ + §2.4 组嵌套）：
+ * 画布节点分组服务（⑩ + 组嵌套）：
  * - createGroup：nodeIds（≥1，须属本画布且无既有归属）+ groupIds（顶层子组，已嵌套拒绝）+ parentId（可选父组），
  *   nodeIds/groupIds 至少一非空 → 建组 + 赋节点 groupId / 子组 parentId + 锚点=节点包围盒左上（纯组时取子组锚点）；
  * - updateGroup：title / color / collapsed / x / y / parentId（移组：null=提升顶层；自环/后代环 → 400 group_cycle）局部改；

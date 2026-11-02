@@ -1,5 +1,5 @@
 /**
- * 第四期 · 统一 QC 面板：核验编排 / verdict / 缓存 / 新鲜度（规格 2026-09-28 §3/§5）。
+ * 统一 QC 面板：核验编排 / verdict / 缓存 / 新鲜度。
  *
  * **只读编排 + 零新列缓存**：定位成片 → 本地测量（measure）→ 一致性核验（consistency）→ 聚合三态 verdict
  * + missing[] → merge 进 `assets.params.qc`（镜像 `recordQuality`，保留其余键）。不 import 引擎、不写业务表、
@@ -16,7 +16,7 @@ import { fileExists, measureLoudness, probeMediaSpec } from './measure'
 import { buildConsistencyChecks, parseTimeline } from './consistency'
 import { type QcCheck, type QcRunResult, type QcReport, type QcVerdict } from './types'
 
-/** 客观必需项：决定 ready/not_ready 的可测项（主观 manual 与音频失真不在其中，见规格 §3/§7.2）。 */
+/** 客观必需项：决定 ready/not_ready 的可测项（主观 manual 与音频失真不在其中）。 */
 const OBJECTIVE_REQUIRED: QcCheck['key'][] = [
   'file_readable',
   'stream_spec',
@@ -161,7 +161,7 @@ export async function runQcCheck(runId: number, opts: { refreshCache?: boolean }
     typeof params.delivery_checked === 'boolean'
       ? { key: 'delivery_flag', status: params.delivery_checked ? 'passed' : 'not_tested', evidenceType: 'metadata', source: 'asset_params', value: params.delivery_checked, reason: params.delivery_checked ? undefined : '成片未标记 delivery_checked（可能非严格交付路径产物）' }
       : { key: 'delivery_flag', status: 'not_tested', evidenceType: 'metadata', source: 'asset_params', reason: 'params 无 delivery_checked 字段' },
-    // 主观人工复核：恒 not_tested（第一期 §7.2：不新建自动 QC 算法、不调用多模态评分）
+    // 主观人工复核：恒 not_tested（不新建自动 QC 算法、不调用多模态评分）
     { key: 'manual_quality_review', status: 'not_tested', evidenceType: 'manual_review', source: 'manual', reason: '视觉一致性/道具连续/听感失真需人工看片听审，面板不自动判过' },
   ]
 

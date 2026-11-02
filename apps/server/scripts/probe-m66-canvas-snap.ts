@@ -1,8 +1,8 @@
 /**
- * M66 探针（创作画布：执行快照冻结 + 预算硬闸）——手动执行：
+ * AIGC合规标识探针（创作画布：执行快照冻结 + 预算硬闸）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m66-canvas-snap.ts [--section=snapshot|legacy|budget]
  *
- * 对应审查发现（P1 契约一致性）：
+ * 对应审查发现（契约一致性）：
  *   ① 画布执行未使用入队快照：startCanvasNodeRun 只在任务行冻结 prompt/params，真正执行时
  *      runCanvasTask 重读「当前节点 spec」、executeOnce 重读「当前连线」→ 排队期间改配置或
  *      改连线，计费执行的竟是另一份输入（并发槽位 ≤2，排队窗口可达分钟级）；

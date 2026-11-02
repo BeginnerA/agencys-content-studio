@@ -1,5 +1,5 @@
 /**
- * 文本资产内容覆写服务（spec §2.3）：章节/事件/图谱等中间产物可编辑的底层通道。
+ * 文本资产内容覆写服务：章节/事件/图谱等中间产物可编辑的底层通道。
  * 安全纪律：kind=text + purpose 白名单 + 尺寸上限；JSON 格式资产（ext=json）保存前
  * 走 validateTextOutput 既有契约校验（防手改炸下游 batch 解析）；同 relPath
  * tmp+rename 原子覆盖（断电不出现半截文件）；sha256/fileSize 同步更新；
@@ -14,7 +14,7 @@ import { validateTextOutput } from '../pipeline/actions/ai-text'
 import { absPathOf, sha256Hex } from './storage'
 import { ensureAssetTextBaseline, recordAssetTextVersion } from './provenance'
 
-/** 内容可覆写的 purpose 白名单（spec §2.3；source/compliance_report 等不在列 → 拒） */
+/** 内容可覆写的 purpose 白名单（source/compliance_report 等不在列 → 拒） */
 export const EDITABLE_PURPOSES = ['source', 'chapters', 'events', 'graph', 'plan', 'script', 'text', 'export', 'video_analysis'] as const
 
 /** 单资产内容上限（2M 字符；长章 3 万字余量充足，同时兜住误粘超大文本） */

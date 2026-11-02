@@ -1,14 +1,14 @@
 /**
- * 模板静态校验器（M26·H1）——手动执行：
+ * 模板静态校验器——手动执行：
  *   cd apps/server && npx tsx scripts/validate-templates.ts
  *
  * 以 pipeline loader 全量加载 workspace/templates/*.yaml，逐份纯文本校验（不落盘、不执行、不触网）：
  *   - errors（致命）：YAML 语法 / 结构 / key 非法 / action 未注册（KNOWN_ACTIONS）/
- *     M70 连续性声明（非法 role、多目标/batch 目标、目标输入缺声明、渲染上限只能下调）
+ *     连续性声明（非法 role、多目标/batch 目标、目标输入缺声明、渲染上限只能下调）
  *   - warnings（非致命）：prompt_tpl 提示词文件缺失 / next 引用模板不存在（编辑期放行，运行时才致命）
  * 任一 errors → 退出码非零（CI 阻断）；warnings 仅打印不阻断。
  *
- * M70 Task6：本文件同时被探针以模块方式导入（continuityTemplateErrors），
+ * 本文件同时被探针以模块方式导入（continuityTemplateErrors），
  * main() 仅在直接执行本脚本时运行（import.meta.url 主模块判定）。
  */
 import { readFileSync, readdirSync } from 'node:fs'
@@ -22,7 +22,7 @@ const roleOf = (step: Template['steps'][number]): unknown =>
   (step.params as Record<string, unknown> | undefined)?.['continuity_role']
 
 /**
- * M70 连续性声明校验（纯函数，供 CI 与探针复用）：
+ * 连续性声明校验（纯函数，供 CI 与此前探针复用）：
  *   - continuity_role 只允许 episode_script；目标步不得配置 batch；目标步全模板仅允许一个；
  *   - 目标模板必须声明 brief(text) / episode_number(int) / with_continuity(bool) / continuity_context(files)；
  *   - defaults.continuity.max_render_chars 只能下调（正整数 ≤ 24000，超出即拒绝）。

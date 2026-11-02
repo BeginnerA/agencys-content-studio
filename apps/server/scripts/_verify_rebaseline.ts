@@ -1,4 +1,4 @@
-// 一次性 re-baseline 验证脚本（M1，验证后删除）
+// 一次性 re-baseline 验证脚本（验证后删除）
 // 用法: npx tsx scripts/_verify_rebaseline.ts <fresh|upgrade> [dataDir]
 // 只在该 dataDir（临时副本）上跑 initDb，绝不触碰真实 data/studio.db。
 import { mkdirSync, mkdtempSync, cpSync, existsSync } from 'node:fs'

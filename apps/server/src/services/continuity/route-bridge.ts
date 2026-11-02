@@ -1,5 +1,5 @@
 /**
- * 创作会话（route 决策）→ 连续性目标解析桥（M70 Task 8）
+ * 创作会话（route 决策）→ 连续性目标解析桥
  * - resolveRouteContinuityTarget：纯定位解析（unit/模板/输入），不建 run、不改会话、零副作用；
  *   TargetRequest 的 sessionId/decisionRevision/decisionHash 只是定位线索而非可信输入——一律从
  *   实际会话行重导出，与请求不符即 continuity_conflict 409，旧包/漂移包不得命中当前决策。

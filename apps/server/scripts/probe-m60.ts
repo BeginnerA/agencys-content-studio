@@ -1,14 +1,14 @@
 /**
- * M60 探针（短剧商业化结构设计：付费卡点/开场钩子/留人节奏——剧情设计思路层，非真实付费门禁）——手动执行：
+ * 短剧商业化结构设计探针（短剧商业化结构设计：付费卡点/开场钩子/留人节奏——剧情设计思路层，非真实付费门禁）——手动执行：
  *   cd apps/server && npx tsx scripts/probe-m60.ts [--section=contract|template|inject|drift]
  *
  * 隔离策略：纯函数 + 契约 + 静态文件面（validateTextOutput/storage 登记/模板结构/提示词真源），
  *   isolatedEnv('m60', bridge templates+prompts) 即可，零 DB、零网络、零模型调用。
  *
- * 断言聚焦 M60 收口契约：
+ * 断言聚焦收口契约：
  *   - contract：monetization-json 登记进 JSON_FORMATS（mime/ext 归 json）；validateTextOutput 合法/越界
  *     （缺 ending_cliffhanger、ep 断链、episode_count 不符、paywall_candidate 非布尔）拒绝；
- *   - template：series-setup v7/13 步（v4 为 M60 商业结构步，v5 仅 gen_refs 加定妆照横画幅参数，v6 接入定妆照身份参考图，v7 参考图升三态 auto/on/off + 智能复用）+ monetize 步接线 + with_monetization 默认开；
+ *   - template：series-setup v7/13 步（v4 为商业结构步，v5 仅 gen_refs 加定妆照横画幅参数，v6 接入定妆照身份参考图，v7 参考图升三态 auto/on/off + 智能复用）+ monetize 步接线 + with_monetization 默认开；
  *     mengbao-episode v19 setting_docs accept 含 .json（商业结构可被单集 run 选入承接链）；
  *   - inject：monetize-structure.md 契约段齐全且显式「付费由发布平台决定」措辞；script-ep R19 /
  *     storyboard-ep 规则12 / creation-plan 开场纪律 / series-setup.md 下游衔接四条注入线在位；
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       check(purposeSubDir('monetization') === 'texts', 'purpose=monetization 归档 texts（0 新表 0 新目录）')
     },
 
-    // ================= template：series-setup v7 + mengbao-episode v19 承接面（v7/v19 定妆照参考图升三态 + 智能复用、v19 跨集剧情连续性输入，M60 商业结构承接面不变） =================
+    // ================= template：series-setup v7 + mengbao-episode v19 承接面（v7/v19 定妆照参考图升三态 + 智能复用、v19 跨集剧情连续性输入，商业结构承接面不变） =================
     template: async () => {
       const { loadTemplate } = await import('../src/pipeline/loader')
       const se = loadTemplate('series-setup')
