@@ -19,6 +19,7 @@ const srcRoot = resolve(here, '../src')
 
 /** M70 交付面（任务 11–12 新增/接线的界面）：逐个必须真实编译通过。 */
 const M70_SFC_FILES = [
+  'components/common/Modal.vue',
   'components/project/continuity/ContinuityPanel.vue',
   'components/project/continuity/EntryEditor.vue',
   'components/project/continuity/ImpactPanel.vue',
