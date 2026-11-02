@@ -399,7 +399,7 @@ async function submit() {
   border-color: rgb(99 102 241 / 45%);
 }
 .rec-chip.on {
-  border-color: var(--brand, #6366f1);
+  border-color: var(--accent);
   background: rgb(99 102 241 / 12%);
   font-weight: 600;
 }

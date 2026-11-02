@@ -118,7 +118,7 @@ function onCategoryChange(): void {
   padding: 4px 6px;
   border-radius: 6px;
   border: 1px solid rgb(148 163 184 / 25%);
-  background: var(--bg-2, transparent);
+  background: var(--bg);
   color: inherit;
 }
 .form textarea {

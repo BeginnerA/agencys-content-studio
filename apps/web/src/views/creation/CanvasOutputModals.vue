@@ -193,7 +193,7 @@ const cv = props.cv
 .lossy ul {
   margin: 0;
   padding-left: 18px;
-  color: var(--fg-dim);
+  color: var(--text-2);
 }
 
 .yaml {

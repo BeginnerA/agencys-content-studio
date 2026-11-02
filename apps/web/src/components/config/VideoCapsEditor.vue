@@ -435,7 +435,7 @@ watch(
   border-radius: 6px;
   font-size: 13px;
   background: var(--bg);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .caps-head {
@@ -447,7 +447,7 @@ watch(
 
 .caps-head b {
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .caps-auto {
@@ -473,7 +473,7 @@ watch(
 
 .caps-auto dd {
   margin: 0;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .caps-actions {
@@ -495,7 +495,7 @@ watch(
   align-items: center;
   gap: 5px;
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
   cursor: pointer;
 }
 

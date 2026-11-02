@@ -277,7 +277,7 @@ defineExpose({ buildExtra, managedKeys })
 
 .xhead b {
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .xfld {
@@ -319,7 +319,7 @@ defineExpose({ buildExtra, managedKeys })
   border-radius: 6px;
   font-size: 13px;
   background: var(--bg);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .xin textarea {
@@ -331,7 +331,7 @@ defineExpose({ buildExtra, managedKeys })
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
   cursor: pointer;
 }
 

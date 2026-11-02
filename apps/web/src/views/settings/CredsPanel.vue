@@ -100,7 +100,7 @@ function editCred(cr: (typeof credentials.value)[number]) {
   gap: 7px;
   font-size: 14.5px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--text);
   margin: 0 0 3px;
 }
 
@@ -141,7 +141,7 @@ function editCred(cr: (typeof credentials.value)[number]) {
 .cc-name {
   font-weight: 600;
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .cc-tag {
@@ -188,7 +188,7 @@ function editCred(cr: (typeof credentials.value)[number]) {
 }
 
 .cred-card .btn.danger:not(:disabled) {
-  color: var(--danger, #f87171);
+  color: var(--bad);
 }
 
 .creds-note {

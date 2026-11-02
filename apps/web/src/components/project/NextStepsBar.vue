@@ -142,7 +142,7 @@ defineExpose({ reload })
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--brand, #6366f1);
+  background: var(--accent);
   box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
 }
 

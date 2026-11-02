@@ -428,9 +428,9 @@ const outroOn = computed(() => slotOn(props.brand.outro, props.outroFile))
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: var(--bg-weak, #f1f5f9);
-  color: var(--muted, #64748b);
-  border: 1px solid var(--border, #e2e8f0);
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border: 1px solid var(--border);
 }
 
 .bp-chip.on {

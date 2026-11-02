@@ -303,7 +303,7 @@ onMounted(async () => {
   color: var(--ok, #16a34a);
 }
 .err-text {
-  color: var(--danger, #dc2626);
+  color: var(--bad);
   font-size: 12px;
 }
 .tbl td {

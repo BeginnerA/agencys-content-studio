@@ -591,7 +591,7 @@ watch(
 }
 .chip.active {
   border-color: var(--accent, #6366f1);
-  color: var(--text-1);
+  color: var(--text);
 }
 .cthumb {
   width: 26px;

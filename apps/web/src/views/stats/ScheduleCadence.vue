@@ -344,7 +344,7 @@ function toggleWeekday(v: number) {
   color: var(--ok, #16a34a);
 }
 .cp-msg.bad {
-  color: var(--danger, #dc2626);
+  color: var(--bad);
 }
 .cp-preview {
   margin-top: 10px;
@@ -362,7 +362,7 @@ function toggleWeekday(v: number) {
 }
 .err-text {
   margin-top: 10px;
-  color: var(--danger, #dc2626);
+  color: var(--bad);
   font-size: 12px;
 }
 </style>

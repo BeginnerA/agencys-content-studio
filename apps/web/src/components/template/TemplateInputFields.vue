@@ -550,8 +550,8 @@ function srcChip(k: string): string {
 }
 
 .req-badge.must {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
 }
 
 .req-badge.opt {

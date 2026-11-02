@@ -446,7 +446,7 @@ async function submit() {
 
 .rr-chain-list .tag.run {
   color: var(--text-3);
-  background: var(--surface-2);
+  background: var(--chip-bg);
 }
 
 .rr-chain-warn {

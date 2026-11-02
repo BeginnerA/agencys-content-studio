@@ -535,7 +535,7 @@ async function submit() {
   border-radius: 6px;
   font-size: 13px;
   background: var(--bg);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .mrow {

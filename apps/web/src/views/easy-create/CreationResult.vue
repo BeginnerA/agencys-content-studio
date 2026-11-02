@@ -259,7 +259,7 @@ async function exportEditEx(format: EditExchangeFormat) {
 }
 
 .editex .err {
-  color: var(--danger, #dc2626);
+  color: var(--bad);
 }
 
 /* 毕业通道 */
