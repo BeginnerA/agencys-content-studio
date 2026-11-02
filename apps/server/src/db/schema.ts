@@ -754,3 +754,31 @@ export const roleConfigs = sqliteTable('role_configs', {
 })
 
 export type RoleConfig = typeof roleConfigs.$inferSelect
+
+// ---------- R01 质量基线（四维评分 + 综合分 + 可复现性元数据） ----------
+
+/** 质量评分：每个 run × 集号一条记录（unique 约束防重复评分）；
+ *  四维评分（引文完整度 / 角色一致性 / 剧情连贯度 / 费用效率）+ 加权综合分 + 权重快照 + 元数据。 */
+export const qualityScores = sqliteTable(
+  'quality_scores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id').notNull().references(() => pipelineRuns.id),
+    episodeIdx: integer('episode_idx').notNull(),
+    citationScore: real('citation_score').notNull(),
+    consistencyScore: real('consistency_score').notNull(),
+    coherenceScore: real('coherence_score').notNull(),
+    costScore: real('cost_score').notNull(),
+    overallScore: real('overall_score').notNull(),
+    weights: text('weights').notNull(),   // JSON: { citation, consistency, coherence, cost }
+    metadata: text('metadata').notNull(), // JSON: { templateVersion, promptVersion, model, params, assetVersions }
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_quality_scores_run').on(t.runId),
+    uniqueIndex('idx_quality_scores_run_episode').on(t.runId, t.episodeIdx),
+  ],
+)
+
+export type QualityScore = typeof qualityScores.$inferSelect

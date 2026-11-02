@@ -658,4 +658,28 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // R01 质量基线评分表建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS quality_scores (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        run_id integer NOT NULL REFERENCES pipeline_runs(id),
+        episode_idx integer NOT NULL,
+        citation_score real NOT NULL,
+        consistency_score real NOT NULL,
+        coherence_score real NOT NULL,
+        cost_score real NOT NULL,
+        overall_score real NOT NULL,
+        weights text NOT NULL,
+        metadata text NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_quality_scores_run ON quality_scores (run_id)')
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_scores_run_episode ON quality_scores (run_id, episode_idx)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }
