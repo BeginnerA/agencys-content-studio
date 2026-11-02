@@ -14,7 +14,7 @@
  *    T7 多 Style：Default+Title 双行形状、cue→Style 映射、越界回落、cut 索引偏移、大字组换行预算 / buildAssBurnPaths 主+派生同裁、合并 cfg 与具名组派生字号重算；
  *  - template：photo-montage v3 版本行 + 三新入参 off 默认 + captions/compose 桥映射 +
  *    T6 card_bg/card_bg_img 子链静态面（when=ai 门控 + after 反级联 + purpose=title_card_bg）+
- *    title-style.md / title-card-bg.md 出厂登记（清单现共 50 份，随并行里程碑演进）；
+ *    title-style.md / title-card-bg.md 出厂登记（清单现共 51 份，随并行里程碑演进）；
  *  - llm：style_mode=llm mock 离线（成功采用+计费 1 行 / 畸形产物降级 rule 仍计费 / 无实例降级零调用）；
  *  - ai：T6 全 mock 离线实弹（LLM 桩产 shots JSON + 图像桩 b64_json 出底图 → 底图分支卡真烧 ffmpeg；
  *    溯源 mode=ai + 叠字白像素 + 计费 llm2+image1）；降级边界：未配图像实例 → 生图步失败 run 收敛 failed（引擎全局语义，非断链 silent 降级）；
@@ -243,7 +243,12 @@ await runSections({
       check(cbParams.prompt_tpl === 'title-card-bg.md' && cbParams.output_format === 'storyboard-json', 'card_bg 提示词契约 title-card-bg.md → 单镜 shots JSON')
       check((cbImg.inputs as Record<string, string>).shots === 'steps.card_bg.asset' && (cbImg.params as Record<string, unknown>).output_purpose === 'title_card_bg', 'card_bg_img 消费分镜 + 产物 purpose=title_card_bg')
       check((comp.after ?? []).includes('card_bg_img') && compIn.card_bg_image === 'steps.card_bg_img.assets' && comp.after_skipped === 'continue', 'compose 接 card_bg_image：after 同步声明 + 跳步放行')
-      check(BUILTIN_PROMPT_NAMES.size === 50 && isBuiltinPrompt('title-style.md') && isBuiltinPrompt('title-card-bg.md'), 'title-style.md/title-card-bg.md 已登记出厂清单（现共 50 份）')
+      check(BUILTIN_PROMPT_NAMES.size === 51 && isBuiltinPrompt('title-style.md') && isBuiltinPrompt('title-card-bg.md'), 'title-style.md/title-card-bg.md 已登记出厂清单（现共 51 份）')
+      check(isBuiltinPrompt('continuity-extract.md'), 'M70 出厂提示词 continuity-extract.md 已登记：列表显「内置」且不可改删')
+      // 清单里写错路径 = 徽章静默不出现（比漏登记更难发现）：逐份确认真实落盘。
+      const { PROMPTS_DIR } = await import('../src/env')
+      const unlanded = [...BUILTIN_PROMPT_NAMES].filter((n) => !existsSync(`${PROMPTS_DIR}/${n}`))
+      check(unlanded.length === 0, `出厂清单每份都真实落盘（未落盘：${unlanded.join(', ') || '无'}）`)
       const tpl = loadPromptTemplate('title-style.md')
       check(tpl.includes('"styles"') && tpl.includes('"assign"') && tpl.includes('0.008'), 'title-style.md 契约键与取值范围在文')
       const bgTpl = loadPromptTemplate('title-card-bg.md')

@@ -363,7 +363,10 @@ async function runInvocationBody(checker: Checker) {
     for (const zone of [view.direct, view.indirect, view.unknown]) assert.ok(!zone.some(r => r.recordId === u3))
     assert.ok(view.direct.every(r => r.state.length > 0))
     await assert.rejects(getImpact(f.projectId, 9_999_999), code(404))
-    await assert.rejects(getImpact(f.projectId, packRefs[0]!.entryId), code(404))
+    // 登记行作锚点：列出直接消费它的真实调用，且不把自身算作自己的影响。
+    const entryFirst = await getImpact(f.projectId, packRefs[0]!.entryId)
+    assert.ok(entryFirst.direct.some(r => r.kind === 'use' && r.recordId === target.id && r.reason === 'use_pack'))
+    assert.ok(![...entryFirst.direct, ...entryFirst.indirect].some(r => r.kind === 'entry' && r.recordId === packRefs[0]!.entryId))
   })
 
   await t('startup recovery marks leftovers unknown without any model call and stays idempotent', async () => {

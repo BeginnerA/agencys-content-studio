@@ -401,6 +401,43 @@ export async function storyDocument(story: Awaited<ReturnType<typeof seedStory>>
     items, warnings: [], noChanges: false, releasedBasis: [] }
 }
 
+/** 路由面探针的决策夹具（lifecycle/route 共用；纯数据，无 IO）。 */
+export const specOf = (brief: string, episode: number) => ({
+  brief: { kind: 'text', value: brief }, episode_number: { kind: 'number', value: episode },
+  with_continuity: { kind: 'boolean', value: true },
+})
+export const templateDecisionEp = (brief: string, episode: number, templateKey = 'm70-fixture-episode') => ({
+  mode: 'template' as const, roleKey: 'planner', rationale: '单模板直出，段间无链',
+  templateRun: { templateKey, catalogSnapshot: { key: templateKey, version: 1 }, inputSpec: specOf(brief, episode) },
+})
+export const chainDecision = (brief1: string, brief2: string) => ({
+  mode: 'chain' as const, roleKey: 'planner', rationale: '两段链式推进，段间暂停等批准',
+  chain: [
+    { templateKey: 'm70-fixture-episode', catalogSnapshot: { key: 'm70-fixture-episode', version: 1 }, title: '第一段', inputSpec: specOf(brief1, 2) },
+    { templateKey: 'm70-fixture-episode', catalogSnapshot: { key: 'm70-fixture-episode', version: 1 }, title: '第二段', inputSpec: specOf(brief2, 3) },
+  ],
+})
+
+/** 最小台账行（生命周期守卫的探针直插面；列对齐 Task1 schema，文档字段按需省略）。
+ * ck_continuity_document 要求文档三字段全空仅限 entry 的 extracting/failed/unknown——其余状态补齐文档三件套。 */
+export async function insertLedgerRow(projectId: number, o: { rowType: string; status: string; unitId?: number; runId?: number }): Promise<number> {
+  const { db } = await import('../../../src/db')
+  const { contentContinuityRecords: records } = await import('../../../src/db/schema')
+  const { writeTextAsset } = await import('../../../src/services/storage')
+  const { recordAssetTextVersion } = await import('../../../src/services/provenance')
+  const docAsset = await writeTextAsset(projectId, { name: `${randomUUID()}.json`, purpose: 'continuity_use', content: '{}' })
+  const docVersion = await recordAssetTextVersion({ asset: docAsset, content: '{}', source: 'generate' })
+  const [row] = await db.insert(records).values({
+    projectId, scopeKind: 'series', scopeId: 1, unitKind: 'episode', unitId: o.unitId ?? 1, unitOrdinal: o.unitId ?? 1,
+    rowType: o.rowType as 'entry' | 'context' | 'consumption',
+    status: o.status as 'extracting' | 'draft' | 'failed' | 'unknown' | 'confirmed' | 'superseded'
+      | 'frozen' | 'bound' | 'prepared' | 'dispatching' | 'completed', runId: o.runId ?? null,
+    documentAssetId: docAsset.id, documentVersionId: docVersion.id, documentHash: docVersion.sha256!,
+    operationKey: randomUUID(), requestHash: 'a'.repeat(64), createdAt: 1, updatedAt: 1,
+  }).returning()
+  return row!.id
+}
+
 /** Test-only persistence, not a substitute for the Task3 confirmation service. */
 export async function persistEntry(doc: EntryDoc, status: 'draft' | 'confirmed' = 'confirmed'): Promise<EntryRef> {
   const { db } = await import('../../../src/db')
