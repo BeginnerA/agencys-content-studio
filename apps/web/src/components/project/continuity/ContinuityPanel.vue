@@ -248,6 +248,22 @@ async function onSaveDoc(doc: EntryDoc) {
   }
 }
 
+/** 删除草稿：仅 draft 态可删；409 表示有子复核或已确认，提示用户先处理依赖。 */
+async function doDeleteEntry(entry: EntryView) {
+  if (entry.status !== 'draft') return
+  if (!confirm(`确定删除草稿 #${entry.id}？删除后不可恢复。`)) return
+  err.value = ''
+  try {
+    await continuityApi.remove(props.projectId, entry.id)
+    // 若正在编辑被删的草稿，清空编辑态
+    if (draft.value?.id === entry.id) draft.value = null
+    await loadAll()
+    emit('changed')
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
 async function reloadDraft() {
   conflictHint.value = false
   err.value = ''
@@ -410,6 +426,13 @@ const validityText: Record<string, string> = {
               @click="editEntry(e)"
             >
               编辑
+            </button>
+            <button
+              v-if="e.status === 'draft' && e.doc"
+              class="btn sm danger"
+              @click="doDeleteEntry(e)"
+            >
+              删除
             </button>
             <button
               v-if="e.status === 'draft' && e.doc"

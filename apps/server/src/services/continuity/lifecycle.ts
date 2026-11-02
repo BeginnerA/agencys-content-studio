@@ -12,7 +12,7 @@
  *   项目彻底删除与影子项目清理共用，事务内外各查一次（事务内查询才是最终仲裁）。
  * - assertUnitsUnreferenced：要移除的单元只要仍有任一 continuity 登记（任意 rowType / status，
  *   含 draft / failed / superseded 与 prepared / completed 承接）→ 409 continuity_entry_referenced。
- *   草稿没有删除入口，即便 latestRunId / contentAssetId 已清也不能把台账归属删成悬空。
+ *   草稿有专用删除入口（DELETE /projects/:pid/continuity/:id，仅 draft 态放行），已确认/已替代登记不可删。
  *
  * 保留 purpose 名单的唯一真源是 reserved.ts，本文件只做再导出，不维护第二份名单。
  */

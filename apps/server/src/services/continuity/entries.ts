@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq, lt } from 'drizzle-orm'
 import { db } from '../../db'
-import { contentContinuityRecords as records, type ContentContinuityRecord } from '../../db/schema'
+import { assets, contentContinuityRecords as records, type ContentContinuityRecord } from '../../db/schema'
 import { ConfirmRequestSchema, ContinuityError, DocRefSchema, EntryDocSchema, EntryViewSchema, PatchRequestSchema, ReviewRequestSchema,
   validateEntryEvidence, type ConfirmRequest, type DocRef, type EntryDoc, type EntryRef, type EntryView, type Executor,
   type PatchRequest, type ReviewRequest, type Unit } from './contract'
@@ -191,6 +191,30 @@ export async function confirmEntry(projectId: number, id: number, request: Confi
     return entryView(updated[0]!, ex)
   })
 }
+/**
+ * 删除草稿登记：仅 draft 态允许删除（confirmed / superseded 受生命周期保护，不可直接删除）。
+ * 前置条件：无子记录以 parentId 引用本条（复核草稿须先删），项目可写。
+ * 删除后关联文档资产一并软删，避免悬空文件。
+ */
+export async function deleteDraftEntry(projectId: number, id: number): Promise<void> {
+  return documentTransaction(async ex => {
+    await assertContinuityProjectWritable(ex, projectId)
+    const row = await entryRow(projectId, id, ex)
+    if (row.status !== 'draft') throw new ContinuityError('continuity_conflict', 409)
+    // 有子记录引用本条作为复核父级时拒绝删除，避免悬空 parentId
+    const [child] = await ex.select({ id: records.id }).from(records)
+      .where(and(eq(records.parentId, id), eq(records.projectId, projectId))).limit(1)
+    if (child) throw new ContinuityError('continuity_entry_referenced', 409)
+    // 删除登记行
+    await ex.delete(records).where(and(eq(records.id, id), eq(records.projectId, projectId), eq(records.rowType, 'entry')))
+    // 关联文档资产软删（documentAssetId 存在时标记 deletedAt）
+    if (row.documentAssetId != null) {
+      await ex.update(assets).set({ deletedAt: continuityIO().now() })
+        .where(and(eq(assets.id, row.documentAssetId), eq(assets.projectId, projectId)))
+    }
+  })
+}
+
 export async function reviewEntry(projectId: number, episodeId: number, request: ReviewRequest): Promise<EntryView> {
   const parsed = ReviewRequestSchema.safeParse(request)
   if (!parsed.success) return invalid()

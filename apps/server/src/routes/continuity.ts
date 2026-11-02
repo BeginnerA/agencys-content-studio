@@ -1,5 +1,5 @@
 /**
- * 专用连续性 API（十条端点，全部转公共服务，零业务逻辑复刻）。
+ * 专用连续性 API（十一条端点，全部转公共服务，零业务逻辑复刻）。
  *
  * 约定：
  * - 错误信封与全站一致：`{error:{code,message}}`；ContinuityError 保真 status/code，
@@ -23,7 +23,7 @@ import {
   PreviewRequestSchema, ReviewRequestSchema, TargetRequestSchema, type ContinuityIO, type FreezeRequest,
 } from '../services/continuity/contract'
 import { previewContext, freezeContext } from '../services/continuity/context'
-import { confirmEntry, listEntries, patchEntry, reviewEntry } from '../services/continuity/entries'
+import { confirmEntry, deleteDraftEntry, listEntries, patchEntry, reviewEntry } from '../services/continuity/entries'
 import { extractEntry, previewExtraction } from '../services/continuity/extract'
 import { getImpact } from '../services/continuity/impact'
 import { withContinuityIO } from '../services/continuity/runtime'
@@ -160,6 +160,13 @@ export function createContinuityRoutes(io?: ContinuityIO): Hono {
     const projectId = idParam(c, 'pid'), entryId = idParam(c)
     const request = parseBody(PatchRequestSchema, await jsonBody(c))
     return c.json({ entry: await patchEntry(projectId, entryId, request as never) })
+  }))
+
+  // ⑥-b DELETE /projects/:pid/continuity/:id —— 仅草稿可删（confirmed/superseded 受生命周期保护；有子复核 → 409）
+  routes.delete('/projects/:pid/continuity/:id', handle(async (c) => {
+    const projectId = idParam(c, 'pid'), entryId = idParam(c)
+    await deleteDraftEntry(projectId, entryId)
+    return c.json({ ok: true })
   }))
 
   // ⑦ POST /projects/:pid/continuity/:id/confirm —— 整集确认 CAS
