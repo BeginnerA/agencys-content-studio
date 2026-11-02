@@ -12,6 +12,7 @@
     "probe:all": "tsx scripts/run-probes.ts",
     "probe:ci": "tsx scripts/run-probes.ts --fail-fast",
     "validate:templates": "tsx scripts/validate-templates.ts",
+    "check:comments": "tsx scripts/check-comment-pointers.ts",
     "bench": "tsx scripts/bench-stress.ts",
     "model:prepare": "tsx scripts/prepare-embedding-model.ts",
     "package:portable": "tsx scripts/package-portable.ts"
