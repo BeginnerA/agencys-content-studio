@@ -182,7 +182,7 @@ async function doSnapshot(s: SourceCandidate) {
 }
 .sp-title {
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
 }
 .sp-meta {
   font-size: 11.5px;

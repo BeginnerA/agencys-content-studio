@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import Icon from '../common/Icon.vue'
+import Modal from '../common/Modal.vue'
 import { projectApi, seriesApi } from '../../lib/api'
 import { continuityApi } from '../../lib/api/continuity'
 import { confirmDialog } from '../../lib/confirm'
@@ -454,28 +455,19 @@ async function doRemoveEpisode(e: Episode) {
       </div>
     </div>
 
-    <!-- M70 台账弹层：来源 / 编辑 / 影响（懒加载，随 changed 事件刷新徽标） -->
-    <div
+    <!-- M70 台账弹层：复用系统 Modal（遮罩/层级/Esc/表面色统一），内容懒加载 -->
+    <Modal
       v-if="ctOpen !== null"
-      class="ct-overlay"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="`第 ${episodes.find((x) => x.id === ctOpen)?.number ?? ''} 集剧情台账`"
-      @click.self="ctOpen = null"
+      :title="`第 ${episodes.find((x) => x.id === ctOpen)?.number ?? ''} 集 · 剧情台账`"
+      :width="920"
+      @close="ctOpen = null"
     >
-      <div class="ct-modal">
-        <div class="ct-modal-head">
-          <button class="btn sm" @click="ctOpen = null">关闭</button>
-        </div>
-        <ContinuityPanel
-          v-if="ctOpen !== null"
-          :project-id="projectId"
-          :episode-id="ctOpen"
-          :episode-number="episodes.find((x) => x.id === ctOpen)?.number ?? 0"
-          @changed="loadContinuity"
-        />
-      </div>
-    </div>
+      <ContinuityPanel
+        :project-id="projectId"
+        :episode-id="ctOpen"
+        @changed="loadContinuity"
+      />
+    </Modal>
 
     <!-- 空态提示 -->
     <div v-else class="muted sb-hint">
@@ -587,34 +579,6 @@ async function doRemoveEpisode(e: Episode) {
 
 .sb-hint {
   padding: 6px 0 2px;
-}
-
-.ct-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 6vh 16px;
-  z-index: 60;
-  overflow: auto;
-}
-
-.ct-modal {
-  background: var(--bg-1, #fff);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 16px;
-  width: min(920px, 96vw);
-  max-height: 88vh;
-  overflow: auto;
-}
-
-.ct-modal-head {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
 }
 
 .mono-card {

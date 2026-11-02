@@ -29,7 +29,13 @@ onBeforeUnmount(() => {
       :style="zIndex !== undefined ? { zIndex } : undefined"
       @click.self="emit('close')"
     >
-      <div class="dlg panel" :style="width ? { width: width + 'px' } : {}">
+      <div
+        class="dlg panel"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+        :style="width ? { width: width + 'px' } : {}"
+      >
         <div class="head">
           <span class="t">{{ title }}</span>
           <button class="x" aria-label="关闭" @click="emit('close')">

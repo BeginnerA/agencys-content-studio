@@ -25,7 +25,6 @@ import ImpactPanel from './ImpactPanel.vue'
 const props = defineProps<{
   projectId: number
   episodeId: number
-  episodeNumber: number
 }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -303,18 +302,17 @@ const validityText: Record<string, string> = {
 
 <template>
   <div class="ct-panel">
-    <div class="ct-head">
-      <span class="ct-title">第 {{ episodeNumber }} 集 · 剧情台账</span>
+    <div class="ct-tools">
       <button class="btn sm" :disabled="loading" @click="loadAll">
         {{ loading ? '加载中…' : '重新载入' }}
       </button>
     </div>
-    <div class="ct-tabs">
+    <div class="tabs">
       <button
         v-for="t in ['sources', 'editor', 'impact'] as const"
         :key="t"
-        class="ct-tab"
-        :class="{ act: tab === t }"
+        class="tab"
+        :class="{ on: tab === t }"
         @click="tab = t"
       >
         {{
@@ -467,33 +465,9 @@ const validityText: Record<string, string> = {
   gap: 8px;
   min-width: 0;
 }
-.ct-head {
+.ct-tools {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.ct-title {
-  font-weight: 600;
-  font-size: 13.5px;
-}
-.ct-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.ct-tab {
-  border: none;
-  background: none;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12.5px;
-  color: var(--text-2);
-  border-bottom: 2px solid transparent;
-}
-.ct-tab.act {
-  color: var(--text-1);
-  border-bottom-color: var(--accent-h);
+  justify-content: flex-end;
 }
 .ct-body {
   display: flex;
