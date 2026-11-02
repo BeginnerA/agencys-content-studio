@@ -40,6 +40,7 @@ import { workflowsRoutes } from './routes/workflows'
 import { searchRoutes } from './routes/search'
 import { versionsRoutes } from './routes/versions'
 import { rolesRoutes } from './routes/roles'
+import { repairsRoutes } from './routes/repairs'
 
 const log = createLogger('app')
 
@@ -85,6 +86,8 @@ api.route('/', versionsRoutes)
 api.route('/', rolesRoutes)
 /** 连续性端点：独立路由组，仍挂同一 /api/v1 前缀。 */
 api.route('/', continuityRoutes)
+/** R06 修复闭环端点 */
+api.route('/', repairsRoutes)
 
 app.route('/api/v1', api)
 
