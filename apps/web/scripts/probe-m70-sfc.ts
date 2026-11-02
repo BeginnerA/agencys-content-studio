@@ -103,7 +103,10 @@ function openImpact(x: { id: number }): void {
     shell(`<button @click="openImpact(e)">影响</button>`),
     'method-control.vue',
   )
-  check(methodForm === null, '守卫自检：方法调用式内联事件（本次修复采用的形态）通过')
+  check(
+    methodForm === null,
+    '守卫自检：方法调用式内联事件（本次修复采用的形态）通过',
+  )
 
   // 1. 真实交付面：M70 全部 SFC 逐个编译通过且文件在场。
   for (const rel of M70_SFC_FILES) {
@@ -114,12 +117,16 @@ function openImpact(x: { id: number }): void {
     }
     const err = compileErrors(readFileSync(abs, 'utf8'), abs)
     const detail = err === null ? '' : `：${err.split('\n')[0]}`
-    check(err === null, `${rel} 经 vue/compiler-sfc（vite 同款）编译无错${detail}`)
+    check(
+      err === null,
+      `${rel} 经 vue/compiler-sfc（vite 同款）编译无错${detail}`,
+    )
   }
 
   console.log(`\n==== M70 SFC 编译探针：${passed} 项全部通过 ====`)
   if (process.exitCode === 1) {
-    for (const line of results) if (line.startsWith('FAIL')) console.log('  ' + line)
+    for (const line of results)
+      if (line.startsWith('FAIL')) console.log('  ' + line)
     process.exit(1)
   }
 }
