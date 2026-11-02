@@ -1,6 +1,7 @@
 // ===== 对话式「一句话成片」领域类型（与 routes/creation-chat.ts + services/creation-chat 响应对齐） =====
 
 import type { ResumeConfigDrift } from './base'
+import type { Approval } from './continuity'
 
 export interface CreationLine {
   id: string
@@ -403,6 +404,18 @@ export interface CreationSessionView {
   decisionHash?: string | null
   /** chain 工作流 id（制作中出 chainProgress 卡） */
   workflowId?: number | null
+  /** 段间待批投影：active 正常等待或 paused 且明确 continuity input 阻塞 */
+  chainAwaiting?: boolean
+  /** 仅 paused continuity 阻塞时携带（code + 待批目标签名）；其余恒为 null */
+  chainContinuityBlock?: {
+    code: string
+    target: {
+      kind: 'workflow'
+      workflowId: number
+      nextSeq: number
+      previousRunId: number | null
+    }
+  } | null
 }
 
 /** 中途审阅：run 挂在闸门上的那一步（服务端从模板快照 gate.message 透出，非引擎状态） */
@@ -624,6 +637,14 @@ export interface CreationRouteConfirmBody {
   acceptUnpriced: boolean
   /** 立项覆盖值：只带用户改过的字段（不入 decisionHash） */
   project?: Partial<CreationProjectMeta>
+  /** M70 承接批准句柄（route 冻结包即连续性包） */
+  continuityApproval?: Approval
+}
+
+/** chain 段间批准推进请求（M70）：幂等键纳入 approvalHash，换包不得沿用旧 request key */
+export interface CreationChainAdvanceBody {
+  idempotencyKey: string
+  continuityApproval?: Approval
 }
 
 /** 参考绑定变更（PATCH /:id/attachments/:assetId/ref）：role 缺省不改；shotId null = 回整片级、缺省不改；至少一项 */

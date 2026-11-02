@@ -2,9 +2,11 @@
 import { onMounted, ref } from 'vue'
 import Icon from '../common/Icon.vue'
 import { projectApi, seriesApi } from '../../lib/api'
+import { continuityApi } from '../../lib/api/continuity'
 import { confirmDialog } from '../../lib/confirm'
 import { runStatus } from '../../lib/format'
 import type { Episode, RunStatus, SeriesInfo } from '../../lib/types'
+import ContinuityPanel from './continuity/ContinuityPanel.vue'
 
 /**
  * 剧集地图（一项目一剧：剧 → 集两级）。
@@ -42,9 +44,45 @@ async function load(silent = false) {
   } finally {
     loading.value = false
   }
+  if (!silent) void loadContinuity()
   void loadMonetization()
 }
 onMounted(() => void load())
+
+// —— M70 剧情台账：每集「未记录 / 已确认 / 待复核」徽标 + 弹层（来源 / 编辑 / 影响）——
+const ctStatus = ref<Record<number, { text: string; cls: string }>>({})
+const ctOpen = ref<number | null>(null)
+const ctLoading = ref(false)
+
+async function loadContinuity() {
+  ctLoading.value = true
+  const next: Record<number, { text: string; cls: string }> = {}
+  await Promise.all(
+    episodes.value.map(async (e) => {
+      try {
+        const r = await continuityApi.list(props.projectId, e.id)
+        const has = r.items.length > 0
+        const confirmedValid = r.items.some(
+          (x) => x.status === 'confirmed' && x.validity === 'valid',
+        )
+        next[e.id] = confirmedValid
+          ? { text: '台账已确认', cls: 'succeeded' }
+          : has
+            ? { text: '台账待复核', cls: 'running' }
+            : { text: '未记录', cls: '' }
+      } catch {
+        // 单集读取失败不打断地图：显示未知态，打开弹层可见具体错误
+        next[e.id] = { text: '台账未知', cls: 'running' }
+      }
+    }),
+  )
+  ctStatus.value = next
+  ctLoading.value = false
+}
+
+function openContinuity(e: Episode) {
+  ctOpen.value = e.id
+}
 
 defineExpose({ reload: (silent = true) => load(silent) })
 
@@ -373,6 +411,16 @@ async function doRemoveEpisode(e: Episode) {
           >
           <template v-else>—</template>
         </span>
+        <span
+          class="badge"
+          :class="ctStatus[e.id]?.cls ?? ''"
+          :title="`第 ${e.number} 集剧情台账状态`"
+          >{{
+            ctLoading && !ctStatus[e.id]
+              ? '…'
+              : (ctStatus[e.id]?.text ?? '未记录')
+          }}</span
+        >
         <select
           class="ep-st"
           :value="e.rowStatus"
@@ -389,6 +437,13 @@ async function doRemoveEpisode(e: Episode) {
             起作
           </button>
           <button
+            class="btn sm"
+            :aria-label="`第 ${e.number} 集剧情台账`"
+            @click="openContinuity(e)"
+          >
+            台账
+          </button>
+          <button
             class="btn sm danger"
             :disabled="busy"
             @click="doRemoveEpisode(e)"
@@ -396,6 +451,29 @@ async function doRemoveEpisode(e: Episode) {
             删
           </button>
         </span>
+      </div>
+    </div>
+
+    <!-- M70 台账弹层：来源 / 编辑 / 影响（懒加载，随 changed 事件刷新徽标） -->
+    <div
+      v-if="ctOpen !== null"
+      class="ct-overlay"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="`第 ${episodes.find((x) => x.id === ctOpen)?.number ?? ''} 集剧情台账`"
+      @click.self="ctOpen = null"
+    >
+      <div class="ct-modal">
+        <div class="ct-modal-head">
+          <button class="btn sm" @click="ctOpen = null">关闭</button>
+        </div>
+        <ContinuityPanel
+          v-if="ctOpen !== null"
+          :project-id="projectId"
+          :episode-id="ctOpen"
+          :episode-number="episodes.find((x) => x.id === ctOpen)?.number ?? 0"
+          @changed="loadContinuity"
+        />
       </div>
     </div>
 
@@ -509,6 +587,34 @@ async function doRemoveEpisode(e: Episode) {
 
 .sb-hint {
   padding: 6px 0 2px;
+}
+
+.ct-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px;
+  z-index: 60;
+  overflow: auto;
+}
+
+.ct-modal {
+  background: var(--bg-1, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: min(920px, 96vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.ct-modal-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
 }
 
 .mono-card {

@@ -10,6 +10,9 @@
  */
 import { reactive } from 'vue'
 import { runApi } from './api/runs'
+import { continuityApi, freezeBody } from './api/continuity'
+import { resumePlanOf, resumeRun, resumeTarget } from './continuity-entry'
+import type { Acceptance } from './types/continuity'
 import type { ResumeConfigDrift, Run } from './types/base'
 
 export interface ConfirmOptions {
@@ -83,9 +86,56 @@ export async function confirmRunResume(
     )
   }
   const needVerify = detail.resumeNeedsVerification === true
+  // M70：目标判定只认服务端预检（off=旧语义；inherit=免费复用；rerun=先冻新包）。
+  const plan = resumePlanOf(detail)
+  if (plan.kind === 'blocked') throw new Error(plan.reason)
+  const kind = plan.kind
   const notes = [
     `将从 run #${id} 新建续跑运行，复用已成功产物；后续制作可能产生费用。`,
   ]
+  if (kind === 'inherit')
+    notes.push(
+      '源运行已持久继承前集承接包：本次免费复用同一继承证据，不重新冻结。',
+    )
+  let preview: {
+    doc: {
+      previewHash: string
+      gaps: Array<{ key: string; fingerprint: string; kind: string }>
+    }
+    canFreeze: boolean
+    blockers: string[]
+    unknownUseId: number | null
+  } | null = null
+  let acceptedGaps: Acceptance[] = []
+  if (kind === 'rerun') {
+    // 需重跑：先免费读目标（不建 run）；不可冻结/缺口/未知费用均在下方确认面明示。
+    const res = await continuityApi.preview(detail.run.projectId, {
+      target: resumeTarget(id),
+      includePlans: false,
+    })
+    if (!isCurrent()) return null
+    preview = res.preview
+    if (!preview.canFreeze) {
+      throw new Error(
+        `该续跑需重新冻结承接包，但当前预览不可冻结：${preview.blockers.join('；') || '承接来源或范围不满足要求'}。请先在剧情台账补齐来源或修正剧集范围。`,
+      )
+    }
+    if (preview.doc.gaps.length) {
+      acceptedGaps = preview.doc.gaps.map((g) => ({
+        key: g.key,
+        fingerprint: g.fingerprint,
+        reason: '断点续跑确认按缺口继续',
+      }))
+      notes.push(
+        `承接存在 ${preview.doc.gaps.length} 处缺口（${preview.doc.gaps.map((g) => g.kind).join('、')}）：继续将按缺口继续执行，不会自动补齐。`,
+      )
+    }
+    if (preview.unknownUseId !== null)
+      notes.push(
+        `未知费用遗留 #${preview.unknownUseId}：该笔消费可能已被计费，继续将重新提交并可能重复计费。`,
+      )
+    notes.push('本次续跑需重新冻结承接包（冻结免费，实际制作可能产生费用）。')
+  }
   if (needVerify)
     notes.push(
       `${detail.ambiguousTaskIds?.length ?? 0} 个任务已提交但无回执，可能已被计费。请先在供应商侧核验失败；继续将重新提交，可能产生重复费用。`,
@@ -107,8 +157,41 @@ export async function confirmRunResume(
             : '开始续跑',
   })
   if (!ok || !isCurrent()) return null
-  const body: Record<string, unknown> = {}
-  if (needVerify) body.confirm_ambiguous = true
-  if (drift.length) body.accept_config_drift = true
-  return runApi.resume(id, body)
+  const extra: Record<string, unknown> = {}
+  if (needVerify) extra.confirm_ambiguous = true
+  if (drift.length) extra.accept_config_drift = true
+  let approval = null
+  const unknownUseId = preview?.unknownUseId ?? null
+  if (kind === 'rerun' && preview) {
+    // 用户已在本确认面同意缺口与未知费用：冻新包，随后 resume 携批准 + 确切 useId 三键。
+    const frozen = await continuityApi.freeze(
+      detail.run.projectId,
+      freezeBody({
+        target: resumeTarget(id),
+        includePlans: false,
+        previewHash: preview.doc.previewHash,
+        acceptedGaps,
+        operationKey: `fz_resume_${id}_${preview.doc.previewHash.slice(0, 12)}`,
+        ...(unknownUseId !== null
+          ? { duplicateCostAcceptance: { useId: unknownUseId, accepted: true } }
+          : {}),
+      }),
+    )
+    if (!isCurrent()) return null
+    approval = frozen.approval
+  }
+  const outcome = await resumeRun(
+    { run: { resume: runApi.resume } },
+    {
+      runId: id,
+      kind,
+      approval,
+      unknownUseId,
+      acceptedDuplicateCost: unknownUseId !== null,
+      acceptedUnknownUseId: unknownUseId,
+      extra,
+    },
+  )
+  if (!outcome.sent) throw new Error(outcome.message)
+  return outcome.result as { run: Run }
 }

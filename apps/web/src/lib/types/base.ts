@@ -80,6 +80,13 @@ export interface ResumeConfigDrift {
   to: string | null
 }
 
+/** 服务端续跑预检（GET /runs/:id → continuityResume）：与 POST /runs/:id/resume 同一决策函数。 */
+export type ContinuityResumePreflight =
+  | { kind: 'off' }
+  | { kind: 'inherit' }
+  | { kind: 'rerun'; unknownUseId: number | null }
+  | { kind: 'blocked'; code: string }
+
 export interface RunDetail {
   run: Run
   steps: RunStep[]
@@ -91,6 +98,8 @@ export interface RunDetail {
   ambiguousTaskIds?: number[]
   /** 已批准端点漂移清单（改模型/改价/删实例）；非空 → 续跑需 accept_config_drift 确认改用当前配置 */
   resumeConfigDrift?: ResumeConfigDrift[]
+  /** 续跑承接目标预检（仅 failed/cancelled 返回）；前端据此决定是否先冻 resume 包 */
+  continuityResume?: ContinuityResumePreflight
 }
 
 /** Gate 文本产物版本链条目（GET /runs/:id/steps/:key/revisions） */

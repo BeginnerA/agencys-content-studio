@@ -10,6 +10,8 @@ import { creationChatApi, newRequestKey } from '../../lib/api'
 import { ApiError } from '../../lib/api/core'
 import { createCreationConfirm } from './use-creation-confirm'
 import { createPolling, RUNNING_STATUSES } from './use-creation-polling'
+import { useRouteContinuity } from './use-creation-continuity'
+import { confirmRoute as confirmRouteEntry } from '../../lib/continuity-entry'
 import type {
   CreationCandidateStep,
   CreationDeleteResult,
@@ -85,6 +87,9 @@ const first = createFirstInput(state, {
 const rework = createRework(state, { commit, polling: ensurePolling })
 // chain 段间批准续跑独立成 composable（M64 G1，同样为守住本文件工程红线而外抽）
 const chain = createChainAdvance(state, { commit, polling: ensurePolling })
+// M70 Task 12：route 确认的承接 target/approval 状态外抽；本文件仅薄委托（决策修订即作废旧批准）
+const route = useRouteContinuity(computed(() => state.detail))
+const routeContinuity = route.cx
 const attachments = createAttachments(state, {
   viewEpoch: () => viewEpoch,
   commit,
@@ -352,8 +357,12 @@ const isRoute = computed(() => {
 /**
  * route 确认（template/chain/synth）：携 decisionHash+decisionRevision 走服务端 confirmRoute 分派。
  * 与 easy confirm 彻底分道：不携 easy 专属字段（reviewGate/resolution/brandApply/subtitleBurn，服务端 strict 会拒），零回归。
+ * M70：withContinuity=true 时必须已有当前决策目标的批准（由 AgentDecisionCard 打开共享预览冻结），否则零请求。
  */
-async function confirmRoute(acceptUnpriced = false): Promise<number | null> {
+async function confirmRoute(
+  acceptUnpriced = false,
+  options: { withContinuity?: boolean } = {},
+): Promise<number | null> {
   const s = state.detail?.session
   const id = state.currentId
   if (
@@ -365,6 +374,12 @@ async function confirmRoute(acceptUnpriced = false): Promise<number | null> {
     state.busyAction
   )
     return null
+  const withContinuity = options.withContinuity === true
+  const approval = routeContinuity.approval.value
+  if (withContinuity && !approval) {
+    state.error = '请先打开承接预览并冻结批准，再确认执行计划（未批准不会提交）'
+    return null
+  }
   if (
     !decisionKey.key ||
     decisionKey.hash !== s.decisionHash ||
@@ -374,13 +389,24 @@ async function confirmRoute(acceptUnpriced = false): Promise<number | null> {
   state.busyAction = true
   state.error = ''
   try {
-    const { runId } = await creationChatApi.confirm(id, {
-      decisionRevision: s.planRevision,
-      decisionHash: s.decisionHash,
-      idempotencyKey: decisionKey.key,
-      acceptUnpriced,
-      ...(projectOverrides() ? { project: projectOverrides() } : {}),
-    })
+    const outcome = await confirmRouteEntry(
+      { chat: { confirm: creationChatApi.confirm } },
+      {
+        sessionId: id,
+        decisionRevision: s.planRevision,
+        decisionHash: s.decisionHash,
+        idempotencyKey: decisionKey.key,
+        acceptUnpriced,
+        ...(projectOverrides() ? { project: projectOverrides()! } : {}),
+        withContinuity,
+        approval,
+      },
+    )
+    if (!outcome.sent) {
+      state.error = outcome.message
+      return null
+    }
+    const { runId } = outcome.result
     await fetchDetail(id)
     projectDraft.dirty = false
     syncProjectDraft()
@@ -730,6 +756,8 @@ export function useEasyCreate() {
     refreshStatus,
     confirm,
     confirmRoute,
+    openRouteContinuity: route.open,
+    routeContinuity,
     cancel,
     retry,
     graduate,

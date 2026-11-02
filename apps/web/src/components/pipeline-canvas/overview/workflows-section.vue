@@ -5,13 +5,23 @@
  * 交互直调 workflowApi，成功后 emit('changed') 由父级刷新 overview；段卡点击 emit('open-run') 导航。
  * 纯展示数据来自 overview.workflows（buildCanvasOverview 派生），本组件不自持链数据副本。
  */
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import Icon from '../../common/Icon.vue'
 import ChainBuilder from './chain-builder.vue'
+import ContinuityPreview from '../../run/ContinuityPreview.vue'
 import { templateApi, workflowApi } from '../../../lib/api'
+import {
+  resumeWorkflow,
+  segmentUsesContinuity,
+  startWorkflow,
+  workflowTarget,
+} from '../../../lib/continuity-entry'
+import { useCreationContinuity } from '../../../views/easy-create/use-creation-continuity'
+import type { Approval } from '../../../lib/types/continuity'
 import { fmtCost, runStatus, workflowStatus } from '../../../lib/format'
 import type {
   TemplateMeta,
+  Workflow,
   WorkflowOverviewLite,
   WorkflowSegmentLite,
 } from '../../../lib/types'
@@ -26,6 +36,17 @@ const templates = ref<TemplateMeta[]>([])
 const showBuilder = ref(false)
 const busy = ref<Record<number, boolean>>({})
 const err = ref('')
+
+// ===== M70 Task 12：start/resume 先打开共享当前段批准面（未批准不发请求，取消零请求） =====
+const continuity = useCreationContinuity(computed(() => props.projectId))
+const showPreview = ref(false)
+const pending = ref<{
+  w: WorkflowOverviewLite
+  kind: 'start' | 'resume'
+  nextSeq: number
+  previousRunId: number | null
+} | null>(null)
+const entryBusy = ref(false)
 
 onMounted(async () => {
   try {
@@ -60,12 +81,110 @@ const toggleAuto = (w: WorkflowOverviewLite) =>
   act(w.id, () =>
     workflowApi.update(w.id, { autoAdvance: w.autoAdvance === 1 ? 0 : 1 }),
   )
-const start = (w: WorkflowOverviewLite) =>
-  act(w.id, () => workflowApi.start(w.id))
+
+/** 当前推进位置：start=首段(0/null)；resume=最近已落定段 + 1 / 该段 runId。 */
+function positionOf(
+  w: WorkflowOverviewLite,
+  kind: 'start' | 'resume',
+): { nextSeq: number; previousRunId: number | null } {
+  if (kind === 'start') return { nextSeq: 0, previousRunId: null }
+  let last: WorkflowSegmentLite | null = null
+  for (const s of w.segments) if (s.runId) last = s
+  return {
+    nextSeq: (last?.seq ?? -1) + 1,
+    previousRunId: last?.runId ?? null,
+  }
+}
+
+async function runEntry(
+  w: WorkflowOverviewLite,
+  kind: 'start' | 'resume',
+  nextSeq: number,
+  previousRunId: number | null,
+  approval: Approval | null,
+  requiresApproval: boolean,
+): Promise<void> {
+  err.value = ''
+  busy.value = { ...busy.value, [w.id]: true }
+  entryBusy.value = true
+  try {
+    const outcome =
+      kind === 'start'
+        ? await startWorkflow(
+            { workflow: { start: workflowApi.start } },
+            {
+              workflowId: w.id,
+              nextSeq,
+              previousRunId,
+              approval,
+              requiresApproval,
+            },
+          )
+        : await resumeWorkflow(
+            { workflow: { resume: workflowApi.resume } },
+            {
+              workflowId: w.id,
+              nextSeq,
+              previousRunId,
+              approval,
+              requiresApproval,
+            },
+          )
+    if (!outcome.sent) {
+      err.value = outcome.message
+      return
+    }
+    showPreview.value = false
+    pending.value = null
+    continuity.clear()
+    emit('changed')
+  } catch (e) {
+    err.value = (e as Error).message
+  } finally {
+    entryBusy.value = false
+    const next = { ...busy.value }
+    delete next[w.id]
+    busy.value = next
+  }
+}
+
+/** 入口：当前段声明承接 → 先打开共享批准面；未声明 → 保持旧语义直接启动。 */
+async function gatedEntry(w: WorkflowOverviewLite, kind: 'start' | 'resume') {
+  err.value = ''
+  try {
+    const { workflow } = await workflowApi.detail(w.id)
+    const { nextSeq, previousRunId } = positionOf(w, kind)
+    const seg = (workflow as Workflow).segments[nextSeq]
+    if (!segmentUsesContinuity(seg)) {
+      await runEntry(w, kind, nextSeq, previousRunId, null, false)
+      return
+    }
+    pending.value = { w, kind, nextSeq, previousRunId }
+    continuity.setTarget(workflowTarget(w.id, nextSeq, previousRunId))
+    showPreview.value = true
+    void continuity.state.load()
+  } catch (e) {
+    err.value = (e as Error).message
+  }
+}
+
+async function confirmPending() {
+  const p = pending.value
+  const approval = continuity.approval.value
+  if (!p || !approval) return
+  await runEntry(p.w, p.kind, p.nextSeq, p.previousRunId, approval, true)
+}
+
+function cancelPending() {
+  showPreview.value = false
+  pending.value = null
+  continuity.clear()
+}
+
+const start = (w: WorkflowOverviewLite) => gatedEntry(w, 'start')
 const pause = (w: WorkflowOverviewLite) =>
   act(w.id, () => workflowApi.pause(w.id))
-const resume = (w: WorkflowOverviewLite) =>
-  act(w.id, () => workflowApi.resume(w.id))
+const resume = (w: WorkflowOverviewLite) => gatedEntry(w, 'resume')
 const clone = (w: WorkflowOverviewLite) =>
   act(w.id, () => workflowApi.clone(w.id))
 const remove = (w: WorkflowOverviewLite) => {
@@ -93,6 +212,24 @@ function onCreated() {
     </div>
 
     <div v-if="err" class="err-text wferr">{{ err }}</div>
+
+    <!-- 当前段承接批准面：start/resume 声明承接时先在此冻结；取消不提交 -->
+    <div v-if="showPreview && pending" class="wfcont">
+      <p class="muted mini">
+        第 {{ pending.nextSeq + 1 }} 段声明了跨集剧情连续性：冻结承接包后才会{{
+          pending.kind === 'start' ? '启动' : '续跑'
+        }}（未批准不发请求）。
+      </p>
+      <ContinuityPreview :state="continuity.state" @frozen="confirmPending" />
+      <button
+        type="button"
+        class="btn sm"
+        :disabled="entryBusy"
+        @click="cancelPending"
+      >
+        取消（不提交）
+      </button>
+    </div>
 
     <div v-if="!workflows.length" class="muted wfempty">
       暂无编排链。点击「新建编排链」把多个模板按序串成一条自动流水线（跨模板串链由你显式编排，逐链开关控制是否自动级联）。
@@ -442,5 +579,15 @@ function onCreated() {
 
 .sp {
   flex: 1;
+}
+
+.wfcont {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
 }
 </style>

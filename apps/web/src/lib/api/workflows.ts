@@ -5,6 +5,12 @@
  */
 import { api, type Items } from './core'
 import type { Workflow, WorkflowSegment } from '../types'
+import type { Approval } from '../types/continuity'
+
+/** start/resume 请求体（M70）：可选承接批准句柄；启用段未携包 → 409 continuity_gaps_unaccepted */
+export interface WorkflowStartBody {
+  continuity_approval?: Approval
+}
 
 export interface WorkflowCreateBody {
   name: string
@@ -53,12 +59,14 @@ export const workflowApi = {
   clone: (id: number) =>
     api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/clone`),
   /** 显式启动首段 run（draft|paused→active；首段 autoAdvance 决定是否级联） */
-  start: (id: number) =>
+  start: (id: number, body?: WorkflowStartBody) =>
     api.post<{ workflow: Workflow; runId: number }>(
       `/api/v1/workflows/${id}/start`,
+      body,
     ),
   pause: (id: number) =>
     api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/pause`),
-  resume: (id: number) =>
-    api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/resume`),
+  /** 断点恢复：paused→active；携批准时须恰指下一推进位置 */
+  resume: (id: number, body?: WorkflowStartBody) =>
+    api.post<{ workflow: Workflow }>(`/api/v1/workflows/${id}/resume`, body),
 }

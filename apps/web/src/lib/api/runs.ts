@@ -22,6 +22,21 @@ import type {
   ShotOp,
   ShotPick,
 } from '../types'
+import type { Approval } from '../types/continuity'
+
+/** 启动 run 请求体（M70：可选承接批准句柄；启用 with_continuity 时必传） */
+export interface RunStartBody {
+  template_key: string
+  input: Record<string, unknown>
+  continuity_approval?: Approval
+}
+
+/** 断点续跑请求体（M70）：批准句柄 + 未知费用精确同意三要素 */
+export interface RunResumeBody extends Record<string, unknown> {
+  continuity_approval?: Approval
+  unknown_use_id?: number
+  accept_possible_duplicate_cost?: true
+}
 
 export const runApi = {
   /** 运行列表（?project_id=&status=；全局待审阅聚合用 status=waiting_input） */
@@ -29,10 +44,8 @@ export const runApi = {
   detail: (id: number) => api.get<RunDetail>(`/api/v1/runs/${id}`),
   log: (id: number, tail = 200) =>
     api.get<{ log: string }>(`/api/v1/runs/${id}/log?tail=${tail}`),
-  start: (
-    projectId: number,
-    body: { template_key: string; input: Record<string, unknown> },
-  ) => api.post<{ run: Run }>(`/api/v1/projects/${projectId}/runs`, body),
+  start: (projectId: number, body: RunStartBody) =>
+    api.post<{ run: Run }>(`/api/v1/projects/${projectId}/runs`, body),
   /**
    * 闸门决策（approve|reject|skip）。服务端与 cancel/resume 同构，只回 `{run}`（无 steps）——
    * 决策后步骤/会话反查等完整视图由调用方 `runApi.detail()` 重载，勿把返回值当 RunDetail 用。
@@ -45,7 +58,7 @@ export const runApi = {
     api.del<{ ok: boolean; runs: number; steps: number; tasks: number }>(
       `/api/v1/runs/${id}`,
     ),
-  resume: (id: number, body?: Record<string, unknown>) =>
+  resume: (id: number, body?: RunResumeBody) =>
     api.post<{ run: Run }>(`/api/v1/runs/${id}/resume`, body ?? {}),
   /** 步骤文本产物版本链（倒序；current = step.output.asset_ids[0]） */
   revisions: (id: number, stepKey: string) =>

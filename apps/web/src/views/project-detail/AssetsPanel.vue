@@ -1,9 +1,23 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AssetGrid from '../../components/asset/AssetGrid.vue'
 import AssetTrashModal from '../../components/asset/AssetTrashModal.vue'
 import { purposeText } from '../../lib/format'
 import type { ProjectDetailApi } from './use-project-detail'
 const props = defineProps<{ s: ProjectDetailApi }>()
+const route = useRoute()
+// 影响面板的「版本 #N」深链接携带真实 asset/version；本页无独立版本查看器，至少显式定位到该版本。
+const linkedVersion = computed(() => {
+  const assetId = Number(route.query.asset)
+  const versionId = Number(route.query.version)
+  return Number.isSafeInteger(assetId) &&
+    assetId > 0 &&
+    Number.isSafeInteger(versionId) &&
+    versionId > 0
+    ? { assetId, versionId }
+    : null
+})
 const {
   activeTab,
   assets,
@@ -114,6 +128,11 @@ const {
         </div>
       </div>
       <div v-if="assetErr" class="err-text">{{ assetErr }}</div>
+      <div v-if="linkedVersion" class="asset-notice" role="status">
+        已定位：资产 #{{ linkedVersion.assetId }} 版本 #{{
+          linkedVersion.versionId
+        }}（来自影响面板链接）
+      </div>
       <div v-if="assetNotice" class="asset-notice">{{ assetNotice }}</div>
       <!-- 批量打标工具条（选择模式下展示；应用 = 追加去重） -->
       <div v-if="tagSelectMode" class="bulk">

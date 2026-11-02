@@ -1,6 +1,8 @@
 import { reactive } from 'vue'
 import { creationChatApi, newRequestKey } from '../../lib/api/creation-chat'
+import { advanceChain as advanceChainEntry } from '../../lib/continuity-entry'
 import type { CreationDetail } from '../../lib/types/creation-chat'
+import type { Approval } from '../../lib/types/continuity'
 
 // ===== chain 段间「对话内批准续跑」独立 composable（M64 G1）=====
 // 不塞进 use-creation-chat.ts（其已近 800 行工程红线），与返修/附件同范式抽离；仅经 s.advanceChain 转发。
@@ -34,7 +36,9 @@ export function createChainAdvance(
   const live = (token: number, id: number): boolean =>
     token === epoch && host.currentId === id
 
-  async function advanceChain(): Promise<boolean> {
+  async function advanceChain(
+    continuity: { approval?: Approval | null; requiresApproval?: boolean } = {},
+  ): Promise<boolean> {
     const id = host.currentId
     const d = host.detail
     const wfId = d?.session.workflowId
@@ -47,7 +51,22 @@ export function createChainAdvance(
     state.busy = true
     host.error = ''
     try {
-      const detail = await api.advanceChain(id, { idempotencyKey: ticket.key })
+      // M70：requestKey 由 adapter 再叠加 approvalHash（换包绝不沿用旧键）；
+      // requiresApproval（当前段声明承接）但未冻结批准 → adapter 直接返回 sent:false，零请求。
+      const outcome = await advanceChainEntry(
+        { chat: { advanceChain: api.advanceChain } },
+        {
+          sessionId: id,
+          keyBase: ticket.key,
+          approval: continuity.approval ?? null,
+          requiresApproval: continuity.requiresApproval === true,
+        },
+      )
+      if (!outcome.sent) {
+        if (live(token, id)) host.error = outcome.message
+        return false
+      }
+      const detail = outcome.result as CreationDetail
       hooks.commit(id, detail)
       if (!live(token, id)) return false
       hooks.polling()

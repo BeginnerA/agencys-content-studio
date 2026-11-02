@@ -7,7 +7,14 @@
 import { computed, ref, watch } from 'vue'
 import Modal from '../../common/Modal.vue'
 import Icon from '../../common/Icon.vue'
-import { workflowApi } from '../../../lib/api'
+import ContinuityPreview from '../../run/ContinuityPreview.vue'
+import { templateApi, workflowApi } from '../../../lib/api'
+import {
+  createAndStartChain,
+  startWorkflow,
+  workflowTarget,
+} from '../../../lib/continuity-entry'
+import { useCreationContinuity } from '../../../views/easy-create/use-creation-continuity'
 import { filterSelectable } from '../../../lib/scene'
 import type { TemplateMeta } from '../../../lib/types'
 
@@ -21,6 +28,15 @@ const budgetCap = ref('')
 const pick = ref('')
 const busy = ref(false)
 const err = ref('')
+// M70 Task 12：「创建并启动」不得绕过共享当前段批准面；取消只保存草稿链、不启动
+const continuity = useCreationContinuity(computed(() => props.projectId))
+const showPreview = ref(false)
+const pending = ref<{
+  workflowId: number
+  nextSeq: number
+  previousRunId: number | null
+  warnings: string[]
+} | null>(null)
 
 const byKey = computed(() => new Map(props.templates.map((t) => [t.key, t])))
 const nameOf = (k: string) => byKey.value.get(k)?.name ?? k
@@ -55,6 +71,18 @@ function move(i: number, dir: -1 | 1) {
   ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
 }
 
+/** 首段模板是否声明 with_continuity（须为 bool 输入）：与 run-binding 闸门同口径 */
+async function firstSegmentSupportsContinuity(key: string): Promise<boolean> {
+  try {
+    const { template } = await templateApi.detail(key)
+    return template.inputs.some(
+      (i) => i.key === 'with_continuity' && i.kind === 'bool',
+    )
+  } catch {
+    return false
+  }
+}
+
 async function save(startAfter: boolean) {
   err.value = ''
   if (!segKeys.value.length) {
@@ -64,28 +92,86 @@ async function save(startAfter: boolean) {
   busy.value = true
   try {
     const cap = budgetCap.value.trim() === '' ? null : Number(budgetCap.value)
-    const { workflow, warnings } = await workflowApi.create(props.projectId, {
-      name: name.value.trim() || '未命名编排链',
-      segments: segKeys.value.map((k) => ({ templateKey: k })),
-      autoAdvance: autoAdvance.value,
-      budgetCap: cap,
-    })
-    if (startAfter) {
-      try {
-        await workflowApi.start(workflow.id)
-      } catch (e) {
-        // 启动失败不回滚已建链：提示后仍刷新列表
-        err.value = `链已保存，但启动首段失败：${(e as Error).message}`
-      }
+    const requiresApproval = startAfter
+      ? await firstSegmentSupportsContinuity(segKeys.value[0]!)
+      : false
+    const result = await createAndStartChain(
+      { workflow: { create: workflowApi.create, start: workflowApi.start } },
+      {
+        projectId: props.projectId,
+        name: name.value.trim() || '未命名编排链',
+        segments: segKeys.value.map((k) => ({ templateKey: k })),
+        autoAdvance: autoAdvance.value,
+        budgetCap: cap,
+        approval: null,
+        requiresApproval,
+        startAfter,
+      },
+    )
+    if (result.started) {
+      emit('created', result.workflowId)
+      return
     }
-    const warn = warnings?.length ? `\n提示：${warnings.join('；')}` : ''
-    if (!err.value) emit('created', workflow.id)
-    if (warn) err.value = err.value ? err.value + warn : warn.trim()
+    if (result.reason === 'approval_required') {
+      // 链已保存为草稿：先冻结当前段承接包，批准后才启动首段（取消=只留草稿）
+      pending.value = {
+        workflowId: result.workflowId,
+        nextSeq: 0,
+        previousRunId: null,
+        warnings: [],
+      }
+      continuity.setTarget(workflowTarget(result.workflowId, 0, null))
+      showPreview.value = true
+      void continuity.state.load()
+      return
+    }
+    emit('created', result.workflowId)
   } catch (e) {
     err.value = (e as Error).message
   } finally {
     busy.value = false
   }
+}
+
+/** 冻结成功 → 用批准启动首段；失败保留草稿并提示（不回滚已建链）。 */
+async function confirmStart() {
+  const p = pending.value
+  const approval = continuity.approval.value
+  if (!p || !approval) return
+  busy.value = true
+  err.value = ''
+  try {
+    const outcome = await startWorkflow(
+      { workflow: { start: workflowApi.start } },
+      {
+        workflowId: p.workflowId,
+        nextSeq: p.nextSeq,
+        previousRunId: p.previousRunId,
+        approval,
+        requiresApproval: true,
+      },
+    )
+    if (!outcome.sent) {
+      err.value = outcome.message
+      return
+    }
+    showPreview.value = false
+    continuity.clear()
+    emit('created', p.workflowId)
+  } catch (e) {
+    err.value = `链已保存，但启动首段失败：${(e as Error).message}`
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 取消：只保存原草稿链、不启动。 */
+function cancelStart() {
+  const p = pending.value
+  showPreview.value = false
+  pending.value = null
+  continuity.clear()
+  if (p) emit('created', p.workflowId)
 }
 </script>
 
@@ -188,13 +274,24 @@ async function save(startAfter: boolean) {
       </div>
 
       <div v-if="err" class="err-text">{{ err }}</div>
+
+      <!-- 首段声明承接：草稿链已保存，冻结当前段承接包后才启动（取消=只留草稿） -->
+      <div v-if="showPreview && pending" class="cbcont">
+        <p class="muted mini">
+          链已保存为草稿。首段声明了跨集剧情连续性：请核对承接包并冻结批准，才会启动首段；取消只保留草稿链、不启动。
+        </p>
+        <ContinuityPreview :state="continuity.state" @frozen="confirmStart" />
+        <button type="button" class="btn" :disabled="busy" @click="cancelStart">
+          取消（只保存草稿链）
+        </button>
+      </div>
     </div>
     <template #footer>
       <button type="button" class="btn" @click="emit('close')">取消</button>
       <button
         type="button"
         class="btn"
-        :disabled="busy || !segKeys.length"
+        :disabled="busy || !segKeys.length || showPreview"
         @click="save(false)"
       >
         仅保存
@@ -202,7 +299,7 @@ async function save(startAfter: boolean) {
       <button
         type="button"
         class="btn primary"
-        :disabled="busy || !segKeys.length"
+        :disabled="busy || !segKeys.length || showPreview"
         @click="save(true)"
       >
         <Icon name="play" :size="12" />
@@ -217,6 +314,15 @@ async function save(startAfter: boolean) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.cbcont {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 10px 12px;
 }
 
 .fld {

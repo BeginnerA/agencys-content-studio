@@ -1,18 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Modal from '../common/Modal.vue'
 import TemplatePicker from '../template/TemplatePicker.vue'
 import TemplateInputFields from '../template/TemplateInputFields.vue'
 import ProvenanceBadge from '../common/ProvenanceBadge.vue'
+import ContinuityPreview from './ContinuityPreview.vue'
+import { manualTarget, submitManualRun } from '../../lib/continuity-entry'
+import { useCreationContinuity } from '../../views/easy-create/use-creation-continuity'
 import type {
   Asset,
+  Episode,
   PrefillSource,
   Publication,
   TemplateDetail,
   TemplateMeta,
   VideoOverride,
 } from '../../lib/types'
-import { projectApi, publicationApi, runApi, templateApi } from '../../lib/api'
+import {
+  projectApi,
+  publicationApi,
+  runApi,
+  seriesApi,
+  templateApi,
+} from '../../lib/api'
 import { filterSelectable } from '../../lib/scene'
 
 const props = defineProps<{
@@ -33,6 +43,45 @@ const publications = ref<Publication[]>([])
 const form = ref<Record<string, unknown>>({})
 /** 自动预填来源映射（key → last_run/brief；用户编辑即剔除，驱动字段 chip） */
 const sourceMap = ref<Record<string, PrefillSource>>({})
+// ===== M70 跨集剧情连续性（brief 12.3）：专用开关默认关；保留槽位隐藏；批准随输入/集号失效 =====
+const RESERVED_INPUTS = ['with_continuity', 'continuity_context']
+const episodes = ref<Episode[]>([])
+const continuity = useCreationContinuity(computed(() => props.projectId))
+const continuityOn = ref(false)
+const showContinuityPreview = ref(false)
+/** 模板声明了 with_continuity（须为 bool 输入）才可启用——与 run-binding 的声明闸门同口径 */
+const supportsContinuity = computed(
+  () =>
+    tpl.value?.inputs.some(
+      (i) => i.key === 'with_continuity' && i.kind === 'bool',
+    ) === true,
+)
+/** 保留槽位（with_continuity/continuity_context）不呈现为普通字段，由专用开关与批准包接管 */
+const displayTpl = computed<TemplateDetail | null>(() =>
+  tpl.value
+    ? {
+        ...tpl.value,
+        inputs: tpl.value.inputs.filter(
+          (i) => !RESERVED_INPUTS.includes(i.key),
+        ),
+      }
+    : null,
+)
+const episodeNumber = computed(() => Number(form.value['episode_number']))
+const episode = computed(
+  () => episodes.value.find((e) => e.number === episodeNumber.value) ?? null,
+)
+/** 无效范围（无合法集 / 项目无该集）先提示建剧集，开关不可用 */
+const continuityRangeHint = computed(() => {
+  if (!supportsContinuity.value) return ''
+  if (!Number.isSafeInteger(episodeNumber.value) || episodeNumber.value <= 0)
+    return '当前集号无效：请先在项目中建立剧集（无效范围不允许启用承接）'
+  if (!episode.value) return '项目中尚无该集：请先建立剧集再启用承接'
+  return ''
+})
+const continuityReady = computed(
+  () => supportsContinuity.value && episode.value !== null,
+)
 /** G8 视频覆盖合法档位（null → 前端回退现硬编码手填） */
 const videoOverride = ref<VideoOverride | null>(null)
 const RES_DEFAULT = ['480p', '720p', '1080p']
@@ -105,6 +154,10 @@ function onFieldChange(k: string, v: unknown): void {
 
 /** 第二步：选中模板 → 加载详情 + 回填默认值 */
 async function selectTemplate(key: string) {
+  // 换模板 = 换承接目标：旧批准一律作废，专用开关回到默认关
+  continuity.clear()
+  continuityOn.value = false
+  showContinuityPreview.value = false
   tplKey.value = key
   tpl.value = null
   form.value = {}
@@ -163,6 +216,9 @@ async function selectTemplate(key: string) {
 
 /** 返回第一步（重选模板） */
 function backToPicker() {
+  continuity.clear()
+  continuityOn.value = false
+  showContinuityPreview.value = false
   tplKey.value = ''
   tpl.value = null
   form.value = {}
@@ -179,18 +235,20 @@ function onAssetsAppended(added: Asset[]): void {
   if (fresh.length) assets.value = [...fresh, ...assets.value]
 }
 
-async function submit() {
-  if (!tpl.value) return
+/** 归一化表单值 → run input（保留槽位 with_continuity/continuity_context 只由批准包注入） */
+function buildInput(): Record<string, unknown> | null {
+  if (!tpl.value) return null
   // 归一化：空字符串 → 未填
   const input: Record<string, unknown> = {}
   for (const inp of tpl.value.inputs) {
+    if (RESERVED_INPUTS.includes(inp.key)) continue
     const v = form.value[inp.key]
     if (
       inp.required &&
       (v === '' || v === undefined || (Array.isArray(v) && v.length === 0))
     ) {
       err.value = `请填写必填项「${inp.label}」`
-      return
+      return null
     }
     if (inp.kind === 'int') input[inp.key] = Number(v)
     else if (inp.kind === 'float') input[inp.key] = Number(v)
@@ -227,14 +285,95 @@ async function submit() {
       p.llm = { temperature }
   }
   if (Object.keys(p).length > 0) input['_params'] = p
-  busy.value = true
+  return input
+}
+
+/** 打开共享承接预览面：目标 = 当前模板 + 当前集 + 当前输入（与最终 run input 同源） */
+function openContinuity() {
   err.value = ''
+  if (!tpl.value) return
+  if (!continuityReady.value || !episode.value) {
+    err.value = continuityRangeHint.value
+    return
+  }
+  const fields = buildInput()
+  if (!fields) return
+  continuity.setTarget(
+    manualTarget({
+      episodeId: episode.value.id,
+      templateKey: tpl.value.key,
+      fields,
+      withContinuity: true,
+    }),
+  )
+  showContinuityPreview.value = true
+  void continuity.state.load()
+}
+
+/** 专用开关（默认关）：关闭清批准；开启即打开预览（不绕过共享批准面） */
+function onContinuityToggle() {
+  err.value = ''
+  if (!continuityOn.value) {
+    showContinuityPreview.value = false
+    continuity.clear()
+    return
+  }
+  if (!continuityReady.value) {
+    continuityOn.value = false
+    err.value = continuityRangeHint.value
+    return
+  }
+  openContinuity()
+}
+
+function onFrozen() {
+  showContinuityPreview.value = false
+  notice.value = '承接包已冻结，可启动本集（批准随输入变化自动失效）'
+}
+
+// 集号 / brief / 任何输入或 _params 变化 → 旧批准立即失效；面板开着重载免费预览
+watch(
+  [form, adv],
+  () => {
+    continuity.invalidate()
+    if (showContinuityPreview.value && continuationTargetExists())
+      void continuity.state.load()
+  },
+  { deep: true },
+)
+function continuationTargetExists(): boolean {
+  return continuity.target.value !== null
+}
+
+async function submit() {
+  if (!tpl.value || busy.value) return
+  const input = buildInput()
+  if (!input) return
+  err.value = ''
+  notice.value = ''
+  // 连续性启用：必须有当前目标的批准，否则不发请求（打开预览引导确认）
+  if (continuityOn.value && !continuity.approval.value) {
+    openContinuity()
+    err.value = '请先在本集承接预览中确认并冻结承接包，再启动（未批准不会提交）'
+    return
+  }
+  busy.value = true
   try {
-    const res = await runApi.start(props.projectId, {
-      template_key: tpl.value.key,
-      input,
-    })
-    emit('done', res.run.id)
+    const outcome = await submitManualRun(
+      { run: runApi },
+      {
+        projectId: props.projectId,
+        templateKey: tpl.value.key,
+        input,
+        withContinuity: continuityOn.value,
+        approval: continuity.approval.value,
+      },
+    )
+    if (!outcome.sent) {
+      err.value = outcome.message
+      return
+    }
+    emit('done', outcome.result.run.id)
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -250,6 +389,12 @@ async function init() {
       projectApi.assets(props.projectId, '?limit=100'),
       publicationApi.list(`?project_id=${props.projectId}`),
     ])
+    // 承接开关只在「项目已有合法剧集」时可用：集表失败不阻断启动表单（开关回落不可用 + 提示先建剧集）
+    try {
+      episodes.value = (await seriesApi.get(props.projectId)).episodes
+    } catch {
+      episodes.value = []
+    }
     // 启动选卡不呈现轻松创作批准链模板（选它们无 recipe 无法启动）
     templates.value = filterSelectable(tRes.items)
     assets.value = aRes.items
@@ -299,7 +444,8 @@ init()
             {{ tpl.description }}
           </div>
           <TemplateInputFields
-            :tpl="tpl"
+            v-if="displayTpl"
+            :tpl="displayTpl"
             :assets="assets"
             :publications="publications"
             :values="form"
@@ -309,6 +455,50 @@ init()
             @assets-appended="onAssetsAppended"
             @notice="notice = $event"
           />
+          <!-- M70 跨集剧情连续性：专用开关（默认关）+ 共享承接预览/冻结；保留槽位不呈现为普通字段 -->
+          <div v-if="supportsContinuity" class="cont">
+            <label class="cont-sw">
+              <input
+                v-model="continuityOn"
+                type="checkbox"
+                :disabled="busy"
+                @change="onContinuityToggle"
+              />
+              使用已确认跨集剧情（默认关闭；启用后需先冻结承接包）
+            </label>
+            <p v-if="continuityRangeHint" class="err-text">
+              {{ continuityRangeHint }}
+            </p>
+            <template v-else-if="continuityOn">
+              <p class="muted cont-hint">
+                {{
+                  continuity.frozen.value
+                    ? '承接包已冻结；改动集号 / brief / 参数会自动失效，需重新确认。'
+                    : '尚未冻结批准：启动前必须在本集承接预览中确认缺口与费用风险。'
+                }}
+              </p>
+              <button
+                type="button"
+                class="btn cont-open"
+                :disabled="busy"
+                @click="openContinuity"
+              >
+                {{
+                  continuity.frozen.value ? '重新查看承接包' : '打开承接预览'
+                }}
+              </button>
+            </template>
+            <div v-if="showContinuityPreview" class="cont-panel">
+              <ContinuityPreview :state="continuity.state" @frozen="onFrozen" />
+              <button
+                type="button"
+                class="btn"
+                @click="showContinuityPreview = false"
+              >
+                关闭预览（不提交）
+              </button>
+            </div>
+          </div>
           <!-- 集级参数覆盖：runtime 叠加，仅本 run 生效（优先于项目设置/模板默认）；按模板用到的生成环节动态显隐 -->
           <details v-if="hasOverride" class="adv">
             <summary>
@@ -459,5 +649,39 @@ init()
   font-size: 11px;
   font-style: normal;
   color: var(--accent-h);
+}
+
+.cont {
+  margin-top: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cont-sw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cont-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.cont-open {
+  align-self: flex-start;
+}
+
+.cont-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

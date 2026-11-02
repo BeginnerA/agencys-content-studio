@@ -5,8 +5,11 @@
  * 与 easy 的 CreationPlanCard 分列：easy 有逐镜方案 + recipe 冻结，route 只读预览服务端归一后的权威决策，不臆造成本明细（金额在 confirm 时按物化输入最终核算）。
  * 角色名从服务端随消息下发的 agentRole→roleName 派生（后端注册表为真源，前端不硬编码角色名）。
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Icon from '../../components/common/Icon.vue'
+import ContinuityPreview from '../../components/run/ContinuityPreview.vue'
+import { seriesApi } from '../../lib/api'
+import type { Episode } from '../../lib/types'
 import type { useEasyCreate } from './use-creation-chat'
 import type { AgentDecisionView, InputSpecView } from '../../lib/types'
 
@@ -98,8 +101,107 @@ const chainSegs = computed(() => decision.value?.chain ?? [])
 const synth = computed(() => decision.value?.synth ?? null)
 const synthSpecs = computed(() => specRows(decision.value?.synth?.inputSpec))
 
+// ===== M70 跨集剧情连续性（brief 12.3）：route 卡只在「模板声明承接 + 有合法剧集」时给开关 =====
+const routeCx = props.s.routeContinuity
+const continuityOn = ref(false)
+const showContinuityPreview = ref(false)
+const routeNotice = ref('')
+const episodes = ref<Episode[]>([])
+const episodesLoaded = ref(false)
+/** 服务端 route 目标材质 = 决策第一执行体的 inputSpec（chain 取首段，与 startChain 同源） */
+const materialSpec = computed<Record<string, InputSpecView> | null>(() => {
+  const d = decision.value
+  if (!d) return null
+  if (d.mode === 'template') return d.templateRun?.inputSpec ?? null
+  if (d.mode === 'synth') return d.synth?.inputSpec ?? null
+  if (d.mode === 'chain') return d.chain?.[0]?.inputSpec ?? null
+  return null
+})
+/** 模板声明了 with_continuity（bool 输入）才显示开关（服务端会按声明闸门拒绝静默降级） */
+const declaresContinuity = computed(
+  () => materialSpec.value?.['with_continuity']?.kind === 'boolean',
+)
+/** route 冻结包定位仍取归一输入 episode_number 真值：非法/无该集不得开开关 */
+const episodeNumber = computed<number | null>(() => {
+  const n = Number(materialSpec.value?.['episode_number']?.value)
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+})
+const episodeReady = computed(
+  () =>
+    episodesLoaded.value &&
+    episodeNumber.value !== null &&
+    episodes.value.some((e) => e.number === episodeNumber.value),
+)
+const continuityHint = computed(() => {
+  if (!declaresContinuity.value || episodeReady.value) return ''
+  if (episodeNumber.value === null)
+    return '决策未定位到剧集号：请先在项目中建立剧集后再规划'
+  return `请先在项目中建立第 ${episodeNumber.value} 集`
+})
+
+watch(
+  () => session.value?.projectId,
+  async (pid) => {
+    episodesLoaded.value = false
+    episodes.value = []
+    if (!pid) return
+    try {
+      episodes.value = (await seriesApi.get(pid)).episodes
+    } catch {
+      episodes.value = []
+    } finally {
+      episodesLoaded.value = true
+    }
+  },
+  { immediate: true },
+)
+
+/** 决策修订/哈希变化 = 新目标：旧批准立即作废，面板需重新预览（brief 12.3「决定修订清批准」） */
+watch(
+  () => [session.value?.decisionHash, session.value?.planRevision] as const,
+  () => {
+    if (!continuityOn.value) return
+    showContinuityPreview.value = false
+    routeNotice.value = ''
+  },
+)
+
+/** 打开共享承接预览：目标由会话当前决策（revision/hash）定位，执行体服务端重导 */
+function openContinuity() {
+  routeNotice.value = ''
+  if (!episodeReady.value) {
+    continuityOn.value = false
+    routeNotice.value = continuityHint.value
+    return
+  }
+  props.s.openRouteContinuity()
+  showContinuityPreview.value = true
+}
+
+/** 专用开关默认关：关即清目标/批准；开必须走预览冻结（绝不带空包确认） */
+function onContinuityToggle() {
+  routeNotice.value = ''
+  if (!continuityOn.value) {
+    showContinuityPreview.value = false
+    routeCx.clear()
+    return
+  }
+  openContinuity()
+}
+
+function onFrozen() {
+  showContinuityPreview.value = false
+  routeNotice.value = '承接包已冻结，可确认执行计划（决策修订后自动失效）'
+}
+
 async function onConfirm(): Promise<void> {
-  await props.s.confirmRoute()
+  if (continuityOn.value && !routeCx.approval.value) {
+    openContinuity()
+    if (!routeNotice.value)
+      routeNotice.value = '请先预览并冻结承接包，未批准不会提交'
+    return
+  }
+  await props.s.confirmRoute(false, { withContinuity: continuityOn.value })
 }
 </script>
 
@@ -158,6 +260,48 @@ async function onConfirm(): Promise<void> {
       </p>
     </div>
 
+    <!-- M70 跨集剧情连续性：route 卡只在模板声明承接且剧集合法时给专用开关（默认关） -->
+    <div v-if="declaresContinuity" class="blk cont">
+      <div class="blk-h">跨集剧情连续性</div>
+      <label v-if="episodeReady" class="sw">
+        <input
+          v-model="continuityOn"
+          type="checkbox"
+          :disabled="busy"
+          @change="onContinuityToggle"
+        />
+        <span>承接前集剧情（需先预览并冻结承接包）</span>
+      </label>
+      <p v-else class="hint warn">
+        <Icon name="alert" :size="12" /> {{ continuityHint }}
+      </p>
+      <template v-if="episodeReady && continuityOn">
+        <div class="cont-row">
+          <button class="btn sm ghost" type="button" @click="openContinuity">
+            {{ routeCx.frozen.value ? '重新查看承接包' : '打开承接预览' }}
+          </button>
+          <small class="muted">{{
+            routeCx.frozen.value
+              ? '已冻结，可确认执行计划'
+              : '未冻结：确认不会提交任何请求'
+          }}</small>
+        </div>
+        <p v-if="routeCx.state.error.value" class="hint warn">
+          <Icon name="alert" :size="12" /> {{ routeCx.state.error.value }}
+        </p>
+        <div v-if="showContinuityPreview" class="cont-panel">
+          <ContinuityPreview :state="routeCx.state" @frozen="onFrozen" />
+          <button
+            class="btn sm ghost"
+            type="button"
+            @click="showContinuityPreview = false"
+          >
+            收起
+          </button>
+        </div>
+      </template>
+    </div>
+
     <!-- 编队 -->
     <div v-if="teamNames.length" class="blk">
       <div class="blk-h">智能编队</div>
@@ -180,7 +324,9 @@ async function onConfirm(): Promise<void> {
       <button
         class="btn primary"
         type="button"
-        :disabled="!canConfirm || busy"
+        :disabled="
+          !canConfirm || busy || (continuityOn && !routeCx.frozen.value)
+        "
         @click="onConfirm"
       >
         <Icon name="check" :size="13" /> {{ busy ? '启动中…' : '确认执行计划' }}
@@ -194,6 +340,7 @@ async function onConfirm(): Promise<void> {
         <Icon name="refresh" :size="13" /> 更新预检
       </button>
     </footer>
+    <small v-if="routeNotice" class="muted route-note">{{ routeNotice }}</small>
     <small v-if="!canConfirm" class="muted"
       >执行计划尚不可确认（配置待完善或已过时），请在左侧继续对话重新规划或点「更新预检」。</small
     >
@@ -356,5 +503,42 @@ async function onConfirm(): Promise<void> {
   color: var(--text-3);
   line-height: 1.6;
   margin: 0;
+}
+/* M70 跨集剧情连续性入口 */
+.cont {
+  gap: 8px;
+}
+.sw {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.sw input {
+  margin-top: 2px;
+}
+.cont-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cont-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px;
+}
+.hint.warn {
+  color: var(--warn);
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.route-note {
+  color: var(--accent-h);
 }
 </style>
