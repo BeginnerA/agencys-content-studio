@@ -8,9 +8,23 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, episodes, pipelineRuns, series, type Episode, type Series } from '../db/schema'
 import { WorkbenchError } from './shot'
+import { ContinuityError, type Executor } from './continuity/contract'
+import { assertUnitsUnreferenced } from './continuity/lifecycle'
+import { isContinuityPurpose } from './continuity/reserved'
+import { documentTransaction } from './continuity/store'
 
 /** 行的更新时间戳（保证已存在返回时只读） */
 const now = (): number => Date.now()
+
+/** 剧集服务把连续性守卫的 ContinuityError 折叠为自身错误词汇（状态/错误码保真：409 continuity_entry_referenced）。 */
+async function assertUnitsFree(ex: Executor, projectId: number, episodeIds: number[]): Promise<void> {
+  try {
+    await assertUnitsUnreferenced(ex, projectId, episodeIds)
+  } catch (err) {
+    if (err instanceof ContinuityError) throw new WorkbenchError(err.code, err.message, err.status)
+    throw err
+  }
+}
 
 /** 手工态白名单（展示态另经最新 run 状态派生合并） */
 const EPISODE_STATUSES = ['locked', 'planning', 'done']
@@ -101,6 +115,10 @@ export async function createSeries(p: {
     if (!a || a.projectId !== p.projectId || a.deletedAt) {
       throw new WorkbenchError('bad_asset', `content_asset_id #${p.contentAssetId} 不存在或不属于本项目`)
     }
+    // M70 保留素材（continuity_*）不得作为剧/集正文资产（普通面不可选）
+    if (isContinuityPurpose(a.purpose)) {
+      throw new WorkbenchError('reserved_purpose', `content_asset_id #${p.contentAssetId} 为 M70 保留素材，不可作为正文资产`)
+    }
   }
   const existing = await findSeriesOfProject(p.projectId)
   if (existing) throw new WorkbenchError('series_exists', `项目 ${p.projectId} 已有剧集（#${existing.id} ${existing.name}），一项目一剧`, 409)
@@ -155,66 +173,73 @@ export async function findEpisode(projectId: number, episodeId: number): Promise
 
 /**
  * 调整集数（扩容追集 / 缩容仅删尾部空集）：
- * 缩容边界——被删的每一个集必须无 run 且无内容资产，否则 409；缺号（已被删）不重建。
+ * 缩容边界——被删的每一个集必须无 run 且无内容资产，且任一连续性登记都拒绝（409）。
+ * 守卫、集行读取、插入/删除与剧行更新全部在同一写事务（SQLITE_BUSY 有界重试）；
+ * 视图在提交后由 listEpisodes 重读，不拿事务外快照拼出参。
  */
 export async function updateSeriesEpisodes(seriesId: number, totalEpisodes: number): Promise<{ series: Series; episodes: EpisodeView[] }> {
   if (!Number.isInteger(totalEpisodes) || totalEpisodes < 1 || totalEpisodes > 999) {
     throw new WorkbenchError('bad_total', 'total_episodes 需为 1..999 的整数')
   }
-  const rows = await db.select().from(series).where(eq(series.id, seriesId)).limit(1)
-  const s = rows[0]
-  if (!s) throw new WorkbenchError('not_found', `剧 #${seriesId} 不存在`, 404)
-  const t = now()
-  const current = await db.select().from(episodes).where(eq(episodes.seriesId, seriesId))
-  const byNumber = new Map(current.map((e) => [e.number, e]))
-  const currentMax = current.reduce((m, e) => Math.max(m, e.number), 0)
-  // 扩容：仅追加历史最大集号之后的新集（缺号保持缺号）
-  for (let n = Math.max(currentMax, s.totalEpisodes) + 1; n <= totalEpisodes; n++) {
-    await db
-      .insert(episodes)
-      .values({ projectId: s.projectId, seriesId, number: n, status: 'locked', createdAt: t, updatedAt: t })
-  }
-  // 缩容：拒绝删除有 run / 有内容资产的集
-  for (const e of current) {
-    if (e.number <= totalEpisodes) continue
-    if (e.latestRunId || e.contentAssetId) {
-      throw new WorkbenchError('episode_in_use', `集 ${e.number} 已关联 run / 内容资产，不可删除（先解除绑定）`, 409)
+  const fresh = await documentTransaction(async (ex) => {
+    const rows = await ex.select().from(series).where(eq(series.id, seriesId)).limit(1)
+    const s = rows[0]
+    if (!s) throw new WorkbenchError('not_found', `剧 #${seriesId} 不存在`, 404)
+    const t = now()
+    const current = await ex.select().from(episodes).where(eq(episodes.seriesId, seriesId))
+    const currentMax = current.reduce((m, e) => Math.max(m, e.number), 0)
+    // 扩容：仅追加历史最大集号之后的新集（缺号保持缺号）
+    for (let n = Math.max(currentMax, s.totalEpisodes) + 1; n <= totalEpisodes; n++) {
+      await ex.insert(episodes)
+        .values({ projectId: s.projectId, seriesId, number: n, status: 'locked', createdAt: t, updatedAt: t })
     }
-  }
-  // 逐条删除尾部集（全部前置校验已通过）
-  for (const e of current) {
-    if (e.number <= totalEpisodes) continue
-    await db.delete(episodes).where(eq(episodes.id, e.id))
-  }
-  await db.update(series).set({ totalEpisodes, updatedAt: t }).where(eq(series.id, seriesId))
-  const fresh = (await db.select().from(series).where(eq(series.id, seriesId)))[0]!
+    // 缩容：拒绝删除有 run / 有内容资产的集
+    for (const e of current) {
+      if (e.number <= totalEpisodes) continue
+      if (e.latestRunId || e.contentAssetId) {
+        throw new WorkbenchError('episode_in_use', `集 ${e.number} 已关联 run / 内容资产，不可删除（先解除绑定）`, 409)
+      }
+    }
+    // 缩容：任一连续性登记都拒绝（即便 latestRunId / contentAssetId 已清，归属也不能悬空）
+    await assertUnitsFree(ex, s.projectId, current.filter((e) => e.number > totalEpisodes).map((e) => e.id))
+    // 逐条删除尾部集（全部前置校验已通过）
+    for (const e of current) {
+      if (e.number <= totalEpisodes) continue
+      await ex.delete(episodes).where(eq(episodes.id, e.id))
+    }
+    const updated = await ex.update(series).set({ totalEpisodes, updatedAt: t }).where(eq(series.id, seriesId)).returning()
+    return updated[0]!
+  })
   return { series: fresh, episodes: await listEpisodes(seriesId) }
 }
 
-/** 原生集行列表（内部用） */
-async function listEpisodeRows(seriesId: number): Promise<Episode[]> {
-  return db.select().from(episodes).where(eq(episodes.seriesId, seriesId)).orderBy(asc(episodes.number))
-}
-
-/** 剧删除（安全边界：任集有 run / 内容资产 → 409） */
+/** 剧删除（安全边界：任集有 run / 内容资产 → 409；任集仍有连续性登记 → 409；同一写事务内复查后删）。 */
 export async function deleteSeries(seriesId: number): Promise<void> {
-  const rows = await db.select().from(series).where(eq(series.id, seriesId)).limit(1)
-  const s = rows[0]
-  if (!s) throw new WorkbenchError('not_found', `剧 #${seriesId} 不存在`, 404)
-  const eps = await listEpisodeRows(seriesId)
-  const busy = eps.filter((e) => e.latestRunId || e.contentAssetId)
-  if (busy.length > 0) {
-    throw new WorkbenchError('series_in_use', `剧已有 ${busy.length} 集关联 run / 内容资产，不可删除`, 409)
-  }
-  await db.delete(episodes).where(eq(episodes.seriesId, seriesId))
-  await db.delete(series).where(eq(series.id, seriesId))
+  await documentTransaction(async (ex) => {
+    const rows = await ex.select().from(series).where(eq(series.id, seriesId)).limit(1)
+    const s = rows[0]
+    if (!s) throw new WorkbenchError('not_found', `剧 #${seriesId} 不存在`, 404)
+    const eps = await ex.select().from(episodes).where(eq(episodes.seriesId, seriesId)).orderBy(asc(episodes.number))
+    const busy = eps.filter((e) => e.latestRunId || e.contentAssetId)
+    if (busy.length > 0) {
+      throw new WorkbenchError('series_in_use', `剧已有 ${busy.length} 集关联 run / 内容资产，不可删除`, 409)
+    }
+    // 删剧会带走全部集行：任一连续性登记（任意 rowType/status）引用这些单元都必须先清台账
+    await assertUnitsFree(ex, s.projectId, eps.map((e) => e.id))
+    await ex.delete(episodes).where(eq(episodes.seriesId, seriesId))
+    await ex.delete(series).where(eq(series.id, seriesId))
+  })
 }
 
-/** 单集删除（保留其 run 与资产，仅删集行） */
+/** 单集删除（保留其 run 与资产，仅删集行；任一连续性登记引用该单元 → 409；同一写事务内复查后删） */
 export async function deleteEpisode(episodeId: number): Promise<void> {
-  const rows = await db.select().from(episodes).where(eq(episodes.id, episodeId)).limit(1)
-  if (!rows[0]) throw new WorkbenchError('not_found', `集 #${episodeId} 不存在`, 404)
-  await db.delete(episodes).where(eq(episodes.id, episodeId))
+  await documentTransaction(async (ex) => {
+    const rows = await ex.select().from(episodes).where(eq(episodes.id, episodeId)).limit(1)
+    const e = rows[0]
+    if (!e) throw new WorkbenchError('not_found', `集 #${episodeId} 不存在`, 404)
+    await assertUnitsFree(ex, e.projectId, [e.id])
+    await ex.delete(episodes).where(eq(episodes.id, episodeId))
+  })
 }
 
 /** 单集行更新（title / status / content_asset_id 白名单） */
@@ -239,6 +264,9 @@ export async function updateEpisode(
       const a = aRows[0]
       if (!a || a.projectId !== e.projectId || a.deletedAt) {
         throw new WorkbenchError('bad_asset', `content_asset_id #${patch.contentAssetId} 不存在或不属于本项目`)
+      }
+      if (isContinuityPurpose(a.purpose)) {
+        throw new WorkbenchError('reserved_purpose', `content_asset_id #${patch.contentAssetId} 为 M70 保留素材，不可作为正文资产`)
       }
     }
     set.contentAssetId = patch.contentAssetId

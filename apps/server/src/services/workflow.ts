@@ -5,7 +5,7 @@
  * - 纯服务层新增：不碰 engine.ts / dag.ts / loader.ts / refs.ts（复用既有 onRunSettled 钩子 + createRunRow + engine.startRun）
  * 计费安全：autoAdvance 默认关；每跳前预算闸门；失败暂停不自动重试。
  */
-import { and, asc, desc, eq, inArray, isNull, sum } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, notInArray, sum } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, pipelineRuns, pipelineSteps, usageRecords, workflows, type Asset, type PipelineRun, type Workflow } from '../db/schema'
 import { createLogger } from '../logger'
@@ -16,6 +16,7 @@ import { checkBudget } from './budget'
 import { readContext } from './continuity/context'
 import { assertWorkflowApprovalTarget, workflowContinuityEnabled } from './continuity/workflow-bridge'
 import { ContinuityError, type Approval } from './continuity/contract'
+import { RESERVED_PURPOSES } from './continuity/reserved'
 import { emitStudioEvent } from './events'
 import { createRunRow } from './run-create'
 import { readTextAsset } from './storage'
@@ -215,10 +216,14 @@ async function prevAssetsByPurpose(prevRunId: number | null, purpose: string): P
   for (const r of runLinked) idSet.add(r.id)
   const ids = [...idSet]
   if (!ids.length) return []
+  // M70 保留素材（continuity_*）不参与普通段间自动选材：$prev.assets/$prev.asset/$prev.text 同过滤
   return db
     .select()
     .from(assets)
-    .where(and(inArray(assets.id, ids), eq(assets.purpose, purpose), isNull(assets.deletedAt)))
+    .where(and(
+      inArray(assets.id, ids), eq(assets.purpose, purpose), isNull(assets.deletedAt),
+      notInArray(assets.purpose, [...RESERVED_PURPOSES]),
+    ))
     .orderBy(asc(assets.id))
 }
 

@@ -10,6 +10,7 @@ import {
   canvasNodes,
   canvases,
   characters,
+  contentContinuityRecords,
   contentVersions,
   creationMessages,
   creationSessions,
@@ -27,6 +28,8 @@ import {
 import { RUN_LOGS_DIR } from '../env'
 import { createLogger } from '../logger'
 import { loadTemplate } from '../pipeline/loader'
+import { ContinuityError } from '../services/continuity/contract'
+import { assertContinuityPurgeAllowed } from '../services/continuity/lifecycle'
 import { validateProjectSettings } from '../services/project-settings'
 import { resolveNextSteps } from '../services/next-steps'
 import { projectAbsDir } from '../services/storage'
@@ -225,6 +228,8 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
   if (activeRuns.length > 0) {
     throw new HttpError(409, 'has_active_runs', `项目还有 ${activeRuns.length} 个未完成运行，请先取消全部运行后再删除`)
   }
+  // 连续性台账在途（提取 / 派发）拦截：事务外先快速拒绝，事务内再查一次才是最终仲裁。
+  await purgeGate(db, id)
 
   const runIds = (
     await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, id))
@@ -238,10 +243,14 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
     const cnt = async (rows: Promise<{ id: number }[]>) => (await rows).length
     const active = await tx.select({ id: pipelineRuns.id }).from(pipelineRuns).where(and(eq(pipelineRuns.projectId, id), inArray(pipelineRuns.status, ['queued', 'running', 'waiting_input'])))
     if (active.length) throw new HttpError(409, 'has_active_runs', '项目刚启动了制作，请先取消后再删除')
+    // 事务内复核台账：事务外的预检可能已被并发提取/派发穿透，这里的查询才是最终仲裁。
+    await purgeGate(tx, id)
     const sessions = tx.select({ id: creationSessions.id }).from(creationSessions).where(eq(creationSessions.projectId, id))
     return {
       creationMessages: await cnt(tx.delete(creationMessages).where(inArray(creationMessages.sessionId, sessions)).returning({ id: creationMessages.id })),
       creationSessions: await cnt(tx.delete(creationSessions).where(eq(creationSessions.projectId, id)).returning({ id: creationSessions.id })),
+      // 登记必须先于资产/版本/追溯清理：台账行引用 documentAssetId / documentVersionId，先删登记避免清理保护失效。
+      continuityRecords: await cnt(tx.delete(contentContinuityRecords).where(eq(contentContinuityRecords.projectId, id)).returning({ id: contentContinuityRecords.id })),
       steps: runIds.length
         ? await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
         : 0,
@@ -283,4 +292,18 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
 function safeJson(s: string | null, fallback: unknown): unknown {
   if (!s) return fallback
   try { return JSON.parse(s) } catch { return fallback }
+}
+
+/**
+ * 连续性 purge 守卫的错误面统一：ContinuityError（409 continuity_in_flight / 400）保真转成
+ * HttpError，交给路由既有 fail() 信封；其余异常原样上抛。传入 db 或事务 tx 均可，
+ * 事务内调用时抛错即回滚整个删除。
+ */
+async function purgeGate(ex: Parameters<typeof assertContinuityPurgeAllowed>[0], projectId: number): Promise<void> {
+  try {
+    await assertContinuityPurgeAllowed(ex, projectId)
+  } catch (err) {
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
+    throw err
+  }
 }

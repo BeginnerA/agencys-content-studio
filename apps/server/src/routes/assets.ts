@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { readFileSync, statSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
-import { and, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
@@ -12,6 +12,7 @@ import { currentRevision } from '../services/provenance'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
 import { cleanupVersions, emptyTrash, restoreAsset, purgeAsset, CleanupError } from '../services/version-cleanup'
+import { RESERVED_PURPOSES, isContinuityPurpose } from '../services/continuity/reserved'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -32,7 +33,12 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const offset = Number.isFinite(offsetNum) && offsetNum > 0 ? Math.floor(offsetNum) : 0
   // ?trash=1 → 回收站视图（仅已软删行）；默认列表仅未删行
   const trash = c.req.query('trash') === '1'
-  const conds = [eq(assets.projectId, projectId), trash ? isNotNull(assets.deletedAt) : isNull(assets.deletedAt)]
+  // M70 保留素材（continuity_*）对普通素材面不可见：列表与 total 统一 NOT IN 保留 purpose（真源 reserved.ts）
+  const conds = [
+    eq(assets.projectId, projectId),
+    trash ? isNotNull(assets.deletedAt) : isNull(assets.deletedAt),
+    notInArray(assets.purpose, [...RESERVED_PURPOSES]),
+  ]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))
   // tag 过滤下推 SQL（json_each 展开数组做 JSON 精确成员匹配——含引号/反斜杠/跨元素拼接串均无误配漏配；
@@ -54,6 +60,8 @@ assetsRoutes.post('/projects/:id/imports', h(async (c) => {
   const form = await c.req.formData().catch(() => { throw new HttpError(400, 'bad_form', '非 multipart/form-data 请求') })
   const purpose = typeof form.get('purpose') === 'string' ? String(form.get('purpose')) : 'source'
   if (!/^[\w-]+$/.test(purpose)) throw new HttpError(400, 'bad_purpose', `purpose 非法: ${purpose}`)
+  // 保留 purpose 只能由 M70 专用服务内部登记，普通导入拒绝（零落库）
+  if (isContinuityPurpose(purpose)) throw new HttpError(400, 'reserved_purpose', `purpose=${purpose} 为保留素材，禁止通过普通导入创建`)
   const files: Array<{ name: string; data: Uint8Array }> = []
   let total = 0
   for (const [field, value] of form.entries()) {
@@ -220,6 +228,9 @@ assetsRoutes.patch('/assets/:id/content', h(async (c) => {
 assetsRoutes.delete('/assets/:id', h(async (c) => {
   const a = await findAsset(idParam(c))
   if (!a) return notFound(c, `资产 ${c.req.param('id')}`)
+  if (isContinuityPurpose(a.purpose)) {
+    throw new HttpError(409, 'reserved_purpose', '该资产为 M70 保留素材，普通素材面不可删除（请走项目级清理）')
+  }
   await db.update(assets).set({ deletedAt: Date.now(), updatedAt: Date.now() }).where(eq(assets.id, a.id))
   return c.json({ ok: true })
 }))
@@ -247,7 +258,7 @@ assetsRoutes.delete('/assets/:id/purge', h(async (c) => {
     return c.json({ ok: true, files: r.files, freed_bytes: r.freedBytes })
   } catch (err) {
     if (err instanceof CleanupError) {
-      const status = err.code === 'not_found' ? 404 : 400
+      const status = err.code === 'not_found' ? 404 : err.code === 'reserved_purpose' ? 409 : 400
       throw new HttpError(status, err.code, err.message)
     }
     throw err
@@ -290,7 +301,7 @@ assetsRoutes.post('/projects/:id/assets/trash/empty', h(async (c) => {
     skipped: result.skipped,
     note:
       `已清空回收站：移除 ${result.purged} 条，释放 ${result.freedBytes} 字节` +
-      (result.skipped > 0 ? `；${result.skipped} 条被字幕修订引用，已跳过保留` : ''),
+      (result.skipped > 0 ? `；${result.skipped} 条被字幕修订引用或属保留素材，已跳过保留` : ''),
   })
 }))
 

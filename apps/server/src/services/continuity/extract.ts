@@ -11,6 +11,7 @@ import { ContinuityError, EntryDocSchema, ExtractRequestSchema, ItemSchema, Sour
   type ExtractRequest, type SourcePick } from './contract'
 import { currentBasis, entryRow, entryView, findOperation, getEntry, validateDependencies } from './entries'
 import { canonicalHash } from './fold'
+import { assertContinuityProjectWritable } from './lifecycle'
 import { continuityIO, withContinuityIO } from './runtime'
 import { resolveUnit, validateSubjects } from './scope'
 import { assertCurrentSource, readContinuityVersion, readSource } from './sources'
@@ -115,6 +116,8 @@ export async function extractEntry(projectId: number, episodeId: number, request
   const occupied = await documentTransaction(async ex => {
     const winner = await findOperation(projectId, request.operationKey, requestHash, ex)
     if (winner) return { row: winner, owner: false }
+    // 新认领的最终仲裁：写事务内复查项目仍可写，避免「预检后项目被 purge」仍落一条 extracting 台账。
+    await assertContinuityProjectWritable(ex, projectId)
     const m = await material(projectId, episodeId, request.source, ex)
     if (previewHash(m, input(m, prepared.prompt), prepared.endpoint, prepared.prices) !== request.previewHash) return changed()
     await assertCurrentSource(m.source, ex)
@@ -134,8 +137,10 @@ export async function extractEntry(projectId: number, episodeId: number, request
   let dispatched = false, invalidResponse = false
   try {
     active.fault('before_dispatch')
-    // Short transaction verifies the original operation still exists/writable immediately before dispatch.
+    // Short transaction verifies the project is still writable and the original operation still exists,
+    // immediately before dispatch: a purge committed between claim and dispatch must never send a request.
     await documentTransaction(async ex => {
+      await assertContinuityProjectWritable(ex, projectId)
       const row = await entryRow(projectId, id, ex)
       if (row.status !== 'extracting') throw new ContinuityError('continuity_conflict', 409)
     })
@@ -146,6 +151,8 @@ export async function extractEntry(projectId: number, episodeId: number, request
     let doc: EntryDoc
     try { doc = parseResponse(result.content, prepared.m) } catch (e) { invalidResponse = true; throw e }
     await documentTransaction(async ex => {
+      // 响应回写：项目仍可写 + 原 record 仍存在且可写，两者缺一都不发布（不复活已删项目下的资产）。
+      await assertContinuityProjectWritable(ex, projectId)
       const row = await entryRow(projectId, id, ex)
       if (row.status !== 'extracting') throw new ContinuityError('continuity_conflict', 409)
       await validateSubjects(projectId, doc.subjects, ex)
@@ -163,7 +170,8 @@ export async function extractEntry(projectId: number, episodeId: number, request
   } catch (e) {
     const status = !dispatched || invalidResponse ? 'failed' : 'unknown'
     const code = e instanceof ContinuityError && status === 'failed' ? e.code : status === 'unknown' ? 'continuity_outcome_unknown' : 'continuity_conflict'
-    // Never resurrect a removed operation. Even failure bookkeeping uses the same writable/project guard.
+    // 失败簿记不重发请求、不插资产：只经 entryRow → resolveUnit 复查项目/单元仍存在（不是
+    // assertContinuityProjectWritable）。项目已删时这里整体失败，占位行保持原状，绝不复活。
     try {
       await documentTransaction(async ex => {
         await entryRow(projectId, id, ex)

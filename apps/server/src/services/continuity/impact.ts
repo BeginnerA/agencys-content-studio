@@ -35,11 +35,13 @@ const mkRow = (row: AnyRow, kind: 'entry' | 'use', reason: string, inheritedViaR
 })
 
 export async function getImpact(projectId: number, recordId: number): Promise<ImpactView> {
-  // 影响面只从一次真实消费调用出发；传入非 consumption 行（或不存在）一律 404。
+  // 影响面锚点：consumption 行（本次调用用到了什么）或 entry 行（本集登记被谁引用）。
+  // context 行与不存在/跨项目行一律 404（context 不直接对外代表一次消费）。
   const [target] = await db.select().from(records)
     .where(and(eq(records.projectId, projectId), eq(records.id, recordId))).limit(1)
-  if (!target || target.rowType !== 'consumption') throw new ContinuityError('continuity_source_invalid', 404)
-  const targetDoc = await useDocOf(target)
+  if (!target || (target.rowType !== 'consumption' && target.rowType !== 'entry'))
+    throw new ContinuityError('continuity_source_invalid', 404)
+  const targetDoc = target.rowType === 'consumption' ? await useDocOf(target) : null
 
   const entryRows = await db.select().from(records)
     .where(and(eq(records.projectId, projectId), eq(records.rowType, 'entry')))
@@ -50,10 +52,11 @@ export async function getImpact(projectId: number, recordId: number): Promise<Im
   const docs = new Map<number, Awaited<ReturnType<typeof entryDocOf>>>()
   for (const e of entryRows) docs.set(e.id, await entryDocOf(e))
 
-  // 多源最短传播：目标消费包条目 0 距，沿 basis 边 +1；同距时取最小条目号作为经由，保证确定性。
+  // 多源最短传播：目标消费包条目 / 目标登记本身 0 距，沿 basis 边 +1；同距时取最小条目号作为经由，保证确定性。
   const dist = new Map<number, number>()
   const via = new Map<number, number>()
   if (targetDoc) for (const ref of targetDoc.entries) dist.set(ref.entryId, 0)
+  if (target.rowType === 'entry') dist.set(target.id, 0)
   for (let changed = true; changed;) {
     changed = false
     for (const e of entryRows) {
@@ -75,6 +78,8 @@ export async function getImpact(projectId: number, recordId: number): Promise<Im
   const indirect: ImpactRow[] = []
   const unknown: ImpactRow[] = []
   for (const u of useRows) {
+    // prepared 从未派发、failed 未发生有效响应：都不构成"已使用"，既不计入实际图也不进 unknown。
+    if (u.status !== 'completed' && u.status !== 'unknown' && u.status !== 'dispatching') continue
     const doc = await useDocOf(u)
     // 缺证（读不回 UseDoc）与结果未决的消费行永远进入 unknown，不因其存在而宣称零影响。
     if (!doc) { unknown.push(mkRow(u, 'use', 'use_document_unavailable', null)); continue }
@@ -91,6 +96,7 @@ export async function getImpact(projectId: number, recordId: number): Promise<Im
     else indirect.push(mkRow(u, 'use', `use_pack_via_entry:${best}`, null))
   }
   for (const e of entryRows) {
+    if (e.id === target.id) continue // 锚点自身不计入自己的影响面
     const doc = docs.get(e.id)
     if (!doc) { unknown.push(mkRow(e, 'entry', 'entry_document_unavailable', null)); continue }
     const d = dist.get(e.id)

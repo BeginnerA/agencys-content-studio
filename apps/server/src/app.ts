@@ -12,6 +12,7 @@ import { batchesRoutes } from './routes/batches'
 import { charactersRoutes } from './routes/characters'
 import { complianceRoutes } from './routes/compliance'
 import { composeRoutes } from './routes/compose'
+import { continuityRoutes } from './routes/continuity'
 import { creationRoutes } from './routes/creation'
 import { creationChatRoutes } from './routes/creation-chat'
 import { exportsRoutes } from './routes/exports'
@@ -80,6 +81,8 @@ api.route('/', searchRoutes)
 api.route('/', evalRoutes)
 api.route('/', complianceRoutes)
 api.route('/', versionsRoutes)
+/** M70 连续性端点（设计 §11）：独立路由组，仍挂同一 /api/v1 前缀。 */
+api.route('/', continuityRoutes)
 
 app.route('/api/v1', api)
 

@@ -6,6 +6,7 @@ import { ConfirmRequestSchema, ContinuityError, DocRefSchema, EntryDocSchema, En
   validateEntryEvidence, type ConfirmRequest, type DocRef, type EntryDoc, type EntryRef, type EntryView, type Executor,
   type PatchRequest, type ReviewRequest, type Unit } from './contract'
 import { canonicalHash, foldEntries } from './fold'
+import { assertContinuityProjectWritable } from './lifecycle'
 import { continuityIO } from './runtime'
 import { resolveUnit, validateSubjects } from './scope'
 import { assertCurrentSource, readContinuityVersion, readSource } from './sources'
@@ -133,6 +134,7 @@ function normalizePatch(old: EntryDoc, raw: EntryDoc): EntryDoc {
 }
 export async function patchEntry(projectId: number, id: number, request: PatchRequest): Promise<EntryView> {
   return documentTransaction(async ex => {
+    await assertContinuityProjectWritable(ex, projectId)
     const row = await entryRow(projectId, id, ex)
     if (row.status !== 'draft' || row.revision !== request.expectedRevision) return conflict()
     const old = await entryDocument(row, ex), doc = normalizePatch(old, request.doc)
@@ -163,6 +165,8 @@ export async function confirmEntry(projectId: number, id: number, request: Confi
       if (approved.id !== id || approved.approvalHash !== hash) return conflict()
       return entryView(approved, ex)
     }
+    // 回放先返回、再拦新写（与 extract 同律）：归档/软删项目只拒绝新的确认，不改历史幂等语义。
+    await assertContinuityProjectWritable(ex, projectId)
     if (row.status !== 'draft' || row.revision !== request.expectedRevision || canonicalHash(documentRef(row)) !== canonicalHash(request.document)) return conflict()
     const view = await entryView(row, ex), doc = view.doc!
     if (view.currentConfirmedId !== request.expectedCurrentConfirmedId || view.warningsHash !== request.warningsHash
@@ -195,6 +199,8 @@ export async function reviewEntry(projectId: number, episodeId: number, request:
     const unit = await resolveUnit(projectId, episodeId, ex)
     const existing = await findOperation(projectId, request.operationKey, hash, ex)
     if (existing) return entryView(existing, ex)
+    // 回放命中先返回；新复核草稿才受项目可写守卫约束。
+    await assertContinuityProjectWritable(ex, projectId)
     const parent = await entryRow(projectId, request.parentId, ex)
     if (parent.unitId !== episodeId || !['draft', 'confirmed', 'superseded'].includes(parent.status)) return conflict()
     const selected = await readSource(projectId, episodeId, request.source, ex)

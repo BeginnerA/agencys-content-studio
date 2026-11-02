@@ -3,8 +3,12 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db'
 import {
   assets,
+  contentContinuityRecords,
+  contentVersions,
   creationMessages,
   creationSessions,
+  execInputs,
+  execSnapshots,
   pipelineRuns,
   projects,
   usageRecords,
@@ -12,6 +16,8 @@ import {
 import { createLogger } from '../../logger'
 import { projectAbsDir } from '../storage'
 import { deleteTemplate } from '../../pipeline/loader'
+import { ContinuityError } from '../continuity/contract'
+import { assertContinuityPurgeAllowed } from '../continuity/lifecycle'
 import { CreationError } from './contract'
 import { agentDecisionSchema } from './agent/decision-schema'
 import { creationWrite, sessionRow } from './store'
@@ -36,6 +42,8 @@ function parseJsonSafe(raw: string | null): unknown {
  *
  * 在途保护：planning/starting 控制态、或关联 run 仍在跑时一律拒绝，避免删掉正在进行
  * 制作的唯一控制记录（run 行本身不存 sessionId，删会话不影响制作执行，但会丢掉进度入口）。
+ * 连续性台账保护（M70 §12）：影子项目删除同事务复查在途提取/派发并拒绝；随影子项目清掉的
+ * 登记在同一事务内先于资产/版本/追溯三表清理（与项目彻底删除同序），已立项会话则原样不动台账。
  */
 export interface DeleteCreationResult {
   ok: true
@@ -69,10 +77,26 @@ export async function deleteCreationSession(id: number): Promise<DeleteCreationR
       const cnt = async (rows: Promise<{ id: number }[]>): Promise<number> => (await rows).length
 
       if (purgeProject) {
+        // 影子项目清理与项目彻底删除共用同一条防线：任何在途台账（extracting / dispatching）
+        // 都拒绝本次删除，且守卫与删除同事务——抛错即整体回滚，会话/项目/台账行原样保留。
+        try {
+          await assertContinuityPurgeAllowed(tx, project!.id)
+        } catch (err) {
+          if (err instanceof ContinuityError) {
+            throw new CreationError('continuity_in_flight', '该项目有正在提取/派发的连续性操作，请等操作落定后再删除', 409)
+          }
+          throw err
+        }
         const siblings = tx.select({ id: creationSessions.id }).from(creationSessions).where(eq(creationSessions.projectId, project!.id))
         const purged = {
           messages: await cnt(tx.delete(creationMessages).where(inArray(creationMessages.sessionId, siblings)).returning({ id: creationMessages.id })),
           sessions: await cnt(tx.delete(creationSessions).where(eq(creationSessions.projectId, project!.id)).returning({ id: creationSessions.id })),
+          // 登记先于资产/版本/追溯清：台账行持有 documentAssetId/documentVersionId 引用，先清登记不留悬空归属。
+          continuityRecords: await cnt(tx.delete(contentContinuityRecords).where(eq(contentContinuityRecords.projectId, project!.id)).returning({ id: contentContinuityRecords.id })),
+          // 追溯三表按依赖序清（与项目彻底删除同序）：exec_inputs → exec_snapshots → content_versions。
+          execInputs: await cnt(tx.delete(execInputs).where(eq(execInputs.projectId, project!.id)).returning({ id: execInputs.id })),
+          execSnapshots: await cnt(tx.delete(execSnapshots).where(eq(execSnapshots.projectId, project!.id)).returning({ id: execSnapshots.id })),
+          contentVersions: await cnt(tx.delete(contentVersions).where(eq(contentVersions.projectId, project!.id)).returning({ id: contentVersions.id })),
           assets: await cnt(tx.delete(assets).where(eq(assets.projectId, project!.id)).returning({ id: assets.id })),
           usage: await cnt(tx.delete(usageRecords).where(eq(usageRecords.projectId, project!.id)).returning({ id: usageRecords.id })),
           projects: await cnt(tx.delete(projects).where(eq(projects.id, project!.id)).returning({ id: projects.id })),

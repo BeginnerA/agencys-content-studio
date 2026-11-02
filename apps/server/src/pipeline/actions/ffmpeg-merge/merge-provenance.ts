@@ -40,7 +40,7 @@ export async function recordMergeProvenance(
       execKind: 'pipeline_step',
       runId: ctx.run.id,
       stepId: ctx.step.id,
-      templateKey: ctx.def.key,
+      templateKey: ctx.run.templateKey,
       inputs,
     })
   } catch (err) {

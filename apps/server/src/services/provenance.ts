@@ -27,6 +27,7 @@ import {
 } from '../db/schema'
 import { absPathOf, projectAbsDir, sha256Hex } from './storage'
 import { parseNodeSpec, safeParseSpec } from './creation/spec'
+import { isContinuityPurpose } from './continuity/reserved'
 import { createLogger } from '../logger'
 
 const pvLog = createLogger('provenance')
@@ -212,6 +213,8 @@ export async function restoreAssetTextVersion(assetId: number, versionId: number
   const a = rows[0]
   if (!a) throw new ProvenanceError('not_found', `资产 ${assetId} 不存在`)
   if (a.kind !== 'text' || !a.relPath) throw new ProvenanceError('bad_kind', '仅文本资产可还原版本')
+  // M70 保留素材（continuity_*）正文只由专用服务内部写，普通版本还原面拒绝
+  if (isContinuityPurpose(a.purpose)) throw new ProvenanceError('reserved_purpose', '该资产为 M70 保留素材，禁止普通版本还原')
   const content = await readVersionContent(versionId)
   if (content.kind !== 'text') throw new ProvenanceError('bad_version', '目标版本非文本内容版本')
   const data = new TextEncoder().encode(content.text)

@@ -16,6 +16,7 @@ import { ChatMessageSchema, ContinuityError, UseDocSchema, type ContinuityIO, ty
   type DocRef, type Executor, type Unit, type UseDoc } from './contract'
 import { currentConfirmed, documentRef } from './entries'
 import { canonicalHash } from './fold'
+import { assertContinuityProjectWritable } from './lifecycle'
 import { continuityIO, withContinuityIO } from './runtime'
 import { readContinuityVersion } from './sources'
 import { documentTransaction, writeDocument } from './store'
@@ -142,6 +143,8 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
   }
 
   const open = async (ex: Executor, round: string): Promise<{ row: ConsumptionRow; action: 'dispatch' | 'done'; doc: UseDoc }> => {
+    // 新 prepared 认领：写事务内复查项目仍可写，避免在已删项目下写入调用证据与文档资产。
+    await assertContinuityProjectWritable(ex, projectId)
     const useDoc: UseDoc = { schemaVersion: 1, state: 'prepared', context: contextRef, entries: doc.entries,
       runId, stepId, round, messages: preparedMessages, messagesHash, provider: endpoint.providerKey, model: endpoint.model,
       configHash, submitted: false, billing: 'not_submitted', startedAt: null, completedAt: null, output: null,
@@ -197,6 +200,8 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
     active.fault('before_dispatch')
     // prepared → dispatching：最终复核（在途漂移在此之后不重发），CAS 持久化完整 messages 版本。
     const cas = await documentTransaction(async ex => {
+      // 项目仍可写是派发前的最后一道仲裁：项目已被 purge 时绝不再发请求。
+      await assertContinuityProjectWritable(ex, projectId)
       const [current] = await ex.select().from(records).where(and(eq(records.id, row.id),
         eq(records.projectId, projectId), eq(records.rowType, 'consumption'))).limit(1)
       if (!current) throw new ContinuityError('continuity_conflict', 409, row.id)
@@ -230,6 +235,9 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
     const journal = new Set<string>()
     try {
       const outputRef = await documentTransaction(async ex => {
+        // 响应回写：项目仍可写 + 原 record 仍存在且可写。事务抛错时 journal 负责回收本次新写的文件，
+        // 绝不在已删项目下重新插入输出资产（不复活）。
+        await assertContinuityProjectWritable(ex, projectId)
         const [current] = await ex.select().from(records).where(and(eq(records.id, row.id),
           eq(records.projectId, projectId), eq(records.rowType, 'consumption'))).limit(1)
         if (!current || current.status !== 'dispatching') throw new ContinuityError('continuity_conflict', 409, row.id)
@@ -272,7 +280,7 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
         return outputRef
       })
       // 执行快照旁路：冻结真实消费的 context 版本指针，失败绝不影响结果。
-      await safeRecordExecSnapshot({ projectId, execKind: 'pipeline_step', runId, stepId, templateKey: ctx.def.key,
+      await safeRecordExecSnapshot({ projectId, execKind: 'pipeline_step', runId, stepId, templateKey: ctx.run.templateKey,
         model: result!.model, inputs: [{ role: 'continuity_context', srcKind: 'asset', srcId: contextRow.documentAssetId!,
           versionId: contextRow.documentVersionId!, used: true }] })
       return { assetIds: [outputRef.assetId] }

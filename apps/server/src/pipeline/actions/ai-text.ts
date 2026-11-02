@@ -167,7 +167,7 @@ export async function aiText(ctx: StepContext): Promise<StepResult> {
     execKind: 'pipeline_step',
     runId: ctx.run.id,
     stepId: ctx.step.id,
-    templateKey: ctx.def.key,
+    templateKey: ctx.run.templateKey,
     model: ep.model,
     inputs: execInputs,
   })
@@ -454,7 +454,7 @@ async function aiTextBatch(ctx: StepContext): Promise<StepResult> {
     execKind: 'pipeline_step',
     runId: ctx.run.id,
     stepId: ctx.step.id,
-    templateKey: ctx.def.key,
+    templateKey: ctx.run.templateKey,
     model: epHint?.model ?? null,
     inputs: batchInputs,
   })

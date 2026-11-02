@@ -6,6 +6,7 @@ import { createLogger } from '../logger'
 import { absPathOf } from './storage'
 import { thumbAbsPath } from './thumb'
 import { parseSubtitleEdits } from './rework/ledger'
+import { isContinuityPurpose } from './continuity/reserved'
 
 // 旧版本清理 + 回收空间（物理 GC）。
 // 清理保留规则（统一）：组内最新 / isFavorite / 被任意步骤 output.asset_ids 引用（在用）→ 保留；
@@ -135,6 +136,11 @@ export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
   let freedBytes = 0
   let skipped = 0
   for (const a of rows) {
+    // M70 保留素材（continuity_*）属审阅历史，普通面清空回收站一律跳过（记录与文件保留）
+    if (isContinuityPurpose(a.purpose)) {
+      skipped += 1
+      continue
+    }
     if (protectedIds.has(a.id)) {
       skipped += 1
       continue
@@ -154,7 +160,7 @@ export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
     await db.delete(assets).where(eq(assets.id, a.id))
     purged += 1
   }
-  log.info(`项目 #${projectId} 清空回收站：彻底删除 ${purged} 条 / ${files} 个文件 / ${freedBytes} 字节；跳过（字幕引用）${skipped} 条`)
+  log.info(`项目 #${projectId} 清空回收站：彻底删除 ${purged} 条 / ${files} 个文件 / ${freedBytes} 字节；跳过（字幕引用/保留素材）${skipped} 条`)
   return { purged, files, freedBytes, skipped }
 }
 
@@ -260,6 +266,9 @@ export async function purgeAsset(assetId: number): Promise<{ files: number; free
   const rows = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1)
   const a = rows[0]
   if (!a) throw new CleanupError('not_found', `资产 ${assetId} 不存在`)
+  if (isContinuityPurpose(a.purpose)) {
+    throw new CleanupError('reserved_purpose', '该资产为 M70 保留素材（审阅历史），拒绝彻底删除')
+  }
   if ((await subtitleReferenceIds(a.projectId)).has(a.id)) {
     throw new CleanupError('referenced', '该字幕仍被修订指针或历史成片快照引用，拒绝彻底删除（避免重合成/追溯悬空）')
   }

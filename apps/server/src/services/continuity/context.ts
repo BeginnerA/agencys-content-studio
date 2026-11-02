@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt } from 'drizzle-orm'
 import { db } from '../../db'
 import { contentContinuityRecords as records } from '../../db/schema'
 import { ApprovalSchema, ContextDocSchema, ContinuityError, FreezeRequestSchema, PreviewRequestSchema, PreviewSchema,
@@ -7,6 +7,7 @@ import { ApprovalSchema, ContextDocSchema, ContinuityError, FreezeRequestSchema,
   type FreezeRequest, type Gap, type Preview, type PreviewRequest, type TargetRequest, type Unit } from './contract'
 import { canonicalHash } from './fold'
 import { currentConfirmed, documentRef, entryDocument } from './entries'
+import { assertContinuityProjectWritable } from './lifecycle'
 import { continuityIO } from './runtime'
 import { RENDERER_VERSION, renderContinuity } from './render'
 import { readContinuityVersion } from './sources'
@@ -42,12 +43,14 @@ async function collectPack(unit: Unit, ex: Executor): Promise<{ pack: Packed; ga
   return { pack, gaps }
 }
 
-/** Only a resume target can carry an undecided prior call; its id and status are part of the preview hash. */
+/** Only a resume target can carry an undecided prior call; its id and status are part of the preview hash.
+ *  undecided = unknown + dispatching（请求已发出但无回执）：resume 侧两类都要求精确同意，
+ *  冻结侧必须同样呈现，否则 dispatching 遗留会变成「闸要求同意、确认面却给不出」的死路。 */
 async function pendingUnknownUse(projectId: number, request: TargetRequest,
     ex: Executor): Promise<{ id: number; status: string } | null> {
   if (request.kind !== 'resume') return null
   const [row] = await ex.select().from(records).where(and(eq(records.projectId, projectId), eq(records.rowType, 'consumption'),
-    eq(records.runId, request.runId), eq(records.status, 'unknown'))).orderBy(desc(records.id)).limit(1)
+    eq(records.runId, request.runId), inArray(records.status, ['unknown', 'dispatching']))).orderBy(desc(records.id)).limit(1)
   return row ? { id: row.id, status: row.status } : null
 }
 
@@ -128,6 +131,8 @@ export async function freezeContext(projectId: number, request: FreezeRequest): 
     acceptedGaps: accepted, duplicateCostAcceptance: consent })
   const endpoint = await continuityIO().endpoint()
   return documentTransaction(async ex => {
+    // 新冻结认领的最终仲裁：写事务内复查项目仍可写（并发 purge 与冻结只能有一个落定）。
+    await assertContinuityProjectWritable(ex, projectId)
     const material = await materializeTarget(projectId, req.target, ex, endpoint)
     if (canonicalHash(material.target) !== canonicalHash(fresh.doc.target)) {
       throw new ContinuityError('continuity_context_changed', 409)

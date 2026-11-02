@@ -95,18 +95,33 @@ export function llmOptions(template: Template): { temperature: number; maxTokens
   return { temperature, maxTokens, timeoutMs: LLM_FALLBACK.timeoutMs }
 }
 
+/** 模板快照哈希（JSON round-trip 规范化：文件加载与快照解析的模板哈希恒等）。 */
+export function snapshotHashOf(template: Template): string {
+  const normalized = JSON.parse(JSON.stringify(template)) as Template
+  return canonicalHash(normalized)
+}
+
+/** 续跑目标模板只认源 run 快照（设计 §9.2）：缺失/非法/key 不符一律 unsupported，
+ * 绝不静默换成最新版模板或自动关闭 with_continuity。 */
+export function resumeSnapshotTemplate(run: { templateKey: string; templateSnapshot: string | null }): Template {
+  if (!run.templateSnapshot) return unsupported()
+  let snapshot: unknown
+  try { snapshot = JSON.parse(run.templateSnapshot) } catch { return unsupported() }
+  const parsed = TemplateSchema.safeParse(snapshot)
+  if (!parsed.success || parsed.data.key !== run.templateKey) return unsupported()
+  return parsed.data
+}
+
 function finish(unit: Unit, request: TargetRequest, template: Template, stepKey: string,
     input: Record<string, unknown>, projectId: number, endpoint: LlmEndpoint): MaterializedTarget {
-  // JSON round-trip drops optional-undefined fields so file-loaded and snapshot-parsed templates hash identically.
-  const normalized = JSON.parse(JSON.stringify(template)) as Template
-  const templateSnapshotHash = canonicalHash(normalized)
+  const templateSnapshotHash = snapshotHashOf(template)
   // Credential-free configuration identity: provider/model, sanitized endpoint, options, template and project only.
   const configHash = canonicalHash({ kind: 'continuity_config', provider: endpoint.providerKey, model: endpoint.model,
     baseUrl: sanitizeBaseUrl(endpoint.baseUrl), options: llmOptions(template),
-    template: { key: normalized.key, version: normalized.version, snapshotHash: templateSnapshotHash },
+    template: { key: template.key, version: template.version, snapshotHash: templateSnapshotHash },
     project: projectId, params: input['_params'] ?? null })
   return {
-    target: { unit, request, templateKey: normalized.key, templateSnapshotHash, stepKey,
+    target: { unit, request, templateKey: template.key, templateSnapshotHash, stepKey,
       inputHash: canonicalHash(input), configHash },
     input, template, maxChars: maxRenderChars(template),
   }
@@ -143,12 +158,7 @@ export async function materializeTarget(projectId: number, request: TargetReques
   }
   const [run] = await ex.select().from(pipelineRuns).where(and(eq(pipelineRuns.id, request.runId), eq(pipelineRuns.projectId, projectId))).limit(1)
   if (!run) return missing()
-  if (!run.templateSnapshot) return unsupported()
-  let snapshot: unknown
-  try { snapshot = JSON.parse(run.templateSnapshot) } catch { return unsupported() }
-  const parsed = TemplateSchema.safeParse(snapshot)
-  if (!parsed.success || parsed.data.key !== run.templateKey) return unsupported()
-  const template = parsed.data
+  const template = resumeSnapshotTemplate(run)
   let raw: Record<string, unknown>
   try {
     const parsedInput: unknown = JSON.parse(run.input)

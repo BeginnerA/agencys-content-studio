@@ -1,9 +1,10 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, notInArray } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, episodes, pipelineRuns, pipelineSteps, settings } from '../db/schema'
 import { readTextAsset } from './storage'
 import { summarizeToMemory } from './memory-summary'
 import { createLogger } from '../logger'
+import { RESERVED_PURPOSES, isContinuityPurpose } from './continuity/reserved'
 
 // 自动摘要钩子（双形态拍板的「可选自动」侧，spec §2.2）：
 // settings key `memory.auto_summary`（JSON bool，缺省 false）→ onRunSettled listener：
@@ -55,6 +56,13 @@ export async function gatherEpisodeContext(runId: number): Promise<EpisodeSummar
   }
   const parts: string[] = []
   if (ep.contentAssetId) {
+    // M70 保留素材（continuity_*）不是集正文：宁可漏摘要，也不把它当正文/退回 run 产物
+    const [contentAsset] = await db.select({ purpose: assets.purpose }).from(assets)
+      .where(eq(assets.id, ep.contentAssetId)).limit(1)
+    if (isContinuityPurpose(contentAsset?.purpose ?? null)) {
+      log.info(`集 ${ep.id} contentAsset#${ep.contentAssetId} 为保留素材 → 自动摘要跳过`, {})
+      return null
+    }
     try {
       const text = (await readTextAsset(ep.contentAssetId)).trim()
       if (text) parts.push(text)
@@ -66,7 +74,10 @@ export async function gatherEpisodeContext(runId: number): Promise<EpisodeSummar
     const outRows = await db
       .select({ id: assets.id })
       .from(assets)
-      .where(and(eq(assets.runId, runId), eq(assets.kind, 'text'), isNull(assets.deletedAt)))
+      .where(and(
+        eq(assets.runId, runId), eq(assets.kind, 'text'), isNull(assets.deletedAt),
+        notInArray(assets.purpose, [...RESERVED_PURPOSES]), // 显式排除 M70 保留素材
+      ))
       .orderBy(assets.id)
       .limit(3)
     for (const r of [...outRows].reverse()) {

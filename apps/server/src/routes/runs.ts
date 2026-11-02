@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { and, asc, desc, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm'
 import { db } from '../db'
-import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions } from '../db/schema'
+import { genTasks, pipelineRuns, pipelineSteps, projects, assets, creationSessions, type PipelineRun } from '../db/schema'
 import { engine, recoverInterruptedState, refreshGlobalConcurrency } from '../pipeline/engine'
 import { templateForRun } from '../pipeline/loader'
 import { createRunRow, InvalidRunInputError, stripResumeSubtitleEdits } from '../services/run-create'
-import { ContinuityError, type Approval } from '../services/continuity/contract'
+import { ContinuityError, type Approval, type Executor } from '../services/continuity/contract'
+import { bindContinuityResume, continuityRerunInput, prepareContinuityResume, previewContinuityResume,
+  type ResumeContinuityRequest, type ResumeDecision, type ResumePreflight } from '../services/continuity/resume'
 import { checkBudget } from '../services/budget'
 import { randomUUID } from 'node:crypto'
 import { describeRunConfigDrift, isAmbiguousSubmitted, isCreationTemplate } from '../services/creation-chat/recipe'
@@ -103,12 +105,24 @@ runsRoutes.get('/runs/:id', h(async (c) => {
   const resumeNeedsVerification = ambiguousTaskIds.length > 0
   // 配置漂移就地续跑：已批准端点相对当前配置漂移（改模型/改价/删实例）→ 续跑需 accept_config_drift 确认改用当前配置。
   const resumeConfigDrift = await describeRunConfigDrift(run)
+  // M70 续跑目标预检：与 POST /runs/:id/resume 同一决策函数（只读）；前端不再自行推断 off/inherit/rerun。
+  let continuityResume: ResumePreflight | { kind: 'blocked'; code: string } | undefined
+  if (['failed', 'cancelled'].includes(run.status)) {
+    try {
+      continuityResume = await previewContinuityResume(db, run)
+    } catch (e) {
+      // 快照缺失/不支持/来源非法：预检面显式给出阻断码，续跑本身仍由端点拒绝（不吞错误）。
+      if (!(e instanceof ContinuityError)) throw e
+      continuityResume = { kind: 'blocked', code: e.code }
+    }
+  }
   return c.json({
     run: toRunView(run),
     creationSessionId,
     resumeNeedsVerification,
     ambiguousTaskIds,
     resumeConfigDrift,
+    continuityResume,
     steps: steps.map((s) => ({
       id: s.id,
       seq: s.seq,
@@ -200,6 +214,9 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   const runId = idParam(c)
   const src = await findRun(runId)
   if (!src) return notFound(c, `run ${runId}`)
+  // 单次读取请求体：easy 分支（confirm_ambiguous/accept_config_drift）与普通分支（连续性续跑字段）共用，
+  // 避免 Hono body 二次读取的语义漂移
+  const rawBody = await c.req.text()
   // 轻松创作批准链 run：不在专业端走朴素 generic resume（其迁移会把已拿到外部 taskId 的在途任务归零重投=重复计费风险），
   // 而委派会话恢复真源 retryCreation（verified 列表留空：有 taskId 者仅恢复查询、有产物者复用缓存、仅拦「受理状态不明」）。
   // 存在受理状态不明任务时 retryCreation 抛 needs_verification(409) → 引导回会话核验；无则就地安全续跑并返回新 run。
@@ -218,7 +235,7 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
     // 「受理状态不明」任务并作为 verifiedFailedTaskIds 交给 retryCreation（重发这些、其余成功复用/在途仅续轮询）。
     // 未确认时 verifiedFailedTaskIds 留空 → retryCreation 命中 needs_verification 409（引导先核验）。
     let verifiedFailedTaskIds: number[] = []
-    const rawResume = await c.req.text()
+    const rawResume = rawBody
     let confirmAmbiguous = false
     let acceptConfigDrift = false
     if (rawResume.trim()) {
@@ -274,73 +291,128 @@ runsRoutes.post('/runs/:id/resume', h(async (c) => {
   // [审计G3] 预算闸门：resume 创建新 run 并重新提交失败步骤 = 新付费承诺，与 POST /projects/:id/runs 同源拦截
   const budgetHit = await checkBudget({ projectId: src.projectId })
   if (budgetHit) throw new HttpError(409, budgetHit.code, budgetHit.message)
-  const t = Date.now()
-  // 字幕修订指针不盲目跨 run 复制（规格 §6.2）：新 run 不带 _subtitleEdits，需重新基准确认；源 run 指针保留为历史
-  const resumeInput = stripResumeSubtitleEdits(src.input)
-  // [审计G4] 新 run + 步骤复制 + gen_tasks 迁移单事务原子落库（中途崩溃不留缺步孤儿 run；创作线事务先例同源）
-  const newRun = await db.transaction(async (tx) => {
-    const run = (
-      await tx
-        .insert(pipelineRuns)
-        .values({
-          projectId: src.projectId,
-          templateKey: src.templateKey,
-          status: 'queued',
-          input: resumeInput,
-          // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
-          templateSnapshot: src.templateSnapshot,
-          resumedFromRunId: src.id,
-          createdAt: t,
-          updatedAt: t,
-        })
-        .returning()
-    )[0]!
-    const steps = await tx
-      .select()
-      .from(pipelineSteps)
-      .where(eq(pipelineSteps.runId, src.id))
-      .orderBy(asc(pipelineSteps.seq))
-    for (const s of steps) {
-      // 断点续跑：succeeded/skipped（含免审放行痕迹）保留终态直接跳过；其余重置 pending 续跑
-      const keep = s.status === 'succeeded' || s.status === 'skipped'
-      const newStep = (
-        await tx
-          .insert(pipelineSteps)
-          .values({
-            runId: run.id,
-            seq: s.seq,
-            stepKey: s.stepKey,
-            actionKey: s.actionKey,
-            title: s.title,
-            status: keep ? s.status : 'pending',
-            input: keep ? s.input : null,
-            output: keep ? s.output : null,
-            attempts: keep ? s.attempts : 0,
-            createdAt: t,
-            updatedAt: t,
-          })
-          .returning()
-      )[0]!
-      // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——终态步骤保留产物
-      // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
-      if (!keep) {
-        await tx
-          .update(genTasks)
-          .set({ runId: run.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
-          .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), ne(genTasks.status, 'succeeded')))
-      }
-      await tx
-        .update(genTasks)
-        .set({ runId: run.id, stepId: newStep.id, updatedAt: t })
-        .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
-    }
-    return run
-  })
+  // [M70 Task9] 连续性续跑决策：off/inherit/rerun 由源 run 模板快照与持久消费证据裁决（先于任何落库）；
+  // 随后派生复制（原字段/字幕剥离/genTasks 迁移逐字保留）→ 绑定（rerun 同事务 CAS 认领 /
+  // inherit 持久证据权威回写）。单事务原子：任一步失败整体回滚，不留孤儿 run 或半绑定台账。
+  const request = parseResumeContinuityRequest(rawBody)
+  let newRun: PipelineRun
+  try {
+    newRun = await db.transaction(async (tx) => {
+      const decision = await prepareContinuityResume(tx, src.id, request)
+      const run = await insertResumedRunAndSteps(tx, src, decision)
+      await bindContinuityResume(tx, run, decision)
+      return run
+    })
+  } catch (err) {
+    if (err instanceof ContinuityError) throw new HttpError(err.status, err.code, err.message)
+    throw err
+  }
   engine.startRun(newRun.id)
   // 续跑同款联动（latest_run_id 指向本集最新 run）
   await linkEpisode(newRun.projectId, newRun.input, newRun.id)
   return c.json({ run: toRunView(newRun) }, 202)
 }))
+
+/** 派生 run 复制（Task9 自普通续跑事务逐字提取）：run 行 + 步骤复制 + gen_tasks 迁移。
+ * 原字段、字幕剥离（precision-rework §6.2）与 genTasks 迁移口径逐字保留；仅 rerun 决策把
+ * 输入换挂本次冻结批准的包资产（continuityRerunInput）。 */
+async function insertResumedRunAndSteps(ex: Executor, src: PipelineRun, decision: ResumeDecision): Promise<PipelineRun> {
+  const t = Date.now()
+  // 字幕修订指针不盲目跨 run 复制（规格 §6.2）：新 run 不带 _subtitleEdits，需重新基准确认；源 run 指针保留为历史
+  const resumeInput = decision.kind === 'rerun'
+    ? stripResumeSubtitleEdits(JSON.stringify(continuityRerunInput(JSON.parse(src.input) as Record<string, unknown>, decision.approval)))
+    : stripResumeSubtitleEdits(src.input)
+  // [审计G4] 新 run + 步骤复制 + gen_tasks 迁移单事务原子落库（中途崩溃不留缺步孤儿 run；创作线事务先例同源）
+  const run = (
+    await ex
+      .insert(pipelineRuns)
+      .values({
+        projectId: src.projectId,
+        templateKey: src.templateKey,
+        status: 'queued',
+        input: resumeInput,
+        // 续跑继承源 run 模板快照（断点续跑语义与源 run 一致）
+        templateSnapshot: src.templateSnapshot,
+        resumedFromRunId: src.id,
+        createdAt: t,
+        updatedAt: t,
+      })
+      .returning()
+  )[0]!
+  const steps = await ex
+    .select()
+    .from(pipelineSteps)
+    .where(eq(pipelineSteps.runId, src.id))
+    .orderBy(asc(pipelineSteps.seq))
+  for (const s of steps) {
+    // 断点续跑：succeeded/skipped（含免审放行痕迹）保留终态直接跳过；其余重置 pending 续跑
+    // （inherit 决策的目标步终态随后由 bindContinuityResume 以持久证据权威回写）
+    const keep = s.status === 'succeeded' || s.status === 'skipped'
+    const newStep = (
+      await ex
+        .insert(pipelineSteps)
+        .values({
+          runId: run.id,
+          seq: s.seq,
+          stepKey: s.stepKey,
+          actionKey: s.actionKey,
+          title: s.title,
+          status: keep ? s.status : 'pending',
+          input: keep ? s.input : null,
+          output: keep ? s.output : null,
+          attempts: keep ? s.attempts : 0,
+          createdAt: t,
+          updatedAt: t,
+        })
+        .returning()
+    )[0]!
+    // 断点续跑幂等：把旧 run 待重跑步骤的 gen_task 迁移到新 step——终态步骤保留产物
+    // 引用（ai_image 等按 stepId 幂等复用成功图），failed/cancelled/pending 归零重置续跑
+    if (!keep) {
+      await ex
+        .update(genTasks)
+        .set({ runId: run.id, stepId: newStep.id, status: 'pending', attempts: 0, errorMsg: null, updatedAt: t })
+        .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), ne(genTasks.status, 'succeeded')))
+    }
+    await ex
+      .update(genTasks)
+      .set({ runId: run.id, stepId: newStep.id, updatedAt: t })
+      .where(and(eq(genTasks.runId, src.id), eq(genTasks.stepId, s.id), eq(genTasks.status, 'succeeded')))
+  }
+  return run
+}
+
+/** 解析普通续跑的连续性请求字段（Task9）。body 解析失败与 easy 分支同口径视为「未携带」
+ * （fail-closed：需要批准的决策以 409 呈现，绝不静默降级）；字段类型非法则显式 400。
+ * 批准句柄原样透传，归属/状态/哈希/文档全字段校验交由 readContext。 */
+function parseResumeContinuityRequest(raw: string): ResumeContinuityRequest {
+  if (!raw.trim()) return {}
+  let body: Record<string, unknown>
+  try {
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {}
+  const request: ResumeContinuityRequest = {}
+  if (body['continuity_approval'] !== undefined && body['continuity_approval'] !== null) {
+    request.continuityApproval = body['continuity_approval'] as Approval
+  }
+  const unknownUseId = body['unknown_use_id']
+  if (unknownUseId !== undefined && unknownUseId !== null) {
+    if (typeof unknownUseId !== 'number' || !Number.isSafeInteger(unknownUseId) || unknownUseId <= 0) {
+      throw new HttpError(400, 'bad_input', 'unknown_use_id 需为正整数（消费台账行 id）')
+    }
+    request.unknownUseId = unknownUseId
+  }
+  if (body['accept_possible_duplicate_cost'] !== undefined && body['accept_possible_duplicate_cost'] !== null) {
+    if (body['accept_possible_duplicate_cost'] !== true) {
+      throw new HttpError(400, 'bad_input', 'accept_possible_duplicate_cost 仅接受 true（显式接受可能的重复计费）')
+    }
+    request.acceptPossibleDuplicateCost = true
+  }
+  return request
+}
 
 // POST /runs/:id/steps/:stepKey/rerun —— 引擎级单步重跑（复用/重置该步子任务；succeeded 步骤全跳过）
 runsRoutes.post('/runs/:id/steps/:stepKey/rerun', h(async (c) => {

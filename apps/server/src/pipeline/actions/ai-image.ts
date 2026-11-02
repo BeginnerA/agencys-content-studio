@@ -417,7 +417,7 @@ async function runOneTask(
           runId: ctx.run.id,
           stepId: ctx.step.id,
           taskId: task.id,
-          templateKey: ctx.def.key,
+          templateKey: ctx.run.templateKey,
           model: request.model ?? cfg.model ?? null,
           inputs: execInputs,
         })
