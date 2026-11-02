@@ -208,6 +208,11 @@ export async function executeContinuityText(ctx: StepContext, messages: ChatMess
       if (current.status === 'completed') return { completed: true as const }
       if (current.status !== 'prepared') throw new ContinuityError('continuity_conflict', 409, current.id)
       await revalidatePack(projectId, doc, ex)
+      // 调用前重校验：templateKey + material/configHash 比对——任何付费派发前必须确认模板与配置未漂移
+      const currentMaterial = await materializeTarget(projectId, doc.target.request, ex, endpoint)
+      if (canonicalHash(currentMaterial.target) !== canonicalHash(doc.target)) {
+        throw new ContinuityError('continuity_context_changed', 409)
+      }
       const dispatching: UseDoc = { ...preparedDoc, state: 'dispatching', submitted: null, billing: 'unknown',
         startedAt, completedAt: null, output: null, usage: null, errorCode: null, sourceChangedAfterDispatch: false as const }
       const ref = await writeDocument(ex, doc.target.unit, 'consumption', dispatching, current.documentAssetId!)
