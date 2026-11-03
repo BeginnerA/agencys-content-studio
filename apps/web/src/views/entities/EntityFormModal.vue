@@ -13,7 +13,9 @@ const {
   showForm,
   form,
   formErr,
+  reportRefsState,
   layeredRows,
+  refsTakeover,
   assetOptions,
   assetsLoading,
   uploadEl,
@@ -42,11 +44,13 @@ const formStatesList = computed(() =>
 )
 
 /**
- * 勾选区在有分层登记行时只读：扁平参考列由服务端按启用分层行重算，
+ * 勾选区在分层链路接管扁平列时只读：该列由服务端按启用分层行重算，
  * 此处勾选的变化既不会被保存（保存不送该列），也不该让用户误以为改了就算。
+ * 接管含三种情形：已有分层行、分层清单读取失败、面板尚未回读完（打开弹层就立刻保存）——
+ * 后两种下不写该列是保守方向（宁可让用户在面板里重试，也不用旧快照整列覆盖）。
  * 登记与停用统一在下方分层面板进行。
  */
-const layeredReadonly = computed(() => form.id > 0 && layeredRows.value > 0)
+const layeredReadonly = computed(() => form.id > 0 && refsTakeover.value)
 </script>
 
 <template>
@@ -247,7 +251,7 @@ const layeredReadonly = computed(() => form.id > 0 && layeredRows.value > 0)
             :class="{ on: form.refIds.includes(a.id) }"
             :title="
               layeredReadonly
-                ? `${a.name}（已有分层登记：请在下方分层面板登记/停用）`
+                ? `${a.name}（该列由参考分层链路接管：请在下方分层面板登记/停用）`
                 : a.name
             "
             :disabled="layeredReadonly"
@@ -281,12 +285,17 @@ const layeredReadonly = computed(() => form.id > 0 && layeredRows.value > 0)
       :states="formStatesList"
       :project-id="form.projectId"
       :assets="assetOptions"
-      @rows="layeredRows = $event"
+      @flat="reportRefsState($event)"
     />
-    <div v-if="form.id && layeredRows > 0" class="muted layer-hint">
-      该实体已有
-      {{ layeredRows }}
-      条分层登记：扁平参考列由服务端按启用分层行重算，
+    <div v-if="form.id && refsTakeover" class="muted layer-hint">
+      <template v-if="layeredRows > 0">
+        该实体已有
+        {{ layeredRows }}
+        条分层登记：扁平参考列由服务端按启用分层行重算，
+      </template>
+      <template v-else>
+        分层登记清单还没读到（正在读取或读取失败，面板内有服务端原文）：本轮保存不会写扁平参考列，
+      </template>
       上方勾选区仅供查看当前挂接情况，勾选改动不会被保存；
       登记、停用与删除请在下方分层面板逐行操作。
     </div>

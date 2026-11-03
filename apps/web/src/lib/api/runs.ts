@@ -511,7 +511,10 @@ export const qualityGatesApi = {
 export interface CharacterConsistencyEntity {
   entityId: number
   episodeIdx: number
-  /** null = 结果行对应实体已被删除（出镜集合来自执行快照，历史结果保留可回显） */
+  /**
+   * null = 级联清理落地前留下的历史行（实体已被删除，名字取不到）。
+   * 现在删实体会连带清掉它的结果行，所以「已删实体仍成行回显」不是常规形态；界面按「实体 #id」兜底。
+   */
   name: string | null
   /** null = 本次未能给出分数（无图 / 无基准 / 评分失败等，note 记原因原文） */
   score: number | null

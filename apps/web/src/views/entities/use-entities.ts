@@ -64,12 +64,23 @@ export function useEntitiesPage() {
     refIds: [] as number[],
   })
   const formErr = ref('')
-  /**
-   * 该实体当前的分层登记行数（由参考分层面板回抛）。
-   * 扁平参考列是由启用分层行重算的派生列：行数 >0 时分层行是真源，保存不能再送 ref_asset_ids，
-   * 否则「打开弹层时的勾选快照」会把用户刚在分层面板登记/停用的结果滚回旧值。
-   */
+  /** 分层登记行数（面板回抛，仅用于展示） */
   const layeredRows = ref(0)
+  /**
+   * 扁平参考列是否由分层链路接管：接管时勾选区只读、保存不回送 ref_asset_ids（该列由启用分层行重算，
+   * 勾选快照反向覆盖会把刚登记/停用的结果滚回旧值）。编辑态开层即置真（面板未回读 = 状态未知，保守不写），
+   * 只报回「读取成功且从未出现分层行」才放开。
+   */
+  const refsTakeover = ref(false)
+  /** 本弹层内出现过分层行或清单读取失败（单调，删空最后一行也不放开接管） */
+  const refsLatched = ref(false)
+
+  /** 分层面板回抛的写权状态：count = 行数，failed = 清单读取失败 */
+  function reportRefsState(s: { count: number; failed: boolean }): void {
+    layeredRows.value = s.count
+    if (s.count > 0 || s.failed) refsLatched.value = true
+    refsTakeover.value = refsLatched.value
+  }
   const assetOptions = ref<Asset[]>([])
   const assetsLoading = ref(false)
   // 参考图上传：编辑态任一归属可用（全局实体 → 服务端自动入全局池并挂接）
@@ -202,7 +213,8 @@ export function useEntitiesPage() {
         ? Number(projectFilter.value)
         : 0
     form.refIds = []
-    layeredRows.value = 0
+    refsLatched.value = false
+    refsTakeover.value = false
     formErr.value = ''
     upNote.value = ''
     showForm.value = true
@@ -222,8 +234,9 @@ export function useEntitiesPage() {
     form.states = (it.states ?? []).join('\n')
     form.projectId = it.projectId ?? 0
     form.refIds = [...it.refAssetIds]
-    // 分层行数要等面板回读才可知；先归零，面板加载后回抛真实值（回读失败即维持扁平勾选行为）
-    layeredRows.value = 0
+    // 分层状态要等面板回抛：回抛前按「未知」处理（禁止回写扁平列），面板报完后由接管判定放开
+    refsLatched.value = false
+    refsTakeover.value = true
     formErr.value = ''
     upNote.value = ''
     showForm.value = true
@@ -274,9 +287,10 @@ export function useEntitiesPage() {
           .filter(Boolean)
       }
       if (form.id) {
-        // 编辑态：有分层登记行时扁平参考列由服务端按启用行重算（派生列），保存不送该键
-        // （端点语义「未传 = 不改」），勾选快照不得反向覆盖分层真源；零分层行维持勾选直写扁平列。
-        if (layeredRows.value === 0) body.ref_asset_ids = form.refIds
+        // 编辑态：分层链路接管扁平列时保存不送该键（端点语义「未传 = 不改」），
+        // 勾选快照不得反向覆盖派生真源；接管判定含「清单读失败」与「面板尚未回读」。
+        // 读取成功且零分层行时维持勾选直写扁平列（未分层实体的既有路径）。
+        if (!refsTakeover.value) body.ref_asset_ids = form.refIds
         await entityApi.update(form.id, body)
       } else {
         body.kind = kind.value
@@ -699,7 +713,9 @@ export function useEntitiesPage() {
     showForm,
     form,
     formErr,
+    reportRefsState,
     layeredRows,
+    refsTakeover,
     assetOptions,
     assetsLoading,
     uploadEl,

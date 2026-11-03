@@ -33,7 +33,8 @@ const props = defineProps<{
   assets?: Asset[]
 }>()
 
-const emit = defineEmits<{ rows: [count: number] }>()
+/** 回抛扁平参考列写权状态：count = 当前分层行数（展示用），failed = 清单读取失败；接管判定由宿主合成 */
+const emit = defineEmits<{ flat: [s: { count: number; failed: boolean }] }>()
 
 const refs = ref<EntityRefView[]>([])
 /** 实体扁平参考列现值快照：用于判定是否存在「有参考、但没登记成分层行」的历史项 */
@@ -162,9 +163,11 @@ async function loadList(): Promise<void> {
     refs.value = snap.refs
     flatIds.value = snap.entity.refAssetIds
     snapshotStates.value = snap.entity.states
-    emit('rows', snap.refs.length)
+    emit('flat', { count: snap.refs.length, failed: false })
   } catch (e) {
     errText.value = e instanceof Error ? e.message : String(e)
+    // 读不到清单 = 分层状态未知，同样回抛：宿主据此本轮不回写扁平列
+    emit('flat', { count: refs.value.length, failed: true })
   }
 }
 
@@ -302,7 +305,8 @@ async function removeRef(r: EntityRefView): Promise<void> {
     await entityRefsApi.remove(r.id)
     refs.value = refs.value.filter((x) => x.id !== r.id)
     cancelStateRole()
-    emit('rows', refs.value.length)
+    // 删到零行也照实回抛行数：接管是否放开由宿主按「本弹层内出现过分层行」判定
+    emit('flat', { count: refs.value.length, failed: false })
   } catch (e) {
     errText.value = e instanceof Error ? e.message : String(e)
     await loadList()
