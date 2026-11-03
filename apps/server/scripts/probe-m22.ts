@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   const { buildSegmentSrt, parseSrtCues, retimeSrtCues } = await import('../src/services/creation/gen/subtitle')
   const { normalizePositiveIds } = await import('../src/pipeline/refs')
   const { collectSetRefAssetIds, shotFirstFrameOf } = await import('../src/pipeline/actions/ai-video')
-  const { collectRefAssetIds } = await import('../src/pipeline/actions/ai-image')
+  const { collectRefAssetIds } = await import('../src/services/ref-selection')
   const { buildTemplateDraftYaml } = await import('../src/services/creation/draft')
   const { validateTemplateText } = await import('../src/pipeline/loader')
   const { createGroup, deleteGroup, GroupError, updateGroup } = await import('../src/services/creation/groups')

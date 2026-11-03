@@ -7,7 +7,8 @@ export async function run(ctx: M19Ctx): Promise<void> {
   const { check, db, T0, mkProject, eq, characters, genTasks, pipelineRuns, projects } = ctx
   {
     const ai = await import('../../../src/pipeline/actions/ai-image')
-    const { injectStateAnchors, matchStateEntry, parseStateEntry } = ai
+    const { injectStateAnchors } = ai
+    const { matchStateEntry, parseStateEntry } = await import('../../../src/services/state-match')
     const { loadEntityIndex, upsertEntity } = await import('../../../src/services/character')
     const { apiConfigs, pipelineSteps, stylePresets } = await import('../../../src/db/schema')
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))

@@ -39,7 +39,7 @@ export interface M22Ctx {
   normalizePositiveIds: typeof import('../../../src/pipeline/refs').normalizePositiveIds
   collectSetRefAssetIds: typeof import('../../../src/pipeline/actions/ai-video').collectSetRefAssetIds
   shotFirstFrameOf: typeof import('../../../src/pipeline/actions/ai-video').shotFirstFrameOf
-  collectRefAssetIds: typeof import('../../../src/pipeline/actions/ai-image').collectRefAssetIds
+  collectRefAssetIds: typeof import('../../../src/services/ref-selection').collectRefAssetIds
   buildTemplateDraftYaml: typeof import('../../../src/services/creation/draft').buildTemplateDraftYaml
   validateTemplateText: typeof import('../../../src/pipeline/loader').validateTemplateText
   // ---- groups / snapshot / doc / copy / svg / frame / storage / ffmpeg ----

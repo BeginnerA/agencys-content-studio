@@ -8,7 +8,7 @@
  * section（默认 all）：
  *   migrate   characters.kind 列（PRAGMA 默认值）+ style_presets 表 + DB 级旧行默认 character + 重复 initDb 幂等
  *   entity    实体服务：kind 隔离 / 别名命中 / 项目覆盖全局 / attachRefAssets 并集与幂等 / 旧签名回归
- *   inject    ai_image 注入纯函数：injectSetAnchors / collectRefAssetIds（顺序 角色→场景→道具、4+1+1）/ injectStyleAnchor
+ *   inject    注入纯函数：ai_image.injectSetAnchors / injectStyleAnchor + 参考选择服务.collectRefAssetIds（顺序 角色→场景→道具、4+1+1）
  *   style     风格预设：绑定命中 / 未绑定 / 停用 / 被删 / settings 畸形 + stylePresetIdOf 单元
  *   api       /entities + /characters 兼容路径 + /style-presets（app.request 内存 HTTP，零网络）
  *   template  mengbao-episode v8 / series-setup v2 契约 + set-json validateTextOutput
@@ -187,7 +187,8 @@ async function main(): Promise<void> {
   const sectionInject = async (): Promise<void> => {
     await initDb()
     const { loadEntityIndex, upsertEntity, attachRefAssets } = await import('../src/services/character')
-    const { injectSetAnchors, collectRefAssetIds, injectStyleAnchor } = await import('../src/pipeline/actions/ai-image')
+    const { injectSetAnchors, injectStyleAnchor } = await import('../src/pipeline/actions/ai-image')
+    const { collectRefAssetIds } = await import('../src/services/ref-selection')
     const pid = await newProject('M8 注入探针', 'probe-m8-inject')
 
     // 预置：场景 / 道具（含别名与负向词）+ 角色（含 refAssetIds）

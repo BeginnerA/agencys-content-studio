@@ -18,6 +18,8 @@ import { runCancelled } from '../cancel'
 import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services/creation-chat/recipe'
 import { compileDialogueShot } from '../../services/creation-chat/dialogue'
 import { buildIdentityRefMap, pickExistingRefs } from './reference-reuse'
+import { matchStateEntry } from '../../services/state-match'
+import { collectRefAssetIds, mergeRefIds, MAX_REFS_PER_SHOT } from '../../services/ref-selection'
 
 interface ShotSpec {
   id: string
@@ -40,24 +42,8 @@ interface ShotSpec {
 const nowMs = (): number => Date.now()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** 单镜角色参考图上限（语义：按角色出场顺序截断） */
-const MAX_CHARACTER_REFS_PER_SHOT = 4
-
-/** 单镜参考图总量上限（角色 ≤4 + 场景 ≤1 + 道具 ≤1） */
-const MAX_REFS_PER_SHOT = 6
-
 /** 并入 ai_image 参考图通道的批准参考角色（风格/主体/首帧） */
 const IMAGE_REF_ROLES = ['style', 'subject', 'first_frame'] as const
-
-/** 参考图 id 合并（上传参考前置→ 实体/画布参考，保序去重，总量 ≤MAX_REFS_PER_SHOT） */
-function mergeRefIds(primary: number[], secondary: number[]): number[] {
-  const ids: number[] = []
-  const seen = new Set<number>()
-  for (const id of [...primary, ...secondary]) {
-    if (!seen.has(id)) { seen.add(id); ids.push(id) }
-  }
-  return ids.slice(0, MAX_REFS_PER_SHOT)
-}
 
 /**
  * ai_image：批量镜头出图。
@@ -502,62 +488,6 @@ export function injectCharacterAnchors(
 }
 
 /**
- * states 条目解析（纯函数）：首个「：」/「:」分割为 { node, phrase }；
- * 无分隔符 → node=全串、phrase=''（两侧空白剔除；非字符串入参视为空条目）。
- */
-export function parseStateEntry(s: unknown): { node: string; phrase: string } {
-  const raw = typeof s === 'string' ? s.trim() : ''
-  if (!raw) return { node: '', phrase: '' }
-  const i = raw.search(/[：:]/)
-  if (i < 0) return { node: raw, phrase: '' }
-  return { node: raw.slice(0, i).trim(), phrase: raw.slice(i + 1).trim() }
-}
-
-/** 定位词数值解析：阿拉伯数字或中文数字（一~九十九，含十/二十/三十五）；不可解析 → null */
-function numFromToken(raw: string): number | null {
-  const s = raw.trim()
-  if (!s) return null
-  if (/^\d+$/.test(s)) return Number(s)
-  const cn: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
-  const m = /^(?:([一二三四五六七八九])?十)([一二三四五六七八九])?$/.exec(s)
-  if (m) return (m[1] ? cn[m[1]]! : 1) * 10 + (m[2] ? cn[m[2]]! : 0)
-  return cn[s] ?? null
-}
-
-/** states 命中档位：scene=场次定位词 / episode=集数定位词 / text=无定位词按文本包含 */
-export type StateMatchMode = 'scene' | 'episode' | 'text'
-
-/** states 定位词：第N场 / 第N场次 / 第N集（N = 阿拉伯数字或中文数字一至九十九） */
-const STATE_SCENE_RE = /第\s*(\d{1,3}|[一二三四五六七八九十]{1,3})\s*场(?:次)?/
-const STATE_EPISODE_RE = /第\s*(\d{1,3}|[一二三四五六七八九十]{1,3})\s*集/
-
-/**
- * 单条 states 命中判定（纯函数，供探针直接 import 断言）：
- * 1) 节点含「第N场/第N场次」（阿拉伯或中文数字）→ 与 ctx.scene 数值相等判命中（scene 缺失 → 不命中，**不做文本兜底**）；
- * 2) 否则节点含「第N集」→ 与 ctx.episode 相等判命中（episode 缺失 → 不命中）；
- * 3) 否则（无定位词）→ 节点串包含于 ctx.text 判命中。
- * 恒返回 { hit, mode, node, phrase }，mode = 实际生效档位。
- */
-export function matchStateEntry(
-  entry: string,
-  ctx: { scene?: number; episode?: number; text?: string },
-): { hit: boolean; mode: StateMatchMode; node: string; phrase: string } {
-  const { node, phrase } = parseStateEntry(entry)
-  const sceneHit = STATE_SCENE_RE.exec(node)
-  if (sceneHit) {
-    const n = numFromToken(sceneHit[1]!)
-    return { hit: n !== null && typeof ctx.scene === 'number' && ctx.scene === n, mode: 'scene', node, phrase }
-  }
-  const epHit = STATE_EPISODE_RE.exec(node)
-  if (epHit) {
-    const n = numFromToken(epHit[1]!)
-    return { hit: n !== null && typeof ctx.episode === 'number' && ctx.episode === n, mode: 'episode', node, phrase }
-  }
-  const text = typeof ctx.text === 'string' ? ctx.text : ''
-  return { hit: !!node && text.includes(node), mode: 'text', node, phrase }
-}
-
-/**
  * 角色状态锚定注入（纯函数，供探针直接 import 断言）：
  * 逐镜按 shot.characters 命中角色库 → 取该行 states 中命中条目（**多条命中取数组最后一条**：数组序即时间序，后覆盖前）
  * → 追加「状态锚定（{角色名}·{节点}）：{状态短语}」到 image_prompt；details = 逐条注入明细（供日志）。
@@ -649,59 +579,6 @@ export function injectSetAnchors(
 }
 
 /**
- * 本镜参考图收集（纯函数，任务 params.refAssetIds 快照源）：
- * shot.ref_asset_ids 直通（前插）→ 角色（shot.characters，≤MAX_CHARACTER_REFS_PER_SHOT）→ 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
- * 保序去重；总量 ≤MAX_REFS_PER_SHOT。
- */
-export function collectRefAssetIds(
-  shot: ShotSpec,
-  indexes: { characters: Map<string, CharacterRow>; scenes: Map<string, CharacterRow>; props: Map<string, CharacterRow> },
-): number[] {
-  const ids: number[] = []
-  const seen = new Set<number>()
-  const push = (id: number): boolean => {
-    if (seen.has(id)) return false
-    seen.add(id)
-    ids.push(id)
-    return true
-  }
-  // 0) 画布直通（shots.ref_asset_ids 前插——画布连线比实体锚定更显式）
-  for (const raw of shot.ref_asset_ids ?? []) {
-    if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) push(raw)
-  }
-  // 1) 角色（语义：按出场顺序截断至 4）
-  let charAdded = 0
-  for (const raw of shot.characters ?? []) {
-    if (charAdded >= MAX_CHARACTER_REFS_PER_SHOT) break
-    if (typeof raw !== 'string' || !raw.trim()) continue
-    const row = lookupCharacter(indexes.characters, raw.trim())
-    if (!row) continue
-    for (const id of parseNumArr(row.refAssetIds)) {
-      if (charAdded >= MAX_CHARACTER_REFS_PER_SHOT) break
-      if (push(id)) charAdded += 1
-    }
-  }
-  // 2) 场景（location 命中行，≤1）
-  const loc = typeof shot.location === 'string' ? shot.location.trim() : ''
-  if (loc) {
-    const row = lookupCharacter(indexes.scenes, loc)
-    const id = row ? parseNumArr(row.refAssetIds)[0] : undefined
-    if (id !== undefined) push(id)
-  }
-  // 3) 道具（props 命中行并集，≤1）
-  for (const raw of shot.props ?? []) {
-    if (typeof raw !== 'string' || !raw.trim()) continue
-    const row = lookupCharacter(indexes.props, raw.trim())
-    const id = row ? parseNumArr(row.refAssetIds)[0] : undefined
-    if (id !== undefined) {
-      push(id)
-      break
-    }
-  }
-  return ids.slice(0, MAX_REFS_PER_SHOT)
-}
-
-/**
  * 本镜命中实体 id（不改纯函数派生）：characters 命中 + location 命中 + props 命中 → characters.id 集（去重）。
  * 供快照记录实体版本指针（编辑角色/场景/道具外观 → 下游命中的镜可报）。
  */
@@ -764,14 +641,5 @@ function inputEpisode(inputJson: string): number | undefined {
     return Number.isInteger(n) && n >= 1 ? n : undefined
   } catch {
     return undefined
-  }
-}
-
-function parseNumArr(s: string): number[] {
-  try {
-    const v = JSON.parse(s) as unknown
-    return Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0) : []
-  } catch {
-    return []
   }
 }
