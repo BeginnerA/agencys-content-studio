@@ -86,9 +86,9 @@ function isUniqueViolation(err: unknown): boolean {
   return false
 }
 
-async function loadCharacterRow(entityId: number): Promise<{ id: number; projectId: number | null; states: string; refAssetIds: string }> {
+async function loadCharacterRow(entityId: number): Promise<{ id: number; name: string; projectId: number | null; states: string; refAssetIds: string }> {
   const rows = await db
-    .select({ id: characters.id, projectId: characters.projectId, states: characters.states, refAssetIds: characters.refAssetIds })
+    .select({ id: characters.id, name: characters.name, projectId: characters.projectId, states: characters.states, refAssetIds: characters.refAssetIds })
     .from(characters)
     .where(eq(characters.id, entityId))
     .limit(1)
@@ -157,6 +157,24 @@ export async function listEntityRefs(entityId: number): Promise<EntityRefView[]>
   await loadCharacterRow(entityId) // 实体不存在 → 404
   const rows = await db.select().from(entityReferences).where(eq(entityReferences.entityId, entityId)).orderBy(entityReferences.id)
   return rows.map(toView)
+}
+
+/** 分层登记面的实体宿主快照（端点据此渲染状态下拉与旧数据判定，不再自行读实体行） */
+export interface EntityRefHost {
+  id: number
+  name: string
+  states: string[]
+  refAssetIds: number[]
+}
+
+/**
+ * 分层登记面的实体宿主快照：states 供状态下拉、refAssetIds 供「是否存在未分层历史扁平参考」判定；实体缺失 404。
+ * 与 listEntityRefs 同款入参校验与缺失判定（复用 loadCharacterRow），JSON 列解析复用本文件私有解析函数——端点不再复制一份。
+ */
+export async function describeEntityRefHost(entityId: number): Promise<EntityRefHost> {
+  if (!Number.isInteger(entityId) || entityId <= 0) throw new EntityRefError(400, 'entityId 需为正整数')
+  const entity = await loadCharacterRow(entityId)
+  return { id: entity.id, name: entity.name, states: parseStrArr(entity.states), refAssetIds: parseNumArr(entity.refAssetIds) }
 }
 
 /**

@@ -42,6 +42,7 @@ import { versionsRoutes } from './routes/versions'
 import { rolesRoutes } from './routes/roles'
 import { repairsRoutes } from './routes/repairs'
 import { qualityGatesRoutes } from './routes/quality-gates'
+import { entityReferencesRoutes } from './routes/entity-references'
 
 const log = createLogger('app')
 
@@ -91,6 +92,8 @@ api.route('/', continuityRoutes)
 api.route('/', repairsRoutes)
 /** 多阶段质量门禁端点 */
 api.route('/', qualityGatesRoutes)
+/** 实体参考图分层登记端点（登记管理 / 逐镜取用预览 / 模型参考图能力） */
+api.route('/', entityReferencesRoutes)
 
 app.route('/api/v1', api)
 
