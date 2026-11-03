@@ -410,6 +410,24 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 
 **后续**：M73 多阶段质量检查（R05）
 
+## M73：多阶段质量检查（2026-11-02）
+
+**目标**：实现 R05 统一多阶段质量检查（五阶段门 + 统一问题记录 + 门禁评估 + 人工豁免）
+
+**交付**：
+- quality_issues 表：统一问题记录（17 列 + 3 索引，含维度/严重度/证据/目标位置/豁免状态）
+- quality_gates 表：阶段门禁状态汇总（9 列 + 2 索引 + 1 唯一约束）
+- 检查编排服务：stage-check.ts（五阶段检查器注册表 + runAllStages + runStage）
+- 适配器服务：stage-check-adapters.ts（QC/cert/score 结果转换为统一问题格式）
+- 门禁评估服务：gate-eval.ts（evaluateGate + exemptIssue + unexemptIssue + reevaluateGate）
+- 门禁端点：5 个 HTTP 端点（触发检查/查询全部/查询单阶段/豁免/取消豁免）
+- 门禁 UI：QualityGatePanel.vue（阶段时间线 + 问题列表 + 豁免操作）
+- 门禁探针：probe-m73.ts（67 项断言，覆盖适配器/门禁/服务/存储/端点）
+
+**验收**：全量探针 exit 0，server/web tsc exit 0，注释门禁通过
+
+**后续**：M74 角色一致性工程化（R04）
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）
