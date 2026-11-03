@@ -13,6 +13,8 @@
 import { and, count, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
+  characterConsistencyResults,
+  characters,
   contentContinuityRecords,
   contentVersions,
   execSnapshots,
@@ -343,6 +345,94 @@ async function checkQualityScore(
   return adaptScoreToIssues(runId, episodeIdx)
 }
 
+/**
+ * Final → character.consistency
+ *
+ * Reads persisted per-character consistency results (written by the
+ * consistency-eval service; this checker never calls a model). Absence of
+ * any evaluation is reported as an info issue — a result that was never
+ * measured must not read as a pass.
+ *
+ * Per-entity mapping (score is a 0–10 mean, normalized by /10):
+ *   null   → info  (unevaluable; persisted note carried into evidence)
+ *   < 0.5  → blocking
+ *   < 0.7  → warning
+ *   ≥ 0.7  → no issue
+ */
+async function checkCharacterConsistency(
+  runId: number,
+  episodeIdx: number,
+): Promise<QualityIssueInput[]> {
+  const rows = await db
+    .select({
+      entityId: characterConsistencyResults.entityId,
+      entityName: characters.name,
+      score: characterConsistencyResults.score,
+      assetTotal: characterConsistencyResults.assetTotal,
+      assetSampled: characterConsistencyResults.assetSampled,
+      note: characterConsistencyResults.note,
+    })
+    .from(characterConsistencyResults)
+    .leftJoin(characters, eq(characterConsistencyResults.entityId, characters.id))
+    .where(eq(characterConsistencyResults.runId, runId))
+    .orderBy(characterConsistencyResults.entityId)
+
+  if (rows.length === 0) {
+    return [{
+      runId,
+      episodeIdx,
+      stage: 'final',
+      checker: 'character.consistency',
+      dimension: 'consistency',
+      severity: 'info',
+      checkType: 'deterministic',
+      evidence: { reason: 'not_evaluated' },
+      suggestion: '角色一致性评价未运行，结果待人工确认；可在运行详情发起评价后复检。',
+    }]
+  }
+
+  const issues: QualityIssueInput[] = []
+  for (const r of rows) {
+    const entityName = r.entityName ?? `实体${r.entityId}`
+    const base = {
+      runId,
+      episodeIdx,
+      stage: 'final' as const,
+      checker: 'character.consistency',
+      dimension: 'consistency',
+      checkType: 'subjective' as const,
+      targetType: 'entity',
+      targetId: String(r.entityId),
+    }
+    if (r.score === null) {
+      issues.push({
+        ...base,
+        severity: 'info',
+        evidence: { entityId: r.entityId, entityName, note: r.note },
+        suggestion: `角色「${entityName}」无法评价（${r.note ?? '原因未记录'}），补参考图或重试评价后复检。`,
+      })
+      continue
+    }
+    const norm = Math.round((r.score / 10) * 100) / 100
+    if (norm < 0.5) {
+      issues.push({
+        ...base,
+        severity: 'blocking',
+        evidence: { entityId: r.entityId, entityName, score: r.score, normalized: norm, assetTotal: r.assetTotal, assetSampled: r.assetSampled },
+        suggestion: `角色「${entityName}」跨镜一致性 ${r.score}/10（低于 5），建议核对分层参考绑定并重生成偏离镜头。`,
+      })
+    } else if (norm < 0.7) {
+      issues.push({
+        ...base,
+        severity: 'warning',
+        evidence: { entityId: r.entityId, entityName, score: r.score, normalized: norm, assetTotal: r.assetTotal, assetSampled: r.assetSampled },
+        suggestion: `角色「${entityName}」跨镜一致性 ${r.score}/10（低于 7），建议人工抽查离群镜头。`,
+      })
+    }
+  }
+  return issues
+}
+
 // ─── Checker registry ───────────────────────────────────────────────────────
 // Ordered by stage progression. Multiple checkers can target the same stage;
 // they all run when that stage is evaluated.
@@ -411,6 +501,16 @@ const CHECKERS: StageChecker[] = [
     severity: 'warning',
     checkType: 'subjective',
     check: checkQualityScore,
+  },
+  {
+    // Registered severity describes the checker family; per-issue severity is
+    // derived dynamically from each persisted score (info / warning / blocking).
+    stage: 'final',
+    name: 'character.consistency',
+    dimension: 'consistency',
+    severity: 'warning',
+    checkType: 'subjective',
+    check: checkCharacterConsistency,
   },
 ]
 

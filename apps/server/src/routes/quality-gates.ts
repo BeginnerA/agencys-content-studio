@@ -11,14 +11,17 @@
  *   GET  /runs/:id/quality-gates/:stage       — query single stage gate + issues
  *   POST /quality-gates/issues/:id/exempt     — exempt a blocking issue
  *   POST /quality-gates/issues/:id/unexempt   — cancel an exemption
+ *   POST /runs/:id/consistency-eval           — run per-character consistency evaluation (calls the scoring model)
+ *   GET  /runs/:id/character-consistency      — read persisted consistency results + aggregated issues (no LLM)
  */
 import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { qualityGates, qualityIssues } from '../db/schema.js'
+import { characterConsistencyResults, characters, pipelineRuns, qualityGates, qualityIssues } from '../db/schema.js'
 import { runAllStages, type GateStatus, type Stage } from '../services/stage-check.js'
 import { exemptIssue, unexemptIssue } from '../services/gate-eval.js'
-import { HttpError, h, idParam } from './helpers.js'
+import { runConsistencyEval } from '../services/consistency-eval.js'
+import { HttpError, h, idParam, notFound } from './helpers.js'
 
 export const qualityGatesRoutes = new Hono()
 
@@ -162,6 +165,73 @@ qualityGatesRoutes.post('/quality-gates/issues/:id/unexempt', h(async (c) => {
   } catch (err) {
     throw new HttpError(400, 'unexempt_failed', (err as Error).message)
   }
+}))
+
+// ─── POST /runs/:id/consistency-eval — per-character consistency evaluation ──
+
+qualityGatesRoutes.post('/runs/:id/consistency-eval', h(async (c) => {
+  const runId = idParam(c)
+
+  const runRows = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1)
+  if (runRows.length === 0) return notFound(c, `run ${runId}`)
+
+  const result = await runConsistencyEval(runId)
+  return c.json(result)
+}))
+
+// ─── GET /runs/:id/character-consistency — persisted results (no LLM) ───────
+
+qualityGatesRoutes.get('/runs/:id/character-consistency', h(async (c) => {
+  const runId = idParam(c)
+
+  const rows = await db
+    .select({
+      entityId: characterConsistencyResults.entityId,
+      episodeIdx: characterConsistencyResults.episodeIdx,
+      name: characters.name,
+      score: characterConsistencyResults.score,
+      assetTotal: characterConsistencyResults.assetTotal,
+      assetSampled: characterConsistencyResults.assetSampled,
+      refCount: characterConsistencyResults.refCount,
+      model: characterConsistencyResults.model,
+      provider: characterConsistencyResults.provider,
+      note: characterConsistencyResults.note,
+      evaluatedAt: characterConsistencyResults.evaluatedAt,
+    })
+    .from(characterConsistencyResults)
+    .leftJoin(characters, eq(characterConsistencyResults.entityId, characters.id))
+    .where(eq(characterConsistencyResults.runId, runId))
+    .orderBy(characterConsistencyResults.entityId)
+
+  // Issues produced by the consistency checker, grouped per target entity
+  const issueRows = await db
+    .select({ targetId: qualityIssues.targetId, severity: qualityIssues.severity })
+    .from(qualityIssues)
+    .where(
+      and(
+        eq(qualityIssues.runId, runId),
+        eq(qualityIssues.checker, 'character.consistency'),
+        eq(qualityIssues.targetType, 'entity'),
+      ),
+    )
+  const severitiesByEntity = new Map<string, string[]>()
+  for (const i of issueRows) {
+    if (i.targetId === null) continue
+    const list = severitiesByEntity.get(i.targetId) ?? []
+    list.push(i.severity)
+    severitiesByEntity.set(i.targetId, list)
+  }
+
+  const entities = rows.map((row) => {
+    const severities = severitiesByEntity.get(String(row.entityId)) ?? []
+    return { ...row, issues: { count: severities.length, severities } }
+  })
+
+  return c.json({ runId, entities })
 }))
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
