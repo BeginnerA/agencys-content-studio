@@ -246,6 +246,7 @@ export const stylePresets = sqliteTable('style_presets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(), // 预设名（唯一）
   snippet: text('snippet').notNull(), // 英文风格词块（运行时拼入出图提示词）
+  negative: text('negative'), // 负向约束词（与风格词块一体复用；运行时以「必须剔除：」锚点注入）
   description: text('description'), // 展示用说明
   sortOrder: integer('sort_order').notNull().default(0),
   isActive: integer('is_active').notNull().default(1),
@@ -841,3 +842,48 @@ export const qualityGates = sqliteTable(
 )
 
 export type QualityGate = typeof qualityGates.$inferSelect
+
+// ---------- 角色一致性（参考分层登记 + 逐角色评价结果） ----------
+
+/** 实体参考图分层登记（role：base=基准定妆 / state=状态变体 / view=多视角补充；enabled=0 暂不参与选择） */
+export const entityReferences = sqliteTable(
+  'entity_references',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    entityId: integer('entity_id').notNull().references(() => characters.id),
+    assetId: integer('asset_id').notNull().references(() => assets.id),
+    role: text('role').notNull(), // base|state|view
+    stateKey: text('state_key'), // role=state 时 = 该实体 states 数组某条目原文
+    viewKey: text('view_key'), // role=view 时视角说明（自由文本）
+    enabled: integer('enabled').notNull().default(1),
+    note: text('note'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_entity_refs_pair').on(t.entityId, t.assetId),
+    index('idx_entity_refs_entity').on(t.entityId),
+  ],
+)
+
+/** 逐角色一致性评价结果（一 run×一实体一行，重评覆盖；score 为 0–10 均分，NULL=无法评价且 note 记原因） */
+export const characterConsistencyResults = sqliteTable(
+  'character_consistency_results',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id').notNull().references(() => pipelineRuns.id),
+    entityId: integer('entity_id').notNull().references(() => characters.id),
+    episodeIdx: integer('episode_idx').notNull().default(0),
+    score: real('score'),
+    assetTotal: integer('asset_total').notNull().default(0),
+    assetSampled: integer('asset_sampled').notNull().default(0),
+    refCount: integer('ref_count').notNull().default(0),
+    model: text('model'),
+    provider: text('provider'),
+    note: text('note'),
+    evaluatedAt: integer('evaluated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_char_consistency_pair').on(t.runId, t.entityId),
+    index('idx_char_consistency_run').on(t.runId),
+  ],
+)

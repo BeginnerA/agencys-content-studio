@@ -6,6 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { BRAND_DIR, DATA_DIR, PROJECTS_DIR, PROMPTS_DIR, ROOT, RUN_LOGS_DIR, TEMPLATES_DIR } from '../env'
 import { createLogger } from '../logger'
 import * as schema from './schema'
+import { ensureCharacterConsistencySchema } from './ensure-character-consistency'
 import { seedProviders, seedVendorCredentials, seedStylePresets, migrateCredentialsFromConfigs, migrateAliyunBailianRows, migrateGatewayRowsToOpenAI, removeGatewayPrivateProtocolRows, cleanupRetiredVendorCredentials } from './seed'
 
 const log = createLogger('db')
@@ -68,6 +69,8 @@ async function doInitDb(): Promise<void> {
  * 本函数因此降级为**冗余兜底 / 防呆**（幂等；失败仅告警）：仅覆盖 migrate 体系外手工建库 / 极旧库缺列
  * 的极端场景。**新增列的正确姿势**：改 `schema.ts` → `pnpm --filter @acs/server db:generate` 生成后继
  * 迁移（0001…）即成权威真源；无需再在此手写 ALTER/CREATE（除非确需一道启动期防呆）。
+ * 本函数尾部只做转发：新领域的防呆兜底建表/加列写在按域拆出的兄弟模块里，由本函数末尾调用，
+ * 目的是让每个领域各占一份行数，不把本登记入口顶破单文件红线。
  */
 async function ensureSchemaColumns(): Promise<void> {
   const cols = await sqlite.execute("PRAGMA table_info('pipeline_runs')")
@@ -758,4 +761,8 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // 角色一致性（参考分层登记表 / 评价结果表 / 风格预设负向词列）兜底见同域兄弟模块，
+  // 拆出以守住单文件行数红线；调用点仍在本函数尾部，启动时序不变。
+  await ensureCharacterConsistencySchema(sqlite)
 }

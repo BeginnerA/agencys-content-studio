@@ -50,6 +50,13 @@
       "when": 1793609203743,
       "tag": "0006_m73_multi_stage_qc",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793674102793,
+      "tag": "0007_m74_character_consistency",
+      "breakpoints": true
     }
   ]
 }
