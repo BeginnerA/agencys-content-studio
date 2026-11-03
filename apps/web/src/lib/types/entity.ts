@@ -55,6 +55,8 @@ export interface StylePresetItem {
   id: number
   name: string
   snippet: string
+  /** 免漂移负向约束词块（null=未设置）：生成时以「必须剔除：」锚点注入提示词 */
+  negative: string | null
   description: string | null
   sortOrder: number
   /** 1=启用 / 0=停用 */

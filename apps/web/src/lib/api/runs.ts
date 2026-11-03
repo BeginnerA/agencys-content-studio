@@ -1,4 +1,4 @@
-import { ApiError, api, type Items } from './core'
+import { ApiError, api, LONG_TIMEOUT_MS, type Items } from './core'
 import type {
   ApiErrorBody,
   AspectStrategy,
@@ -374,7 +374,10 @@ export interface QualityScoreBody {
 export const qualityApi = {
   /** 触发四维评分（POST /runs/:id/quality） */
   score: (runId: number, body: QualityScoreBody) =>
-    api.post<{ score: QualityScoreView }>(`/api/v1/runs/${runId}/quality`, body),
+    api.post<{ score: QualityScoreView }>(
+      `/api/v1/runs/${runId}/quality`,
+      body,
+    ),
   /** 查询单集评分（GET /runs/:id/quality/:episodeIdx） */
   getEpisode: (runId: number, episodeIdx: number) =>
     api.get<{ score: QualityScoreView; createdAt: string }>(
@@ -382,9 +385,10 @@ export const qualityApi = {
     ),
   /** 查询本 run 全部集评分（GET /runs/:id/quality） */
   getAll: (runId: number) =>
-    api.get<{ scores: Array<QualityScoreView & { episodeIdx: number }>; episodeCount: number }>(
-      `/api/v1/runs/${runId}/quality`,
-    ),
+    api.get<{
+      scores: Array<QualityScoreView & { episodeIdx: number }>
+      episodeCount: number
+    }>(`/api/v1/runs/${runId}/quality`),
 }
 
 // ===== 修复闭环（R06：质量修复提案 → 批准 → 执行 → 采纳/拒绝） =====
@@ -425,12 +429,7 @@ export interface RepairProposal {
 
 /** 修复运行状态（与 repair_runs.status 枚举对齐） */
 export type RepairStatus =
-  | 'proposed'
-  | 'approved'
-  | 'running'
-  | 'completed'
-  | 'cancelled'
-  | 'failed'
+  'proposed' | 'approved' | 'running' | 'completed' | 'cancelled' | 'failed'
 
 /** 修复运行视图（GET /repairs/:id 响应中的 repair 字段） */
 export interface RepairView {
@@ -452,7 +451,7 @@ export interface RepairView {
 export const qualityGatesApi = {
   /** 触发全部门禁检查（POST /runs/:id/quality-gates） */
   async triggerAll(runId: number, episodeIdx: number) {
-    const res = await fetch(`/api/runs/${runId}/quality-gates`, {
+    const res = await fetch(`/api/v1/runs/${runId}/quality-gates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ episodeIdx }),
@@ -463,21 +462,25 @@ export const qualityGatesApi = {
 
   /** 查询全部门禁状态（GET /runs/:id/quality-gates?episodeIdx=N） */
   async getAll(runId: number, episodeIdx: number) {
-    const res = await fetch(`/api/runs/${runId}/quality-gates?episodeIdx=${episodeIdx}`)
+    const res = await fetch(
+      `/api/v1/runs/${runId}/quality-gates?episodeIdx=${episodeIdx}`,
+    )
     if (!res.ok) throw new Error('查询门禁失败')
     return res.json() as Promise<{ gates: any[] }>
   },
 
   /** 查询单阶段门禁详情（GET /runs/:id/quality-gates/:stage?episodeIdx=N） */
   async getStage(runId: number, stage: string, episodeIdx: number) {
-    const res = await fetch(`/api/runs/${runId}/quality-gates/${stage}?episodeIdx=${episodeIdx}`)
+    const res = await fetch(
+      `/api/v1/runs/${runId}/quality-gates/${stage}?episodeIdx=${episodeIdx}`,
+    )
     if (!res.ok) throw new Error('查询阶段失败')
     return res.json() as Promise<{ gate: any; issues: any[] }>
   },
 
   /** 豁免指定问题（POST /quality-gates/issues/:id/exempt） */
   async exemptIssue(issueId: number, reason: string) {
-    const res = await fetch(`/api/quality-gates/issues/${issueId}/exempt`, {
+    const res = await fetch(`/api/v1/quality-gates/issues/${issueId}/exempt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason }),
@@ -488,12 +491,67 @@ export const qualityGatesApi = {
 
   /** 取消豁免（POST /quality-gates/issues/:id/unexempt） */
   async unexemptIssue(issueId: number) {
-    const res = await fetch(`/api/quality-gates/issues/${issueId}/unexempt`, {
-      method: 'POST',
-    })
+    const res = await fetch(
+      `/api/v1/quality-gates/issues/${issueId}/unexempt`,
+      {
+        method: 'POST',
+      },
+    )
     if (!res.ok) throw new Error('取消豁免失败')
     return res.json() as Promise<{ gate: any }>
   },
+}
+
+// ===== 逐出镜实体一致性评价（分层参考链路） =====
+
+/**
+ * 结果表单行（run × entity 粒度；episodeIdx 恒为 0，issues 聚合同样跨集共计）。
+ * 逐角色分是 0–10 的多模态评分，与运行级 0–1 自报一致性分（quality_scores 的四维之一）同名不同源，面板需标注口径。
+ */
+export interface CharacterConsistencyEntity {
+  entityId: number
+  episodeIdx: number
+  /** null = 结果行对应实体已被删除（出镜集合来自执行快照，历史结果保留可回显） */
+  name: string | null
+  /** null = 本次未能给出分数（无图 / 无基准 / 评分失败等，note 记原因原文） */
+  score: number | null
+  assetTotal: number
+  assetSampled: number
+  refCount: number
+  model: string | null
+  provider: string | null
+  note: string | null
+  evaluatedAt: number
+  issues: { count: number; severities: string[] }
+}
+
+/** POST 响应的逐实体评价汇总（与服务端 EntityEvalSummary 契约一致） */
+export interface EntityEvalResult {
+  entityId: number
+  name: string
+  score: number | null
+  assetTotal: number
+  assetSampled: number
+  refCount: number
+  note: string | null
+}
+
+export const consistencyApi = {
+  /** 读取已落库结果 + 一致性检查器问题聚合（纯读，不调模型） */
+  getCharacter: (runId: number) =>
+    api.get<{ runId: number; entities: CharacterConsistencyEntity[] }>(
+      `/api/v1/runs/${runId}/character-consistency`,
+    ),
+  /**
+   * 触发逐实体评价：每个出镜实体串行同步调用多模态评分（产生供应商费用）——
+   * 串行 N 次真实调用远超默认 2 分钟请求上限 → 走 LONG（与批量润色同款口径）。
+   */
+  triggerEval: (runId: number) =>
+    api.post<{ runId: number; results: EntityEvalResult[] }>(
+      `/api/v1/runs/${runId}/consistency-eval`,
+      undefined,
+      LONG_TIMEOUT_MS,
+    ),
 }
 
 export const repairsApi = {

@@ -19,6 +19,7 @@ import RunDeliveryCertPanel from '../../components/run/cert/RunDeliveryCertPanel
 import QualityScorePanel from '../../components/run/QualityScorePanel.vue'
 import RepairPanel from '../../components/run/RepairPanel.vue'
 import QualityGatePanel from '../../components/run/QualityGatePanel.vue'
+import CharacterConsistencyPanel from '../../components/run/CharacterConsistencyPanel.vue'
 import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
@@ -257,6 +258,9 @@ const {
 
           <!-- 质量门禁：五阶段流水线检查 + 问题清单 + 豁免操作 -->
           <QualityGatePanel :run-id="runId" :episode-idx="run.batchSeq ?? 0" />
+
+          <!-- 逐出镜实体一致性：分层参考链路的评分回显与手动评价（POST 会产生供应商费用） -->
+          <CharacterConsistencyPanel :run-id="runId" />
 
           <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>

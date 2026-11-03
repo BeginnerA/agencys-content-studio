@@ -64,6 +64,12 @@ export function useEntitiesPage() {
     refIds: [] as number[],
   })
   const formErr = ref('')
+  /**
+   * 该实体当前的分层登记行数（由参考分层面板回抛）。
+   * 扁平参考列是由启用分层行重算的派生列：行数 >0 时分层行是真源，保存不能再送 ref_asset_ids，
+   * 否则「打开弹层时的勾选快照」会把用户刚在分层面板登记/停用的结果滚回旧值。
+   */
+  const layeredRows = ref(0)
   const assetOptions = ref<Asset[]>([])
   const assetsLoading = ref(false)
   // 参考图上传：编辑态任一归属可用（全局实体 → 服务端自动入全局池并挂接）
@@ -196,6 +202,7 @@ export function useEntitiesPage() {
         ? Number(projectFilter.value)
         : 0
     form.refIds = []
+    layeredRows.value = 0
     formErr.value = ''
     upNote.value = ''
     showForm.value = true
@@ -215,6 +222,8 @@ export function useEntitiesPage() {
     form.states = (it.states ?? []).join('\n')
     form.projectId = it.projectId ?? 0
     form.refIds = [...it.refAssetIds]
+    // 分层行数要等面板回读才可知；先归零，面板加载后回抛真实值（回读失败即维持扁平勾选行为）
+    layeredRows.value = 0
     formErr.value = ''
     upNote.value = ''
     showForm.value = true
@@ -265,8 +274,9 @@ export function useEntitiesPage() {
           .filter(Boolean)
       }
       if (form.id) {
-        // 全局实体亦可挂图（服务端校验须属全局池）；两域统一送 ref_asset_ids
-        body.ref_asset_ids = form.refIds
+        // 编辑态：有分层登记行时扁平参考列由服务端按启用行重算（派生列），保存不送该键
+        // （端点语义「未传 = 不改」），勾选快照不得反向覆盖分层真源；零分层行维持勾选直写扁平列。
+        if (layeredRows.value === 0) body.ref_asset_ids = form.refIds
         await entityApi.update(form.id, body)
       } else {
         body.kind = kind.value
@@ -286,7 +296,7 @@ export function useEntitiesPage() {
   async function removeItem(it: EntityItem) {
     const ok = await confirmDialog({
       title: `删除${cfg.value.label}`,
-      message: `确认删除${cfg.value.label}「${it.name}」？参考图资产会保留，仅删除档案。`,
+      message: `确认删除${cfg.value.label}「${it.name}」？参考图资产会保留，仅删除档案；该实体的参考分层登记与一致性评价结果随档案一并清除。`,
       confirmText: '删除',
       danger: true,
     })
@@ -689,6 +699,7 @@ export function useEntitiesPage() {
     showForm,
     form,
     formErr,
+    layeredRows,
     assetOptions,
     assetsLoading,
     uploadEl,

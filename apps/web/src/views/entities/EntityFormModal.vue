@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import Modal from '../../components/common/Modal.vue'
 import Icon from '../../components/common/Icon.vue'
+import EntityRefsPanel from '../../components/project/EntityRefsPanel.vue'
 import type { EntitiesApi } from './use-entities'
 const props = defineProps<{ s: EntitiesApi }>()
 const {
@@ -11,6 +13,7 @@ const {
   showForm,
   form,
   formErr,
+  layeredRows,
   assetOptions,
   assetsLoading,
   uploadEl,
@@ -29,6 +32,21 @@ const {
   pickPoolUpload,
   onPoolUploadPick,
 } = props.s
+
+/** 状态变体条目（textarea 每行一条）：分层面板 stateKey 下拉的数据源 */
+const formStatesList = computed(() =>
+  form.states
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean),
+)
+
+/**
+ * 勾选区在有分层登记行时只读：扁平参考列由服务端按启用分层行重算，
+ * 此处勾选的变化既不会被保存（保存不送该列），也不该让用户误以为改了就算。
+ * 登记与停用统一在下方分层面板进行。
+ */
+const layeredReadonly = computed(() => form.id > 0 && layeredRows.value > 0)
 </script>
 
 <template>
@@ -227,7 +245,12 @@ const {
             :key="a.id"
             class="thumb"
             :class="{ on: form.refIds.includes(a.id) }"
-            :title="a.name"
+            :title="
+              layeredReadonly
+                ? `${a.name}（已有分层登记：请在下方分层面板登记/停用）`
+                : a.name
+            "
+            :disabled="layeredReadonly"
             @click="toggleRef(a.id)"
           >
             <img
@@ -247,6 +270,25 @@ const {
           >
         </div>
       </template>
+    </div>
+
+    <!-- 参考分层管理：仅已落库实体可分层登记（新建需先保存） -->
+    <EntityRefsPanel
+      v-if="form.id"
+      :key="form.id"
+      :entity-id="form.id"
+      :entity-name="form.name"
+      :states="formStatesList"
+      :project-id="form.projectId"
+      :assets="assetOptions"
+      @rows="layeredRows = $event"
+    />
+    <div v-if="form.id && layeredRows > 0" class="muted layer-hint">
+      该实体已有
+      {{ layeredRows }}
+      条分层登记：扁平参考列由服务端按启用分层行重算，
+      上方勾选区仅供查看当前挂接情况，勾选改动不会被保存；
+      登记、停用与删除请在下方分层面板逐行操作。
     </div>
 
     <div v-if="formErr" class="err-text">{{ formErr }}</div>
@@ -375,6 +417,16 @@ const {
   border-color: rgb(99 102 241 / 55%);
 }
 
+/* 已有分层登记时勾选区只读：保留可见与选中态，但去掉「可点」的手感 */
+.thumb:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.thumb:disabled:not(.on):hover {
+  border-color: var(--border);
+}
+
 .thumb.on {
   border-color: var(--accent);
 }
@@ -397,5 +449,10 @@ const {
   padding: 3px 10px;
   font-size: 12px;
   border-radius: 7px;
+}
+
+.layer-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 </style>

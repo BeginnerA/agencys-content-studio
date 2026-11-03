@@ -22,6 +22,7 @@ const form = reactive({
   id: 0,
   name: '',
   snippet: '',
+  negative: '',
   description: '',
   sortOrder: 0,
 })
@@ -62,6 +63,7 @@ function openNew() {
   form.id = 0
   form.name = ''
   form.snippet = ''
+  form.negative = ''
   form.description = ''
   form.sortOrder = (items.value[items.value.length - 1]?.sortOrder ?? 0) + 1
   formErr.value = ''
@@ -74,6 +76,7 @@ function openEdit(p: StylePresetItem) {
   form.id = p.id
   form.name = p.name
   form.snippet = p.snippet
+  form.negative = p.negative ?? ''
   form.description = p.description ?? ''
   form.sortOrder = p.sortOrder
   formErr.value = ''
@@ -97,6 +100,7 @@ async function save() {
     const body = {
       name: form.name.trim(),
       snippet: form.snippet.trim(),
+      negative: form.negative.trim() || null,
       description: form.description.trim() || null,
       sort_order: Number(form.sortOrder) || 0,
     }
@@ -235,6 +239,9 @@ async function doExtract() {
             <span v-if="!p.isActive" class="badge skip">已停用</span>
           </div>
           <div class="snip">{{ p.snippet }}</div>
+          <div v-if="p.negative" class="snip neg-line">
+            必须剔除：{{ p.negative }}
+          </div>
           <div v-if="p.description" class="desc muted">{{ p.description }}</div>
         </div>
         <div class="ops">
@@ -373,6 +380,15 @@ async function doExtract() {
         />
       </label>
       <label class="fld">
+        负向约束
+        negative（选填；改动会改变出图提示词——已批准并冻结的执行链需重新规划才会生效）
+        <textarea
+          v-model="form.negative"
+          rows="2"
+          placeholder="生成时以「必须剔除：」锚点注入；英文逗号分隔词块"
+        />
+      </label>
+      <label class="fld">
         描述 description（选填，说明适用题材）
         <input
           v-model="form.description"
@@ -448,6 +464,10 @@ async function doExtract() {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.neg-line {
+  color: var(--warn);
 }
 
 .desc {

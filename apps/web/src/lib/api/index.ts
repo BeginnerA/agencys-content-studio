@@ -13,8 +13,32 @@ export {
   seriesApi,
 } from './projects'
 
-export { runApi, taskApi, stepApi, composeApi, shotApi, novelApi, qualityApi } from './runs'
-export type { QualityScoreView, QualityScoreBody } from './runs'
+export {
+  runApi,
+  taskApi,
+  stepApi,
+  composeApi,
+  shotApi,
+  novelApi,
+  qualityApi,
+  consistencyApi,
+} from './runs'
+export type {
+  QualityScoreView,
+  QualityScoreBody,
+  CharacterConsistencyEntity,
+  EntityEvalResult,
+} from './runs'
+
+export { entityRefsApi, imageCapsApi } from './entityRefs'
+export type {
+  EntityRefView,
+  EntityRefRole,
+  EntityRefsSnapshot,
+  SelectionPreview,
+  SelectedRefView,
+  ImageCaps,
+} from './entityRefs'
 
 export {
   assetApi,
