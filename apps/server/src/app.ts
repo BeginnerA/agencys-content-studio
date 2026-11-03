@@ -41,6 +41,7 @@ import { searchRoutes } from './routes/search'
 import { versionsRoutes } from './routes/versions'
 import { rolesRoutes } from './routes/roles'
 import { repairsRoutes } from './routes/repairs'
+import { qualityGatesRoutes } from './routes/quality-gates'
 
 const log = createLogger('app')
 
@@ -88,6 +89,8 @@ api.route('/', rolesRoutes)
 api.route('/', continuityRoutes)
 /** R06 修复闭环端点 */
 api.route('/', repairsRoutes)
+/** 多阶段质量门禁端点 */
+api.route('/', qualityGatesRoutes)
 
 app.route('/api/v1', api)
 
