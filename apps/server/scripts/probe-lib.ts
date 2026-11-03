@@ -60,6 +60,26 @@ function probeDirIsLive(dir: string): boolean {
   }
 }
 
+/**
+ * 迁移目录内全部 drizzle 产物（SQL 与 meta 记账）的仓库相对路径，以磁盘为准。
+ * Why: 探针夹具用 `git ls-files` 复制迁移，而 `_journal.json` 会登记最新一条迁移；
+ * 新生成的迁移在提交前尚未被 git 跟踪，只复制已跟踪文件会让 migrate 在临时目录里
+ * 找不到 journal 指向的 SQL 文件而整体失败（提交后同一函数结果不变，无需再逐里程碑补文件名）。
+ */
+export function localMigrationPaths(): string[] {
+  const prefix = 'apps/server/drizzle'
+  const dir = join(REPO_ROOT, prefix)
+  const paths: string[] = []
+  for (const name of readdirSync(dir)) {
+    if (name.endsWith('.sql')) paths.push(`${prefix}/${name}`)
+  }
+  const metaDir = join(dir, 'meta')
+  if (existsSync(metaDir)) {
+    for (const name of readdirSync(metaDir)) paths.push(`${prefix}/meta/${name}`)
+  }
+  return paths
+}
+
 /** 清理同前缀历史残留临时目录，但跳过仍被存活探针进程占用的目录（根治并行 --jobs≥2 下嵌套回归子探针与顶层同名探针互相误删 SQLite 库）。 */
 export function sweepStaleProbeTempDirs(prefix: string): void {
   const root = tmpdir()

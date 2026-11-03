@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { isolatedEnv, REPO_ROOT } from '../../probe-lib'
+import { isolatedEnv, localMigrationPaths, REPO_ROOT } from '../../probe-lib'
 
 // No src runtime imports until BOTH data/workspace and ROOT have been isolated.
 const env = isolatedEnv('m70')
@@ -12,9 +12,9 @@ globalThis.fetch = async () => { throw new Error('M70 probe forbids unmocked fet
 const paths = execFileSync('git', ['ls-files', '-z', '--', 'apps/server/drizzle', 'workspace/templates', 'workspace/prompts'], {
   cwd: REPO_ROOT, encoding: 'utf8',
 }).split('\0').filter(Boolean)
-// The generated successor is deliberately uncommitted during this task.
-for (const rel of ['apps/server/drizzle/0003_m70_continuity.sql', 'apps/server/drizzle/meta/0003_snapshot.json']) {
-  if (existsSync(join(REPO_ROOT, rel)) && !paths.includes(rel)) paths.push(rel)
+// 迁移以磁盘为准：新生成的迁移在提交前尚未被 git 跟踪，而 journal 已登记它，缺文件会让临时库整体迁移失败
+for (const rel of localMigrationPaths()) {
+  if (!paths.includes(rel)) paths.push(rel)
 }
 for (const rel of paths) {
   assert.ok(!rel.includes('..') && !rel.endsWith('.env'))

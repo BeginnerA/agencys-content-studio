@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { isolatedEnv, REPO_ROOT } from '../../probe-lib'
+import { isolatedEnv, localMigrationPaths, REPO_ROOT } from '../../probe-lib'
 
 // ── 隔离环境（必须在任何 src 模块加载前完成） ───────────────────────────────
 const env = isolatedEnv('m71')
@@ -25,9 +25,9 @@ const paths = execFileSync('git', ['ls-files', '-z', '--', 'apps/server/drizzle'
   cwd: REPO_ROOT, encoding: 'utf8',
 }).split('\0').filter(Boolean)
 
-// 0004 迁移可能尚未被 git track，显式补入
-for (const rel of ['apps/server/drizzle/0004_m71_quality_baseline.sql']) {
-  if (existsSync(join(REPO_ROOT, rel)) && !paths.includes(rel)) paths.push(rel)
+// 迁移以磁盘为准：新生成的迁移在提交前尚未被 git 跟踪，而 journal 已登记它，缺文件会让临时库整体迁移失败
+for (const rel of localMigrationPaths()) {
+  if (!paths.includes(rel)) paths.push(rel)
 }
 
 for (const rel of paths) {
