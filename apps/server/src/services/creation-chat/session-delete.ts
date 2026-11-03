@@ -18,6 +18,7 @@ import { projectAbsDir } from '../storage'
 import { deleteTemplate } from '../../pipeline/loader'
 import { ContinuityError } from '../continuity/contract'
 import { assertContinuityPurgeAllowed } from '../continuity/lifecycle'
+import { clearLayeringRowsForProject } from '../entity-references'
 import { CreationError } from './contract'
 import { agentDecisionSchema } from './agent/decision-schema'
 import { creationWrite, sessionRow } from './store'
@@ -87,6 +88,9 @@ export async function deleteCreationSession(id: number): Promise<DeleteCreationR
           }
           throw err
         }
+        // 分层登记与一致性结果两张新表外键无级联：随影子项目删除资产前，先清掉挂在其资产/实体/运行上的登记行，
+        // 否则被登记过的影子项目资产删除会触发外键约束失败。整批随项目消失，无需回跑派生同步。
+        await clearLayeringRowsForProject(tx, project!.id)
         const siblings = tx.select({ id: creationSessions.id }).from(creationSessions).where(eq(creationSessions.projectId, project!.id))
         const purged = {
           messages: await cnt(tx.delete(creationMessages).where(inArray(creationMessages.sessionId, siblings)).returning({ id: creationMessages.id })),

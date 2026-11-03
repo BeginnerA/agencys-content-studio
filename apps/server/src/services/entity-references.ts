@@ -4,9 +4,9 @@
  * 每次增删改后把 enabled 行按优先级重算回写 characters.refAssetIds（扁平参考图列），
  * 保证未接入分层的下游（出图/复用/预览）零改动即可消费最新参考集，且每次回写记一条实体版本。
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
-import { assets, characters, entityReferences } from '../db/schema'
+import { assets, characterConsistencyResults, characters, entityReferences, pipelineRuns } from '../db/schema'
 import { recordEntityVersion } from './provenance'
 import { GLOBAL_POOL_ID } from './global-pool'
 import { MAX_REFS_PER_SHOT, REF_ROLES, selectEntityRefs } from './ref-selection'
@@ -344,4 +344,60 @@ export async function previewEntitySelection(
   const entity = await loadCharacterRow(entityId)
   const refRows = await enabledRowsOf(entityId)
   return selectEntityRefs(entity, refRows, ctx, limit ?? MAX_REFS_PER_SHOT)
+}
+
+/* ------------------------------------------------------------------ */
+/* 删除面级联清理：两张新表外键无 ON DELETE CASCADE，硬删父行前须先删子行       */
+/* ------------------------------------------------------------------ */
+
+/** 清理用的执行器：全局 db 或事务 tx 均可（沿用删除事务既有的执行器透传范式，随外层事务原子回滚）。 */
+type CleanupExecutor = Pick<typeof db, 'delete' | 'select'>
+
+/**
+ * 实体整删前清理其两张新表登记行（entity_references.entity_id、character_consistency_results.entity_id 均挂该实体）。
+ * 实体随本次删除整批消失，扁平参考列失去宿主，无需回跑派生同步。
+ */
+export async function clearLayeringRowsForEntity(executor: CleanupExecutor, entityId: number): Promise<void> {
+  await executor.delete(entityReferences).where(eq(entityReferences.entityId, entityId))
+  await executor.delete(characterConsistencyResults).where(eq(characterConsistencyResults.entityId, entityId))
+}
+
+/**
+ * 运行记录删除前清理其一致性评价结果行（character_consistency_results.run_id 挂该 run）。
+ * 评价结果随 run 记录整批消失，无派生列需回跑。
+ */
+export async function clearConsistencyRowsForRuns(executor: CleanupExecutor, runIds: number[]): Promise<void> {
+  if (runIds.length === 0) return
+  await executor.delete(characterConsistencyResults).where(inArray(characterConsistencyResults.runId, runIds))
+}
+
+/**
+ * 项目 / 影子项目整批删除前，清理挂在其实体、资产、运行上的两张新表登记行。
+ * 外键无级联：characters / assets / pipelineRuns 被删前必须先把引用它们的 entity_references /
+ * character_consistency_results 行清掉，否则删除父行触发外键约束失败。整批父行同事务一并消失，
+ * 扁平参考列失去宿主，无需回跑派生同步。子查询按归属项目动态取集合，空项目自然命中零行。
+ * 必须在同一事务、且早于删除 characters / assets / pipelineRuns 之前调用（子查询要读到尚未消失的父行）。
+ */
+export async function clearLayeringRowsForProject(executor: CleanupExecutor, projectId: number): Promise<void> {
+  const entityIds = executor.select({ id: characters.id }).from(characters).where(eq(characters.projectId, projectId))
+  const assetIds = executor.select({ id: assets.id }).from(assets).where(eq(assets.projectId, projectId))
+  const runIds = executor.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, projectId))
+  await executor.delete(entityReferences).where(or(inArray(entityReferences.entityId, entityIds), inArray(entityReferences.assetId, assetIds)))
+  await executor.delete(characterConsistencyResults).where(or(inArray(characterConsistencyResults.runId, runIds), inArray(characterConsistencyResults.entityId, entityIds)))
+}
+
+/**
+ * 资产硬删前清理引用它的分层登记行，并对受影响实体回跑派生同步。
+ * 不变式：characters.refAssetIds 是由该实体 enabled 分层行重算的派生列——删掉被登记的资产后，
+ * 派生列必须重新等于剩余 enabled 行的重算结果，否则扁平列仍含已消失资产、与分层行背离。
+ * 仅回跑「确有分层登记行指向被删资产」的实体：未登记分层行的实体其扁平列是隐式基准、不在本不变式射程，
+ * 沿用删除资产对历史软引用的既有悬空容错，故不触碰、也不写实体版本。派生同步用全局连接，故本函数不在事务内调用。
+ */
+export async function clearRefsForAssetDeletion(assetIds: number[]): Promise<void> {
+  const ids = [...new Set(assetIds.filter((n) => Number.isInteger(n) && n > 0))]
+  if (ids.length === 0) return
+  const affected = await db.select({ entityId: entityReferences.entityId }).from(entityReferences).where(inArray(entityReferences.assetId, ids))
+  const entityIds = [...new Set(affected.map((r) => r.entityId))]
+  await db.delete(entityReferences).where(inArray(entityReferences.assetId, ids))
+  for (const entityId of entityIds) await deriveSync(entityId)
 }

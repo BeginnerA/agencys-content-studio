@@ -30,6 +30,7 @@ import { createLogger } from '../logger'
 import { loadTemplate } from '../pipeline/loader'
 import { ContinuityError } from '../services/continuity/contract'
 import { assertContinuityPurgeAllowed } from '../services/continuity/lifecycle'
+import { clearLayeringRowsForProject } from '../services/entity-references'
 import { validateProjectSettings } from '../services/project-settings'
 import { resolveNextSteps } from '../services/next-steps'
 import { projectAbsDir } from '../services/storage'
@@ -245,6 +246,9 @@ projectsRoutes.delete('/projects/:id', h(async (c) => {
     if (active.length) throw new HttpError(409, 'has_active_runs', '项目刚启动了制作，请先取消后再删除')
     // 事务内复核台账：事务外的预检可能已被并发提取/派发穿透，这里的查询才是最终仲裁。
     await purgeGate(tx, id)
+    // 分层登记与一致性结果两张新表的外键无级联：删 characters/assets/runs 前先清掉引用它们的登记行，
+    // 否则项目下任一实体登记过分层图、或任一 run 评过一致性，本次删除就会触发外键约束失败。整批父行同事务消失，无需回跑派生同步。
+    await clearLayeringRowsForProject(tx, id)
     const sessions = tx.select({ id: creationSessions.id }).from(creationSessions).where(eq(creationSessions.projectId, id))
     return {
       creationMessages: await cnt(tx.delete(creationMessages).where(inArray(creationMessages.sessionId, sessions)).returning({ id: creationMessages.id })),

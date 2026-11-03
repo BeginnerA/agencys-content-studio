@@ -7,6 +7,7 @@ import { absPathOf } from './storage'
 import { thumbAbsPath } from './thumb'
 import { parseSubtitleEdits } from './rework/ledger'
 import { isContinuityPurpose } from './continuity/reserved'
+import { clearRefsForAssetDeletion } from './entity-references'
 
 // 旧版本清理 + 回收空间（物理 GC）。
 // 清理保留规则（统一）：组内最新 / isFavorite / 被任意步骤 output.asset_ids 引用（在用）→ 保留；
@@ -157,6 +158,8 @@ export async function emptyTrash(projectId: number): Promise<EmptyTrashResult> {
       files += 1
       freedBytes += thumbSize
     }
+    // 该资产被分层登记引用时外键无级联：先清引用它的分层行并回跑受影响实体的派生同步，再硬删资产行。
+    await clearRefsForAssetDeletion([a.id])
     await db.delete(assets).where(eq(assets.id, a.id))
     purged += 1
   }
@@ -286,6 +289,8 @@ export async function purgeAsset(assetId: number): Promise<{ files: number; free
     files += 1
     freedBytes += ts
   }
+  // 该资产被分层登记引用时外键无级联：先清引用它的分层行并回跑受影响实体的派生同步（保持 refAssetIds == enabled 行重算），再硬删资产行。
+  await clearRefsForAssetDeletion([assetId])
   await db.delete(assets).where(eq(assets.id, assetId))
   log.info(`彻底删除资产 #${assetId}：${files} 文件 / ${freedBytes} 字节`)
   return { files, freedBytes }

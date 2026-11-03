@@ -14,6 +14,7 @@ import { desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
 import { creationSessions, episodes, genTasks, pipelineRuns, pipelineSteps, reviewFindings } from '../db/schema'
 import { createLogger } from '../logger'
+import { clearConsistencyRowsForRuns } from './entity-references'
 import { RUN_LOGS_DIR } from '../env'
 import { join } from 'node:path'
 import { rmSync } from 'node:fs'
@@ -33,6 +34,8 @@ export async function purgeRunRecords(runIds: number[]): Promise<{ runs: number;
     const findings = await cnt(tx.delete(reviewFindings).where(inArray(reviewFindings.runId, runIds)).returning({ id: reviewFindings.id }))
     const steps = await cnt(tx.delete(pipelineSteps).where(inArray(pipelineSteps.runId, runIds)).returning({ id: pipelineSteps.id }))
     const tasks = await cnt(tx.delete(genTasks).where(inArray(genTasks.runId, runIds)).returning({ id: genTasks.id }))
+    // 一致性评价结果行按 run_id 挂本 run、外键无级联：删 run 前先清，否则评过一致性的 run 删除触发外键约束失败。
+    await clearConsistencyRowsForRuns(tx, runIds)
     const runs = await cnt(tx.delete(pipelineRuns).where(inArray(pipelineRuns.id, runIds)).returning({ id: pipelineRuns.id }))
     await unbindRunRefs(tx, runIds)
     return { runs, steps, tasks, findings }

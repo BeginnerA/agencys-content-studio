@@ -6,6 +6,7 @@ import { assets, characters, type CharacterRow } from '../db/schema'
 import { assertRefAssetsForScope, GLOBAL_POOL_ID } from '../services/global-pool'
 import { attachRefAssetsById, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
 import { recordEntityVersion } from '../services/provenance'
+import { clearLayeringRowsForEntity } from '../services/entity-references'
 import { cancelEntityRefTask, listEntityRefTasks, startEntityRefGen } from '../services/entity-refgen'
 import { polishAppearance } from '../services/entity-polish'
 import { importFiles, kindByExt } from '../services/storage'
@@ -220,9 +221,16 @@ charactersRoutes.put('/entities/:id', updateEntity)
 charactersRoutes.put('/characters/:id', updateEntity)
 
 // DELETE /entities/:id|/characters/:id —— 物理删除（档案无文件残留；参考图资产保留）
+// 分层登记行与一致性结果行按 entity_id 挂本实体、外键无级联，故在同一事务内先清登记行再删实体行，
+// 否则删带登记的历史实体会触发外键约束失败；实体整批消失，扁平参考列失去宿主，无需回跑派生同步。
 const removeEntity = h(async (c) => {
-  const rows = await db.delete(characters).where(eq(characters.id, idParam(c))).returning()
-  if (!rows[0]) return notFound(c, `素材 ${c.req.param('id')}`)
+  const id = idParam(c)
+  const removed = await db.transaction(async (tx) => {
+    await clearLayeringRowsForEntity(tx, id)
+    const rows = await tx.delete(characters).where(eq(characters.id, id)).returning()
+    return rows[0]
+  })
+  if (!removed) return notFound(c, `素材 ${c.req.param('id')}`)
   return c.json({ ok: true })
 })
 charactersRoutes.delete('/entities/:id', removeEntity)
