@@ -1,10 +1,7 @@
 import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 export { contentContinuityRecords, type ContentContinuityRecord } from './continuity-schema'
 
-/**
- * agencys-content-studio schema —— 通用领域模型
- * 时间戳统一 integer unix ms；JSON 字段统一 text + 应用层校验。
- */
+/** agencys-content-studio schema —— 通用领域模型；时间戳统一 integer unix ms；JSON 字段统一 text + 应用层校验 */
 
 export const projects = sqliteTable(
   'projects',
@@ -16,7 +13,7 @@ export const projects = sqliteTable(
     templateKey: text('template_key').notNull().default('mengbao-episode'),
     status: text('status').notNull().default('active'), // active|archived
     coverAssetId: integer('cover_asset_id'),
-    settings: text('settings').notNull().default('{}'), // JSON: 项目级默认参数
+    settings: text('settings').notNull().default('{}'), // JSON
     tags: text('tags').notNull().default('[]'), // JSON
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
@@ -31,26 +28,22 @@ export const pipelineRuns = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id').notNull(),
     templateKey: text('template_key').notNull(),
-    // queued|running|waiting_input|completed|failed|cancelled
-    status: text('status').notNull().default('queued'),
+    status: text('status').notNull().default('queued'), // queued|running|waiting_input|completed|failed|cancelled
     currentStepKey: text('current_step_key'),
-    input: text('input').notNull(), // JSON 启动输入快照
-    templateSnapshot: text('template_snapshot'), // JSON 模板快照（run 创建时固化；续跑/审阅读快照）
-    summary: text('summary'), // JSON 完成汇总
+    input: text('input').notNull(), // JSON
+    templateSnapshot: text('template_snapshot'), // JSON 模板快照
+    summary: text('summary'), // JSON
     error: text('error'),
     startedAt: integer('started_at'),
     completedAt: integer('completed_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
-    batchId: integer('batch_id'), // 所属批次（NULL = 独立 run）
-    batchSeq: integer('batch_seq'), // 批内序号（从 1 起）
-    workflowId: integer('workflow_id'), // 归属编排链（NULL = 非编排 run）
-    workflowSeq: integer('workflow_seq'), // 链内段序（从 0 起）
-    resumedFromRunId: integer('resumed_from_run_id'), // [审计G2] 断点续跑派生自哪个源 run（NULL = 非续跑派生；防双击 resume 并行双扣费）
-    // 运行链种类显式标记：'easy' = 轻松创作批准链（六段精细投影 / recipe 端点冻结 / 逐镜续跑），
-    // 'route' = 对话调度执行（template/synth/chain 命中专业模板），NULL = 非对话来源或本标记上线前的存量 run。
-    // 执行/投影层据此判定运行模式，不再靠模板名反推；NULL 时读取方回退旧的可见性判定以兼容存量 run。
-    chainKind: text('chain_kind'),
+    batchId: integer('batch_id'), // 所属批次
+    batchSeq: integer('batch_seq'), // 批内序号
+    workflowId: integer('workflow_id'), // 归属编排链
+    workflowSeq: integer('workflow_seq'), // 链内段序
+    resumedFromRunId: integer('resumed_from_run_id'), // 断点续跑派生自哪个源 run
+    chainKind: text('chain_kind'), // 运行链种类：'easy'=轻松创作链 | 'route'=对话调度链 | NULL=非对话来源或存量 run
   },
   (t) => [
     index('idx_runs_project').on(t.projectId),
@@ -69,8 +62,7 @@ export const pipelineSteps = sqliteTable(
     stepKey: text('step_key').notNull(),
     actionKey: text('action_key').notNull(),
     title: text('title'),
-    // pending|running|waiting_input|succeeded|failed|skipped|cancelled
-    status: text('status').notNull().default('pending'),
+    status: text('status').notNull().default('pending'), // pending|running|waiting_input|succeeded|failed|skipped|cancelled
     input: text('input'), // JSON 引用解析后的实际输入
     output: text('output'), // JSON {asset_ids:[]} 或 {asset_id}
     error: text('error'),
@@ -96,10 +88,7 @@ export const genTasks = sqliteTable(
     model: text('model'),
     prompt: text('prompt'),
     params: text('params').notNull(), // JSON 生成参数
-    /**
-     * 画布任务执行快照（JSON `{spec, edges, plan}`）：入队那一刻的节点配置 + 连线 + 解析后的输入计划。
-     * 执行期以此为准（排队窗口内的编辑/改连线不再影响本次计费输入）；NULL = 存量行 → 回落实时读取。
-     */
+    /** 入队时刻的执行快照（JSON `{spec, edges, plan}`）；排队窗口内的编辑不影响本次计费输入；NULL = 存量行回落实时读取 */
     execSnapshot: text('exec_snapshot'),
     taskId: text('task_id'), // 第三方任务 id
     status: text('status').notNull().default('pending'), // pending|processing|succeeded|failed|cancelled
@@ -126,7 +115,7 @@ export const assets = sqliteTable(
     taskId: integer('task_id'),
     runId: integer('run_id'), // 所属 run（NULL = 非 run 产物；导出包归属查询用）
     kind: text('kind').notNull(), // image|video|audio|text|archive
-    purpose: text('purpose'), // source|reference_character|reference_scene|reference_prop|sets|set_log|script|storyboard|shot_image|final_video|final_video_derived|subtitle|subtitle_display|thumbnail|export|chapters|events|graph|plan|regex|sfx
+    purpose: text('purpose'), // source|reference_*|sets|script|storyboard|shot_image|final_video|subtitle|thumbnail|export|chapters|events|graph|plan|regex|sfx
     name: text('name').notNull(),
     mime: text('mime'),
     ext: text('ext'),
@@ -155,9 +144,9 @@ export const assets = sqliteTable(
 /** 供应商凭证（厂商级，一个厂商一条记录；API Key 只配一次，实例共享） */
 export const vendorCredentials = sqliteTable('vendor_credentials', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  vendor: text('vendor').notNull().unique(), // 厂商标识：aliyun / deepseek / openai / siliconflow / google / volcengine / minimax / pollinations
-  name: text('name').notNull(), // 显示名：阿里千问 / DeepSeek / OpenAI ...
-  apiKeyRef: text('api_key_ref').notNull().default('local'), // 密钥引用（local:vendor:{vendor}）
+  vendor: text('vendor').notNull().unique(), // 厂商标识
+  name: text('name').notNull(), // 显示名
+  apiKeyRef: text('api_key_ref').notNull().default('local'), // 密钥引用
   baseUrl: text('base_url'), // 可选覆盖（厂商根端点）
   extra: text('extra').notNull().default('{}'), // JSON 厂商级扩展
   isActive: integer('is_active').notNull().default(1),
@@ -167,10 +156,10 @@ export const vendorCredentials = sqliteTable('vendor_credentials', {
 
 export const apiProviders = sqliteTable('api_providers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  key: text('key').notNull().unique(), // volcengine_image/gemini_image/.../deepseek_llm
+  key: text('key').notNull().unique(), // 供应商标识
   name: text('name').notNull(),
   serviceType: text('service_type').notNull(), // llm|image|video|audio|music
-  vendor: text('vendor'), // 厂商分组标识（关联 vendor_credentials.vendor）
+  vendor: text('vendor'), // 厂商分组标识
   defaultUrl: text('default_url'),
   presetModels: text('preset_models'), // JSON
   description: text('description'),
@@ -191,7 +180,7 @@ export const apiConfigs = sqliteTable(
     apiKeyRef: text('api_key_ref').notNull().default('local'), // fallback：credential_id 优先
     model: text('model'),
     extra: text('extra').notNull().default('{}'), // JSON
-    pricing: text('pricing').notNull().default('{}'), // JSON 实例级定价：{"tokens_in":2,"tokens_out":8} / {"image":0.04} / {"second":0.6} / {"char":0.1}
+    pricing: text('pricing').notNull().default('{}'), // JSON 实例级定价
     priority: integer('priority').notNull().default(0),
     isDefault: integer('is_default').notNull().default(0),
     isActive: integer('is_active').notNull().default(1),
@@ -213,12 +202,12 @@ export const memories = sqliteTable(
   'memories',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    projectId: integer('project_id'), // NULL = 全局（跨项目/账号级）
-    type: text('type').notNull().default('note'), // note|style|fact|feedback|...（开放，应用层不强校验）
+    projectId: integer('project_id'), // NULL = 全局
+    type: text('type').notNull().default('note'), // note|style|fact|feedback|...
     name: text('name'), // 具名记忆（同 project+name upsert）；NULL = 匿名追加
     content: text('content').notNull(),
-    embedding: text('embedding'), // JSON number[]（写入时模型不可用则为 NULL）
-    embeddingModel: text('embedding_model'), // 写入时模型标识（目录名+维度）
+    embedding: text('embedding'), // JSON number[]
+    embeddingModel: text('embedding_model'), // 写入时模型标识
     meta: text('meta').notNull().default('{}'), // JSON: {runId,stepId,assetId,source}
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
@@ -235,15 +224,15 @@ export const characters = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id'), // NULL = 全局库
-    kind: text('kind').notNull().default('character'), // 实体类型：character|scene|prop
+    kind: text('kind').notNull().default('character'), // character|scene|prop
     name: text('name').notNull(),
     aliases: text('aliases').notNull().default('[]'), // JSON string[]
     summary: text('summary'),
-    appearance: text('appearance'), // 外观锚定文本（注入核心）
+    appearance: text('appearance'), // 外观锚定文本
     negative: text('negative'), // 免漂移负向词
-    voice: text('voice'), // [B③] 机器音色入口：供应商 voice 令牌 / clone:{id} 引用（进 TTS 声链）
-    voiceDesc: text('voice_desc'), // [B③] 自然语言声线描述（如「成年男声、低沉沙哑」；仅展示/审计，永不进声链）
-    states: text('states').notNull().default('[]'), // 角色状态变体（JSON string[]：{剧情节点}：{状态短语}；仅 character 有意义）
+    voice: text('voice'), // 机器音色入口：供应商 voice 令牌 / clone:{id} 引用
+    voiceDesc: text('voice_desc'), // 自然语言声线描述（仅展示/审计，不进声链）
+    states: text('states').notNull().default('[]'), // 角色状态变体（JSON string[]）；仅 character 有意义
     refAssetIds: text('ref_asset_ids').notNull().default('[]'), // 定妆照资产 ids（JSON）
     meta: text('meta').notNull().default('{}'),
     createdAt: integer('created_at').notNull(),
@@ -269,10 +258,10 @@ export const series = sqliteTable(
   'series',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    projectId: integer('project_id').notNull(), // 一项目一剧（应用层唯一）
-    name: text('name').notNull(), // 剧名
-    totalEpisodes: integer('total_episodes').notNull().default(0), // 计划集数（集行数事实源）
-    contentAssetId: integer('content_asset_id'), // 起作资产（如系列设定包资产 id）
+    projectId: integer('project_id').notNull(),
+    name: text('name').notNull(),
+    totalEpisodes: integer('total_episodes').notNull().default(0),
+    contentAssetId: integer('content_asset_id'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -286,16 +275,16 @@ export const episodes = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id').notNull(),
     seriesId: integer('series_id').notNull(),
-    number: integer('number').notNull(), // 集号（≥1；项目内唯一）
-    title: text('title'), // 集标题（可选）
-    status: text('status').notNull().default('locked'), // locked|planning|done（手工置位）；展示经最新 run 状态派生合并
-    contentAssetId: integer('content_asset_id'), // 本集剧本/内容资产
-    latestRunId: integer('latest_run_id'), // 最近一次以本集起作的 run（启动端点后置回写）
+    number: integer('number').notNull(),
+    title: text('title'),
+    status: text('status').notNull().default('locked'), // locked|planning|done
+    contentAssetId: integer('content_asset_id'),
+    latestRunId: integer('latest_run_id'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [
-    uniqueIndex('idx_episodes_project_number').on(t.projectId, t.number), // 集号项目内唯一
+    uniqueIndex('idx_episodes_project_number').on(t.projectId, t.number),
     index('idx_episodes_series').on(t.seriesId),
   ],
 )
@@ -306,8 +295,7 @@ export const batches = sqliteTable('batches', {
   projectId: integer('project_id').notNull(),
   templateKey: text('template_key').notNull(),
   name: text('name').notNull(),
-  // running|completed|partial_failed|failed|cancelled
-  status: text('status').notNull().default('running'),
+  status: text('status').notNull().default('running'), // running|completed|partial_failed|failed|cancelled
   schedule: text('schedule').notNull().default('{"max_concurrent":1}'), // JSON
   total: integer('total').notNull().default(0),
   finished: integer('finished').notNull().default(0),   // 终态 run 数（completed+failed+cancelled）
@@ -350,15 +338,15 @@ export const publications = sqliteTable('publications', {
   platform: text('platform').notNull(), // douyin|wechat_channels|kuaishou|xiaohongshu|bilibili|other
   url: text('url'),
   publishedAt: integer('published_at'),
-  metrics: text('metrics').notNull().default('{}'), // JSON: {views,likes,comments,favorites,shares}（仅存不算）
-  title: text('title'),            // 发布标题（A/B 测试识别）
-  abGroup: text('ab_group'),       // A/B 测试分组标记
+  metrics: text('metrics').notNull().default('{}'), // JSON: {views,likes,comments,favorites,shares}
+  title: text('title'), // 发布标题
+  abGroup: text('ab_group'), // A/B 测试分组
   note: text('note'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [index('idx_publications_project').on(t.projectId), index('idx_publications_asset').on(t.assetId)])
 
-// ---------- 创作画布（写模型；节点状态/结果零存量，全部由 gen_tasks 派生） ----------
+// ---------- 创作画布 ----------
 
 /** 创作画布文档（项目域） */
 export const canvases = sqliteTable(
@@ -384,12 +372,12 @@ export const canvasNodes = sqliteTable(
     kind: text('kind').notNull(), // asset|gen|text|entity|run
     assetId: integer('asset_id'), // kind=asset：引用项目资产
     title: text('title'),
-    spec: text('spec'), // JSON：gen={genKind,prompt,...}；text={text}；entity={entityId}；run={runId}
+    spec: text('spec'), // JSON：按 kind 存储配置（gen/text/entity/run 各异）
     x: real('x').notNull().default(0),
     y: real('y').notNull().default(0),
     adoptedTaskId: integer('adopted_task_id'), // 结果采纳（gen）：gen_tasks.id；null=未采纳取最新成功
-    seq: integer('seq'), // 故事板序号（1 起；排序/呈现/导出命名，不参与执行）
-    groupId: integer('group_id'), // 成组归属（canvas_groups.id；null=未成组）
+    seq: integer('seq'), // 故事板序号（排序/呈现/导出命名）
+    groupId: integer('group_id'), // 成组归属（canvas_groups.id）
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -420,12 +408,11 @@ export const canvasGroups = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     canvasId: integer('canvas_id').notNull(),
     title: text('title').notNull().default('未命名分组'),
-    color: text('color'), // UI 色 token（null=默认）
-    collapsed: integer('collapsed').notNull().default(0), // 折叠态持久化（0/1）
-    x: real('x').notNull().default(0), // 锚点（创建时=成员包围盒左上；空组显示用）
+    color: text('color'), // UI 色 token
+    collapsed: integer('collapsed').notNull().default(0), // 折叠态
+    x: real('x').notNull().default(0), // 锚点
     y: real('y').notNull().default(0),
-    /** 父组 id（NULL=顶层；组嵌套——防环与归属校验在服务层） */
-    parentId: integer('parent_id'),
+    parentId: integer('parent_id'), // 父组 id（NULL=顶层；组嵌套）
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('idx_canvas_groups_canvas').on(t.canvasId)],
@@ -452,8 +439,7 @@ export const schedules = sqliteTable(
     projectId: integer('project_id').notNull(),
     name: text('name').notNull(),
     templateKey: text('template_key').notNull(),
-    // ISO 8601 或简单 cron 表达式（v1 仅支持一次性定时：scheduledAt 时刻触发一次）
-    cronExpr: text('cron_expr').notNull(), // 预留；v1 固定为 'once'
+    cronExpr: text('cron_expr').notNull(), // v1 固定为 'once'（预留 cron 扩展）
     scheduledAt: integer('scheduled_at').notNull(), // 计划触发时间（unix ms）
     status: text('status').notNull().default('pending'), // pending|triggered|completed|cancelled|failed
     lastTriggeredAt: integer('last_triggered_at'),
@@ -478,8 +464,7 @@ export const workflows = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id').notNull(), // 链挂项目级
     name: text('name').notNull(),
-    // draft|active|paused|done|cancelled
-    status: text('status').notNull().default('draft'),
+    status: text('status').notNull().default('draft'), // draft|active|paused|done|cancelled
     autoAdvance: integer('auto_advance').notNull().default(0), // 0=安全默认关；1=完成自动级联
     budgetCap: real('budget_cap'), // 链级累计成本上限（元；NULL=不设链上限，仍受 project 预算约束）
     segments: text('segments').notNull().default('[]'), // JSON：[{ templateKey, inputSpec? }] 有序
@@ -493,12 +478,12 @@ export const workflows = sqliteTable(
 /** 声音克隆音色库（平台级通用；声线引用语法 clone:{id}；合成须同 provider+model） */
 export const voiceClones = sqliteTable('voice_clones', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull().unique(), // 音色名（用户可读；唯一）
-  providerKey: text('provider_key').notNull(), // 克隆供应商（api_providers.key，如 aliyun_bailian_tts）
-  model: text('model').notNull(), // 克隆目标模型（如 cosyvoice-v1；合成时需同模型使用）
+  name: text('name').notNull().unique(),
+  providerKey: text('provider_key').notNull(), // 克隆供应商（api_providers.key）
+  model: text('model').notNull(), // 克隆目标模型（合成时需同模型）
   voiceId: text('voice_id').notNull(), // 供应商返回的克隆 voice 标识
-  status: text('status').notNull().default('ready'), // v1 同步协议仅落成功行（ready）；预留异步协议
-  meta: text('meta').notNull().default('{}'), // JSON：协议/参数留痕（如 { protocol:'dashscope-enrollment', prefix }）
+  status: text('status').notNull().default('ready'), // v1 同步协议仅落成功行；预留异步协议
+  meta: text('meta').notNull().default('{}'), // JSON：协议/参数留痕
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
@@ -541,7 +526,7 @@ export const budgetAlerts = sqliteTable('budget_alerts', {
 
 export type BudgetAlert = typeof budgetAlerts.$inferSelect
 
-// ---------- 通用追溯层（内容/参考版本 + 执行真实输入快照；无短剧专属模型，加法迁移） ----------
+// ---------- 通用追溯层（内容/参考版本 + 执行真实输入快照） ----------
 
 /** 内容/参考对象版本（asset 不可变文件版本 / entity 字段快照；写后永不覆写） */
 export const contentVersions = sqliteTable(
@@ -552,10 +537,10 @@ export const contentVersions = sqliteTable(
     objKind: text('obj_kind').notNull(), // asset|entity
     objId: integer('obj_id').notNull(),
     revision: integer('revision').notNull(), // 对象内递增（1 起）
-    payloadKind: text('payload_kind').notNull().default('file'), // file=asset 不可变文件｜json=entity 字段快照
-    relPath: text('rel_path'), // payloadKind=file：不可变版本文件相对路径（versions/ 下）
+    payloadKind: text('payload_kind').notNull().default('file'), // file=asset 不可变文件 | json=entity 字段快照
+    relPath: text('rel_path'), // payloadKind=file 时的版本文件相对路径
     sha256: text('sha256'),
-    doc: text('doc'), // payloadKind=json：实体 tracked 字段快照 JSON
+    doc: text('doc'), // payloadKind=json 时的实体字段快照
     label: text('label'),
     source: text('source').notNull().default('edit'), // baseline|edit|import|generate|ref-upload|ref-gen|polish|restore
     meta: text('meta').notNull().default('{}'),
@@ -600,10 +585,10 @@ export const execInputs = sqliteTable(
     role: text('role').notNull(), // text|reference|first_frame|last_frame|source|mask|subtitle|bgm|sfx|prev_text|voice
     srcKind: text('src_kind').notNull(), // asset|entity
     srcId: integer('src_id').notNull(),
-    versionId: integer('version_id'), // → content_versions.id（NULL=旧数据无版本，影响分析标「历史不可恢复」）
-    used: integer('used').notNull().default(1), // 1=最终采用 0=计划但跳过
+    versionId: integer('version_id'), // → content_versions.id（NULL=旧数据无版本）
+    used: integer('used').notNull().default(1), // 1=最终采用 | 0=计划但跳过
     skipReason: text('skip_reason'),
-    shotId: text('shot_id'), // 镜头定位（分镜/合成；NULL=非镜头级）
+    shotId: text('shot_id'), // 镜头定位（NULL=非镜头级）
     port: text('port'), // 画布端口语义定位
     ordinal: integer('ordinal').notNull().default(0),
     createdAt: integer('created_at').notNull(),
@@ -618,7 +603,7 @@ export type ContentVersion = typeof contentVersions.$inferSelect
 export type ExecSnapshot = typeof execSnapshots.$inferSelect
 export type ExecInput = typeof execInputs.$inferSelect
 
-// ---------- 精确返修操作台账（precision-rework；只记操作与幂等回执，不存媒体副本/时间轴） ----------
+// ---------- 精确返修操作台账 ----------
 
 /** 返修请求：同键同载荷回放、异载荷冲突；applied 为终态回执（resultJson 固定版本/产物关联） */
 export const reworkRequests = sqliteTable(
@@ -631,9 +616,8 @@ export const reworkRequests = sqliteTable(
     sessionId: integer('session_id'), // 可空：非轻松创作入口无会话
     requestKey: text('request_key').notNull(),
     requestHash: text('request_hash').notNull(),
-    // parsing|uncertain|ready|blocked|applied
-    state: text('state').notNull().default('parsing'),
-    baseFingerprint: text('base_fingerprint'), // 基准指纹（ready 起必填；异基准预览失效）
+    state: text('state').notNull().default('parsing'), // parsing|uncertain|ready|blocked|applied
+    baseFingerprint: text('base_fingerprint'), // 基准指纹（ready 起必填）
     changesJson: text('changes_json').notNull().default('[]'),
     previewJson: text('preview_json').notNull().default('{}'),
     resultJson: text('result_json').notNull().default('{}'),
@@ -649,7 +633,7 @@ export const reworkRequests = sqliteTable(
 
 export type ReworkRequest = typeof reworkRequests.$inferSelect
 
-// ---------- 审片问题单（1 张新表，既有表 0 新列） ----------
+// ---------- 审片问题单 ----------
 
 /** 审片问题：run + 基准成片 + 范围 + 类别 + 状态；复检证据只报变化，终判由人。 */
 export const reviewFindings = sqliteTable(
@@ -661,23 +645,18 @@ export const reviewFindings = sqliteTable(
     stepKey: text('step_key').notNull().default('compose'),
     baseFinalAssetId: integer('base_final_asset_id').notNull(),
     clientKey: text('client_key'),
-    // shot|time|global
-    scopeKind: text('scope_kind').notNull(),
+    scopeKind: text('scope_kind').notNull(), // shot|time|global
     shotId: text('shot_id'),
     startMs: integer('start_ms'),
     endMs: integer('end_ms'),
-    // visual|prop|lip_sync|subtitle|audio|pacing|other
-    category: text('category').notNull(),
-    // blocker|major|minor
-    severity: text('severity').notNull(),
+    category: text('category').notNull(), // visual|prop|lip_sync|subtitle|audio|pacing|other
+    severity: text('severity').notNull(), // blocker|major|minor
     note: text('note').notNull(),
-    // open|in_rework|pending_recheck|verified|dismissed
-    status: text('status').notNull().default('open'),
+    status: text('status').notNull().default('open'), // open|in_rework|pending_recheck|verified|dismissed
     reworkRequestId: text('rework_request_id'),
     reworkNote: text('rework_note'),
     baseSnapshot: text('base_snapshot').notNull().default('{}'),
-    // changed|unchanged|unverifiable
-    recheckState: text('recheck_state'),
+    recheckState: text('recheck_state'), // changed|unchanged|unverifiable
     recheckFinalAssetId: integer('recheck_final_asset_id'),
     recheckNote: text('recheck_note'),
     recheckAt: integer('recheck_at'),
@@ -695,10 +674,7 @@ export const reviewFindings = sqliteTable(
 
 export type ReviewFinding = typeof reviewFindings.$inferSelect
 
-/** 创作控制态；生产状态始终由关联 run 投影。
- *  Agent 化纯加法列：agentMode NULL=legacy 会话（冻结 planHash 逐字走旧路径）；
- *  decision/decisionHash 仅 template/chain/synth 新执行形态参与确认闸（easy 形态 decision 列只是展示旁注，确认链仍读 plan/planHash）；
- *  workflowId 为 chain 模式建立的编排链引用。 */
+/** 创作控制态；生产状态由关联 run 投影。Agent 化纯加法列：agentMode/decision/decisionHash/workflowId */
 export const creationSessions = sqliteTable('creation_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull(),
@@ -725,7 +701,7 @@ export const creationSessions = sqliteTable('creation_sessions', {
   index('idx_creation_run').on(t.runId),
 ])
 
-/** 对话消息；agentRole 为助手发言的注册角色署名（NULL=历史消息/未点将，前端按现映射显「策划助手」） */
+/** 对话消息；agentRole 为助手发言的注册角色署名 */
 export const creationMessages = sqliteTable('creation_messages', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sessionId: integer('session_id').notNull(),
@@ -743,9 +719,9 @@ export const creationMessages = sqliteTable('creation_messages', {
 export type CreationSession = typeof creationSessions.$inferSelect
 export type CreationMessage = typeof creationMessages.$inferSelect
 
-// ---------- 角色人设配置（代码侧 ROLE_CARDS 声明能力；数据库存 personaFile 覆盖，零代码热更新） ----------
+// ---------- 角色人设配置（数据库存 personaFile 覆盖，零代码热更新） ----------
 
-/** 角色人设配置：roleKey 对应代码注册表中的角色 key；personaFile 覆盖默认人设文件引用 */
+/** 角色人设配置：roleKey 对应代码注册表中的角色 key；personaFile 覆盖默认人设 */
 export const roleConfigs = sqliteTable('role_configs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   roleKey: text('role_key').notNull().unique(),
@@ -755,10 +731,9 @@ export const roleConfigs = sqliteTable('role_configs', {
 
 export type RoleConfig = typeof roleConfigs.$inferSelect
 
-// ---------- R01 质量基线（四维评分 + 综合分 + 可复现性元数据） ----------
+// ---------- 质量基线（四维评分 + 综合分 + 可复现性元数据） ----------
 
-/** 质量评分：每个 run × 集号一条记录（unique 约束防重复评分）；
- *  四维评分（引文完整度 / 角色一致性 / 剧情连贯度 / 费用效率）+ 加权综合分 + 权重快照 + 元数据。 */
+/** 质量评分：每个 run × 集号一条记录；四维评分 + 加权综合分 + 权重快照 + 元数据 */
 export const qualityScores = sqliteTable(
   'quality_scores',
   {
@@ -783,13 +758,9 @@ export const qualityScores = sqliteTable(
 
 export type QualityScore = typeof qualityScores.$inferSelect
 
-// ---------- R06 修复闭环（repair_runs：跟踪修复流程状态与成本） ----------
+// ---------- 修复闭环（repair_runs：跟踪修复流程状态与成本） ----------
 
-/** 修复运行记录：source_run_id 指向原始 pipeline run；episode_idx 定位集号；
- *  status 状态机：proposed → approved → running → completed/cancelled/failed；
- *  issues/impact_scope 为 JSON 字符串（应用层校验）；attempt_count 累计尝试次数；
- *  total_cost 累计成本（元）；score_before/score_after 修复前后质量分；
- *  stop_reason 记录终止原因（如预算上限、连续失败等）。 */
+/** 修复运行记录：source_run_id 指向原始 pipeline run；status 状态机 proposed→approved→running→completed/cancelled/failed */
 export const repairRuns = sqliteTable(
   'repair_runs',
   {
@@ -815,3 +786,58 @@ export const repairRuns = sqliteTable(
 )
 
 export type RepairRun = typeof repairRuns.$inferSelect
+
+// ---------- 多阶段质量检查（统一问题记录 + 阶段门禁） ----------
+
+/** 质量检查问题记录：每条问题关联到具体的 run、集、阶段、检查器、目标对象；exempted 标记是否已人工豁免 */
+export const qualityIssues = sqliteTable(
+  'quality_issues',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id').notNull().references(() => pipelineRuns.id),
+    episodeIdx: integer('episode_idx').notNull(),
+    stage: text('stage').notNull(),
+    checker: text('checker').notNull(),
+    dimension: text('dimension').notNull(),
+    severity: text('severity').notNull(),
+    checkType: text('check_type').notNull(),
+    targetType: text('target_type'),
+    targetId: text('target_id'),
+    evidence: text('evidence').notNull(),
+    suggestion: text('suggestion'),
+    exempted: integer('exempted').notNull().default(0),
+    exemptedBy: text('exempted_by'),
+    exemptedAt: integer('exempted_at'),
+    exemptReason: text('exempt_reason'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_quality_issues_run').on(t.runId),
+    index('idx_quality_issues_stage').on(t.runId, t.stage),
+    index('idx_quality_issues_severity').on(t.runId, t.severity),
+  ],
+)
+
+export type QualityIssue = typeof qualityIssues.$inferSelect
+
+/** 阶段门禁状态：汇总每个 (run, episode, stage) 的阻断/警告/豁免问题数；status: pending|pass|fail|exempt */
+export const qualityGates = sqliteTable(
+  'quality_gates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id').notNull().references(() => pipelineRuns.id),
+    episodeIdx: integer('episode_idx').notNull(),
+    stage: text('stage').notNull(),
+    status: text('status').notNull().default('pending'),
+    blockingCount: integer('blocking_count').notNull().default(0),
+    warningCount: integer('warning_count').notNull().default(0),
+    exemptCount: integer('exempt_count').notNull().default(0),
+    checkedAt: integer('checked_at'),
+  },
+  (t) => [
+    index('idx_quality_gates_run').on(t.runId),
+    uniqueIndex('idx_quality_gates_unique').on(t.runId, t.episodeIdx, t.stage),
+  ],
+)
+
+export type QualityGate = typeof qualityGates.$inferSelect

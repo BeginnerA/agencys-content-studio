@@ -707,4 +707,55 @@ async function ensureSchemaColumns(): Promise<void> {
   } catch (err) {
     log.warn(`ensureTable failed: ${(err as Error).message}`)
   }
+
+  // 多阶段质量检查：quality_issues 建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS quality_issues (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        run_id integer NOT NULL REFERENCES pipeline_runs(id),
+        episode_idx integer NOT NULL,
+        stage text NOT NULL,
+        checker text NOT NULL,
+        dimension text NOT NULL,
+        severity text NOT NULL,
+        check_type text NOT NULL,
+        target_type text,
+        target_id text,
+        evidence text NOT NULL,
+        suggestion text,
+        exempted integer DEFAULT 0 NOT NULL,
+        exempted_by text,
+        exempted_at integer,
+        exempt_reason text,
+        created_at integer NOT NULL
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_quality_issues_run ON quality_issues (run_id)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_quality_issues_stage ON quality_issues (run_id, stage)')
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_quality_issues_severity ON quality_issues (run_id, severity)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
+
+  // 多阶段质量检查：quality_gates 建表兜底（migrate 体系外旧库；幂等）
+  try {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS quality_gates (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        run_id integer NOT NULL REFERENCES pipeline_runs(id),
+        episode_idx integer NOT NULL,
+        stage text NOT NULL,
+        status text DEFAULT 'pending' NOT NULL,
+        blocking_count integer DEFAULT 0 NOT NULL,
+        warning_count integer DEFAULT 0 NOT NULL,
+        exempt_count integer DEFAULT 0 NOT NULL,
+        checked_at integer
+      )`,
+    )
+    await sqlite.execute('CREATE INDEX IF NOT EXISTS idx_quality_gates_run ON quality_gates (run_id)')
+    await sqlite.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_gates_unique ON quality_gates (run_id, episode_idx, stage)')
+  } catch (err) {
+    log.warn(`ensureTable failed: ${(err as Error).message}`)
+  }
 }
