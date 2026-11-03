@@ -9,6 +9,8 @@ import { HttpError, h, idParam, notFound } from './helpers'
  * 风格预设库路由：CRUD（平台级通用画风词块，跨体裁跨项目复用）。
  * 项目绑定经 PATCH /projects/:id 的 settings.style_preset_id（服务端零新增绑定端点）；
  * 删除/停用后绑定残留 → ai_image 运行时宽容降级（resolveProjectStyleSnippet 返回 null + 日志）。
+ * negative（免漂移负向约束词）与 snippet 一体复用：写侧在本路由接收（trim 后存库，空串→null），
+ * 读侧经出图解析透传，运行期以「必须剔除：」锚点注入出图提示词。
  */
 export const stylePresetsRoutes = new Hono()
 
@@ -41,7 +43,7 @@ stylePresetsRoutes.post('/style-presets/extract', h(async (c) => {
   return c.json({ snippet: r.snippet, provider: r.provider, model: r.model })
 }))
 
-// POST /style-presets —— 新建（name 唯一 / snippet 必填）
+// POST /style-presets —— 新建（name 唯一 / snippet 必填 / description·sort_order·negative 可选）
 stylePresetsRoutes.post('/style-presets', h(async (c) => {
   const body = await c.req.json().catch(() => { throw new HttpError(400, 'bad_json', '请求体非合法 JSON') })
   const name = body['name']
@@ -49,13 +51,14 @@ stylePresetsRoutes.post('/style-presets', h(async (c) => {
   const snippet = body['snippet']
   if (typeof snippet !== 'string' || !snippet.trim()) throw new HttpError(400, 'bad_snippet', 'snippet 必填（非空字符串）')
   const description = optStr(body, 'description')
+  const negative = optStr(body, 'negative')
   const sortOrder = optInt(body, 'sort_order') ?? 0
   const now = Date.now()
   try {
     const row = (
       await db
         .insert(stylePresets)
-        .values({ name: name.trim(), snippet: snippet.trim(), description, sortOrder, isActive: 1, createdAt: now, updatedAt: now })
+        .values({ name: name.trim(), snippet: snippet.trim(), description, negative, sortOrder, isActive: 1, createdAt: now, updatedAt: now })
         .returning()
     )[0]!
     return c.json({ preset: toView(row) }, 201)
@@ -65,7 +68,7 @@ stylePresetsRoutes.post('/style-presets', h(async (c) => {
   }
 }))
 
-// PUT /style-presets/:id —— 局部更新（name/snippet/description/sort_order/is_active）
+// PUT /style-presets/:id —— 局部更新（name/snippet/description/negative/sort_order/is_active）
 stylePresetsRoutes.put('/style-presets/:id', h(async (c) => {
   const id = idParam(c)
   const cur = await findRow(id)
@@ -83,6 +86,11 @@ stylePresetsRoutes.put('/style-presets/:id', h(async (c) => {
   if (body['description'] !== undefined) {
     if (body['description'] !== null && typeof body['description'] !== 'string') throw new HttpError(400, 'bad_description', 'description 需为字符串或 null')
     patch['description'] = typeof body['description'] === 'string' ? body['description'].trim() || null : null
+  }
+  // negative 与其它可选文本同款语义：传字符串即 trim 覆盖（空白串→null），显式传 null 即清列
+  if (body['negative'] !== undefined) {
+    if (body['negative'] !== null && typeof body['negative'] !== 'string') throw new HttpError(400, 'bad_negative', 'negative 需为字符串或 null')
+    patch['negative'] = typeof body['negative'] === 'string' ? body['negative'].trim() || null : null
   }
   if (body['sort_order'] !== undefined) {
     const v = Number(body['sort_order'])
@@ -121,6 +129,7 @@ function toView(r: StylePreset): Record<string, unknown> {
     id: r.id,
     name: r.name,
     snippet: r.snippet,
+    negative: r.negative,
     description: r.description,
     sortOrder: r.sortOrder,
     isActive: r.isActive,

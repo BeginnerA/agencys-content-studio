@@ -19,7 +19,9 @@ import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services
 import { compileDialogueShot } from '../../services/creation-chat/dialogue'
 import { buildIdentityRefMap, pickExistingRefs } from './reference-reuse'
 import { matchStateEntry } from '../../services/state-match'
-import { collectRefAssetIds, mergeRefIds, MAX_REFS_PER_SHOT } from '../../services/ref-selection'
+import { collectRefAssetIds, collectRefSelection, mergeRefIds, MAX_REFS_PER_SHOT } from '../../services/ref-selection'
+import { loadRefIndex } from '../../services/entity-references'
+import { resolveImageCaps, capsResolutionFailure } from '../../services/image-caps'
 
 interface ShotSpec {
   id: string
@@ -90,6 +92,9 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const sceneIndex = dialogue ? new Map<string, CharacterRow>() : await loadEntityIndex(ctx.run.projectId, 'scene')
   const propIndex = dialogue ? new Map<string, CharacterRow>() : await loadEntityIndex(ctx.run.projectId, 'prop')
   const indexes = { characters: charIndex, scenes: sceneIndex, props: propIndex }
+  // 分层参考登记索引：三索引命中实体并集一次性载入其 enabled 分层行（dialogue 分支三索引为空 → 自然得空索引，选择策略自动回落隐式基准）
+  const refEntityIds = [...new Set([...charIndex.values(), ...sceneIndex.values(), ...propIndex.values()].map((r) => r.id))]
+  const refIndex = await loadRefIndex(refEntityIds)
   const { shots: charShots, injected, missing } = injectCharacterAnchors(shots, charIndex)
   ctx.log(`角色锚定注入 ${injected} 镜${missing.length > 0 ? `（未命中角色：${missing.join('、')}）` : ''}`)
   // 角色状态锚定：逐镜命中角色 states（场次/集/文本三级）→ 追加状态短语；无 states / 无命中 → 零注入
@@ -121,6 +126,12 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   if (styleResolved.length > 0) {
     ctx.log(`风格注入：${styleResolved.map((s) => s.name).join(' + ')}（预设 ${styleResolved.map((s) => `#${s.id}`).join(',')}）`)
   }
+  // 风格负向锚定注入：随风格预设透传的 negative（免漂移负向词）逐镜尾追「必须剔除：」段（无 negative → refReadyShots 即 finalShots，零 diff）
+  const styleNegatives = styleResolved.map((s) => s.negative).filter((x): x is string => !!x && x.trim().length > 0)
+  const refReadyShots = styleNegatives.length > 0
+    ? finalShots.map((s) => ({ ...s, image_prompt: `${s.image_prompt.trim()}\n必须剔除：${styleNegatives.join('；')}` }))
+    : finalShots
+  if (styleNegatives.length > 0) ctx.log(`风格负向锚定注入 ${styleNegatives.length} 条`)
   // 参考图能力判定：入队前 resolve 一次（失败视为 none，不阻断主线）；data URI 缓存 step 级（同图多镜只算一次）
   // 批准的参考图片（风格/主体/首帧）并入本镜参考图通道（确定性、可幂等：recipe 固定 → params 稳定）
   const refCap = pinOf(imgCfg) ? getImageAdapter(provider!).referenceImages ?? 'none' : await imageRefCapability(provider)
@@ -128,10 +139,20 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     const count = recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length
     return count > MAX_REFS_PER_SHOT || (count > 0 && refCap !== 'base64')
   })) throw new Error('对白批准参考图无法完整传递，请调整参考数量或图像实例')
+  // 宿主侧模型能力并入：参考图上限在总量内按登记的 caps 收紧（能力判定容错，解析失败即缺省保守值，绝不抛穿）
+  const caps = await resolveImageCaps(provider, model)
+  // 能力解析失败的留痕：端点未配置/适配器未注册 与 该模型确实不支持参考图 都会落到 supportsRefs:false，
+  // 但只有前者会在 caps.notes 里带出失败原因——单独记一行日志，运行日志与参数快照才能区分两种成因
+  const capsFailure = capsResolutionFailure(caps)
+  if (capsFailure) ctx.log(`图像模型参考图能力未能判定（属宿主配置问题，非供应商声明不支持）：${capsFailure}`)
+  const effectiveRefLimit = Math.min(MAX_REFS_PER_SHOT, caps.maxRefs)
+  if (caps.supportsRefs && caps.maxRefs < MAX_REFS_PER_SHOT) {
+    ctx.log(`模型参考图上限 ${caps.maxRefs}（宿主总量 ${MAX_REFS_PER_SHOT} 内收紧），超出部分按分层优先级裁剪`)
+  }
   const uriCache = new Map<number, string>()
-  ctx.log(`批量出图：${finalShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
+  ctx.log(`批量出图：${refReadyShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
-  if (useRefs && refCap !== 'base64' && finalShots.some((s) => collectRefAssetIds(s, indexes).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
+  if (useRefs && refCap !== 'base64' && refReadyShots.some((s) => collectRefAssetIds(s, indexes, refIndex, { episode }).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
     ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（锚定注入仍生效）')
   }
   // 定妆照身份锚定（identity-lock）：步级 inputs.ref_images 指向用户按「文件名=角色名」上传的参考图资产，
@@ -140,16 +161,16 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const identityRefByShot = new Map<string, number>()
   if (useRefs && refImageIds.length > 0) {
     const refAssets = await ctx.assetsOf(refImageIds)
-    for (const [shotId, assetId] of buildIdentityRefMap(refAssets, finalShots)) identityRefByShot.set(shotId, assetId)
-    ctx.log(`定妆照身份参考图 ${refAssets.length} 张入料（按角色文件名匹配，命中 ${identityRefByShot.size}/${finalShots.length} 镜头）`)
+    for (const [shotId, assetId] of buildIdentityRefMap(refAssets, refReadyShots)) identityRefByShot.set(shotId, assetId)
+    ctx.log(`定妆照身份参考图 ${refAssets.length} 张入料（按角色文件名匹配，命中 ${identityRefByShot.size}/${refReadyShots.length} 镜头）`)
   }
   // 智能复用（auto）：定妆照 / 场景 / 道具参考图步在 params.reuse_existing_refs=true 且步级输入 ref_mode=auto 时，
   // 逐镜查角色/场景/道具库内已有参考图→命中即复用（不建任务、不计费），仅缺图的新对象才出图（与出图能力 refCap 解耦）。
   const refMode = typeof ctx.input['ref_mode'] === 'string' ? ctx.input['ref_mode'].trim() : ''
   const reuseByShot = stepParams['reuse_existing_refs'] === true && refMode === 'auto'
-    ? pickExistingRefs(finalShots, indexes)
+    ? pickExistingRefs(refReadyShots, indexes)
     : new Map<string, number>()
-  if (reuseByShot.size > 0) ctx.log(`智能复用：${reuseByShot.size}/${finalShots.length} 个对象库内已有参考图，直接复用不重画`)
+  if (reuseByShot.size > 0) ctx.log(`智能复用：${reuseByShot.size}/${refReadyShots.length} 个对象库内已有参考图，直接复用不重画`)
 
   // 既有任务（幂等续跑）：shotId → task 行
   const existing = await db
@@ -166,17 +187,26 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     }
   }
 
-  for (const shot of finalShots) {
+  for (const shot of refReadyShots) {
     if (reuseByShot.has(shot.id)) continue // 库内已有参考图（auto 复用）：不建任务、不计费
+    const existingTask = taskByShotId.get(shot.id)
+    // 存量兼容：旧行（未写模型能力快照）续跑时按未收紧的总量上限取参考、且不补写快照字段，
+    // 保持本能力上线前已批准 run 的发送口径不变（详见参数漂移守卫）
+    const legacyRow =
+      existingTask != null && existingTask.status !== 'succeeded' && existingTask.status !== 'cancelled' && !paramsHasCaps(existingTask.params)
+    const shotRefLimit = legacyRow ? MAX_REFS_PER_SHOT : effectiveRefLimit
     const identityId = identityRefByShot.get(shot.id)
     let promptText = dialogue ? compileDialogueShot(recipe.plan, shot.id).imagePrompt : shot.image_prompt.trim()
     if (identityId !== undefined) promptText = `严格保持参考图中人物的五官、发型、脸型与所有识别特征完全一致，仅改变视角与姿态。${promptText}`
+    // 分层参考选择：以登记索引 + 集上下文逐实体取用，产出入列 id 与逐镜语义快照（超 shotRefLimit 的量在合并处按优先级裁剪）
+    const sel = collectRefSelection(shot, indexes, refIndex, { episode })
     const refAssetIds = mergeRefIds(
       identityId !== undefined ? [identityId] : [],
-      mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), collectRefAssetIds(shot, indexes)),
+      mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), sel.ids, shotRefLimit),
+      shotRefLimit,
     )
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
-    const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, MAX_REFS_PER_SHOT) : 0
+    const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, shotRefLimit) : 0
     const purpose = purposeOf(shot, stepParams, outputPurpose)
     const paramsJson = JSON.stringify({
       size,
@@ -184,13 +214,20 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
       duration: shotDurationSec(shot) ?? null,
       refAssetIds,
       refUsed,
+      // 模型能力 + 逐镜分层选择快照：新建任务一律登记，存量旧行不补写（保持旧 schema 形态）
+      ...(legacyRow
+        ? {}
+        : {
+            caps: { supportsRefs: caps.supportsRefs, maxRefs: caps.maxRefs, supportsNegativePrompt: caps.supportsNegativePrompt, notes: caps.notes },
+            refSelection: sel.perEntity, // 逐实体 { entityId, name, refs:[{assetId, role, reason}] }——每镜参考分层语义可追溯
+            ...(sel.dropped.length > 0 ? { refDropped: sel.dropped } : {}),
+          }),
       output_purpose: purpose,
       stylePresetId: styleResolved[0]?.id ?? null,
       stylePresetIds: styleResolved.map((s) => s.id),
       // 本镜命中实体 id（快照记录用；succeeded 任务不回写，不影响既有溯源）
       entityIds: matchedEntityIds(shot, indexes),
     })
-    const existingTask = taskByShotId.get(shot.id)
     if (!existingTask) {
       const t = nowMs()
       const row = await db
@@ -214,7 +251,8 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     } else if (existingTask.status !== 'succeeded' && existingTask.status !== 'cancelled') {
       // 未成功任务同步最新 prompt/参数（修正分镜或调设置后续跑即生效）；
       // failed 且有变化 → 归零重排队；succeeded 保持产物溯源不动
-      const changed = existingTask.prompt !== promptText || existingTask.params !== paramsJson
+      // 参数漂移判定按「旧行已有的键」逐项比对：仅新增可选快照字段不算漂移（详见参数漂移守卫）
+      const changed = existingTask.prompt !== promptText || paramsDrifted(existingTask.params, paramsJson)
       if (changed) {
         if (recipeOf(ctx.run)) throw new Error('已批准图像任务参数发生变化，请重新规划')
         const requeue = existingTask.status === 'failed'
@@ -239,7 +277,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   // 执行队列：非复用镜头中，非 succeeded 且有重试余量；cancelled 不参与
-  const genShots = finalShots.filter((s) => !reuseByShot.has(s.id))
+  const genShots = refReadyShots.filter((s) => !reuseByShot.has(s.id))
   const queue = genShots
     .map((s) => taskByShotId.get(s.id)!)
     .filter((t) => {
@@ -266,11 +304,11 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   }
 
   // 产物按 shots 顺序聚合：复用镜头取库内已有 asset id，其余取本步任务产物（保序、总量不变）
-  const assetIds = finalShots
+  const assetIds = refReadyShots
     .map((s) => reuseByShot.get(s.id) ?? taskByShotId.get(s.id)?.resultAssetId)
     .filter((id): id is number => typeof id === 'number')
-  if (assetIds.length !== finalShots.length) {
-    throw new Error(`产物与镜头数不符（${assetIds.length}/${finalShots.length}），请重试`)
+  if (assetIds.length !== refReadyShots.length) {
+    throw new Error(`产物与镜头数不符（${assetIds.length}/${refReadyShots.length}），请重试`)
   }
   ctx.log(`出图完成：${assetIds.length} 张 → ${assetIds.join(', ')}`)
   return { assetIds }
@@ -297,8 +335,13 @@ async function runOneTask(
     refAssetIds?: number[]
     output_purpose?: string
     entityIds?: number[]
+    caps?: { maxRefs?: number }
+    refSelection?: { entityId: number; name: string; refs: { assetId: number; role: string; reason: string }[] }[]
   }
   const shotId = parsed.shotId ?? '?'
+  // 发送切片口径与入队一致：登记了能力快照的按 min(总量, 快照上限) 收紧；
+  // 未写能力快照的存量旧行按总量上限发送，保持本能力上线前的发送口径不变
+  const taskRefLimit = Math.min(MAX_REFS_PER_SHOT, parsed.caps?.maxRefs ?? MAX_REFS_PER_SHOT)
   const recipe = recipeOf(ctx.run)
   const maxAttempts = recipe ? 1 : cfg.maxRetry + 1
   if (recipe && task.attempts > 0 && task.status !== 'succeeded') throw new Error('此前媒体提交状态需核验，不能自动重发')
@@ -325,7 +368,7 @@ async function runOneTask(
       if (cfg.useRefs && cfg.refCap === 'base64' && parsed.refAssetIds?.length) {
         const uris: string[] = []
         let ordinal = 0
-        for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
+        for (const id of parsed.refAssetIds.slice(0, taskRefLimit)) {
           try {
             uris.push(await assetToDataUri(id, ctx.run.projectId, cfg.uriCache))
             refInputs.push(await assetInput('reference', id, { shotId, port: 'reference', ordinal: ordinal++ }))
@@ -342,7 +385,7 @@ async function runOneTask(
       } else if (parsed.refAssetIds?.length) {
         // 能力不支持/已关闭参考注入：计划参考图未实际消费 → 记 skipped（区分「计划」与「实际」）
         let ordinal = 0
-        for (const id of parsed.refAssetIds.slice(0, MAX_REFS_PER_SHOT)) {
+        for (const id of parsed.refAssetIds.slice(0, taskRefLimit)) {
           refInputs.push(await assetInput('reference', id, { used: false, skipReason: cfg.useRefs ? '供应商不支持参考图' : '参考注入已关闭', shotId, port: 'reference', ordinal: ordinal++ }))
         }
       }
@@ -642,4 +685,43 @@ function inputEpisode(inputJson: string): number | undefined {
   } catch {
     return undefined
   }
+}
+
+/** 任务参数是否登记了模型能力快照（用于识别「新入队即写快照」的任务 vs 更早形态的存量任务行） */
+function paramsHasCaps(paramsJson: string): boolean {
+  try {
+    const obj = JSON.parse(paramsJson) as unknown
+    return !!obj && typeof obj === 'object' && 'caps' in obj
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 参数漂移守卫：断点续跑时，对已存在且未成功的任务重算出新的 params 快照，需判断「参数是否真的变了」。
+ * 判定只按旧行本就存在的键逐项比对——旧行没有的键（后续能力新增的可选快照字段，如模型能力快照、逐镜分层选择快照、
+ * 被裁剪参考记录等）一律忽略，不计入漂移、也不触发重排队。
+ * 这保护的是「存量已批准运行在新能力上线后继续断点续跑」的场景：若直接整串比较，仅因新增可选快照键就会被误判为
+ * 「已批准图像任务参数发生变化」而强制重新规划；同时保留既有语义——旧行已有的任一键值发生变化（或被删除）仍判为漂移，
+ * 走原有的同步 / 重排队 / 已批准链报错分支。
+ * 任一参数无法解析为对象时按最严处理（判为漂移），沿用既有防护路径。
+ */
+function paramsDrifted(oldParams: string, newParams: string): boolean {
+  if (oldParams === newParams) return false
+  let oldObj: unknown
+  let newObj: unknown
+  try {
+    oldObj = JSON.parse(oldParams)
+    newObj = JSON.parse(newParams)
+  } catch {
+    return true
+  }
+  if (!oldObj || typeof oldObj !== 'object' || Array.isArray(oldObj)) return true
+  if (!newObj || typeof newObj !== 'object' || Array.isArray(newObj)) return true
+  const oldRecord = oldObj as Record<string, unknown>
+  const newRecord = newObj as Record<string, unknown>
+  for (const key of Object.keys(oldRecord)) {
+    if (JSON.stringify(oldRecord[key]) !== JSON.stringify(newRecord[key])) return true
+  }
+  return false
 }

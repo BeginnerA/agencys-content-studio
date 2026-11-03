@@ -22,8 +22,13 @@ export const MAX_SNIPPET_CHARS = 400
  * 未绑定 / 预设停用 / 被删 / settings 畸形 → 空 + 日志，绝不炸链路。
  */
 
-/** 解析项目绑定的全部风格预设词块（按绑定顺序；跳过已删除/停用项；去重保序） */
-export async function resolveProjectStyleSnippets(projectId: number): Promise<Array<{ id: number; name: string; snippet: string }>> {
+/**
+ * 解析项目绑定的全部风格预设词块（按绑定顺序；跳过已删除/停用项；去重保序）。
+ * 随词块透传 negative（免漂移负向约束），供出图侧注入「必须剔除：」锚点；无值 → null。
+ */
+export async function resolveProjectStyleSnippets(
+  projectId: number,
+): Promise<Array<{ id: number; name: string; snippet: string; negative: string | null }>> {
   const projRows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1)
   const proj = projRows[0]
   if (!proj) return []
@@ -34,7 +39,7 @@ export async function resolveProjectStyleSnippets(projectId: number): Promise<Ar
     .from(stylePresets)
     .where(and(inArray(stylePresets.id, ids), eq(stylePresets.isActive, 1)))
   const byId = new Map(rows.map((r) => [r.id, r]))
-  const out: Array<{ id: number; name: string; snippet: string }> = []
+  const out: Array<{ id: number; name: string; snippet: string; negative: string | null }> = []
   for (const id of ids) {
     const preset = byId.get(id)
     if (!preset) {
@@ -43,7 +48,8 @@ export async function resolveProjectStyleSnippets(projectId: number): Promise<Ar
     }
     const snippet = preset.snippet.trim()
     if (!snippet) continue
-    out.push({ id: preset.id, name: preset.name, snippet })
+    const negative = preset.negative?.trim() ? preset.negative.trim() : null
+    out.push({ id: preset.id, name: preset.name, snippet, negative })
   }
   return out
 }
