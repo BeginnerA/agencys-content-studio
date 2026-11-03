@@ -18,6 +18,7 @@ import RunFindingsPanel from '../../components/run/findings/RunFindingsPanel.vue
 import RunDeliveryCertPanel from '../../components/run/cert/RunDeliveryCertPanel.vue'
 import QualityScorePanel from '../../components/run/QualityScorePanel.vue'
 import RepairPanel from '../../components/run/RepairPanel.vue'
+import QualityGatePanel from '../../components/run/QualityGatePanel.vue'
 import RunParamsPanel from './RunParamsPanel.vue'
 import RunPubsPanel from './RunPubsPanel.vue'
 import { useRunDetail } from './use-run-detail'
@@ -253,6 +254,9 @@ const {
 
           <!-- 质量修复（R06 闭环）：修复提案 → 批准 → 执行 → 采纳/拒绝；不调用付费模型 -->
           <RepairPanel :run-id="runId" :episode-idx="run.batchSeq ?? 0" />
+
+          <!-- 质量门禁：五阶段流水线检查 + 问题清单 + 豁免操作 -->
+          <QualityGatePanel :run-id="runId" :episode-idx="run.batchSeq ?? 0" />
 
           <RunPubsPanel v-if="showPubsPanel" :e="e" />
         </div>

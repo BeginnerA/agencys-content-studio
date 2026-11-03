@@ -449,6 +449,53 @@ export interface RepairView {
   updatedAt: number
 }
 
+export const qualityGatesApi = {
+  /** 触发全部门禁检查（POST /runs/:id/quality-gates） */
+  async triggerAll(runId: number, episodeIdx: number) {
+    const res = await fetch(`/api/runs/${runId}/quality-gates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ episodeIdx }),
+    })
+    if (!res.ok) throw new Error('触发检查失败')
+    return res.json() as Promise<{ gates: any[] }>
+  },
+
+  /** 查询全部门禁状态（GET /runs/:id/quality-gates?episodeIdx=N） */
+  async getAll(runId: number, episodeIdx: number) {
+    const res = await fetch(`/api/runs/${runId}/quality-gates?episodeIdx=${episodeIdx}`)
+    if (!res.ok) throw new Error('查询门禁失败')
+    return res.json() as Promise<{ gates: any[] }>
+  },
+
+  /** 查询单阶段门禁详情（GET /runs/:id/quality-gates/:stage?episodeIdx=N） */
+  async getStage(runId: number, stage: string, episodeIdx: number) {
+    const res = await fetch(`/api/runs/${runId}/quality-gates/${stage}?episodeIdx=${episodeIdx}`)
+    if (!res.ok) throw new Error('查询阶段失败')
+    return res.json() as Promise<{ gate: any; issues: any[] }>
+  },
+
+  /** 豁免指定问题（POST /quality-gates/issues/:id/exempt） */
+  async exemptIssue(issueId: number, reason: string) {
+    const res = await fetch(`/api/quality-gates/issues/${issueId}/exempt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    if (!res.ok) throw new Error('豁免失败')
+    return res.json() as Promise<{ gate: any }>
+  },
+
+  /** 取消豁免（POST /quality-gates/issues/:id/unexempt） */
+  async unexemptIssue(issueId: number) {
+    const res = await fetch(`/api/quality-gates/issues/${issueId}/unexempt`, {
+      method: 'POST',
+    })
+    if (!res.ok) throw new Error('取消豁免失败')
+    return res.json() as Promise<{ gate: any }>
+  },
+}
+
 export const repairsApi = {
   /** 启动修复提案（POST /runs/:id/repair） */
   propose: (runId: number, episodeIdx: number) =>
