@@ -116,9 +116,19 @@ function assetThumb(assetId: number): string | null {
 
 /** 三层为空时的语义提示（每层缺失的后果不同，逐层写清） */
 const GROUP_EMPTY: Record<EntityRefRole, string> = {
-  base: '无基准行：出图与一致性评价将回落扁平参考（未分层语义）',
+  base: '无启用基准行：出图回退取扁平参考列并留痕；一致性评价按「无基准参考图」记失败说明，不产假分',
   state: '无状态变体行：命中剧情节点状态时回退基准并留痕',
   view: '无多视角行：基准用满名额后不再补充视角',
+}
+
+/** 一张分层行都没有时另是一回事：整档沿用扁平列（未分层语义），两条链路都不报缺失 */
+const NO_LAYER_ROWS =
+  '未登记分层行：出图与一致性评价都按扁平参考列取用（未分层语义）'
+
+function emptyHint(role: EntityRefRole): string {
+  return role === 'base' && refs.value.length === 0
+    ? NO_LAYER_ROWS
+    : GROUP_EMPTY[role]
 }
 
 /** select 事件值提取（模板内联 as 断言折行代价高，统一走这里） */
@@ -126,8 +136,11 @@ function evVal(e: Event): string {
   return (e.target as HTMLSelectElement).value
 }
 
+/** 负向词一律以「必须剔除：」写进提示词锚点；能力位只说明供应商是否另有结构化负向通道 */
 const negChip = computed(() =>
-  caps.value?.supportsNegativePrompt ? '负向走供应商通道' : '负向走提示词锚点',
+  caps.value?.supportsNegativePrompt
+    ? '锚点注入 · 本模型另有负向通道'
+    : '锚点注入 · 本模型无负向通道',
 )
 const assetInputHint = computed(() =>
   props.projectId
@@ -410,7 +423,7 @@ watch(
         <span class="muted">{{ g.rows.length }} 行</span>
       </div>
       <div v-if="!g.rows.length" class="muted grp-empty">
-        {{ GROUP_EMPTY[g.role] }}
+        {{ emptyHint(g.role) }}
       </div>
       <div v-for="r in g.rows" :key="r.id" :class="r.enabled ? 'r' : 'r off'">
         <img

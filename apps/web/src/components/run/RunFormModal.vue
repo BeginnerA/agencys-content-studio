@@ -17,11 +17,13 @@ import type {
   VideoOverride,
 } from '../../lib/types'
 import {
+  imageCapsApi,
   projectApi,
   publicationApi,
   runApi,
   seriesApi,
   templateApi,
+  type ImageCaps,
 } from '../../lib/api'
 import { filterSelectable } from '../../lib/scene'
 
@@ -126,6 +128,23 @@ const showAudio = computed(() => activeGroups.value.has('audio'))
 const showLlm = computed(() => activeGroups.value.has('llm'))
 /** 模板不涉及任何可覆盖环节 → 整块「本集参数覆盖」不显示 */
 const hasOverride = computed(() => activeGroups.value.size > 0)
+
+/**
+ * 出图模板的参考图能力位（按当前默认出图配置解析）。
+ * 只在模板确有出图步时查一次：不支持参考图时角色一致性会降级为纯文本锚定，
+ * 这是花钱前的信息，必须显式提示而不是等运行日志里一行字。查询失败不拦建造。
+ */
+const imageCaps = ref<ImageCaps | null>(null)
+watch(tpl, async (t) => {
+  imageCaps.value = null
+  if (!t) return
+  if (!(t.steps ?? []).some((s) => ACTION_GROUP[s.action] === 'image')) return
+  try {
+    imageCaps.value = await imageCapsApi.get()
+  } catch {
+    /* 能力面不可用：不显示提示条，也不阻断建运行 */
+  }
+})
 
 function resetAdv(): void {
   adv.value = {
@@ -443,6 +462,20 @@ init()
           <div class="desc muted" style="margin-bottom: 10px">
             {{ tpl.description }}
           </div>
+          <div
+            v-if="imageCaps && !imageCaps.supportsRefs"
+            class="caps-warn"
+            role="status"
+          >
+            本模板要出图，但当前默认图像模型不支持参考图：角色一致性只靠文本锚定，分层参考图不会注入。
+            <p
+              v-for="(n, i) in imageCaps.notes"
+              :key="i"
+              class="caps-note muted"
+            >
+              {{ n }}
+            </p>
+          </div>
           <TemplateInputFields
             v-if="displayTpl"
             :tpl="displayTpl"
@@ -591,6 +624,21 @@ init()
 <style scoped>
 .lead {
   margin-bottom: 10px;
+}
+
+.caps-warn {
+  margin-bottom: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-weak);
+}
+
+.caps-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  word-break: break-all;
 }
 
 .sel-h {
