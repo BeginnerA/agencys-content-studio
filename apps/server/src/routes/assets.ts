@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { readFileSync, statSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
-import { and, count, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
+import { and, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { Readable } from 'node:stream'
 import { db } from '../db'
 import { assets } from '../db/schema'
@@ -12,7 +12,7 @@ import { currentRevision } from '../services/provenance'
 import { ensureThumb } from '../services/thumb'
 import { checkAndRecordAsset, scheduleImageCheck } from '../services/image-check'
 import { cleanupVersions, emptyTrash, restoreAsset, purgeAsset, CleanupError } from '../services/version-cleanup'
-import { RESERVED_PURPOSES, isContinuityPurpose } from '../services/continuity/reserved'
+import { excludeReservedPurpose, isContinuityPurpose } from '../services/continuity/reserved'
 import { HttpError, h, idParam, notFound } from './helpers'
 
 export const assetsRoutes = new Hono()
@@ -33,11 +33,11 @@ assetsRoutes.get('/projects/:id/assets', h(async (c) => {
   const offset = Number.isFinite(offsetNum) && offsetNum > 0 ? Math.floor(offsetNum) : 0
   // ?trash=1 → 回收站视图（仅已软删行）；默认列表仅未删行
   const trash = c.req.query('trash') === '1'
-  // 保留素材（continuity_*）对普通素材面不可见：列表与 total 统一 NOT IN 保留 purpose（真源 reserved.ts）
+  // 保留素材（continuity_*）对普通素材面不可见：列表与 total 统一排除保留 purpose，未标注 purpose 的行照常可见（真源 reserved.ts）
   const conds = [
     eq(assets.projectId, projectId),
     trash ? isNotNull(assets.deletedAt) : isNull(assets.deletedAt),
-    notInArray(assets.purpose, [...RESERVED_PURPOSES]),
+    excludeReservedPurpose(),
   ]
   if (kind) conds.push(eq(assets.kind, kind))
   if (purpose) conds.push(eq(assets.purpose, purpose))

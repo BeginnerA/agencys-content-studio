@@ -1,10 +1,10 @@
-import { and, eq, isNull, notInArray } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, episodes, pipelineRuns, pipelineSteps, settings } from '../db/schema'
 import { readTextAsset } from './storage'
 import { summarizeToMemory } from './memory-summary'
 import { createLogger } from '../logger'
-import { RESERVED_PURPOSES, isContinuityPurpose } from './continuity/reserved'
+import { excludeReservedPurpose, isContinuityPurpose } from './continuity/reserved'
 
 // 自动摘要钩子（双形态拍板的「可选自动」侧）：
 // settings key `memory.auto_summary`（JSON bool，缺省 false）→ onRunSettled listener：
@@ -76,7 +76,7 @@ export async function gatherEpisodeContext(runId: number): Promise<EpisodeSummar
       .from(assets)
       .where(and(
         eq(assets.runId, runId), eq(assets.kind, 'text'), isNull(assets.deletedAt),
-        notInArray(assets.purpose, [...RESERVED_PURPOSES]), // 显式排除保留素材
+        excludeReservedPurpose(), // 显式排除保留素材（未标注 purpose 的普通产物照常可见）
       ))
       .orderBy(assets.id)
       .limit(3)
