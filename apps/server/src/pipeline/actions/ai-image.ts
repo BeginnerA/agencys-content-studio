@@ -19,7 +19,7 @@ import { pinOf, recipeOf, mediaFailure, recipeRefImageIds } from '../../services
 import { compileDialogueShot } from '../../services/creation-chat/dialogue'
 import { buildIdentityRefMap, pickExistingRefs } from './reference-reuse'
 import { matchStateEntry } from '../../services/state-match'
-import { collectRefAssetIds, collectRefSelection, mergeRefIds, MAX_REFS_PER_SHOT } from '../../services/ref-selection'
+import { collectRefAssetIds, collectRefSelection, mergeRefIds, MAX_REFS_PER_SHOT, type SelectedRef } from '../../services/ref-selection'
 import { loadRefIndex } from '../../services/entity-references'
 import { resolveImageCaps, capsResolutionFailure } from '../../services/image-caps'
 
@@ -104,6 +104,15 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     const brief = stateRes.details.length > 6 ? ` / …共 ${stateRes.details.length} 条` : ''
     ctx.log(`状态锚定注入 ${stateRes.injected} 镜：${stateRes.details.slice(0, 6).join(' / ')}${brief}`)
   }
+  // 状态命中的判据语料与状态锚定同源：选择层消费「状态锚定自己读过的那份文本」（角色锚定之后、状态锚定之前），
+  // 而不是注入完的成品提示词。否则同一状态有两套判据（锚定按注入前文本命中、选择按注入后文本命中），
+  // 且锚定写进去的状态短语会自我触发第二次命中——快照里的状态语义与提示词里的状态锚定就会错位。
+  const preStatePrompt = new Map(charShots.map((s) => [s.id, s.image_prompt]))
+  const selectionView = (shot: ShotSpec): ShotSpec => {
+    const raw = preStatePrompt.get(shot.id)
+    return raw === undefined || raw === shot.image_prompt ? shot : { ...shot, image_prompt: raw }
+  }
+
   const { shots: setShots, sceneInjected, propInjected, missing: setMissing } = injectSetAnchors(stateRes.shots, sceneIndex, propIndex)
   ctx.log(`场景锚定 ${sceneInjected} 镜 / 道具锚定 ${propInjected} 镜${setMissing.length > 0 ? `（未命中：${setMissing.join('、')}）` : ''}`)
 
@@ -152,7 +161,7 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
   const uriCache = new Map<number, string>()
   ctx.log(`批量出图：${refReadyShots.length} 镜头 × ${provider ?? '默认供应商'}（并发 ${concurrency}，失败重试 ${maxRetry} 次）`)
   // 降级警告（一次/step）：能力不支持但确有参考图可用（用户主动关闭时静默）
-  if (useRefs && refCap !== 'base64' && refReadyShots.some((s) => collectRefAssetIds(s, indexes, refIndex, { episode }).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
+  if (useRefs && refCap !== 'base64' && refReadyShots.some((s) => collectRefAssetIds(selectionView(s), indexes, refIndex, { episode }, effectiveRefLimit).length > 0 || recipeRefImageIds(recipe, s.id, IMAGE_REF_ROLES).length > 0)) {
     ctx.log('当前图片供应商不支持参考图，已降级纯文本锚定（锚定注入仍生效）')
   }
   // 定妆照身份锚定（identity-lock）：步级 inputs.ref_images 指向用户按「文件名=角色名」上传的参考图资产，
@@ -198,13 +207,40 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
     const identityId = identityRefByShot.get(shot.id)
     let promptText = dialogue ? compileDialogueShot(recipe.plan, shot.id).imagePrompt : shot.image_prompt.trim()
     if (identityId !== undefined) promptText = `严格保持参考图中人物的五官、发型、脸型与所有识别特征完全一致，仅改变视角与姿态。${promptText}`
-    // 分层参考选择：以登记索引 + 集上下文逐实体取用，产出入列 id 与逐镜语义快照（超 shotRefLimit 的量在合并处按优先级裁剪）
-    const sel = collectRefSelection(shot, indexes, refIndex, { episode })
+    // 分层参考选择：以登记索引 + 集上下文逐实体取用，产出入列 id 与逐镜语义快照。
+    // shotRefLimit 必须进选择层（而不是只在合并处切片）：模型能力比宿主总量紧时，被能力砍掉的候选
+    // 既不进实发列表也不进裁剪记录，params 快照会按「六张口径」谎报本镜取用了哪些参考。
+    const sel = collectRefSelection(selectionView(shot), indexes, refIndex, { episode }, shotRefLimit)
+    const approvedRefs = recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES)
     const refAssetIds = mergeRefIds(
       identityId !== undefined ? [identityId] : [],
-      mergeRefIds(recipeRefImageIds(recipe, shot.id, IMAGE_REF_ROLES), sel.ids, shotRefLimit),
+      mergeRefIds(approvedRefs, sel.ids, shotRefLimit),
       shotRefLimit,
     )
+    // 上报口径收口：params.refSelection 只描述「本镜实发」的参考。选择层按自身名额选中、但在与画布直通/
+    // 批准参考合并后被挤出实发列表的项，从逐实体选择结果移入 refDropped 并写明合并口径的原因——
+    // 不收口的话快照会说「这张已入选」而实发列表里根本没有它，既不在实发也不在裁剪，追溯失真。
+    const sentIds = new Set(refAssetIds)
+    const refDropped: SelectedRef[] = [...sel.dropped]
+    const refSelection = sel.perEntity.map((ent) => {
+      const kept: SelectedRef[] = []
+      for (const r of ent.refs) {
+        if (sentIds.has(r.assetId)) kept.push(r)
+        else refDropped.push({ assetId: r.assetId, role: r.role, reason: `与画布/批准参考合并后超出上限(${shotRefLimit})` })
+      }
+      return { entityId: ent.entityId, name: ent.name, refs: kept }
+    })
+    // 实发列表里不由分层选择解释的差额（定妆照身份锚定 / 画布直通 / 批准的参考图）逐条注明来处：
+    // refSelection ∪ refMerged 覆盖全部实发参考，运行数据里不该出现「来路不明的参考图」
+    const explained = new Set(refSelection.flatMap((ent) => ent.refs.map((r) => r.assetId)))
+    const directIds = new Set((shot.ref_asset_ids ?? []).filter((n) => Number.isInteger(n) && n > 0))
+    const mergedReason = (id: number): string => {
+      if (identityId !== undefined && id === identityId) return '定妆照身份参考图（按角色文件名命中，前插）'
+      if (approvedRefs.includes(id)) return '批准的参考图（风格/主体/首帧，随批准计划固定）'
+      if (directIds.has(id)) return '画布直通参考图（镜头 ref_asset_ids 前插）'
+      return '与画布/批准参考合并入列'
+    }
+    const refMerged = refAssetIds.filter((id) => !explained.has(id)).map((id) => ({ assetId: id, reason: mergedReason(id) }))
     // refUsed 口径：计划注入数（0=降级）；实际注入量以执行日志为准
     const refUsed = refCap === 'base64' && useRefs ? Math.min(refAssetIds.length, shotRefLimit) : 0
     const purpose = purposeOf(shot, stepParams, outputPurpose)
@@ -219,8 +255,12 @@ export async function aiImage(ctx: StepContext): Promise<StepResult> {
         ? {}
         : {
             caps: { supportsRefs: caps.supportsRefs, maxRefs: caps.maxRefs, supportsNegativePrompt: caps.supportsNegativePrompt, notes: caps.notes },
-            refSelection: sel.perEntity, // 逐实体 { entityId, name, refs:[{assetId, role, reason}] }——每镜参考分层语义可追溯
-            ...(sel.dropped.length > 0 ? { refDropped: sel.dropped } : {}),
+            refSelection, // 逐实体 { entityId, name, refs:[{assetId, role, reason}] }——每镜参考分层语义可追溯
+            ...(refDropped.length > 0 ? { refDropped } : {}),
+            // 回退留痕（如「状态「第3场：受伤」无分层参考，回退基准」）只写 refDropped 时查不到
+            // 「这一镜为什么用基准图而不是状态图」——回退在运行数据里同样是静默的，故一并入快照
+            ...(sel.fallbacks.length > 0 ? { refFallbacks: sel.fallbacks } : {}),
+            ...(refMerged.length > 0 ? { refMerged } : {}),
           }),
       output_purpose: purpose,
       stylePresetId: styleResolved[0]?.id ?? null,
@@ -721,7 +761,22 @@ function paramsDrifted(oldParams: string, newParams: string): boolean {
   const oldRecord = oldObj as Record<string, unknown>
   const newRecord = newObj as Record<string, unknown>
   for (const key of Object.keys(oldRecord)) {
-    if (JSON.stringify(oldRecord[key]) !== JSON.stringify(newRecord[key])) return true
+    // 能力快照只按发送口径字段比对（说明文字不算漂移，见 capsSendFields）；其余键保持逐项严格比对
+    const oldValue = key === 'caps' ? capsSendFields(oldRecord[key]) : oldRecord[key]
+    const newValue = key === 'caps' ? capsSendFields(newRecord[key]) : newRecord[key]
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) return true
   }
   return false
+}
+
+/**
+ * 能力快照里参与漂移判定的字段：只有真正改变发送口径的两项——能否带参考图、参考图上限。
+ * supportsNegativePrompt 与 notes 都是说明文字：notes 会随宿主配置重算（未登记模型的标注、端点解析失败留痕），
+ * 让说明文字的抖动把用户已批准的运行判成「参数已变化请重新规划」，等于凭空作废一次批准；
+ * 变了要重规划的是「这一镜会发出去什么」，只是解释性文字换了措辞则不需要。
+ */
+function capsSendFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const c = value as Record<string, unknown>
+  return { supportsRefs: c['supportsRefs'], maxRefs: c['maxRefs'] }
 }

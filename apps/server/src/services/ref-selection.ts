@@ -77,7 +77,9 @@ function lookupCharacter(index: Map<string, CharacterRow>, name: string): Charac
  * 有 enabled 分层行 → 状态命中（stateKey = 命中的 states 条目原文）→ 基准 → 多视角，逐级填充至 limit；
  * 命中状态但无对应分层行 → 回退基准并记 fallbacks；
  * 无分层行 → 隐式基准：refAssetIds 全体按扁平数组序作基准参考（未分层项目的既有语义）；
- * 超出 limit 的候选进 dropped（带原因），同资产重复不计额。
+ * 超出 limit 的候选进 dropped（带原因），同资产重复不计额；
+ * limit ≤0 → 候选全部按上限原因进 dropped 并立即返回：此时「本镜不可用 → 回退基准」的说明是误导
+ * （回退同样取不到参考，而扁平列的 id 还会与分层行候选重复记账）。
  */
 export function selectEntityRefs(
   row: { id: number; states: string; refAssetIds: string },
@@ -124,6 +126,12 @@ export function selectEntityRefs(
   }
   for (const r of enabled.filter((x) => x.role === 'base')) take(r, '基准参考')
   for (const r of enabled.filter((x) => x.role === 'view')) take(r, '多视角补充')
+  // 零/负上限：本实体所有候选都已按「超出参考图上限(0)」记进裁剪，直接返回。
+  // 不走下面的回退分支——回退结果照样受零上限约束、一张也取不到，却会额外产出一条
+  // 「本镜不可用 → 回退基准参考图」的说明（语义错误：不可用的原因是名额为零，不是没有参考），
+  // 并把扁平列的同一批 id 重复记入 dropped（与分层行候选双重记账，让每镜参考追溯失真）。
+  if (limit <= 0) return { selected, fallbacks, dropped }
+
   // 分层行存在但本镜无可取用（如场景/道具只登记了状态变体行、或命中的状态行未登记参考）→ 回退隐式基准，
   // 绝不让「登记过参考」的实体静默零参考；场景/道具不带状态上下文，故这条分支对二者是常规路径而非例外。
   if (selected.length === 0) {
@@ -152,28 +160,36 @@ export interface ShotRefSelection {
  * 本镜参考图收集（纯函数，任务 params.refAssetIds 快照源）：
  * shot.ref_asset_ids 直通（前插）→ 角色（shot.characters，跨角色共享 MAX_CHARACTER_REFS_PER_SHOT 名额、按出场顺序截断）
  * → 场景（shot.location 命中行，≤1）→ 道具（shot.props 命中行并集，≤1）；
- * 保序去重；总量 ≤MAX_REFS_PER_SHOT，满额后新的实体选择行进 dropped。
+ * 保序去重；总量 ≤totalLimit（缺省 = MAX_REFS_PER_SHOT），满额后新的实体选择行进 dropped。
  * refIndex 缺省（实体无分层数据）→ 全部走隐式基准，取用结果与未分层项目一致。
  * 场景/道具与角色的差异：二者无 states 语义 → 不做状态命中优先，直接按资产 id 升序取首个可用。
+ * totalLimit 由宿主按登记的模型能力收紧总量（缺省即不收紧，行为与既有口径逐字等价）：
+ * 上限小于宿主总量时，因这一收紧而落选的候选写成「超出模型参考图上限(N)」而非总量文案——
+ * 追溯要能看出这张参考是被模型能力砍掉的，而不是产品自身的总量规则砍掉的（降级不得静默）。
  */
 export function collectRefSelection(
   shot: RefShot,
   indexes: { characters: Map<string, CharacterRow>; scenes: Map<string, CharacterRow>; props: Map<string, CharacterRow> },
   refIndex?: Map<number, EntityRefRow[]>,
   stateCtx?: { episode?: number },
+  totalLimit: number = MAX_REFS_PER_SHOT,
 ): ShotRefSelection {
   const ids: number[] = []
   const seen = new Set<number>()
   const perEntity: { entityId: number; name: string; refs: SelectedRef[] }[] = []
   const fallbacks: string[] = []
   const dropped: SelectedRef[] = []
+  /** 本镜总量是否被模型能力收紧到宿主总量以内（决定落选候选用哪一句原因） */
+  const cappedByModel = totalLimit < MAX_REFS_PER_SHOT
+  const capsDropReason = `超出模型参考图上限(${totalLimit})`
   /** 入列一条参考：保序去重 + 总量上限；返回是否实际入列 */
   const accept = (assetId: number): boolean => {
-    if (seen.has(assetId) || ids.length >= MAX_REFS_PER_SHOT) return false
+    if (seen.has(assetId) || ids.length >= totalLimit) return false
     seen.add(assetId)
     ids.push(assetId)
     return true
   }
+
   /** 该实体的分层行（按资产 id 升序；不改动入参索引） */
   const rowsOf = (row: CharacterRow): EntityRefRow[] => [...(refIndex?.get(row.id) ?? [])].sort((a, b) => a.assetId - b.assetId)
   /** 逐实体记录选择结果（同一实体重复出场只记一次，参考图仍按去重语义共用名额） */
@@ -198,16 +214,24 @@ export function collectRefSelection(
     const row = lookupCharacter(indexes.characters, raw.trim())
     if (!row) continue
     const charRoom = MAX_CHARACTER_REFS_PER_SHOT - charUsed
-    const totalRoom = MAX_REFS_PER_SHOT - ids.length
+    const totalRoom = totalLimit - ids.length
     if (charRoom <= 0 || totalRoom <= 0) {
       // 共享名额或总量已满：本实体候选全部记为裁剪，原因按实际生效的上限区分
-      const reason = charRoom <= 0 ? `超出角色参考图上限(${MAX_CHARACTER_REFS_PER_SHOT})` : `超出参考图总量上限(${MAX_REFS_PER_SHOT})`
+      const reason = charRoom <= 0
+        ? `超出角色参考图上限(${MAX_CHARACTER_REFS_PER_SHOT})`
+        : cappedByModel
+          ? capsDropReason
+          : `超出参考图总量上限(${MAX_REFS_PER_SHOT})`
       const full = selectEntityRefs(row, rowsOf(row), stateMatchCtx, 0)
       note(row, [], { fallbacks: full.fallbacks, dropped: full.dropped.map((d) => ({ ...d, reason })) })
       continue
     }
     const limit = Math.min(charRoom, totalRoom)
     const res = selectEntityRefs(row, rowsOf(row), stateMatchCtx, limit)
+    // 本段名额被收紧后的总量压小（totalRoom < charRoom 才是「模型上限砍的」；两者相等时
+    // 不收紧也会给到同样的名额，原因仍是本段自身上限，不能冒充成能力降级）
+    if (cappedByModel && totalRoom < charRoom) for (const d of res.dropped) d.reason = capsDropReason
+
     const refs = [...res.selected]
     let added = 0
     for (const s of res.selected) if (accept(s.assetId)) added += 1
@@ -251,14 +275,16 @@ export function collectRefSelection(
 
 /**
  * 本镜参考图 id 列表（collectRefSelection 的薄封装，保持既有探针断言可直接消费）
+ * totalLimit 透传给主函数：缺省即宿主总量，收紧时与出图入队同一口径（两者不得各算一套）
  */
 export function collectRefAssetIds(
   shot: RefShot,
   indexes: Parameters<typeof collectRefSelection>[1],
   refIndex?: Map<number, EntityRefRow[]>,
   stateCtx?: { episode?: number },
+  totalLimit?: number,
 ): number[] {
-  return collectRefSelection(shot, indexes, refIndex, stateCtx).ids
+  return collectRefSelection(shot, indexes, refIndex, stateCtx, totalLimit ?? MAX_REFS_PER_SHOT).ids
 }
 
 /** 参考图 id 合并（上传参考前置→ 实体/画布参考，保序去重，总量 ≤limit） */
