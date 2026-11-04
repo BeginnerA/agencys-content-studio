@@ -20,11 +20,12 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Checker } from '../../probe-lib'
-import { ContinuityError, type Approval, type TargetRequest } from '../../../src/services/continuity/contract'
+import { ContinuityError, type TargetRequest } from '../../../src/services/continuity/contract'
 import type { Template } from '../../../src/pipeline/types'
 import { withContinuityIO } from '../../../src/services/continuity/runtime'
 import { initDatabase } from './bootstrap'
-import { confirmation, confirmEpisode, fakeIO, insertLedgerRow, installTargetFixture, makeStepContext, persistEntry,
+import { createLifecycleFixtures } from './lifecycle-fixtures'
+import { confirmation, fakeIO, insertLedgerRow, installTargetFixture, makeStepContext, persistEntry,
   chainDecision, templateDecisionEp, seedResumeRun, seedStory, seedUnknownUse, storyDocument } from './fixtures'
 import { test } from './fold'
 
@@ -105,7 +106,6 @@ async function runLifecycleBody(checker: Checker) {
   const lifecycleModule = () => import('../../../src/services/continuity/lifecycle')
 
   mkdirSync(RUN_LOGS_DIR, { recursive: true })
-  type Story = Awaited<ReturnType<typeof seedStory>>
   const codeOf = (status: number, name?: string) => (e: unknown) =>
     e instanceof ContinuityError && e.status === status && (!name || e.code === name)
 
@@ -144,87 +144,10 @@ async function runLifecycleBody(checker: Checker) {
   const errCode = async (res: Response): Promise<string> =>
     ((await res.json()) as { error?: { code?: string } }).error?.code ?? ''
 
-  // ---------- 复用型 fixture ----------
-  const countRecords = async (projectId: number) =>
-    (await db.select({ id: records.id }).from(records).where(eq(records.projectId, projectId))).length
-  const countRuns = async (projectId: number) =>
-    (await db.select({ id: pipelineRuns.id }).from(pipelineRuns).where(eq(pipelineRuns.projectId, projectId))).length
-  const countLiveAssets = async (projectId: number) =>
-    (await db.select({ id: assets.id }).from(assets)
-      .where(and(eq(assets.projectId, projectId), isNull(assets.deletedAt)))).length
-  const livePurposes = async (projectId: number) =>
-    (await db.select({ purpose: assets.purpose }).from(assets)
-      .where(and(eq(assets.projectId, projectId), isNull(assets.deletedAt)))).map(r => r.purpose)
-  const freshProject = async (name: string): Promise<number> => {
-    const [p] = await db.insert(projects).values({ name, createdAt: 1, updatedAt: 1 }).returning()
-    return p!.id
-  }
-  /** 最小台账行：见 fixtures.insertLedgerRow（生命周期守卫的探针直插面，供多节复用）。 */
-  const setupStory = async () => {
-    const f = await seedStory(), ef = fakeIO(empty)
-    await withContinuityIO(ef.io, async () => {
-      for (let i = 0; i < 2; i++) await confirmEpisode(f, i, ef.io)
-    })
-    return { f, ef }
-  }
-  /** route 会话（复刻 route 节同款）：既有建会话服务（deferPlanning 零 LLM）→ 重指项目 → 冻结 decision（rev1/ready）。 */
-  const makeRouteSession = async (story: Story, decisionInput: unknown): Promise<{ sessionId: number; decisionHash: string; revision: number }> => {
-    const detail = await createSession({ content: 'M70 lifecycle 探针：链式生命周期', requestKey: `lc_route_${randomUUID()}`, deferPlanning: true })
-    const sessionId = detail.session.id
-    const decision = agentDecisionSchema.parse(decisionInput)
-    const decisionHash = hashJson(decision)
-    await db.update(creationSessions).set({ projectId: story.projectId, status: 'ready', decision: JSON.stringify(decision),
-      decisionHash, planRevision: 1, preflight: JSON.stringify({ ready: true, issues: [], summary: { mode: decision.mode, templateKeys: [] } }),
-      error: null, updatedAt: Date.now() }).where(eq(creationSessions.id, sessionId))
-    return { sessionId, decisionHash, revision: 1 }
-  }
-  const routeTarget = (sessionId: number, decisionRevision: number, decisionHash: string): Extract<TargetRequest, { kind: 'route' }> =>
-    ({ kind: 'route', sessionId, decisionRevision, decisionHash })
-  /** route 目标包冻结（re-preview → re-approve 同源）：预览/freeze 零模型调用。 */
-  const freezeRoutePack = async (story: Story, ef: ReturnType<typeof fakeIO>, sessionId: number,
-    decisionRevision: number, decisionHash: string): Promise<Approval> => {
-    const target = routeTarget(sessionId, decisionRevision, decisionHash)
-    const p = await withContinuityIO(ef.io, () => previewContext(story.projectId, { target, includePlans: false }))
-    assert.deepEqual(p.blockers, [])
-    return withContinuityIO(ef.io, () => freezeContext(story.projectId, { target, includePlans: false,
-      previewHash: p.doc.previewHash,
-      acceptedGaps: p.doc.gaps.map(g => ({ key: g.key, fingerprint: g.fingerprint, reason: '已核对' })),
-      operationKey: randomUUID() }))
-  }
-  /** 手工异种包冻结（kind=manual），供 run 删除处置探针建 bound 台账行。 */
-  const freezeManualPack = async (story: Story, ef: ReturnType<typeof fakeIO>, episodeId: number, brief: string): Promise<Approval> => {
-    const tpl = loadTemplate('m70-fixture-episode')
-    const norm = prepareRunInput(tpl, { brief, episode_number: 3, with_continuity: true })
-    const target = { kind: 'manual' as const, episodeId, templateKey: 'm70-fixture-episode',
-      input: norm as Extract<TargetRequest, { kind: 'manual' }>['input'] }
-    const p = await withContinuityIO(ef.io, () => previewContext(story.projectId, { target, includePlans: false }))
-    assert.deepEqual(p.blockers, [])
-    return withContinuityIO(ef.io, () => freezeContext(story.projectId, { target, includePlans: false,
-      previewHash: p.doc.previewHash,
-      acceptedGaps: p.doc.gaps.map(g => ({ key: g.key, fingerprint: g.fingerprint, reason: '已核对' })),
-      operationKey: randomUUID() }))
-  }
-  /** resume 批准包冻结，可选携精确未知费用同意。 */
-  const freezeResumePack = async (story: Story, ef: ReturnType<typeof fakeIO>, srcRunId: number,
-    opts: { consentUseId?: number } = {}): Promise<Approval> => {
-    const target: TargetRequest = { kind: 'resume', runId: srcRunId }
-    const p = await withContinuityIO(ef.io, () => previewContext(story.projectId, { target, includePlans: false }))
-    return withContinuityIO(ef.io, () => freezeContext(story.projectId, { target, includePlans: false,
-      previewHash: p.doc.previewHash,
-      acceptedGaps: p.doc.gaps.map(g => ({ key: g.key, fingerprint: g.fingerprint, reason: '已核对' })),
-      operationKey: randomUUID(),
-      ...(opts.consentUseId !== undefined
-        ? { duplicateCostAcceptance: { useId: opts.consentUseId, accepted: true as const } } : {}) }))
-  }
-  /** failed 源 run + 真实目标步行（resume 面探针用）。 */
-  const seedSourceWithStep = async (story: Story, input: Record<string, unknown>): Promise<{ runId: number; stepId: number }> => {
-    const runId = await seedResumeRun(story, 3, input)
-    const tpl = loadTemplate('m70-fixture-episode')
-    const def = tpl.steps[0]!
-    const [step] = await db.insert(pipelineSteps).values({ runId, seq: 1, stepKey: def.key, actionKey: def.action,
-      title: def.title, status: 'failed', attempts: 1, createdAt: 1, updatedAt: 1 }).returning()
-    return { runId, stepId: step!.id }
-  }
+  // ---------- 复用型 fixture（构造见 ./lifecycle-fixtures）----------
+  const { countRecords, countRuns, countLiveAssets, livePurposes, freshProject, setupStory, makeRouteSession,
+    routeTarget, freezeRoutePack, freezeManualPack, freezeResumePack, seedSourceWithStep } =
+    await createLifecycleFixtures(empty)
 
   // ===== 测试主体（节级引擎桩全程生效，任何路径都不得真实执行 run）=====
   try {

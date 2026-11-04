@@ -137,8 +137,8 @@ async function main(): Promise<void> {
         const p = join(SCRIPTS_DIR, f)
         check(lineCount(p) <= LINE_LIMIT, `M26 基建脚本 ≤${LINE_LIMIT}: ${f}（${lineCount(p)} 行）`)
       }
-      // 全量红线扫描（scripts + server/src + web/src）：阶段待拆存量 = 5 探针 + 5 前端；逐一收敛，收口为 0
-      // server/src 纳入扫描（此前仅 scripts + web/src，src 膨胀无拦截）；当前 src 最大 751 行 ≤800，纳入即绿。
+      // 全量红线扫描（scripts + server/src + web/src）：撞线文件一律按域拆分收敛，收口目标为 0。
+      // server/src 纳入扫描（此前仅 scripts + web/src，src 膨胀无拦截）；曾撞线的域文件已拆到各自域文件，当前无 >800 存量。
       const over = [...walk(SCRIPTS_DIR), ...walk(SRC_DIR), ...walk(WEB_SRC_DIR)]
         .map((f) => ({ f, n: lineCount(f) }))
         .filter((x) => x.n > LINE_LIMIT)
