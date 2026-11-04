@@ -449,57 +449,37 @@ export interface RepairView {
 }
 
 export const qualityGatesApi = {
-  /** 触发全部门禁检查（POST /runs/:id/quality-gates） */
-  async triggerAll(runId: number, episodeIdx: number) {
-    const res = await fetch(`/api/v1/runs/${runId}/quality-gates`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ episodeIdx }),
-    })
-    if (!res.ok) throw new Error('触发检查失败')
-    return res.json() as Promise<{ gates: any[] }>
-  },
+  /**
+   * 触发全部门禁检查（POST /runs/:id/quality-gates）
+   * 走统一请求封装：服务端把拒因写在 `{error:{code,message}}`（如场次无出图资产、阶段未启用），
+   * 自造泛化文案会把「为什么被拒」吞成一句「触发检查失败」，面板就只剩用户猜。
+   */
+  triggerAll: (runId: number, episodeIdx: number) =>
+    api.post<{ gates: any[] }>(`/api/v1/runs/${runId}/quality-gates`, {
+      episodeIdx,
+    }),
 
   /** 查询全部门禁状态（GET /runs/:id/quality-gates?episodeIdx=N） */
-  async getAll(runId: number, episodeIdx: number) {
-    const res = await fetch(
+  getAll: (runId: number, episodeIdx: number) =>
+    api.get<{ gates: any[] }>(
       `/api/v1/runs/${runId}/quality-gates?episodeIdx=${episodeIdx}`,
-    )
-    if (!res.ok) throw new Error('查询门禁失败')
-    return res.json() as Promise<{ gates: any[] }>
-  },
+    ),
 
   /** 查询单阶段门禁详情（GET /runs/:id/quality-gates/:stage?episodeIdx=N） */
-  async getStage(runId: number, stage: string, episodeIdx: number) {
-    const res = await fetch(
+  getStage: (runId: number, stage: string, episodeIdx: number) =>
+    api.get<{ gate: any; issues: any[] }>(
       `/api/v1/runs/${runId}/quality-gates/${stage}?episodeIdx=${episodeIdx}`,
-    )
-    if (!res.ok) throw new Error('查询阶段失败')
-    return res.json() as Promise<{ gate: any; issues: any[] }>
-  },
+    ),
 
   /** 豁免指定问题（POST /quality-gates/issues/:id/exempt） */
-  async exemptIssue(issueId: number, reason: string) {
-    const res = await fetch(`/api/v1/quality-gates/issues/${issueId}/exempt`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
-    })
-    if (!res.ok) throw new Error('豁免失败')
-    return res.json() as Promise<{ gate: any }>
-  },
+  exemptIssue: (issueId: number, reason: string) =>
+    api.post<{ gate: any }>(`/api/v1/quality-gates/issues/${issueId}/exempt`, {
+      reason,
+    }),
 
-  /** 取消豁免（POST /quality-gates/issues/:id/unexempt） */
-  async unexemptIssue(issueId: number) {
-    const res = await fetch(
-      `/api/v1/quality-gates/issues/${issueId}/unexempt`,
-      {
-        method: 'POST',
-      },
-    )
-    if (!res.ok) throw new Error('取消豁免失败')
-    return res.json() as Promise<{ gate: any }>
-  },
+  /** 取消豁免（POST /quality-gates/issues/:id/unexempt；无请求体） */
+  unexemptIssue: (issueId: number) =>
+    api.post<{ gate: any }>(`/api/v1/quality-gates/issues/${issueId}/unexempt`),
 }
 
 // ===== 逐出镜实体一致性评价（分层参考链路） =====
