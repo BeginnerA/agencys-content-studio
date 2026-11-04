@@ -428,6 +428,40 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 
 **后续**：M74 角色一致性工程化（R04）
 
+## M74：角色一致性工程化（2026-11-04）
+
+**目标**：实现 R04——把角色视觉一致性从「参考图能传」提升为「可控参考策略」：分层选择、逐镜可追溯、降级必显式、一致性可量化进门禁
+
+**交付**：
+- entity_references 表：角色参考分层登记（base/state/view + stateKey/viewKey/enabled/note，实体×资产唯一）
+- character_consistency_results 表：逐角色一致性评价结果（run×entity 一行，重评覆盖；score=NULL 表「无法评价」）
+- style_presets.negative 列：风格预设负向约束，与风格片段一体复用
+- `characters.refAssetIds` 改为派生列表：分层写路径后按 base→state→view 重算，下游出图/溯源/旧读路径零改动
+- 分层选择策略 services/ref-selection.ts + 状态匹配共享 services/state-match.ts：状态命中优先该状态参考、无则回退基准并记回退原因、超限裁剪记原因；未登记分层行时按扁平列走「隐式基准」语义
+- 图像模型能力表 services/image-caps.ts（宿主侧，不改 kit）：supportsRefs / maxRefs（未登记模型保守缺省）/ supportsNegativePrompt / notes；出图前解析并把 caps + refSelection 快照写进 gen_tasks.params
+- 参考分层端点 7 个（CRUD4 + backfill + selection-preview + GET /image-caps）+ 一致性端点 2 个（POST /runs/:id/consistency-eval、GET /runs/:id/character-consistency）
+- 逐角色一致性评价服务：复用 M24 多模态评分契约，按实体分组取样（≤24 张）、评价失败不产假分；M73 final 阶段注册 checker character.consistency（未评价=NULL 落 info、<5 分 blocking、<7 分 warning），豁免与门禁数学复用既有实现
+- 前端：参考分层管理面板（EntityRefsPanel + EntityRefPreviewPanel 选择预览）、逐角色一致性卡片（CharacterConsistencyPanel）、运行建造前的能力警示条（RunFormModal）、风格预设 negative 输入
+- 探针 probe-m74.ts 六节（storage/selection/caps/service/consistency/endpoints，133 项断言，LLM 走本地 stub、零联网）
+- 删除面收编：硬删/软删/会话删除/版本清理六处入口先行清理分层行与结果行，避免外键阻断
+- 全量回归顺手修复的存量缺陷：保留用途过滤用裸 `purpose NOT IN (...)`，SQL 三值逻辑对 `purpose IS NULL` 判
+  UNKNOWN → 未标注用途的素材在列表/计数/选材面整体隐身；改为 NULL 安全的 `excludeReservedPurpose()`
+  （素材列表、自动摘要、段间选材三处共用）
+
+**验收**：全量探针 exit 0、server/web tsc exit 0、`web:build` 生产打包 exit 0、注释门禁通过、
+split-audit 单文件 ≤800 通过、格式门通过（按仓库检出的 `core.autocrlf=true` 事实把 prettier
+`endOfLine` 定为 `auto`——否则 125 个文件是换行符假阳性，门禁永久红）
+**为什么补打包门禁**：`vue-tsc --noEmit` 不解析模板属性表达式，全量探针也不碰模板编译，
+一个「类型绿、探针绿、线上打不出包」的模板断裂能静默进 master（本次真踩到：多语句内联点击处理器
+被格式器拆行后 Vue 按单表达式解析报错）。`ci:check` 因此在类型检查后插入 `pnpm web:build`。
+
+**后续**：
+- 一致性评价的参考资产目前只认同项目资产，跨项目/全局素材池参考未放行（已登记为独立后续任务）
+- 逐角色评价是「点一次按钮，出镜实体串行各调一次多模态模型」：请求侧只放宽了超时，没有预算上限、
+  并发闸或分批进度，实体多时花费与等待都由用户一次点击承担——接 R06 的预算闸口径另立任务收口
+- 负向词仍以「必须剔除：」写进提示词锚点；supportsNegativePrompt 只作能力登记，产品未把负向词路由到供应商 extra.negative_prompt 通道
+- 一致性量表两套并存：运行级 0–1（M71 版本稳定度代理）与逐角色 0–10（本里程碑），口径未合并
+
 ## 校准规则
 
 1. 每里程碑结束写 review 记录：与 L1 spec 的 exit criteria 逐条对照 → 回写本文档（阶段描述 / 红线 / 不变式）
