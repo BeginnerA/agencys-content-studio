@@ -122,7 +122,7 @@ export async function runEndpoints(checker: Checker) {
     // First trigger to create gates
     await app.request(`/runs/${runId}/quality-gates`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ episodeIdx: 0 }),
     })
 
@@ -131,7 +131,14 @@ export async function runEndpoints(checker: Checker) {
     assert.equal(res.status, 200, `status must be 200, got ${res.status}`)
     const data = await json(res)
     assert.ok(Array.isArray(data.gates), 'response must contain gates array')
-    assert.ok(data.gates.length > 0, 'must have at least 1 gate')
+    // Unconditional count: the trigger above writes exactly one gate per stage, so a missing
+    // gate (a dropped stage) must fail here rather than pass on "any gate present".
+    assert.equal(data.gates.length, 5, `trigger creates one gate per stage (5), got ${data.gates.length}`)
+    assert.deepEqual(
+      [...data.gates].map((g: { stage: string }) => g.stage).sort(),
+      ['dialogue', 'episode', 'final', 'outline', 'scene'],
+      'all five stages carry a gate row',
+    )
     await cleanupRun()
   })
 
@@ -197,15 +204,22 @@ export async function runEndpoints(checker: Checker) {
       body: JSON.stringify({ episodeIdx: 0 }),
     })
 
-    // Check dialogue stage (has review.findings issues with evidence)
+    // The seeded open review finding makes the dialogue stage emit a review.findings issue every run,
+    // so this assertion is unconditional: an empty dialogue issue set is a regression, not a pass.
     const res = await app.request(`/runs/${runId}/quality-gates/dialogue?episodeIdx=0`)
+    assert.equal(res.status, 200, `status must be 200, got ${res.status}`)
     const data = await json(res)
-    if (data.issues && data.issues.length > 0) {
-      for (const issue of data.issues) {
-        // Evidence should be parsed from JSON string to object
-        assert.ok(typeof issue.evidence === 'object', 'evidence must be parsed as object')
-      }
+    assert.ok(Array.isArray(data.issues), 'response must contain issues array')
+    assert.ok(data.issues.length > 0, 'dialogue stage must carry the seeded review.findings issue')
+    for (const issue of data.issues) {
+      // Evidence must be parsed from its stored JSON string into an object by the endpoint
+      assert.equal(typeof issue.evidence, 'object', `evidence must be parsed to an object, got ${typeof issue.evidence}`)
+      assert.notEqual(issue.evidence, null, 'parsed evidence must not be null')
     }
+    // The review.findings issue in particular carries the findings array in its evidence
+    const reviewIssue = data.issues.find((i: { checker: string }) => i.checker === 'review.findings')
+    assert.ok(reviewIssue, 'dialogue stage must expose the review.findings checker issue')
+    assert.ok(Array.isArray(reviewIssue.evidence.findings), 'review.findings evidence carries the findings list')
     await cleanupRun()
   })
 
@@ -220,25 +234,33 @@ export async function runEndpoints(checker: Checker) {
       body: JSON.stringify({ episodeIdx: 0 }),
     })
 
-    // Find a blocking issue to exempt
+    // The final stage always emits a blocking qc.verdict issue when the run has no final video,
+    // which is the isolated-env case — so a blocking issue to exempt is guaranteed, never skipped.
     const blockingIssues = await db.select().from(qualityIssues).where(
       and(eq(qualityIssues.runId, runId), eq(qualityIssues.severity, 'blocking'), eq(qualityIssues.exempted, 0)),
     )
+    assert.ok(blockingIssues.length > 0, 'fixture must produce a blocking issue to exempt (final-stage qc.verdict)')
 
-    if (blockingIssues.length > 0) {
-      const issueId = blockingIssues[0]!.id
-      const res = await app.request(`/quality-gates/issues/${issueId}/exempt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: 'acceptable for testing' }),
-      })
-      assert.equal(res.status, 200, `status must be 200, got ${res.status}`)
-      const data = await json(res)
-      assert.ok(data.gate, 'response must contain gate object')
-    } else {
-      // No blocking issues — test passes trivially (seed data may not produce blocking issues)
-      checker.check(true, 'POST /quality-gates/issues/:id/exempt: no blocking issues to exempt (skipped)')
-    }
+    const issueId = blockingIssues[0]!.id
+    const res = await app.request(`/quality-gates/issues/${issueId}/exempt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'acceptable for testing' }),
+    })
+    assert.equal(res.status, 200, `status must be 200, got ${res.status}`)
+    const data = await json(res)
+    assert.ok(data.gate, 'response must contain gate object')
+
+    // The exempted issue flips its flag and, once it was the only blocking issue in its stage,
+    // the re-evaluated gate reads exempt — proving the write actually reached the source of truth.
+    const [row] = await db.select().from(qualityIssues).where(eq(qualityIssues.id, issueId)).limit(1)
+    assert.equal(row!.exempted, 1, 'issue row must record the exemption')
+    assert.equal(row!.exemptReason, 'acceptable for testing', 'exemption reason persisted verbatim')
+    const [gateRow] = await db.select().from(qualityGates).where(
+      and(eq(qualityGates.runId, runId), eq(qualityGates.episodeIdx, 0), eq(qualityGates.stage, row!.stage)),
+    ).limit(1)
+    assert.ok(gateRow, 're-evaluated gate row must exist for the stage')
+    assert.equal(gateRow!.status, 'exempt', `stage gate becomes exempt once its blocking issue is waived, got ${gateRow!.status}`)
     await cleanupRun()
   })
 

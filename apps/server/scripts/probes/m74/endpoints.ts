@@ -2,7 +2,7 @@
  * 端点节（真实应用挂载：全部经 src/app.ts 导出的实例发 /api/v1 请求，不自建路由）。
  *
  * 覆盖：挂载前缀本身成为被测事实；分层登记七个端点的完整闭环与整套错误码词汇表；
- * 空补丁的零副作用语义；派生列真源边界（扁平直写只造成可见窗口，下一次分层写即回正）；
+ * 空补丁的零副作用语义；整列替换落到分层真源（已分层实体把新列建成基准行、被移出的旧行置灰不删可重开；未分层实体逐字写扁平列）；
  * 逐镜预览与图像能力端点；一致性评价端点与只读回显；门禁全阶段触发与豁免回转；
  * 风格负向词「写 → 读回 → 注入锚点 → 清空」整链；删除面级联见同目录级联文件。
  */
@@ -320,51 +320,57 @@ export async function runEndpoints(checker: Checker): Promise<void> {
     assert.equal(errorShape(badEpisode.data).code, 'bad_episode', '集数查询参数独立成码')
   })
 
-  // ── 三、派生列真源边界：直写只造成可见窗口 ───────────────────────────────
-  let directWriteIds: number[] = []
-  await t('派生列真源：分层行在位时扁平直写确实覆盖列值（服务端不设闸）', async () => {
-    const layersBefore = (await getRefs(epEntity)).refs.length
-    const x1 = await newImageAsset(epProject, '直写一')
-    const x2 = await newImageAsset(epProject, '直写二')
-    directWriteIds = [x1, x2]
+  // ── 三、整列替换落到分层真源：已分层实体不再被扁平直写冲掉 ─────────────────
+  let replaceNewIds: number[] = []
+  await t('整列替换（已分层实体）：新列成启用基准行、被移出的旧行置灰不删、派生列与新列一致', async () => {
+    const before = await getRefs(epEntity)
+    const preRows = before.refs.filter((r) => r.enabled)
+    assert.ok(preRows.length > 0, '前置：该实体有启用分层行（替换才会走真源路径）')
+    const preIds = preRows.map((r) => r.id)
+    const x1 = await newImageAsset(epProject, '整列替换一')
+    const x2 = await newImageAsset(epProject, '整列替换二')
+    replaceNewIds = [x1, x2]
     const put = await call('PUT', `/entities/${epEntity}`, { ref_asset_ids: [x1, x2] })
-    assert.equal(put.status, 200, `直写应成功（无闸），实得 ${put.status} ${put.body}`)
-    assert.deepEqual(await flatRefIds(epEntity), [x1, x2], `扁平列确实被覆盖，实得 ${JSON.stringify(await flatRefIds(epEntity))}`)
-    assert.equal((await getRefs(epEntity)).refs.length, layersBefore, '覆盖窗口内分层行原样不动')
+    assert.equal(put.status, 200, `整列替换应成功，实得 ${put.status} ${put.body}`)
+    // 派生列必须等于新列（enabled 行整体重算，只余本次两张）——旧「直写覆盖但分层不动」的可见窗口已消除
+    assert.deepEqual(await flatRefIds(epEntity), [x1, x2], `派生列与新列一致，实得 ${JSON.stringify(await flatRefIds(epEntity))}`)
+    const after = await getRefs(epEntity)
+    const newRows = after.refs.filter((r) => r.assetId === x1 || r.assetId === x2)
+    assert.equal(newRows.length, 2, `新列两张各成一条分层行，实得 ${newRows.length}`)
+    assert.ok(newRows.every((r) => r.role === 'base' && r.enabled === true), '新列行一律启用基准角色')
+    // 被移出列表的旧行置灰（enabled=false）但不删除：行标识仍在清单，保留分层意图与重开能力
+    for (const id of preIds) {
+      const r = after.refs.find((x) => x.id === id)
+      assert.ok(r, `原启用行 #${id} 一条未删（仍在清单，可重开）`)
+      assert.equal(r!.enabled, false, `原启用行 #${id} 被移出新列后应置灰不删，实得 enabled=${r!.enabled}`)
+    }
+    // 响应体回显派生同步后的行：分层真源写入排在其它字段落库之后，前端不应拿到替换前的旧参考集
+    assert.deepEqual(put.data?.entity?.refAssetIds, [x1, x2], `响应体参考集与真源同步后的派生列一致，实得 ${JSON.stringify(put.data?.entity?.refAssetIds)}`)
   })
 
-  await t('覆盖窗口内：预览与出图侧取用仍只认分层行（扁平列不参与）', async () => {
-    const preview = await call('GET', `/entities/${epEntity}/selection-preview?scene=4`)
-    const previewIds: number[] = (preview.data?.selected ?? []).map((s: { assetId: number }) => s.assetId)
-    const layerAssetIds = new Set((await getRefs(epEntity)).refs.filter((r) => r.enabled).map((r) => r.assetId))
-    assert.ok(previewIds.length > 0, '预览仍有取用结果')
-    assert.ok(previewIds.every((id) => layerAssetIds.has(id)), `预览全部落在启用分层行内，实得 ${JSON.stringify(previewIds)}`)
-
-    // 出图侧的真实取用面：实体索引 + 分层索引喂给同一份纯选择函数（与出图动作同源）
-    const { loadEntityIndex } = await import('../../../src/services/character')
-    const { loadRefIndex } = await import('../../../src/services/entity-references')
-    const { collectRefAssetIds } = await import('../../../src/services/ref-selection')
-    const indexes = { characters: await loadEntityIndex(epProject), scenes: new Map(), props: new Map() }
-    const refIndex = await loadRefIndex([epEntity])
-    const taken = collectRefAssetIds({ id: 'shot-win-1', characters: ['端点主角'] }, indexes, refIndex)
-    assert.ok(taken.length > 0, '出图侧取用仍有结果')
-    assert.ok(taken.every((id) => layerAssetIds.has(id)), `出图侧只认分层行，实得 ${JSON.stringify(taken)}`)
-    const overwritten = await flatRefIds(epEntity)
-    assert.deepEqual(taken.filter((id) => overwritten.includes(id)), [], `被直写覆盖的扁平列一项都没参与取用（列值 ${JSON.stringify(overwritten)} 与取用 ${JSON.stringify(taken)} 不相交）`)
+  await t('置灰不删可重开：把一张被移出的旧行重新启用即回到派生列', async () => {
+    const off = (await getRefs(epEntity)).refs.find((r) => !r.enabled && r.role === 'base')
+    assert.ok(off, '存在一条被移出的旧基准行可作重开夹具')
+    const reopen = await call('PATCH', `/entity-references/${off!.id}`, { enabled: true })
+    assert.equal(reopen.status, 200, `重开应 200，实得 ${reopen.status} ${reopen.body}`)
+    const flat = await flatRefIds(epEntity)
+    assert.ok(flat.includes(off!.assetId), `重开后该资产回到派生列，实得 ${JSON.stringify(flat)}`)
+    assert.deepEqual(flat, await recomputeFromHelper(epEntity), '派生列恒等于启用行重算值（置灰→重开全程一致）')
+    // 收尾：整列恢复到只含两张新列资产，后续节的前置态确定
+    await call('PUT', `/entities/${epEntity}`, { ref_asset_ids: replaceNewIds })
+    assert.deepEqual(await flatRefIds(epEntity), replaceNewIds, `收尾后派生列回到 ${JSON.stringify(replaceNewIds)}`)
   })
 
-  await t('下一次分层写即回正：派生列回到启用行重算值', async () => {
-    const payload = await getRefs(epEntity)
-    const row = payload.refs.find((r) => r.enabled)!.id
-    const toggle = await call('PATCH', `/entity-references/${row}`, { enabled: false })
-    assert.equal(toggle.status, 200, `回正用的分层写应成功，实得 ${toggle.status} ${toggle.body}`)
-    const afterOff = await flatRefIds(epEntity)
-    assert.ok(afterOff.length > 0, '回正后派生列非空')
-    assert.deepEqual(afterOff, await recomputeFromHelper(epEntity), `分层写把列回正为启用行重算值，实得 ${JSON.stringify(afterOff)}`)
-    assert.deepEqual(afterOff.filter((id) => directWriteIds.includes(id)), [], `直写进去的两项被分层写冲掉（列值 ${JSON.stringify(afterOff)} 不含 ${JSON.stringify(directWriteIds)}）`)
-    const restore = await call('PATCH', `/entity-references/${row}`, { enabled: true })
-    assert.equal(restore.status, 200, '恢复启用')
-    assert.deepEqual(await flatRefIds(epEntity), await recomputeFromHelper(epEntity), '再次分层写后仍等于全量启用行重算')
+  await t('未分层实体整列替换：逐字写扁平列且不建任何分层行（既有语义零改动）', async () => {
+    const pid = await newProject('整列替换-未分层')
+    const eid = await newEntity(pid, '未分层主角')
+    const p1 = await newImageAsset(pid, '未分层一')
+    const p2 = await newImageAsset(pid, '未分层二')
+    const put = await call('PUT', `/entities/${eid}`, { ref_asset_ids: [p1, p2] })
+    assert.equal(put.status, 200, `未分层整列替换应成功，实得 ${put.status} ${put.body}`)
+    assert.deepEqual(await flatRefIds(eid), [p1, p2], '扁平列被逐字整列写入（未分层路径不派生、不重排）')
+    const payload = await getRefs(eid)
+    assert.equal(payload.refs.length, 0, '未分层实体整列替换不建任何分层行')
   })
 
   // ── 四、图像能力端点 ─────────────────────────────────────────────────────

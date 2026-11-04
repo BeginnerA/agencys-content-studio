@@ -8,11 +8,17 @@
 import assert from 'node:assert/strict'
 import type { Checker } from '../../probe-lib'
 import { initDatabase, newImageAsset, newTextAsset } from './bootstrap'
-import { call, count, flatRefIds, rowsOf, test } from './helpers'
+import { call, count, flatRefIds, recomputeRefIds, rowsOf, test } from './helpers'
 
 /** 该实体由派生同步写入的实体版本条数（每写一次库记一条；中途失真会多出一条幽灵版本） */
 async function recalcVersionCount(entityId: number): Promise<number> {
   const rows = await rowsOf<{ n: number }>('SELECT COUNT(*) AS n FROM content_versions WHERE obj_kind = ? AND obj_id = ? AND label = ?', ['entity', entityId, '参考分层重算'])
+  return Number(rows[0]?.n ?? 0)
+}
+
+/** 指定文案的实体版本条数（挂接路径按「参考图挂接 +N」记版，与派生重算文案区分） */
+async function attachVersionCount(entityId: number, label: string): Promise<number> {
+  const rows = await rowsOf<{ n: number }>('SELECT COUNT(*) AS n FROM content_versions WHERE obj_kind = ? AND obj_id = ? AND label = ?', ['entity', entityId, label])
   return Number(rows[0]?.n ?? 0)
 }
 
@@ -39,6 +45,7 @@ export async function runService(checker: Checker) {
   const {
     addEntityRef,
     backfillEntityRefs,
+    hasEntityRefRows,
     listEntityRefs,
     loadRefIndex,
     patchEntityRef,
@@ -296,6 +303,104 @@ export async function runService(checker: Checker) {
     assert.equal(second.added, 0, `再次回填零新增，实得 ${second.added}`)
     assert.equal((await listEntityRefs(entityId)).length, 1, '零新增回填不写库')
     assert.equal(await recalcVersionCount(entityId), 1, '零新增回填不记版本')
+  })
+
+  // ── 挂接入真源（分层实体追加参考必须走分层行，不得直写派生列）──────────────
+
+  await t('已分层实体挂接新参考 → 新项作启用基准行入表并派生回写，不造第二套口径', async () => {
+    const entityId = await newProjectAndEntity('挂接主角', [], [])
+    const projectId = await projectIdOfEntity(entityId)
+    const first = await newImageAsset(projectId, '挂接首登记')
+    await addEntityRef({ entityId, assetId: first, role: 'base' })
+    assert.ok(await hasEntityRefRows(entityId), '前置：该实体已分层')
+    const g1 = await newImageAsset(projectId, '挂接追加一')
+    const g2 = await newImageAsset(projectId, '挂接追加二')
+    const { attachRefAssetsById } = await import('../../../src/services/character')
+    const added = await attachRefAssetsById(entityId, [g1, g2], 'edit', projectId)
+    assert.equal(added, 2, `两张未登记资产作为新增返回，实得 ${added}`)
+    const rows = await listEntityRefs(entityId)
+    assert.equal(rows.length, 3, `三张全部落成基准行，实得 ${rows.length}`)
+    const byAsset = new Map(rows.map((r) => [r.assetId, r]))
+    for (const id of [g1, g2]) {
+      assert.equal(byAsset.get(id)?.role, 'base', '挂接进来的资产落成启用基准行（非状态/视角）')
+      assert.equal(byAsset.get(id)?.enabled, true, '挂接行默认启用，参与出图取用')
+    }
+    assert.deepEqual(await flatRefIds(entityId), await recomputeRefIds(entityId), '派生列等于启用行重算结果（与登记同一真源）')
+    assert.equal(await attachVersionCount(entityId, '参考图挂接 +2'), 1, `挂接记一条「+2」实体版本，实得 ${await attachVersionCount(entityId, '参考图挂接 +2')} 条`)
+
+    // 重复挂接已登记项：分层真源本就存在 → 零新增、不增行、不记版本
+    const again = await attachRefAssetsById(entityId, [g1, g2], 'edit', projectId)
+    assert.equal(again, 0, `已登记资产再挂接零新增，实得 ${again}`)
+    assert.equal((await listEntityRefs(entityId)).length, 3, '重复挂接不增行')
+    assert.equal(await attachVersionCount(entityId, '参考图挂接 +2'), 1, '零新增不追加挂接版本')
+  })
+
+  await t('未分层实体挂接 → 逐字写扁平列且不建任何分层行（与旧行为等价）', async () => {
+    const entityId = await newProjectAndEntity('未分层挂接', [], [])
+    const projectId = await projectIdOfEntity(entityId)
+    const a = await newImageAsset(projectId, '未分层挂接一')
+    const b = await newImageAsset(projectId, '未分层挂接二')
+    const { attachRefAssetsById } = await import('../../../src/services/character')
+    const added = await attachRefAssetsById(entityId, [a, b], 'edit', projectId)
+    assert.equal(added, 2, `未分层并集两张，实得 ${added}`)
+    assert.deepEqual(await flatRefIds(entityId), [a, b], '扁平列逐字写入两张')
+    assert.equal((await listEntityRefs(entityId)).length, 0, '未分层实体挂接不产生任何分层行')
+    assert.ok(!(await hasEntityRefRows(entityId)), '该实体仍处未分层态')
+    assert.equal(await attachVersionCount(entityId, '参考图挂接 +2'), 1, '未分层路径同样记一条挂接版本')
+  })
+
+  await t('跨项目复制分层实体：登记行随副本重映射重建并派生回写（停用意图也带过去）', async () => {
+    const { db } = await import('../../../src/db')
+    const { canvases, canvasNodes } = await import('../../../src/db/schema')
+    const { copyNodesToCanvas } = await import('../../../src/services/creation/copy-to')
+    const { upsertEntity } = await import('../../../src/services/character')
+    const sp = (await call('POST', '/projects', { name: 'F4 源项目' })).data.project.id as number
+    const tp = (await call('POST', '/projects', { name: 'F4 目标项目' })).data.project.id as number
+    // 源分层实体：启用基准两张 + 停用基准一张 + 启用视角一张（停用行是「只带扁平列会丢」的典型）
+    const srcEnt = await upsertEntity({ projectId: sp, kind: 'character', name: 'F4 主角', appearance: '圆脸', states: [], refAssetIds: [] })
+    const sb1 = await newImageAsset(sp, 'F4源基准一')
+    const sb2 = await newImageAsset(sp, 'F4源基准二')
+    const sOff = await newImageAsset(sp, 'F4源停用')
+    const sv = await newImageAsset(sp, 'F4源视角')
+    await addEntityRef({ entityId: srcEnt.id, assetId: sb1, role: 'base' })
+    await addEntityRef({ entityId: srcEnt.id, assetId: sb2, role: 'base' })
+    const offRow = await addEntityRef({ entityId: srcEnt.id, assetId: sOff, role: 'base' })
+    await patchEntityRef(offRow.id, { enabled: false })
+    await addEntityRef({ entityId: srcEnt.id, assetId: sv, role: 'view', viewKey: '背面' })
+    const srcRows = await listEntityRefs(srcEnt.id)
+    assert.equal(srcRows.length, 4, `源四行（含一张停用），实得 ${srcRows.length}`)
+
+    const now = Date.now()
+    const [srcC] = await db.insert(canvases).values({ projectId: sp, name: '源画布', createdAt: now, updatedAt: now }).returning()
+    const [tgtC] = await db.insert(canvases).values({ projectId: tp, name: '目标画布', createdAt: now, updatedAt: now }).returning()
+    const [node] = await db
+      .insert(canvasNodes)
+      .values({ canvasId: srcC!.id, kind: 'entity', title: '角色', assetId: null, spec: JSON.stringify({ entityId: srcEnt.id }), x: 0, y: 0, createdAt: now, updatedAt: now })
+      .returning()
+
+    const res = await copyNodesToCanvas(srcC!, tgtC!, [node!.id], { x: 0, y: 0 })
+    const dupSpec = JSON.parse(String(res.nodes[0]?.spec)) as { entityId?: number }
+    const dupEnt = dupSpec.entityId
+    assert.ok(dupEnt && dupEnt !== srcEnt.id, `跨项目复制生成副本实体（非复用源实体），实得 ${JSON.stringify(dupSpec)}`)
+
+    const dupRows = await listEntityRefs(dupEnt!)
+    assert.equal(dupRows.length, 4, `副本重建四行分层登记（停用行同样带过去），实得 ${dupRows.length}`)
+    const srcAssetSet = new Set(srcRows.map((r) => r.assetId))
+    assert.ok(dupRows.every((r) => !srcAssetSet.has(r.assetId)), '副本每行都指向重映射后的新资产，不复用源资产')
+    const roleKey = (r: { role: string; stateKey: string | null; viewKey: string | null; enabled: boolean }): string => `${r.role}|${r.stateKey ?? ''}|${r.viewKey ?? ''}|${r.enabled}`
+    assert.deepEqual(
+      dupRows.map(roleKey).sort(),
+      [...srcRows].map(roleKey).sort(),
+      `副本分层行的角色/状态键/视角键/启用位多重集与源逐一对应，源 ${JSON.stringify([...srcRows].map(roleKey).sort())} 副本 ${JSON.stringify(dupRows.map(roleKey).sort())}`,
+    )
+
+    // 停用行不进派生列：副本扁平列必须等于其启用行重算，且比行数少一张
+    const dupRecomputed = await recomputeRefIds(dupEnt!)
+    assert.deepEqual(await flatRefIds(dupEnt!), dupRecomputed, '副本扁平列等于其启用分层行重算结果')
+    assert.equal(dupRecomputed.length, 3, `三张启用行入派生列（停用那张除外），实得 ${dupRecomputed.length}`)
+    const dupAssets = await rowsOf<{ id: number; projectId: number }>(`SELECT id, project_id AS projectId FROM assets WHERE id IN (${dupRows.map((r) => r.assetId).join(',')})`)
+    assert.equal(dupAssets.length, 4, `副本四行资产都可解析，实得 ${dupAssets.length}`)
+    assert.ok(dupAssets.every((a) => Number(a.projectId) === Number(tp)), '副本分层行引用的资产全部归属目标项目')
   })
 }
 

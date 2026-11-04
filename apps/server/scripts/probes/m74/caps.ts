@@ -17,9 +17,23 @@ export async function runCaps(checker: Checker) {
     const caps = capsForProvider('some_vendor', 'some-model')
     assert.equal(caps.maxRefs, DEFAULT_MAX_REFS, `未登记上限取 ${DEFAULT_MAX_REFS}，实得 ${caps.maxRefs}`)
     assert.equal(DEFAULT_MAX_REFS, 4, '保守缺省为四张')
-    assert.equal(caps.notes.length, 1, `带一条来源说明，实得 ${caps.notes.length}`)
+    assert.equal(caps.notes.length, 2, `上限来源一条 + 负向词生效通道一条，实得 ${caps.notes.length} 条：${caps.notes.join(' / ')}`)
     assert.ok(caps.notes[0]!.includes('保守缺省'), `说明含「保守缺省」，实得 ${caps.notes[0]}`)
     assert.ok(caps.notes[0]!.includes('some_vendor/some-model'), '说明把供应商与模型名带上便于事后核对')
+  })
+
+  await t('负向词生效通道随供应商键如实入说明（有原生字段也不谎称已路由）', async () => {
+    const plain = capsForProvider('some_vendor')
+    assert.ok(
+      plain.notes.some((n) => n.includes('无原生负向提示词字段') && n.includes('必须剔除：')),
+      `无原生字段的供应商写明「经提示词锚点生效」，实得 ${plain.notes.join(' / ')}`,
+    )
+    const native = capsForProvider('comfyui_local')
+    assert.ok(
+      native.notes.some((n) => n.includes('原生负向提示词字段') && n.includes('仍统一走提示词锚点通道')),
+      `白名单供应商虽有能力、产品未接入，说明须如实记「仍未路由」，实得 ${native.notes.join(' / ')}`,
+    )
+    assert.equal(capsForProvider(undefined).notes.length, 2, '缺省键同样是上限来源 + 通道两条')
   })
 
   await t('缺省键与模型名同样兜底（无入参也不抛错）', async () => {

@@ -230,4 +230,57 @@ export async function runSelection(checker: Checker) {
     assert.ok(r.fallbacks.some((x) => x.includes('回退基准参考图')), `留痕说明回退来源，实得 ${JSON.stringify(r.fallbacks)}`)
     assert.deepEqual(r.selected.map((x) => x.assetId), [101, 102], '回退集等于扁平历史参考')
   })
+
+  // ── 模型能力收紧总量（totalLimit 进选择层）：快照口径与裁剪归因 ──────────────
+
+  await t('模型上限收紧：被总量挤掉的候选按「超出模型参考图上限」归类，入列集合恰为实发集合', async () => {
+    // 画布直通先占一张，让角色段的「总量剩余」严格小于「角色共享上限」——只有这时裁剪才是被模型总限掐掉的，
+    // 原因才应换成模型上限口径（本段自身上限没到）。缺省总量（六）下同样的候选挤满的是角色段四张上限，口径不同。
+    const indexes = {
+      characters: new Map<string, CharacterRow>([['甲', indexRow({ id: 1, name: '甲' })]]),
+      scenes: new Map<string, CharacterRow>(),
+      props: new Map<string, CharacterRow>(),
+    }
+    const refIndex = new Map<number, EntityRefRow[]>([
+      [1, [ref({ entityId: 1, assetId: 11 }), ref({ entityId: 1, assetId: 12 }), ref({ entityId: 1, assetId: 13 }), ref({ entityId: 1, assetId: 14 }), ref({ entityId: 1, assetId: 15 })]],
+    ])
+    const shot: RefShot = { id: 's1', characters: ['甲'], ref_asset_ids: [999] }
+    const sel = collectRefSelection(shot, indexes, refIndex, {}, 4)
+    assert.equal(sel.ids.length, 4, `入列集合被模型上限掐死在四张，实得 ${JSON.stringify(sel.ids)}`)
+    assert.ok(sel.ids.includes(999), '画布直通那张仍在实发集合')
+    assert.deepEqual(sel.dropped.map((d) => d.assetId).sort((a, b) => a - b), [14, 15], `超模型上限的两张进裁剪，实得 ${JSON.stringify(sel.dropped.map((d) => d.assetId))}`)
+    assert.ok(sel.dropped.every((d) => d.reason.includes('超出模型参考图上限(4)')), `裁剪原因按模型上限归类，实得 ${JSON.stringify(sel.dropped.map((d) => d.reason))}`)
+    const picked = sel.perEntity.flatMap((ent) => ent.refs.map((r) => r.assetId))
+    assert.ok(picked.every((assetId) => sel.ids.includes(assetId)), `逐实体选择结果每项都在实发集合里（refSelection ⊆ 实发），实得 ${JSON.stringify(picked)} vs ${JSON.stringify(sel.ids)}`)
+  })
+
+  await t('缺省总量不冒充能力降级：同样候选在下限六张时按本段上限归类', async () => {
+    const indexes = {
+      characters: new Map<string, CharacterRow>([['甲', indexRow({ id: 1, name: '甲' })]]),
+      scenes: new Map<string, CharacterRow>(),
+      props: new Map<string, CharacterRow>(),
+    }
+    const refIndex = new Map<number, EntityRefRow[]>([
+      [1, [ref({ entityId: 1, assetId: 11 }), ref({ entityId: 1, assetId: 12 }), ref({ entityId: 1, assetId: 13 }), ref({ entityId: 1, assetId: 14 }), ref({ entityId: 1, assetId: 15 })]],
+    ])
+    const shot: RefShot = { id: 's1', characters: ['甲'], ref_asset_ids: [999] }
+    const sel = collectRefSelection(shot, indexes, refIndex, {})
+    assert.equal(sel.ids.length, 5, `缺省总量六时角色封顶四张、加直通一张共五张，实得 ${JSON.stringify(sel.ids)}`)
+    assert.ok(sel.dropped.every((d) => !d.reason.includes('超出模型参考图上限')), `未被模型收紧时不得谎称能力降级，实得 ${JSON.stringify(sel.dropped.map((d) => d.reason))}`)
+    assert.ok(sel.dropped.some((d) => d.reason.includes('超出角色参考图上限(4)') || d.reason.includes('超出参考图上限(4)')), `裁剪原因归本段自身上限，实得 ${JSON.stringify(sel.dropped.map((d) => d.reason))}`)
+  })
+
+  await t('回退留痕经选择层外抛（供入参快照记「为何用基准而非状态图」）', async () => {
+    const indexes = {
+      characters: new Map<string, CharacterRow>([['甲', indexRow({ id: 1, name: '甲', states: [STATE_INJURED], refAssetIds: [900] })]]),
+      scenes: new Map<string, CharacterRow>(),
+      props: new Map<string, CharacterRow>(),
+    }
+    // 命中状态但实体只登记了基准行、没有该状态的分层行 → 该状态档回退基准，留一条「无分层参考，回退基准」
+    const refIndex = new Map<number, EntityRefRow[]>([[1, [ref({ entityId: 1, assetId: 401, role: 'base' })]]])
+    const sel = collectRefSelection({ id: 's1', characters: ['甲'], scene: 1 }, indexes, refIndex, { episode: 1 })
+    assert.equal(sel.fallbacks.length, 1, `回退说明随选择结果外抛一条，实得 ${JSON.stringify(sel.fallbacks)}`)
+    assert.ok(sel.fallbacks[0]!.includes(STATE_INJURED) && sel.fallbacks[0]!.includes('回退基准'), `说明指名回退来源状态，实得 ${sel.fallbacks[0]}`)
+    assert.ok(sel.ids.includes(401), '基准行仍入列，回退不丢参考')
+  })
 }

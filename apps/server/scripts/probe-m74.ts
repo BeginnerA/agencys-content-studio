@@ -7,6 +7,7 @@
  *   3. Service — reference layering service over the real database (add / patch / remove / backfill / preview)
  *   4. Consistency — per-character evaluation over the real chain with a stubbed scoring transport
  *   5. Endpoints — REST contract for every layered-reference and consistency route (real app mount), plus delete-cascade
+ *   6. Ref-caps engine — real aiImage enqueue: model-cap tightening lands in the params snapshot (selection ⊆ sent, cap-cut reason, fallback trace)
  *
  * Constraint: no real paid-model calls, no network, fully isolated SQLite + seed data.
  */
@@ -31,10 +32,11 @@ await runSections({
   title: 'Character-Consistency',
   checker,
   cleanup,
-  sections: ['selection', 'caps', 'service', 'consistency', 'endpoints'],
+  sections: ['selection', 'caps', 'ref-caps-e2e', 'service', 'consistency', 'endpoints'],
   runners: {
     selection: guardNetwork('selection', async () => (await import('./probes/m74/selection')).runSelection(checker)),
     caps: guardNetwork('caps', async () => (await import('./probes/m74/caps')).runCaps(checker)),
+    'ref-caps-e2e': guardNetwork('ref-caps-e2e', async () => (await import('./probes/m74/ref-caps-e2e')).runRefCaps(checker)),
     service: guardNetwork('service', async () => (await import('./probes/m74/service')).runService(checker)),
     consistency: guardNetwork('consistency', async () => (await import('./probes/m74/consistency')).runConsistency(checker)),
     endpoints: guardNetwork('endpoints', async () => (await import('./probes/m74/endpoints')).runEndpoints(checker)),

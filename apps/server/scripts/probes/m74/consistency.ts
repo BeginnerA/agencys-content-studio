@@ -26,7 +26,9 @@ import {
   LEAK_KEY,
   LEAK_TOKEN,
   LEAK_URL,
+  callAssetIdSets,
   installStubFetch,
+  lastSentScoreDims,
   outboundViolations,
   restoreFetch,
   replyAs,
@@ -241,6 +243,16 @@ export async function runConsistency(checker: Checker): Promise<void> {
       assert.equal(row.note, null, '评分成功不附说明')
     })
 
+    await t('入库分取自一致性维度（回放三维互不相同，读错维度就撞红）', () => {
+      const dims = lastSentScoreDims()
+      assert.ok(dims, `桩应留下带三维取值的评分回放，实得 ${JSON.stringify(dims)}`)
+      assert.equal(new Set([dims!.consistency, dims!.style, dims!.quality]).size, 3, `回放三维须互不相同，实得 ${JSON.stringify(dims)}`)
+      const row = byId.get(eLayered)!
+      assert.equal(row.score, dims!.consistency, `入库分恰好等于一致性那一维，实得 ${row.score}（回放三维 ${JSON.stringify(dims)}）`)
+      assert.notEqual(row.score, dims!.style, '入库分不等于风格维：改读该维度会在这里撞红')
+      assert.notEqual(row.score, dims!.quality, '入库分不等于质量维：改读该维度会在这里撞红')
+    })
+
     await t('已分层实体出图全纳入抽样', () => {
       const row = byId.get(eLayered)!
       assert.equal(row.assetTotal, 2, `两张出图，实得 ${row.assetTotal}`)
@@ -282,10 +294,21 @@ export async function runConsistency(checker: Checker): Promise<void> {
       assert.equal(row.score, null, '评分异常不产假分')
     })
 
-    await t('抽样上限：二十六张出图取最新二十四张', () => {
+    await t('抽样上限：二十六张出图取最新二十四张（断实际入样集合，不只看计数）', () => {
       const row = byId.get(eMany)!
       assert.equal(row.assetTotal, 26, `总数记全量，实得 ${row.assetTotal}`)
       assert.equal(row.assetSampled, 24, `被评集截到上限，实得 ${row.assetSampled}`)
+      // 取证面是评分请求体里真正带出去的 asset_id 集合：只断计数的话，抽样排序方向写反（取最旧 24 张）也能全绿
+      const sentSets = callAssetIdSets()
+      const sampledSet = sentSets.find((ids) => ids.length === 24)
+      assert.ok(sampledSet, `应有一发请求恰好带 24 张被评图（本 run 只有多镜头主角触上限），实得集合尺寸 ${sentSets.map((s) => s.length).join('/')}`)
+      assert.deepEqual(
+        [...sampledSet!].sort((a, b) => a - b),
+        [...manyShots.slice(2)].sort((a, b) => a - b),
+        '入样集合应为最新 24 张（建资产序最靠后的 24 个），不是最旧 24 张',
+      )
+      assert.ok(!sampledSet!.includes(manyShots[0]!), '最旧那张出图不在样本里')
+      assert.ok(!sampledSet!.includes(manyShots[1]!), '次旧那张出图不在样本里')
     })
 
     await t('评分来源（模型 / 供应商）随结果落库', async () => {
@@ -382,6 +405,42 @@ export async function runConsistency(checker: Checker): Promise<void> {
           assert.equal(await consistencyBlockingCount(g.runId), 0, '达标分数下本检查项零贡献（其它检查器各自阻断与本断言无关）')
         })
       }
+    }
+
+    // ── 分级阈值取整边界：判定用未取整的原始比值，展示才用取整值 ────────────────
+    // 门禁的比较口径必须是 score/10 的原值，展示口径（证据 normalized）才是两位取整值；
+    // 二者混用会让「四成九九五」这类恰好取整到五成的分数被误判为达标而放行。
+    // 评分链把每张图的分钳到一位小数（clampScore），因此真实评分产不出跨阈值的两位小数原值——
+    // 这里按「历史遗留/边界态」直接改写落库分数来复现该值：被测的是门禁比较用了哪个数，不是评分落库精度。
+    async function setPersistedScore(runId: number, entityId: number, score: number): Promise<void> {
+      const { sqlite } = await import('../../../src/db')
+      await sqlite.execute({ sql: 'UPDATE character_consistency_results SET score = ? WHERE run_id = ? AND entity_id = ?', args: [score, runId, entityId] })
+    }
+    {
+      const g = await gradeFixture('取整边界阻断')
+      replyScore(8)
+      await runConsistencyEval(g.runId)
+      await setPersistedScore(g.runId, g.entityId, 4.995)
+      await runStage(g.runId, 0, 'final')
+      const issues = await consistencyIssues(g.runId)
+      await t('落库分 4.995：原比值低于五成即阻断，证据却取整记为五成', () => {
+        assert.equal(issues.length, 1, `一条阻断，实得 ${issues.map((i) => i.severity).join('/')}`)
+        assert.equal(issues[0]!.severity, 'blocking', '原比值 0.4995 小于五成，必须归阻断（若误用取整值 0.5 参与比较会漏放）')
+        assert.ok(String(issues[0]!.evidence).includes('"normalized":0.5'), `展示取整为五成，实得 ${issues[0]!.evidence}`)
+      })
+    }
+    {
+      const g = await gradeFixture('取整边界警告')
+      replyScore(8)
+      await runConsistencyEval(g.runId)
+      await setPersistedScore(g.runId, g.entityId, 6.995)
+      await runStage(g.runId, 0, 'final')
+      const issues = await consistencyIssues(g.runId)
+      await t('落库分 6.995：原比值低于七成即警告，证据取整记为七成', () => {
+        assert.equal(issues.length, 1, `一条警告，实得 ${issues.map((i) => i.severity).join('/')}`)
+        assert.equal(issues[0]!.severity, 'warning', '原比值 0.6995 小于七成，必须归警告（若误用取整值 0.7 会漏判为达标）')
+        assert.ok(String(issues[0]!.evidence).includes('"normalized":0.7'), `展示取整为七成，实得 ${issues[0]!.evidence}`)
+      })
     }
 
     // ── 场景三：未评价与达标的门禁数学同构（info 不参与阻断/警告计数）─────────
