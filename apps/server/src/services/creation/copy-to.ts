@@ -13,8 +13,9 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { db } from '../../db'
-import { assets, canvasEdges, canvasNodes, characters } from '../../db/schema'
+import { assets, canvasEdges, canvasNodes, characters, entityReferences } from '../../db/schema'
 import type { Canvas, CanvasEdge, CanvasNode } from '../../db/schema'
+import { deriveSync } from '../entity-references'
 import { absPathOf, ensureProjectDirs, registerAsset, relPathOf, sanitizeName } from '../storage'
 import { parseRefIds, safeParseEntitySpec, safeParseSpec } from './spec'
 import { loadCanvasNodes, parseNodeIds, parseOffset } from './ops'
@@ -149,10 +150,15 @@ export async function copyNodesToCanvas(
       return null
     }
     const newRefIds: number[] = []
-    for (const rid of parseRefIds(e.refAssetIds)) {
+    const srcRefRows = await db.select().from(entityReferences).where(eq(entityReferences.entityId, srcEntityId))
+    const flatIds = parseRefIds(e.refAssetIds)
+    for (const rid of flatIds) {
       const nid = await copyAsset(rid)
       if (nid != null) newRefIds.push(nid)
     }
+    // 停用分层行的资产不在扁平列里，也得拷过来：否则副本上这些行找不到映射、只能整行丢弃，
+    // 用户「停用但保留」的分层意图就丢在跨项目复制这一步
+    for (const r of srcRefRows) if (!flatIds.includes(r.assetId)) await copyAsset(r.assetId)
     const [row] = await db
       .insert(characters)
       .values({
@@ -172,6 +178,24 @@ export async function copyNodesToCanvas(
       })
       .returning()
     entityMap.set(srcEntityId, row!.id)
+    // 分层登记行随实体一起重建：entity_references 才是参考集真源，只带扁平列过去的话
+    // 副本实体没有分层行 → 状态/视角变体被当隐式基准取用（语义丢失），且全程无提示。
+    // stateKey 原样带上（副本的 states 列同源复制，条目原文仍精确匹配）。
+    if (srcRefRows.length > 0) {
+      for (const r of srcRefRows) {
+        const copiedAssetId = assetMap.get(r.assetId)
+        if (copiedAssetId == null) {
+          // 资产没拷过来（行缺失/拷贝失败）就没有可登记的资产：留一行警告，不静默丢一半
+          warnings.push(`实体 #${srcEntityId} 的分层参考资产 #${r.assetId} 未能拷贝，该登记行在副本上跳过`)
+          continue
+        }
+        await db
+          .insert(entityReferences)
+          .values({ entityId: row!.id, assetId: copiedAssetId, role: r.role, stateKey: r.stateKey, viewKey: r.viewKey, enabled: r.enabled, note: r.note, createdAt: now })
+      }
+      // 副本的扁平列按它自己的分层真源重算（派生列必须等于 enabled 行重算结果，否则一登记就整体覆盖时会出现两份口径）
+      await deriveSync(row!.id)
+    }
     return row!.id
   }
 

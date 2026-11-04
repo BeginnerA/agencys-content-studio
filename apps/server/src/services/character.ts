@@ -2,6 +2,7 @@ import { and, eq, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { characters, type CharacterRow } from '../db/schema'
 import { recordEntityVersion, type VersionSource } from './provenance'
+import { attachDerivedRefs } from './entity-references'
 
 /**
  * 角色库服务（泛化为实体素材库：kind 多态 character|scene|prop）。
@@ -120,8 +121,9 @@ export async function upsertEntity(p: {
   return { id: inserted.id, created: true }
 }
 
-/** 参考图挂接（kind 限定）：与已有 refAssetIds 并集去重后更新，返回新增数量（未命中实体 / 无新增 → 0）。
- * 有新增时记实体版本（source 由调用上下文区分上传/生成）。projectId=null → 命中全局域行。 */
+/** 参考图挂接（kind 限定）：与已有参考集并集后更新，返回新增数量（未命中实体 / 无新增 → 0）。
+ * 有新增时记实体版本（source 由调用上下文区分上传/生成）。projectId=null → 命中全局域行。
+ * 分层登记已存在的实体由 attachDerivedRefs 改写成真源（见 entity-references 服务的派生列说明）。 */
 export async function attachRefAssets(
   projectId: number | null,
   name: string,
@@ -134,7 +136,9 @@ export async function attachRefAssets(
   return attachRefAssetsById(row.id, assetIds, source, projectId)
 }
 
-/** 按实体行 id 直接挂接（上传/联动通道已持有行 id，免按名解析——避免同名项目行遮蔽全局行）。 */
+/** 按实体行 id 直接挂接（上传/联动通道已持有行 id，免按名解析——避免同名项目行遮蔽全局行）。
+ * 实现收口在 attachDerivedRefs：未分层实体保持「并集写扁平列 + 记版本」的既有语义，
+ * 已分层实体写 entity_references 基准行后派生同步（直写派生列会被下一次分层写覆盖，等于丢数据）。 */
 export async function attachRefAssetsById(
   entityId: number,
   assetIds: number[],
@@ -142,17 +146,7 @@ export async function attachRefAssetsById(
   projectId: number | null = null,
 ): Promise<number> {
   if (assetIds.length === 0) return 0
-  const rows = await db.select().from(characters).where(eq(characters.id, entityId)).limit(1)
-  const row = rows[0]
-  if (!row) return 0
-  const existing = safeArrNum(row.refAssetIds)
-  const merged = [...new Set([...existing, ...assetIds])]
-  const added = merged.length - existing.length
-  if (added > 0) {
-    await db.update(characters).set({ refAssetIds: JSON.stringify(merged), updatedAt: Date.now() }).where(eq(characters.id, row.id))
-    await recordEntityVersion({ entityId: row.id, projectId: projectId ?? row.projectId, source, label: `参考图挂接 +${added}` })
-  }
-  return added
+  return attachDerivedRefs(entityId, assetIds, source, projectId)
 }
 
 // ---- 兼容委托：旧签名保留（kind 恒为 character）；probe-m3 / tts 链 / 存量调用零改动 ----

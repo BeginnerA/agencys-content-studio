@@ -7,7 +7,7 @@
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { assets, characterConsistencyResults, characters, entityReferences, pipelineRuns } from '../db/schema'
-import { recordEntityVersion } from './provenance'
+import { recordEntityVersion, type VersionSource } from './provenance'
 import { GLOBAL_POOL_ID } from './global-pool'
 import { MAX_REFS_PER_SHOT, REF_ROLES, selectEntityRefs } from './ref-selection'
 import type { EntityRefRow, RefRole, SelectedRef } from './ref-selection'
@@ -79,9 +79,14 @@ function parseNumArr(s: string): number[] {
   }
 }
 
+/**
+ * 唯一冲突判定：只认唯一约束本身（约束失败文案 / SQLITE_CONSTRAINT_UNIQUE）。
+ * 通用码 SQLITE_CONSTRAINT 会被外键失败命中（资产行被删或未插同样是约束失败），
+ * 按通用码判会让 FK 故障伪装成「资产已登记」409，用户与日志都看不到真因。
+ */
 function isUniqueViolation(err: unknown): boolean {
   for (let e: unknown = err; e instanceof Error; e = e.cause) {
-    if (/UNIQUE constraint failed|SQLITE_CONSTRAINT/i.test(e.message)) return true
+    if (/UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/i.test(e.message)) return true
   }
   return false
 }
@@ -101,8 +106,9 @@ async function loadCharacterRow(entityId: number): Promise<{ id: number; name: s
  * 派生同步：把该实体 enabled 分层行按 role 优先级（base→state→view）、同层按 id 升序重算成扁平 assetId 列表，
  * 回写 characters.refAssetIds；与现值 JSON 不等才写库并记一条实体版本（避免无变化也刷版本链）。
  * role 不在登记枚举内的历史脏行不入列（等价于停用），与选择策略的 enabled 过滤保持同一取用口径。
+ * 导出给「重建了分层行的写入面」收尾用（跨项目复制副本实体）：派生列必须等于 enabled 行的重算结果。
  */
-async function deriveSync(entityId: number): Promise<void> {
+export async function deriveSync(entityId: number): Promise<void> {
   const rows = await db.select().from(characters).where(eq(characters.id, entityId)).limit(1)
   const entity = rows[0]
   if (!entity) return // 实体已删：无宿主可同步，静默返回
@@ -149,6 +155,125 @@ function assertStateKey(entityStatesJson: string, role: RefRole, stateKey: strin
 async function enabledRowsOf(entityId: number): Promise<EntityRefRow[]> {
   const rows = await db.select().from(entityReferences).where(and(eq(entityReferences.entityId, entityId), eq(entityReferences.enabled, 1)))
   return rows.map((r) => ({ entityId: r.entityId, assetId: r.assetId, role: r.role as RefRole, stateKey: r.stateKey, viewKey: r.viewKey, enabled: r.enabled }))
+}
+
+/* ------------------------------------------------------------------ */
+/* 旧扁平写入面的「真源」入口                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 该实体是否已有分层登记行（不分启用/停用）。
+ * 停用行同样是用户的分层意图：整列覆盖扁平列时它会被派生同步排除在外，
+ * 但「有停用行」依然说明这个实体已经改由分层行描述参考集，旧扁平写必须落到真源。
+ */
+export async function hasEntityRefRows(entityId: number): Promise<boolean> {
+  const rows = await db.select({ id: entityReferences.id }).from(entityReferences).where(eq(entityReferences.entityId, entityId)).limit(1)
+  return rows.length > 0
+}
+
+/** 归属校验（与新增登记同一口径）：资产存在且未删除（404）、项目域兼容（400）；跨项目/已删资产一律拒绝，别吞成 500 */
+async function assertAssetsRegisterable(entityProjectId: number | null, assetIds: number[]): Promise<void> {
+  for (const assetId of assetIds) {
+    const rows = await db
+      .select({ id: assets.id, kind: assets.kind, projectId: assets.projectId, deletedAt: assets.deletedAt })
+      .from(assets)
+      .where(and(eq(assets.id, assetId), isNull(assets.deletedAt)))
+      .limit(1)
+    const asset = rows[0]
+    if (!asset) throw new EntityRefError(404, `资产 ${assetId} 不存在或已删除`)
+    assertAssetScopeCompatible(entityProjectId, asset.projectId, assetId)
+  }
+}
+
+/**
+ * 追加参考图的共享入口（上传/联动/按名挂接都经此，替代直接写扁平列）。
+ * 无分层行 → 与旧行为逐字等价：并集写扁平列 + 记实体版本（未分层项目的既有语义，零改动）。
+ * 有分层行 → 只把尚未登记（不分角色）的资产新增为启用基准行，再派生同步回写扁平列。
+ * 分层行存在时扁平列只是派生列：直写它①不参与出图取用（选择层只读分层行），②下一次分层写会被 enabled 行
+ * 整体覆盖冲掉，③还不留任何提示——用户这次挂的图等于白写，属丢数据，必须走真源。
+ * 口径与新增登记时的历史扁平固化回填一致（同实体同资产只一行、已登记即跳过），不造第二套规则。
+ */
+export async function attachDerivedRefs(
+  entityId: number,
+  assetIds: number[],
+  source: VersionSource = 'edit',
+  versionProjectId?: number | null,
+): Promise<number> {
+  if (!Number.isInteger(entityId) || entityId <= 0) throw new EntityRefError(400, 'entityId 需为正整数')
+  const rows = await db.select().from(characters).where(eq(characters.id, entityId)).limit(1)
+  const entity = rows[0]
+  if (!entity) return 0 // 宿主缺失：旧挂接面本就是「零新增」而非报错（路由面另有自己的 404 判定），保持不变
+  const wanted = [...new Set(assetIds.filter((n) => Number.isInteger(n) && n > 0))]
+  if (wanted.length === 0) return 0
+  if (!(await hasEntityRefRows(entityId))) {
+    const existing = parseNumArr(entity.refAssetIds)
+    const merged = [...new Set([...existing, ...wanted])]
+    const added = merged.length - existing.length
+    if (added > 0) {
+      await db.update(characters).set({ refAssetIds: JSON.stringify(merged), updatedAt: Date.now() }).where(eq(characters.id, entityId))
+      await recordEntityVersion({ entityId, projectId: versionProjectId ?? entity.projectId, source, label: `参考图挂接 +${added}` })
+    }
+    return added
+  }
+  // 分层真源路径：先校验 → 再变更行 → 最后派生同步（中途不回读扁平列做决策）
+  await assertAssetsRegisterable(entity.projectId, wanted)
+  const registered = new Set((await db.select({ assetId: entityReferences.assetId }).from(entityReferences).where(eq(entityReferences.entityId, entityId))).map((r) => r.assetId))
+  const missing = wanted.filter((id) => !registered.has(id))
+  if (missing.length === 0) return 0
+  const now = Date.now()
+  for (const assetId of missing) {
+    await db.insert(entityReferences).values({ entityId, assetId, role: 'base', stateKey: null, viewKey: null, enabled: 1, note: null, createdAt: now })
+  }
+  await deriveSync(entityId)
+  await recordEntityVersion({ entityId, projectId: versionProjectId ?? entity.projectId, source, label: `参考图挂接 +${missing.length}` })
+  return missing.length
+}
+
+/**
+ * 整列替换参考图的共享入口（实体更新的 ref_asset_ids 通道）。
+ * 无分层行 → 与旧行为逐字等价：整列写扁平列。
+ * 有分层行 → 缺失的 id 新增为启用基准行；「已登记但不在新列表里」的行（不分角色）置 enabled=0 而不删行，
+ * 保留用户的分层意图（角色/状态键/备注与重开能力），再派生同步。
+ * 版本记录只在确有行变更时写（与派生同步「无变化不刷版本链」同口径）。
+ */
+export async function replaceDerivedRefs(
+  entityId: number,
+  assetIds: number[],
+  source: VersionSource = 'edit',
+  versionProjectId?: number | null,
+): Promise<void> {
+  if (!Number.isInteger(entityId) || entityId <= 0) throw new EntityRefError(400, 'entityId 需为正整数')
+  const wanted = [...new Set(assetIds.filter((n) => Number.isInteger(n) && n > 0))]
+  if (!(await hasEntityRefRows(entityId))) {
+    await db.update(characters).set({ refAssetIds: JSON.stringify(wanted), updatedAt: Date.now() }).where(eq(characters.id, entityId))
+    return
+  }
+  const host = await loadCharacterRow(entityId) // 实体缺失 → 404（路由面的既有语义）
+  await assertAssetsRegisterable(host.projectId, wanted)
+  const cur = await db.select().from(entityReferences).where(eq(entityReferences.entityId, entityId))
+  const now = Date.now()
+  let changed = false
+  for (const r of cur) {
+    if (wanted.includes(r.assetId)) {
+      if (r.enabled !== 1) {
+        await db.update(entityReferences).set({ enabled: 1 }).where(eq(entityReferences.id, r.id))
+        changed = true
+      }
+      continue
+    }
+    if (r.enabled !== 0) {
+      await db.update(entityReferences).set({ enabled: 0 }).where(eq(entityReferences.id, r.id))
+      changed = true
+    }
+  }
+  const registered = new Set(cur.map((r) => r.assetId))
+  for (const assetId of wanted) {
+    if (registered.has(assetId)) continue
+    await db.insert(entityReferences).values({ entityId, assetId, role: 'base', stateKey: null, viewKey: null, enabled: 1, note: null, createdAt: now })
+    changed = true
+  }
+  await deriveSync(entityId)
+  if (changed) await recordEntityVersion({ entityId, projectId: versionProjectId ?? host.projectId, source, label: '参考图整列替换' })
 }
 
 /** 实体参考分层清单（含停用行，供管理界面完整呈现；实体不存在 404） */

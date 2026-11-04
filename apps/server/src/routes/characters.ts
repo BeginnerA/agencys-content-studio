@@ -6,7 +6,7 @@ import { assets, characters, type CharacterRow } from '../db/schema'
 import { assertRefAssetsForScope, GLOBAL_POOL_ID } from '../services/global-pool'
 import { attachRefAssetsById, ENTITY_KINDS, upsertEntity, type EntityKind } from '../services/character'
 import { recordEntityVersion } from '../services/provenance'
-import { clearLayeringRowsForEntity } from '../services/entity-references'
+import { clearLayeringRowsForEntity, hasEntityRefRows, replaceDerivedRefs } from '../services/entity-references'
 import { cancelEntityRefTask, listEntityRefTasks, startEntityRefGen } from '../services/entity-refgen'
 import { polishAppearance } from '../services/entity-polish'
 import { importFiles, kindByExt } from '../services/storage'
@@ -204,18 +204,30 @@ const updateEntity = h(async (c) => {
     if (!Array.isArray(body['states'])) throw new HttpError(400, 'bad_states', 'states 需为字符串数组')
     patch['states'] = JSON.stringify(cleanStrArr(body['states']))
   }
+  let layeredRefReplacement: number[] | null = null
   if (body['ref_asset_ids'] !== undefined) {
     if (!Array.isArray(body['ref_asset_ids'])) throw new HttpError(400, 'bad_ref_assets', 'ref_asset_ids 需为数组')
     // 替换语义不变；全局素材池域仅接受池资产
-    patch['refAssetIds'] = JSON.stringify(await assertRefAssetsForScope(cur.projectId, body['ref_asset_ids'], 'ref_asset_ids'))
+    const ids = await assertRefAssetsForScope(cur.projectId, body['ref_asset_ids'], 'ref_asset_ids')
+    // 已登记分层的实体改走真源入口：characters.refAssetIds 是由 enabled 分层行重算的派生列，
+    // 整列写它既不参与出图取用（选择层只读分层行）、又会在下一次分层写时被静默冲掉——用户这次替换等于白做。
+    if (await hasEntityRefRows(id)) layeredRefReplacement = ids
+    else patch['refAssetIds'] = JSON.stringify(ids)
   }
   const rows = await db.update(characters).set(patch).where(eq(characters.id, id)).returning()
   // 实质字段变更时记版本
   if (Object.keys(patch).length > 1) {
     await recordEntityVersion({ entityId: id, projectId: cur.projectId, source: 'edit', label: '手工编辑' })
   }
-  const byId = await refAssetsOf([rows[0]!])
-  return c.json({ entity: toEntityView(rows[0]!, byId) })
+  // 分层真源写入排在其它字段落库之后：派生同步会整体重算扁平列，先写别的面再写它才不会互相覆盖
+  let entity = rows[0]!
+  if (layeredRefReplacement !== null) {
+    await replaceDerivedRefs(id, layeredRefReplacement, 'edit', cur.projectId)
+    const after = await findEntityRow(id) // 派生列已被重算，响应须回读真源同步后的行（否则前端拿到替换前的旧参考集）
+    if (after) entity = after
+  }
+  const byId = await refAssetsOf([entity])
+  return c.json({ entity: toEntityView(entity, byId) })
 })
 charactersRoutes.put('/entities/:id', updateEntity)
 charactersRoutes.put('/characters/:id', updateEntity)
