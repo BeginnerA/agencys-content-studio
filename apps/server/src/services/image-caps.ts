@@ -55,14 +55,19 @@ export function capsResolutionFailure(caps: ImageCaps): string | null {
 /**
  * 能力静态判定（纯同步，不触达端点/网络）：命中登记表用登记值，未命中取保守缺省。
  * 负向通道仅由供应商键是否含白名单项决定。
+ * notes 里必须写清负向词的生效通道（记录而非静默）：产品对两种供应商都把「必须剔除：」段注进提示词，
+ * 差别只在供应商是否有原生字段可用——谎称已路由到供应商字段会让排查负向词失效时找错地方。
  */
 export function capsForProvider(providerKey?: string, model?: string): { maxRefs: number; supportsNegativePrompt: boolean; notes: string[] } {
   const key = (providerKey ?? '').toLowerCase()
   const supportsNegativePrompt = NEGATIVE_PROMPT_PROVIDERS.some((token) => key.includes(token))
+  const negativeNote = supportsNegativePrompt
+    ? '该供应商有原生负向提示词字段（kit extra 透传白名单），产品当前仍统一走提示词锚点通道下发负向词'
+    : '该供应商无原生负向提示词字段，负向词经提示词锚点（必须剔除：）生效，非供应商字段'
   const entry = CAP_TABLE.find((e) => e.provider.test(key))
-  if (entry) return { maxRefs: entry.maxRefs, supportsNegativePrompt, notes: [entry.note] }
+  if (entry) return { maxRefs: entry.maxRefs, supportsNegativePrompt, notes: [entry.note, negativeNote] }
   const label = providerKey ? `未登记模型：${providerKey}${model ? `/${model}` : ''}` : '未登记模型'
-  return { maxRefs: DEFAULT_MAX_REFS, supportsNegativePrompt, notes: [`${label}：参考图上限取保守缺省 ${DEFAULT_MAX_REFS}，实际以供应商文档为准`] }
+  return { maxRefs: DEFAULT_MAX_REFS, supportsNegativePrompt, notes: [`${label}：参考图上限取保守缺省 ${DEFAULT_MAX_REFS}，实际以供应商文档为准`, negativeNote] }
 }
 
 /**

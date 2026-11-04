@@ -413,15 +413,19 @@ async function checkCharacterConsistency(
       })
       continue
     }
-    const norm = Math.round((r.score / 10) * 100) / 100
-    if (norm < 0.5) {
+    // 判定用未取整的 score/10 原值，展示（evidence.normalized）才用两位取整值。
+    // 先取整再比阈值会把边界分升档：4.995/10 = 0.4995 本该 blocking，四舍五入成 0.5 后落进 warning 档，
+    // 等于把「该拦住的」放过去；阈值口径（设计里的 score/10 直比）与展示精度是两件事，不能共用一个数。
+    const ratio = r.score / 10
+    const norm = Math.round(ratio * 100) / 100
+    if (ratio < 0.5) {
       issues.push({
         ...base,
         severity: 'blocking',
         evidence: { entityId: r.entityId, entityName, score: r.score, normalized: norm, assetTotal: r.assetTotal, assetSampled: r.assetSampled },
         suggestion: `角色「${entityName}」跨镜一致性 ${r.score}/10（低于 5），建议核对分层参考绑定并重生成偏离镜头。`,
       })
-    } else if (norm < 0.7) {
+    } else if (ratio < 0.7) {
       issues.push({
         ...base,
         severity: 'warning',
