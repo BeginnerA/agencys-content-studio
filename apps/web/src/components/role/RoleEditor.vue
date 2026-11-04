@@ -57,7 +57,10 @@ async function save(roleKey: string, personaFile: string) {
 }
 
 function isOverridden(roleKey: string, currentFile: string): boolean {
-  return defaults.value[roleKey] !== undefined && defaults.value[roleKey] !== currentFile
+  return (
+    defaults.value[roleKey] !== undefined &&
+    defaults.value[roleKey] !== currentFile
+  )
 }
 
 onMounted(load)
@@ -87,7 +90,9 @@ onMounted(load)
           <select
             v-model="role.personaFile"
             class="re-select"
-            :class="{ overridden: isOverridden(role.roleKey, role.personaFile) }"
+            :class="{
+              overridden: isOverridden(role.roleKey, role.personaFile),
+            }"
             :disabled="saving[role.roleKey]"
           >
             <option v-for="file in personaFiles" :key="file" :value="file">

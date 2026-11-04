@@ -94,9 +94,7 @@ export const continuityApi = {
 
   /** ⑥-b 仅草稿可删（confirmed/superseded 受生命周期保护 → 409） */
   remove: (projectId: number, entryId: number) =>
-    api.del<{ ok: true }>(
-      `${V}/projects/${projectId}/continuity/${entryId}`,
-    ),
+    api.del<{ ok: true }>(`${V}/projects/${projectId}/continuity/${entryId}`),
 
   /** ⑦ 整集确认 CAS（绑定所见当前头 + warningsHash） */
   confirm: (projectId: number, entryId: number, body: ConfirmRequest) =>

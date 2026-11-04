@@ -55,7 +55,9 @@ const DIMENSION_LABELS: Record<string, string> = {
 // ─── 计算属性 ────────────────────────────────────────────────────────────────
 
 /** 修复状态是否为「待批准」（显示批准/取消按钮） */
-const isProposed = computed(() => repair.value?.status === 'proposed' || proposal.value != null)
+const isProposed = computed(
+  () => repair.value?.status === 'proposed' || proposal.value != null,
+)
 
 /** 修复状态是否为「执行中」（显示进度，启动轮询） */
 const isRunning = computed(() => {
@@ -110,9 +112,15 @@ const progressPercent = computed(() => {
 
 /** 修复前后分数提升 */
 const scoreImprovement = computed(() => {
-  if (!repair.value || repair.value.scoreBefore == null || repair.value.scoreAfter == null)
+  if (
+    !repair.value ||
+    repair.value.scoreBefore == null ||
+    repair.value.scoreAfter == null
+  )
     return null
-  return Math.round((repair.value.scoreAfter - repair.value.scoreBefore) * 100) / 100
+  return (
+    Math.round((repair.value.scoreAfter - repair.value.scoreBefore) * 100) / 100
+  )
 })
 
 /** 当前展示的问题列表（优先从 repair 取，其次从 proposal 取） */
@@ -255,7 +263,12 @@ function startPolling(): void {
   stopPolling()
   pollTimer = setInterval(async () => {
     await loadRepair()
-    if (repair.value && (repair.value.status === 'completed' || repair.value.status === 'cancelled' || repair.value.status === 'failed')) {
+    if (
+      repair.value &&
+      (repair.value.status === 'completed' ||
+        repair.value.status === 'cancelled' ||
+        repair.value.status === 'failed')
+    ) {
       stopPolling()
     }
   }, 3000)
@@ -291,14 +304,23 @@ watch(
 <template>
   <div class="panel" style="padding: 14px 16px">
     <!-- 标题行 -->
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px">
+    <div
+      style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px"
+    >
       <Icon name="wand" :size="15" />
       <span style="font-size: 13px; font-weight: 600">质量修复</span>
       <span class="chip">第 {{ episodeIdx }} 集</span>
-      <span v-if="repair" class="badge" :class="statusBadgeClass" style="margin-left: 4px">
+      <span
+        v-if="repair"
+        class="badge"
+        :class="statusBadgeClass"
+        style="margin-left: 4px"
+      >
         {{ statusText }}
       </span>
-      <span v-if="loading" class="muted" style="margin-left: auto">加载中…</span>
+      <span v-if="loading" class="muted" style="margin-left: auto"
+        >加载中…</span
+      >
       <button
         v-if="!repair && !loading"
         class="btn sm"
@@ -333,23 +355,48 @@ watch(
 
     <!-- 问题列表（卡片形式） -->
     <template v-if="issues.length > 0">
-      <div style="font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 8px">
-        <Icon name="alert" :size="12" /> 识别到 {{ issues.length }} 个质量维度低于阈值（{{ issues[0]?.threshold ?? 70 }} 分）
+      <div
+        style="
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-2);
+          margin-bottom: 8px;
+        "
+      >
+        <Icon name="alert" :size="12" /> 识别到
+        {{ issues.length }} 个质量维度低于阈值（基准分
+        {{ issues[0]?.threshold ?? 70 }}）
       </div>
-      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px">
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 14px;
+        "
+      >
         <div
           v-for="issue in issues"
           :key="issue.dimension"
           class="card"
           style="padding: 10px 12px"
         >
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-bottom: 6px;
+            "
+          >
             <span style="font-size: 12px; font-weight: 600">
               {{ DIMENSION_LABELS[issue.dimension] ?? issue.dimension }}
             </span>
             <span
               class="badge"
-              :class="issue.score >= (issue.threshold ?? 70) ? 'succeeded' : 'failed'"
+              :class="
+                issue.score >= (issue.threshold ?? 70) ? 'succeeded' : 'failed'
+              "
             >
               {{ Math.round(issue.score) }} 分
             </span>
@@ -357,7 +404,14 @@ watch(
               阈值 {{ issue.threshold ?? 70 }}
             </span>
           </div>
-          <p style="font-size: 11.5px; color: var(--text-2); margin: 0; line-height: 1.5">
+          <p
+            style="
+              font-size: 11.5px;
+              color: var(--text-2);
+              margin: 0;
+              line-height: 1.5;
+            "
+          >
             {{ issue.suggestion }}
           </p>
         </div>
@@ -376,20 +430,38 @@ watch(
         font-size: 12px;
       "
     >
-      <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 8px; font-weight: 500; color: var(--text-2)">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 8px;
+          font-weight: 500;
+          color: var(--text-2);
+        "
+      >
         <Icon name="layers" :size="12" />
         <span>影响范围</span>
       </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; color: var(--text-2)">
+      <div
+        style="
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px 16px;
+          color: var(--text-2);
+        "
+      >
         <span>受影响运行</span>
         <span class="mono" style="color: var(--text)">
           {{ impactScope.affectedRunIds.length }} 个
         </span>
         <span>受影响集号</span>
         <span class="mono" style="color: var(--text)">
-          {{ impactScope.affectedEpisodes.length > 0
-            ? impactScope.affectedEpisodes.join(', ')
-            : '—' }}
+          {{
+            impactScope.affectedEpisodes.length > 0
+              ? impactScope.affectedEpisodes.join(', ')
+              : '—'
+          }}
         </span>
         <span>共享数据源</span>
         <span class="mono" style="color: var(--text)">
@@ -403,33 +475,24 @@ watch(
     </div>
 
     <!-- 操作按钮区（根据状态动态显示） -->
-    <div v-if="repair || proposal" style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap">
+    <div
+      v-if="repair || proposal"
+      style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap"
+    >
       <!-- proposed 状态：批准 / 取消 -->
       <template v-if="repair?.status === 'proposed' || (proposal && !repair)">
-        <button
-          class="btn sm primary"
-          :disabled="operating"
-          @click="doApprove"
-        >
+        <button class="btn sm primary" :disabled="operating" @click="doApprove">
           <Icon name="check" :size="12" />
           {{ operating ? '处理中…' : '批准修复' }}
         </button>
-        <button
-          class="btn sm"
-          :disabled="operating"
-          @click="doCancel"
-        >
+        <button class="btn sm" :disabled="operating" @click="doCancel">
           <Icon name="x" :size="12" /> 取消
         </button>
       </template>
 
       <!-- running / approved 状态：可取消 -->
       <template v-if="isRunning">
-        <button
-          class="btn sm"
-          :disabled="operating"
-          @click="doCancel"
-        >
+        <button class="btn sm" :disabled="operating" @click="doCancel">
           <Icon name="x" :size="12" />
           {{ operating ? '处理中…' : '取消修复' }}
         </button>
@@ -437,30 +500,18 @@ watch(
 
       <!-- completed 状态：采纳 / 拒绝 -->
       <template v-if="isCompleted">
-        <button
-          class="btn sm primary"
-          :disabled="operating"
-          @click="doAccept"
-        >
+        <button class="btn sm primary" :disabled="operating" @click="doAccept">
           <Icon name="check" :size="12" />
           {{ operating ? '处理中…' : '采纳修复' }}
         </button>
-        <button
-          class="btn sm"
-          :disabled="operating"
-          @click="doReject"
-        >
+        <button class="btn sm" :disabled="operating" @click="doReject">
           <Icon name="undo" :size="12" /> 保留旧版本
         </button>
       </template>
 
       <!-- terminal 状态：可重新发起 -->
       <template v-if="isTerminal">
-        <button
-          class="btn sm"
-          :disabled="proposing"
-          @click="doPropose"
-        >
+        <button class="btn sm" :disabled="proposing" @click="doPropose">
           <Icon name="refresh" :size="12" />
           {{ proposing ? '分析中…' : '重新修复' }}
         </button>
@@ -478,7 +529,16 @@ watch(
         font-size: 12px;
       "
     >
-      <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 8px; font-weight: 500; color: var(--text-2)">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 8px;
+          font-weight: 500;
+          color: var(--text-2);
+        "
+      >
         <Icon name="chart" :size="12" />
         <span>修复进度</span>
         <span v-if="isRunning" class="muted" style="margin-left: auto">
@@ -509,7 +569,14 @@ watch(
       </div>
 
       <!-- 进度数字 -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; color: var(--text-2)">
+      <div
+        style="
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px 16px;
+          color: var(--text-2);
+        "
+      >
         <span>尝试次数</span>
         <span class="mono" style="color: var(--text)">
           {{ repair.attemptCount }} / 3
@@ -519,14 +586,23 @@ watch(
           ¥{{ repair.totalCost.toFixed(2) }}
         </span>
         <span v-if="repair.scoreBefore != null">修复前分数</span>
-        <span v-if="repair.scoreBefore != null" class="mono" style="color: var(--text)">
+        <span
+          v-if="repair.scoreBefore != null"
+          class="mono"
+          style="color: var(--text)"
+        >
           {{ Math.round(repair.scoreBefore) }} 分
         </span>
         <span v-if="repair.scoreAfter != null">修复后分数</span>
         <span
           v-if="repair.scoreAfter != null"
           class="mono"
-          :style="{ color: scoreImprovement != null && scoreImprovement > 0 ? 'var(--ok)' : 'var(--text)' }"
+          :style="{
+            color:
+              scoreImprovement != null && scoreImprovement > 0
+                ? 'var(--ok)'
+                : 'var(--text)',
+          }"
         >
           {{ Math.round(repair.scoreAfter) }} 分
           <span v-if="scoreImprovement != null" style="font-size: 11px">
@@ -534,7 +610,10 @@ watch(
           </span>
         </span>
         <span v-if="repair.stopReason">终止原因</span>
-        <span v-if="repair.stopReason" style="color: var(--text); font-size: 11px; word-break: break-all">
+        <span
+          v-if="repair.stopReason"
+          style="color: var(--text); font-size: 11px; word-break: break-all"
+        >
           {{ repair.stopReason }}
         </span>
       </div>

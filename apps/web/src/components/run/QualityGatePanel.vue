@@ -164,7 +164,11 @@ async function loadStageIssues(stage: string): Promise<void> {
   loadingIssues.value = true
   stageIssues.value = []
   try {
-    const res = await qualityGatesApi.getStage(props.runId, stage, props.episodeIdx)
+    const res = await qualityGatesApi.getStage(
+      props.runId,
+      stage,
+      props.episodeIdx,
+    )
     stageIssues.value = res.issues
   } catch (err) {
     errText.value = err instanceof Error ? err.message : '加载问题列表失败'
@@ -200,6 +204,23 @@ function selectStage(stageKey: string): void {
   }
   selectedStage.value = stageKey
   loadStageIssues(stageKey)
+}
+
+/**
+ * 进入豁免编辑态。
+ * 原来写成模板内联多语句（`exemptingId = issue.id` 换行 `exemptReason = ''`）：
+ * 代码格式器按「不加分号」风格拆行后，Vue 模板把它当单个表达式解析直接编译失败——
+ * 类型检查不解析模板属性，这类断裂只在 vite build 才暴露，故多语句一律收进函数。
+ */
+function startExemptEdit(issueId: number): void {
+  exemptingId.value = issueId
+  exemptReason.value = ''
+}
+
+/** 退出豁免编辑态（不落库，与「取消豁免」的 unexempt 动作不同） */
+function dismissExemptEdit(): void {
+  exemptingId.value = null
+  exemptReason.value = ''
 }
 
 /** 提交豁免 */
@@ -258,11 +279,15 @@ watch(
 <template>
   <div class="panel" style="padding: 14px 16px">
     <!-- 标题行 -->
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px">
+    <div
+      style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px"
+    >
       <Icon name="shield" :size="15" />
       <span style="font-size: 13px; font-weight: 600">质量门禁</span>
       <span class="chip">第 {{ episodeIdx }} 集</span>
-      <span v-if="loading" class="muted" style="margin-left: auto">加载中...</span>
+      <span v-if="loading" class="muted" style="margin-left: auto"
+        >加载中...</span
+      >
       <button
         class="btn sm"
         style="margin-left: auto"
@@ -299,20 +324,34 @@ watch(
           <!-- 状态图标 -->
           <span
             class="stage-icon"
-            :style="{ color: statusColor(gateForStage(stage.key)?.status ?? 'pending') }"
+            :style="{
+              color: statusColor(gateForStage(stage.key)?.status ?? 'pending'),
+            }"
           >
-            <Icon :name="statusIcon(gateForStage(stage.key)?.status ?? 'pending')" :size="14" />
+            <Icon
+              :name="statusIcon(gateForStage(stage.key)?.status ?? 'pending')"
+              :size="14"
+            />
           </span>
           <span class="stage-label">{{ stage.label }}</span>
           <!-- 计数 -->
           <span v-if="gateForStage(stage.key)" class="stage-counts">
-            <span v-if="gateForStage(stage.key)!.blockingCount > 0" class="count-bad">
+            <span
+              v-if="gateForStage(stage.key)!.blockingCount > 0"
+              class="count-bad"
+            >
               {{ gateForStage(stage.key)!.blockingCount }}
             </span>
-            <span v-if="gateForStage(stage.key)!.warningCount > 0" class="count-warn">
+            <span
+              v-if="gateForStage(stage.key)!.warningCount > 0"
+              class="count-warn"
+            >
               {{ gateForStage(stage.key)!.warningCount }}
             </span>
-            <span v-if="gateForStage(stage.key)!.exemptCount > 0" class="count-exempt">
+            <span
+              v-if="gateForStage(stage.key)!.exemptCount > 0"
+              class="count-exempt"
+            >
               {{ gateForStage(stage.key)!.exemptCount }}
             </span>
           </span>
@@ -340,18 +379,42 @@ watch(
     </div>
 
     <!-- 无数据占位 -->
-    <div v-if="!loading && gates.length === 0 && !errText" class="empty" style="padding: 20px 0">
+    <div
+      v-if="!loading && gates.length === 0 && !errText"
+      class="empty"
+      style="padding: 20px 0"
+    >
       <Icon name="shield" :size="20" />
-      <p style="margin: 8px 0 12px">尚未运行门禁检查，点击「运行全部检查」启动五阶段质量门禁</p>
+      <p style="margin: 8px 0 12px">
+        尚未运行门禁检查，点击「运行全部检查」启动五阶段质量门禁
+      </p>
     </div>
 
     <!-- 问题列表 -->
     <div v-if="selectedStage && !loadingIssues && stageIssues.length > 0">
-      <div style="font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 8px">
+      <div
+        style="
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-2);
+          margin-bottom: 8px;
+        "
+      >
         <Icon name="alert" :size="12" />
-        {{ selectedGate?.status === 'pass' ? '全部通过' : `${stageIssues.length} 个问题` }}
+        {{
+          selectedGate?.status === 'pass'
+            ? '全部通过'
+            : `${stageIssues.length} 个问题`
+        }}
       </div>
-      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px">
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 14px;
+        "
+      >
         <div
           v-for="issue in stageIssues"
           :key="issue.id"
@@ -359,14 +422,39 @@ watch(
           style="padding: 10px 12px"
         >
           <!-- 问题头部：checker + 维度 + 严重程度 -->
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap">
-            <span style="font-size: 12px; font-weight: 600">{{ issue.checker }}</span>
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-bottom: 6px;
+              flex-wrap: wrap;
+            "
+          >
+            <span style="font-size: 12px; font-weight: 600">{{
+              issue.checker
+            }}</span>
             <span class="badge" :class="severityBadgeClass(issue.severity)">
-              {{ issue.severity === 'blocking' ? '阻断' : issue.severity === 'warning' ? '警告' : issue.severity }}
+              {{
+                issue.severity === 'blocking'
+                  ? '阻断'
+                  : issue.severity === 'warning'
+                    ? '警告'
+                    : issue.severity
+              }}
             </span>
-            <span class="chip" style="font-size: 10px">{{ issue.dimension }}</span>
+            <span class="chip" style="font-size: 10px">{{
+              issue.dimension
+            }}</span>
             <!-- 已豁免标记 -->
-            <span v-if="issue.exempted" class="badge" style="background: var(--warn-weak, rgb(234 179 8 / 15%)); color: var(--warn)">
+            <span
+              v-if="issue.exempted"
+              class="badge"
+              style="
+                background: var(--warn-weak, rgb(234 179 8 / 15%));
+                color: var(--warn);
+              "
+            >
               已豁免
             </span>
           </div>
@@ -375,13 +463,27 @@ watch(
           <div
             v-if="Object.keys(issue.evidence).length > 0"
             class="mono"
-            style="font-size: 11px; color: var(--text-2); margin-bottom: 6px; word-break: break-all; line-height: 1.5"
+            style="
+              font-size: 11px;
+              color: var(--text-2);
+              margin-bottom: 6px;
+              word-break: break-all;
+              line-height: 1.5;
+            "
           >
             {{ evidenceSummary(issue.evidence) }}
           </div>
 
           <!-- 建议 -->
-          <p v-if="issue.suggestion" style="font-size: 11.5px; color: var(--text-2); margin: 0 0 8px; line-height: 1.5">
+          <p
+            v-if="issue.suggestion"
+            style="
+              font-size: 11.5px;
+              color: var(--text-2);
+              margin: 0 0 8px;
+              line-height: 1.5;
+            "
+          >
             {{ issue.suggestion }}
           </p>
 
@@ -409,7 +511,7 @@ watch(
                 class="btn sm"
                 style="font-size: 11px; padding: 2px 8px"
                 :disabled="exemptSubmitting"
-                @click="exemptingId = issue.id; exemptReason = ''"
+                @click="startExemptEdit(issue.id)"
               >
                 豁免
               </button>
@@ -445,7 +547,7 @@ watch(
                 <button
                   class="btn sm"
                   style="font-size: 11px; padding: 2px 8px"
-                  @click="exemptingId = null; exemptReason = ''"
+                  @click="dismissExemptEdit()"
                 >
                   取消
                 </button>
@@ -468,7 +570,12 @@ watch(
 
     <!-- 选中阶段但无问题 -->
     <div
-      v-if="selectedStage && !loadingIssues && stageIssues.length === 0 && gates.length > 0"
+      v-if="
+        selectedStage &&
+        !loadingIssues &&
+        stageIssues.length === 0 &&
+        gates.length > 0
+      "
       class="empty"
       style="padding: 16px 0"
     >
@@ -477,7 +584,11 @@ watch(
     </div>
 
     <!-- 加载问题中 -->
-    <div v-if="loadingIssues" class="muted" style="text-align: center; padding: 12px 0; font-size: 12px">
+    <div
+      v-if="loadingIssues"
+      class="muted"
+      style="text-align: center; padding: 12px 0; font-size: 12px"
+    >
       <Icon name="refresh" :size="12" /> 加载问题列表...
     </div>
   </div>
@@ -494,7 +605,9 @@ watch(
   border-radius: var(--radius-sm);
   background: var(--panel-2);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
   min-width: 56px;
   font-family: inherit;
 }
