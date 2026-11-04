@@ -149,7 +149,7 @@ export async function probeRecoveryClient({ check }: Checker): Promise<void> {
   const original = { detail: runApi.detail, resume: runApi.resume, chatDetail: creationChatApi.detail, retry: creationChatApi.retry }
   const s = useEasyCreate()
   const drift = [{ service: 'asr', from: 'whisper-1', to: 'whisper-1' as string | null }]
-  let rd = { run: { id: 41, status: 'failed' }, steps: [], creationSessionId: 7, resumeConfigDrift: drift } as unknown as RunDetail
+  let rd = { run: { id: 41, status: 'failed' }, steps: [], creationSessionId: 7, resumeConfigDrift: drift, continuityResume: { kind: 'off' } } as unknown as RunDetail
   let posts: Record<string, unknown>[] = [], reads = 0
   let detail = { session: { id: 7, planRevision: 1, planHash: 'probe', status: 'started', project: null }, progress: { runId: 41, status: 'failed', uncertainTasks: [], recovery: { resumable: true, requiredTaskIds: [], queryTaskCount: 0, unpriced: [], configDrift: drift } }, result: null } as unknown as Detail
   const retries: Retry[] = []
