@@ -442,14 +442,16 @@ Web 工作台 → REST + Socket.IO → API(Hono)
 - 参考分层端点 7 个（CRUD4 + backfill + selection-preview + GET /image-caps）+ 一致性端点 2 个（POST /runs/:id/consistency-eval、GET /runs/:id/character-consistency）
 - 逐角色一致性评价服务：复用 M24 多模态评分契约，按实体分组取样（≤24 张）、评价失败不产假分；M73 final 阶段注册 checker character.consistency（未评价=NULL 落 info、<5 分 blocking、<7 分 warning），豁免与门禁数学复用既有实现
 - 前端：参考分层管理面板（EntityRefsPanel + EntityRefPreviewPanel 选择预览）、逐角色一致性卡片（CharacterConsistencyPanel）、运行建造前的能力警示条（RunFormModal）、风格预设 negative 输入
-- 探针 probe-m74.ts 六节（selection / caps / ref-caps-e2e / service / consistency / endpoints，147 项断言，
+- 探针 probe-m74.ts 六节（selection / caps / ref-caps-e2e / service / consistency / endpoints，149 项断言，
   其中 ref-caps-e2e 走真实出图入队面锁「模型上限进选择层 + 回退留痕」；LLM 走本地 stub、零联网）
 - 删除面收编：硬删/软删/会话删除/版本清理六处入口先行清理分层行与结果行，避免外键阻断
 - 整枝终审修复轮（1 blocker + 3 major + 6 minor + 4 探针诚实性）：
   ① 模型参考图上限进选择层，被能力裁掉的候选带「超出模型参考图上限(N)」原因，`params.refSelection` 与实发列表收口一致；
+     借重复腾出的名额回补进列的候选改写原因文案，同一资产 id 不再在快照里既是发送项又是被砍项；
   ② 回退原因落 `gen_tasks.params.refFallbacks`（此前只在内存里，运行数据仍静默）；
-  ③ 已分层实体的旧挂接/整列替换写路径改走分层真源（新增 `attachDerivedRefs` / `replaceDerivedRefs`，
+  ③ 已分层实体的旧挂接/整列替换/同名建档写路径改走分层真源（新增 `attachDerivedRefs` / `replaceDerivedRefs`，
      未分层实体行为逐字不变）——此前这些入口写进扁平列的参考既不参与取用又被下次分层写静默冲掉；
+     复验再普查出同类第三处（实体新增端点命中同名行时的追加参考），同法归正并补真实路径断言；
   ④ 跨项目复制重建分层登记行（含停用行）；⑤ `limit<=0` 不再伪造回退文案、不双记候选；
   ⑥ 约束冲突判定只认唯一约束（外键失败不再被报成「已登记」409）；⑦ 门禁阈值用原始 `score/10` 判定，
      取整值只作展示（此前 4.995 会被升档躲过 blocking）；⑧ 状态命中改用注入前原文，判据与文本锚定同源；
@@ -458,7 +460,7 @@ Web 工作台 → REST + Socket.IO → API(Hono)
   UNKNOWN → 未标注用途的素材在列表/计数/选材面整体隐身；改为 NULL 安全的 `excludeReservedPurpose()`
   （素材列表、自动摘要、段间选材三处共用）
 
-**验收**：全量探针 exit 0（6728 断言 / 80 探针）、server/web tsc exit 0、`web:build` 生产打包 exit 0、注释门禁通过、
+**验收**：全量探针 exit 0（6730 断言 / 80 探针）、server/web tsc exit 0、`web:build` 生产打包 exit 0、注释门禁通过、
 split-audit 单文件 ≤800 通过、格式门通过（按仓库检出的 `core.autocrlf=true` 事实把 prettier
 `endOfLine` 定为 `auto`——否则 125 个文件是换行符假阳性，门禁永久红）
 **为什么补打包门禁**：`vue-tsc --noEmit` 不解析模板属性表达式，全量探针也不碰模板编译，
@@ -471,6 +473,9 @@ split-audit 单文件 ≤800 通过、格式门通过（按仓库检出的 `core
   并发闸或分批进度，实体多时花费与等待都由用户一次点击承担——接 R06 的预算闸口径另立任务收口
 - 负向词仍以「必须剔除：」写进提示词锚点；supportsNegativePrompt 只作能力登记，产品未把负向词路由到供应商 extra.negative_prompt 通道
 - 一致性量表两套并存：运行级 0–1（M71 版本稳定度代理）与逐角色 0–10（本里程碑），口径未合并
+- 全量 runner 在并发下把「子进程被系统中断」只记成退出码非零，汇总表显示 `FAIL(0)` 且不带原因——
+  本轮实测：并发数拉高时一枚与改动面无关的探针假红（单独复跑全绿、降并发后套件全绿）。
+  后续给退出码为空的子进程打出中断信号与负载提示，避免编排噪声被误读成产品缺陷
 
 ## 校准规则
 
