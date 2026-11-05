@@ -3,6 +3,7 @@
  *
  * 覆盖：挂载前缀本身成为被测事实；分层登记七个端点的完整闭环与整套错误码词汇表；
  * 空补丁的零副作用语义；整列替换落到分层真源（已分层实体把新列建成基准行、被移出的旧行置灰不删可重开；未分层实体逐字写扁平列）；
+ * 同名建档（实体新增端点的更新分支）追加参考同样落到分层真源；
  * 逐镜预览与图像能力端点；一致性评价端点与只读回显；门禁全阶段触发与豁免回转；
  * 风格负向词「写 → 读回 → 注入锚点 → 清空」整链；删除面级联见同目录级联文件。
  */
@@ -371,6 +372,48 @@ export async function runEndpoints(checker: Checker): Promise<void> {
     assert.deepEqual(await flatRefIds(eid), [p1, p2], '扁平列被逐字整列写入（未分层路径不派生、不重排）')
     const payload = await getRefs(eid)
     assert.equal(payload.refs.length, 0, '未分层实体整列替换不建任何分层行')
+  })
+
+  // ── 三·二、同名建档追加参考（POST /entities 更新分支）同样不得直写派生列 ────
+  await t('同名建档追加参考（已分层实体）：参考落到分层行与派生列，响应体回显同步后的值', async () => {
+    const pid = await newProject('同名建档-已分层')
+    const eid = await newEntity(pid, '建档主角')
+    const first = await newImageAsset(pid, '建档首张')
+    const reg = await call('POST', `/entities/${eid}/references`, { assetId: first, role: 'base' })
+    assert.equal(reg.status, 201, `前置分层登记应 201，实得 ${reg.status} ${reg.body}`)
+    assert.deepEqual(await flatRefIds(eid), [first], '前置：派生列由分层行导出')
+    const second = await newImageAsset(pid, '建档追加')
+
+    const re = await call('POST', '/entities', { project_id: pid, name: '建档主角', kind: 'character', ref_asset_ids: [second] })
+    assert.equal(re.status, 201, `同名建档应 201，实得 ${re.status} ${re.body}`)
+    assert.equal(re.data?.created, false, '同名命中更新分支（不重复插入）')
+    assert.equal(re.data?.entity?.id, eid, '更新分支保原行标识')
+    const payload = await getRefs(eid)
+    assert.equal(payload.refs.length, 2, `追加的参考落到第二条分层行，实得 ${payload.refs.length} 行`)
+    assert.ok(payload.refs.some((r) => r.assetId === second && r.role === 'base' && r.enabled === true), '新参考是启用的基准行（出图选择层只读分层行，不落行等于白写）')
+    assert.deepEqual(await flatRefIds(eid), [first, second], `派生列随真源同步，实得 ${JSON.stringify(await flatRefIds(eid))}`)
+    assert.deepEqual(re.data?.entity?.refAssetIds, [first, second], '响应体回显派生同步后的参考集（前端拿不到过期值）')
+    const versions = await rowsOf<{ label: string | null; source: string }>(
+      "SELECT source, label FROM content_versions WHERE obj_kind = 'entity' AND obj_id = ?",
+      [eid],
+    )
+    assert.ok(
+      versions.some((v) => v.source === 'edit' && String(v.label).includes('参考图挂接')),
+      `追加写在实体版本链留痕，实得 ${JSON.stringify(versions.map((v) => v.label))}`,
+    )
+  })
+
+  await t('同名建档追加参考（未分层实体）：并集直写扁平列且不建分层行（既有语义零改动）', async () => {
+    const pid = await newProject('同名建档-未分层')
+    const eid = await newEntity(pid, '未分层建档')
+    const q1 = await newImageAsset(pid, '建档旧一')
+    const q2 = await newImageAsset(pid, '建档旧二')
+    await call('POST', '/entities', { project_id: pid, name: '未分层建档', kind: 'character', ref_asset_ids: [q1] })
+    const again = await call('POST', '/entities', { project_id: pid, name: '未分层建档', kind: 'character', ref_asset_ids: [q2] })
+    assert.equal(again.data?.created, false, '同名命中更新分支')
+    assert.deepEqual(again.data?.entity?.refAssetIds, [q1, q2], '未分层路径保持并集去重直写')
+    assert.deepEqual(await flatRefIds(eid), [q1, q2], '扁平列即全部参考（未分层不引入派生语义）')
+    assert.equal((await getRefs(eid)).refs.length, 0, '未分层实体同名建档不建分层行')
   })
 
   // ── 四、图像能力端点 ─────────────────────────────────────────────────────

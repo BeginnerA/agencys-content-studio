@@ -240,7 +240,9 @@ export function collectRefSelection(
       if (added >= limit) break
       if (!accept(cand.assetId)) continue
       res.dropped.splice(res.dropped.indexOf(cand), 1)
-      refs.push(cand)
+      // 回补的候选原先带着「超出上限」的落选原因，如今已实际入列送模型：沿用旧文案会让同一资产 id
+      // 在追溯里既是发送项又是被砍项，自相矛盾，改成回补说明。
+      refs.push({ ...cand, reason: `重复腾出的名额回补（本角色上限 ${limit}）` })
       added += 1
     }
     charUsed += added

@@ -354,14 +354,14 @@ export async function runService(checker: Checker) {
     const { canvases, canvasNodes } = await import('../../../src/db/schema')
     const { copyNodesToCanvas } = await import('../../../src/services/creation/copy-to')
     const { upsertEntity } = await import('../../../src/services/character')
-    const sp = (await call('POST', '/projects', { name: 'F4 源项目' })).data.project.id as number
-    const tp = (await call('POST', '/projects', { name: 'F4 目标项目' })).data.project.id as number
+    const sp = (await call('POST', '/projects', { name: '跨项目复制-源' })).data.project.id as number
+    const tp = (await call('POST', '/projects', { name: '跨项目复制-目标' })).data.project.id as number
     // 源分层实体：启用基准两张 + 停用基准一张 + 启用视角一张（停用行是「只带扁平列会丢」的典型）
-    const srcEnt = await upsertEntity({ projectId: sp, kind: 'character', name: 'F4 主角', appearance: '圆脸', states: [], refAssetIds: [] })
-    const sb1 = await newImageAsset(sp, 'F4源基准一')
-    const sb2 = await newImageAsset(sp, 'F4源基准二')
-    const sOff = await newImageAsset(sp, 'F4源停用')
-    const sv = await newImageAsset(sp, 'F4源视角')
+    const srcEnt = await upsertEntity({ projectId: sp, kind: 'character', name: '复制主角', appearance: '圆脸', states: [], refAssetIds: [] })
+    const sb1 = await newImageAsset(sp, '源基准一')
+    const sb2 = await newImageAsset(sp, '源基准二')
+    const sOff = await newImageAsset(sp, '源停用基准')
+    const sv = await newImageAsset(sp, '源视角背面')
     await addEntityRef({ entityId: srcEnt.id, assetId: sb1, role: 'base' })
     await addEntityRef({ entityId: srcEnt.id, assetId: sb2, role: 'base' })
     const offRow = await addEntityRef({ entityId: srcEnt.id, assetId: sOff, role: 'base' })

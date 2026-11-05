@@ -2,7 +2,7 @@ import { and, eq, isNull, or } from 'drizzle-orm'
 import { db } from '../db'
 import { characters, type CharacterRow } from '../db/schema'
 import { recordEntityVersion, type VersionSource } from './provenance'
-import { attachDerivedRefs } from './entity-references'
+import { attachDerivedRefs, hasEntityRefRows } from './entity-references'
 
 /**
  * 角色库服务（泛化为实体素材库：kind 多态 character|scene|prop）。
@@ -44,7 +44,8 @@ export async function findEntity(projectId: number | null, name: string, kind: E
   return index.get(name) ?? index.get(name.toLowerCase()) ?? null
 }
 
-/** 具名 upsert（kind 分派）：name（含别名命中）匹配同域同 kind 行 → 更新非空字段（保 id、保未传字段；aliases/refAssetIds 并集去重； states 非空覆盖）；否则插入 */
+/** 具名 upsert（kind 分派）：name（含别名命中）匹配同域同 kind 行 → 更新非空字段（保 id、保未传字段；aliases/refAssetIds 并集去重； states 非空覆盖）；否则插入。
+ * refAssetIds 在更新分支走分层真源：已有分层登记行的实体改由 entity_references 描述参考集，扁平列只是派生列。 */
 export async function upsertEntity(p: {
   projectId: number | null
   kind?: EntityKind
@@ -84,8 +85,12 @@ export async function upsertEntity(p: {
     if (p.voice) patch['voice'] = p.voice
     if (p.voiceDesc) patch['voiceDesc'] = p.voiceDesc
     if (p.states && p.states.length > 0) patch['states'] = JSON.stringify(p.states)
-    if (p.refAssetIds && p.refAssetIds.length > 0) {
-      patch['refAssetIds'] = JSON.stringify([...new Set([...safeArrNum(hit.refAssetIds), ...p.refAssetIds])])
+    const wantedRefs = p.refAssetIds ?? []
+    // 分层行存在时扁平列只是派生列：直写它不参与出图取用，且会被下一次分层写整体覆盖（等于白写）。
+    // 未分层实体保持旧的「并集直写扁平列」语义；已分层实体在下面改走真源入口。
+    const refsLayered = wantedRefs.length > 0 ? await hasEntityRefRows(hit.id) : false
+    if (wantedRefs.length > 0 && !refsLayered) {
+      patch['refAssetIds'] = JSON.stringify([...new Set([...safeArrNum(hit.refAssetIds), ...wantedRefs])])
     }
     if (p.meta) patch['meta'] = JSON.stringify(p.meta)
     await db.update(characters).set(patch).where(eq(characters.id, hit.id))
@@ -93,6 +98,7 @@ export async function upsertEntity(p: {
     if (Object.keys(patch).length > 1) {
       await recordEntityVersion({ entityId: hit.id, projectId: p.projectId, source: 'edit', label: p.name })
     }
+    if (refsLayered) await attachDerivedRefs(hit.id, wantedRefs, 'edit', p.projectId)
     return { id: hit.id, created: false }
   }
   const inserted = (
