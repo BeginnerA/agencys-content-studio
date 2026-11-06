@@ -41,7 +41,7 @@ pnpm package:portable -- --skip-web-build  # 复用现有 apps/web/dist（快速
 
 发版不是「打完 zip 就结束」：**tag、Release、仓库站点三处必须同步**，任何一处落后于版本号都算发版未完成。
 
-1. 版本号落点：根 `package.json`、`apps/web/package.json`、`apps/server/package.json` 三处改同一版本；README 的下载链接指向新 tag
+1. 版本号落点：根 `package.json`、`apps/web/package.json`、`apps/server/package.json` 三处改同一版本；README 的下载链接指向新 tag；站点落地页 `site/index.html` 的版本号、包体积与 Release 链接同步改（`grep -c "vX.Y.Z" site/index.html` 应 >0，旧版本号应为 0）
 2. 构建自检：`pnpm package:portable` 全绿（exit 0，五项冒烟断言全过），记录 zip 字节数与 `sha256sum`
 3. 提交与标签：`chore(release): 发布便携版 vX.Y.Z` 提交 → 附注标签 `git tag -a vX.Y.Z -m "百工工作室 便携版 vX.Y.Z"`
 4. 推送两个远端：`git push github master` + `git push github vX.Y.Z`；`git push origin master` + `git push origin vX.Y.Z`（Gitee 是公开镜像）
@@ -51,6 +51,7 @@ pnpm package:portable -- --skip-web-build  # 复用现有 apps/web/dist（快速
 7. 复核：`gh api repos/BeginnerA/agencys-content-studio/releases/latest -q .tag_name` 返回新版本；
    `git ls-remote --tags github refs/tags/vX.Y.Z` 与 `git ls-remote --tags origin refs/tags/vX.Y.Z` 均返回同一 commit
 8. 回填文档：对外发布文案节「当前」行的校验值、字节数、包内解压体积与新版本链接一并更新并提交推送
+9. Qoder 站点上线：`site/index.html` 用 Qoder Sites 发布到现有站点（`prepare_site` 用新 actionId、`webDirectory: "site"`、沿用已登记的项目 ID → `publish_site`），确认返回 `published: true` 且站点首页显示新版本号；随后提交推送 `site/index.html`。站点发布失败时保留本次站点改动并重试，不得以「tag/Release 已发」代替站点更新
 
 ## 自检断言（真实拉起，非静态检查）
 

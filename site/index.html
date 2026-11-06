@@ -535,6 +535,7 @@
   }
   .cap:nth-child(2n) { border-left: 1px solid var(--line); }
   .cap:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .cap:nth-child(5) { grid-column: 1 / -1; }
   .cap-k {
     display: flex;
     align-items: baseline;
@@ -902,7 +903,7 @@
     </nav>
 
     <div class="head-actions">
-      <span class="ver">v0.2.0 · WIN x64</span>
+      <span class="ver">v0.3.0 · WIN x64</span>
       <a class="btn btn-primary btn-sm" href="#download">获取便携版</a>
       <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="打开导航菜单" id="menuBtn">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -921,10 +922,10 @@
         <h1 id="hero-title">一句话想法，<br />成片<span class="accent">出坊</span>。</h1>
         <p class="lede">百工工作室把选题、剧本、分镜、出图、配音与合成收进同一条可审阅的流水线。<strong>19 个模板、三种创作方式</strong>，项目数据与密钥留在你的电脑里。</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">下载 Windows 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
+          <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">下载 Windows 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
           <a class="btn btn-ghost" href="https://github.com/BeginnerA/agencys-content-studio" target="_blank" rel="noopener noreferrer">查看源码</a>
         </div>
-        <p class="hero-meta"><span>Windows x64</span><span>约 178 MB</span><span>解压即用</span><span>Apache-2.0</span></p>
+        <p class="hero-meta"><span>Windows x64</span><span>约 177 MB</span><span>解压即用</span><span>Apache-2.0</span></p>
       </div>
 
       <figure class="run-panel" aria-label="流水线运行面板示意">
@@ -1159,6 +1160,14 @@
             <li>发布登记与数据复盘回灌，下一轮选题有据可依</li>
           </ul>
         </div>
+        <div class="cap">
+          <div class="cap-k"><h3>一致性与门禁</h3><span>CONSISTENCY</span></div>
+          <ul>
+            <li>参考图分层登记：基准 / 状态变体 / 多视角，逐镜按场次与画面文本取用，选择明细可预览</li>
+            <li>逐角色一致性评价复用多模态评分，调用前有费用确认</li>
+            <li>五阶段质量门禁：阶段检查、门禁评估、豁免登记与运行详情面板</li>
+          </ul>
+        </div>
       </div>
     </section>
   </div>
@@ -1237,15 +1246,15 @@
             <h2 id="download-title">下载，<br /><span>把作坊装进硬盘。</span></h2>
             <p>最新便携版已打包 Node 运行时与全部依赖。解压后双击「启动.bat」，首次启动自动建库并初始化供应商目录。</p>
             <div class="dl-actions">
-              <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">下载 v0.2.0 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
+              <a class="btn btn-primary" href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">下载 v0.3.0 便携版 <span class="arrow" aria-hidden="true">↓</span></a>
               <a class="btn btn-ghost" href="https://gitee.com/agencys/agencys-content-studio" target="_blank" rel="noopener noreferrer">Gitee 仓库</a>
             </div>
             <p class="dl-fine">源码运行需 Node 20+ 与 pnpm；仓库内含上手指南、模板详表与 AI 配置文档。<br />Windows 便携包无需安装 Node，也无需联网激活。</p>
           </div>
           <dl class="dl-spec">
-            <div><dt>VERSION</dt><dd><b>v0.2.0</b></dd></div>
+            <div><dt>VERSION</dt><dd><b>v0.3.0</b></dd></div>
             <div><dt>PLATFORM</dt><dd>Windows · x64</dd></div>
-            <div><dt>PACKAGE</dt><dd>约 178 MB · ZIP</dd></div>
+            <div><dt>PACKAGE</dt><dd>约 177 MB · ZIP</dd></div>
             <div><dt>RUNTIME</dt><dd>内置 Node，解压即用</dd></div>
             <div><dt>LICENSE</dt><dd>Apache-2.0</dd></div>
             <div><dt>NETWORK</dt><dd><b>本地优先</b> · 云 AI 可选</dd></div>
@@ -1314,7 +1323,7 @@
       <nav class="foot-links" aria-label="页脚链接">
         <a href="https://github.com/BeginnerA/agencys-content-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
         <a href="https://gitee.com/agencys/agencys-content-studio" target="_blank" rel="noopener noreferrer">Gitee</a>
-        <a href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">Release v0.2.0</a>
+        <a href="https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Release v0.3.0</a>
         <a href="#top">回到顶部 ↑</a>
       </nav>
     </div>
