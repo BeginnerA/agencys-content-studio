@@ -81,7 +81,7 @@ zip 约 180MB，**不要 commit 进仓库**——Gitee/GitHub 的 push 单文件
 
 ### 对外发布文案（复制即用）
 
-以下三份文案直接复制粘贴，发新版时替换版本号与链接。当前 v0.2.0 zip 校验值：`SHA256 7709A39794F2C7DE13ADBA1E2900F0130E95A3189C16289FD45AEB9CCB672D3F`（asset 名 `Baigong-Studio-portable-v0.2.0-win-x64.zip`，186259154 字节）。v0.2.0 已发布：<https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0>（上一版 v0.1.0：<https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.1.0>）。下方文案模板中的版本号/链接以 v0.1.0 为样例，发新版时按上面「当前」值替换。
+以下三份文案直接复制粘贴，发新版时替换版本号与链接。当前 v0.3.0 zip 校验值：`SHA256 691A49B19D862C51675F7721156A42FF0DA81BB3CF81775692B4E696EC957292`（asset 名 `Baigong-Studio-portable-v0.3.0-win-x64.zip`，185739680 字节；包内解压态 432.5 MB）。v0.3.0 已发布：<https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.3.0>（上一版 v0.2.0：<https://github.com/BeginnerA/agencys-content-studio/releases/tag/v0.2.0>）。下方文案模板中的版本号/链接以 v0.1.0 为样例，发新版时按上面「当前」值替换。
 
 **① GitHub Release 说明**（贴到 Release 正文）
 
