@@ -37,6 +37,21 @@ pnpm package:portable -- --skip-web-build  # 复用现有 apps/web/dist（快速
 
 **永远不要直接压缩仓库目录分发**——`data/secrets.json` 里有你的全部供应商真实密钥。
 
+## 发版同步检查单（每次发版全做，缺一项即未完成）
+
+发版不是「打完 zip 就结束」：**tag、Release、仓库站点三处必须同步**，任何一处落后于版本号都算发版未完成。
+
+1. 版本号落点：根 `package.json`、`apps/web/package.json`、`apps/server/package.json` 三处改同一版本；README 的下载链接指向新 tag
+2. 构建自检：`pnpm package:portable` 全绿（exit 0，五项冒烟断言全过），记录 zip 字节数与 `sha256sum`
+3. 提交与标签：`chore(release): 发布便携版 vX.Y.Z` 提交 → 附注标签 `git tag -a vX.Y.Z -m "百工工作室 便携版 vX.Y.Z"`
+4. 推送两个远端：`git push github master` + `git push github vX.Y.Z`；`git push origin master` + `git push origin vX.Y.Z`（Gitee 是公开镜像）
+5. GitHub Release：asset 先复制成 ASCII 名 `Baigong-Studio-portable-vX.Y.Z-win-x64.zip` 再上传——
+   `gh release create vX.Y.Z <ascii-zip> --repo BeginnerA/agencys-content-studio --title "百工工作室 便携版 vX.Y.Z" --notes-file <说明>`
+6. Gitee 发行版页：附件超 100MB 上限，只建「引流说明」发行版（文案见下节 ②）。Gitee 建 Release 需网页登录或私有令牌，属人工步骤
+7. 复核：`gh api repos/BeginnerA/agencys-content-studio/releases/latest -q .tag_name` 返回新版本；
+   `git ls-remote --tags github refs/tags/vX.Y.Z` 与 `git ls-remote --tags origin refs/tags/vX.Y.Z` 均返回同一 commit
+8. 回填文档：对外发布文案节「当前」行的校验值、字节数、包内解压体积与新版本链接一并更新并提交推送
+
 ## 自检断言（真实拉起，非静态检查）
 
 冒烟用包内 `runtime/node.exe` 起服务（随机 39000+ 端口，`CSTUDIO_ROOT` 指向包根），全部通过才允许 zip：
